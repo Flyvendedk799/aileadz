@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <title>Data Indtastning - Indsigtsinnovator</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <!-- Bootstrap 5 CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <!-- Animate.css -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+  <!-- Google Fonts: Poppins for headings, Open Sans for body -->
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-gradient-start: #1a1a2e;
+      --bg-gradient-end: #16213e;
+      --card-bg: #232946;
+      --card-shadow: 0 8px 20px rgba(0,0,0,0.5);
+      --primary-color: #4A90E2;
+      --secondary-color: #50E3C2;
+      --text-color: #e0e0e0;
+      --input-bg: #283149;
+    }
+    body {
+      background: linear-gradient(135deg, var(--bg-gradient-start), var(--bg-gradient-end));
+      font-family: 'Open Sans', sans-serif;
+      color: var(--text-color);
+      padding: 30px 10px;
+      position: relative;
+    }
+    h1, h2 {
+      font-family: 'Poppins', sans-serif;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.3);
+    }
+    .section-title {
+      margin-bottom: 30px;
+      border-bottom: 2px solid var(--primary-color);
+      padding-bottom: 10px;
+    }
+    .channel-card {
+      background: var(--card-bg);
+      border: none;
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 30px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .channel-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.7);
+    }
+    .card-header {
+      background-color: var(--primary-color);
+      border-bottom: 1px solid rgba(0,0,0,0.3);
+      padding: 15px;
+      border-top-left-radius: 12px;
+      border-top-right-radius: 12px;
+      color: #fff;
+    }
+    .form-check-label {
+      color: var(--text-color);
+      margin-left: 8px;
+      user-select: none;
+    }
+    /* Updated Input Field Styling */
+    .form-control.kpi-input {
+      background: var(--input-bg) !important;
+      border: none;
+      border-radius: 6px;
+      color: #ffffff !important;
+      padding: 10px 14px;
+      margin-bottom: 5px;
+      font-size: 1rem;
+    }
+    .form-control.kpi-input::placeholder {
+      color: #aaa !important;
+    }
+    .form-control.kpi-input:focus {
+      background: var(--input-bg) !important;
+      color: #ffffff !important;
+      border: 1px solid var(--primary-color) !important;
+      outline: none !important;
+      box-shadow: 0 0 5px var(--primary-color) !important;
+    }
+    .kpi-input:focus {
+      background: var(--input-bg) !important;
+      color: #ffffff !important;
+    }
+    .btn-custom {
+      background-color: var(--primary-color);
+      border: none;
+      border-radius: 50px;
+      padding: 14px 40px;
+      font-size: 1.2rem;
+      transition: background-color 0.3s ease, transform 0.3s ease;
+      color: #fff;
+    }
+    .btn-custom:disabled {
+      background-color: #555;
+      cursor: not-allowed;
+    }
+    .btn-custom:hover:enabled {
+      background-color: var(--secondary-color);
+      transform: scale(1.05);
+    }
+    .insight-card {
+      border: none;
+      border-radius: 10px;
+      background: var(--card-bg);
+      color: var(--text-color);
+      box-shadow: var(--card-shadow);
+      margin-bottom: 30px;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .insight-card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 12px 30px rgba(0,0,0,0.7);
+    }
+    .chart-card {
+      background: var(--card-bg);
+      color: var(--text-color);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: var(--card-shadow);
+      margin-bottom: 30px;
+      overflow: hidden;
+    }
+    .chart-container {
+      position: relative;
+      height: 400px;
+      width: 100%;
+    }
+    .mb-2 {
+      color: var(--text-color);
+    }
+    .tooltip-icon {
+      cursor: pointer;
+      font-size: 1.1rem;
+      color: var(--primary-color);
+    }
+    .form-text {
+      color: #bbb;
+    }
+    /* CTA icon animation */
+    .cta-icon {
+      transition: transform 0.3s;
+    }
+    .cta-icon:hover {
+      transform: scale(1.1);
+    }
+    /* Insight card header styling */
+    .insight-card .card-header {
+      background: var(--primary-color);
+      border-bottom: 2px solid var(--secondary-color);
+      font-size: 1.1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    /* Modern checkbox styling */
+    .modern-checkbox {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 24px;
+      height: 24px;
+      border: 2px solid var(--primary-color);
+      border-radius: 50%;
+      cursor: pointer;
+      transition: background-color 0.3s ease, border-color 0.3s ease;
+      position: relative;
+    }
+    .modern-checkbox:checked {
+      background-color: var(--secondary-color);
+      border-color: var(--secondary-color);
+    }
+    .modern-checkbox:checked::after {
+      content: "\2713";
+      position: absolute;
+      top: 0;
+      left: 5px;
+      color: #fff;
+      font-size: 16px;
+    }
+    /* Collapse details in insight cards */
+    .insight-details {
+      background-color: var(--card-bg) !important;
+      color: var(--text-color) !important;
+      border: none;
+      animation: fadeInUp 0.5s ease;
+    }
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    /* Total Improvement Container */
+    #total-improvement-container {
+      margin-bottom: 20px;
+      padding: 10px;
+      background: var(--input-bg);
+      border-radius: 6px;
+      text-align: center;
+      font-size: 1.2rem;
+      color: #fff;
+      box-shadow: 0 0 5px var(--primary-color);
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="text-center mb-5 animate__animated animate__fadeInDown">Indsigtsinnovator</h1>
+    <h2 class="text-center section-title animate__animated animate__fadeInUp">Data Indtastning for Periode: {{ period }}</h2>
+    
+    <!-- Data input form – vises kun hvis der IKKE er genererede indsigt -->
+    {% if not insights or insights|length == 0 %}
+    <form action="/analyze" method="post" id="dataForm">
+      <input type="hidden" name="period" value="{{ period }}">
+      <div class="row">
+        <!-- Website Card -->
+        <div class="col-lg-6 mb-4">
+          <div class="card channel-card animate__animated animate__fadeInUp">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="card-title mb-0">Website</h5>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="website_active" name="website_active">
+                <label class="form-check-label" for="website_active">Brug</label>
+              </div>
+            </div>
+            <div class="card-body">
+              <!-- KPI for Website -->
+              <div class="mb-2">
+                <label class="form-label">Antal Besøg 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antal besøg på hjemmesiden i den valgte periode.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="website_visits" placeholder="Indtast antal besøg">
+                <small class="form-text">Format: Et helt tal (f.eks. 1234)</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Unikke Besøg 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af unikke besøgende.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="website_unique" placeholder="Indtast unikke besøg">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Session Varighed 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Gennemsnitlig session varighed (mm:ss eller hh:mm:ss).">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="website_session" placeholder="Indtast session varighed">
+                <small class="form-text">Format: mm:ss eller hh:mm:ss</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Bounce Rate 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Procentdelen af besøgende, der forlader siden uden interaktion.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="website_bounce" placeholder="Indtast bounce rate">
+                <small class="form-text">Format: Procent (f.eks. 45%)</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Konverteringer 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af besøgende, der udfører en ønsket handling.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="website_conversions" placeholder="Indtast antal konverteringer">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Sociale Medier Card -->
+        <div class="col-lg-6 mb-4">
+          <div class="card channel-card animate__animated animate__fadeInUp">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="card-title mb-0">Sociale Medier</h5>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="social_media_active" name="social_media_active">
+                <label class="form-check-label" for="social_media_active">Brug</label>
+              </div>
+            </div>
+            <div class="card-body">
+              <!-- KPI for Sociale Medier -->
+              <div class="mb-2">
+                <label class="form-label">Visninger 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antal visninger af dine opslag.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="social_media_impressions" placeholder="Indtast visninger">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Nye Følgere 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af nye følgere.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="social_media_new_followers" placeholder="Indtast nye følgere">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Engagement 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af interaktioner (likes, kommentarer, delinger).">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="social_media_engagement" placeholder="Indtast engagement">
+                <small class="form-text">Format: Et helt tal eller procent (f.eks. 10%)</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Klik 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af klik på dine opslag.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="social_media_clicks" placeholder="Indtast antal klik">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Konverteringer 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af konverteringer fra kampagner på sociale medier.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="social_media_conversions" placeholder="Indtast konverteringer">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="row">
+        <!-- E-mail Marketing Card -->
+        <div class="col-lg-6 mb-4">
+          <div class="card channel-card animate__animated animate__fadeInUp">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="card-title mb-0">E-mail Marketing</h5>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="email_active" name="email_active">
+                <label class="form-check-label" for="email_active">Brug</label>
+              </div>
+            </div>
+            <div class="card-body">
+              <!-- KPI for E-mail Marketing -->
+              <div class="mb-2">
+                <label class="form-label">Udsendte E-mails 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af udsendte e-mails i kampagnen.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="email_sent" placeholder="Indtast antal e-mails">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Åbningsrate 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Procentdelen af modtagere, der åbner e-mails.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="email_open_rate" placeholder="Indtast åbningsrate">
+                <small class="form-text">Format: Procent (f.eks. 60%)</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Klikrate 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Procentdelen af modtagere, der klikker på links.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="email_click_rate" placeholder="Indtast klikrate">
+                <small class="form-text">Format: Procent (f.eks. 10%)</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Konverteringer 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af konverteringer fra e-mail kampagnen.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="email_conversions" placeholder="Indtast konverteringer">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+            </div>
+          </div>
+        </div>
+        <!-- Betalt Søgeannoncering Card -->
+        <div class="col-lg-6 mb-4">
+          <div class="card channel-card animate__animated animate__fadeInUp">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <h5 class="card-title mb-0">Betalt Søgeannoncering</h5>
+              <div class="form-check form-switch">
+                <input class="form-check-input" type="checkbox" id="paid_active" name="paid_active">
+                <label class="form-check-label" for="paid_active">Brug</label>
+              </div>
+            </div>
+            <div class="card-body">
+              <!-- KPI for Betalt Søgeannoncering -->
+              <div class="mb-2">
+                <label class="form-label">Visninger 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antal visninger af dine annoncer.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="paid_impressions" placeholder="Indtast visninger">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Klik 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af klik på dine annoncer.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="paid_clicks" placeholder="Indtast klik">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">CPC 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Cost Per Click – omkostningen pr. klik.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="paid_cpc" placeholder="Indtast CPC">
+                <small class="form-text">Format: Decimaltal (f.eks. 0.50)</small>
+              </div>
+              <div class="mb-2">
+                <label class="form-label">Konverteringer 
+                  <span class="tooltip-icon" data-bs-toggle="tooltip" title="Antallet af konverteringer fra betalte annoncer.">
+                    <i class="bi bi-question-circle-fill"></i>
+                  </span>
+                </label>
+                <input type="text" class="form-control kpi-input" name="paid_conversions" placeholder="Indtast konverteringer">
+                <small class="form-text">Format: Et helt tal</small>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <div class="text-center mt-4">
+        <button type="submit" class="btn btn-custom" id="generateBtn" disabled>Få Anbefalinger</button>
+      </div>
+    </form>
+    {% endif %}
+    
+    <!-- Vis både Insights og Diagram side-by-side, hvis begge er tilgængelige -->
+    {% if insights and insights|length > 0 and chart_data %}
+      <div class="row">
+        <!-- Insights Column -->
+        <div class="col-md-6">
+          <!-- Samlet Forbedring Container med Progress Bar og Expandable Detaljer -->
+          <div id="total-improvement-container" class="mb-3 p-3">
+            <div class="d-flex justify-content-between align-items-center">
+              <strong>Samlet Forbedring:</strong>
+              <span id="total-improvement" style="font-size: 1.5rem;">0%</span>
+            </div>
+            <div class="progress mt-2" style="height: 25px;">
+              <div id="improvement-progress" class="progress-bar bg-success" role="progressbar"
+                   style="width: 0%;" aria-valuenow="0" aria-valuemin="0" aria-valuemax="100">
+              </div>
+            </div>
+            <button class="btn btn-link text-white mt-2" type="button" data-bs-toggle="collapse" data-bs-target="#improvementDetails" aria-expanded="false" aria-controls="improvementDetails">
+              Vis detaljer om beregning af samlet forbedring
+            </button>
+            <div class="collapse" id="improvementDetails">
+              <div class="card card-body" style="background: var(--card-bg); color: var(--text-color);">
+                Din samlede forbedring beregnes ved at summere de individuelle forbedringsbidrag fra hver gennemført opgave. Hvis du eksempelvis markerer opgaver med 10% og 15% forbedring, vil din samlede forbedring være 25%. Denne procentdel anvendes til at forudsige en potentiel stigning i dine nøglemetrikker, som vises i diagrammet til højre.
+              </div>
+            </div>
+            <small class="d-block mt-1" style="color: #e0e0e0;">Tjek de opgaver ovenfor – hver fuldført opgave øger din samlede forbedring!</small>
+          </div>
+          {% for insight in insights %}
+          <div class="card insight-card animate__animated animate__fadeInUp" data-index="{{ loop.index0 }}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div>
+                <h5 class="card-title mb-0">🚀 {{ insight.emne }} 
+                  <small class="text-info ms-2" style="font-size: 0.9rem;">(Forventet forbedring: {{ insight.forbedring }}%)</small>
+                </h5>
+              </div>
+              <!-- Modern checkbox -->
+              <input type="checkbox" class="modern-checkbox insight-checkbox" data-improvement="{{ insight.forbedring | default(0) }}">
+            </div>
+            <div class="card-body">
+              <p class="card-text">{{ insight.resumé }}</p>
+              {% if insight.detaljer %}
+              <button class="btn btn-link" data-bs-toggle="collapse" data-bs-target="#details{{ loop.index }}" aria-expanded="false" aria-controls="details{{ loop.index }}">
+                Læs mere
+              </button>
+              <div class="collapse" id="details{{ loop.index }}">
+                <div class="card-body insight-details">
+                  <p>{{ insight.detaljer }}</p>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        <!-- Diagram Column med Forecast -->
+        <div class="col-md-6">
+          <div class="chart-card animate__animated animate__fadeInUp">
+            <div class="chart-container">
+              <canvas id="myChart"></canvas>
+            </div>
+          </div>
+        </div>
+      </div>
+    {% elif insights and insights|length > 0 %}
+      <div>
+        {% for insight in insights %}
+          <div class="card insight-card animate__animated animate__fadeInUp mb-4" data-index="{{ loop.index0 }}">
+            <div class="card-header d-flex justify-content-between align-items-center">
+              <div>
+                <h5 class="card-title mb-0">🚀 {{ insight.emne }} 
+                  <small class="text-info ms-2" style="font-size: 0.9rem;">(Forventet forbedring: {{ insight.forbedring }}%)</small>
+                </h5>
+              </div>
+              <input type="checkbox" class="modern-checkbox insight-checkbox" data-improvement="{{ insight.forbedring | default(0) }}">
+            </div>
+            <div class="card-body">
+              <p class="card-text">{{ insight.resumé }}</p>
+              {% if insight.detaljer %}
+              <button class="btn btn-link" data-bs-toggle="collapse" data-bs-target="#details{{ loop.index }}" aria-expanded="false" aria-controls="details{{ loop.index }}">
+                Læs mere
+              </button>
+              <div class="collapse" id="details{{ loop.index }}">
+                <div class="card-body insight-details">
+                  <p>{{ insight.detaljer }}</p>
+                </div>
+              </div>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% elif chart_data %}
+      <div class="chart-card animate__animated animate__fadeInUp">
+        <div class="chart-container">
+          <canvas id="myChart"></canvas>
+        </div>
+      </div>
+    {% endif %}
+    
+  </div>
+  
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Bootstrap 5 JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  
+  <script>
+    // Initialize Bootstrap tooltips
+    const tooltipTriggerList = [...document.querySelectorAll('[data-bs-toggle="tooltip"]')];
+    tooltipTriggerList.forEach(el => new bootstrap.Tooltip(el));
+    
+    // Hide KPI input fields by default and toggle on checkbox change
+    document.addEventListener("DOMContentLoaded", function() {
+      const channels = ['website', 'social_media', 'email', 'paid'];
+      channels.forEach(channel => {
+        const checkbox = document.getElementById(channel + '_active');
+        const cardBody = checkbox.closest('.card').querySelector('.card-body');
+        cardBody.style.display = "none";
+        checkbox.addEventListener('change', function() {
+          cardBody.style.display = this.checked ? "block" : "none";
+          checkFormValidity();
+        });
+      });
+      
+      document.querySelectorAll('#dataForm input[type="text"]').forEach(input => {
+        input.addEventListener('input', checkFormValidity);
+      });
+    });
+    
+    // Check form validity
+    function checkFormValidity() {
+      let isValid = false;
+      ['website', 'social_media', 'email', 'paid'].forEach(channel => {
+        const checkbox = document.getElementById(channel + '_active');
+        if (checkbox.checked) {
+          const inputs = checkbox.closest('.card').querySelectorAll('input[type="text"]');
+          inputs.forEach(input => {
+            if (input.value.trim() !== "") {
+              isValid = true;
+            }
+          });
+        }
+      });
+      document.getElementById('generateBtn').disabled = !isValid;
+    }
+    
+    // Total Improvement Calculation with chart forecast update
+    function updateTotalImprovement() {
+      const checkboxes = document.querySelectorAll('.modern-checkbox.insight-checkbox');
+      let total = 0;
+      checkboxes.forEach(cb => {
+        if (cb.checked) {
+          const imp = parseFloat(cb.getAttribute('data-improvement')) || 0;
+          total += imp;
+        }
+      });
+      const totalFixed = total.toFixed(0);
+      document.getElementById('total-improvement').innerText = totalFixed + '%';
+      document.getElementById('improvement-progress').style.width = totalFixed + '%';
+  
+      // Update forecast dataset in chart
+      if (typeof myChart !== 'undefined' && myChart.data.datasets.length > 1) {
+        myChart.data.datasets[1].data = chartData.værdier.map(x => x * (1 + total/100));
+        myChart.update();
+      }
+    }
+    
+    // Add event listeners to modern checkboxes
+    document.addEventListener("DOMContentLoaded", function() {
+      const checkboxes = document.querySelectorAll('.modern-checkbox.insight-checkbox');
+      checkboxes.forEach(cb => {
+        cb.addEventListener('change', updateTotalImprovement);
+      });
+    });
+    
+    {% if chart_data %}
+    let myChart;
+    const chartData = {{ chart_data | tojson }};
+    const ctx = document.getElementById('myChart').getContext('2d');
+    const gradient = ctx.createLinearGradient(0, 0, 0, 400);
+    gradient.addColorStop(0, 'rgba(74, 144, 226, 0.85)');
+    gradient.addColorStop(1, 'rgba(80, 227, 194, 0.3)');
+    
+    myChart = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: chartData.etiketter,
+        datasets: [{
+          label: 'Nøglemetrikker (Nuværende)',
+          data: chartData.værdier,
+          backgroundColor: gradient,
+          borderColor: 'rgba(74, 144, 226, 1)',
+          borderWidth: 2,
+          borderRadius: 6,
+          hoverBackgroundColor: 'rgba(80, 227, 194, 0.9)'
+        },
+        {
+          label: 'Forventet (Forecast)',
+          data: chartData.værdier.map(x => x),
+          backgroundColor: 'rgba(255, 193, 7, 0.7)',
+          borderColor: 'rgba(255, 193, 7, 1)',
+          borderWidth: 2,
+          borderRadius: 6,
+          hoverBackgroundColor: 'rgba(255, 193, 7, 0.9)'
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        transitions: {
+          active: { animation: { duration: 300, easing: 'easeOutQuart' } }
+        },
+        plugins: {
+          tooltip: {
+            enabled: true,
+            backgroundColor: 'rgba(50, 50, 50, 0.8)',
+            titleFont: { size: 16, color: '#fff' },
+            bodyFont: { size: 14, color: '#fff' },
+            padding: 12
+          },
+          legend: {
+            labels: { font: { size: 14, color: '#e0e0e0' } }
+          }
+        },
+        animation: {
+          duration: 1500,
+          easing: 'easeOutElastic'
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            grid: { color: 'rgba(255,255,255,0.1)' },
+            ticks: { color: '#e0e0e0', font: { size: 14 } }
+          },
+          x: {
+            grid: { display: false },
+            ticks: { color: '#e0e0e0', font: { size: 14 } }
+          }
+        }
+      }
+    });
+    
+    // Highlight corresponding chart bar on insight hover
+    document.querySelectorAll('.insight-card').forEach((card, idx) => {
+      card.addEventListener('mouseenter', function() {
+        if (myChart && myChart.data.labels.length > idx) {
+          myChart.setActiveElements([{datasetIndex: 0, index: idx}]);
+          myChart.update();
+        }
+      });
+      card.addEventListener('mouseleave', function() {
+        if (myChart) {
+          myChart.setActiveElements([]);
+          myChart.update();
+        }
+      });
+    });
+    {% endif %}
+    
+    // (Optional) Explanation Modal functionality – if needed
+    document.getElementById('explanationBtn')?.addEventListener('click', function() {
+      var explanationModal = new bootstrap.Modal(document.getElementById('explanationModal'));
+      explanationModal.show();
+    });
+  </script>
+  
+  <!-- Explanation Modal (if triggered from elsewhere) -->
+  <div class="modal fade" id="explanationModal" tabindex="-1" aria-labelledby="explanationModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content bg-dark text-white">
+        <div class="modal-header">
+          <h5 class="modal-title" id="explanationModalLabel">Sådan øger du din samlede forbedring</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Luk"></button>
+        </div>
+        <div class="modal-body">
+          <p>Fuldfør de angivne opgaver ved at markere dem som gennemført. Hver opgave bidrager med en bestemt procentdel, som til sidst giver en samlet forbedringsscore. Denne score viser, hvor meget dine nøglemetrikker potentielt kan forbedres, hvis alle anbefalinger implementeres – og diagrammet opdateres løbende for at vise et forecast baseret på dine valg.</p>
+          <p><em>Tip:</em> Se hvordan din forecast stiger, når du markerer de enkelte opgaver!</p>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Luk</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>

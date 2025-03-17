@@ -1,0 +1,68 @@
+import requests
+import json
+import time
+
+# Shopify API credentials
+SHOPIFY_ACCESS_TOKEN = "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"
+SHOPIFY_STORE_URL = "kursuszonen-grafikr-dk.myshopify.com"
+
+# Shopify API base URL (using the latest API version)
+BASE_URL = f"https://{SHOPIFY_STORE_URL}/admin/api/2025-01/products.json"
+headers = {
+    "X-Shopify-Access-Token": SHOPIFY_ACCESS_TOKEN
+}
+
+# Function to fetch products from Shopify with pagination support
+def fetch_products():
+    products = []
+    url = BASE_URL
+    retries = 3  # Number of retries for failed requests
+
+    while url:
+        attempt = 0
+        while attempt < retries:
+            try:
+                response = requests.get(url, headers=headers, timeout=60)  # 60-second timeout
+                if response.status_code == 200:
+                    data = response.json()
+                    products.extend(data['products'])
+                    print(f"Fetched {len(products)} products so far...")  # Show progress
+
+                    # Check for pagination by looking at the link header
+                    if 'link' in response.headers and 'rel="next"' in response.headers['link']:
+                        next_url = response.headers['link'].split(';')[0].strip('<>')
+                        url = next_url
+                    else:
+                        url = None  # No more pages left
+                    break  # Move to the next page of products
+                else:
+                    print(f"Error fetching products: {response.status_code}")
+                    print(response.json())  # Print error details
+                    break
+            except requests.exceptions.Timeout:
+                print("Request timed out, retrying...")
+                attempt += 1
+                time.sleep(5)  # Wait before retrying
+            except requests.exceptions.RequestException as e:
+                print(f"Request failed: {e}")
+                break  # Break out of retry loop on any other request failure
+
+    return products
+
+# Function to save products to a JSON file
+def save_products_to_json(products):
+    with open('shopify_products.json', 'w') as f:
+        json.dump(products, f, indent=4)
+
+# Main script
+def main():
+    print("Fetching products from Shopify...")
+    products = fetch_products()
+    if products:
+        save_products_to_json(products)
+        print(f"Successfully saved {len(products)} products to 'shopify_products.json'.")
+    else:
+        print("No products fetched or there was an error.")
+
+if __name__ == "__main__":
+    main()

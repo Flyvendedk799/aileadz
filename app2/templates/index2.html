@@ -1,0 +1,645 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+  /* Scoped styles for the Ops Generator – will not override your base template */
+  #ops-generator .ops-container {
+    width: 100%;
+    max-width: 1200px;
+    margin: 30px auto;
+    padding: 20px;
+    background-color: var(--card-bg);
+    border-radius: var(--border-radius);
+    box-shadow: 0 0 15px var(--hover-shadow);
+  }
+  #ops-generator .ops-container h1,
+  #ops-generator .ops-container h2 {
+    text-align: center;
+    margin-bottom: 20px;
+    font-family: "Inter", sans-serif;
+  }
+  /* ---------- Form & Raw Output Styles ---------- */
+  #ops-generator .ops-form,
+  #ops-generator .ops-improve {
+    margin-top: 20px;
+  }
+  #ops-generator .ops-form .form-group,
+  #ops-generator .ops-improve .form-group {
+    margin-bottom: 15px;
+  }
+  #ops-generator .ops-form label,
+  #ops-generator .ops-improve label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 5px;
+    font-family: "Inter", sans-serif;
+  }
+  #ops-generator .ops-form input,
+  #ops-generator .ops-form select,
+  #ops-generator .ops-form textarea,
+  #ops-generator .ops-improve input,
+  #ops-generator .ops-improve select,
+  #ops-generator .ops-improve textarea {
+    width: 100%;
+    padding: 10px;
+    border: 1px solid var(--muted-text);
+    border-radius: 4px;
+    background-color: var(--card-bg);
+    color: var(--text-color);
+    font-family: "Inter", sans-serif;
+  }
+  /* Website field styling */
+  #ops-generator .ops-form input#website_link {
+    /* Same as before */
+  }
+  #ops-generator .ops-form button,
+  #ops-generator .ops-improve button {
+    margin-top: 20px;
+    padding: 10px 15px;
+    background-color: var(--primary-color);
+    border: none;
+    border-radius: var(--border-radius);
+    color: #fff;
+    cursor: pointer;
+    font-size: 16px;
+    width: 100%;
+    font-family: "Inter", sans-serif;
+  }
+  /* Modified button styles to include credit icon */
+  #ops-generator .ops-form button i {
+    margin-right: 6px;
+  }
+  #ops-generator .ops-preview pre {
+    background: #f4f4f4;
+    padding: 15px;
+    border-radius: 4px;
+    overflow-x: auto;
+    color: #000;
+    white-space: pre-line;
+    font-family: monospace;
+  }
+  #ops-generator .preview-heading {
+    text-align: center;
+    margin-bottom: 10px;
+    font-size: 18px;
+    font-weight: 600;
+    font-family: "Inter", sans-serif;
+  }
+  #ops-generator .platform-indicator {
+    text-align: center;
+    font-size: 16px;
+    margin-bottom: 15px;
+    color: var(--muted-text);
+    font-family: "Inter", sans-serif;
+  }
+  /* ---------- Website Link Indicator ---------- */
+  #ops-generator .website-link-indicator {
+    text-align: center;
+    margin-bottom: 20px;
+    font-size: 16px;
+    font-family: "Inter", sans-serif;
+  }
+  #ops-generator .website-link-indicator a {
+    color: var(--primary-color);
+    text-decoration: underline;
+  }
+  /* ---------- Mobile Preview (iOS Device Frame) ---------- */
+  #ops-generator .ios-device {
+    width: 375px;
+    height: 667px;
+    background: #f5f5f5;
+    border: 16px solid #333;
+    border-radius: 36px;
+    margin: 2rem auto;
+    box-shadow: 0 16px 40px rgba(0,0,0,0.7);
+    position: relative;
+    overflow: hidden;
+  }
+  #ops-generator .ios-navbar {
+    height: 60px;
+    background: #fff;
+    border-bottom: 1px solid #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 18px;
+    font-weight: bold;
+    color: #333;
+    font-family: "Inter", sans-serif;
+  }
+  #ops-generator .platform-logo {
+    height: 24px;
+    vertical-align: middle;
+    margin-right: 8px;
+  }
+  #ops-generator .ios-content {
+    height: calc(667px - 60px);
+    overflow-y: auto;
+    background: #fff;
+    padding: 16px;
+  }
+  /* ---------- General Post & Text Styles ---------- */
+  #ops-generator .mobile-post,
+  #ops-generator .generic-preview,
+  #ops-generator .facebook-post,
+  #ops-generator .linkedin-post,
+  #ops-generator .twitter-post {
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    background: #fff;
+    padding: 10px;
+    margin-bottom: 10px;
+    color: #000;
+    font-family: "Inter", sans-serif;
+    white-space: pre-line;
+  }
+  #ops-generator .mobile-post-header,
+  #ops-generator .facebook-post-header,
+  #ops-generator .linkedin-post-header,
+  #ops-generator .twitter-post-header,
+  #ops-generator .instagram-post-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+  }
+  #ops-generator .mobile-header-details,
+  #ops-generator .facebook-header-details,
+  #ops-generator .linkedin-header-details,
+  #ops-generator .twitter-header-details,
+  #ops-generator .instagram-header-details {
+    margin-left: 8px;
+  }
+  #ops-generator .mobile-post-content,
+  #ops-generator .facebook-post-content,
+  #ops-generator .linkedin-post-content,
+  #ops-generator .twitter-post-content,
+  #ops-generator .instagram-post-content {
+    font-size: 14px;
+    line-height: 1.4;
+  }
+  #ops-generator .mobile-post-footer,
+  #ops-generator .facebook-post-footer,
+  #ops-generator .linkedin-post-footer,
+  #ops-generator .twitter-post-footer,
+  #ops-generator .instagram-post-footer {
+    margin-top: 8px;
+    display: flex;
+    justify-content: space-around;
+    font-size: 13px;
+  }
+  #ops-generator .action-btn {
+    cursor: pointer;
+  }
+  /* ---------- PC Preview Container ---------- */
+  #ops-generator .pc-container {
+    background: #f5f5f5;
+    padding: 15px;
+    border-radius: 8px;
+  }
+  /* ---------- Blurred Posts for Realistic Feed ---------- */
+  #ops-generator .blurred-post {
+    background: #ccc;
+    height: 80px;
+    margin-top: 10px;
+    border-radius: 8px;
+    filter: blur(2px);
+  }
+  /* ---------- Facebook Preview Styles ---------- */
+  #ops-generator .facebook-header {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: #1877f2;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px 8px 0 0;
+  }
+  #ops-generator .facebook-feed {
+    background: #fff;
+    padding: 15px;
+    color: #000;
+  }
+  /* ---------- LinkedIn Preview Styles ---------- */
+  #ops-generator .linkedin-header {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: #0077b5;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px 8px 0 0;
+  }
+  #ops-generator .linkedin-feed {
+    background: #fff;
+    padding: 15px;
+    color: #000;
+  }
+  /* ---------- Twitter Preview Styles ---------- */
+  #ops-generator .twitter-header {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: #1da1f2;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px 8px 0 0;
+  }
+  #ops-generator .twitter-feed {
+    background: #fff;
+    padding: 15px;
+    color: #000;
+  }
+  /* ---------- Instagram Preview Styles ---------- */
+  #ops-generator .instagram-header {
+    display: flex;
+    align-items: center;
+    padding: 10px;
+    background: #e1306c;
+    color: #fff;
+    font-size: 18px;
+    font-weight: bold;
+    border-radius: 8px 8px 0 0;
+  }
+  #ops-generator .instagram-feed {
+    background: #fff;
+    padding: 15px;
+    color: #000;
+  }
+  #ops-generator .instagram-image {
+    width: 100%;
+    height: 300px;
+    background-color: #ddd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #888;
+    font-size: 16px;
+    margin-bottom: 10px;
+    border-radius: 4px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div id="ops-generator">
+  <div class="ops-container">
+    <h1>Opslags Generator</h1>
+    
+    {# --- BEGIN BRAND DROPDOWN ADDITION --- #}
+    {% if user_brands and user_brands|length > 0 %}
+    <div class="ops-form">
+      <div class="form-group">
+        <label for="brand_select">Vælg dit brand (valgfrit):</label>
+        <select id="brand_select" name="brand_select">
+          <option value="">-- Ingen brand valgt --</option>
+          {% for b in user_brands %}
+            <option value="{{ b.id }}" data-brand-name="{{ b.brand_name }}" data-brand-site="{{ b.brand_site }}">
+              {{ b.brand_name }}
+            </option>
+          {% endfor %}
+        </select>
+      </div>
+    </div>
+    {% endif %}
+    {# --- END BRAND DROPDOWN ADDITION --- #}
+    
+    <!-- Input Form (Original Content) -->
+    <div class="ops-form">
+      <form method="post">
+        <div class="form-group">
+          <label for="platform">Vælg platform:</label>
+          <select id="platform" name="platform" required>
+            <option value="">-- Vælg platform --</option>
+            <option value="LinkedIn">LinkedIn</option>
+            <option value="Facebook">Facebook</option>
+            <option value="Instagram">Instagram</option>
+            <option value="Twitter">Twitter</option>
+            <option value="Blogpost">Blogpost</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="type">Vælg type:</label>
+          <select id="type" name="type" required>
+            <option value="">-- Vælg type --</option>
+            <option value="Produktannonce">Produktannonce</option>
+            <option value="Kategoriannonce">Kategoriannonce</option>
+            <option value="Tilpasset prompt">Tilpasset prompt</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label for="vision">Vision (yderligere idéer og input):</label>
+          <textarea id="vision" name="vision" rows="4" placeholder="Indtast dine idéer her..."></textarea>
+        </div>
+        <div class="form-group">
+          <label for="company_desc">Kort virksomhedsbeskrivelse:</label>
+          <textarea id="company_desc" name="company_desc" rows="4" placeholder="Hvad handler din virksomhed om?" required></textarea>
+        </div>
+        <div class="form-group">
+          <label for="website_link">Link til hjemmeside / sociale medier:</label>
+          <input type="text" id="website_link" name="website_link" placeholder="F.eks. hjemmeside.dk" required>
+        </div>
+        <div class="form-group">
+          <label for="post_length">Opslagslængde:</label>
+          <select id="post_length" name="post_length" required>
+            <option value="">-- Vælg længde --</option>
+            <option value="kort">Kort</option>
+            <option value="mellem">Mellem</option>
+            <option value="lang">Lang</option>
+          </select>
+        </div>
+        <button type="submit"><i class="fa-solid fa-coins"></i> Generer opslag (4 credits)</button>
+      </form>
+    </div>
+    
+    {% if generated_post %}
+    <!-- Generated Post Preview -->
+    <div class="ops-preview">
+      <h2>Dit AI-genererede opslag (raw text):</h2>
+      <pre>{{ generated_post|replace('(upload billede her)', '') }}</pre>
+    </div>
+    
+    <!-- Platform Indicator -->
+    <div class="platform-indicator">
+      Du har valgt: <strong>{{ selected_platform }}</strong>
+    </div>
+    
+    <!-- Website Link Indicator -->
+    {% if website_link %}
+      {% if website_link.startswith('http://') or website_link.startswith('https://') %}
+        {% set hyperlink = website_link %}
+      {% else %}
+        {% set hyperlink = 'https://' ~ website_link %}
+      {% endif %}
+      <div class="website-link-indicator">
+        Gå til <a href="{{ hyperlink }}" target="_blank">{{ website_link }}</a>
+      </div>
+    {% endif %}
+    
+    <!-- Mobile Preview Section -->
+    <div class="ops-preview">
+      <h2 class="preview-heading">Mobil Preview ({{ selected_platform }})</h2>
+      <div class="ios-device">
+        {% if selected_platform == 'Facebook' %}
+          <div class="ios-navbar">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/0/05/Facebook_Logo_(2019).png" alt="Facebook Logo" class="platform-logo"> Facebook
+          </div>
+          <div class="ios-content">
+            <div class="mobile-post">
+              <div class="mobile-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="mobile-header-details">
+                  <span class="profile-name">Brugerens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+              </div>
+              <div class="mobile-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="mobile-post-footer">
+                <span class="action-btn">Like</span>
+                <span class="action-btn">Comment</span>
+                <span class="action-btn">Share</span>
+              </div>
+            </div>
+          </div>
+        {% elif selected_platform == 'LinkedIn' %}
+          <div class="ios-navbar">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png" alt="LinkedIn Logo" class="platform-logo"> LinkedIn
+          </div>
+          <div class="ios-content">
+            <div class="mobile-post">
+              <div class="mobile-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="mobile-header-details">
+                  <span class="profile-name">Virksomhedens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+              </div>
+              <div class="mobile-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="mobile-post-footer">
+                <span class="action-btn">Like</span>
+                <span class="action-btn">Comment</span>
+                <span class="action-btn">Share</span>
+              </div>
+            </div>
+          </div>
+        {% elif selected_platform == 'Instagram' %}
+          <div class="ios-navbar">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" alt="Instagram Logo" class="platform-logo"> Instagram
+          </div>
+          <div class="ios-content">
+            <div class="mobile-post instagram-post">
+              <div class="mobile-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="mobile-header-details">
+                  <span class="profile-name">Brugerens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+                <div class="options-icon" style="margin-left:auto; font-size:18px;">&#8942;</div>
+              </div>
+              <div class="instagram-image" style="margin-bottom:10px;">Upload billede her</div>
+              <div class="mobile-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="mobile-post-footer">
+                <span class="action-btn">♥</span>
+                <span class="action-btn">💬</span>
+                <span class="action-btn">➤</span>
+                <span class="action-btn" style="margin-left:auto;">🔖</span>
+              </div>
+            </div>
+          </div>
+        {% elif selected_platform == 'Twitter' %}
+          <div class="ios-navbar">
+            <img src="https://upload.wikimedia.org/wikipedia/en/9/9f/Twitter_bird_logo_2012.svg" alt="Twitter Logo" class="platform-logo"> Twitter
+          </div>
+          <div class="ios-content">
+            <div class="mobile-post">
+              <div class="mobile-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="mobile-header-details">
+                  <span class="profile-name">Brugerens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+              </div>
+              <div class="mobile-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="mobile-post-footer">
+                <span class="action-btn">Like</span>
+                <span class="action-btn">Reply</span>
+                <span class="action-btn">Retweet</span>
+              </div>
+            </div>
+          </div>
+        {% else %}
+          <div class="ios-navbar">{{ selected_platform }}</div>
+          <div class="ios-content">
+            <div class="mobile-post">
+              <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    
+    <!-- PC Preview Section -->
+    <div class="ops-preview">
+      <h2 class="preview-heading">PC Preview ({{ selected_platform }})</h2>
+      <div class="pc-container">
+        {% if selected_platform == 'Facebook' %}
+          <div class="facebook-header">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/0/05/Facebook_Logo_(2019).png" alt="Facebook Logo" class="platform-logo">
+            Facebook
+          </div>
+          <div class="facebook-feed">
+            <div class="facebook-post">
+              <div class="facebook-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="facebook-header-details">
+                  <span class="profile-name">Brugerens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+              </div>
+              <div class="facebook-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="facebook-post-footer">
+                <span class="action-btn">Like</span>
+                <span class="action-btn">Comment</span>
+                <span class="action-btn">Share</span>
+              </div>
+            </div>
+            <div class="blurred-post"></div>
+            <div class="blurred-post"></div>
+          </div>
+        {% elif selected_platform == 'LinkedIn' %}
+          <div class="linkedin-header">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/c/ca/LinkedIn_logo_initials.png" alt="LinkedIn Logo" class="platform-logo">
+            LinkedIn
+          </div>
+          <div class="linkedin-feed">
+            <div class="linkedin-post">
+              <div class="linkedin-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="linkedin-header-details">
+                  <span class="profile-name">Virksomhedens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+              </div>
+              <div class="linkedin-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="linkedin-post-footer">
+                <span class="action-btn">Like</span>
+                <span class="action-btn">Comment</span>
+                <span class="action-btn">Share</span>
+              </div>
+            </div>
+            <div class="blurred-post"></div>
+            <div class="blurred-post"></div>
+          </div>
+        {% elif selected_platform == 'Instagram' %}
+          <div class="instagram-header">
+            <img src="https://upload.wikimedia.org/wikipedia/commons/a/a5/Instagram_icon.png" alt="Instagram Logo" class="platform-logo">
+            Instagram
+          </div>
+          <div class="instagram-feed">
+            <div class="instagram-post">
+              <div class="instagram-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="instagram-header-details">
+                  <span class="profile-name">Brugerens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+                <div class="options-icon" style="margin-left:auto; font-size:18px;">&#8942;</div>
+              </div>
+              <div class="instagram-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="instagram-post-footer">
+                <span class="action-btn">♥</span>
+                <span class="action-btn">💬</span>
+                <span class="action-btn">➤</span>
+                <span class="action-btn" style="margin-left:auto;">🔖</span>
+              </div>
+            </div>
+            <div class="blurred-post"></div>
+            <div class="blurred-post"></div>
+            <div class="blurred-post"></div>
+          </div>
+        {% elif selected_platform == 'Twitter' %}
+          <div class="twitter-header">
+            <img src="https://upload.wikimedia.org/wikipedia/en/9/9f/Twitter_bird_logo_2012.svg" alt="Twitter Logo" class="platform-logo">
+            Twitter
+          </div>
+          <div class="twitter-feed">
+            <div class="twitter-post">
+              <div class="twitter-post-header">
+                <img src="https://via.placeholder.com/40" alt="Profile Picture" class="profile-pic">
+                <div class="twitter-header-details">
+                  <span class="profile-name">Brugerens Navn</span><br>
+                  <span class="post-timestamp">2h ago</span>
+                </div>
+              </div>
+              <div class="twitter-post-content">
+                <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+              </div>
+              <div class="twitter-post-footer">
+                <span class="action-btn">Like</span>
+                <span class="action-btn">Reply</span>
+                <span class="action-btn">Retweet</span>
+              </div>
+            </div>
+            <div class="blurred-post"></div>
+            <div class="blurred-post"></div>
+          </div>
+        {% else %}
+          <div class="generic-preview">
+            <p>{{ generated_post|replace('(upload billede her)', '') }}</p>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    
+    <!-- Improvement Section -->
+    <div class="ops-improve">
+      <h2>Forbedr dit opslag:</h2>
+      <form method="post" action="/improve">
+        <input type="hidden" name="original_post" value="{{ generated_post }}">
+        <input type="hidden" name="platform" value="{{ selected_platform }}">
+        <div class="form-group">
+          <label for="improve_prompt">Tilføj eventuelle forbedringsinstruktioner (valgfrit):</label>
+          <textarea id="improve_prompt" name="improve_prompt" rows="3" placeholder="Indtast dine forbedringsinstruktioner her..."></textarea>
+        </div>
+        <button type="submit">Forbedr opslag</button>
+      </form>
+    </div>
+    
+    <!-- Disabled Publish/Plan Button -->
+    <div class="ops-preview" style="text-align: center;">
+      <button disabled>Udgiv eller planlæg opslag til sociale medier</button>
+    </div>
+    {% endif %}
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+  // When the brand dropdown changes, auto-populate the company_desc and website_link fields
+  document.getElementById('brand_select').addEventListener('change', function() {
+      var selectedOption = this.options[this.selectedIndex];
+      var brandName = selectedOption.getAttribute('data-brand-name') || "";
+      var brandSite = selectedOption.getAttribute('data-brand-site') || "";
+      document.getElementById('company_desc').value = brandName;
+      document.getElementById('website_link').value = brandSite;
+  });
+</script>
+{% endblock %}

@@ -1,0 +1,91 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+  /* Center the register form inside the main content area */
+  .auth-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: calc(100vh - 150px);
+  }
+  .auth-card {
+    width: 100%;
+    max-width: 400px;
+    background-color: var(--card-bg);
+    padding: 20px;
+    border-radius: var(--border-radius);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  }
+  .auth-card h2 {
+    font-size: 1.8rem;
+    margin-bottom: 20px;
+  }
+  .auth-card label {
+    display: block;
+    margin-bottom: 5px;
+    color: var(--text-color);
+  }
+  .auth-card input {
+    width: 100%;
+    padding: 10px;
+    margin-bottom: 15px;
+    border: 1px solid #ccc;
+    border-radius: var(--border-radius);
+  }
+  .auth-card button {
+    width: 100%;
+    padding: 10px;
+    background-color: var(--primary-color);
+    color: #fff;
+    border: none;
+    border-radius: var(--border-radius);
+    cursor: pointer;
+  }
+  .auth-card button:hover {
+    background-color: #9333ea;
+  }
+  .auth-card p {
+    text-align: center;
+    font-size: 0.9rem;
+  }
+  .auth-card p a {
+    color: var(--primary-color);
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+  <div class="auth-card">
+    <h2>Register</h2>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div>
+          {% for category, message in messages %}
+            <p style="color: {% if category == 'danger' %}red{% else %}green{% endif %};">
+              {{ message }}
+            </p>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+    <form action="{{ url_for('auth.register') }}" method="POST">
+      <div>
+        <label for="username">Username</label>
+        <input type="text" name="username" id="username" required>
+      </div>
+      <div>
+        <label for="email">Email</label>
+        <input type="email" name="email" id="email" required>
+      </div>
+      <div>
+        <label for="password">Password</label>
+        <input type="password" name="password" id="password" required>
+      </div>
+      <button type="submit">Register</button>
+    </form>
+    <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login</a></p>
+  </div>
+</div>
+{% endblock %}

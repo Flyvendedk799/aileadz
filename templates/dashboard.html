@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
+  <style>
+    /* Dashboard-specific styles that were originally in your standalone dashboard.html */
+
+    .app-kort-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .app-kort-container a.kort {
+      background-color: var(--card-bg);
+      padding: 20px;
+      border-radius: var(--border-radius);
+      text-align: center;
+      color: var(--text-color);
+      position: relative;
+      overflow: hidden;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      animation: fadeInUp 0.6s ease-out forwards;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .app-kort-container a.kort:hover {
+      transform: translateY(-5px) scale(1.02);
+      box-shadow: 0 8px 24px var(--hover-shadow);
+    }
+    .kort-ikon {
+      margin-bottom: 15px;
+    }
+    .kort-ikon i {
+      font-size: 50px;
+      color: #ffffff;
+      transition: transform var(--transition-speed) ease;
+    }
+    .app-kort-container a.kort:hover .kort-ikon i {
+      transform: scale(1.1);
+    }
+    .app-kort-container a.kort h3 {
+      margin-bottom: 10px;
+      font-size: 1.3rem;
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+    .app-kort-container a.kort p {
+      font-size: 0.95rem;
+      color: var(--muted-text);
+      line-height: 1.4;
+    }
+    .rapporter-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 20px;
+    }
+    .rapporter-container a.kort {
+      background-color: var(--card-bg);
+      padding: 20px;
+      border-radius: var(--border-radius);
+      text-decoration: none;
+      color: var(--text-color);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      opacity: 0;
+      animation: fadeInUp 0.6s ease-out forwards;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+    }
+    .rapporter-container a.kort:hover {
+      transform: translateY(-5px) scale(1.02);
+      box-shadow: 0 8px 24px var(--hover-shadow);
+    }
+    .rapporter-container a.kort h3 {
+      margin-bottom: 8px;
+      font-size: 1.1rem;
+      color: var(--primary-color);
+      font-weight: 600;
+    }
+    .rapporter-container a.kort p {
+      font-size: 0.9rem;
+      color: var(--muted-text);
+      line-height: 1.4;
+    }
+    @keyframes fadeInUp {
+      0% { opacity: 0; transform: translateY(20px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <!-- Dine Applikationer -->
+  <section>
+    <div class="section-title">Dine Applikationer</div>
+    <div class="app-kort-container">
+      <!-- AI Chatbox App -->
+      <a href="/app1" class="kort">
+        <div class="kort-ikon">
+          <i class="fa-solid fa-comments"></i>
+        </div>
+        <h3>AI Chatbox</h3>
+        <p>Integreret chatløsning til din online butik eller platform.</p>
+      </a>
+      <!-- AI Social Medie Indlægsgenerator -->
+      <a href="/app2" class="kort">
+        <div class="kort-ikon">
+          <i class="fa-solid fa-hashtag"></i>
+        </div>
+        <h3>AI Social Medie Indlægsgenerator</h3>
+        <p>Generer og post automatiske indlæg til sociale medier.</p>
+      </a>
+      <!-- AI Marketing Data Optimerer -->
+      <a href="/app3" class="kort">
+        <div class="kort-ikon">
+          <i class="fa-solid fa-chart-line"></i>
+        </div>
+        <h3>AI Marketing Data Optimerer</h3>
+        <p>Analyser dine data og få indsigt samt forslag til optimering af din markedsføring.</p>
+      </a>
+    </div>
+  </section>
+
+  <!-- Seneste Rapporter -->
+  <section>
+    <div class="section-title">Seneste Rapporter</div>
+    <div class="rapporter-container">
+      <a href="/reports/1" class="kort">
+        <h3>Rapport 1</h3>
+        <p>Oversigt over de nyeste tendenser.</p>
+      </a>
+      <a href="/reports/2" class="kort">
+        <h3>Rapport 2</h3>
+        <p>Dybere indsigt i nøglemålepunkter.</p>
+      </a>
+      <a href="/reports/3" class="kort">
+        <h3>Rapport 3</h3>
+        <p>Sammenligning af månedlige resultater.</p>
+      </a>
+    </div>
+  </section>
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
+  {# Dashboard-specific scripts (if any) can be added here #}
+{% endblock %}

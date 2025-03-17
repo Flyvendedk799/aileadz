@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Advanced Video Editing</title>
+  <!-- Bootstrap CSS -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
+  <!-- Google Fonts -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: linear-gradient(135deg, #1a1a1a, #0d0d0d);
+      color: #e0e0e0;
+    }
+    .navbar {
+      background: rgba(0,0,0,0.85);
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+    }
+    .hero {
+      min-height: 50vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      padding: 2rem;
+      background: url('https://via.placeholder.com/1600x600/111111/333333?text=Advanced+Video+Editing') no-repeat center center;
+      background-size: cover;
+      position: relative;
+    }
+    .hero::after {
+      content: "";
+      position: absolute;
+      top:0; left:0;
+      width:100%; height:100%;
+      background: rgba(0,0,0,0.6);
+    }
+    .hero-content {
+      position: relative;
+      z-index: 2;
+    }
+    .hero h1 {
+      font-size: 2.5rem;
+      font-weight: 700;
+      margin-bottom: 1rem;
+      color: #ffffff;
+    }
+    .hero p {
+      font-size: 1.25rem;
+      max-width: 700px;
+      margin: 0 auto;
+    }
+    .card {
+      background: #1e1e1e;
+      border: none;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      padding: 2rem;
+      margin-bottom: 2rem;
+    }
+  </style>
+</head>
+<body>
+  <!-- Navbar -->
+  <nav class="navbar navbar-expand-lg navbar-dark py-3">
+    <div class="container">
+      <a class="navbar-brand" href="#">Advanced Video Editing</a>
+    </div>
+  </nav>
+  
+  <!-- Hero Section -->
+  <section class="hero">
+    <div class="hero-content">
+      <h1>Advanced AI-Powered Video Editing</h1>
+      <p>Leverage state-of-the-art AI to automatically caption, improve, and create engaging product ads for your videos.</p>
+    </div>
+  </section>
+  
+  <!-- Main Content -->
+  <div class="container my-4">
+    <!-- Tabs for different features -->
+    <ul class="nav nav-tabs" id="videoEditingTab" role="tablist">
+      <li class="nav-item" role="presentation">
+        <button class="nav-link active" id="auto-caption-tab" data-bs-toggle="tab" data-bs-target="#auto-caption" type="button" role="tab" aria-controls="auto-caption" aria-selected="true">Auto Caption</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="improve-video-tab" data-bs-toggle="tab" data-bs-target="#improve-video" type="button" role="tab" aria-controls="improve-video" aria-selected="false">Improve Video</button>
+      </li>
+      <li class="nav-item" role="presentation">
+        <button class="nav-link" id="product-ad-tab" data-bs-toggle="tab" data-bs-target="#product-ad" type="button" role="tab" aria-controls="product-ad" aria-selected="false">Product Ad</button>
+      </li>
+    </ul>
+    <div class="tab-content" id="videoEditingTabContent">
+      <!-- Auto Caption Tab -->
+      <div class="tab-pane fade show active" id="auto-caption" role="tabpanel" aria-labelledby="auto-caption-tab">
+        <div class="card mt-3">
+          <h2 class="mb-3">Auto Caption</h2>
+          <form method="post" action="/app4/auto_caption" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label for="video" class="form-label">Upload Video:</label>
+              <input type="file" class="form-control" id="video" name="video" accept="video/*" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Generate Captions</button>
+          </form>
+        </div>
+      </div>
+      
+      <!-- Improve Video Tab -->
+      <div class="tab-pane fade" id="improve-video" role="tabpanel" aria-labelledby="improve-video-tab">
+        <div class="card mt-3">
+          <h2 class="mb-3">Improve Video</h2>
+          <form method="post" action="/app4/improve_video" enctype="multipart/form-data">
+            <div class="mb-3">
+              <label for="video_improve" class="form-label">Upload Video:</label>
+              <input type="file" class="form-control" id="video_improve" name="video" accept="video/*" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Improve Video</button>
+          </form>
+        </div>
+      </div>
+      
+      <!-- Product Ad Tab -->
+      <div class="tab-pane fade" id="product-ad" role="tabpanel" aria-labelledby="product-ad-tab">
+        <div class="card mt-3">
+          <h2 class="mb-3">Product Ad</h2>
+          <form method="post" action="/app4/product_ad">
+            <div class="mb-3">
+              <label for="title" class="form-label">Ad Title:</label>
+              <input type="text" class="form-control" id="title" name="title" placeholder="Enter ad title" required>
+            </div>
+            <div class="mb-3">
+              <label for="description" class="form-label">Ad Description:</label>
+              <textarea class="form-control" id="description" name="description" rows="3" placeholder="Enter ad description" required></textarea>
+            </div>
+            <div class="mb-3">
+              <label for="image_url" class="form-label">Image URL:</label>
+              <input type="url" class="form-control" id="image_url" name="image_url" placeholder="https://example.com/image.jpg" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Generate Product Ad Video</button>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <!-- Footer -->
+  <footer class="footer py-3 bg-dark text-center text-muted">
+    <div class="container">
+      &copy; 2025 Advanced Video Editing. Alle rettigheder forbeholdes.
+    </div>
+  </footer>
+  
+  <!-- Bootstrap JS Bundle -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

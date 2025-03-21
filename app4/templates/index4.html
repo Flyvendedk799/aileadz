@@ -1,163 +1,1104 @@
-<!DOCTYPE html>
-<html lang="da">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Advanced Video Editing</title>
-  <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <!-- Bootstrap Icons -->
-  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.10.5/font/bootstrap-icons.css">
-  <!-- Google Fonts -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
   <style>
+    /* Modern Futuristic Design System */
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-light: #a5b4fc;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --dark: #111827;
+      --darker: #030712;
+      --surface: #1f2937;
+      --surface-hover: #374151;
+      --text: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef);
+    }
+    
     body {
       margin: 0;
       font-family: 'Inter', sans-serif;
-      background: linear-gradient(135deg, #1a1a1a, #0d0d0d);
-      color: #e0e0e0;
+      background: radial-gradient(circle at 10% 20%, var(--darker) 0%, var(--dark) 90%);
+      color: var(--text);
+      overflow-x: hidden;
+      position: relative;
+      min-height: 100vh;
     }
+    
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    /* Navbar */
     .navbar {
-      background: rgba(0,0,0,0.85);
-      border-bottom: 1px solid rgba(255,255,255,0.1);
+      background: rgba(17, 24, 39, 0.8);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
       position: sticky;
       top: 0;
       z-index: 1000;
+      padding: 1rem 0;
     }
+    
+    .navbar-brand {
+      font-weight: 700;
+      font-size: 1.25rem;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      padding: 0.5rem 0;
+    }
+    
+    /* Hero Section */
     .hero {
-      min-height: 50vh;
+      min-height: 60vh;
+      display: flex;
+      align-items: center;
+      position: relative;
+      overflow: hidden;
+      padding: 4rem 0;
+    }
+    
+    .hero::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='100' height='100' viewBox='0 0 100 100'%3E%3Cg fill-rule='evenodd'%3E%3Cg fill='%236366f1' fill-opacity='0.1'%3E%3Cpath opacity='.5' d='M96 95h4v1h-4v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4h-9v4h-1v-4H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9H0v-1h15v-9zm-1 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm9-10v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-10 0v-9h-9v9h9zm-9-10h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9zm10 0h9v-9h-9v9z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      z-index: -1;
+    }
+    
+    .hero-title {
+      font-size: 3.5rem;
+      font-weight: 800;
+      line-height: 1.1;
+      margin-bottom: 1.5rem;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      -webkit-text-fill-color: transparent;
+      animation: gradientShift 8s ease infinite;
+    }
+    
+    @keyframes gradientShift {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
+    .hero-subtitle {
+      font-size: 1.25rem;
+      line-height: 1.6;
+      color: var(--text-secondary);
+      max-width: 700px;
+    }
+    
+    .hero-visual {
+      position: relative;
+      height: 100%;
       display: flex;
       align-items: center;
       justify-content: center;
-      text-align: center;
-      padding: 2rem;
-      background: url('https://via.placeholder.com/1600x600/111111/333333?text=Advanced+Video+Editing') no-repeat center center;
-      background-size: cover;
-      position: relative;
     }
-    .hero::after {
-      content: "";
+    
+    .hero-glow {
       position: absolute;
-      top:0; left:0;
-      width:100%; height:100%;
-      background: rgba(0,0,0,0.6);
+      width: 250px;
+      height: 250px;
+      border-radius: 50%;
+      background: var(--primary);
+      opacity: 0.15;
+      filter: blur(80px);
+      z-index: -1;
     }
-    .hero-content {
+    
+    .hero-image {
       position: relative;
-      z-index: 2;
+      width: 100%;
+      max-width: 500px;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      transform: perspective(1000px) rotateY(-15deg) rotateX(5deg);
+      transition: transform 0.5s ease;
     }
-    .hero h1 {
-      font-size: 2.5rem;
-      font-weight: 700;
-      margin-bottom: 1rem;
-      color: #ffffff;
+    
+    .hero-image:hover {
+      transform: perspective(1000px) rotateY(-5deg) rotateX(2deg);
     }
-    .hero p {
+    
+    .hero-mockup {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    
+    .hero-caption-example {
+      position: absolute;
+      bottom: 5%;
+      left: 0;
+      right: 0;
+      text-align: center;
+      padding: 1rem;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      color: white;
+      font-weight: bold;
       font-size: 1.25rem;
-      max-width: 700px;
-      margin: 0 auto;
+      text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
+      animation: captionPulse 3s infinite ease-in-out;
     }
+    
+    @keyframes captionPulse {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-5px); }
+    }
+    
+    /* Card Component */
     .card {
-      background: #1e1e1e;
-      border: none;
-      border-radius: 12px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      background: var(--surface);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 16px;
+      box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.2), 0 10px 10px -5px rgba(0, 0, 0, 0.1);
       padding: 2rem;
       margin-bottom: 2rem;
+      transition: transform 0.3s ease, box-shadow 0.3s ease;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: -50%;
+      width: 200%;
+      height: 2px;
+      background: var(--accent-gradient);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .card:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.4);
+    }
+    
+    .card:hover::before {
+      opacity: 1;
+    }
+    
+    /* Nav Tabs */
+    .nav-tabs {
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 1.5rem;
+      gap: 0.5rem;
+    }
+    
+    .nav-tabs .nav-link {
+      color: var(--text-secondary);
+      border: none;
+      border-radius: 8px 8px 0 0;
+      padding: 0.75rem 1.5rem;
+      font-weight: 500;
+      position: relative;
+      transition: all 0.2s ease;
+      background: transparent;
+    }
+    
+    .nav-tabs .nav-link:hover {
+      color: var(--text);
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .nav-tabs .nav-link.active {
+      color: var(--text);
+      background: var(--surface);
+      border-bottom: 3px solid var(--primary);
+    }
+    
+    .nav-tabs .nav-link::after {
+      content: "";
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: var(--primary);
+      transform: scaleX(0);
+      transition: transform 0.3s ease;
+    }
+    
+    .nav-tabs .nav-link:hover::after {
+      transform: scaleX(0.5);
+    }
+    
+    .nav-tabs .nav-link.active::after {
+      transform: scaleX(1);
+    }
+    
+    /* File Input Area */
+    .file-drop-area {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 100%;
+      padding: 3rem 1rem;
+      border: 2px dashed rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.03);
+      transition: all 0.2s ease;
+      text-align: center;
+      cursor: pointer;
+      overflow: hidden;
+    }
+    
+    .file-drop-area:hover,
+    .file-drop-area.is-active {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    .file-input {
+      position: absolute;
+      left: 0;
+      top: 0;
+      height: 100%;
+      width: 100%;
+      cursor: pointer;
+      opacity: 0;
+    }
+    
+    .file-msg {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      color: var(--text-secondary);
+    }
+    
+    .file-icon {
+      font-size: 2.5rem;
+      margin-bottom: 1rem;
+      color: var(--primary);
+    }
+    
+    /* Video Preview */
+    .video-preview-container {
+      position: relative;
+      width: 100%;
+      height: 0;
+      padding-bottom: 56.25%;
+      background: var(--darker);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+      margin-top: 1.5rem;
+    }
+    
+    .video-preview {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+    }
+    
+    /* Caption Style Selector */
+    .style-selector {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+      gap: 1rem;
+      margin-bottom: 1.5rem;
+    }
+    
+    .style-option {
+      position: relative;
+      border-radius: 12px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      height: 100px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: rgba(255, 255, 255, 0.05);
+    }
+    
+    .style-option:hover {
+      transform: translateY(-5px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    
+    .style-option.active {
+      box-shadow: 0 0 0 2px var(--primary), 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    
+    .style-option::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: var(--accent-gradient);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+      z-index: 0;
+    }
+    
+    .style-option.active::before {
+      opacity: 0.1;
+    }
+    
+    .style-icon {
+      font-size: 1.5rem;
+      margin-bottom: 0.5rem;
+      color: var(--primary);
+      transition: all 0.3s ease;
+    }
+    
+    .style-option:hover .style-icon,
+    .style-option.active .style-icon {
+      transform: scale(1.2);
+    }
+    
+    .style-label {
+      font-size: 0.875rem;
+      font-weight: 500;
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      padding: 0.5rem;
+      background: rgba(0, 0, 0, 0.7);
+      text-align: center;
+    }
+    
+    .style-preview {
+      padding: 0.5rem 1rem;
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.2;
+      z-index: 1;
+    }
+    
+    /* Caption Previews */
+    .caption-preview {
+      position: absolute;
+      bottom: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(0,0,0,0.7);
+      color: white;
+      padding: 1rem 1.5rem;
+      border-radius: 8px;
+      font-weight: bold;
+      text-align: center;
+      max-width: 80%;
+      z-index: 10;
+      backdrop-filter: blur(4px);
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      transition: all 0.3s ease;
+    }
+    
+    .tiktok-preview {
+      text-transform: uppercase;
+      font-family: Arial, sans-serif;
+      font-size: 1.25rem;
+      font-weight: 800;
+      background: rgba(0,0,0,0.75);
+      text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+      letter-spacing: 1px;
+    }
+    
+    .instagram-preview { 
+      font-family: Arial, sans-serif; 
+      background: rgba(0,0,0,0.6); 
+      border-radius: 8px; 
+      padding: 1rem 1.5rem;
+    }
+    
+    .minimal-preview { 
+      font-family: 'Inter', sans-serif; 
+      background: rgba(30,30,30,0.85); 
+      border-radius: 8px; 
+      padding: 0.75rem 1.25rem;
+    }
+    
+    .colorful-preview {
+      background: linear-gradient(to right, rgba(0,198,255,0.8), rgba(0,114,255,0.8));
+      border-radius: 20px;
+      padding: 0.75rem 1.5rem;
+      font-weight: 700;
+      text-shadow: 1px 1px 3px rgba(0,0,0,0.5);
+    }
+    
+    /* Animation Options */
+    .option-group {
+      margin-bottom: 1.5rem;
+    }
+    
+    .option-group-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      font-weight: 600;
+      color: var(--text);
+      margin-bottom: 0.75rem;
+    }
+    
+    .option-icon {
+      color: var(--primary);
+    }
+    
+    .options-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+      gap: 0.75rem;
+    }
+    
+    .option-button {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem 1rem;
+      background: rgba(255, 255, 255, 0.05);
+      border: none;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .option-button:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--text);
+    }
+    
+    .option-button.active {
+      background: var(--primary);
+      color: white;
+    }
+    
+    /* Advanced Options */
+    .advanced-options {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 12px;
+      padding: 1.25rem;
+      margin-top: 1rem;
+    }
+    
+    .option-toggle {
+      display: flex;
+      align-items: center;
+      padding: 0.75rem 0;
+      cursor: pointer;
+      justify-content: space-between;
+    }
+    
+    .toggle-label {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      color: var(--text);
+      font-weight: 500;
+    }
+    
+    .toggle-description {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      margin-top: 0.25rem;
+      margin-left: 2.5rem;
+    }
+    
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 3rem;
+      height: 1.75rem;
+    }
+    
+    .toggle-switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    
+    .toggle-slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: rgba(255, 255, 255, 0.1);
+      transition: .4s;
+      border-radius: 34px;
+    }
+    
+    .toggle-slider:before {
+      position: absolute;
+      content: "";
+      height: 1.25rem;
+      width: 1.25rem;
+      left: 0.25rem;
+      bottom: 0.25rem;
+      background-color: white;
+      transition: .4s;
+      border-radius: 50%;
+    }
+    
+    input:checked + .toggle-slider {
+      background-color: var(--primary);
+    }
+    
+    input:checked + .toggle-slider:before {
+      transform: translateX(1.25rem);
+    }
+    
+    /* Progress Bar */
+    .upload-progress {
+      height: 6px;
+      margin-top: 1rem;
+      border-radius: 3px;
+      overflow: hidden;
+    }
+    
+    .progress {
+      background-color: rgba(255, 255, 255, 0.1);
+      height: 6px;
+      border-radius: 3px;
+    }
+    
+    .progress-bar {
+      background: var(--accent-gradient);
+      background-size: 200% 200%;
+      animation: gradientAnimation 2s ease infinite;
+    }
+    
+    @keyframes gradientAnimation {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
+    }
+    
+    /* Submit Button */
+    .btn-generate {
+      position: relative;
+      padding: 1rem 2rem;
+      font-size: 1rem;
+      font-weight: 600;
+      border-radius: 8px;
+      border: none;
+      background: var(--accent-gradient);
+      background-size: 200% auto;
+      color: white;
+      cursor: pointer;
+      overflow: hidden;
+      transition: all 0.3s ease;
+      margin-top: 1rem;
+    }
+    
+    .btn-generate:hover {
+      background-position: right center;
+      transform: translateY(-2px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    
+    .btn-generate:active {
+      transform: translateY(0);
+    }
+    
+    .btn-generate::after {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      top: 0;
+      left: 0;
+      pointer-events: none;
+      background-image: radial-gradient(circle, #fff 10%, transparent 10.01%);
+      background-repeat: no-repeat;
+      background-position: 50%;
+      transform: scale(10, 10);
+      opacity: 0;
+      transition: transform .3s, opacity .5s;
+    }
+    
+    .btn-generate:active::after {
+      transform: scale(0, 0);
+      opacity: .3;
+      transition: 0s;
+    }
+    
+    .btn-icon {
+      margin-right: 0.5rem;
+    }
+    
+    /* Responsive Adjustments */
+    @media (max-width: 768px) {
+      .hero-title {
+        font-size: 2.5rem;
+      }
+      
+      .hero-subtitle {
+        font-size: 1rem;
+      }
+      
+      .options-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
     }
   </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
   <!-- Navbar -->
   <nav class="navbar navbar-expand-lg navbar-dark py-3">
     <div class="container">
-      <a class="navbar-brand" href="#">Advanced Video Editing</a>
+      <a class="navbar-brand" href="#" aria-label="AI Video Studio Home">
+        <i class="bi bi-film me-2" aria-hidden="true"></i>AI Video Studio
+      </a>
     </div>
   </nav>
   
   <!-- Hero Section -->
   <section class="hero">
-    <div class="hero-content">
-      <h1>Advanced AI-Powered Video Editing</h1>
-      <p>Leverage state-of-the-art AI to automatically caption, improve, and create engaging product ads for your videos.</p>
+    <div class="container">
+      <div class="row align-items-center">
+        <div class="col-lg-6 mb-4 mb-lg-0">
+          <h1 class="hero-title">Transform Your Videos with AI Power</h1>
+          <p class="hero-subtitle">Create professional, trending captions and enhance your videos automatically using our cutting-edge AI technology.</p>
+        </div>
+        <div class="col-lg-6">
+          <div class="hero-visual">
+            <div class="hero-glow"></div>
+            <div class="hero-image">
+              <img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='600' height='400' viewBox='0 0 600 400' fill='none'%3E%3Crect width='600' height='400' fill='%23111827'/%3E%3Crect x='100' y='80' width='400' height='240' rx='8' fill='%23030712'/%3E%3Ccircle cx='300' cy='200' r='50' fill='%236366F1' fill-opacity='0.2'/%3E%3Cpath d='M320 190L290 210L290 170L320 190Z' fill='white'/%3E%3C/svg%3E" alt="Video preview mockup" class="hero-mockup" />
+              <div class="hero-caption-example">TRANSFORM YOUR CONTENT</div>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
   
   <!-- Main Content -->
-  <div class="container my-4">
-    <!-- Tabs for different features -->
+  <div class="container my-5">
+    <!-- Nav Tabs -->
     <ul class="nav nav-tabs" id="videoEditingTab" role="tablist">
       <li class="nav-item" role="presentation">
-        <button class="nav-link active" id="auto-caption-tab" data-bs-toggle="tab" data-bs-target="#auto-caption" type="button" role="tab" aria-controls="auto-caption" aria-selected="true">Auto Caption</button>
+        <button class="nav-link active" id="auto-caption-tab" data-bs-toggle="tab" data-bs-target="#auto-caption" type="button" role="tab" aria-controls="auto-caption" aria-selected="true">
+          <i class="bi bi-chat-square-text me-2" aria-hidden="true"></i>Auto Caption
+        </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="improve-video-tab" data-bs-toggle="tab" data-bs-target="#improve-video" type="button" role="tab" aria-controls="improve-video" aria-selected="false">Improve Video</button>
+        <button class="nav-link" id="improve-video-tab" data-bs-toggle="tab" data-bs-target="#improve-video" type="button" role="tab" aria-controls="improve-video" aria-selected="false">
+          <i class="bi bi-magic me-2" aria-hidden="true"></i>Improve Video
+        </button>
       </li>
       <li class="nav-item" role="presentation">
-        <button class="nav-link" id="product-ad-tab" data-bs-toggle="tab" data-bs-target="#product-ad" type="button" role="tab" aria-controls="product-ad" aria-selected="false">Product Ad</button>
+        <button class="nav-link" id="product-ad-tab" data-bs-toggle="tab" data-bs-target="#product-ad" type="button" role="tab" aria-controls="product-ad" aria-selected="false">
+          <i class="bi bi-badge-ad me-2" aria-hidden="true"></i>Product Ad
+        </button>
       </li>
     </ul>
+    
     <div class="tab-content" id="videoEditingTabContent">
       <!-- Auto Caption Tab -->
       <div class="tab-pane fade show active" id="auto-caption" role="tabpanel" aria-labelledby="auto-caption-tab">
-        <div class="card mt-3">
-          <h2 class="mb-3">Auto Caption</h2>
-          <form method="post" action="/app4/auto_caption" enctype="multipart/form-data">
-            <div class="mb-3">
-              <label for="video" class="form-label">Upload Video:</label>
-              <input type="file" class="form-control" id="video" name="video" accept="video/*" required>
+        <div class="card mt-4">
+          <h2 class="mb-4">
+            <i class="bi bi-chat-square-text text-primary me-2" aria-hidden="true"></i>
+            Create Engaging Auto Captions
+          </h2>
+          <p class="text-muted mb-4">Add professionally styled, attention-grabbing captions to your videos and boost engagement across TikTok, Instagram Reels, and YouTube Shorts.</p>
+          
+          <form method="post" action="/app4/auto_caption" enctype="multipart/form-data" id="captionForm">
+            <div class="row">
+              <div class="col-lg-6 mb-4">
+                <!-- File Upload -->
+                <div class="file-drop-area" id="dropArea">
+                  <input type="file" class="file-input" id="video" name="video" accept="video/*" required onchange="handleFileSelect(event)">
+                  <div class="file-msg">
+                    <i class="bi bi-cloud-arrow-up file-icon" aria-hidden="true"></i>
+                    <span class="file-message">Drag &amp; drop your video or click to browse</span>
+                    <small class="text-muted mt-2">MP4, MOV, AVI up to 500MB</small>
+                  </div>
+                </div>
+                
+                <div class="upload-progress d-none" id="uploadProgress">
+                  <div class="progress">
+                    <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width: 0%"></div>
+                  </div>
+                </div>
+                
+                <div class="video-preview-container d-none" id="videoPreviewContainer">
+                  <video id="videoPreview" class="video-preview" controls muted></video>
+                  <div id="captionPreview" class="caption-preview tiktok-preview">THIS IS A SAMPLE CAPTION</div>
+                </div>
+              </div>
+              
+              <div class="col-lg-6">
+                <!-- Caption Style Selector -->
+                <div class="option-group">
+                  <div class="option-group-label">
+                    <i class="bi bi-palette option-icon" aria-hidden="true"></i>
+                    <span>Caption Style</span>
+                  </div>
+                  <div class="style-selector" id="styleSelector">
+                    <div class="style-option tiktok-style active" data-style="tiktok" onclick="selectCaptionStyle('tiktok')">
+                      <div class="style-preview">CAPTION</div>
+                      <div class="style-label">TikTok</div>
+                    </div>
+                    <div class="style-option instagram-style" data-style="instagram" onclick="selectCaptionStyle('instagram')">
+                      <div class="style-preview">Caption</div>
+                      <div class="style-label">Instagram</div>
+                    </div>
+                    <div class="style-option minimal-style" data-style="minimal" onclick="selectCaptionStyle('minimal')">
+                      <div class="style-preview">Caption</div>
+                      <div class="style-label">Minimal</div>
+                    </div>
+                    <div class="style-option colorful-style" data-style="colorful" onclick="selectCaptionStyle('colorful')">
+                      <div class="style-preview">Caption</div>
+                      <div class="style-label">Colorful</div>
+                    </div>
+                  </div>
+                  <input type="hidden" name="caption_style" id="caption_style" value="tiktok">
+                </div>
+                
+                <!-- Animation Options -->
+                <div class="option-group">
+                  <div class="option-group-label">
+                    <i class="bi bi-stars option-icon" aria-hidden="true"></i>
+                    <span>Animation</span>
+                  </div>
+                  <div class="options-grid">
+                    <button type="button" class="option-button active" data-animation="word-by-word" onclick="selectAnimation('word-by-word')">
+                      Word by word
+                    </button>
+                    <button type="button" class="option-button" data-animation="fade-in" onclick="selectAnimation('fade-in')">
+                      Fade in
+                    </button>
+                    <button type="button" class="option-button" data-animation="slide-up" onclick="selectAnimation('slide-up')">
+                      Slide up
+                    </button>
+                    <button type="button" class="option-button" data-animation="typewriter" onclick="selectAnimation('typewriter')">
+                      Typewriter
+                    </button>
+                  </div>
+                  <input type="hidden" name="animation_type" id="animation_type" value="word-by-word">
+                </div>
+                
+                <!-- Font Options -->
+                <div class="option-group">
+                  <div class="option-group-label">
+                    <i class="bi bi-type option-icon" aria-hidden="true"></i>
+                    <span>Font</span>
+                  </div>
+                  <div class="options-grid">
+                    <button type="button" class="option-button active" data-font="arial" style="font-family: Arial" onclick="selectFont('arial')">
+                      Arial
+                    </button>
+                    <button type="button" class="option-button" data-font="times" style="font-family: 'Times New Roman'" onclick="selectFont('times')">
+                      Times
+                    </button>
+                    <button type="button" class="option-button" data-font="inter" style="font-family: 'Inter'" onclick="selectFont('inter')">
+                      Inter
+                    </button>
+                    <button type="button" class="option-button" data-font="monospace" style="font-family: monospace" onclick="selectFont('monospace')">
+                      Monospace
+                    </button>
+                  </div>
+                  <input type="hidden" name="font_family" id="font_family" value="arial">
+                </div>
+                
+                <!-- Advanced Options -->
+                <div class="advanced-options">
+                  <h6 class="mb-3">Advanced Options</h6>
+                  <label class="option-toggle">
+                    <div>
+                      <div class="toggle-label">
+                        <i class="bi bi-type-bold text-primary" aria-hidden="true"></i>
+                        <span>ALL CAPS</span>
+                      </div>
+                      <div class="toggle-description">Convert all text to uppercase (TikTok Style)</div>
+                    </div>
+                    <div class="toggle-switch">
+                      <input type="checkbox" name="uppercase" id="uppercase" checked>
+                      <span class="toggle-slider"></span>
+                    </div>
+                  </label>
+                  <label class="option-toggle">
+                    <div>
+                      <div class="toggle-label">
+                        <i class="bi bi-arrows-move text-primary" aria-hidden="true"></i>
+                        <span>Auto-position</span>
+                      </div>
+                      <div class="toggle-description">Intelligently position captions based on video content</div>
+                    </div>
+                    <div class="toggle-switch">
+                      <input type="checkbox" name="auto_position" id="auto_position" checked>
+                      <span class="toggle-slider"></span>
+                    </div>
+                  </label>
+                  <label class="option-toggle">
+                    <div>
+                      <div class="toggle-label">
+                        <i class="bi bi-emoji-smile text-primary" aria-hidden="true"></i>
+                        <span>Add Emojis</span>
+                      </div>
+                      <div class="toggle-description">Intelligently add contextual emojis to enhance engagement 🔥✨</div>
+                    </div>
+                    <div class="toggle-switch">
+                      <input type="checkbox" name="add_emoji" id="add_emoji" checked>
+                      <span class="toggle-slider"></span>
+                    </div>
+                  </label>
+                </div>
+              </div>
             </div>
-            <button type="submit" class="btn btn-primary">Generate Captions</button>
+            <!-- Generate Button -->
+            <button type="submit" class="btn-generate" id="generateButton">
+              <i class="bi bi-magic btn-icon" aria-hidden="true"></i>Generate Trending-Style Captions
+            </button>
           </form>
         </div>
       </div>
       
       <!-- Improve Video Tab -->
       <div class="tab-pane fade" id="improve-video" role="tabpanel" aria-labelledby="improve-video-tab">
-        <div class="card mt-3">
-          <h2 class="mb-3">Improve Video</h2>
+        <div class="card mt-4">
+          <h2 class="mb-3">
+            <i class="bi bi-magic text-primary me-2" aria-hidden="true"></i>
+            Enhance Your Videos
+          </h2>
+          <p class="text-muted mb-4">Automatically enhance video quality, adjust colors, stabilize footage, and optimize for social media.</p>
           <form method="post" action="/app4/improve_video" enctype="multipart/form-data">
-            <div class="mb-3">
-              <label for="video_improve" class="form-label">Upload Video:</label>
-              <input type="file" class="form-control" id="video_improve" name="video" accept="video/*" required>
+            <div class="file-drop-area">
+              <input type="file" class="file-input" id="video_improve" name="video" accept="video/*" required>
+              <div class="file-msg">
+                <i class="bi bi-cloud-arrow-up file-icon" aria-hidden="true"></i>
+                <span class="file-message">Drag &amp; drop your video or click to browse</span>
+                <small class="text-muted mt-2">MP4, MOV, AVI up to 500MB</small>
+              </div>
             </div>
-            <button type="submit" class="btn btn-primary">Improve Video</button>
+            <button type="submit" class="btn-generate mt-4">
+              <i class="bi bi-magic btn-icon" aria-hidden="true"></i>Enhance Video
+            </button>
           </form>
         </div>
       </div>
       
       <!-- Product Ad Tab -->
       <div class="tab-pane fade" id="product-ad" role="tabpanel" aria-labelledby="product-ad-tab">
-        <div class="card mt-3">
-          <h2 class="mb-3">Product Ad</h2>
+        <div class="card mt-4">
+          <h2 class="mb-3">
+            <i class="bi bi-badge-ad text-primary me-2" aria-hidden="true"></i>
+            Create Product Ads
+          </h2>
+          <p class="text-muted mb-4">Generate professional product advertisements optimized for conversions and engagement.</p>
           <form method="post" action="/app4/product_ad">
             <div class="mb-3">
-              <label for="title" class="form-label">Ad Title:</label>
-              <input type="text" class="form-control" id="title" name="title" placeholder="Enter ad title" required>
+              <label for="title" class="form-label">Ad Title</label>
+              <input type="text" class="form-control bg-dark text-light border-dark" id="title" name="title" placeholder="Enter attention-grabbing ad title" required>
             </div>
             <div class="mb-3">
-              <label for="description" class="form-label">Ad Description:</label>
-              <textarea class="form-control" id="description" name="description" rows="3" placeholder="Enter ad description" required></textarea>
+              <label for="description" class="form-label">Ad Description</label>
+              <textarea class="form-control bg-dark text-light border-dark" id="description" name="description" rows="3" placeholder="Describe your product's key benefits and features" required></textarea>
             </div>
             <div class="mb-3">
-              <label for="image_url" class="form-label">Image URL:</label>
-              <input type="url" class="form-control" id="image_url" name="image_url" placeholder="https://example.com/image.jpg" required>
+              <label for="image_url" class="form-label">Product Image URL</label>
+              <input type="url" class="form-control bg-dark text-light border-dark" id="image_url" name="image_url" placeholder="https://example.com/product-image.jpg" required>
             </div>
-            <button type="submit" class="btn btn-primary">Generate Product Ad Video</button>
+            <button type="submit" class="btn-generate mt-3">
+              <i class="bi bi-film btn-icon" aria-hidden="true"></i>Generate Product Ad
+            </button>
           </form>
         </div>
       </div>
     </div>
   </div>
-  
-  <!-- Footer -->
-  <footer class="footer py-3 bg-dark text-center text-muted">
-    <div class="container">
-      &copy; 2025 Advanced Video Editing. Alle rettigheder forbeholdes.
-    </div>
-  </footer>
-  
-  <!-- Bootstrap JS Bundle -->
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+  <script>
+    // File upload handling
+    function handleFileSelect(event) {
+      const file = event.target.files[0];
+      if (file) {
+        const dropArea = document.getElementById('dropArea');
+        const fileMsg = dropArea.querySelector('.file-message');
+        fileMsg.textContent = file.name;
+
+        const videoPreviewContainer = document.getElementById('videoPreviewContainer');
+        const videoPreview = document.getElementById('videoPreview');
+        videoPreviewContainer.classList.remove('d-none');
+        videoPreview.src = URL.createObjectURL(file);
+        videoPreview.play();
+
+        // Update caption preview based on selected style
+        const selectedStyle = document.getElementById('caption_style').value;
+        updateCaptionPreview(selectedStyle);
+
+        // Animate progress bar
+        animateProgressBar();
+      }
+    }
+    
+    function animateProgressBar() {
+      const progressBar = document.getElementById('uploadProgress');
+      progressBar.classList.remove('d-none');
+      const progress = progressBar.querySelector('.progress-bar');
+      let width = 0;
+      const interval = setInterval(() => {
+        if (width >= 100) {
+          clearInterval(interval);
+          setTimeout(() => { progressBar.classList.add('d-none'); }, 500);
+        } else {
+          width += 5;
+          progress.style.width = width + '%';
+        }
+      }, 100);
+    }
+    
+    // Caption style selection
+    function selectCaptionStyle(style) {
+      document.getElementById('caption_style').value = style;
+      document.querySelectorAll('.style-option').forEach(el => el.classList.remove('active'));
+      document.querySelector(`.style-option[data-style="${style}"]`).classList.add('active');
+      updateCaptionPreview(style);
+    }
+    
+    // Update caption preview
+    function updateCaptionPreview(style) {
+      const preview = document.getElementById('captionPreview');
+      preview.className = 'caption-preview';
+      preview.classList.add(`${style}-preview`);
+      preview.textContent = (style === 'tiktok') ? "THIS IS A SAMPLE CAPTION" : "This is a sample caption";
+      document.getElementById('uppercase').checked = (style === 'tiktok');
+    }
+    
+    // Animation selection
+    function selectAnimation(animation) {
+      document.getElementById('animation_type').value = animation;
+      document.querySelectorAll('.option-button[data-animation]').forEach(el => el.classList.remove('active'));
+      document.querySelector(`.option-button[data-animation="${animation}"]`).classList.add('active');
+
+      // Reset and apply animation on caption preview
+      const preview = document.getElementById('captionPreview');
+      preview.style.animation = 'none';
+      preview.offsetHeight; // trigger reflow
+
+      switch(animation) {
+        case 'word-by-word':
+          preview.style.animation = 'captionPulse 2s infinite';
+          break;
+        case 'fade-in':
+          preview.style.animation = 'fadeIn 2s';
+          break;
+        case 'slide-up':
+          preview.style.animation = 'slideUp 2s';
+          break;
+        case 'typewriter':
+          preview.style.animation = 'typewriter 2s steps(40, end)';
+          break;
+      }
+    }
+    
+    // Font selection
+    function selectFont(font) {
+      document.getElementById('font_family').value = font;
+      document.querySelectorAll('.option-button[data-font]').forEach(el => el.classList.remove('active'));
+      document.querySelector(`.option-button[data-font="${font}"]`).classList.add('active');
+      
+      const fontMap = {
+        'arial': 'Arial, sans-serif',
+        'times': "'Times New Roman', serif",
+        'inter': "'Inter', sans-serif",
+        'monospace': 'monospace'
+      };
+      document.getElementById('captionPreview').style.fontFamily = fontMap[font];
+    }
+    
+    // Drag and drop functionality
+    document.addEventListener('DOMContentLoaded', function() {
+      const dropArea = document.getElementById('dropArea');
+      ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, preventDefaults, false);
+      });
+      
+      function preventDefaults(e) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+      
+      ['dragenter', 'dragover'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => dropArea.classList.add('is-active'), false);
+      });
+      
+      ['dragleave', 'drop'].forEach(eventName => {
+        dropArea.addEventListener(eventName, () => dropArea.classList.remove('is-active'), false);
+      });
+      
+      dropArea.addEventListener('drop', function(e) {
+        const dt = e.dataTransfer;
+        const files = dt.files;
+        const fileInput = document.getElementById('video');
+        fileInput.files = files;
+        handleFileSelect({ target: { files: files } });
+      }, false);
+    });
+    
+    // Form submission loading state
+    document.getElementById('captionForm').addEventListener('submit', function(e) {
+      const button = document.getElementById('generateButton');
+      button.disabled = true;
+      button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Processing...';
+    });
+    
+    // Add keyframe animations dynamically
+    const dynamicStyles = document.createElement('style');
+    dynamicStyles.type = 'text/css';
+    dynamicStyles.innerHTML = `
+      @keyframes fadeIn {
+        from { opacity: 0; }
+        to { opacity: 1; }
+      }
+      
+      @keyframes slideUp {
+        from { transform: translateY(20px) translateX(-50%); opacity: 0; }
+        to { transform: translateY(0) translateX(-50%); opacity: 1; }
+      }
+      
+      @keyframes typewriter {
+        from { width: 0; }
+        to { width: 100%; }
+      }
+    `;
+    document.head.appendChild(dynamicStyles);
+  </script>
+{% endblock %}

@@ -1,0 +1,171 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
+  <style>
+    .report-detail-container {
+      max-width: 1000px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background-color: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .report-title {
+      font-size: 2rem;
+      text-align: center;
+      margin-bottom: 1.5rem;
+      color: var(--primary-color);
+    }
+    .report-summary {
+      font-size: 1.2rem;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .chart-container {
+      width: 100%;
+      margin: 2rem auto;
+    }
+    canvas {
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-radius: var(--border-radius);
+    }
+    .table-container {
+      overflow-x: auto;
+      margin-top: 2rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--muted-text);
+    }
+    th {
+      background-color: var(--sidebar-bg);
+      color: var(--text-color);
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="report-detail-container">
+  <div class="report-title">{{ report.title }}</div>
+  <div class="report-summary">{{ report.summary }}</div>
+  
+  {% if report.id == 1 %}
+    <!-- Report 1: Credit Analytics Detail -->
+    <div class="chart-container">
+      <canvas id="detailChart"></canvas>
+    </div>
+    <div class="table-container">
+      <h2 style="text-align: center; margin-bottom: 1rem;">Detaljeret Kredittransaktioner</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Dato</th>
+            <th>Kreditter Forbrugt</th>
+            <th>Beskrivelse</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for transaction in report.details %}
+          <tr>
+            <td>{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') if transaction.timestamp else '' }}</td>
+            <td>{{ transaction.credits_used }}</td>
+            <td>{{ transaction.description }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script>
+      const ctxDetail = document.getElementById('detailChart').getContext('2d');
+      const detailChart = new Chart(ctxDetail, {
+        type: 'line',
+        data: {
+          labels: {{ report.chart.labels|tojson }},
+          datasets: [{
+            label: 'Dagligt Kreditforbrug',
+            data: {{ report.chart.data|tojson }},
+            fill: false,
+            borderColor: '#a855f7',
+            tension: 0.1
+          }]
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'top' } },
+          scales: {
+            x: { title: { display: true, text: 'Dato' } },
+            y: { title: { display: true, text: 'Kreditter' }, beginAtZero: true }
+          }
+        }
+      });
+    </script>
+  
+  {% elif report.id == 2 %}
+    <!-- Report 2: Brands Overview -->
+    <div class="table-container">
+      <h2 style="text-align: center; margin-bottom: 1rem;">Dine Brands</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Brand Navn</th>
+            <th>Website</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for brand in report.details %}
+          <tr>
+            <td>{{ brand.brand_name }}</td>
+            <td>{{ brand.brand_site }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  
+  {% elif report.id == 3 %}
+    <!-- Report 3: Profile Report -->
+    <div class="table-container">
+      <h2 style="text-align: center; margin-bottom: 1rem;">Din Profil</h2>
+      <table>
+        <tbody>
+          <tr>
+            <th>Brugernavn</th>
+            <td>{{ report.details.username }}</td>
+          </tr>
+          <tr>
+            <th>Email</th>
+            <td>{{ report.details.email }}</td>
+          </tr>
+          <tr>
+            <th>Kreditter</th>
+            <td>{{ report.details.credits }}</td>
+          </tr>
+          <tr>
+            <th>Rolle</th>
+            <td>{{ report.details.role }}</td>
+          </tr>
+          <tr>
+            <th>Email Notifikationer</th>
+            <td>{{ 'Ja' if report.details.email_notifications else 'Nej' }}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  
+  {% else %}
+    <div style="text-align: center;">Rapport ikke fundet.</div>
+  {% endif %}
+  
+  <div style="text-align: center; margin-top: 2rem;">
+    <a href="/reports" class="bg-purple-600 hover:bg-purple-700 text-white font-bold py-2 px-4 rounded">Tilbage til Rapportoversigt</a>
+  </div>
+</div>
+{% endblock %}

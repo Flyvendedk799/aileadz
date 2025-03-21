@@ -23,12 +23,14 @@ def login():
         if user and user['password'] == password:
             session['user'] = user['username']
             session['credits'] = user['credits']
+            session['role'] = user.get('role', 'user')  # Set role here
             flash('Login successful!', 'success')
             return redirect(url_for('auth.profile'))
         else:
             flash('Invalid username or password', 'danger')
             return redirect(url_for('auth.login'))
     return render_template('login.html')
+
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():

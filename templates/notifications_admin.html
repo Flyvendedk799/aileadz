@@ -1,0 +1,195 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
+  <style>
+    .admin-notifications-container {
+      max-width: 600px;
+      margin: 20px auto;
+      padding: 20px;
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .admin-notifications-container h2 {
+      text-align: center;
+      margin-bottom: 20px;
+    }
+    .admin-notifications-container form .form-group {
+      margin-bottom: 15px;
+    }
+    .admin-notifications-container form label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: 600;
+    }
+    .admin-notifications-container form input,
+    .admin-notifications-container form textarea,
+    .admin-notifications-container form select {
+      width: 100%;
+      padding: 10px;
+      border: 1px solid var(--muted-text);
+      border-radius: 4px;
+    }
+    .admin-notifications-container form button {
+      display: block;
+      width: 100%;
+      padding: 10px;
+      background: var(--primary-color);
+      color: #fff;
+      border: none;
+      border-radius: var(--border-radius);
+      cursor: pointer;
+      margin-top: 10px;
+    }
+    .preview-card {
+      margin-top: 20px;
+      padding: 15px;
+      background: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .preview-card .notification-header {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 10px;
+      flex-direction: column;
+    }
+    .preview-card .notification-title {
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-align: center;
+      margin: 5px 0;
+    }
+    .preview-card .preview-subtitle {
+      font-size: 1.1rem;
+      font-weight: 500;
+      text-align: center;
+      color: var(--primary-color);
+      margin-bottom: 10px;
+    }
+    .preview-card .notification-image {
+      width: 100%;
+      max-height: 200px;
+      object-fit: contain;
+      margin: 10px 0;
+      border-radius: 4px;
+    }
+    .preview-card .preview-description {
+      font-size: 1rem;
+      text-align: left;
+      margin-top: 10px;
+      line-height: 1.4;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  <div class="admin-notifications-container">
+    <h2>Send Notifikation</h2>
+    <form method="post" enctype="multipart/form-data" id="notif-form">
+      <div class="form-group">
+        <label for="title">Titel:</label>
+        <input type="text" id="title" name="title" required>
+      </div>
+      <div class="form-group">
+        <label for="subtitle">Undertitel (valgfrit):</label>
+        <input type="text" id="subtitle" name="subtitle">
+      </div>
+      <div class="form-group">
+        <label for="description">Beskrivelse (valgfrit):</label>
+        <textarea id="description" name="description" rows="3"></textarea>
+      </div>
+      <div class="form-group">
+        <label for="image_file">Upload billede (valgfrit):</label>
+        <input type="file" id="image_file" name="image_file" accept="image/*">
+      </div>
+      <div class="form-group">
+        <label for="target">Modtager:</label>
+        <select id="target" name="target" required>
+          <option value="all">Alle brugere</option>
+          <option value="specific">Specifik bruger</option>
+          <option value="role">Rolle</option>
+        </select>
+      </div>
+      <div class="form-group" id="specific-user-group" style="display: none;">
+        <label for="username">Brugernavn:</label>
+        <input type="text" id="username" name="username">
+      </div>
+      <div class="form-group" id="role-group" style="display: none;">
+        <label for="role">Vælg Rolle:</label>
+        <select id="role" name="role">
+          <option value="user">Bruger</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <button type="submit">Send Notifikation</button>
+    </form>
+    <div class="preview-card" id="notif-preview" style="display:none;">
+      <div class="notification-header">
+        <i class="fa-solid fa-bell"></i>
+        <div class="notification-title" id="preview-title"></div>
+        <div class="preview-subtitle" id="preview-subtitle"></div>
+      </div>
+      <div class="notification-image-wrapper" style="display:none;">
+        <img src="" alt="Preview Image" class="notification-image" id="preview-image">
+      </div>
+      <div class="preview-description" id="preview-description"></div>
+    </div>
+  </div>
+  <script>
+    // Toggle target-specific fields
+    document.getElementById('target').addEventListener('change', function() {
+      const specificGroup = document.getElementById('specific-user-group');
+      const roleGroup = document.getElementById('role-group');
+      if (this.value === 'specific') {
+        specificGroup.style.display = 'block';
+        roleGroup.style.display = 'none';
+      } else if (this.value === 'role') {
+        roleGroup.style.display = 'block';
+        specificGroup.style.display = 'none';
+      } else {
+        specificGroup.style.display = 'none';
+        roleGroup.style.display = 'none';
+      }
+      updatePreview(); // Update preview on target change
+    });
+    
+    // Live preview functionality
+    const titleInput = document.getElementById('title');
+    const subtitleInput = document.getElementById('subtitle');
+    const descriptionInput = document.getElementById('description');
+    const imageInput = document.getElementById('image_file');
+    
+    function updatePreview() {
+      document.getElementById('preview-title').textContent = titleInput.value;
+      document.getElementById('preview-subtitle').textContent = subtitleInput.value;
+      document.getElementById('preview-description').textContent = descriptionInput.value;
+      
+      if (imageInput.files && imageInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function(e) {
+          const previewImg = document.getElementById('preview-image');
+          previewImg.src = e.target.result;
+          document.querySelector('.notification-image-wrapper').style.display = 'block';
+        };
+        reader.readAsDataURL(imageInput.files[0]);
+      } else {
+        document.querySelector('.notification-image-wrapper').style.display = 'none';
+      }
+      
+      const preview = document.getElementById('notif-preview');
+      if(titleInput.value || subtitleInput.value || descriptionInput.value || (imageInput.files && imageInput.files[0])) {
+        preview.style.display = 'block';
+      } else {
+        preview.style.display = 'none';
+      }
+    }
+    
+    titleInput.addEventListener('input', updatePreview);
+    subtitleInput.addEventListener('input', updatePreview);
+    descriptionInput.addEventListener('input', updatePreview);
+    imageInput.addEventListener('change', updatePreview);
+  </script>
+{% endblock %}

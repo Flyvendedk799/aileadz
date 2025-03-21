@@ -4,34 +4,37 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AiLead Dashboard</title>
-  <!-- Using 'Inter' for a modern look -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet" />
+  <!-- Modern typography with Inter for text and Poppins for headings -->
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Poppins:wght@500;700&display=swap" rel="stylesheet" />
   <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
   <style>
     /* ------------------------------------------------------------
-       COLOR & THEME VARIABLES
+       THEME & COLOR VARIABLES
        ------------------------------------------------------------ */
     :root {
       --primary-color: #a855f7;
+      --secondary-color: #f472b6;
       --background-color: #0e0e0e;
       --sidebar-bg: #131313;
-      --header-bg: #131313;
+      --header-bg: linear-gradient(135deg, #1e1e1e, #0e0e0e);
       --card-bg: #1a1a1a;
       --text-color: #ffffff;
       --muted-text: #aaaaaa;
       --hover-shadow: rgba(0, 0, 0, 0.8);
       --transition-speed: 0.3s;
-      --border-radius: 8px;
+      --border-radius: 10px;
+      --box-shadow: 0 4px 12px rgba(0,0,0,0.5);
     }
     .light-mode {
-      --background-color: #fafafa;
+      --background-color: #f4f4f9;
       --sidebar-bg: #ffffff;
-      --header-bg: #ffffff;
-      --card-bg: #f0f0f0;
+      --header-bg: linear-gradient(135deg, #f0f0f5, #ffffff);
+      --card-bg: #f8f8fc;
       --text-color: #1a1a1a;
       --muted-text: #555555;
       --hover-shadow: rgba(0, 0, 0, 0.1);
+      --box-shadow: 0 2px 6px rgba(0,0,0,0.1);
     }
     /* ------------------------------------------------------------
        GLOBAL STYLES
@@ -39,10 +42,10 @@
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: "Inter", sans-serif;
-      background-color: var(--background-color);
+      background: var(--background-color);
       color: var(--text-color);
       overflow-x: hidden;
-      transition: background-color var(--transition-speed) ease, color var(--transition-speed) ease;
+      transition: background var(--transition-speed) ease, color var(--transition-speed) ease;
     }
     a { text-decoration: none; color: var(--text-color); transition: color var(--transition-speed) ease; }
     a:hover { color: var(--primary-color); }
@@ -51,79 +54,57 @@
        SIDEBAR
        ------------------------------------------------------------ */
     .sidebar {
-      width: 260px;
+      width: 280px;
       background: var(--sidebar-bg);
-      padding: 20px;
+      padding: 25px 20px;
       display: flex;
       flex-direction: column;
       position: relative;
-      box-shadow: 2px 0 10px rgba(0, 0, 0, 0.6);
-      transition: width var(--transition-speed) ease;
+      box-shadow: var(--box-shadow);
+      transition: width var(--transition-speed) ease, background var(--transition-speed) ease;
       overflow: hidden;
       animation: fadeInLeft 0.5s ease-out;
     }
-    .sidebar.collapsed { width: 60px; }
+    .sidebar.collapsed { width: 70px; }
     .sidebar-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      margin-bottom: 30px;
-    }
-    .sidebar-footer {
-      margin-top: auto;
-      text-align: center;
-      font-size: 0.85rem;
-      color: var(--muted-text);
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      padding-top: 10px;
+      margin-bottom: 35px;
     }
     .logo h2 {
-      font-size: 1.6rem;
+      font-family: "Poppins", sans-serif;
+      font-size: 1.8rem;
       font-weight: 700;
       color: var(--primary-color);
-      letter-spacing: 0.5px;
-      margin: 0;
+      letter-spacing: 1px;
     }
     .sidebar.collapsed .logo { display: none; }
     .toggle-button {
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-      background: #2b2b2b;
+      background: transparent;
       border: none;
-      border-radius: 6px;
       cursor: pointer;
-      transition: transform var(--transition-speed) ease, background var(--transition-speed) ease;
-      padding: 8px 10px;
+      transition: transform var(--transition-speed) ease;
+      padding: 8px;
     }
-    .toggle-button:hover {
-      transform: scale(1.1);
-      background: #3a3a3a;
-    }
-    #sidebar-toggle { font-size: 1.2rem; }
-    .sidebar.collapsed .sidebar-header { justify-content: center; padding: 10px 0; }
-    .sidebar.collapsed .toggle-button {
-      width: 40px;
-      height: 40px;
-      margin: 0 auto;
-      display: block;
-    }
-    .nav-liste { list-style: none; flex-grow: 1; margin-top: 10px; }
-    .nav-liste li { margin-bottom: 10px; position: relative; }
+    .toggle-button:hover { transform: scale(1.1); }
+    .nav-liste { list-style: none; margin-top: 10px; flex-grow: 1; }
+    .nav-liste li { margin-bottom: 15px; position: relative; }
     .nav-liste li a {
       display: flex;
       align-items: center;
-      padding: 12px 15px;
+      padding: 14px 20px;
       border-radius: var(--border-radius);
       transition: background var(--transition-speed) ease, transform var(--transition-speed) ease;
       color: var(--text-color);
       font-weight: 500;
+      background: transparent;
     }
-    .nav-liste li a i { margin-right: 12px; font-size: 1.2rem; width: 25px; text-align: center; }
+    .nav-liste li a i { margin-right: 15px; font-size: 1.2rem; width: 25px; text-align: center; }
     .sidebar:not(.collapsed) .nav-liste li a:hover,
     .sidebar:not(.collapsed) .nav-liste li a.active {
-      background: #2a2a2a;
-      transform: scale(1.02);
+      background: linear-gradient(90deg, rgba(42,42,42,0.8), rgba(42,42,42,0.8));
+      transform: scale(1.03);
     }
     .sidebar:not(.collapsed) .nav-liste li a.active::after {
       content: "";
@@ -137,36 +118,53 @@
       transition: opacity var(--transition-speed) ease;
     }
     .sidebar.collapsed .nav-text { display: none; }
-    .sidebar.collapsed .nav-liste { display: flex; flex-direction: column; align-items: center; }
-    .sidebar.collapsed .nav-liste li { margin: 15px 0; }
+    .sidebar.collapsed .nav-liste {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .sidebar.collapsed .nav-liste li { margin: 20px 0; }
     .sidebar.collapsed .nav-liste li a {
-      width: 48px;
-      height: 48px;
+      width: 50px;
+      height: 50px;
       justify-content: center;
       border-radius: 50%;
       padding: 0;
     }
     .sidebar.collapsed .nav-liste li a i { margin-right: 0; }
     .sidebar.collapsed .nav-liste li a:hover,
-    .sidebar.collapsed .nav-liste li a.active {
-      background: #2a2a2a;
-      transform: scale(1.05);
+    .sidebar.collapsed .nav-liste li a.active { background: var(--card-bg); transform: scale(1.1); }
+    .sidebar-footer {
+      margin-top: auto;
+      text-align: center;
+      font-size: 0.85rem;
+      color: var(--muted-text);
+      border-top: 1px solid rgba(255,255,255,0.1);
+      padding-top: 15px;
     }
-    .sidebar.collapsed .nav-liste li a.active::after { display: none; }
     /* ------------------------------------------------------------
        HEADER
        ------------------------------------------------------------ */
     .header {
-      background-color: var(--header-bg);
-      padding: 15px 20px;
+      background: var(--header-bg);
+      padding: 20px 25px;
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 1px solid rgba(255,255,255,0.15);
       animation: fadeInDown 0.5s ease-out;
-      backdrop-filter: blur(8px);
+      backdrop-filter: blur(10px);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      /* FIX: Set position and high z-index so dropdown appears on top */
+      position: relative;
+      z-index: 10000;
     }
-    .side-titel h1 { font-size: 2rem; font-weight: 700; }
+    .side-titel h1 {
+      font-family: "Poppins", sans-serif;
+      font-size: 2.2rem;
+      font-weight: 700;
+      letter-spacing: 1px;
+    }
     .header-handlinger {
       font-size: 1rem;
       display: flex;
@@ -176,9 +174,9 @@
     }
     .header-handlinger a {
       margin-left: 15px;
-      padding: 10px 14px;
+      padding: 12px 16px;
       background-color: var(--primary-color);
-      border-radius: 6px;
+      border-radius: var(--border-radius);
       color: #ffffff;
       font-weight: 600;
       transition: background var(--transition-speed) ease, transform var(--transition-speed) ease;
@@ -187,6 +185,94 @@
       background-color: #9333ea;
       transform: scale(1.05);
     }
+    /* Header notifications dropdown */
+    #header-notif-wrapper { position: relative; margin-left: 15px; }
+    #header-notifications { cursor: pointer; position: relative; }
+    #header-notifications i { font-size: 1.3rem; }
+    #notif-badge {
+      position: absolute;
+      top: -6px;
+      right: -12px;
+      background: #e3342f;
+      color: #fff;
+      border-radius: 50%;
+      font-size: 0.7rem;
+      padding: 2px 6px;
+      min-width: 20px;
+      text-align: center;
+      transition: transform 0.2s ease;
+    }
+    #notif-dropdown {
+      display: none;
+      position: absolute;
+      top: 40px;
+      right: 0;
+      background: var(--card-bg);
+      border: 1px solid var(--muted-text);
+      border-radius: var(--border-radius);
+      box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+      width: 320px;
+      z-index: 10001;
+    }
+    #notif-dropdown.active { display: block; }
+    #notif-dropdown .dropdown-header {
+      padding: 12px;
+      border-bottom: 1px solid var(--muted-text);
+      font-weight: 600;
+    }
+    #notif-dropdown .dropdown-item {
+      padding: 12px;
+      border-bottom: 1px solid var(--muted-text);
+      display: flex;
+      align-items: center;
+      transition: background 0.2s;
+    }
+    #notif-dropdown .dropdown-item:hover { background: var(--hover-shadow); }
+    #notif-dropdown .dropdown-item:last-child { border-bottom: none; }
+    #notif-dropdown .dropdown-item a {
+      flex-grow: 1;
+      font-size: 0.9rem;
+      color: var(--text-color);
+    }
+    #notif-dropdown .dropdown-item img.dropdown-image {
+      max-width: 40px;
+      max-height: 40px;
+      border-radius: 6px;
+      margin-right: 8px;
+      object-fit: cover;
+    }
+    #notif-dropdown .dropdown-item button {
+      background: none;
+      border: none;
+      color: var(--primary-color);
+      cursor: pointer;
+      font-size: 0.8rem;
+    }
+    #notif-dropdown .dropdown-item button:hover { text-decoration: underline; }
+    #notif-dropdown .dropdown-footer {
+      padding: 12px;
+      text-align: center;
+    }
+    #notif-dropdown .dropdown-footer button,
+    #notif-dropdown .dropdown-footer a {
+      background: var(--primary-color);
+      color: #fff;
+      border: none;
+      border-radius: var(--border-radius);
+      padding: 6px 12px;
+      cursor: pointer;
+      text-decoration: none;
+      font-size: 0.9rem;
+      margin: 0 5px;
+      transition: background 0.3s;
+    }
+    #notif-dropdown .dropdown-footer button:hover,
+    #notif-dropdown .dropdown-footer a:hover {
+      background: #9333ea;
+    }
+    /* ------------------------------------------------------------
+       TOGGLE SLIDER
+       ------------------------------------------------------------ */
     .toggle-slider {
       position: relative;
       width: 60px;
@@ -207,7 +293,7 @@
     .toggle-slider .right-icon {
       font-size: 14px;
       color: #fff;
-      opacity: 0.7;
+      opacity: 0.8;
     }
     .toggle-slider .toggle-knob {
       position: absolute;
@@ -218,48 +304,40 @@
       background-color: #fff;
       border-radius: 50%;
       transition: left 0.3s ease;
-      box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+      box-shadow: 0 3px 8px rgba(0,0,0,0.2);
     }
     .toggle-slider.active { background-color: var(--primary-color); }
     .toggle-slider.active .toggle-knob { left: calc(100% - 28px); }
     /* ------------------------------------------------------------
        MAIN CONTENT
        ------------------------------------------------------------ */
-    .main-content {
-      flex-grow: 1;
-      display: flex;
-      flex-direction: column;
-    }
+    .main-content { flex-grow: 1; display: flex; flex-direction: column; }
     .content {
       flex-grow: 1;
-      padding: 30px;
-      background-color: var(--background-color);
+      padding: 40px;
+      background: var(--background-color);
       animation: fadeInUp 0.5s ease-out;
     }
     .section-title {
-      margin: 30px 0 20px;
-      font-size: 1.6rem;
+      margin: 35px 0 25px;
+      font-size: 1.8rem;
       font-weight: 700;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      border-bottom: 2px solid rgba(255,255,255,0.2);
       padding-bottom: 10px;
-      letter-spacing: 0.5px;
+      letter-spacing: 0.8px;
     }
     /* ------------------------------------------------------------
        FOOTER
        ------------------------------------------------------------ */
     .footer {
-      padding: 15px 20px;
-      background-color: var(--header-bg);
+      padding: 20px 25px;
+      background: var(--header-bg);
       text-align: center;
       font-size: 0.85rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      backdrop-filter: blur(8px);
+      border-top: 1px solid rgba(255,255,255,0.15);
+      backdrop-filter: blur(10px);
     }
-    .footer a {
-      margin: 0 10px;
-      color: var(--text-color);
-      transition: color var(--transition-speed) ease;
-    }
+    .footer a { margin: 0 10px; color: var(--text-color); transition: color var(--transition-speed) ease; }
     .footer a:hover { color: var(--primary-color); }
     /* ------------------------------------------------------------
        KEYFRAMES
@@ -285,10 +363,9 @@
     <aside class="sidebar collapsed" id="sidebar">
       <div class="sidebar-header">
         <div class="logo">
-          <h2><span class="logo-text">AiLead</span></h2>
+          <h2>AiLead</h2>
         </div>
-        <!-- Sidebar toggle button -->
-        <button id="sidebar-toggle" class="toggle-button">
+        <button id="sidebar-toggle" class="toggle-button" aria-label="Toggle Sidebar">
           <i class="fa-solid fa-bars"></i>
         </button>
       </div>
@@ -317,12 +394,14 @@
             <span class="nav-text">Indstillinger</span>
           </a>
         </li>
+        {% if session.get('role') == 'admin' %}
         <li>
-          <a href="/notifications">
-            <i class="fa-solid fa-bell"></i>
-            <span class="nav-text">Notifikationer</span>
+          <a href="/admin/notifications">
+            <i class="fa-solid fa-bullhorn"></i>
+            <span class="nav-text">Admin Notifikationer</span>
           </a>
         </li>
+        {% endif %}
         <li>
           <a href="/profile">
             <i class="fa-solid fa-user"></i>
@@ -349,7 +428,6 @@
               {% if session.get('credits') %}
                 <i class="fa-solid fa-coins"></i> {{ session.get('credits') }}
               {% else %}
-                <!-- Immediately show cached credits if available -->
                 {% if local_storage_credits %} 
                   <i class="fa-solid fa-coins"></i> {{ local_storage_credits }}
                 {% else %}
@@ -359,12 +437,29 @@
             </span>
             <a href="/profile">Min Profil</a>
             <a href="/logout">Log ud</a>
+            <!-- Header notifications dropdown -->
+            <div id="header-notif-wrapper">
+              <div id="header-notifications">
+                <i class="fa-solid fa-bell"></i>
+                <span id="notif-badge">0</span>
+              </div>
+              <div id="notif-dropdown">
+                <div class="dropdown-header">Nye Notifikationer</div>
+                <div id="notif-list">
+                  <!-- Unread notifications will be loaded here -->
+                </div>
+                <div class="dropdown-footer">
+                  <button id="mark-all-btn">Markér alle som læst</button>
+                  <a href="/notifications">Se alle</a>
+                </div>
+              </div>
+            </div>
           {% else %}
             <a href="/login">Log ind</a>
             <a href="/register">Registrer</a>
           {% endif %}
           <!-- Day/Night Toggle Slider -->
-          <button id="mode-toggle" class="toggle-slider">
+          <button id="mode-toggle" class="toggle-slider" aria-label="Toggle Dark/Light Mode">
             <i class="fa-solid fa-moon left-icon"></i>
             <div class="toggle-knob"></div>
             <i class="fa-solid fa-sun right-icon"></i>
@@ -389,7 +484,7 @@
     </div>
   </div>
 
-  <!-- JavaScript: Dark/Light Mode, Sidebar Toggle & Credits Updater -->
+  <!-- JavaScript: Dark/Light Mode, Sidebar Toggle, Credits Updater & Notifications Dropdown -->
   <script>
     document.addEventListener('DOMContentLoaded', function(){
       // Dark/Light Mode Toggle
@@ -412,9 +507,8 @@
         sidebar.classList.toggle('collapsed');
       });
 
-      // Credits updater with localStorage caching
+      // Credits updater
       const creditsDisplay = document.getElementById('credits-display');
-      // Pre-populate credits from localStorage if available
       if (localStorage.getItem('credits')) {
         creditsDisplay.innerHTML = '<i class="fa-solid fa-coins"></i> ' + localStorage.getItem('credits');
       }
@@ -429,6 +523,108 @@
       }
       updateCredits();
       setInterval(updateCredits, 5000);
+
+      // Notifications Badge Updater
+      function updateNotifBadge() {
+        fetch('/api/notifications/unread_count', { credentials: 'same-origin' })
+          .then(response => response.json())
+          .then(data => {
+            const badge = document.getElementById('notif-badge');
+            badge.textContent = data.unread_count;
+            badge.style.transform = 'scale(1.2)';
+            setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
+          })
+          .catch(error => console.error('Error fetching notifications count:', error));
+      }
+      updateNotifBadge();
+      setInterval(updateNotifBadge, 5000);
+
+      // Notifications Dropdown Functionality
+      function updateDropdown() {
+        fetch('/api/notifications/unread_list', { credentials: 'same-origin' })
+          .then(response => response.json())
+          .then(data => {
+            const list = document.getElementById('notif-list');
+            list.innerHTML = '';
+            if (data.notifications && data.notifications.length > 0) {
+              data.notifications.forEach(notif => {
+                const item = document.createElement('div');
+                item.className = 'dropdown-item';
+                item.id = 'dropdown-notif-' + notif.id;
+                let imageHTML = '';
+                if(notif.image_url) {
+                  imageHTML = `<img src="${notif.image_url}" class="dropdown-image">`;
+                }
+                item.innerHTML = `
+                  ${imageHTML}
+                  <a href="/notifications#notif-${notif.id}" class="notif-link">
+                    <div class="notif-text">
+                      <strong>${notif.title}</strong><br>
+                      <span style="font-size:0.8rem; color: var(--muted-text);">${notif.timestamp}</span>
+                    </div>
+                  </a>
+                  <button onclick="markDropdownRead(${notif.id})">Mark as read</button>
+                `;
+                list.appendChild(item);
+              });
+            } else {
+              list.innerHTML = '<div class="dropdown-item" style="text-align:center; padding:12px;">Ingen nye notifikationer</div>';
+            }
+          })
+          .catch(err => console.error(err));
+      }
+      
+      const headerNotif = document.getElementById('header-notifications');
+      const notifDropdown = document.getElementById('notif-dropdown');
+      headerNotif.addEventListener('click', function(e) {
+        notifDropdown.classList.toggle('active');
+        if (notifDropdown.classList.contains('active')) {
+          updateDropdown();
+        }
+      });
+      
+      // Mark individual notification from dropdown as read
+      window.markDropdownRead = function(notifId) {
+        fetch('/api/notifications/' + notifId + '/mark_read', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' }
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            const item = document.getElementById('dropdown-notif-' + notifId);
+            if (item) { item.remove(); }
+            updateNotifBadge();
+          } else {
+            alert('Fejl: ' + data.error);
+          }
+        })
+        .catch(err => console.error(err));
+      };
+      
+      // Mark all notifications as read from dropdown
+      document.getElementById('mark-all-btn').addEventListener('click', function() {
+        fetch('/api/mark-notifications-read', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ mark_all: true })
+        })
+        .then(response => response.json())
+        .then(data => {
+          if (data.success) {
+            notifDropdown.classList.remove('active');
+            updateNotifBadge();
+          } else {
+            alert('Fejl: ' + data.error);
+          }
+        })
+        .catch(err => console.error(err));
+      });
+      
+      // Force update dropdown on window load in case it's needed
+      window.addEventListener('load', updateDropdown);
     });
   </script>
   {% block extra_scripts %}{% endblock %}

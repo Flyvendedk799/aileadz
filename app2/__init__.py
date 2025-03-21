@@ -34,7 +34,7 @@ def index():
         # If credits are not in session, load them from the database
         if session.get('credits') is None:
             try:
-                cur = current_app.mysql.connection.cursor()
+                cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
                 cur.execute("SELECT credits FROM users WHERE username = %s", (session.get('user'),))
                 result = cur.fetchone()
                 if result:
@@ -55,11 +55,14 @@ def index():
             flash("Du har ikke nok credits til at generere et opslag. (Kræver 4 credits)", "danger")
             return redirect(url_for('app2.index'))
         
-        # Deduct 4 credits from the user's account
+        # Deduct 4 credits from the user's account and log the deduction in credit_usage
         try:
             cur = current_app.mysql.connection.cursor()
             cur.execute("UPDATE users SET credits = credits - %s WHERE username = %s", (4, session.get('user')))
+            cur.execute("INSERT INTO credit_usage (username, credits_used, description) VALUES (%s, %s, %s)",
+                        (session.get('user'), 4, 'App2 posting generation deduction'))
             current_app.mysql.connection.commit()
+            cur.close()
             session['credits'] = current_credits - 4
         except Exception as e:
             flash("Fejl ved fratrækning af credits: " + str(e), "danger")
@@ -134,17 +137,3 @@ def improve():
         improved_post = f"Der opstod en fejl under forbedringen: {str(e)}"
     
     return render_template("index2.html", generated_post=improved_post, selected_platform=platform)
-
-def create_app():
-    app = Flask(__name__)
-    
-    # Hardcoded API key (for testing only – replace with your secure method)
-    openai.api_key = "sk-your-api-key-here"
-    
-    # Register the blueprint
-    app.register_blueprint(app2_bp)
-    
-    return app
-
-if __name__ == "__main__":
-    create_app().run(debug=True)

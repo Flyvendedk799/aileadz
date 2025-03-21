@@ -1,15 +1,478 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Settings - AI Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 text-gray-900">
-  <div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-4">Settings</h1>
-    <p>This is the Settings page. Users can manage account settings, preferences, and other options here.</p>
-    <a href="/" class="mt-4 inline-block text-blue-500 hover:underline">Back to Dashboard</a>
+{% extends "base.html" %}
+
+{% block extra_styles %}
+<style>
+  :root {
+    --settings-primary: #8B5CF6;
+    --settings-primary-dark: #7C3AED;
+    --settings-accent: #EC4899;
+    --settings-gradient-start: #8B5CF6;
+    --settings-gradient-end: #EC4899;
+    --settings-input-bg: rgba(255, 255, 255, 0.08);
+    --settings-card-bg: rgba(17, 24, 39, 0.7);
+    --settings-section-bg: rgba(17, 24, 39, 0.4);
+    --settings-text: #E5E7EB;
+    --settings-text-secondary: #9CA3AF;
+    --settings-border: rgba(255, 255, 255, 0.1);
+    --settings-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+    --settings-glow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+
+  .settings-container {
+    max-width: 900px;
+    margin: 2rem auto;
+    padding: 2rem;
+    background-color: var(--settings-card-bg);
+    border-radius: 16px;
+    box-shadow: var(--settings-shadow);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--settings-border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .settings-container::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    height: 4px;
+    background: linear-gradient(to right, var(--settings-gradient-start), var(--settings-gradient-end));
+    z-index: 1;
+  }
+
+  .settings-title {
+    font-size: 2.2rem;
+    text-align: center;
+    margin-bottom: 2.5rem;
+    font-weight: 700;
+    background: linear-gradient(to right, var(--settings-gradient-start), var(--settings-gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 0.5px;
+    position: relative;
+  }
+
+  .settings-title::after {
+    content: '';
+    position: absolute;
+    bottom: -12px;
+    left: 50%;
+    width: 60px;
+    height: 3px;
+    background: linear-gradient(to right, var(--settings-gradient-start), var(--settings-gradient-end));
+    transform: translateX(-50%);
+    border-radius: 3px;
+  }
+
+  .settings-section {
+    margin-bottom: 2.5rem;
+    padding: 2rem;
+    border-radius: 12px;
+    background-color: var(--settings-section-bg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--settings-border);
+    position: relative;
+    transition: all 0.3s ease;
+  }
+
+  .settings-section:hover {
+    box-shadow: 0 6px 15px rgba(0, 0, 0, 0.15);
+    transform: translateY(-3px);
+  }
+
+  .section-heading {
+    font-size: 1.5rem;
+    margin-bottom: 1.5rem;
+    text-align: center;
+    color: var(--settings-text);
+    font-weight: 600;
+    position: relative;
+  }
+
+  .section-heading::before {
+    content: '';
+    position: absolute;
+    width: 30px;
+    height: 3px;
+    bottom: -8px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: linear-gradient(to right, var(--settings-gradient-start), var(--settings-gradient-end));
+    border-radius: 3px;
+  }
+
+  .settings-form label {
+    display: block;
+    font-weight: 500;
+    margin-bottom: 0.75rem;
+    color: var(--settings-text);
+    font-size: 0.95rem;
+  }
+
+  .settings-form input[type="text"],
+  .settings-form input[type="email"],
+  .settings-form input[type="password"] {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid var(--settings-border);
+    border-radius: 12px;
+    background-color: var(--settings-input-bg);
+    color: var(--settings-text);
+    margin-bottom: 1.25rem;
+    transition: all 0.3s ease;
+    outline: none;
+  }
+
+  .settings-form input:focus {
+    border-color: var(--settings-primary);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+  }
+
+  .settings-form input[readonly] {
+    background-color: rgba(255, 255, 255, 0.03);
+    border: 1px dashed var(--settings-border);
+    cursor: not-allowed;
+  }
+
+  .settings-form input[type="checkbox"] {
+    position: relative;
+    width: 20px;
+    height: 20px;
+    margin-right: 0.75rem;
+    vertical-align: middle;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--settings-border);
+    border-radius: 6px;
+    background-color: var(--settings-input-bg);
+    transition: all 0.2s ease;
+  }
+
+  .settings-form input[type="checkbox"]:checked {
+    background-color: var(--settings-primary);
+    border-color: var(--settings-primary);
+  }
+
+  .settings-form input[type="checkbox"]:checked::after {
+    content: '✓';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: white;
+    font-size: 0.8rem;
+  }
+
+  .checkbox-container {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.25rem;
+  }
+
+  .checkbox-container label {
+    margin-bottom: 0;
+    cursor: pointer;
+  }
+
+  .settings-form button {
+    background: linear-gradient(to right, var(--settings-gradient-start), var(--settings-gradient-end));
+    color: white;
+    border: none;
+    padding: 0.85rem 2rem;
+    border-radius: 12px;
+    cursor: pointer;
+    font-size: 1rem;
+    font-weight: 600;
+    transition: all 0.3s ease;
+    display: block;
+    margin: 1rem auto 0;
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    box-shadow: 0 4px 10px rgba(139, 92, 246, 0.3);
+  }
+
+  .settings-form button::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to right, var(--settings-gradient-end), var(--settings-gradient-start));
+    transition: opacity 0.5s ease;
+    z-index: -1;
+    opacity: 0;
+  }
+
+  .settings-form button:hover::before {
+    opacity: 1;
+  }
+
+  .settings-form button:active {
+    transform: scale(0.98);
+  }
+
+  /* Flash messages */
+  .flash-messages {
+    margin-bottom: 2rem;
+  }
+
+  .flash-message {
+    padding: 1rem 1.5rem;
+    border-radius: 12px;
+    margin-bottom: 1rem;
+    font-weight: 500;
+    position: relative;
+    animation: fadeInUp 0.4s ease forwards;
+    display: flex;
+    align-items: center;
+    line-height: 1.5;
+  }
+
+  .flash-message::before {
+    font-family: "Font Awesome 6 Free";
+    font-weight: 900;
+    margin-right: 0.75rem;
+    font-size: 1.1rem;
+  }
+
+  .flash-success {
+    background-color: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #10B981;
+  }
+
+  .flash-success::before {
+    content: "\f058"; /* fa-circle-check */
+  }
+
+  .flash-danger {
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #EF4444;
+  }
+
+  .flash-danger::before {
+    content: "\f057"; /* fa-circle-xmark */
+  }
+
+  .flash-info {
+    background-color: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    color: #3B82F6;
+  }
+
+  .flash-info::before {
+    content: "\f05a"; /* fa-circle-info */
+  }
+
+  @keyframes fadeInUp {
+    from {
+      opacity: 0;
+      transform: translateY(10px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Admin Section Styles */
+  .admin-section {
+    margin-top: 2rem;
+    padding: 2rem;
+    background: linear-gradient(135deg, rgba(139, 92, 246, 0.05) 0%, rgba(236, 72, 153, 0.05) 100%);
+    border-radius: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+    border: 1px solid var(--settings-border);
+    position: relative;
+    overflow: hidden;
+  }
+
+  .admin-section::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 4px;
+    height: 100%;
+    background: linear-gradient(to bottom, var(--settings-gradient-start), var(--settings-gradient-end));
+  }
+
+  .admin-section h2 {
+    font-size: 1.5rem;
+    text-align: center;
+    margin-bottom: 1.5rem;
+    color: var(--settings-text);
+    font-weight: 600;
+  }
+
+  .admin-links {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    gap: 1rem;
+  }
+
+  .admin-links a {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    text-align: center;
+    background-color: rgba(139, 92, 246, 0.1);
+    color: var(--settings-text);
+    border-radius: 12px;
+    transition: all 0.3s ease;
+    border: 1px solid var(--settings-border);
+    text-decoration: none;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .admin-links a::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(135deg, var(--settings-gradient-start) 0%, var(--settings-gradient-end) 100%);
+    opacity: 0;
+    transition: opacity 0.3s ease;
+    z-index: -1;
+  }
+
+  .admin-links a:hover {
+    transform: translateY(-3px);
+    color: white;
+    border-color: transparent;
+  }
+
+  .admin-links a:hover::before {
+    opacity: 1;
+  }
+
+  .admin-links a i {
+    margin-right: 0.5rem;
+    font-size: 1.1rem;
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 768px) {
+    .settings-container {
+      padding: 1.5rem;
+      margin: 1rem;
+    }
+    
+    .settings-section {
+      padding: 1.5rem;
+    }
+    
+    .admin-links {
+      grid-template-columns: 1fr;
+    }
+  }
+
+  /* Background decorative elements */
+  .bg-decoration {
+    position: absolute;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--settings-gradient-start), var(--settings-gradient-end));
+    opacity: 0.05;
+    filter: blur(40px);
+    z-index: -1;
+  }
+
+  .bg-circle-1 {
+    width: 300px;
+    height: 300px;
+    top: -100px;
+    right: -100px;
+  }
+
+  .bg-circle-2 {
+    width: 200px;
+    height: 200px;
+    bottom: -50px;
+    left: -50px;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="settings-container">
+  <!-- Background decorative elements -->
+  <div class="bg-decoration bg-circle-1"></div>
+  <div class="bg-decoration bg-circle-2"></div>
+  
+  <div class="settings-title">Indstillinger</div>
+  
+  <!-- Inline Flash Messages -->
+  {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+      <div class="flash-messages">
+        {% for category, message in messages %}
+          <div class="flash-message flash-{{ category }}">{{ message }}</div>
+        {% endfor %}
+      </div>
+    {% endif %}
+  {% endwith %}
+  
+  <!-- Profile Information Section -->
+  <div class="settings-section">
+    <h2 class="section-heading">Profiloplysninger</h2>
+    <form action="/indstillinger" method="POST" class="settings-form">
+      <!-- Hidden field to indicate profile update -->
+      <input type="hidden" name="update_profile" value="1">
+      
+      <label for="username">Brugernavn</label>
+      <input type="text" id="username" name="username" value="{{ user.username }}" readonly>
+      
+      <label for="email">Email</label>
+      <input type="email" id="email" name="email" value="{{ user.email }}" required>
+      
+      <div class="checkbox-container">
+        <input type="checkbox" id="email_notifications" name="email_notifications" {% if user.email_notifications %}checked{% endif %}>
+        <label for="email_notifications">Modtag email notifikationer</label>
+      </div>
+      
+      <button type="submit">Gem Profiloplysninger</button>
+    </form>
   </div>
-</body>
-</html>
+  
+  <!-- Password Change Section -->
+  <div class="settings-section">
+    <h2 class="section-heading">Kodeordsændring</h2>
+    <form action="/indstillinger" method="POST" class="settings-form">
+      <!-- Hidden field to indicate password update -->
+      <input type="hidden" name="update_password" value="1">
+      
+      <label for="current_password">Nuværende kodeord</label>
+      <input type="password" id="current_password" name="current_password" placeholder="Indtast nuværende kodeord" required>
+      
+      <label for="new_password">Nyt kodeord</label>
+      <input type="password" id="new_password" name="new_password" placeholder="Indtast nyt kodeord" required>
+      
+      <label for="confirm_password">Bekræft nyt kodeord</label>
+      <input type="password" id="confirm_password" name="confirm_password" placeholder="Bekræft nyt kodeord" required>
+      
+      <button type="submit">Ændr kodeord</button>
+    </form>
+  </div>
+  
+  <!-- Admin Section (Visible only if user is an admin) -->
+  {% if session.get('role') == 'admin' %}
+  <div class="admin-section">
+    <h2>Admin Only</h2>
+    <div class="admin-links">
+      <a href="/admin/credits"><i class="fa-solid fa-coins"></i> Tildel Kreditter</a>
+      <a href="/admin/notifications"><i class="fa-solid fa-bullhorn"></i> Admin Notifikationer</a>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

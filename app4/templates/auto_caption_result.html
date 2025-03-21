@@ -1,42 +1,851 @@
-<!DOCTYPE html>
-<html lang="da">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Auto Caption Result</title>
-  <!-- Bootstrap CSS -->
-  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;700&display=swap" rel="stylesheet">
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
   <style>
-    body {
-      background: linear-gradient(135deg, #1a1a1a, #0d0d0d);
-      color: #e0e0e0;
-      font-family: 'Inter', sans-serif;
+    /* Modern Futuristic Design System */
+    :root {
+      --primary: #6366f1;
+      --primary-dark: #4f46e5;
+      --primary-light: #a5b4fc;
+      --success: #10b981;
+      --warning: #f59e0b;
+      --danger: #ef4444;
+      --dark: #111827;
+      --darker: #030712;
+      --surface: #1f2937;
+      --surface-hover: #374151;
+      --text: #f3f4f6;
+      --text-secondary: #9ca3af;
+      --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef);
     }
-    .card {
-      background: #1e1e1e;
-      border: none;
-      border-radius: 12px;
+    
+    body {
+      margin: 0;
+      font-family: 'Inter', sans-serif;
+      background: radial-gradient(circle at 10% 20%, var(--darker) 0%, var(--dark) 90%);
+      color: var(--text);
+      overflow-x: hidden;
+      position: relative;
+    }
+    
+    body::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='0.03'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+      pointer-events: none;
+      z-index: -1;
+    }
+    
+    /* Design elements */
+    .result-container {
+      max-width: 1000px;
+      margin: 0 auto;
+      padding: 2rem 1rem;
+    }
+    
+    .result-card {
+      background: var(--surface);
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+      position: relative;
+      margin-bottom: 2rem;
+    }
+    
+    .result-card::before {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: var(--accent-gradient);
+    }
+    
+    .result-header {
       padding: 2rem;
-      margin: 2rem auto;
-      max-width: 800px;
-      box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    }
+    
+    .result-title {
+      display: flex;
+      align-items: center;
+      font-size: 1.75rem;
+      font-weight: 700;
+      margin: 0;
+    }
+    
+    .result-icon {
+      width: 40px;
+      height: 40px;
+      background: var(--accent-gradient);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      margin-right: 1rem;
+      font-size: 1.25rem;
+      color: white;
+    }
+    
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      border-radius: 50px;
+      background: rgba(16, 185, 129, 0.1);
+      color: var(--success);
+      font-weight: 600;
+      font-size: 0.875rem;
+    }
+    
+    .status-badge i {
+      margin-right: 0.5rem;
+    }
+    
+    .result-body {
+      padding: 2rem;
+    }
+    
+    /* Video player section */
+    .video-showcase {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 15px 25px -5px rgba(0, 0, 0, 0.3);
+      background: var(--darker);
+    }
+    
+    .video-container {
+      position: relative;
+      width: 100%;
+      height: 0;
+      padding-bottom: 56.25%;
+      overflow: hidden;
+    }
+    
+    .video-player {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      z-index: 1;
+    }
+    
+    .video-overlay {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: linear-gradient(0deg, rgba(0, 0, 0, 0.4) 0%, rgba(0, 0, 0, 0) 50%);
+      z-index: 2;
+      pointer-events: none;
+    }
+    
+    .video-controls {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      z-index: 3;
+    }
+    
+    .control-btn {
+      width: 40px;
+      height: 40px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.2);
+      backdrop-filter: blur(4px);
+      border: none;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    
+    .control-btn:hover {
+      background: rgba(255, 255, 255, 0.3);
+      transform: scale(1.05);
+    }
+    
+    .control-btn i {
+      font-size: 1.25rem;
+    }
+    
+    .control-group {
+      display: flex;
+      gap: 0.75rem;
+    }
+    
+    /* Caption info section */
+    .info-section {
+      margin-top: 2.5rem;
+    }
+    
+    .section-title {
+      font-size: 1.25rem;
+      font-weight: 600;
+      margin-bottom: 1.25rem;
+      display: flex;
+      align-items: center;
+    }
+    
+    .section-title i {
+      color: var(--primary);
+      margin-right: 0.75rem;
+    }
+    
+    .caption-card {
+      background: rgba(255, 255, 255, 0.03);
+      border-radius: 16px;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      padding: 1.5rem;
+      overflow: hidden;
+      position: relative;
+    }
+    
+    .tag-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      margin-bottom: 1rem;
+    }
+    
+    .caption-tag {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.35rem 0.75rem;
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary-light);
+      border-radius: 6px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    
+    .caption-tag i {
+      margin-right: 0.35rem;
+      font-size: 0.875rem;
+    }
+    
+    .caption-controls {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+    
+    .caption-content {
+      padding: 1.25rem;
+      background: rgba(0, 0, 0, 0.2);
+      border-radius: 12px;
+      font-size: 1.125rem;
+      font-weight: 500;
+      line-height: 1.5;
+      max-height: 150px;
+      overflow-y: auto;
+      white-space: pre-line;
+      position: relative;
+    }
+    
+    .caption-content.tiktok-style {
+      text-transform: uppercase;
+      font-family: Arial, sans-serif;
+      font-weight: 800;
+      line-height: 1.3;
+      letter-spacing: 1px;
+    }
+    
+    .caption-edit-container {
+      margin-top: 1.25rem;
+    }
+    
+    .caption-textarea {
+      width: 100%;
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      border-radius: 8px;
+      color: var(--text);
+      font-size: 1rem;
+      padding: 0.75rem;
+      resize: none;
+    }
+    
+    .caption-textarea:focus {
+      outline: none;
+      border-color: var(--primary);
+    }
+    
+    .btn-outline {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: var(--text);
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .btn-outline:hover {
+      background: rgba(255, 255, 255, 0.05);
+      border-color: rgba(255, 255, 255, 0.3);
+    }
+    
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      border: none;
+      padding: 0.5rem 1rem;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 0.875rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+    }
+    
+    .btn-primary:hover {
+      background: var(--primary-dark);
+      transform: translateY(-2px);
+    }
+    
+    /* Timeline section */
+    .timeline-section {
+      margin-top: 2.5rem;
+    }
+    
+    .timeline-container {
+      position: relative;
+      padding: 0 1rem;
+    }
+    
+    .timeline-track {
+      width: 100%;
+      height: 6px;
+      background: rgba(255, 255, 255, 0.1);
+      border-radius: 3px;
+      position: relative;
+      margin: 1.5rem 0 0.75rem;
+    }
+    
+    .timeline-progress {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 100%;
+      width: 35%;
+      background: var(--accent-gradient);
+      border-radius: 3px;
+    }
+    
+    .timeline-marker {
+      position: absolute;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      width: 16px;
+      height: 16px;
+      background: white;
+      border-radius: 50%;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      z-index: 2;
+      box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+    }
+    
+    .timeline-marker:hover {
+      transform: translate(-50%, -50%) scale(1.2);
+    }
+    
+    .timeline-marker::after {
+      content: "";
+      position: absolute;
+      top: -8px;
+      left: -8px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: rgba(255, 255, 255, 0.1);
+      z-index: -1;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    
+    .timeline-marker:hover::after {
+      opacity: 1;
+    }
+    
+    .timeline-marker[data-tooltip]::before {
+      content: attr(data-tooltip);
+      position: absolute;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 0.5rem 0.75rem;
+      background: rgba(0, 0, 0, 0.8);
+      color: white;
+      font-size: 0.75rem;
+      border-radius: 4px;
+      white-space: nowrap;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.2s ease;
+    }
+    
+    .timeline-marker:hover[data-tooltip]::before {
+      opacity: 1;
+    }
+    
+    .timeline-labels {
+      display: flex;
+      justify-content: space-between;
+      color: var(--text-secondary);
+      font-size: 0.75rem;
+    }
+    
+    /* Action buttons */
+    .action-section {
+      margin-top: 2.5rem;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 1rem;
+    }
+    
+    .action-button {
+      flex: 1;
+      min-width: 160px;
+      padding: 1rem;
+      border-radius: 12px;
+      font-weight: 600;
+      font-size: 0.9375rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.75rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      text-align: center;
+      text-decoration: none;
+    }
+    
+    .action-primary {
+      background: var(--accent-gradient);
+      color: white;
+      border: none;
+    }
+    
+    .action-primary:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3);
+    }
+    
+    .action-secondary {
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+    
+    .action-secondary:hover {
+      background: rgba(255, 255, 255, 0.1);
+      transform: translateY(-3px);
+    }
+    
+    /* Additional options */
+    .additional-options {
+      margin-top: 2.5rem;
+    }
+    
+    .option-cards {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+      gap: 1rem;
+    }
+    
+    .option-card {
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 12px;
+      padding: 1.5rem;
+      transition: all 0.2s ease;
+      cursor: pointer;
+      height: 100%;
+    }
+    
+    .option-card:hover {
+      background: rgba(255, 255, 255, 0.05);
+      transform: translateY(-3px);
+    }
+    
+    .option-icon {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: rgba(99, 102, 241, 0.1);
+      color: var(--primary);
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+    }
+    
+    .option-title {
+      font-weight: 600;
+      font-size: 1rem;
+      margin-bottom: 0.5rem;
+    }
+    
+    .option-description {
+      color: var(--text-secondary);
+      font-size: 0.875rem;
+      line-height: 1.5;
+    }
+    
+    /* Mobile responsiveness */
+    @media (max-width: 768px) {
+      .result-header {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 1rem;
+      }
+      
+      .action-section {
+        flex-direction: column;
+      }
+      
+      .action-button {
+        width: 100%;
+      }
+      
+      .option-cards {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    /* Animation keyframes */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.7; }
+    }
+    
+    @keyframes float {
+      0%, 100% { transform: translateY(0); }
+      50% { transform: translateY(-10px); }
     }
   </style>
-</head>
-<body>
-  <div class="container">
-    <div class="card mt-5">
-      <h2 class="mb-3">Auto Caption Result</h2>
-      <p><strong>Generated Captions:</strong></p>
-      <pre>{{ captions }}</pre>
-      <hr>
-      <p>You can download the captioned video:</p>
-      <a href="{{ url_for('app4.uploaded_file', filename=video_filename) }}" class="btn btn-secondary">Download Video</a>
-      <a href="{{ url_for('app4.index') }}" class="btn btn-primary">Back to Editing</a>
+{% endblock %}
+
+{% block content %}
+  <div class="result-container">
+    <!-- Result Header Card -->
+    <div class="result-card">
+      <div class="result-header">
+        <div class="result-title">
+          <div class="result-icon">
+            <i class="bi bi-chat-square-text"></i>
+          </div>
+          <span>Auto Caption Result</span>
+        </div>
+        <div class="status-badge">
+          <i class="bi bi-check-circle-fill"></i>
+          Processing Complete
+        </div>
+      </div>
+      
+      <div class="result-body">
+        <!-- Video Player Section -->
+        <div class="video-showcase">
+          <div class="video-container">
+            <video class="video-player" controls autoplay loop>
+              <source src="{{ url_for('app4.uploaded_file', filename=video_filename) }}" type="video/mp4">
+            </video>
+            <div class="video-overlay"></div>
+          </div>
+          <div class="video-controls">
+            <div class="control-group">
+              <button class="control-btn" title="Previous segment">
+                <i class="bi bi-skip-backward-fill"></i>
+              </button>
+              <button class="control-btn" title="Play/Pause">
+                <i class="bi bi-pause-fill"></i>
+              </button>
+              <button class="control-btn" title="Next segment">
+                <i class="bi bi-skip-forward-fill"></i>
+              </button>
+            </div>
+            <div class="control-group">
+              <button class="control-btn" title="Adjust volume">
+                <i class="bi bi-volume-up-fill"></i>
+              </button>
+              <button class="control-btn" title="Full screen">
+                <i class="bi bi-fullscreen"></i>
+              </button>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Caption Info Section -->
+        <div class="info-section">
+          <h3 class="section-title">
+            <i class="bi bi-chat-text"></i>
+            Generated Captions
+          </h3>
+          
+          <div class="caption-card">
+            <div class="caption-controls">
+              <div class="tag-row">
+                <span class="caption-tag"><i class="bi bi-tiktok"></i>TikTok Style</span>
+                <span class="caption-tag"><i class="bi bi-stars"></i>Word by Word</span>
+                <span class="caption-tag"><i class="bi bi-fonts"></i>Arial</span>
+                <span class="caption-tag"><i class="bi bi-emoji-smile"></i>Smart Emojis</span>
+              </div>
+              
+              <button class="btn-outline" data-bs-toggle="collapse" data-bs-target="#captionEditor">
+                <i class="bi bi-pencil"></i>
+                Edit
+              </button>
+            </div>
+            
+            <div class="caption-content tiktok-style">
+              {{ captions }}
+            </div>
+            
+            <div class="collapse caption-edit-container" id="captionEditor">
+              <textarea class="caption-textarea" rows="4">{{ captions }}</textarea>
+              <div class="d-flex justify-content-end mt-3">
+                <button class="btn-primary">
+                  <i class="bi bi-check-lg"></i>
+                  Apply Changes
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Timeline Section -->
+        <div class="timeline-section">
+          <h3 class="section-title">
+            <i class="bi bi-clock"></i>
+            Caption Timeline
+          </h3>
+          
+          <div class="timeline-container">
+            <div class="timeline-track">
+              <div class="timeline-progress"></div>
+              <div class="timeline-marker" style="left: 10%" data-tooltip="0:01 - Hey everyone"></div>
+              <div class="timeline-marker" style="left: 30%" data-tooltip="0:03 - check out this"></div>
+              <div class="timeline-marker" style="left: 50%" data-tooltip="0:05 - amazing new"></div>
+              <div class="timeline-marker" style="left: 70%" data-tooltip="0:07 - feature I just"></div>
+              <div class="timeline-marker" style="left: 90%" data-tooltip="0:09 - discovered"></div>
+            </div>
+            <div class="timeline-labels">
+              <span>0:00</span>
+              <span>0:05</span>
+              <span>0:10</span>
+            </div>
+          </div>
+        </div>
+        
+        <!-- Action Buttons -->
+        <div class="action-section">
+          <a href="{{ url_for('app4.uploaded_file', filename=video_filename) }}" class="action-button action-primary">
+            <i class="bi bi-cloud-download"></i>
+            Download Video
+          </a>
+          <button class="action-button action-secondary">
+            <i class="bi bi-share"></i>
+            Share Video
+          </button>
+          <a href="{{ url_for('app4.index') }}" class="action-button action-secondary">
+            <i class="bi bi-arrow-left"></i>
+            Back to Editor
+          </a>
+        </div>
+        
+        <!-- Additional Options -->
+        <div class="additional-options">
+          <h3 class="section-title">
+            <i class="bi bi-stars"></i>
+            More Options
+          </h3>
+          
+          <div class="option-cards">
+            <div class="option-card">
+              <div class="option-icon">
+                <i class="bi bi-translate"></i>
+              </div>
+              <h4 class="option-title">Translate Captions</h4>
+              <p class="option-description">Convert your captions to different languages to reach a global audience</p>
+            </div>
+            
+            <div class="option-card">
+              <div class="option-icon">
+                <i class="bi bi-palette"></i>
+              </div>
+              <h4 class="option-title">Change Style</h4>
+              <p class="option-description">Apply different visual styles to your captions for a unique look</p>
+            </div>
+            
+            <div class="option-card">
+              <div class="option-icon">
+                <i class="bi bi-magic"></i>
+              </div>
+              <h4 class="option-title">Enhance Video</h4>
+              <p class="option-description">Improve video quality, adjust colors, and stabilize footage</p>
+            </div>
+            
+            <div class="option-card">
+              <div class="option-icon">
+                <i class="bi bi-music-note-beamed"></i>
+              </div>
+              <h4 class="option-title">Add Music</h4>
+              <p class="option-description">Choose from trending tracks to complement your video</p>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
-  <!-- Bootstrap JS Bundle -->
+{% endblock %}
+
+{% block extra_scripts %}
+  {{ super() }}
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-</body>
-</html>
+  <script>
+    document.addEventListener('DOMContentLoaded', function() {
+      // Video player controls handling
+      const videoPlayer = document.querySelector('.video-player');
+      const playPauseBtn = document.querySelector('.control-btn[title="Play/Pause"]');
+      
+      playPauseBtn.addEventListener('click', function() {
+        if (videoPlayer.paused) {
+          videoPlayer.play();
+          this.innerHTML = '<i class="bi bi-pause-fill"></i>';
+        } else {
+          videoPlayer.pause();
+          this.innerHTML = '<i class="bi bi-play-fill"></i>';
+        }
+      });
+      
+      // Timeline marker interactive behavior
+      const timelineMarkers = document.querySelectorAll('.timeline-marker');
+      
+      timelineMarkers.forEach(marker => {
+        marker.addEventListener('click', function() {
+          const position = parseInt(this.style.left) / 100;
+          const duration = videoPlayer.duration;
+          if (!isNaN(duration)) {
+            videoPlayer.currentTime = duration * position;
+            videoPlayer.play();
+            playPauseBtn.innerHTML = '<i class="bi bi-pause-fill"></i>';
+            
+            // Update timeline progress
+            document.querySelector('.timeline-progress').style.width = (position * 100) + '%';
+          }
+        });
+      });
+      
+      // Video timeupdate handling for timeline progress
+      videoPlayer.addEventListener('timeupdate', function() {
+        const progress = (videoPlayer.currentTime / videoPlayer.duration) * 100;
+        document.querySelector('.timeline-progress').style.width = progress + '%';
+      });
+      
+      // Fullscreen button
+      const fullscreenBtn = document.querySelector('.control-btn[title="Full screen"]');
+      
+      fullscreenBtn.addEventListener('click', function() {
+        if (videoPlayer.requestFullscreen) {
+          videoPlayer.requestFullscreen();
+        } else if (videoPlayer.webkitRequestFullscreen) {
+          videoPlayer.webkitRequestFullscreen();
+        } else if (videoPlayer.msRequestFullscreen) {
+          videoPlayer.msRequestFullscreen();
+        }
+      });
+      
+      // Caption edit functionality
+      const captionTextarea = document.querySelector('.caption-textarea');
+      const captionContent = document.querySelector('.caption-content');
+      const saveChangesBtn = document.querySelector('.btn-primary');
+      
+      saveChangesBtn.addEventListener('click', function() {
+        captionContent.textContent = captionTextarea.value;
+        
+        // Hide the editor
+        const captionEditor = document.getElementById('captionEditor');
+        const bsCollapse = new bootstrap.Collapse(captionEditor);
+        bsCollapse.hide();
+        
+        // Show success notification
+        const notification = document.createElement('div');
+        notification.className = 'position-fixed bottom-0 end-0 p-3';
+        notification.style.zIndex = 1050;
+        notification.innerHTML = `
+          <div class="toast show" role="alert" aria-live="assertive" aria-atomic="true">
+            <div class="toast-header bg-success text-white">
+              <i class="bi bi-check-circle me-2"></i>
+              <strong class="me-auto">Success</strong>
+              <button type="button" class="btn-close btn-close-white" data-bs-dismiss="toast" aria-label="Close"></button>
+            </div>
+            <div class="toast-body bg-dark text-light">
+              Caption text updated successfully!
+            </div>
+          </div>
+        `;
+        document.body.appendChild(notification);
+        
+        setTimeout(() => {
+          notification.remove();
+        }, 3000);
+      });
+      
+      // Skip forward/backward
+      const skipBackward = document.querySelector('.control-btn[title="Previous segment"]');
+      const skipForward = document.querySelector('.control-btn[title="Next segment"]');
+      
+      skipBackward.addEventListener('click', function() {
+        videoPlayer.currentTime = Math.max(0, videoPlayer.currentTime - 5);
+      });
+      
+      skipForward.addEventListener('click', function() {
+        videoPlayer.currentTime = Math.min(videoPlayer.duration, videoPlayer.currentTime + 5);
+      });
+      
+      // Volume control
+      const volumeBtn = document.querySelector('.control-btn[title="Adjust volume"]');
+      
+      volumeBtn.addEventListener('click', function() {
+        if (videoPlayer.muted) {
+          videoPlayer.muted = false;
+          this.innerHTML = '<i class="bi bi-volume-up-fill"></i>';
+        } else {
+          videoPlayer.muted = true;
+          this.innerHTML = '<i class="bi bi-volume-mute-fill"></i>';
+        }
+      });
+    });
+  </script>
+{% endblock %}

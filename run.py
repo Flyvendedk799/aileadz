@@ -8,9 +8,14 @@ from dashboard import dashboard_bp
 from app1 import app1_bp
 from app2 import app2_bp
 from app3 import app3_bp
+from app4 import app4_bp  # Added for app4
+
 from auth import auth_bp
 from pages import pages_bp
 from api import api_bp  # Import the API blueprint
+from admin_notifications import admin_notifications_bp
+from admin_dashboard import admin_dashboard_bp
+from reports import reports_bp
 
 logging.basicConfig(level=logging.INFO)
 
@@ -33,9 +38,13 @@ def create_app():
     app.register_blueprint(app1_bp, url_prefix='/app1')
     app.register_blueprint(app2_bp, url_prefix='/app2')
     app.register_blueprint(app3_bp, url_prefix='/app3')
+    app.register_blueprint(app4_bp, url_prefix='/app4')  # Register app4 blueprint
     app.register_blueprint(auth_bp)
     app.register_blueprint(pages_bp)
     app.register_blueprint(api_bp)  # Register the API blueprint
+    app.register_blueprint(admin_notifications_bp, url_prefix='/admin')  # Register admin notifications
+    app.register_blueprint(admin_dashboard_bp, url_prefix='/admin')
+    app.register_blueprint(reports_bp, url_prefix='/reports')
     
     @app.route('/')
     def home():

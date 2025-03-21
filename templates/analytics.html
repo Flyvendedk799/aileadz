@@ -1,15 +1,1389 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Analytics - AI Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 text-gray-900">
-  <div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-4">Analytics</h1>
-    <p>This is the Analytics page. Display charts, graphs, and other data insights here.</p>
-    <a href="/" class="mt-4 inline-block text-blue-500 hover:underline">Back to Dashboard</a>
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Montserrat:wght@700;800&display=swap');
+
+    :root {
+      --accent-color: #7c3aed;
+      --accent-gradient: linear-gradient(135deg, #7c3aed 0%, #c026d3 100%);
+      --secondary-gradient: linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%);
+      --tertiary-gradient: linear-gradient(135deg, #f97316 0%, #ec4899 100%);
+      --glass-bg: rgba(255, 255, 255, 0.03);
+      --glass-border: rgba(255, 255, 255, 0.05);
+      --card-highlight: rgba(255, 255, 255, 0.1);
+      --grid-size: 25px;
+      --chart-bg: rgba(255, 255, 255, 0.02);
+      --chart-grid: rgba(255, 255, 255, 0.07);
+    }
+
+    /* Global container styles with modern layered design */
+    .analytics-dashboard {
+      position: relative;
+      max-width: 1600px;
+      margin: 0 auto;
+      padding: 2rem 1.5rem;
+      font-family: 'Inter', sans-serif;
+      overflow: hidden;
+      background-color: var(--sidebar-bg);
+      background-image: 
+        radial-gradient(circle at 15% 50%, rgba(124, 58, 237, 0.08) 0%, transparent 25%),
+        radial-gradient(circle at 85% 30%, rgba(192, 38, 211, 0.05) 0%, transparent 33%);
+      min-height: 100vh;
+    }
+    
+    /* Animated background grid */
+    .analytics-dashboard::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-image: 
+        linear-gradient(to right, var(--glass-border) 1px, transparent 1px),
+        linear-gradient(to bottom, var(--glass-border) 1px, transparent 1px);
+      background-size: var(--grid-size) var(--grid-size);
+      z-index: 0;
+      opacity: 0.3;
+    }
+
+    .dashboard-content {
+      position: relative;
+      z-index: 1;
+      animation: fadeUpIn 1s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes fadeUpIn {
+      0% { opacity: 0; transform: translateY(40px); }
+      100% { opacity: 1; transform: translateY(0); }
+    }
+
+    .analytics-header {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin-bottom: 3.5rem;
+      position: relative;
+    }
+
+    .analytics-title {
+      font-family: 'Montserrat', sans-serif;
+      font-size: 3.5rem;
+      font-weight: 800;
+      margin-bottom: 1rem;
+      background: var(--accent-gradient);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+      letter-spacing: -0.03em;
+      position: relative;
+    }
+
+    .analytics-subtitle {
+      font-size: 1.1rem;
+      font-weight: 400;
+      color: var(--muted-text);
+      max-width: 600px;
+      text-align: center;
+      line-height: 1.6;
+    }
+
+    /* Glassmorphism for cards */
+    .glass-card {
+      background: var(--glass-bg);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border: 1px solid var(--glass-border);
+      border-radius: 16px;
+      overflow: hidden;
+      position: relative;
+      transition: all 0.4s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    
+    .glass-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 4px;
+      background: var(--accent-gradient);
+      opacity: 0;
+      transition: opacity 0.4s ease;
+    }
+    
+    .glass-card:hover::before {
+      opacity: 1;
+    }
+
+    .glass-card:hover {
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+      transform: translateY(-5px);
+    }
+
+    /* Key metrics section with animated counters */
+    .metrics-section {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .metric-card {
+      padding: 2rem;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      height: 180px;
+    }
+
+    .metric-card.primary { border-top: 4px solid #7c3aed; }
+    .metric-card.secondary { border-top: 4px solid #3b82f6; }
+    .metric-card.tertiary { border-top: 4px solid #f97316; }
+    .metric-card.neutral { border-top: 4px solid #64748b; }
+    .metric-card.success { border-top: 4px solid #10b981; }
+
+    .metric-label {
+      font-size: 1rem;
+      font-weight: 500;
+      color: var(--muted-text);
+      margin-bottom: 1rem;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+    }
+
+    .metric-value {
+      font-size: 2.5rem;
+      font-weight: 700;
+      color: var(--text-color);
+      line-height: 1.2;
+      margin-bottom: 0.5rem;
+      transition: transform 0.3s ease;
+    }
+
+    .metric-card:hover .metric-value {
+      transform: scale(1.1);
+    }
+
+    .metric-subtext {
+      font-size: 0.9rem;
+      color: var(--muted-text);
+      line-height: 1.4;
+    }
+
+    /* Enhanced charts section with improved styling */
+    .charts-section {
+      margin-bottom: 3rem;
+    }
+    
+    .chart-tabs {
+      display: flex;
+      margin-bottom: 1.5rem;
+      border-radius: 12px;
+      background: var(--glass-bg);
+      padding: 0.5rem;
+      width: fit-content;
+      margin-left: auto;
+      margin-right: auto;
+    }
+    
+    .chart-tab {
+      padding: 0.75rem 1.5rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      border-radius: 8px;
+      transition: all 0.3s ease;
+      color: var(--muted-text);
+    }
+    
+    .chart-tab.active {
+      background: var(--accent-gradient);
+      color: white;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+    }
+    
+    .chart-container {
+      padding: 2rem;
+      height: 100%;
+      display: flex;
+      flex-direction: column;
+      margin-bottom: 2rem;
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 2rem;
+    }
+
+    .chart-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-color);
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .chart-title-icon {
+      background: var(--accent-gradient);
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+    }
+    
+    .chart-title-icon svg {
+      width: 18px;
+      height: 18px;
+      color: white;
+    }
+    
+    .chart-actions {
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+    }
+    
+    .chart-period {
+      display: flex;
+      align-items: center;
+      padding: 0.5rem 1rem;
+      background: var(--glass-bg);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-color);
+      cursor: pointer;
+      transition: all 0.3s ease;
+    }
+    
+    .chart-period:hover {
+      background: var(--card-highlight);
+    }
+    
+    .chart-period svg {
+      width: 16px;
+      height: 16px;
+      margin-right: 0.5rem;
+    }
+
+    .chart-wrapper {
+      flex-grow: 1;
+      position: relative;
+      min-height: 400px;
+      background: var(--chart-bg);
+      border-radius: 12px;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+    }
+    
+    .chart-canvas-container {
+      flex-grow: 1;
+      position: relative;
+      min-height: 350px;
+    }
+
+    .chart-legend {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      margin-top: 1.5rem;
+    }
+    
+    .legend-item {
+      display: flex;
+      align-items: center;
+      font-size: 0.9rem;
+      color: var(--muted-text);
+    }
+    
+    .legend-color {
+      width: 12px;
+      height: 12px;
+      border-radius: 3px;
+      margin-right: 0.5rem;
+    }
+    
+    .legend-color.primary {
+      background: #7c3aed;
+    }
+    
+    .legend-color.secondary {
+      background: #3b82f6;
+    }
+    
+    .chart-stats {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 1rem;
+      margin-top: 1.5rem;
+    }
+    
+    .chart-stat {
+      background: var(--glass-bg);
+      padding: 1rem;
+      border-radius: 12px;
+      text-align: center;
+    }
+    
+    .chart-stat-label {
+      font-size: 0.85rem;
+      color: var(--muted-text);
+      margin-bottom: 0.5rem;
+    }
+    
+    .chart-stat-value {
+      font-size: 1.2rem;
+      font-weight: 600;
+      color: var(--text-color);
+    }
+    
+    .chart-tooltip {
+      position: absolute;
+      background: rgba(0, 0, 0, 0.75);
+      color: white;
+      padding: 1rem;
+      border-radius: 8px;
+      pointer-events: none;
+      z-index: 100;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+      display: none;
+      min-width: 180px;
+    }
+    
+    .tooltip-date {
+      font-size: 0.9rem;
+      font-weight: 600;
+      margin-bottom: 0.5rem;
+      color: #d1d5db;
+    }
+    
+    .tooltip-value {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+    }
+    
+    .tooltip-trend {
+      font-size: 0.8rem;
+      display: flex;
+      align-items: center;
+      gap: 0.25rem;
+    }
+    
+    .tooltip-trend.up {
+      color: #10b981;
+    }
+    
+    .tooltip-trend.down {
+      color: #ef4444;
+    }
+
+    /* Bar chart specific */
+    .bar-chart-area {
+      position: relative;
+    }
+    
+    .bar-chart-container {
+      display: flex;
+      height: 300px;
+      align-items: flex-end;
+      width: 100%;
+      gap: 4%;
+      padding-bottom: 2rem;
+      margin-top: 1.5rem;
+    }
+    
+    .chart-bar {
+      background: linear-gradient(180deg, #a855f7 0%, #7c3aed 100%);
+      border-radius: 8px 8px 0 0;
+      transition: height 1s cubic-bezier(0.34, 1.56, 0.64, 1), opacity 0.6s ease;
+      position: relative;
+      min-width: 8%;
+      opacity: 0.8;
+      cursor: pointer;
+    }
+    
+    .chart-bar:hover {
+      opacity: 1;
+      transform: scaleY(1.05);
+      transform-origin: bottom;
+    }
+    
+    .bar-label {
+      position: absolute;
+      bottom: -2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.8rem;
+      color: var(--muted-text);
+      white-space: nowrap;
+    }
+    
+    .bar-value {
+      position: absolute;
+      top: -2rem;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--text-color);
+      opacity: 0;
+      transition: opacity 0.3s ease;
+    }
+    
+    .chart-bar:hover .bar-value {
+      opacity: 1;
+    }
+    
+    .bar-chart-grid {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 2rem;
+      z-index: -1;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+    
+    .grid-line {
+      width: 100%;
+      height: 1px;
+      background-color: var(--chart-grid);
+      position: relative;
+    }
+    
+    .grid-value {
+      position: absolute;
+      left: -2.5rem;
+      top: -0.6rem;
+      font-size: 0.7rem;
+      color: var(--muted-text);
+    }
+
+    /* Line chart specific */
+    .line-chart-area {
+      position: relative;
+      height: 100%;
+    }
+    
+    .line-chart-path {
+      stroke: #7c3aed;
+      stroke-width: 3;
+      fill: none;
+      stroke-linecap: round;
+      stroke-linejoin: round;
+      filter: drop-shadow(0 4px 4px rgba(124, 58, 237, 0.3));
+    }
+    
+    .area-gradient {
+      fill: url(#areaGradient);
+      opacity: 0.5;
+    }
+    
+    .chart-point {
+      fill: #7c3aed;
+      stroke: white;
+      stroke-width: 2;
+      cursor: pointer;
+      transition: r 0.3s ease;
+    }
+    
+    .chart-point:hover {
+      r: 6;
+    }
+    
+    .line-chart-grid {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      bottom: 0;
+      display: grid;
+      grid-template-rows: repeat(5, 1fr);
+    }
+    
+    .line-grid-row {
+      border-top: 1px solid var(--chart-grid);
+      position: relative;
+    }
+    
+    .line-grid-value {
+      position: absolute;
+      left: 0;
+      top: -0.7rem;
+      font-size: 0.7rem;
+      color: var(--muted-text);
+    }
+    
+    .line-chart-labels {
+      display: flex;
+      justify-content: space-between;
+      margin-top: 0.75rem;
+    }
+    
+    .line-label {
+      font-size: 0.75rem;
+      color: var(--muted-text);
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 80px;
+    }
+
+    /* Enhanced table design */
+    .transactions-section {
+      margin-top: 3rem;
+    }
+
+    .table-container {
+      padding: 0;
+      overflow: hidden;
+      border-radius: 16px;
+    }
+
+    .table-header {
+      padding: 1.5rem 2rem;
+      border-bottom: 1px solid var(--glass-border);
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .table-title {
+      font-size: 1.5rem;
+      font-weight: 600;
+      color: var(--text-color);
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+    }
+    
+    .table-title-icon {
+      background: var(--tertiary-gradient);
+      width: 32px;
+      height: 32px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 8px;
+    }
+    
+    .table-actions {
+      display: flex;
+      gap: 0.75rem;
+    }
+    
+    .table-search {
+      position: relative;
+    }
+    
+    .search-input {
+      background: var(--glass-bg);
+      border: 1px solid var(--glass-border);
+      border-radius: 8px;
+      padding: 0.6rem 1rem 0.6rem 2.5rem;
+      color: var(--text-color);
+      font-size: 0.9rem;
+      width: 220px;
+      transition: all 0.3s ease;
+    }
+    
+    .search-input:focus {
+      outline: none;
+      border-color: var(--accent-color);
+      width: 260px;
+    }
+    
+    .search-icon {
+      position: absolute;
+      left: 0.8rem;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--muted-text);
+      width: 14px;
+      height: 14px;
+    }
+
+    .data-table {
+      width: 100%;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+
+    .data-table thead {
+      background: var(--glass-bg);
+    }
+
+    .data-table th {
+      padding: 1.25rem 1.5rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted-text);
+      background: transparent;
+      text-align: left;
+      border-bottom: 1px solid var(--glass-border);
+    }
+
+    .data-table td {
+      padding: 1.25rem 1.5rem;
+      border-bottom: 1px solid var(--glass-border);
+      font-size: 0.95rem;
+      color: var(--text-color);
+    }
+
+    .data-table tbody tr {
+      transition: background-color 0.3s ease;
+    }
+
+    .data-table tbody tr:hover {
+      background-color: var(--card-highlight);
+    }
+
+    /* Credit usage pill styling */
+    .credit-pill {
+      display: inline-block;
+      padding: 0.35em 0.8em;
+      font-size: 0.85rem;
+      font-weight: 500;
+      border-radius: 20px;
+      background: var(--accent-gradient);
+      color: white;
+    }
+
+    /* Footer navigation */
+    .dashboard-footer {
+      margin-top: 4rem;
+      text-align: center;
+    }
+
+    .back-button {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.8rem 1.6rem;
+      background: var(--accent-gradient);
+      color: white;
+      font-weight: 600;
+      border-radius: 12px;
+      text-decoration: none;
+      transition: all 0.3s ease;
+      box-shadow: 0 4px 12px rgba(124, 58, 237, 0.3);
+    }
+
+    .back-button:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 8px 20px rgba(124, 58, 237, 0.4);
+    }
+
+    .back-button svg {
+      margin-right: 0.5rem;
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 768px) {
+      .analytics-title {
+        font-size: 2.5rem;
+      }
+      
+      .metrics-section {
+        grid-template-columns: 1fr;
+      }
+      
+      .metric-card {
+        height: 150px;
+      }
+      
+      .chart-container {
+        padding: 1rem;
+      }
+      
+      .data-table th, 
+      .data-table td {
+        padding: 1rem;
+      }
+      
+      .chart-tabs {
+        width: 100%;
+        overflow-x: auto;
+        gap: 0.5rem;
+      }
+      
+      .chart-tab {
+        padding: 0.6rem 1rem;
+        white-space: nowrap;
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="analytics-dashboard">
+  <div class="dashboard-content">
+    <div class="analytics-header">
+      <h1 class="analytics-title">Analytics Dashboard</h1>
+      <p class="analytics-subtitle">Track, analyze, and optimize your credit usage patterns with comprehensive visualizations and detailed reports.</p>
+    </div>
+    
+    <!-- Metrics Section -->
+    <div class="metrics-section">
+      <div class="glass-card metric-card primary">
+        <div class="metric-label">Total Kreditter Forbrugt</div>
+        <div class="metric-value" data-value="{{ total_used }}">{{ total_used }}</div>
+      </div>
+      
+      <div class="glass-card metric-card secondary">
+        <div class="metric-label">Tilgængelige Kreditter</div>
+        <div class="metric-value" data-value="{{ current_credits }}">{{ current_credits }}</div>
+      </div>
+      
+      <div class="glass-card metric-card tertiary">
+        <div class="metric-label">Samlet Kreditter</div>
+        <div class="metric-value" data-value="{{ total_used + current_credits }}">{{ total_used + current_credits }}</div>
+      </div>
+      
+      <div class="glass-card metric-card neutral">
+        <div class="metric-label">Gennemsnitlig Daglig Forbrug</div>
+        <div class="metric-value" data-value="{{ average_usage | round(2) }}">{{ average_usage | round(2) }}</div>
+      </div>
+      
+      <div class="glass-card metric-card success">
+        <div class="metric-label">Maksimalt Dagligt Forbrug</div>
+        <div class="metric-value" data-value="{{ peak_usage }}">{{ peak_usage }}</div>
+        <div class="metric-subtext">På {{ peak_day }}</div>
+      </div>
+    </div>
+    
+    <!-- Advanced Usage Analytics -->
+    <div class="charts-section">
+      <!-- Usage Over Time Chart -->
+      <div class="glass-card chart-container">
+        <div class="chart-header">
+          <div class="chart-title">
+            <div class="chart-title-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline>
+              </svg>
+            </div>
+            Kredit Forbrugsanalyse
+          </div>
+          <div class="chart-actions">
+            <div class="chart-period">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+                <line x1="16" y1="2" x2="16" y2="6"></line>
+                <line x1="8" y1="2" x2="8" y2="6"></line>
+                <line x1="3" y1="10" x2="21" y2="10"></line>
+              </svg>
+              Sidste 30 dage
+            </div>
+          </div>
+        </div>
+        
+        <div class="chart-wrapper">
+          <div id="dynamicTimeChart" class="chart-canvas-container"></div>
+          
+          <div class="chart-stats">
+            <div class="chart-stat">
+              <div class="chart-stat-label">Højeste Daglige Forbrug</div>
+              <div class="chart-stat-value">{{ peak_usage }} kreditter</div>
+            </div>
+            <div class="chart-stat">
+              <div class="chart-stat-label">Laveste Daglige Forbrug</div>
+              <div class="chart-stat-value" id="lowestUsage">0 kreditter</div>
+            </div>
+            <div class="chart-stat">
+              <div class="chart-stat-label">Trend</div>
+              <div class="chart-stat-value" id="usageTrend">+2.5%</div>
+            </div>
+          </div>
+        </div>
+      </div>
+      
+      <!-- Last 7 Days Usage Chart -->
+      <div class="glass-card chart-container">
+        <div class="chart-header">
+          <div class="chart-title">
+            <div class="chart-title-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 20V10"></path>
+                <path d="M18 20V4"></path>
+                <path d="M6 20v-4"></path>
+              </svg>
+            </div>
+            Ugentlig Kreditforbrug
+          </div>
+          <div class="chart-actions">
+            <div class="chart-period">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+                <polyline points="17 6 23 6 23 12"></polyline>
+              </svg>
+              Sidste 7 dage
+            </div>
+          </div>
+        </div>
+        
+        <div class="chart-wrapper">
+          <div id="weeklyUsageChart" class="chart-canvas-container"></div>
+          
+          <div class="chart-stats">
+            <div class="chart-stat">
+              <div class="chart-stat-label">Gennemsnit Ugentlig</div>
+              <div class="chart-stat-value" id="weeklyAverage">0 kreditter</div>
+            </div>
+            <div class="chart-stat">
+              <div class="chart-stat-label">Travleste Dag</div>
+              <div class="chart-stat-value" id="busiestDay">-</div>
+            </div>
+            <div class="chart-stat">
+              <div class="chart-stat-label">Total (7 dage)</div>
+              <div class="chart-stat-value" id="weeklyTotal">0 kreditter</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Transactions Table Section -->
+    <div class="transactions-section">
+      <div class="glass-card table-container">
+        <div class="table-header">
+          <h2 class="table-title">
+            <div class="table-title-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <line x1="8" y1="6" x2="21" y2="6"></line>
+                <line x1="8" y1="12" x2="21" y2="12"></line>
+                <line x1="8" y1="18" x2="21" y2="18"></line>
+                <line x1="3" y1="6" x2="3.01" y2="6"></line>
+                <line x1="3" y1="12" x2="3.01" y2="12"></line>
+                <line x1="3" y1="18" x2="3.01" y2="18"></line>
+              </svg>
+            </div>
+            Detaljeret Kreditforbrug
+          </h2>
+          <div class="table-actions">
+            <div class="table-search">
+              <svg class="search-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input type="text" class="search-input" placeholder="Søg transaktioner..." id="transactionSearch">
+            </div>
+          </div>
+        </div>
+        <div style="overflow-x: auto;">
+          <table class="data-table" id="transactionsTable">
+            <thead>
+              <tr>
+                <th>Dato</th>
+                <th>Kreditter Forbrugt</th>
+                <th>Beskrivelse</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for transaction in transactions %}
+              <tr>
+                <td>{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') if transaction.timestamp else '' }}</td>
+                <td><span class="credit-pill">{{ transaction.credits_used }}</span></td>
+                <td>{{ transaction.description }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    
+    <!-- Footer Section -->
+    <div class="dashboard-footer">
+      <a href="/" class="back-button">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M19 12H5M12 19l-7-7 7-7"/>
+        </svg>
+        Tilbage til Dashboard
+      </a>
+    </div>
   </div>
-</body>
-</html>
+  
+  <!-- Tooltip for charts -->
+  <div id="chartTooltip" class="chart-tooltip">
+    <div class="tooltip-date">20 Mar 2025</div>
+    <div class="tooltip-value">125 kreditter</div>
+    <div class="tooltip-trend up">
+      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <polyline points="18 15 12 9 6 15"></polyline>
+      </svg>
+      15% fra sidste dag
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+<script>
+  document.addEventListener('DOMContentLoaded', function() {
+    // Initialize animated counters for metrics
+    animateMetricCounters();
+    
+    // Initialize the charts with advanced visualizations
+    initTimeSeriesChart();
+    initWeeklyBarChart();
+    
+    // Initialize transaction search
+    initTransactionSearch();
+    
+    // Calculate and display chart statistics
+    calculateChartStats();
+  });
+  
+  function animateMetricCounters() {
+    const metricValues = document.querySelectorAll('.metric-value');
+    
+    metricValues.forEach(el => {
+      const value = parseFloat(el.getAttribute('data-value'));
+      const isDecimal = value % 1 !== 0;
+      
+      // Count up animation
+      let startValue = 0;
+      const duration = 1500;
+      const startTime = performance.now();
+      
+      function updateCounter(currentTime) {
+        const elapsedTime = currentTime - startTime;
+        const progress = Math.min(elapsedTime / duration, 1);
+        
+        // Easing function for smooth animation
+        const easedProgress = 1 - Math.pow(1 - progress, 3);
+        
+        const currentValue = easedProgress * value;
+        
+        // Display with appropriate decimal places
+        el.textContent = isDecimal ? currentValue.toFixed(2) : Math.floor(currentValue);
+        
+        if (progress < 1) {
+          requestAnimationFrame(updateCounter);
+        } else {
+          el.textContent = isDecimal ? value.toFixed(2) : value;
+        }
+      }
+      
+      requestAnimationFrame(updateCounter);
+    });
+  }
+  
+  function calculateChartStats() {
+    // Data from backend
+    const usageData = {{ usage|tojson }};
+    const last7Data = {{ last7_usage|tojson }};
+    const last7Labels = {{ last7_labels|tojson }};
+    
+    // Calculate lowest usage
+    const filteredData = usageData.filter(val => val > 0);
+    const lowestUsage = filteredData.length > 0 ? Math.min(...filteredData) : 0;
+    document.getElementById('lowestUsage').textContent = `${lowestUsage} kreditter`;
+    
+    // Calculate weekly average
+    const weeklySum = last7Data.reduce((acc, val) => acc + val, 0);
+    const weeklyAvg = weeklySum / (last7Data.length || 1);
+    document.getElementById('weeklyAverage').textContent = `${weeklyAvg.toFixed(1)} kreditter`;
+    document.getElementById('weeklyTotal').textContent = `${weeklySum} kreditter`;
+    
+    // Find busiest day
+    const maxIndex = last7Data.indexOf(Math.max(...last7Data));
+    const busiestDay = maxIndex !== -1 ? last7Labels[maxIndex] : '-';
+    document.getElementById('busiestDay').textContent = busiestDay;
+    
+    // Calculate trend (comparing last 2 weeks if available)
+    let trendText = '-';
+    if (usageData.length >= 14) {
+      const lastWeek = usageData.slice(-7).reduce((acc, val) => acc + val, 0);
+      const prevWeek = usageData.slice(-14, -7).reduce((acc, val) => acc + val, 0);
+      
+      if (prevWeek > 0) {
+        const percentChange = ((lastWeek - prevWeek) / prevWeek) * 100;
+        const trendDirection = percentChange >= 0 ? '+' : '';
+        trendText = `${trendDirection}${percentChange.toFixed(1)}%`;
+        
+        // Update trend element with appropriate class
+        const trendElement = document.getElementById('usageTrend');
+        trendElement.textContent = trendText;
+        trendElement.classList.add(percentChange >= 0 ? 'up' : 'down');
+      }
+    }
+  }
+  
+  function initTransactionSearch() {
+    const searchInput = document.getElementById('transactionSearch');
+    const table = document.getElementById('transactionsTable');
+    const rows = table.querySelectorAll('tbody tr');
+    
+    searchInput.addEventListener('input', function() {
+      const searchTerm = this.value.toLowerCase();
+      
+      rows.forEach(row => {
+        const text = row.textContent.toLowerCase();
+        row.style.display = text.includes(searchTerm) ? '' : 'none';
+      });
+    });
+  }
+  
+  function initTimeSeriesChart() {
+    // Data preparation
+    const labels = {{ labels|tojson }};
+    const usageData = {{ usage|tojson }};
+    
+    // Create date objects for proper handling
+    const data = labels.map((label, index) => ({
+      date: new Date(label),
+      value: usageData[index]
+    }));
+    
+    // Setup dimensions
+    const container = document.getElementById('dynamicTimeChart');
+    const margin = {top: 40, right: 30, bottom: 40, left: 60};
+    const width = container.clientWidth - margin.left - margin.right;
+    const height = container.clientHeight - margin.top - margin.bottom;
+    
+    // Create SVG
+    const svg = d3.select('#dynamicTimeChart')
+      .append('svg')
+        .attr('width', width + margin.left + margin.right)
+        .attr('height', height + margin.top + margin.bottom)
+      .append('g')
+        .attr('transform', `translate(${margin.left},${margin.top})`);
+    
+    // Define gradients
+    const defs = svg.append('defs');
+    
+    // Area gradient
+    const areaGradient = defs.append('linearGradient')
+      .attr('id', 'areaGradient')
+      .attr('x1', '0%')
+      .attr('y1', '0%')
+      .attr('x2', '0%')
+      .attr('y2', '100%');
+      
+    areaGradient.append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', '#7c3aed')
+      .attr('stop-opacity', 0.7);
+      
+    areaGradient.append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', '#7c3aed')
+      .attr('stop-opacity', 0.0);
+    
+    // X scale
+    const x = d3.scaleTime()
+      .domain(d3.extent(data, d => d.date))
+      .range([0, width]);
+    
+    // Y scale with a bit of padding
+    const maxValue = d3.max(data, d => d.value) * 1.1; // 10% padding
+    const y = d3.scaleLinear()
+      .domain([0, maxValue])
+      .range([height, 0]);
+    
+    // Grid lines
+    const gridLines = svg.append('g')
+      .attr('class', 'grid-lines');
+    
+    // Horizontal grid lines
+    const yTicks = y.ticks(5);
+    yTicks.forEach(tick => {
+      gridLines.append('line')
+        .attr('x1', 0)
+        .attr('x2', width)
+        .attr('y1', y(tick))
+        .attr('y2', y(tick))
+        .attr('stroke', 'rgba(255, 255, 255, 0.07)')
+        .attr('stroke-dasharray', '3,3');
+      
+      gridLines.append('text')
+        .attr('x', -10)
+        .attr('y', y(tick))
+        .attr('dy', '0.3em')
+        .attr('text-anchor', 'end')
+        .attr('fill', 'var(--muted-text)')
+        .attr('font-size', '10px')
+        .text(tick);
+    });
+    
+    // Line generator
+    const line = d3.line()
+      .x(d => x(d.date))
+      .y(d => y(d.value))
+      .curve(d3.curveMonotoneX);
+    
+    // Area generator
+    const area = d3.area()
+      .x(d => x(d.date))
+      .y0(height)
+      .y1(d => y(d.value))
+      .curve(d3.curveMonotoneX);
+    
+    // Add area path
+    svg.append('path')
+      .datum(data)
+      .attr('class', 'area-gradient')
+      .attr('d', area)
+      .attr('fill', 'url(#areaGradient)');
+    
+    // Add line path with transition
+    const path = svg.append('path')
+      .datum(data)
+      .attr('class', 'line-chart-path')
+      .attr('d', line);
+    
+    // Animate the line
+    const pathLength = path.node().getTotalLength();
+    path
+      .attr('stroke-dasharray', pathLength)
+      .attr('stroke-dashoffset', pathLength)
+      .transition()
+      .duration(1500)
+      .ease(d3.easeLinear)
+      .attr('stroke-dashoffset', 0);
+    
+    // Add data points
+    const points = svg.selectAll('.chart-point')
+      .data(data)
+      .enter()
+      .append('circle')
+      .attr('class', 'chart-point')
+      .attr('cx', d => x(d.date))
+      .attr('cy', d => y(d.value))
+      .attr('r', 0)
+      .transition()
+      .delay((d, i) => i * 50)
+      .duration(500)
+      .attr('r', 4);
+    
+    // Custom tooltip handling
+    const tooltip = document.getElementById('chartTooltip');
+    
+    svg.selectAll('circle')
+      .on('mouseover', function(event, d) {
+        d3.select(this).attr('r', 6);
+        
+        // Format date
+        const dateFormatter = new Intl.DateTimeFormat('da-DK', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric'
+        });
+        
+        // Calculate day-over-day change if possible
+        let trendText = '';
+        const currentIndex = data.findIndex(item => item.date.getTime() === d.date.getTime());
+        
+        if (currentIndex > 0) {
+          const prevValue = data[currentIndex - 1].value;
+          if (prevValue > 0) {
+            const percentChange = ((d.value - prevValue) / prevValue) * 100;
+            const trendDirection = percentChange >= 0 ? 'up' : 'down';
+            const trendSymbol = percentChange >= 0 ? '↑' : '↓';
+            trendText = `
+              <div class="tooltip-trend ${trendDirection}">
+                ${trendSymbol} ${Math.abs(percentChange).toFixed(1)}% fra forrige dag
+              </div>
+            `;
+          }
+        }
+        
+        // Update tooltip content
+        tooltip.innerHTML = `
+          <div class="tooltip-date">${dateFormatter.format(d.date)}</div>
+          <div class="tooltip-value">${d.value} kreditter</div>
+          ${trendText}
+        `;
+        
+        // Position and show tooltip
+        tooltip.style.left = `${event.pageX + 10}px`;
+        tooltip.style.top = `${event.pageY - 120}px`;
+        tooltip.style.display = 'block';
+      })
+      .on('mouseout', function() {
+        d3.select(this).attr('r', 4);
+        tooltip.style.display = 'none';
+      });
+    
+    // X axis with formatted dates
+    const xAxis = d3.axisBottom(x)
+      .ticks(6)
+      .tickFormat(d3.timeFormat('%d %b'));
+    
+    svg.append('g')
+      .attr('transform', `translate(0,${height})`)
+      .call(xAxis)
+      .selectAll('text')
+        .attr('fill', 'var(--muted-text)')
+        .style('font-size', '10px')
+        .style('text-anchor', 'middle');
+    
+    // X axis label
+    svg.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('x', width / 2)
+      .attr('y', height + 35)
+      .attr('fill', 'var(--muted-text)')
+      .style('font-size', '12px')
+      .text('Dato');
+    
+    // Y axis label
+    svg.append('text')
+      .attr('text-anchor', 'middle')
+      .attr('transform', 'rotate(-90)')
+      .attr('y', -margin.left + 20)
+      .attr('x', -height / 2)
+      .attr('fill', 'var(--muted-text)')
+      .style('font-size', '12px')
+      .text('Kreditter');
+      
+    // Handle resize
+    window.addEventListener('resize', function() {
+      svg.remove();
+      initTimeSeriesChart();
+    });
+  }
+  
+  function initWeeklyBarChart() {
+    // Get the data
+    const labels = {{ last7_labels|tojson }};
+    const usageData = {{ last7_usage|tojson }};
+    
+    // Chart container
+    const container = document.getElementById('weeklyUsageChart');
+    
+    // Create bar chart HTML structure
+    let barChartHTML = `
+      <div class="bar-chart-area">
+        <div class="bar-chart-grid">
+          <div class="grid-line" style="bottom: 0%"><span class="grid-value">0</span></div>
+          <div class="grid-line" style="bottom: 25%"><span class="grid-value"></span></div>
+          <div class="grid-line" style="bottom: 50%"><span class="grid-value"></span></div>
+          <div class="grid-line" style="bottom: 75%"><span class="grid-value"></span></div>
+          <div class="grid-line" style="bottom: 100%"><span class="grid-value"></span></div>
+        </div>
+        <div class="bar-chart-container">
+    `;
+    
+    // Calculate the maximum value for scaling
+    const maxValue = Math.max(...usageData) * 1.1; // Add 10% padding
+    
+    // Update grid values
+    const gridValues = [0, maxValue * 0.25, maxValue * 0.5, maxValue * 0.75, maxValue];
+    
+    // Add bars
+    usageData.forEach((value, index) => {
+      // Calculate height percentage based on value
+      const heightPercent = (value / maxValue) * 100;
+      const label = formatDateLabel(labels[index]);
+      
+      barChartHTML += `
+        <div class="chart-bar" style="height: ${heightPercent}%">
+          <div class="bar-value">${value}</div>
+          <div class="bar-label">${label}</div>
+        </div>
+      `;
+    });
+    
+    barChartHTML += `
+        </div>
+      </div>
+    `;
+    
+    // Add to container
+    container.innerHTML = barChartHTML;
+    
+    // Update grid values
+    const gridValueElements = container.querySelectorAll('.grid-value');
+    gridValues.forEach((value, index) => {
+      gridValueElements[index].textContent = Math.round(value);
+    });
+    
+    // Animate bars
+    setTimeout(() => {
+      const bars = container.querySelectorAll('.chart-bar');
+      bars.forEach((bar, index) => {
+        const originalHeight = bar.style.height;
+        bar.style.height = '0%';
+        
+        setTimeout(() => {
+          bar.style.height = originalHeight;
+        }, index * 100);
+      });
+    }, 300);
+    
+    // Click handler for bars
+    const barElements = container.querySelectorAll('.chart-bar');
+    const tooltip = document.getElementById('chartTooltip');
+    
+    barElements.forEach((bar, index) => {
+      bar.addEventListener('click', function(event) {
+        // Format date
+        const dateFormatter = new Intl.DateTimeFormat('da-DK', {
+          year: 'numeric',
+          month: 'short', 
+          day: 'numeric'
+        });
+        
+        const date = new Date(labels[index]);
+        
+        // Calculate day-over-day change if possible
+        let trendText = '';
+        if (index > 0) {
+          const prevValue = usageData[index - 1];
+          if (prevValue > 0) {
+            const percentChange = ((usageData[index] - prevValue) / prevValue) * 100;
+            const trendDirection = percentChange >= 0 ? 'up' : 'down';
+            const trendSymbol = percentChange >= 0 ? '↑' : '↓';
+            trendText = `
+              <div class="tooltip-trend ${trendDirection}">
+                ${trendSymbol} ${Math.abs(percentChange).toFixed(1)}% fra forrige dag
+              </div>
+            `;
+          }
+        }
+        
+        // Update tooltip content
+        tooltip.innerHTML = `
+          <div class="tooltip-date">${dateFormatter.format(date)}</div>
+          <div class="tooltip-value">${usageData[index]} kreditter</div>
+          ${trendText}
+        `;
+        
+        // Position and show tooltip
+        tooltip.style.left = `${event.pageX + 10}px`;
+        tooltip.style.top = `${event.pageY - 120}px`;
+        tooltip.style.display = 'block';
+        
+        // Hide tooltip after 3 seconds
+        setTimeout(() => {
+          tooltip.style.display = 'none';
+        }, 3000);
+      });
+    });
+  }
+  
+  function formatDateLabel(dateString) {
+    const date = new Date(dateString);
+    const options = { weekday: 'short', day: 'numeric' };
+    return new Intl.DateTimeFormat('da-DK', options).format(date);
+  }
+</script>
+{% endblock %}

@@ -1,50 +1,31 @@
 import os
 import json
-from flask import Flask, Blueprint, render_template, request, redirect
+from flask import Blueprint, render_template, request, redirect, url_for
 import openai
 
-app = Flask(__name__)
+# Define the blueprint for app3 and set its template folder
+app3_bp = Blueprint('app3', __name__, template_folder='templates')
 
 # Hardcoded OpenAI API-nøgle (brug denne nøgle indtil videre)
-openai.api_key = "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"
-
-app3_bp = Blueprint('app3', __name__, template_folder='templates')
+openai.api_key = "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"
 
 @app3_bp.route('/')
 def index():
     return render_template('index3.html')
 
-# Første side: Periodevælger
-@app.route('/')
-def select_period():
-    return render_template('select_period.html')
-
-# Dataindtastningsside – vises efter periodevalg
-@app.route('/data')
+@app3_bp.route('/data')
 def data_input():
     period = request.args.get("period")
     if not period:
-        return redirect('/')
+        return redirect(url_for('app3.index'))
+    # Pass empty insights and chart_data for initial form
     return render_template('index3.html', period=period, insights=[], chart_data=None)
 
-# Hjælpefunktion: Hvis kanalen er aktiv, samles de forudbestemte KPI‑værdier
-def get_channel_data(channel, kpi_fields):
-    active = request.form.get(f"{channel}_active")
-    if active == "on":
-        lines = []
-        for field, label in kpi_fields:
-            value = request.form.get(field, "").strip()
-            if value:
-                lines.append(f"{label}: {value}")
-        return "\n".join(lines) if lines else "Ingen data indsendt"
-    else:
-        return "Ingen data indsendt"
-
-@app.route('/analyze', methods=['POST'])
+@app3_bp.route('/analyze', methods=['POST'])
 def analyze():
     period = request.form.get("period", "")
     
-    # Definer forudbestemte KPI'er for hver kanal
+    # Define KPI fields for each channel
     website_kpis = [
         ("website_visits", "Antal Besøg"),
         ("website_unique", "Unikke Besøg"),
@@ -72,7 +53,19 @@ def analyze():
         ("paid_conversions", "Konverteringer")
     ]
     
-    # Saml data for hver kanal
+    # Helper function: If the channel is active, collect the predefined KPI values
+    def get_channel_data(channel, kpi_fields):
+        active = request.form.get(f"{channel}_active")
+        if active == "on":
+            lines = []
+            for field, label in kpi_fields:
+                value = request.form.get(field, "").strip()
+                if value:
+                    lines.append(f"{label}: {value}")
+            return "\n".join(lines) if lines else "Ingen data indsendt"
+        return "Ingen data indsendt"
+    
+    # Gather data for each channel
     website_data = get_channel_data("website", website_kpis)
     social_media_data = get_channel_data("social_media", social_media_kpis)
     email_data = get_channel_data("email", email_kpis)
@@ -86,7 +79,7 @@ def analyze():
         f"Betalt Søgeannoncering:\n{paid_data}"
     )
     
-    # Forbedret prompt med fokus på handling, opmærksomhedsvækkende og marketing-indsigter
+    # Build a detailed prompt for generating actionable marketing insights
     prompt = (
         "Du er en ekspert inden for forretningsanalyse og digital marketing. "
         "Analyser de følgende digitale kanaldata og giv konkrete, handlingsorienterede anbefalinger opdelt i flere kategorier. "
@@ -140,7 +133,8 @@ def analyze():
                 insights = [{
                     "emne": "Parsing Fejl",
                     "resumé": f"Fejl ved parsing af indsigt JSON: {e}",
-                    "detaljer": ""
+                    "detaljer": "",
+                    "forbedring": 0
                 }]
             try:
                 chart_data = json.loads(diagram_part)
@@ -150,21 +144,20 @@ def analyze():
             insights = [{
                 "emne": "Ugyldigt Format",
                 "resumé": full_response,
-                "detaljer": ""
+                "detaljer": "",
+                "forbedring": 0
             }]
             chart_data = {"etiketter": ["Metric 1", "Metric 2", "Metric 3"], "værdier": [10, 20, 30]}
     except Exception as e:
         insights = [{
             "emne": "Fejl",
             "resumé": f"Fejl ved generering af anbefalinger: {e}",
-            "detaljer": ""
+            "detaljer": "",
+            "forbedring": 0
         }]
         chart_data = {"etiketter": ["Metric 1", "Metric 2", "Metric 3"], "værdier": [10, 20, 30]}
     
     if not chart_data.get("etiketter"):
         chart_data = {"etiketter": ["Metric 1", "Metric 2", "Metric 3"], "værdier": [10, 20, 30]}
     
-    return render_template('index.html', period=period, insights=insights, chart_data=chart_data)
-
-if __name__ == '__main__':
-    app.run(debug=True)
+    return render_template('index3.html', period=period, insights=insights, chart_data=chart_data)

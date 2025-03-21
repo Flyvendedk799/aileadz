@@ -1,15 +1,583 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>Notifications - AI Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 text-gray-900">
-  <div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-4">Notifications</h1>
-    <p>This is the Notifications page. Display recent notifications and alerts here.</p>
-    <a href="/" class="mt-4 inline-block text-blue-500 hover:underline">Back to Dashboard</a>
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
+  <style>
+    :root {
+      --card-transition: 0.4s cubic-bezier(0.25, 1, 0.5, 1);
+      --notification-unread: linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef);
+      --notification-read: linear-gradient(135deg, #2a2a2a, #3a3a3a);
+      --notification-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+      --notification-hover-shadow: 0 20px 35px -10px rgba(0, 0, 0, 0.5);
+    }
+
+    .page-header {
+      position: relative;
+      margin-bottom: 3rem;
+      padding-bottom: 2rem;
+      text-align: center;
+      overflow: hidden;
+    }
+
+    .page-title {
+      font-size: 2.5rem;
+      font-weight: 800;
+      background: var(--notification-unread);
+      background-clip: text;
+      -webkit-background-clip: text;
+      color: transparent;
+      margin-bottom: 0.5rem;
+      position: relative;
+      z-index: 2;
+      text-transform: uppercase;
+      letter-spacing: 2px;
+    }
+
+    .page-subtitle {
+      font-size: 1.1rem;
+      color: var(--muted-text);
+      max-width: 600px;
+      margin: 0 auto;
+      position: relative;
+      z-index: 2;
+    }
+
+    .page-header::after {
+      content: "";
+      position: absolute;
+      width: 200px;
+      height: 200px;
+      background: radial-gradient(circle, rgba(134, 25, 143, 0.2) 0%, rgba(99, 102, 241, 0) 70%);
+      top: -100px;
+      right: -50px;
+      border-radius: 50%;
+      z-index: 1;
+    }
+
+    .page-header::before {
+      content: "";
+      position: absolute;
+      width: 150px;
+      height: 150px;
+      background: radial-gradient(circle, rgba(99, 102, 241, 0.2) 0%, rgba(99, 102, 241, 0) 70%);
+      bottom: -50px;
+      left: -50px;
+      border-radius: 50%;
+      z-index: 1;
+    }
+
+    .notifications-section {
+      position: relative;
+      margin-bottom: 4rem;
+      transition: all 0.5s ease;
+    }
+
+    .section-heading {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 25px;
+      position: relative;
+      padding-left: 20px;
+      display: flex;
+      align-items: center;
+    }
+
+    .section-heading::before {
+      content: "";
+      position: absolute;
+      left: 0;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 8px;
+      height: 30px;
+      background: var(--notification-unread);
+      border-radius: 4px;
+    }
+
+    .section-counter {
+      background: rgba(99, 102, 241, 0.2);
+      color: #d1d5db;
+      font-size: 0.9rem;
+      padding: 2px 10px;
+      border-radius: 12px;
+      margin-left: 15px;
+    }
+
+    .notifications-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(320px, 1fr));
+      gap: 25px;
+      perspective: 1000px;
+    }
+
+    .notification-card {
+      background: var(--card-bg);
+      padding: 25px;
+      border-radius: 16px;
+      box-shadow: var(--notification-shadow);
+      display: flex;
+      flex-direction: column;
+      transition: all var(--card-transition);
+      position: relative;
+      z-index: 1;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      transform-style: preserve-3d;
+      backdrop-filter: blur(5px);
+    }
+
+    .notification-card::before {
+      content: "";
+      position: absolute;
+      inset: 0;
+      z-index: -1;
+      opacity: 0.85;
+      border-radius: 16px;
+      background: var(--notification-unread);
+      mask-image: radial-gradient(circle at top left, transparent 0%, black 80%);
+      -webkit-mask-image: radial-gradient(circle at top left, transparent 0%, black 80%);
+    }
+
+    .notification-card.read::before {
+      background: var(--notification-read);
+    }
+
+    .notification-card:hover {
+      transform: translateY(-10px) rotateX(5deg);
+      box-shadow: var(--notification-hover-shadow);
+    }
+
+    .notification-header {
+      display: flex;
+      align-items: center;
+      margin-bottom: 15px;
+      position: relative;
+    }
+
+    .notification-icon-wrapper {
+      position: relative;
+      width: 50px;
+      height: 50px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 12px;
+      margin-right: 15px;
+      background: rgba(255, 255, 255, 0.1);
+      backdrop-filter: blur(10px);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+    }
+
+    .notification-icon {
+      font-size: 24px;
+      color: white;
+      position: relative;
+      z-index: 2;
+    }
+    
+    .notification-icon-wrapper::after {
+      content: "";
+      position: absolute;
+      width: 100%;
+      height: 100%;
+      border-radius: 12px;
+      background: var(--notification-unread);
+      opacity: 0.7;
+      z-index: 1;
+    }
+    
+    .notification-card.read .notification-icon-wrapper::after {
+      background: rgba(255, 255, 255, 0.1);
+    }
+
+    .notification-title {
+      font-size: 1.3rem;
+      font-weight: 700;
+      margin-bottom: 5px;
+      background: linear-gradient(to right, #fff, #d1d5db);
+      -webkit-background-clip: text;
+      background-clip: text;
+      color: transparent;
+    }
+
+    .notification-card.read .notification-title {
+      background: linear-gradient(to right, #d1d5db, #9ca3af);
+      -webkit-background-clip: text;
+      background-clip: text;
+    }
+
+    .notification-image-container {
+      position: relative;
+      width: 100%;
+      height: 200px;
+      margin: 15px 0;
+      border-radius: 10px;
+      overflow: hidden;
+    }
+
+    .notification-image {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+      border-radius: 10px;
+      transition: transform 0.7s ease;
+      filter: brightness(0.9);
+    }
+
+    .notification-card:hover .notification-image {
+      transform: scale(1.05);
+    }
+
+    .notification-message {
+      font-size: 1rem;
+      line-height: 1.6;
+      margin-bottom: 20px;
+      color: rgba(255, 255, 255, 0.85);
+    }
+
+    .notification-card.read .notification-message {
+      color: rgba(255, 255, 255, 0.6);
+    }
+
+    .notification-time {
+      display: flex;
+      align-items: center;
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.6);
+      margin-bottom: 15px;
+    }
+
+    .notification-time i {
+      margin-right: 6px;
+      font-size: 0.8rem;
+    }
+
+    .notification-card.read .notification-time {
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .notification-actions {
+      margin-top: auto;
+      text-align: right;
+      display: flex;
+      justify-content: flex-end;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .mark-read-btn {
+      padding: 10px 18px;
+      background: rgba(255, 255, 255, 0.15);
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+      transition: all 0.3s ease;
+      backdrop-filter: blur(5px);
+      font-weight: 600;
+      font-size: 0.9rem;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+    }
+
+    .mark-read-btn:hover {
+      background: rgba(255, 255, 255, 0.25);
+      transform: translateY(-2px);
+    }
+
+    .mark-read-btn i {
+      font-size: 0.8rem;
+    }
+
+    .read-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 0.9rem;
+      color: rgba(255, 255, 255, 0.5);
+      font-style: italic;
+    }
+
+    .read-label i {
+      font-size: 0.8rem;
+    }
+
+    .no-new-msg {
+      background: rgba(255, 255, 255, 0.07);
+      border: 1px dashed rgba(255, 255, 255, 0.2);
+      border-radius: 12px;
+      padding: 30px;
+      font-size: 1.1rem;
+      color: rgba(255, 255, 255, 0.6);
+      text-align: center;
+      margin: 25px 0;
+      font-style: italic;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 15px;
+      backdrop-filter: blur(5px);
+    }
+
+    .no-new-msg i {
+      font-size: 2.5rem;
+      color: rgba(255, 255, 255, 0.3);
+      margin-bottom: 10px;
+    }
+
+    @media (max-width: 768px) {
+      .notifications-container {
+        grid-template-columns: 1fr;
+      }
+      
+      .page-title {
+        font-size: 2rem;
+      }
+    }
+
+    /* Animation Classes */
+    @keyframes fadeInUp {
+      from {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    .animate-fade-in-up {
+      animation: fadeInUp 0.6s ease forwards;
+    }
+
+    .notification-unread-indicator {
+      position: absolute;
+      top: -5px;
+      right: -5px;
+      width: 12px;
+      height: 12px;
+      background: #fc0fc0;
+      border-radius: 50%;
+      box-shadow: 0 0 10px rgba(252, 15, 192, 0.6);
+      z-index: 3;
+    }
+
+    .notification-unread-indicator::after {
+      content: "";
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: inherit;
+      border-radius: inherit;
+      animation: pulse 1.5s infinite;
+    }
+
+    @keyframes pulse {
+      0% {
+        transform: scale(1);
+        opacity: 1;
+      }
+      100% {
+        transform: scale(2.5);
+        opacity: 0;
+      }
+    }
+
+    /* Dark mode enhancements */
+    @media (prefers-color-scheme: dark) {
+      .notification-card {
+        border-color: rgba(255, 255, 255, 0.08);
+      }
+      
+      .notification-card.read {
+        border-color: rgba(255, 255, 255, 0.05);
+      }
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+  {% set new_notifs = notifications | selectattr("read", "equalto", 0) | list %}
+  {% set old_notifs = notifications | selectattr("read", "equalto", 1) | list %}
+  
+  <div class="page-header">
+    <h1 class="page-title">Notifikationer</h1>
+    <p class="page-subtitle">Hold dig opdateret med de seneste meddelelser og vigtige opdateringer fra systemet.</p>
   </div>
-</body>
-</html>
+
+  <section class="notifications-section">
+    <div class="section-heading">
+      Nye Notifikationer
+      <span class="section-counter">{{ new_notifs|length }}</span>
+    </div>
+    
+    {% if new_notifs|length > 0 %}
+      <div class="notifications-container">
+        {% for notif in new_notifs %}
+          <div class="notification-card animate-fade-in-up" id="notif-{{ notif.id }}" style="animation-delay: {{ loop.index0 * 0.1 }}s;">
+            <div class="notification-unread-indicator"></div>
+            <div class="notification-header">
+              <div class="notification-icon-wrapper">
+                <i class="fa-solid fa-bell notification-icon"></i>
+              </div>
+              <div>
+                <div class="notification-title">{{ notif.title }}</div>
+                <div class="notification-time">
+                  <i class="fa-regular fa-clock"></i> {{ notif.timestamp }}
+                </div>
+              </div>
+            </div>
+            
+            {% if notif.image_url %}
+              <div class="notification-image-container">
+                <img src="{{ notif.image_url }}" alt="Notification Image" class="notification-image">
+              </div>
+            {% endif %}
+            
+            <div class="notification-message">{{ notif.message|safe }}</div>
+            
+            <div class="notification-actions">
+              <button class="mark-read-btn" onclick="markNotificationRead({{ notif.id }})">
+                <i class="fa-solid fa-check"></i> Markér som læst
+              </button>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="no-new-msg">
+        <i class="fa-regular fa-bell-slash"></i>
+        <span>Ingen nye notifikationer. Du har set alle opdateringer.</span>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="notifications-section">
+    <div class="section-heading">
+      Tidligere Notifikationer
+      <span class="section-counter">{{ old_notifs|length }}</span>
+    </div>
+    
+    {% if old_notifs|length > 0 %}
+      <div class="notifications-container">
+        {% for notif in old_notifs %}
+          <div class="notification-card read animate-fade-in-up" id="notif-{{ notif.id }}" style="animation-delay: {{ loop.index0 * 0.1 }}s;">
+            <div class="notification-header">
+              <div class="notification-icon-wrapper">
+                <i class="fa-solid fa-bell notification-icon"></i>
+              </div>
+              <div>
+                <div class="notification-title">{{ notif.title }}</div>
+                <div class="notification-time">
+                  <i class="fa-regular fa-clock"></i> {{ notif.timestamp }}
+                </div>
+              </div>
+            </div>
+            
+            {% if notif.image_url %}
+              <div class="notification-image-container">
+                <img src="{{ notif.image_url }}" alt="Notification Image" class="notification-image">
+              </div>
+            {% endif %}
+            
+            <div class="notification-message">{{ notif.message|safe }}</div>
+            
+            <div class="notification-actions">
+              <span class="read-label"><i class="fa-solid fa-check-double"></i> Læst</span>
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <div class="no-new-msg">
+        <i class="fa-regular fa-folder-open"></i>
+        <span>Ingen tidligere notifikationer.</span>
+      </div>
+    {% endif %}
+  </section>
+  
+  <script>
+    // Animate cards when they enter the viewport
+    document.addEventListener('DOMContentLoaded', function() {
+      const observer = new IntersectionObserver((entries) => {
+        entries.forEach(entry => {
+          if (entry.isIntersecting) {
+            entry.target.style.opacity = 1;
+            entry.target.style.transform = 'translateY(0)';
+            observer.unobserve(entry.target);
+          }
+        });
+      }, { threshold: 0.1 });
+      
+      document.querySelectorAll('.notification-card').forEach(card => {
+        observer.observe(card);
+      });
+    });
+
+    // Mark notification as read function
+    function markNotificationRead(notifId) {
+      const card = document.getElementById('notif-' + notifId);
+      
+      // Add transition animation before making the API call
+      card.style.transition = 'all 0.5s ease';
+      card.style.transform = 'scale(0.95)';
+      
+      fetch('/api/notifications/' + notifId + '/mark_read', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' }
+      })
+      .then(response => response.json())
+      .then(data => {
+        if (data.success) {
+          // Apply "read" class with smooth transition
+          card.classList.add('read');
+          
+          // Remove unread indicator
+          const indicator = card.querySelector('.notification-unread-indicator');
+          if (indicator) {
+            indicator.style.opacity = 0;
+            setTimeout(() => {
+              indicator.remove();
+            }, 300);
+          }
+          
+          const btn = card.querySelector('.mark-read-btn');
+          if (btn) {
+            btn.style.opacity = 0;
+            setTimeout(() => {
+              btn.outerHTML = '<span class="read-label"><i class="fa-solid fa-check-double"></i> Læst</span>';
+              
+              // Update counter
+              const newCounter = document.querySelector('.section-heading .section-counter');
+              if (newCounter) {
+                let count = parseInt(newCounter.textContent);
+                if (!isNaN(count) && count > 0) {
+                  newCounter.textContent = count - 1;
+                }
+              }
+              
+              // Reset transform
+              setTimeout(() => {
+                card.style.transform = 'translateY(0)';
+              }, 300);
+            }, 300);
+          }
+        } else {
+          alert('Fejl: ' + data.error);
+          card.style.transform = 'translateY(0)';
+        }
+      })
+      .catch(err => {
+        console.error(err);
+        alert('Der opstod en fejl.');
+        card.style.transform = 'translateY(0)';
+      });
+    }
+  </script>
+{% endblock %}

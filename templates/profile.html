@@ -2,247 +2,858 @@
 
 {% block extra_styles %}
 <style>
-/* Additional CSS for brand cards */
+  /* Import a modern font */
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+
+  /* Global Variables & Base Styles */
+  :root {
+    --primary-color: #6a11cb;
+    --secondary-color: #2575fc;
+    --accent-color: #ff512f;
+    --success-color: #4ade80;
+    --warning-color: #fbbf24;
+    --danger-color: #f87171;
+    --text-color: #fff;
+    --muted-text: #d1d5db;
+    --bg-color: #1e1e2f;
+    --card-bg: rgba(255, 255, 255, 0.1);
+    --border-color: rgba(255, 255, 255, 0.2);
+    --border-radius: 16px;
+    --shadow: 0 8px 16px rgba(0,0,0,0.3);
+    --transition-speed: 0.4s;
+    --overlay: rgba(0, 0, 0, 0.3);
+  }
+
+  body {
+    font-family: 'Inter', sans-serif;
+    background: linear-gradient(135deg, #1e1e2f, #2c2c3c);
+    color: var(--text-color);
+    margin: 0;
+    padding: 0;
+  }
+
+  .profile-container {
+    max-width: 1200px;
+    margin: 3rem auto;
+    padding: 2rem;
+  }
+
+  /* Section Titles with Underline Effect */
+  .section-title {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 1.5rem;
+    position: relative;
+    padding-bottom: 0.75rem;
+    text-transform: uppercase;
+  }
+
+  .section-title:after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 80px;
+    height: 5px;
+    background: linear-gradient(to right, var(--accent-color), var(--secondary-color));
+    border-radius: var(--border-radius);
+  }
+
+  /* Flash Messages */
+  .flash-messages {
+    margin-bottom: 1.5rem;
+  }
+
+  .flash-message {
+    padding: 1rem;
+    border-radius: var(--border-radius);
+    margin-bottom: 1rem;
+    background: var(--card-bg);
+    border: 1px solid var(--border-color);
+    animation: fadeIn 0.5s ease-out;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Profile Information Card with Glassmorphism */
+  .profile-info {
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 2.5rem;
+    margin-bottom: 2rem;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .profile-info:before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--overlay);
+    z-index: 0;
+  }
+
+  .profile-info * { position: relative; z-index: 1; }
+
+  .greeting {
+    font-size: 2rem;
+    font-weight: 700;
+    margin-bottom: 1rem;
+    color: var(--secondary-color);
+  }
+
+  .credits-badge {
+    display: inline-flex;
+    align-items: center;
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: #fff;
+    padding: 0.5rem 1rem;
+    border-radius: 50px;
+    font-weight: 600;
+    margin-top: 1rem;
+    transition: transform var(--transition-speed) ease;
+  }
+
+  .credits-badge:hover { transform: scale(1.05); }
+
+  .profile-actions {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem 2rem;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    transition: all var(--transition-speed) ease;
+    text-decoration: none;
+    border: none;
+    cursor: pointer;
+  }
+
+  .btn svg { margin-right: 0.5rem; }
+
+  .btn-primary {
+    background: var(--primary-color);
+    color: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .btn-primary:hover {
+    background: var(--secondary-color);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .btn-danger {
+    background: var(--danger-color);
+    color: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .btn-danger:hover {
+    background: #ff4b4b;
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  /* Dashboard Stats (if applicable) */
+  .dashboard-stats {
+    display: flex;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+    flex-wrap: wrap;
+  }
+
+  .stat-card {
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    box-shadow: var(--shadow);
+    padding: 2rem;
+    flex: 1;
+    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+  }
+
+  .stat-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 14px 25px rgba(0, 0, 0, 0.4);
+  }
+
+  .stat-title {
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--muted-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .stat-value {
+    font-size: 2.5rem;
+    font-weight: 700;
+    color: var(--accent-color);
+    margin: 0.5rem 0;
+  }
+
+  /* Brands Section */
+  .brands-section { margin-top: 3rem; }
+
+  .brands-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 2rem;
+  }
+
+  .add-brand-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 1rem 2rem;
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: #fff;
+    border-radius: var(--border-radius);
+    text-decoration: none;
+    font-weight: 600;
+    transition: all var(--transition-speed) ease;
+    box-shadow: var(--shadow);
+  }
+
+  .add-brand-btn:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .add-brand-btn svg { margin-right: 0.5rem; }
+
+/* Updated Brand Card with Separated Blurred Background */
 .brand-card {
-  border: 1px solid var(--muted-text);
-  border-radius: var(--border-radius);
-  padding: 20px;
-  margin-bottom: 20px;
-  display: flex;
-  align-items: center;
-  gap: 20px;
-}
-.brand-logo {
-  width: 120px;
-  height: 120px;
-  object-fit: cover;
-  border-radius: var(--border-radius);
-}
-.brand-details {
-  flex-grow: 1;
-}
-.brand-number {
-  font-size: 18px;
-  font-weight: bold;
-  color: var(--primary-color);
-  margin-bottom: 10px;
-}
-.brand-view p {
-  margin: 5px 0;
-}
-.brand-actions {
-  margin-top: 10px;
-}
-.brand-actions button,
-.brand-actions a {
-  padding: 6px 12px;
-  background-color: var(--primary-color);
-  color: #fff;
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  margin-right: 10px;
-  text-decoration: none;
-}
-.brand-actions button.cancel-btn {
-  background-color: #888;
-}
-.form-group {
-  margin-bottom: 10px;
-}
-.file-input-wrapper {
   position: relative;
+  background: var(--card-bg);
+  border: 1px solid var(--border-color);
+  border-radius: var(--border-radius);
+  box-shadow: var(--shadow);
+  margin-bottom: 2rem;
   overflow: hidden;
-  display: inline-block;
+  transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
 }
-.file-input-button {
-  border: 1px solid #ccc;
-  color: #333;
-  background-color: #fff;
-  padding: 6px 12px;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-}
-.file-input-wrapper input[type=file] {
-  font-size: 100px;
+
+/* Create the glass effect using a pseudo-element */
+.brand-card::before {
+  content: "";
   position: absolute;
-  left: 0;
   top: 0;
-  opacity: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: inherit;
+  backdrop-filter: blur(10px);
+  z-index: 0;
+  transition: backdrop-filter var(--transition-speed) ease;
 }
-.image-preview {
-  margin-top: 10px;
-  max-width: 120px;
-  max-height: 120px;
-  border: 1px solid #ccc;
-  border-radius: var(--border-radius);
-  object-fit: cover;
-  display: none;
+
+/* Ensure inner content stays above the blurred background */
+.brand-card > * {
+  position: relative;
+  z-index: 1;
 }
-/* Style for Add New Brand Button */
-.add-brand-btn {
-  display: inline-block;
-  padding: 10px 20px;
-  background-color: var(--primary-color);
-  color: #fff;
-  border-radius: var(--border-radius);
-  text-decoration: none;
-  margin-bottom: 20px;
-  transition: background var(--transition-speed) ease;
+
+/* Hover state: reduce blur to keep text clear and add scale effect */
+.brand-card:hover {
+  transform: scale(1.02);
+  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.5);
 }
-.add-brand-btn:hover {
-  background-color: #0073aa;
+
+.brand-card:hover::before {
+  backdrop-filter: blur(5px);
 }
+
+
+  .brand-card-inner {
+    display: flex;
+    flex-wrap: wrap;
+    padding: 2rem;
+  }
+
+  .brand-logo-container {
+    margin-right: 2rem;
+    flex-shrink: 0;
+  }
+
+  .brand-logo, .no-logo {
+    width: 140px;
+    height: 140px;
+    object-fit: cover;
+    border-radius: var(--border-radius);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    transition: transform var(--transition-speed) ease;
+  }
+
+  .brand-card:hover .brand-logo { transform: scale(1.05); }
+
+  .no-logo {
+    background: linear-gradient(135deg, #2c2c3c, #3a3a4d);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--muted-text);
+    font-weight: 600;
+  }
+
+  .brand-details { flex-grow: 1; width: 100%; }
+
+  .brand-number {
+    display: inline-block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #fff;
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    padding: 0.5rem 1rem;
+    border-radius: 50px;
+    margin-bottom: 1rem;
+  }
+
+  .brand-info-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 1.5rem;
+  }
+
+  .brand-info-item {
+    margin: 0;
+    line-height: 1.6;
+  }
+
+  .brand-info-label {
+    display: block;
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    margin-bottom: 0.25rem;
+  }
+
+  .brand-info-value { font-weight: 500; }
+
+  .brand-info-value a {
+    color: var(--primary-color);
+    text-decoration: none;
+  }
+
+  .brand-info-value a:hover { text-decoration: underline; }
+
+  .brand-actions {
+    margin-top: 2rem;
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .brand-btn {
+    padding: 0.75rem 1.5rem;
+    border-radius: var(--border-radius);
+    font-weight: 600;
+    transition: all var(--transition-speed) ease;
+    display: inline-flex;
+    align-items: center;
+    cursor: pointer;
+    border: none;
+  }
+
+  .brand-btn svg { margin-right: 0.5rem; }
+
+  .edit-btn {
+    background: var(--primary-color);
+    color: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .edit-btn:hover {
+    background: var(--secondary-color);
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .cancel-btn {
+    background: var(--muted-text);
+    color: #fff;
+    box-shadow: var(--shadow);
+  }
+
+  .cancel-btn:hover {
+    background: #475569;
+    transform: translateY(-3px);
+    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  }
+
+  .brand-description {
+    margin-top: 1.5rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--border-color);
+    line-height: 1.6;
+  }
+
+  /* Form Styling */
+  .form-group { margin-bottom: 1.5rem; }
+
+  .form-label {
+    display: block;
+    font-weight: 600;
+    margin-bottom: 0.75rem;
+    color: var(--text-color);
+  }
+
+  .form-control {
+    width: 100%;
+    padding: 1rem;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    background: transparent;
+    color: var(--text-color);
+    transition: border var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
+  }
+
+  .form-control:focus {
+    outline: none;
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 4px rgba(106, 17, 203, 0.2);
+  }
+
+  .form-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  .social-media-group {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .social-media-icon {
+    width: 24px;
+    height: 24px;
+    color: var(--muted-text);
+  }
+
+  .file-input-wrapper {
+    position: relative;
+    overflow: hidden;
+    display: inline-block;
+  }
+
+  .file-input-button {
+    display: inline-flex;
+    align-items: center;
+    padding: 1rem 1.5rem;
+    background: transparent;
+    border: 1px solid var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--text-color);
+    font-weight: 600;
+    cursor: pointer;
+    transition: all var(--transition-speed) ease;
+  }
+
+  .file-input-button:hover { background: rgba(255, 255, 255, 0.1); }
+
+  .file-input-button svg { margin-right: 0.5rem; }
+
+  .file-input-wrapper input[type=file] {
+    font-size: 100px;
+    position: absolute;
+    left: 0;
+    top: 0;
+    opacity: 0;
+    cursor: pointer;
+  }
+
+  .logo-preview-section {
+    display: flex;
+    gap: 1.5rem;
+    margin-top: 1rem;
+    align-items: flex-start;
+  }
+
+  .current-logo-container,
+  .new-logo-container { text-align: center; }
+
+  .logo-preview-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    color: var(--muted-text);
+    margin-bottom: 0.5rem;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .current-logo,
+  .image-preview {
+    width: 100px;
+    height: 100px;
+    object-fit: cover;
+    border-radius: var(--border-radius);
+    border: 1px solid var(--border-color);
+  }
+
+  .image-preview { display: none; }
+
+  .empty-brands-message {
+    background: var(--card-bg);
+    backdrop-filter: blur(10px);
+    border: 1px dashed var(--border-color);
+    border-radius: var(--border-radius);
+    padding: 3rem;
+    text-align: center;
+    color: var(--muted-text);
+  }
+
+  .empty-brands-icon {
+    font-size: 3rem;
+    margin-bottom: 1rem;
+    opacity: 0.7;
+  }
+
+  @media (max-width: 768px) {
+    .brand-card-inner {
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .brand-logo-container {
+      margin-right: 0;
+      margin-bottom: 1.5rem;
+    }
+
+    .brand-info-list { grid-template-columns: 1fr; }
+
+    .profile-actions {
+      flex-direction: column;
+    }
+
+    .btn {
+      width: 100%;
+      justify-content: center;
+    }
+  }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="profile-container" style="padding: 30px; color: var(--text-color);">
+<div class="profile-container">
   <h2 class="section-title">Profil</h2>
-  
+
   <!-- Flash Messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="flash-messages">
         {% for category, message in messages %}
-          <div class="flash-message {{ category }}" style="padding: 10px; margin-bottom: 10px; border: 1px solid; border-radius: 4px;">
+          <div class="flash-message {{ category }}">
             {{ message }}
           </div>
         {% endfor %}
       </div>
     {% endif %}
   {% endwith %}
-  
-  <div class="profile-info" style="margin-top: 20px; line-height: 1.6;">
-    <p>Hej, {{ session.get('user') }}!</p>
-    <p>Velkommen til din profilside. Her kan du se og opdatere dine personlige oplysninger.</p>
-    <p>Dine credits: <strong>{{ session.get('credits', 0) }}</strong></p>
-  </div>
-  <div class="profile-actions" style="margin-top: 30px;">
-    <a href="/dashboard" style="display: inline-block; padding: 10px 20px; background-color: var(--primary-color); color: #fff; border-radius: var(--border-radius); text-decoration: none; transition: background var(--transition-speed) ease;">
-      Tilbage til Oversigt
-    </a>
-    <a href="/logout" style="display: inline-block; padding: 10px 20px; background-color: #ff4d4d; color: #fff; border-radius: var(--border-radius); text-decoration: none; margin-left: 15px; transition: background var(--transition-speed) ease;">
-      Log ud
-    </a>
-  </div>
-  
-  <!-- Brands Section -->
-  <div class="brands-section" style="margin-top: 40px;">
-    <h2 class="section-title">Dine Brands</h2>
-    <div style="margin-top: 10px;">
-      <a href="/add_brand" class="add-brand-btn">Tilføj Nyt Brand</a>
+
+  <!-- Profile Info Card -->
+  <div class="profile-info">
+    <p class="greeting">Hej, {{ session.get('user') }}!</p>
+    <p>Velkommen til din profilside. Her kan du se og opdatere dine personlige oplysninger samt administrere dine brands.</p>
+
+    <div class="credits-badge">
+      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="10"></circle>
+        <path d="M16 8h-6.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H4"></path>
+        <path d="M12 18v2"></path>
+        <path d="M12 4v2"></path>
+      </svg>
+      Dine credits: <strong>{{ session.get('credits', 0) }}</strong>
     </div>
-    <p style="margin-top: 10px;">Her ses dine nuværende brands. Klik på "Edit" for at ændre oplysningerne.</p>
+
+    <div class="profile-actions">
+      <a href="/dashboard" class="btn btn-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+          <polyline points="9 22 9 12 15 12 15 22"></polyline>
+        </svg>
+        Tilbage til Oversigt
+      </a>
+      <a href="/logout" class="btn btn-danger">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        Log ud
+      </a>
+    </div>
+  </div>
+
+  <!-- Brands Section -->
+  <div class="brands-section">
+    <div class="brands-header">
+      <h2 class="section-title">Dine Brands</h2>
+      <a href="/add_brand" class="add-brand-btn">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <line x1="12" y1="5" x2="12" y2="19"></line>
+          <line x1="5" y1="12" x2="19" y2="12"></line>
+        </svg>
+        Tilføj Nyt Brand
+      </a>
+    </div>
+
     {% if brands %}
       {% for brand in brands %}
       <div class="brand-card" id="brand-slot-{{ brand.id }}">
-        <!-- Logo -->
-        <div class="brand-logo-container">
-          {% if brand.brand_logo %}
-          <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }} logo" class="brand-logo">
-          {% else %}
-          <div class="brand-logo" style="background-color:#ccc; display:flex; align-items:center; justify-content:center;">
-            No Logo
-          </div>
-          {% endif %}
-        </div>
-        <!-- Details -->
-        <div class="brand-details">
-          <div class="brand-number">Brand {{ loop.index }}</div>
-          <!-- View Mode -->
-          <div class="brand-view" id="brand-view-{{ brand.id }}">
-            <p><strong>Navn:</strong> {{ brand.brand_name }}</p>
-            <p><strong>Hjemmeside:</strong> <a href="{{ brand.brand_site }}" target="_blank">{{ brand.brand_site }}</a></p>
-            <p><strong>Facebook:</strong> {{ brand.brand_facebook or '-' }}</p>
-            <p><strong>Twitter:</strong> {{ brand.brand_twitter or '-' }}</p>
-            <p><strong>Instagram:</strong> {{ brand.brand_instagram or '-' }}</p>
-            <p><strong>LinkedIn:</strong> {{ brand.brand_linkedin or '-' }}</p>
-            <p><strong>Beskrivelse:</strong> {{ brand.brand_description or '-' }}</p>
-            <div class="brand-actions">
-              <button onclick="editBrand({{ brand.id }})">Edit</button>
+        <div class="brand-card-inner">
+          <!-- Logo -->
+          <div class="brand-logo-container">
+            {% if brand.brand_logo %}
+            <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }} logo" class="brand-logo">
+            {% else %}
+            <div class="brand-logo no-logo">
+              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
+                <circle cx="8.5" cy="8.5" r="1.5"></circle>
+                <polyline points="21 15 16 10 5 21"></polyline>
+              </svg>
             </div>
+            {% endif %}
           </div>
-          <!-- Edit Mode (hidden by default) -->
-          <div class="brand-edit" id="brand-edit-{{ brand.id }}" style="display: none;">
-            <form method="post" action="/update_brand/{{ brand.id }}" enctype="multipart/form-data">
-              <div class="form-group">
-                <label for="brand_name_{{ brand.id }}">Navn:</label>
-                <input type="text" name="brand_name" id="brand_name_{{ brand.id }}" value="{{ brand.brand_name }}" required style="width: 100%; padding: 8px;">
+
+          <!-- Details -->
+          <div class="brand-details">
+            <div class="brand-number">Brand {{ loop.index }}</div>
+
+            <!-- View Mode -->
+            <div class="brand-view" id="brand-view-{{ brand.id }}">
+              <div class="brand-info-list">
+                <p class="brand-info-item">
+                  <span class="brand-info-label">Navn</span>
+                  <span class="brand-info-value">{{ brand.brand_name }}</span>
+                </p>
+                <p class="brand-info-item">
+                  <span class="brand-info-label">Hjemmeside</span>
+                  <span class="brand-info-value">
+                    <a href="{{ brand.brand_site }}" target="_blank">{{ brand.brand_site }}</a>
+                  </span>
+                </p>
+                <p class="brand-info-item">
+                  <span class="brand-info-label">Facebook</span>
+                  <span class="brand-info-value">{{ brand.brand_facebook or '—' }}</span>
+                </p>
+                <p class="brand-info-item">
+                  <span class="brand-info-label">Twitter</span>
+                  <span class="brand-info-value">{{ brand.brand_twitter or '—' }}</span>
+                </p>
+                <p class="brand-info-item">
+                  <span class="brand-info-label">Instagram</span>
+                  <span class="brand-info-value">{{ brand.brand_instagram or '—' }}</span>
+                </p>
+                <p class="brand-info-item">
+                  <span class="brand-info-label">LinkedIn</span>
+                  <span class="brand-info-value">{{ brand.brand_linkedin or '—' }}</span>
+                </p>
               </div>
-              <div class="form-group">
-                <label for="brand_site_{{ brand.id }}">Hjemmeside:</label>
-                <input type="text" name="brand_site" id="brand_site_{{ brand.id }}" value="{{ brand.brand_site }}" required style="width: 100%; padding: 8px;">
+
+              {% if brand.brand_description %}
+              <div class="brand-description">
+                <span class="brand-info-label">Beskrivelse</span>
+                <p>{{ brand.brand_description }}</p>
               </div>
-              <div class="form-group">
-                <label for="brand_logo_{{ brand.id }}">Logo:</label>
-                <div class="file-input-wrapper">
-                  <button type="button" class="file-input-button" onclick="document.getElementById('brand_logo_{{ brand.id }}').click()">Vælg billede</button>
-                  <input type="file" name="brand_logo" id="brand_logo_{{ brand.id }}" accept="image/*" onchange="previewImage(event, 'preview_{{ brand.id }}')">
-                </div>
-                <div>
-                  {% if brand.brand_logo %}
-                  <p>Nuværende logo:</p>
-                  <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }} logo" style="max-width:100px; border-radius: var(--border-radius);">
-                  {% endif %}
-                </div>
-                <img id="preview_{{ brand.id }}" class="image-preview" alt="Nyt logo preview">
-              </div>
-              <div class="form-group">
-                <label for="brand_description_{{ brand.id }}">Beskrivelse:</label>
-                <textarea name="brand_description" id="brand_description_{{ brand.id }}" rows="3" placeholder="Kort beskrivelse af dit brand" style="width: 100%; padding: 8px;">{{ brand.brand_description or '' }}</textarea>
-              </div>
-              <div class="form-group">
-                <label>Sociale Medier:</label>
-                <div style="display: flex; flex-wrap: wrap; gap: 10px;">
-                  <div class="form-group" style="flex: 1;">
-                    <label for="brand_fb_{{ brand.id }}">Facebook:</label>
-                    <input type="text" name="brand_fb" id="brand_fb_{{ brand.id }}" value="{{ brand.brand_facebook or '' }}" placeholder="fb.com/brand" style="width: 100%; padding: 8px;">
-                  </div>
-                  <div class="form-group" style="flex: 1;">
-                    <label for="brand_twitter_{{ brand.id }}">Twitter:</label>
-                    <input type="text" name="brand_twitter" id="brand_twitter_{{ brand.id }}" value="{{ brand.brand_twitter or '' }}" placeholder="twitter.com/brand" style="width: 100%; padding: 8px;">
-                  </div>
-                  <div class="form-group" style="flex: 1;">
-                    <label for="brand_instagram_{{ brand.id }}">Instagram:</label>
-                    <input type="text" name="brand_instagram" id="brand_instagram_{{ brand.id }}" value="{{ brand.brand_instagram or '' }}" placeholder="instagram.com/brand" style="width: 100%; padding: 8px;">
-                  </div>
-                  <div class="form-group" style="flex: 1;">
-                    <label for="brand_linkedin_{{ brand.id }}">LinkedIn:</label>
-                    <input type="text" name="brand_linkedin" id="brand_linkedin_{{ brand.id }}" value="{{ brand.brand_linkedin or '' }}" placeholder="linkedin.com/company/brand" style="width: 100%; padding: 8px;">
-                  </div>
-                </div>
-              </div>
+              {% endif %}
+
               <div class="brand-actions">
-                <button type="submit">Save</button>
-                <button type="button" class="cancel-btn" onclick="cancelEdit({{ brand.id }})">Cancel</button>
+                <button onclick="editBrand({{ brand.id }})" class="brand-btn edit-btn">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                  </svg>
+                  Rediger
+                </button>
               </div>
-            </form>
+            </div>
+
+            <!-- Edit Mode (hidden by default) -->
+            <div class="brand-edit" id="brand-edit-{{ brand.id }}" style="display: none;">
+              <form method="post" action="/update_brand/{{ brand.id }}" enctype="multipart/form-data">
+                <div class="form-group">
+                  <label for="brand_name_{{ brand.id }}" class="form-label">Navn:</label>
+                  <input type="text" name="brand_name" id="brand_name_{{ brand.id }}" value="{{ brand.brand_name }}" required class="form-control">
+                </div>
+
+                <div class="form-group">
+                  <label for="brand_site_{{ brand.id }}" class="form-label">Hjemmeside:</label>
+                  <input type="text" name="brand_site" id="brand_site_{{ brand.id }}" value="{{ brand.brand_site }}" required class="form-control">
+                </div>
+
+                <div class="form-group">
+                  <label for="brand_logo_{{ brand.id }}" class="form-label">Logo:</label>
+                  <div class="file-input-wrapper">
+                    <div class="file-input-button">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="17 8 12 3 7 8"></polyline>
+                        <line x1="12" y1="3" x2="12" y2="15"></line>
+                      </svg>
+                      Vælg billede
+                    </div>
+                    <input type="file" name="brand_logo" id="brand_logo_{{ brand.id }}" accept="image/*" onchange="previewImage(event, 'preview_{{ brand.id }}')">
+                  </div>
+
+                  <div class="logo-preview-section">
+                    {% if brand.brand_logo %}
+                    <div class="current-logo-container">
+                      <div class="logo-preview-title">Nuværende logo</div>
+                      <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }} logo" class="current-logo">
+                    </div>
+                    {% endif %}
+                    <div class="new-logo-container">
+                      <div class="logo-preview-title">Nyt logo</div>
+                      <img id="preview_{{ brand.id }}" class="image-preview" alt="Nyt logo preview">
+                    </div>
+                  </div>
+                </div>
+
+                <div class="form-group">
+                  <label for="brand_description_{{ brand.id }}" class="form-label">Beskrivelse:</label>
+                  <textarea name="brand_description" id="brand_description_{{ brand.id }}" rows="3" placeholder="Kort beskrivelse af dit brand" class="form-control">{{ brand.brand_description or '' }}</textarea>
+                </div>
+
+                <div class="form-group">
+                  <label class="form-label">Sociale Medier:</label>
+                  <div class="form-grid">
+                    <div class="form-group">
+                      <div class="social-media-group">
+                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
+                        </svg>
+                        <input type="text" name="brand_fb" id="brand_fb_{{ brand.id }}" value="{{ brand.brand_facebook or '' }}" placeholder="fb.com/brand" class="form-control">
+                      </div>
+                    </div>
+
+                    <div class="form-group">
+                      <div class="social-media-group">
+                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path>
+                        </svg>
+                        <input type="text" name="brand_twitter" id="brand_twitter_{{ brand.id }}" value="{{ brand.brand_twitter or '' }}" placeholder="twitter.com/brand" class="form-control">
+                      </div>
+                    </div>
+
+                    <div class="form-group">
+                      <div class="social-media-group">
+                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
+                          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
+                          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
+                        </svg>
+                        <input type="text" name="brand_instagram" id="brand_instagram_{{ brand.id }}" value="{{ brand.brand_instagram or '' }}" placeholder="instagram.com/brand" class="form-control">
+                      </div>
+                    </div>
+
+                    <div class="form-group">
+                      <div class="social-media-group">
+                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
+                          <rect x="2" y="9" width="4" height="12"></rect>
+                          <circle cx="4" cy="4" r="2"></circle>
+                        </svg>
+                        <input type="text" name="brand_linkedin" id="brand_linkedin_{{ brand.id }}" value="{{ brand.brand_linkedin or '' }}" placeholder="linkedin.com/company/brand" class="form-control">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div class="brand-actions">
+                  <button type="submit" class="brand-btn edit-btn">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
+                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
+                      <polyline points="7 3 7 8 15 8"></polyline>
+                    </svg>
+                    Gem
+                  </button>
+                  <button type="button" class="brand-btn cancel-btn" onclick="cancelEdit({{ brand.id }})">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <line x1="18" y1="6" x2="6" y2="18"></line>
+                      <line x1="6" y1="6" x2="18" y2="18"></line>
+                    </svg>
+                    Annuller
+                  </button>
+                </div>
+              </form>
+            </div>
           </div>
         </div>
       </div>
       {% endfor %}
     {% else %}
-      <p>Ingen brands registreret.</p>
+      <div class="empty-brands-message">
+        <div class="empty-brands-icon">
+          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
+            <line x1="7" y1="7" x2="7.01" y2="7"></line>
+          </svg>
+        </div>
+        <h3>Ingen brands registreret endnu</h3>
+        <p>Kom i gang ved at tilføje dit første brand med knappen ovenfor.</p>
+      </div>
     {% endif %}
   </div>
 </div>
 
 <script>
-function editBrand(brandId) {
-  document.getElementById('brand-view-' + brandId).style.display = 'none';
-  document.getElementById('brand-edit-' + brandId).style.display = 'block';
-}
+  function editBrand(brandId) {
+    document.getElementById('brand-view-' + brandId).style.display = 'none';
+    document.getElementById('brand-edit-' + brandId).style.display = 'block';
+  }
 
-function cancelEdit(brandId) {
-  document.getElementById('brand-edit-' + brandId).style.display = 'none';
-  document.getElementById('brand-view-' + brandId).style.display = 'block';
-}
+  function cancelEdit(brandId) {
+    document.getElementById('brand-edit-' + brandId).style.display = 'none';
+    document.getElementById('brand-view-' + brandId).style.display = 'block';
 
-function previewImage(event, previewId) {
-  var output = document.getElementById(previewId);
-  output.src = URL.createObjectURL(event.target.files[0]);
-  output.style.display = 'block';
-}
+    // Reset the image preview
+    const previewImg = document.getElementById('preview_' + brandId);
+    if (previewImg) {
+      previewImg.style.display = 'none';
+      previewImg.src = '';
+    }
+  }
+
+  function previewImage(event, previewId) {
+    const output = document.getElementById(previewId);
+    output.src = URL.createObjectURL(event.target.files[0]);
+    output.style.display = 'block';
+  }
+
+  // Animate flash messages fade out after a delay
+  document.addEventListener('DOMContentLoaded', function() {
+    const flashMessages = document.querySelectorAll('.flash-message');
+    flashMessages.forEach(message => {
+      setTimeout(() => {
+        message.style.opacity = '0';
+        message.style.transform = 'translateY(-20px)';
+        message.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
+      }, 5000);
+    });
+  });
 </script>
 {% endblock %}

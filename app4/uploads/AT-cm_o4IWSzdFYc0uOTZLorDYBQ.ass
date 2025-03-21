@@ -1,0 +1,44 @@
+[Script Info]
+Title: Auto-generated subtitles
+ScriptType: v4.00+
+PlayResX: 1280
+PlayResY: 720
+ScaledBorderAndShadow: yes
+
+[V4+ Styles]
+Format: Name, Fontname, Fontsize, PrimaryColour, SecondaryColour, OutlineColour, BackColour, Bold, Italic, Underline, StrikeOut, ScaleX, ScaleY, Spacing, Angle, BorderStyle, Outline, Shadow, Alignment, MarginL, MarginR, MarginV, Encoding
+Style: Default,arial,28,&HFFFFFF&,&H000000&,&H000000&,&H00000000,0,0,0,0,100,100,0,0,1,2,2,2,10,10,10,1
+
+[Events]
+Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
+Dialogue: 0,0:00:00.00,0:00:00.98,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}I WAS SAYING
+Dialogue: 0,0:00:00.98,0:00:01.97,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}THIS IN JANUARY
+Dialogue: 0,0:00:01.97,0:00:02.95,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}AND I WAS
+Dialogue: 0,0:00:02.95,0:00:03.94,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}LIKE DAMN I
+Dialogue: 0,0:00:03.94,0:00:04.92,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}THINK HE ABOUT
+Dialogue: 0,0:00:04.92,0:00:05.90,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}TO MAKE SEGREGATION
+Dialogue: 0,0:00:05.90,0:00:06.56,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}COME BACK
+Dialogue: 0,0:00:06.56,0:00:07.53,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}I'M NOT TRYING TO
+Dialogue: 0,0:00:07.53,0:00:08.50,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}BE FUNNY AND I'M
+Dialogue: 0,0:00:08.50,0:00:09.47,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}NOT TRYING TO BE
+Dialogue: 0,0:00:09.47,0:00:10.44,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}DRAMATIC, BUT LOW KEY
+Dialogue: 0,0:00:10.44,0:00:11.64,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}I THINK I THINK
+Dialogue: 0,0:00:11.64,0:00:12.84,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}IT MIGHT BE ON
+Dialogue: 0,0:00:12.84,0:00:14.04,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}THE TABLE AND THEN
+Dialogue: 0,0:00:14.04,0:00:15.24,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}IT CAME OUT TODAY
+Dialogue: 0,0:00:15.24,0:00:16.20,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}IT SAYS THE
+Dialogue: 0,0:00:16.20,0:00:17.16,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}TRUMP ADMINISTRATION CUT
+Dialogue: 0,0:00:17.16,0:00:18.12,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}A CLAUSE FROM
+Dialogue: 0,0:00:18.12,0:00:19.08,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}FEDERAL CONTRACTING RULES
+Dialogue: 0,0:00:19.08,0:00:20.04,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}THAT HAD BEEN
+Dialogue: 0,0:00:20.04,0:00:21.00,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}ON THE BOOKS
+Dialogue: 0,0:00:21.00,0:00:21.96,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}SINCE THE 1960S
+Dialogue: 0,0:00:22.32,0:00:23.28,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}COMPANIES ARE
+Dialogue: 0,0:00:23.28,0:00:24.24,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}NO LONGER
+Dialogue: 0,0:00:24.24,0:00:25.20,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}EXPLICITLY PROHIBITED
+Dialogue: 0,0:00:25.20,0:00:26.16,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}FROM HAVING
+Dialogue: 0,0:00:26.16,0:00:27.12,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}SEGREGATED FACILITIES
+Dialogue: 0,0:00:31.00,0:00:32.33,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}COLORED ONLY
+Dialogue: 0,0:00:32.33,0:00:33.00,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}BATHROOMS
+Dialogue: 0,0:00:36.00,0:00:37.00,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}IN
+Dialogue: 0,0:00:37.00,0:00:38.00,Default,,0,0,0,,{Fontsize=28,,,OutlineColour=&H101010&,Outline=1,Shadow=1,BorderStyle=1,MarginV=40,Alignment=2}2025

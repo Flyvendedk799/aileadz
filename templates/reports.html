@@ -1,0 +1,240 @@
+{% extends "base.html" %}
+
+{% block extra_styles %}
+  {{ super() }}
+  <style>
+    .reports-container {
+      max-width: 1200px;
+      margin: 2rem auto;
+      padding: 2rem;
+      background-color: var(--card-bg);
+      border-radius: var(--border-radius);
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .reports-title {
+      font-size: 2.5rem;
+      text-align: center;
+      margin-bottom: 2rem;
+    }
+    .summary-section {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-around;
+      margin-bottom: 2rem;
+      text-align: center;
+    }
+    .summary-box {
+      background-color: var(--sidebar-bg);
+      padding: 1rem;
+      border-radius: var(--border-radius);
+      flex: 1 1 30%;
+      margin: 0.5rem;
+    }
+    .summary-box h3 {
+      font-size: 1.2rem;
+      margin-bottom: 0.5rem;
+    }
+    .summary-box p {
+      font-size: 1.5rem;
+      font-weight: bold;
+    }
+    .chart-container {
+      width: 100%;
+      margin: 2rem auto;
+    }
+    canvas {
+      background-color: #fff;
+      border: 1px solid #ccc;
+      border-radius: var(--border-radius);
+    }
+    .table-container {
+      overflow-x: auto;
+      margin-top: 2rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+    th, td {
+      padding: 0.75rem;
+      text-align: left;
+      border-bottom: 1px solid var(--muted-text);
+    }
+    th {
+      background-color: var(--sidebar-bg);
+      color: var(--text-color);
+    }
+    tr:nth-child(even) {
+      background-color: var(--card-bg);
+    }
+    tr:hover {
+      background-color: var(--hover-shadow);
+    }
+    .cta-button {
+      display: inline-block;
+      background-color: var(--primary-color);
+      color: #fff;
+      padding: 0.75rem 1.5rem;
+      border-radius: var(--border-radius);
+      text-align: center;
+      text-decoration: none;
+      font-weight: 600;
+      transition: background-color var(--transition-speed) ease;
+      margin-top: 1rem;
+    }
+    .cta-button:hover {
+      background-color: #9333ea;
+    }
+  </style>
+{% endblock %}
+
+{% block content %}
+<div class="reports-container">
+  <div class="reports-title">Rapporter</div>
+  
+  <!-- Summary Section -->
+  <div class="summary-section">
+    <div class="summary-box">
+      <h3>App Usage</h3>
+      {% if app_usage %}
+        <ul style="list-style: none; padding: 0;">
+          {% for app, usage in app_usage.items() %}
+            <li>{{ app }}: {{ usage }}</li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p>Ingen data</p>
+      {% endif %}
+    </div>
+    <div class="summary-box">
+      <h3>Total Kreditter Forbrugt</h3>
+      <p>{{ total_used }}</p>
+    </div>
+    <div class="summary-box">
+      <h3>Tilgængelige Kreditter</h3>
+      <p>{{ current_credits }}</p>
+    </div>
+    <div class="summary-box">
+      <h3>Social Exposure</h3>
+      <p>Følgere: {{ total_followers }}<br>Impressions: {{ total_impressions }}</p>
+    </div>
+    <div class="summary-box">
+      <h3>Gennemsnitlig Daglig Forbrug</h3>
+      <p>{{ average_usage | round(2) }}</p>
+    </div>
+    <div class="summary-box">
+      <h3>Maksimalt Dagligt Forbrug</h3>
+      <p>{{ peak_usage }}</p>
+      <small>På {{ peak_day }}</small>
+    </div>
+  </div>
+  
+  <!-- Overall Credit Usage Line Chart -->
+  <div class="chart-container">
+    <canvas id="usageChart"></canvas>
+  </div>
+  
+  <!-- Last 7 Days Bar Chart -->
+  <div class="chart-container">
+    <canvas id="last7Chart"></canvas>
+  </div>
+  
+  <!-- Detailed Daily Usage Table -->
+  <div class="table-container">
+    <h2 style="text-align: center; margin-bottom: 1rem;">Daglig Kreditforbrug</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Dato</th>
+          <th>Kreditter Forbrugt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for detail in daily_details %}
+        <tr>
+          <td>{{ detail.date }}</td>
+          <td>{{ detail.credits_used }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  <!-- Detailed Credit Transactions Table -->
+  <div class="table-container">
+    <h2 style="text-align: center; margin-bottom: 1rem;">Detaljeret Kredittransaktioner</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Dato</th>
+          <th>Kreditter Forbrugt</th>
+          <th>Beskrivelse</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for transaction in credit_records %}
+        <tr>
+          <td>{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') if transaction.timestamp else '' }}</td>
+          <td>{{ transaction.credits_used }}</td>
+          <td>{{ transaction.description }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  
+  <div class="text-center">
+    <a href="/reports" class="cta-button">Se alle rapporter</a>
+  </div>
+</div>
+
+<!-- Include Chart.js -->
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+  // Overall usage line chart
+  const ctx = document.getElementById('usageChart').getContext('2d');
+  const usageChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: {{ chart_labels|tojson }},
+      datasets: [{
+        label: 'Dagligt Kreditforbrug',
+        data: {{ chart_data|tojson }},
+        fill: false,
+        borderColor: '#a855f7',
+        tension: 0.1
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Dato' } },
+        y: { title: { display: true, text: 'Kreditter' }, beginAtZero: true }
+      }
+    }
+  });
+  
+  // Last 7 days bar chart
+  const ctx2 = document.getElementById('last7Chart').getContext('2d');
+  const last7Chart = new Chart(ctx2, {
+    type: 'bar',
+    data: {
+      labels: {{ last7_labels|tojson }},
+      datasets: [{
+        label: 'Kreditter forbrugt (sidste 7 dage)',
+        data: {{ last7_usage|tojson }},
+        backgroundColor: '#a855f7'
+      }]
+    },
+    options: {
+      responsive: true,
+      plugins: { legend: { position: 'top' } },
+      scales: {
+        x: { title: { display: true, text: 'Dato' } },
+        y: { title: { display: true, text: 'Kreditter' }, beginAtZero: true }
+      }
+    }
+  });
+</script>
+{% endblock %}

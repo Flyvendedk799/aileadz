@@ -2,90 +2,366 @@
 
 {% block extra_styles %}
 <style>
-  /* Center the register form inside the main content area */
+  :root {
+    --auth-primary: #8B5CF6;
+    --auth-primary-dark: #7C3AED;
+    --auth-accent: #EC4899;
+    --auth-gradient-start: #8B5CF6;
+    --auth-gradient-end: #EC4899;
+    --auth-input-bg: rgba(255, 255, 255, 0.08);
+    --auth-card-bg: rgba(17, 24, 39, 0.7);
+    --auth-text: #E5E7EB;
+    --auth-text-secondary: #9CA3AF;
+    --auth-border: rgba(255, 255, 255, 0.1);
+    --auth-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+    --auth-glow: 0 0 20px rgba(139, 92, 246, 0.5);
+  }
+
   .auth-container {
     display: flex;
     justify-content: center;
     align-items: center;
     min-height: calc(100vh - 150px);
-  }
-  .auth-card {
-    width: 100%;
-    max-width: 400px;
-    background-color: var(--card-bg);
+    background-image: 
+      radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.2) 0%, transparent 30%),
+      radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.2) 0%, transparent 30%);
+    position: relative;
+    overflow: hidden;
     padding: 20px;
-    border-radius: var(--border-radius);
-    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
   }
+
+  .auth-container::before {
+    content: '';
+    position: absolute;
+    top: -50%;
+    left: -50%;
+    width: 200%;
+    height: 200%;
+    background: linear-gradient(
+      45deg,
+      transparent 0%,
+      rgba(139, 92, 246, 0.03) 25%,
+      transparent 50%,
+      rgba(236, 72, 153, 0.03) 75%,
+      transparent 100%
+    );
+    animation: background-shimmer 10s linear infinite;
+    z-index: 0;
+  }
+
+  @keyframes background-shimmer {
+    0% { transform: rotate(0deg) translate(-50px, -50px); }
+    100% { transform: rotate(360deg) translate(-50px, -50px); }
+  }
+
+  .auth-card {
+    position: relative;
+    width: 100%;
+    max-width: 420px;
+    background-color: var(--auth-card-bg);
+    backdrop-filter: blur(10px);
+    padding: 40px;
+    border-radius: 16px;
+    box-shadow: var(--auth-shadow);
+    border: 1px solid var(--auth-border);
+    z-index: 1;
+    transition: all 0.3s ease;
+    overflow: hidden;
+  }
+
+  .auth-card:hover {
+    box-shadow: var(--auth-glow);
+    transform: translateY(-5px);
+  }
+
+  .auth-card::after {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(255, 255, 255, 0.1),
+      transparent
+    );
+    transition: 0.5s;
+  }
+
+  .auth-card:hover::after {
+    left: 100%;
+  }
+
+  .auth-logo {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 24px;
+  }
+
+  .auth-logo svg {
+    height: 40px;
+    width: auto;
+  }
+
   .auth-card h2 {
-    font-size: 1.8rem;
-    margin-bottom: 20px;
-  }
-  .auth-card label {
-    display: block;
-    margin-bottom: 5px;
-    color: var(--text-color);
-  }
-  .auth-card input {
-    width: 100%;
-    padding: 10px;
-    margin-bottom: 15px;
-    border: 1px solid #ccc;
-    border-radius: var(--border-radius);
-  }
-  .auth-card button {
-    width: 100%;
-    padding: 10px;
-    background-color: var(--primary-color);
-    color: #fff;
-    border: none;
-    border-radius: var(--border-radius);
-    cursor: pointer;
-  }
-  .auth-card button:hover {
-    background-color: #9333ea;
-  }
-  .auth-card p {
+    font-size: 2rem;
+    color: var(--auth-text);
     text-align: center;
+    margin-bottom: 30px;
+    font-weight: 700;
+    background: linear-gradient(to right, var(--auth-gradient-start), var(--auth-gradient-end));
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    letter-spacing: 0.5px;
+  }
+
+  .input-group {
+    position: relative;
+    margin-bottom: 24px;
+  }
+
+  .input-group label {
+    position: absolute;
+    top: 0;
+    left: 12px;
+    font-size: 0.8rem;
+    color: var(--auth-text-secondary);
+    background-color: var(--auth-card-bg);
+    padding: 0 5px;
+    transform: translateY(-50%);
+    transition: all 0.3s ease;
+  }
+
+  .input-group input {
+    width: 100%;
+    padding: 16px;
+    background-color: var(--auth-input-bg);
+    border: 1px solid var(--auth-border);
+    border-radius: 12px;
+    color: var(--auth-text);
+    font-size: 1rem;
+    transition: all 0.3s ease;
+    outline: none;
+  }
+
+  .input-group input:focus {
+    border-color: var(--auth-primary);
+    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+  }
+
+  .input-group input:focus + label {
+    color: var(--auth-primary);
+  }
+
+  .auth-btn {
+    width: 100%;
+    padding: 16px;
+    background: linear-gradient(to right, var(--auth-gradient-start), var(--auth-gradient-end));
+    color: white;
+    border: none;
+    border-radius: 12px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+    z-index: 1;
+    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+  }
+
+  .auth-btn::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(to right, var(--auth-gradient-end), var(--auth-gradient-start));
+    transition: opacity 0.5s ease;
+    z-index: -1;
+    opacity: 0;
+  }
+
+  .auth-btn:hover::before {
+    opacity: 1;
+  }
+
+  .auth-btn:active {
+    transform: scale(0.98);
+  }
+
+  .auth-link {
+    display: block;
+    text-align: center;
+    margin-top: 24px;
+    color: var(--auth-text-secondary);
     font-size: 0.9rem;
   }
-  .auth-card p a {
-    color: var(--primary-color);
+
+  .auth-link a {
+    color: var(--auth-primary);
+    text-decoration: none;
+    font-weight: 500;
+    transition: all 0.3s ease;
+  }
+
+  .auth-link a:hover {
+    color: var(--auth-accent);
+    text-decoration: underline;
+  }
+
+  .flash-message {
+    padding: 12px;
+    border-radius: 8px;
+    margin-bottom: 20px;
+    font-size: 0.9rem;
+    animation: fadeIn 0.3s ease;
+    text-align: center;
+  }
+
+  .flash-message.success {
+    background-color: rgba(16, 185, 129, 0.1);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+    color: #10B981;
+  }
+
+  .flash-message.danger {
+    background-color: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    color: #EF4444;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  /* Steps indicator */
+  .progress-indicator {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 30px;
+  }
+
+  .progress-step {
+    width: 12px;
+    height: 12px;
+    border-radius: 50%;
+    background-color: var(--auth-border);
+    margin: 0 5px;
+    position: relative;
+  }
+
+  .progress-step.active {
+    background: linear-gradient(to right, var(--auth-gradient-start), var(--auth-gradient-end));
+  }
+
+  /* Floating elements animation */
+  .floating-element {
+    position: absolute;
+    border-radius: 50%;
+    background: linear-gradient(135deg, var(--auth-gradient-start), var(--auth-gradient-end));
+    opacity: 0.1;
+    filter: blur(10px);
+    z-index: 0;
+  }
+
+  .float-1 {
+    width: 100px;
+    height: 100px;
+    top: 20%;
+    left: 15%;
+    animation: float 15s ease-in-out infinite;
+  }
+
+  .float-2 {
+    width: 150px;
+    height: 150px;
+    bottom: 10%;
+    right: 20%;
+    animation: float 18s ease-in-out infinite 2s;
+  }
+
+  .float-3 {
+    width: 70px;
+    height: 70px;
+    bottom: 30%;
+    left: 30%;
+    animation: float 12s ease-in-out infinite 1s;
+  }
+
+  @keyframes float {
+    0% { transform: translate(0, 0) rotate(0deg); }
+    50% { transform: translate(20px, 20px) rotate(180deg); }
+    100% { transform: translate(0, 0) rotate(360deg); }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="auth-container">
+  <div class="floating-element float-1"></div>
+  <div class="floating-element float-2"></div>
+  <div class="floating-element float-3"></div>
+  
   <div class="auth-card">
-    <h2>Register</h2>
+    <div class="auth-logo">
+      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 17L12 22L22 17" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M2 12L12 17L22 12" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <defs>
+          <linearGradient id="logo-gradient" x1="2" y1="12" x2="22" y2="12" gradientUnits="userSpaceOnUse">
+            <stop stop-color="#8B5CF6"/>
+            <stop offset="1" stop-color="#EC4899"/>
+          </linearGradient>
+        </defs>
+      </svg>
+    </div>
+    
+    <h2>Create Account</h2>
+    
+    <div class="progress-indicator">
+      <div class="progress-step active"></div>
+      <div class="progress-step"></div>
+      <div class="progress-step"></div>
+    </div>
+    
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div>
-          {% for category, message in messages %}
-            <p style="color: {% if category == 'danger' %}red{% else %}green{% endif %};">
-              {{ message }}
-            </p>
-          {% endfor %}
-        </div>
+        {% for category, message in messages %}
+          <div class="flash-message {{ category }}">
+            {{ message }}
+          </div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
+    
     <form action="{{ url_for('auth.register') }}" method="POST">
-      <div>
+      <div class="input-group">
+        <input type="text" name="username" id="username" required autocomplete="username">
         <label for="username">Username</label>
-        <input type="text" name="username" id="username" required>
       </div>
-      <div>
+      
+      <div class="input-group">
+        <input type="email" name="email" id="email" required autocomplete="email">
         <label for="email">Email</label>
-        <input type="email" name="email" id="email" required>
       </div>
-      <div>
+      
+      <div class="input-group">
+        <input type="password" name="password" id="password" required autocomplete="new-password">
         <label for="password">Password</label>
-        <input type="password" name="password" id="password" required>
       </div>
-      <button type="submit">Register</button>
+      
+      <button type="submit" class="auth-btn">Create Account</button>
     </form>
-    <p>Already have an account? <a href="{{ url_for('auth.login') }}">Login</a></p>
+    
+    <div class="auth-link">
+      <p>Already have an account? <a href="{{ url_for('auth.login') }}">Sign In</a></p>
+    </div>
   </div>
 </div>
 {% endblock %}

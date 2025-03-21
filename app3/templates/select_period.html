@@ -12,10 +12,12 @@
   <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;700&family=Open+Sans:wght@400;600&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg-gradient-start: #1a1a2e;
-      --bg-gradient-end: #16213e;
-      --primary-color: #4A90E2;
-      --text-color: #e0e0e0;
+      --bg-gradient-start: #121212;
+      --bg-gradient-end: #1F1B24;
+      --primary-color: #BB86FC;
+      --text-color: #ffffff;
+      --card-bg: #1E1E1E;
+      --card-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
     body {
       background: linear-gradient(135deg, var(--bg-gradient-start), var(--bg-gradient-end));
@@ -29,10 +31,10 @@
       overflow: hidden;
     }
     .period-container {
-      background: #232946;
+      background: var(--card-bg);
       padding: 40px;
       border-radius: 15px;
-      box-shadow: 0 8px 20px rgba(0,0,0,0.7);
+      box-shadow: var(--card-shadow);
       text-align: center;
       width: 90%;
       max-width: 500px;
@@ -44,7 +46,7 @@
     }
     .period-option {
       background: var(--primary-color);
-      color: #fff;
+      color: var(--text-color);
       padding: 15px;
       margin: 10px 0;
       border-radius: 8px;
@@ -63,9 +65,9 @@
   <div class="period-container animate__animated animate__fadeIn">
     <h1>Indsigtsinnovator</h1>
     <p class="lead mb-4">Vælg den periode, du ønsker at analysere</p>
-    <a href="/data?period=1 uge" class="period-option">1 Uge</a>
-    <a href="/data?period=1 måned" class="period-option">1 Måned</a>
-    <a href="/data?period=1 år" class="period-option">1 År</a>
+    <a href="/data?period=1 uge" class="period-option" aria-label="Vælg 1 Uge">1 Uge</a>
+    <a href="/data?period=1 måned" class="period-option" aria-label="Vælg 1 Måned">1 Måned</a>
+    <a href="/data?period=1 år" class="period-option" aria-label="Vælg 1 År">1 År</a>
   </div>
   
   <!-- Bootstrap 5 JS Bundle -->

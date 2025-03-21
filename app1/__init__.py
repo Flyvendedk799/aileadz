@@ -26,7 +26,7 @@ SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
 # Hardcoded key
-openai.api_key = "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"
+openai.api_key = "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"
 
 PRODUCTS_CACHE = None
 FUZZY_THRESHOLD = 60

@@ -19,7 +19,7 @@ def create_app():
     app.secret_key = 'your_secret_key_here'
     
     app.config.update({
-        'MYSQL_HOST': os.getenv('MYSQL_HOST', 'TobiasMastek.mysql.pythonanywhere-services.com'),
+        'MYSQL_HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
         'MYSQL_USER': 'TobiasMastek',
         'MYSQL_PASSWORD': 'Jht89ryu1!!',
         'MYSQL_DB': 'TobiasMastek$AiLead',

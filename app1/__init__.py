@@ -25,10 +25,8 @@ def index():
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-if OPENAI_API_KEY:
-    openai.api_key = OPENAI_API_KEY
-else:
-    print("WARNING: OPENAI_API_KEY environment variable is not set.")
+# Hardcoded key
+openai.api_key = "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"
 
 PRODUCTS_CACHE = None
 FUZZY_THRESHOLD = 60
@@ -315,85 +313,53 @@ def get_course_detail(query, product):
 
 # Single-course HTML snippet
 PRODUCT_MEDIA_TEMPLATE = """
-<div style="background-color: #f7f5f2; border-radius: 12px; overflow: hidden; width: 100%; max-width: 400px; margin: 0 auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); font-family: sans-serif; text-align: left; color: #333;">
-  
-  {# Top Graphic Area #}
-  <div style="background-color: #fae1cd; padding: 40px 20px; display: flex; justify-content: center; align-items: center; position: relative; min-height: 120px;">
-    {% if product.image_url %}
-        <img src="{{ product.image_url | e }}" alt="{{ product.title | e }}" style="max-height: 80px; width: auto; object-fit: contain;">
+<div style="text-align:center;">
+  <strong>
+    <a href="{{ product.url | e }}" target="_blank" style="color: var(--primary-color); font-size: 16px; font-weight: bold;">
+      {{ product.title | e }}
+    </a>
+  </strong>
+</div>
+<div style="text-align:center; margin-top: 5px;">
+  <span style="font-size: 14px;">
+    {% if product.price in ["0", "0.00"] %}
+      Pris: Efter aftale
     {% else %}
-        <div style="font-size: 24px; font-weight: bold; color: #333;">{{ product.vendor | e }}</div>
+      Pris: {{ product.price | e }} kr.
     {% endif %}
-  </div>
-
-  {# Content Area #}
-  <div style="padding: 24px;">
-    <h2 style="font-size: 20px; margin: 0 0 8px 0; font-weight: 600; line-height: 1.3;">{{ product.title | e }}</h2>
-    <div style="font-size: 14px; color: #666; margin-bottom: 24px;">Kursus</div>
-
-    {# Grid for Details #}
-    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px;">
-      
-      {# Duration / Date block (using first date for now) #}
-      <div>
-        <div style="display: flex; align-items: center; font-size: 12px; color: #666; margin-bottom: 4px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-          Næste startdato
-        </div>
-        <div style="font-size: 14px; font-weight: 500;">
-          {% if product.variants and product.variants|length > 0 and product.variants[0].option2 %}
-            {{ product.variants[0].option2 | e }}
-          {% else %}
-             TBA
-          {% endif %}
-        </div>
-      </div>
-
-      {# Location block #}
-      <div>
-        <div style="display: flex; align-items: center; font-size: 12px; color: #666; margin-bottom: 4px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 6px;"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          Sted
-        </div>
-        <div style="font-size: 14px; font-weight: 500;">
-          {% if product.variants and product.variants|length > 0 and product.variants[0].option1 %}
-            {{ product.variants[0].option1 | e }}
-          {% elif product.location %}
-             {{ product.location | e }}
-          {% else %}
-             Online / TBA
-          {% endif %}
-        </div>
-      </div>
-
-    </div>
-
-    {# Price Block #}
-    <div style="background-color: #fff; border-radius: 8px; padding: 16px; margin-bottom: 24px; display: flex; align-items: baseline;">
-      <span style="font-weight: 600; font-size: 18px;">
-        {% if product.price in ["0", "0.00"] %}
-          Efter aftale
-        {% else %}
-          kr {{ product.price | e }}
-        {% endif %}
-      </span>
-    </div>
-
-    {# Description snippet #}
-    {% if product.description %}
-    <div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 24px;">
-      {{ get_short_description(product) | e }}
-    </div>
+  </span>
+</div>
+{% if product.image_url %}
+<div style="text-align:center; margin-top: 15px;">
+  <a href="{{ product.url | e }}" target="_blank">
+    <img src="{{ product.image_url | e }}" alt="{{ product.title | e }}" style="max-width: 40%; height: auto; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
+  </a>
+</div>
+{% endif %}
+{% if product.description %}
+<div class="short-description" style="text-align:center;">
+  {{ get_short_description(product) | e }}
+</div>
+{% endif %}
+{% if product.variants and product.variants|length > 1 %}
+<br>
+<div style="text-align:center; font-size:16px; font-weight:bold;">Datoer & Steder:</div>
+<ul style="list-style: none; padding: 0;">
+  {% for variant in product.variants %}
+    {% if variant.option2 and variant.option1 %}
+      <li style="margin: 5px 0;">{{ variant.option2 | e }} - {{ variant.option1 | e }}</li>
     {% endif %}
-
-    {# CTA #}
-    <div style="text-align: center;">
-      <button onclick="window.open('{{ product.url | e }}', '_blank')" style="background-color: #222; color: #fff; border: none; border-radius: 24px; padding: 12px 32px; font-size: 14px; font-weight: 500; cursor: pointer; transition: background-color 0.2s;">
-        Vælg kursus
-      </button>
-    </div>
-
-  </div>
+  {% endfor %}
+</ul>
+{% elif product.location %}
+<br>
+<div style="text-align:center; font-size:16px;">Sted: {{ product.location | e }}</div>
+{% endif %}
+<br>
+<div style="text-align:center; margin-top:10px;">
+  <button class="btn-course btn-primary" onclick="window.open('{{ product.url | e }}', '_blank')">
+    Læs mere
+  </button>
 </div>
 """
 
@@ -401,45 +367,72 @@ def render_product_media(product):
     return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=product, get_short_description=get_short_description)
 
 MULTIPLE_COURSES_TEMPLATE = """
-<div style="display: flex; flex-direction: column; gap: 12px; max-width: 600px; margin: 10px auto; font-family: sans-serif;">
-  {% for course in courses %}
-  <div style="display: flex; background: #fff; border: 1px solid #eaeaea; border-radius: 8px; overflow: hidden; text-align: left; cursor: pointer; transition: box-shadow 0.2s; color: #333;" onclick="window.open('{{ course.url | e }}', '_blank')" onmouseover="this.style.boxShadow='0 4px 12px rgba(0,0,0,0.08)'" onmouseout="this.style.boxShadow='none'">
-    
-    {# Left graphic block #}
-    <div style="width: 80px; min-width: 80px; background-color: #fcf9f5; display: flex; justify-content: center; align-items: center; padding: 10px; border-right: 1px solid #eaeaea;">
+<div style="text-align: center;">
+  <div class="courses-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px; margin: 20px auto; max-width: 900px;">
+    {% for course in courses %}
+    <div class="course-card" style="border: 1px solid #444; border-radius: 8px; padding: 10px; background: #2c2c2c; color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
+      <div style="text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 5px;">
+        <a href="{{ course.url | e }}" target="_blank" style="color: #00bfa5; text-decoration: none;">
+          {{ course.title | e }}
+        </a>
+      </div>
       {% if course.image_url %}
-        <img src="{{ course.image_url | e }}" alt="{{ course.vendor | e }}" style="max-width: 100%; max-height: 40px; object-fit: contain;">
-      {% else %}
-        <div style="font-size: 12px; font-weight: bold; color: #555; text-align: center;">{{ course.vendor | e }}</div>
+      <div style="text-align: center; margin: 5px 0;">
+        <a href="{{ course.url | e }}" target="_blank">
+          <img src="{{ course.image_url | e }}" alt="{{ course.title | e }}" style="max-width: 50%; height: auto; border: 1px solid #ddd; border-radius: 8px;">
+        </a>
+      </div>
       {% endif %}
-    </div>
 
-    {# Middle content block #}
-    <div style="flex-grow: 1; padding: 12px 16px; display: flex; flex-direction: column; justify-content: center;">
-      <div style="font-size: 14px; font-weight: 600; margin-bottom: 4px; line-height: 1.2;">{{ course.title | e }}</div>
-      <div style="font-size: 12px; color: #777;">{{ course.vendor | e }}</div>
-    </div>
-
-    {# Right price block #}
-    <div style="padding: 12px 16px; display: flex; flex-direction: column; align-items: flex-end; justify-content: center; min-width: 100px;">
-      <div style="font-weight: 600; font-size: 14px;">
+      <div style="text-align: center; font-size: 13px; margin-bottom: 10px;">
         {% if course.price in ['0', '0.00'] %}
-          Gratis
+          Pris: Efter aftale
         {% else %}
-          kr {{ course.price | e }}
+          Pris: {{ course.price | e }} kr.
         {% endif %}
       </div>
-      <div style="font-size: 10px; color: #999; margin-top: 2px;">
-        {% if course.price in ['0', '0.00'] %}
-          Intern kursus
-        {% else %}
-          ekskl. moms
+
+      <div style="text-align: center; margin-bottom: 0;">
+        <button class="btn-course btn-secondary" onclick="toggleDetails('course-details-{{ unique_prefix }}-{{ loop.index }}', this)">
+          Se detaljer
+        </button>
+      </div>
+
+      <div id="course-details-{{ unique_prefix }}-{{ loop.index }}" style="display: none; font-size: 12px; color: #ccc; text-align: center; padding: 10px; border-top: 1px solid #444; margin-top: 10px;">
+        {% if course.description %}
+          <div style="margin-bottom: 8px; text-align: left;">
+            <strong>Beskrivelse:</strong> {{ get_short_description(course) | e }}
+          </div>
         {% endif %}
+        {% if course.variants and course.variants|length > 1 %}
+          <div style="margin-bottom: 8px; text-align: left;">
+            <strong>Datoer & Steder:</strong>
+            <ul style="list-style: disc; padding-left: 20px; margin: 4px 0;">
+              {% for variant in course.variants %}
+                {% if variant.option2 and variant.option1 %}
+                  <li>{{ variant.option2 | e }} - {{ variant.option1 | e }}</li>
+                {% endif %}
+              {% endfor %}
+            </ul>
+          </div>
+        {% elif course.location %}
+          <div style="margin-bottom: 8px; text-align: left;">
+            <strong>Sted:</strong> {{ course.location | e }}
+          </div>
+        {% endif %}
+
+        <div style="text-align: center;">
+          <button class="btn-course btn-primary" onclick="window.open('{{ course.url | e }}', '_blank')">
+            Læs mere
+          </button>
+          <button class="btn-course btn-secondary" onclick="toggleDetails('course-details-{{ unique_prefix }}-{{ loop.index }}', this)">
+            Skjul detaljer
+          </button>
+        </div>
       </div>
     </div>
-    
+    {% endfor %}
   </div>
-  {% endfor %}
 </div>
 """
 

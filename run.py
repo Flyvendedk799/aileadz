@@ -1,5 +1,8 @@
 import logging
-import sshtunnel
+try:
+    import sshtunnel
+except ImportError:
+    sshtunnel = None
 from flask import Flask, redirect, url_for
 from flask_mysqldb import MySQL
 
@@ -24,7 +27,7 @@ def create_app():
     app.secret_key = 'your_secret_key_here'
     
     app.config.update({
-        'MYSQL_HOST': '127.0.0.1',
+        'MYSQL_HOST': 'TobiasMastek.mysql.pythonanywhere-services.com',
         'MYSQL_USER': 'TobiasMastek',
         'MYSQL_PASSWORD': 'Jht89ryu1!!',
         'MYSQL_DB': 'TobiasMastek$AiLead',
@@ -57,6 +60,10 @@ def create_app():
     return app
 
 def main():
+    if sshtunnel is None:
+        logging.error("sshtunnel is not installed. It is required for local development.")
+        return
+
     tunnel = None
     try:
         tunnel = sshtunnel.SSHTunnelForwarder(
@@ -69,6 +76,7 @@ def main():
         logging.info("SSH tunnel established on local port: %s", tunnel.local_bind_port)
         
         app = create_app()
+        app.config['MYSQL_HOST'] = '127.0.0.1'
         app.config['MYSQL_PORT'] = tunnel.local_bind_port
         app.run(host='0.0.0.0', port=5000, debug=False)
     except Exception as e:

@@ -1,8 +1,11 @@
 import logging
+import os
+
 try:
     import sshtunnel
 except ImportError:
     sshtunnel = None
+
 from flask import Flask, redirect, url_for
 from flask_mysqldb import MySQL
 
@@ -21,8 +24,12 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = 'your_secret_key_here'
     
+    # Dynamically select the database host
+    # If sshtunnel is missing, we are on PythonAnywhere.
+    default_host = 'TobiasMastek.mysql.pythonanywhere-services.com' if sshtunnel is None else '127.0.0.1'
+    
     app.config.update({
-        'MYSQL_HOST': '127.0.0.1',
+        'MYSQL_HOST': os.getenv('MYSQL_HOST', default_host),
         'MYSQL_USER': 'TobiasMastek',
         'MYSQL_PASSWORD': 'Jht89ryu1!!',
         'MYSQL_DB': 'TobiasMastek$AiLead',

@@ -26,7 +26,7 @@ def create_app():
     
     # Dynamically select the database host
     # If sshtunnel is missing, we are on PythonAnywhere.
-    default_host = 'TobiasMastek.mysql.pythonanywhere-services.com' if sshtunnel is None else '127.0.0.1'
+    default_host = 'TobiasMastek.mysql.eu.pythonanywhere-services.com' if sshtunnel is None else '127.0.0.1'
     
     app.config.update({
         'MYSQL_HOST': os.getenv('MYSQL_HOST', default_host),

@@ -6,8 +6,8 @@ import openai
 # Define the blueprint for app3 and set its template folder
 app3_bp = Blueprint('app3', __name__, template_folder='templates')
 
-# Hardcoded OpenAI API-nøgle (brug denne nøgle indtil videre)
-openai.api_key = "REDACTED_OPENAI_KEY"
+# Load from environment variables
+openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 @app3_bp.route('/')
 def index():

@@ -1,4 +1,5 @@
 import logging
+import sshtunnel
 from flask import Flask, redirect, url_for
 from flask_mysqldb import MySQL
 
@@ -22,9 +23,8 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = 'your_secret_key_here'
     
-    import os
     app.config.update({
-        'MYSQL_HOST': os.getenv('MYSQL_HOST', '127.0.0.1'),
+        'MYSQL_HOST': '127.0.0.1',
         'MYSQL_USER': 'TobiasMastek',
         'MYSQL_PASSWORD': 'Jht89ryu1!!',
         'MYSQL_DB': 'TobiasMastek$AiLead',
@@ -57,7 +57,6 @@ def create_app():
     return app
 
 def main():
-    import sshtunnel
     tunnel = None
     try:
         tunnel = sshtunnel.SSHTunnelForwarder(

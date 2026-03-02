@@ -73,9 +73,10 @@ def extract_location_and_date(product):
             date_val = option.get("values")[0]
     return location, date_val
 
-def extract_product_from_query(query):
+def extract_product_from_query(query, last_handle=None):
+    context_hint = f" The user might be referring to a previously discussed product with handle '{last_handle}'." if last_handle else ""
     prompt = (
-        f"Extract the product name from the following query. "
+        f"Extract the product name from the following query.{context_hint} "
         f"Return only the product name (no additional text) or an empty string if none is found:\n\n"
         f"Query: \"{query}\""
     )
@@ -83,12 +84,15 @@ def extract_product_from_query(query):
         response = openai.chat.completions.create(
             model="gpt-4",
             messages=[
-                {"role": "system", "content": "You are an assistant that extracts product names from user queries."},
+                {"role": "system", "content": "You are an assistant that extracts product names from user queries. If the query is just asking for more information without specifying a name, and context is provided, you may return the context name."},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.0,
         )
         extracted_name = response.choices[0].message.content.strip()
+        # If the model returns nothing, or a generic response, and we have a last_handle, fallback to it
+        if not extracted_name and last_handle and any(word in query.lower() for word in ["den", "det", "dette", "mere", "info", "fortæl"]):
+            return last_handle
         return extracted_name
     except Exception as e:
         print(f"Error extracting product name using NLP: {e}")
@@ -506,20 +510,25 @@ def ask():
                 return jsonify({"answers": messages}), 200
 
             else:
-                extracted_name = extract_product_from_query(query_lower)
+                last_handle = session.get("last_product_handle")
+                extracted_name = extract_product_from_query(query_lower, last_handle)
                 matched_product = None
 
                 if extracted_name:
-                    match_extracted = get_best_match(extracted_name, titles)
-                    match_full = get_best_match(query_lower, titles)
-                    best_match = match_extracted if (match_extracted and (not match_full or match_extracted[1] >= match_full[1])) else match_full
+                    # check if the extracted name was actually our last_handle fallback
+                    if extracted_name == last_handle:
+                         matched_product = next((p for p in product_list if p.get("handle") == last_handle), None)
+                    else:
+                        match_extracted = get_best_match(extracted_name, titles)
+                        match_full = get_best_match(query_lower, titles)
+                        best_match = match_extracted if (match_extracted and (not match_full or match_extracted[1] >= match_full[1])) else match_full
 
-                    if best_match:
-                        matched_product = next((p for p in product_list if p["title_lower"] == best_match[0]), None)
-                        if matched_product:
-                            session["last_product_handle"] = matched_product.get("handle")
+                        if best_match:
+                            matched_product = next((p for p in product_list if p["title_lower"] == best_match[0]), None)
+                            
+                    if matched_product:
+                        session["last_product_handle"] = matched_product.get("handle")
                 else:
-                    last_handle = session.get("last_product_handle")
                     if last_handle:
                         matched_product = next((p for p in product_list if p.get("handle") == last_handle), None)
 

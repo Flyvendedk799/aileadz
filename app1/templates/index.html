@@ -13,22 +13,28 @@
     cursor: pointer;
     transition: transform 0.3s ease, background-color 0.3s ease;
     text-decoration: none;
-    margin-right: 5px; /* Slight spacing between buttons */
+    margin-right: 5px;
+    /* Slight spacing between buttons */
   }
+
   .btn-course:hover {
     transform: scale(1.05);
   }
+
   /* Primary CTA (Læs mere) */
   .btn-course.btn-primary {
     background-color: #00bfa5;
   }
+
   .btn-course.btn-primary:hover {
     background-color: #00a894;
   }
+
   /* Secondary Buttons (Se detaljer, Skjul detaljer) */
   .btn-course.btn-secondary {
     background-color: #555;
   }
+
   .btn-course.btn-secondary:hover {
     background-color: #444;
   }
@@ -38,37 +44,56 @@
     margin: 20px 0;
     font-family: Arial, sans-serif;
   }
+
   #chatApp .chat-container {
     width: 100%;
     max-width: 850px;
     height: 600px;
-    background: #f9f9f9;
+    background: linear-gradient(135deg, #1e1e1e, #121212);
     border-radius: 12px;
-    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 0 15px rgba(0, 0, 0, 0.3);
     overflow: hidden;
     margin: 30px auto;
     display: flex;
     flex-direction: column;
     animation: containerFadeIn 0.5s ease-out;
   }
+
   @keyframes containerFadeIn {
-    from { opacity: 0; transform: scale(0.95); }
-    to { opacity: 1; transform: scale(1); }
+    from {
+      opacity: 0;
+      transform: scale(0.95);
+    }
+
+    to {
+      opacity: 1;
+      transform: scale(1);
+    }
   }
+
   #chatApp .chat-header {
-    background-color: #fff;
+    background-color: #00bfa5;
     padding: 15px;
     text-align: center;
     font-size: 20px;
     font-weight: bold;
     animation: slideDown 0.5s ease-out;
-    color: #333;
-    border-bottom: 1px solid #eaeaea;
+    color: #fff;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
   }
+
   @keyframes slideDown {
-    from { opacity: 0; transform: translateY(-20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(-20px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
+
   #chatApp .chat-box {
     flex-grow: 1;
     overflow-y: auto;
@@ -77,18 +102,22 @@
     flex-direction: column;
     gap: 10px;
   }
+
   /* Custom scrollbar */
   #chatApp .chat-box::-webkit-scrollbar {
     width: 8px;
   }
+
   #chatApp .chat-box::-webkit-scrollbar-track {
-    background: transparent;
+    background: #121212;
     border-radius: 10px;
   }
+
   #chatApp .chat-box::-webkit-scrollbar-thumb {
-    background: #ccc;
+    background: #00bfa5;
     border-radius: 10px;
   }
+
   /* Chat messages */
   #chatApp .message {
     padding: 10px 14px;
@@ -100,68 +129,79 @@
     opacity: 0;
     animation: fadeIn 0.3s ease-in-out forwards;
   }
+
   @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(20px); }
-    to { opacity: 1; transform: translateY(0); }
+    from {
+      opacity: 0;
+      transform: translateY(20px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
   }
+
   #chatApp .user-message {
-    background-color: #fff;
+    background-color: #00bfa5;
     align-self: flex-end;
-    color: #333;
+    color: #fff;
     border-bottom-right-radius: 0;
-    box-shadow: 0 2px 5px rgba(0,0,0,0.04);
   }
+
   #chatApp .bot-message {
-    background-color: transparent;
+    background-color: #2c2c2c;
     align-self: flex-start;
-    color: #333;
+    color: #fff;
     border-bottom-left-radius: 0;
-    font-size: 16px;
-    max-width: 85%;
   }
+
   /* Input area */
   #chatApp .chat-input-container {
     display: flex;
-    padding: 15px 20px;
-    background-color: #fff;
+    padding: 10px;
+    background-color: #2c2c2c;
     align-items: center;
-    border-top: 1px solid #eaeaea;
   }
+
   #chatApp .chat-input {
     flex-grow: 1;
-    padding: 12px 15px;
-    border: 1px solid #ddd;
+    padding: 10px;
+    border: none;
     border-radius: 8px;
     font-size: 15px;
     outline: none;
-    background-color: #f9f9f9;
-    color: #333;
-    transition: box-shadow 0.3s ease, border-color 0.3s ease;
+    background-color: #1e1e1e;
+    color: #fff;
+    transition: box-shadow 0.3s ease, background-color 0.3s ease;
   }
+
   #chatApp .chat-input:focus {
-    box-shadow: 0 0 5px rgba(0,0,0,0.1);
-    border-color: #bbb;
+    box-shadow: 0 0 5px #00bfa5;
   }
+
   #chatApp .send-btn {
     margin-left: 10px;
-    background-color: #1a1a1a;
+    background-color: #00bfa5;
     border: none;
-    padding: 12px 20px;
+    padding: 10px 15px;
     border-radius: 8px;
     cursor: pointer;
     font-size: 16px;
     color: #fff;
-    font-weight: 600;
     transition: transform 0.3s ease, background-color 0.3s ease;
   }
+
   #chatApp .send-btn:hover {
     transform: scale(1.05);
-    background-color: #333;
+    background-color: #00a894;
   }
+
   #chatApp .send-btn:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
+
   /* Thinking bubble dots */
   #chatApp .dot {
     display: inline-block;
@@ -172,11 +212,26 @@
     border-radius: 50%;
     animation: blink 1.4s infinite both;
   }
-  #chatApp .dot:nth-child(2) { animation-delay: 0.2s; }
-  #chatApp .dot:nth-child(3) { animation-delay: 0.4s; }
+
+  #chatApp .dot:nth-child(2) {
+    animation-delay: 0.2s;
+  }
+
+  #chatApp .dot:nth-child(3) {
+    animation-delay: 0.4s;
+  }
+
   @keyframes blink {
-    0%, 80%, 100% { opacity: 0; }
-    40% { opacity: 1; }
+
+    0%,
+    80%,
+    100% {
+      opacity: 0;
+    }
+
+    40% {
+      opacity: 1;
+    }
   }
 </style>
 {% endblock %}
@@ -187,7 +242,8 @@
     <div class="chat-header">Kundesupport</div>
     <div class="chat-box" id="chatBox" role="log" aria-live="polite"></div>
     <div class="chat-input-container">
-      <input type="text" id="chatInput" class="chat-input" placeholder="Skriv en besked..." aria-label="Skriv en besked" onkeypress="handleKeyPress(event)">
+      <input type="text" id="chatInput" class="chat-input" placeholder="Skriv en besked..." aria-label="Skriv en besked"
+        onkeypress="handleKeyPress(event)">
       <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send besked">Send</button>
     </div>
   </div>
@@ -195,47 +251,47 @@
 {% endblock %}
 
 {% block extra_scripts %}
-  {{ super() }}
-  <script>
-    document.addEventListener('DOMContentLoaded', function() {
-      document.getElementById('chatInput').focus();
-    });
-    
-    function handleKeyPress(event) {
-      if (event.key === 'Enter') {
-        sendMessage();
-      }
+{{ super() }}
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    document.getElementById('chatInput').focus();
+  });
+
+  function handleKeyPress(event) {
+    if (event.key === 'Enter') {
+      sendMessage();
     }
-    function addThinkingBubble() {
-      const chatBox = document.getElementById('chatBox');
-      const thinking = document.createElement('div');
-      thinking.className = "message bot-message";
-      thinking.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
-      chatBox.appendChild(thinking);
-      chatBox.scrollTop = chatBox.scrollHeight;
-      return thinking;
-    }
-    function addMessage(content, isUser = false) {
-      const chatBox = document.getElementById('chatBox');
-      const message = document.createElement('div');
-      message.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
-      message.innerHTML = content;
-      chatBox.appendChild(message);
-      chatBox.scrollTop = chatBox.scrollHeight;
-    }
-    function sendMessage() {
-      const input = document.getElementById('chatInput');
-      const sendBtn = document.getElementById('sendBtn');
-      const query = input.value.trim();
-      if (query === '') return;
-      addMessage(query, true);
-      const thinkingBubble = addThinkingBubble();
-      sendBtn.disabled = true;
-      fetch("{{ url_for('app1.ask') }}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: query })
-      })
+  }
+  function addThinkingBubble() {
+    const chatBox = document.getElementById('chatBox');
+    const thinking = document.createElement('div');
+    thinking.className = "message bot-message";
+    thinking.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+    chatBox.appendChild(thinking);
+    chatBox.scrollTop = chatBox.scrollHeight;
+    return thinking;
+  }
+  function addMessage(content, isUser = false) {
+    const chatBox = document.getElementById('chatBox');
+    const message = document.createElement('div');
+    message.className = `message ${isUser ? 'user-message' : 'bot-message'}`;
+    message.innerHTML = content;
+    chatBox.appendChild(message);
+    chatBox.scrollTop = chatBox.scrollHeight;
+  }
+  function sendMessage() {
+    const input = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const query = input.value.trim();
+    if (query === '') return;
+    addMessage(query, true);
+    const thinkingBubble = addThinkingBubble();
+    sendBtn.disabled = true;
+    fetch("{{ url_for('app1.ask') }}", {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query: query })
+    })
       .then(response => {
         if (!response.ok) {
           throw new Error("Network response was not ok");
@@ -260,19 +316,19 @@
       .finally(() => {
         sendBtn.disabled = false;
       });
-      input.value = '';
+    input.value = '';
+  }
+  // Global toggleDetails function for dynamically inserted course cards
+  function toggleDetails(id, btn) {
+    var elem = document.getElementById(id);
+    if (!elem) return;
+    if (elem.style.display === "none" || elem.style.display === "") {
+      elem.style.display = "block";
+      btn.innerText = "Skjul detaljer";
+    } else {
+      elem.style.display = "none";
+      btn.innerText = "Se detaljer";
     }
-    // Global toggleDetails function for dynamically inserted course cards
-    function toggleDetails(id, btn) {
-      var elem = document.getElementById(id);
-      if (!elem) return;
-      if (elem.style.display === "none" || elem.style.display === "") {
-        elem.style.display = "block";
-        btn.innerText = "Skjul detaljer";
-      } else {
-        elem.style.display = "none";
-        btn.innerText = "Se detaljer";
-      }
-    }
-  </script>
+  }
+</script>
 {% endblock %}

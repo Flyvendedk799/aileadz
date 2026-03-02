@@ -25,8 +25,10 @@ def index():
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# Hardcoded key
-openai.api_key = "REDACTED_OPENAI_KEY"
+if OPENAI_API_KEY:
+    openai.api_key = OPENAI_API_KEY
+else:
+    print("WARNING: OPENAI_API_KEY environment variable is not set.")
 
 PRODUCTS_CACHE = None
 FUZZY_THRESHOLD = 60

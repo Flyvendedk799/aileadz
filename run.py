@@ -1,11 +1,5 @@
 import logging
 import os
-
-try:
-    import sshtunnel
-except ImportError:
-    sshtunnel = None
-
 from flask import Flask, redirect, url_for
 from flask_mysqldb import MySQL
 
@@ -24,12 +18,8 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = 'your_secret_key_here'
     
-    # Dynamically select the database host
-    # If sshtunnel is missing, we are on PythonAnywhere.
-    default_host = 'TobiasMastek.mysql.eu.pythonanywhere-services.com' if sshtunnel is None else '127.0.0.1'
-    
     app.config.update({
-        'MYSQL_HOST': os.getenv('MYSQL_HOST', default_host),
+        'MYSQL_HOST': os.getenv('MYSQL_HOST', 'TobiasMastek.mysql.pythonanywhere-services.com'),
         'MYSQL_USER': 'TobiasMastek',
         'MYSQL_PASSWORD': 'Jht89ryu1!!',
         'MYSQL_DB': 'TobiasMastek$AiLead',
@@ -57,27 +47,6 @@ def create_app():
 
     return app
 
-def main():
-    tunnel = None
-    try:
-        tunnel = sshtunnel.SSHTunnelForwarder(
-            ('ssh.pythonanywhere.com', 22),
-            ssh_username='TobiasMastek',
-            ssh_password='Jht89ryu1!',
-            remote_bind_address=('TobiasMastek.mysql.pythonanywhere-services.com', 3306)
-        )
-        tunnel.start()
-        logging.info("SSH tunnel established on local port: %s", tunnel.local_bind_port)
-        
-        app = create_app()
-        app.config['MYSQL_PORT'] = tunnel.local_bind_port
-        app.run(host='0.0.0.0', port=5000, debug=False)
-    except Exception as e:
-        logging.error("Application failed to start: %s", e)
-    finally:
-        if tunnel:
-            tunnel.stop()
-            logging.info("SSH tunnel closed.")
-
 if __name__ == '__main__':
-    main()
+    app = create_app()
+    app.run(host='0.0.0.0', port=5000, debug=False)

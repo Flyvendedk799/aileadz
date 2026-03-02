@@ -313,53 +313,74 @@ def get_course_detail(query, product):
 
 # Single-course HTML snippet
 PRODUCT_MEDIA_TEMPLATE = """
-<div style="text-align:center;">
-  <strong>
-    <a href="{{ product.url | e }}" target="_blank" style="color: var(--primary-color); font-size: 16px; font-weight: bold;">
-      {{ product.title | e }}
-    </a>
-  </strong>
-</div>
-<div style="text-align:center; margin-top: 5px;">
-  <span style="font-size: 14px;">
-    {% if product.price in ["0", "0.00"] %}
-      Pris: Efter aftale
+<div style="background: #fff; border-radius: 12px; overflow: hidden; font-family: 'Inter', Arial, sans-serif; color: #333; box-shadow: 0 8px 24px rgba(0,0,0,0.08); width: 100%; max-width: 450px; margin: 0 auto;">
+  
+  {# Image Header Area #}
+  <div style="background-color: #f6efe8; padding: 30px; display: flex; justify-content: center; align-items: center; position: relative;">
+    {% if product.image_url %}
+      <img src="{{ product.image_url | e }}" alt="{{ product.title | e }}" style="max-height: 120px; object-fit: contain;">
     {% else %}
-      Pris: {{ product.price | e }} kr.
+      <div style="height: 120px; display: flex; align-items: center; justify-content: center; color: #888;">Ingen Billede</div>
     {% endif %}
-  </span>
-</div>
-{% if product.image_url %}
-<div style="text-align:center; margin-top: 15px;">
-  <a href="{{ product.url | e }}" target="_blank">
-    <img src="{{ product.image_url | e }}" alt="{{ product.title | e }}" style="max-width: 40%; height: auto; margin-bottom: 10px; border: 1px solid #ddd; border-radius: 8px;">
-  </a>
-</div>
-{% endif %}
-{% if product.description %}
-<div class="short-description" style="text-align:center;">
-  {{ get_short_description(product) | e }}
-</div>
-{% endif %}
-{% if product.variants and product.variants|length > 1 %}
-<br>
-<div style="text-align:center; font-size:16px; font-weight:bold;">Datoer & Steder:</div>
-<ul style="list-style: none; padding: 0;">
-  {% for variant in product.variants %}
-    {% if variant.option2 and variant.option1 %}
-      <li style="margin: 5px 0;">{{ variant.option2 | e }} - {{ variant.option1 | e }}</li>
+  </div>
+
+  {# Details Area #}
+  <div style="padding: 24px;">
+    <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 700; color: #1a1a1a;">{{ product.title | e }}</h3>
+    <p style="margin: 0 0 20px 0; font-size: 14px; color: #666;">Kursus</p>
+    
+    <div style="display: flex; gap: 40px; margin-bottom: 24px;">
+      <div>
+        <div style="display: flex; align-items: center; gap: 6px; color: #1a1a1a; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          Varighed
+        </div>
+        <div style="color: #666; font-size: 13px;">
+          {% if product.variants and product.variants|length > 1 %}
+            Flere muligheder
+          {% else %}
+            Ikke angivet
+          {% endif %}
+        </div>
+      </div>
+      <div>
+        <div style="display: flex; align-items: center; gap: 6px; color: #1a1a1a; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+          Lokation
+        </div>
+        <div style="color: #666; font-size: 13px;">
+          {% if product.location %}
+            {{ product.location | e }}
+          {% else %}
+            Online / Flere
+          {% endif %}
+        </div>
+      </div>
+    </div>
+
+    {# Price Floating Card #}
+    <div style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; font-weight: 600; font-size: 16px;">
+      {% if product.price in ["0", "0.00"] %}
+        Gratis
+      {% else %}
+        kr {{ product.price | e }}
+      {% endif %}
+    </div>
+    
+    {# Short desc #}
+    {% if product.description %}
+    <div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 24px;">
+      {{ get_short_description(product) | e }}
+    </div>
     {% endif %}
-  {% endfor %}
-</ul>
-{% elif product.location %}
-<br>
-<div style="text-align:center; font-size:16px;">Sted: {{ product.location | e }}</div>
-{% endif %}
-<br>
-<div style="text-align:center; margin-top:10px;">
-  <button class="btn-course btn-primary" onclick="window.open('{{ product.url | e }}', '_blank')">
-    Læs mere
-  </button>
+
+    {# Floating Action Button #}
+    <div style="display: flex; justify-content: center;">
+      <button onclick="window.open('{{ product.url | e }}', '_blank')" style="background-color: #1a1a1a; color: #fff; border: none; padding: 12px 24px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s ease;">
+        Vælg kursus
+      </button>
+    </div>
+  </div>
 </div>
 """
 
@@ -367,72 +388,44 @@ def render_product_media(product):
     return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=product, get_short_description=get_short_description)
 
 MULTIPLE_COURSES_TEMPLATE = """
-<div style="text-align: center;">
-  <div class="courses-container" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px; margin: 20px auto; max-width: 900px;">
-    {% for course in courses %}
-    <div class="course-card" style="border: 1px solid #444; border-radius: 8px; padding: 10px; background: #2c2c2c; color: #fff; box-shadow: 0 4px 6px rgba(0,0,0,0.2);">
-      <div style="text-align: center; font-size: 14px; font-weight: bold; margin-bottom: 5px;">
-        <a href="{{ course.url | e }}" target="_blank" style="color: #00bfa5; text-decoration: none;">
-          {{ course.title | e }}
-        </a>
-      </div>
-      {% if course.image_url %}
-      <div style="text-align: center; margin: 5px 0;">
-        <a href="{{ course.url | e }}" target="_blank">
-          <img src="{{ course.image_url | e }}" alt="{{ course.title | e }}" style="max-width: 50%; height: auto; border: 1px solid #ddd; border-radius: 8px;">
-        </a>
-      </div>
-      {% endif %}
-
-      <div style="text-align: center; font-size: 13px; margin-bottom: 10px;">
-        {% if course.price in ['0', '0.00'] %}
-          Pris: Efter aftale
+<div style="display: flex; flex-direction: column; gap: 12px; max-width: 450px;">
+  {% for course in courses %}
+    <div onclick="window.open('{{ course.url | e }}', '_blank')" style="background: #fff; border: 1px solid #eaeaea; border-radius: 10px; padding: 16px; display: flex; align-items: center; gap: 16px; cursor: pointer; transition: transform 0.2s ease, box-shadow 0.2s ease; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+      
+      {# Left Icon/Logo Placeholder Box #}
+      <div style="background-color: #f8f6f2; border-radius: 8px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; position: relative;">
+        {% if course.image_url %}
+            <img src="{{ course.image_url | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain;">
         {% else %}
-          Pris: {{ course.price | e }} kr.
+            <div style="font-size: 10px; color: #aaa;">Logo</div>
         {% endif %}
       </div>
-
-      <div style="text-align: center; margin-bottom: 0;">
-        <button class="btn-course btn-secondary" onclick="toggleDetails('course-details-{{ unique_prefix }}-{{ loop.index }}', this)">
-          Se detaljer
-        </button>
-      </div>
-
-      <div id="course-details-{{ unique_prefix }}-{{ loop.index }}" style="display: none; font-size: 12px; color: #ccc; text-align: center; padding: 10px; border-top: 1px solid #444; margin-top: 10px;">
-        {% if course.description %}
-          <div style="margin-bottom: 8px; text-align: left;">
-            <strong>Beskrivelse:</strong> {{ get_short_description(course) | e }}
-          </div>
-        {% endif %}
-        {% if course.variants and course.variants|length > 1 %}
-          <div style="margin-bottom: 8px; text-align: left;">
-            <strong>Datoer & Steder:</strong>
-            <ul style="list-style: disc; padding-left: 20px; margin: 4px 0;">
-              {% for variant in course.variants %}
-                {% if variant.option2 and variant.option1 %}
-                  <li>{{ variant.option2 | e }} - {{ variant.option1 | e }}</li>
+      
+      {# Right Details #}
+      <div style="flex-grow: 1; min-width: 0; font-family: 'Inter', Arial, sans-serif;">
+        <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
+            <h4 style="margin: 0; font-size: 14px; font-weight: 600; color: #1a1a1a; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;">
+                {{ course.title | e }}
+            </h4>
+            <div style="font-size: 13px; font-weight: 600; color: #1a1a1a; white-space: nowrap;">
+                {% if course.price in ['0', '0.00'] %}
+                    Gratis
+                {% else %}
+                    kr {{ course.price | e }}
                 {% endif %}
-              {% endfor %}
-            </ul>
-          </div>
-        {% elif course.location %}
-          <div style="margin-bottom: 8px; text-align: left;">
-            <strong>Sted:</strong> {{ course.location | e }}
-          </div>
-        {% endif %}
-
-        <div style="text-align: center;">
-          <button class="btn-course btn-primary" onclick="window.open('{{ course.url | e }}', '_blank')">
-            Læs mere
-          </button>
-          <button class="btn-course btn-secondary" onclick="toggleDetails('course-details-{{ unique_prefix }}-{{ loop.index }}', this)">
-            Skjul detaljer
-          </button>
+            </div>
+        </div>
+        <div style="display: flex; justify-content: space-between; font-size: 12px; color: #888;">
+            <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ course.vendor | e }}</div>
+            {% if course.price not in ['0', '0.00'] %}
+                <div>ekskl. moms</div>
+            {% else %}
+                <div>&nbsp;</div>
+            {% endif %}
         </div>
       </div>
     </div>
-    {% endfor %}
-  </div>
+  {% endfor %}
 </div>
 """
 

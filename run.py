@@ -1,5 +1,4 @@
 import logging
-import sshtunnel
 from flask import Flask, redirect, url_for
 from flask_mysqldb import MySQL
 
@@ -57,6 +56,7 @@ def create_app():
     return app
 
 def main():
+    import sshtunnel
     tunnel = None
     try:
         tunnel = sshtunnel.SSHTunnelForwarder(

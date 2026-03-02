@@ -1,0 +1,7 @@
+__pycache__/
+instance/
+static/temp/
+static/uploads/
+*.mp3
+*.pptx
+*.zip

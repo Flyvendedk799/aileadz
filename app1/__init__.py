@@ -23,10 +23,10 @@ def index():
     return render_template('index.html')
 
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
-# Hardcoded key
-openai.api_key = "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"
+# Set the key for openai
+openai.api_key = OPENAI_API_KEY
 
 PRODUCTS_CACHE = None
 FUZZY_THRESHOLD = 60

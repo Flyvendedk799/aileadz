@@ -102,7 +102,24 @@ def combined_score(a, b):
     return max(fuzz.token_sort_ratio(a, b), fuzz.partial_ratio(a, b))
 
 def get_best_match(query, product_titles):
-    best_match = process.extractOne(query, product_titles, scorer=combined_score)
+    query_lower = query.lower().strip()
+    
+    # 1. Exact match
+    for title in product_titles:
+        if query_lower == title:
+            return (title, 100)
+            
+    # 2. Exact substring match (e.g. "teamledelse" in "Teamledelse")
+    # Priority to titles that start with the query, or have it strictly as a word.
+    for title in product_titles:
+        if title.startswith(query_lower):
+            return (title, 95)
+    for title in product_titles:
+        if f" {query_lower} " in f" {title} " or f" {query_lower}" in f" {title}":
+            return (title, 90)
+
+    # 3. Fuzzy match fallback
+    best_match = process.extractOne(query_lower, product_titles, scorer=combined_score)
     return best_match if best_match and best_match[1] >= FUZZY_THRESHOLD else None
 
 def suggest_courses(query, product_list, count=3):

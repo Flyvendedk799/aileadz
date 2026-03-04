@@ -41,7 +41,7 @@ def handle_agentic_ask(user_query, session):
         while True:
             response = openai.chat.completions.create(
                 model="gpt-4o",
-                messages=session["messages"],
+                messages=messages,
                 tools=OPENAI_TOOLS,
                 stream=False # We use true continuous streaming internally, but step-by-step for the agent loop
             )

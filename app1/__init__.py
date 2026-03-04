@@ -505,141 +505,17 @@ def render_multi_course_media(courses):
     unique_prefix = str(uuid.uuid4())[:8]
     return render_template_string(MULTIPLE_COURSES_TEMPLATE, courses=courses, get_short_description=get_short_description, unique_prefix=unique_prefix)
 
+from app1.agent import handle_agentic_ask
+
 @app1_bp.route("/ask", methods=["POST"])
 def ask():
     try:
         user_query = request.json.get("query", "").strip()
-        query_lower = user_query.lower()
-
-        course_keywords = [
-            "kursus", "uddannelse", "træning", "certificering", "læring",
-            "prisen på", "prisen for", "pris", "koster", "hvad koster",
-            "dato", "sted", "udbyder", "leverandør", "hvornår", "tid", "tidspunkt",
-            "afholdt", "hvor", "anbefal", "forslå", "find", "fortæl"
-        ]
-        is_course_query = any(keyword in query_lower for keyword in course_keywords)
-
-        if is_course_query:
-            products = load_products()
-            if not products:
-                return jsonify({"answers": [
-                    {"type": "text", "content": "Undskyld, den information kunne jeg ikke finde. Prøv venligst et andet spørgsmål."}
-                ]}), 200
-
-            product_list = []
-            for product in products:
-                location, date_val = extract_location_and_date(product)
-                product_list.append({
-                    "title": product.get("title", ""),
-                    "title_lower": product.get("title", "").lower(),
-                    "description": product.get("body_html", ""),
-                    "price": product.get("variants", [{}])[0].get("price", "N/A"),
-                    "url": f"https://{SHOPIFY_STORE_URL}/products/{product.get('handle', '')}",
-                    "image_url": (product.get("images", [{}])[0].get("src", None)),
-                    "date": date_val,
-                    "location": location,
-                    "vendor": product.get("vendor", "Ukendt"),
-                    "variants": product.get("variants", []),
-                    "handle": product.get("handle", "")
-                })
-
-            titles = [p["title_lower"] for p in product_list]
-
-            multi_course_flag = False
-            requested_count = 0
-            m = re.search(r'\b(\d+)\b', query_lower)
-            if m:
-                requested_count = int(m.group(1))
-                if requested_count > 1:
-                    multi_course_flag = True
-            if any(word in query_lower for word in ["flere", "anbefal", "forslå", "find"]):
-                multi_course_flag = True
-
-            # If user requests multiple courses
-            if multi_course_flag:
-                if requested_count < 2:
-                    requested_count = 3
-                suggested_courses = suggest_courses(query_lower, product_list, requested_count)
-                if not suggested_courses:
-                    return jsonify({"answers": [
-                        {"type": "text", "content": "Undskyld, den information kunne jeg ikke finde. Prøv venligst et andet spørgsmål."}
-                    ]}), 200
-
-                multi_course_media = render_multi_course_media(suggested_courses)
-                reasoning_message = (
-                    "Jeg har valgt disse kurser, da de matcher dine kriterier. "
-                    "Er du interesseret i en specifik lokation eller startdato? Fortæl mig dine præferencer, "
-                    "så finder jeg den perfekte løsning til dig."
-                )
-                messages = [
-                    {"type": "text", "content": reasoning_message},
-                    {"type": "product", "content": multi_course_media}
-                ]
-                return jsonify({"answers": messages}), 200
-
-            else:
-                last_handle = session.get("last_product_handle")
-                extracted_name = extract_product_from_query(query_lower, last_handle)
-                matched_product = None
-
-                if extracted_name:
-                    # check if the extracted name was actually our last_handle fallback
-                    if extracted_name == last_handle:
-                         matched_product = next((p for p in product_list if p.get("handle") == last_handle), None)
-                    else:
-                        match_extracted = get_best_match(extracted_name, titles)
-                        match_full = get_best_match(query_lower, titles)
-                        best_match = match_extracted if (match_extracted and (not match_full or match_extracted[1] >= match_full[1])) else match_full
-
-                        if best_match:
-                            matched_product = next((p for p in product_list if p["title_lower"] == best_match[0]), None)
-                            
-                    if matched_product:
-                        session["last_product_handle"] = matched_product.get("handle")
-                else:
-                    if last_handle:
-                        matched_product = next((p for p in product_list if p.get("handle") == last_handle), None)
-
-                if matched_product:
-                    details = get_course_detail(query_lower, matched_product)
-                    product_media = render_product_media(matched_product)
-                    messages = []
-                    if details and details.strip():
-                        messages.append({"type": "text", "content": details})
-                    messages.append({"type": "product", "content": product_media})
-                    return jsonify({"answers": messages}), 200
-                else:
-                    return jsonify({"answers": [
-                        {"type": "text", "content": "Undskyld, den information kunne jeg ikke finde. Prøv venligst et andet spørgsmål."}
-                    ]}), 200
-
-        else:
-            # For non-course queries, use the generic GPT response.
-            bot_reply = ""
-            try:
-                response = openai.chat.completions.create(
-                    model="gpt-4",
-                    messages=[
-                        {"role": "system", "content": "Du er en ekspert i kurser og uddannelse, og hjælper brugeren med at finde de bedste kurser baseret på data fra JSON-filen. Husk at integrere svar, der kan håndtere flere varianter og give et klart overblik."},
-                        {"role": "user", "content": user_query}
-                    ]
-                )
-                bot_reply = response.choices[0].message.content
-            except Exception as e:
-                print(f"Error calling GPT-4 API: {e}")
-                try:
-                    response = openai.chat.completions.create(
-                        model="gpt-3.5-turbo",
-                        messages=[
-                            {"role": "system", "content": "Du er en ekspert i kurser og uddannelse, og hjælper brugeren med at finde de bedste kurser baseret på data fra JSON-filen. Husk at integrere svar, der kan håndtere flere varianter og give et klart overblik."},
-                            {"role": "user", "content": user_query}
-                        ]
-                    )
-                    bot_reply = response.choices[0].message.content
-                except Exception as e2:
-                    print(f"Error calling GPT-3.5-turbo API: {e2}")
-                    bot_reply = "Der opstod en fejl under behandlingen af din forespørgsel."
-            return jsonify({"answers": [{"type": "text", "content": bot_reply}]}), 200
+        if not user_query:
+            return jsonify({"answers": [{"type": "text", "content": "Skriv venligst et spørgsmål."}]}), 400
+            
+        return handle_agentic_ask(user_query, session)
+        
     except Exception as ex:
         print(f"Unexpected error: {ex}")
         return jsonify({"answers": [

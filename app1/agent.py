@@ -90,4 +90,9 @@ def handle_agentic_ask(user_query, session):
         # End stream
         yield "data: [DONE]\n\n"
 
-    return Response(stream_with_context(stream_generator()), mimetype="text/event-stream")
+    response = Response(stream_with_context(stream_generator()), mimetype="text/event-stream")
+    # Crucial for PythonAnywhere (uWSGI/Nginx) to prevent buffering and Broken Pipe errors
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Cache-Control'] = 'no-cache'
+    response.headers['Connection'] = 'keep-alive'
+    return response

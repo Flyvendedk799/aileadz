@@ -4,25 +4,39 @@ import openai
 from app1.tools import OPENAI_TOOLS, execute_tool
 from . import render_multi_course_media, render_product_media
 
+import uuid
+
+# Server-side memory buffer. Flask session cookies cannot be mutated mid-stream because headers are already sent.
+CHAT_MEMORY = {}
+
 def handle_agentic_ask(user_query, session):
     """
     Core Agent Loop for Phase 2 & 3. 
-    Maintains memory in the session, executes tools natively, and yields SSE streams.
+    Maintains memory Server-Side, executes tools natively, and yields SSE streams.
     """
+    if "session_id" not in session:
+        session["session_id"] = str(uuid.uuid4())
+        
+    sid = session["session_id"]
+
     # 1. Initialize or load Conversation Memory
-    if "messages" not in session:
-        session["messages"] = [
-            {"role": "system", "content": "Du er en professionel, dansk AI-assistent for AiLead, der hjælper brugerne med at finde og forstå kurser og uddannelser. Brug værktøjerne 'search_courses' til at finde kurser via klog søgning, og 'get_course_details' hvis brugeren spørger specifikt til et kursus. Svar altid på dansk. Vær hjælpsom og opsummer resultaterne elegant."}
+    if sid not in CHAT_MEMORY:
+        CHAT_MEMORY[sid] = [
+            {"role": "system", "content": "Du er en professionel, dansk AI-assistent for AiLead, der hjælper brugerne med at finde og forstå kurser og uddannelser. Svar altid på dansk. Hvis brugeren spørger om prisen eller detaljer for et specifikt kursus, MÅ du IKKE gætte! Du skal bruge 'get_course_details' via handle. Ellers, brug 'search_courses' til løse søgninger."}
         ]
         
-    messages = session["messages"]
+    messages = CHAT_MEMORY[sid]
     messages.append({"role": "user", "content": user_query})
 
-    # Keep memory size bounded to avoid token limit exceptions (last 10 messages + system prompt)
+    # Keep memory size bounded to avoid token limit exceptions
     if len(messages) > 11:
-        session["messages"] = [messages[0]] + messages[-10:]
+        CHAT_MEMORY[sid] = [messages[0]] + messages[-10:]
+        messages = CHAT_MEMORY[sid]
 
     def stream_generator():
+        # Ping Nginx immediately to keep the HTTP connection alive while the LLM thinks
+        yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
+
         # Agent Loop
         while True:
             response = openai.chat.completions.create(
@@ -33,7 +47,7 @@ def handle_agentic_ask(user_query, session):
             )
             
             message = response.choices[0].message
-            session["messages"].append(message.model_dump())
+            messages.append(message.model_dump())
 
             # If the LLM wants to use a tool
             if message.tool_calls:
@@ -43,7 +57,7 @@ def handle_agentic_ask(user_query, session):
                     tool_result_dict = json.loads(tool_result_str)
                     
                     # Store tool response
-                    session["messages"].append({
+                    messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call.id,
                         "name": tool_call.function.name,
@@ -71,7 +85,7 @@ def handle_agentic_ask(user_query, session):
         # Final Text Streaming Output from LLM
         stream = openai.chat.completions.create(
             model="gpt-4o",
-            messages=session["messages"][:-1], # pop the static message and regenerate as a stream
+            messages=messages[:-1], # pop the static message and regenerate as a stream
             tools=OPENAI_TOOLS,
             stream=True
         )
@@ -85,7 +99,7 @@ def handle_agentic_ask(user_query, session):
                 yield f"data: {json.dumps({'type': 'chunk', 'content': txt})}\n\n"
         
         # Save final text to memory
-        session["messages"][-1] = {"role": "assistant", "content": full_assistant_reply}
+        messages[-1] = {"role": "assistant", "content": full_assistant_reply}
         
         # End stream
         yield "data: [DONE]\n\n"

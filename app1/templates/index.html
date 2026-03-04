@@ -377,44 +377,89 @@
     chatBox.appendChild(message);
     chatBox.scrollTop = chatBox.scrollHeight;
   }
-  function sendMessage() {
+  async function sendMessage() {
     const input = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendBtn');
     const query = input.value.trim();
     if (query === '') return;
-    addMessage(query, true);
-    const thinkingBubble = addThinkingBubble();
+
+    // Add user message to UI immediately
+    const chatBox = document.getElementById('chatBox');
+    const userMsg = document.createElement('div');
+    userMsg.className = 'message user-message';
+    userMsg.textContent = query;
+    chatBox.appendChild(userMsg);
+    chatBox.scrollTop = chatBox.scrollHeight;
+
+    // Create assistant message container
+    const botMsg = document.createElement('div');
+    botMsg.className = 'message bot-message';
+    chatBox.appendChild(botMsg);
+
     sendBtn.disabled = true;
-    fetch("{{ url_for('app1.ask') }}", {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ query: query })
-    })
-      .then(response => {
-        if (!response.ok) {
-          throw new Error("Network response was not ok");
-        }
-        return response.json();
-      })
-      .then(data => {
-        thinkingBubble.remove();
-        if (data.answers && Array.isArray(data.answers)) {
-          data.answers.forEach(answer => {
-            addMessage(answer.content);
-          });
-        } else if (data.answer) {
-          addMessage(data.answer);
-        }
-      })
-      .catch(error => {
-        console.error('Error:', error);
-        thinkingBubble.remove();
-        addMessage("Der opstod en fejl, prøv venligst igen.");
-      })
-      .finally(() => {
-        sendBtn.disabled = false;
-      });
     input.value = '';
+
+    try {
+      const response = await fetch("{{ url_for('app1.ask') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ query: query })
+      });
+
+      if (!response.ok) {
+        throw new Error("Network response was not ok");
+      }
+
+      // Read the SSE stream
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder("utf-8");
+      let buffer = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\\n\\n');
+
+        // Keep the last incomplete chunk in the buffer
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            const dataStr = line.replace('data: ', '').trim();
+            if (dataStr === '[DONE]') {
+              break;
+            }
+            try {
+              const data = JSON.parse(dataStr);
+              if (data.type === 'chunk') {
+                // Append text securely as HTML (replace newlines with breaks)
+                // First, check if there's raw text node we can append to, otherwise create one
+                // To keep it simple, we just accumulate HTML
+                botMsg.innerHTML += data.content.replace(/\\n/g, '<br>');
+              } else if (data.type === 'product') {
+                // If a product card is sent mid-stream, append it gracefully
+                const cardContainer = document.createElement('div');
+                cardContainer.style.marginTop = "12px";
+                cardContainer.style.marginBottom = "12px";
+                cardContainer.innerHTML = data.html;
+                botMsg.appendChild(cardContainer);
+              }
+              chatBox.scrollTop = chatBox.scrollHeight;
+            } catch (e) {
+              console.error('Error parsing stream data:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error:', error);
+      botMsg.innerHTML = "Der opstod en fejl, prøv venligst igen.";
+    } finally {
+      sendBtn.disabled = false;
+      document.getElementById('chatInput').focus();
+    }
   }
   // Global toggleDetails function for dynamically inserted course cards
   function toggleDetails(id, btn) {

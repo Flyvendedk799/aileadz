@@ -391,13 +391,17 @@
     chatBox.appendChild(userMsg);
     chatBox.scrollTop = chatBox.scrollHeight;
 
+    sendBtn.disabled = true;
+    input.value = '';
+
     // Create assistant message container
     const botMsg = document.createElement('div');
     botMsg.className = 'message bot-message';
     chatBox.appendChild(botMsg);
 
-    sendBtn.disabled = true;
-    input.value = '';
+    // Add thinking animation initially
+    botMsg.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+    chatBox.scrollTop = chatBox.scrollHeight;
 
     try {
       const response = await fetch("{{ url_for('app1.ask') }}", {
@@ -414,6 +418,7 @@
       const reader = response.body.getReader();
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
+      let isFirstChunk = true;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -433,10 +438,14 @@
             }
             try {
               const data = JSON.parse(dataStr);
+
+              if (isFirstChunk) {
+                botMsg.innerHTML = ''; // Clear thinking dots
+                isFirstChunk = false;
+              }
+
               if (data.type === 'chunk') {
                 // Append text securely as HTML (replace newlines with breaks)
-                // First, check if there's raw text node we can append to, otherwise create one
-                // To keep it simple, we just accumulate HTML
                 botMsg.innerHTML += data.content.replace(/\\n/g, '<br>');
               } else if (data.type === 'product') {
                 // If a product card is sent mid-stream, append it gracefully

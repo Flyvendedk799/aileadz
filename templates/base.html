@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="da">
+
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>AiLead Dashboard</title>
   <!-- Modern typography with Inter for text and Poppins for headings -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Poppins:wght@500;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Poppins:wght@500;700&display=swap"
+    rel="stylesheet" />
   <!-- Font Awesome for icons -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
+    crossorigin="anonymous" referrerpolicy="no-referrer" />
   <style>
     /* ------------------------------------------------------------
        THEME & COLOR VARIABLES
@@ -24,8 +27,9 @@
       --hover-shadow: rgba(0, 0, 0, 0.8);
       --transition-speed: 0.3s;
       --border-radius: 10px;
-      --box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+      --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
     }
+
     .light-mode {
       --background-color: #f4f4f9;
       --sidebar-bg: #ffffff;
@@ -34,12 +38,18 @@
       --text-color: #1a1a1a;
       --muted-text: #555555;
       --hover-shadow: rgba(0, 0, 0, 0.1);
-      --box-shadow: 0 2px 6px rgba(0,0,0,0.1);
+      --box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
     }
+
     /* ------------------------------------------------------------
        GLOBAL STYLES
        ------------------------------------------------------------ */
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
     body {
       font-family: "Inter", sans-serif;
       background: var(--background-color);
@@ -47,9 +57,22 @@
       overflow-x: hidden;
       transition: background var(--transition-speed) ease, color var(--transition-speed) ease;
     }
-    a { text-decoration: none; color: var(--text-color); transition: color var(--transition-speed) ease; }
-    a:hover { color: var(--primary-color); }
-    .dashboard { display: flex; min-height: 100vh; }
+
+    a {
+      text-decoration: none;
+      color: var(--text-color);
+      transition: color var(--transition-speed) ease;
+    }
+
+    a:hover {
+      color: var(--primary-color);
+    }
+
+    .dashboard {
+      display: flex;
+      min-height: 100vh;
+    }
+
     /* ------------------------------------------------------------
        SIDEBAR
        ------------------------------------------------------------ */
@@ -65,13 +88,18 @@
       overflow: hidden;
       animation: fadeInLeft 0.5s ease-out;
     }
-    .sidebar.collapsed { width: 70px; }
+
+    .sidebar.collapsed {
+      width: 70px;
+    }
+
     .sidebar-header {
       display: flex;
       align-items: center;
       justify-content: space-between;
       margin-bottom: 35px;
     }
+
     .logo h2 {
       font-family: "Poppins", sans-serif;
       font-size: 1.8rem;
@@ -79,7 +107,11 @@
       color: var(--primary-color);
       letter-spacing: 1px;
     }
-    .sidebar.collapsed .logo { display: none; }
+
+    .sidebar.collapsed .logo {
+      display: none;
+    }
+
     .toggle-button {
       background: transparent;
       border: none;
@@ -87,9 +119,22 @@
       transition: transform var(--transition-speed) ease;
       padding: 8px;
     }
-    .toggle-button:hover { transform: scale(1.1); }
-    .nav-liste { list-style: none; margin-top: 10px; flex-grow: 1; }
-    .nav-liste li { margin-bottom: 15px; position: relative; }
+
+    .toggle-button:hover {
+      transform: scale(1.1);
+    }
+
+    .nav-liste {
+      list-style: none;
+      margin-top: 10px;
+      flex-grow: 1;
+    }
+
+    .nav-liste li {
+      margin-bottom: 15px;
+      position: relative;
+    }
+
     .nav-liste li a {
       display: flex;
       align-items: center;
@@ -100,12 +145,20 @@
       font-weight: 500;
       background: transparent;
     }
-    .nav-liste li a i { margin-right: 15px; font-size: 1.2rem; width: 25px; text-align: center; }
+
+    .nav-liste li a i {
+      margin-right: 15px;
+      font-size: 1.2rem;
+      width: 25px;
+      text-align: center;
+    }
+
     .sidebar:not(.collapsed) .nav-liste li a:hover,
     .sidebar:not(.collapsed) .nav-liste li a.active {
-      background: linear-gradient(90deg, rgba(42,42,42,0.8), rgba(42,42,42,0.8));
+      background: linear-gradient(90deg, rgba(42, 42, 42, 0.8), rgba(42, 42, 42, 0.8));
       transform: scale(1.03);
     }
+
     .sidebar:not(.collapsed) .nav-liste li a.active::after {
       content: "";
       position: absolute;
@@ -117,13 +170,21 @@
       border-radius: 4px;
       transition: opacity var(--transition-speed) ease;
     }
-    .sidebar.collapsed .nav-text { display: none; }
+
+    .sidebar.collapsed .nav-text {
+      display: none;
+    }
+
     .sidebar.collapsed .nav-liste {
       display: flex;
       flex-direction: column;
       align-items: center;
     }
-    .sidebar.collapsed .nav-liste li { margin: 20px 0; }
+
+    .sidebar.collapsed .nav-liste li {
+      margin: 20px 0;
+    }
+
     .sidebar.collapsed .nav-liste li a {
       width: 50px;
       height: 50px;
@@ -131,17 +192,26 @@
       border-radius: 50%;
       padding: 0;
     }
-    .sidebar.collapsed .nav-liste li a i { margin-right: 0; }
+
+    .sidebar.collapsed .nav-liste li a i {
+      margin-right: 0;
+    }
+
     .sidebar.collapsed .nav-liste li a:hover,
-    .sidebar.collapsed .nav-liste li a.active { background: var(--card-bg); transform: scale(1.1); }
+    .sidebar.collapsed .nav-liste li a.active {
+      background: var(--card-bg);
+      transform: scale(1.1);
+    }
+
     .sidebar-footer {
       margin-top: auto;
       text-align: center;
       font-size: 0.85rem;
       color: var(--muted-text);
-      border-top: 1px solid rgba(255,255,255,0.1);
+      border-top: 1px solid rgba(255, 255, 255, 0.1);
       padding-top: 15px;
     }
+
     /* ------------------------------------------------------------
        HEADER
        ------------------------------------------------------------ */
@@ -151,20 +221,22 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      border-bottom: 1px solid rgba(255,255,255,0.15);
+      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
       animation: fadeInDown 0.5s ease-out;
       backdrop-filter: blur(10px);
-      box-shadow: 0 2px 6px rgba(0,0,0,0.4);
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
       /* FIX: Set position and high z-index so dropdown appears on top */
       position: relative;
       z-index: 10000;
     }
+
     .side-titel h1 {
       font-family: "Poppins", sans-serif;
       font-size: 2.2rem;
       font-weight: 700;
       letter-spacing: 1px;
     }
+
     .header-handlinger {
       font-size: 1rem;
       display: flex;
@@ -172,6 +244,7 @@
       position: relative;
       z-index: 1;
     }
+
     .header-handlinger a {
       margin-left: 15px;
       padding: 12px 16px;
@@ -181,14 +254,27 @@
       font-weight: 600;
       transition: background var(--transition-speed) ease, transform var(--transition-speed) ease;
     }
+
     .header-handlinger a:hover {
       background-color: #9333ea;
       transform: scale(1.05);
     }
+
     /* Header notifications dropdown */
-    #header-notif-wrapper { position: relative; margin-left: 15px; }
-    #header-notifications { cursor: pointer; position: relative; }
-    #header-notifications i { font-size: 1.3rem; }
+    #header-notif-wrapper {
+      position: relative;
+      margin-left: 15px;
+    }
+
+    #header-notifications {
+      cursor: pointer;
+      position: relative;
+    }
+
+    #header-notifications i {
+      font-size: 1.3rem;
+    }
+
     #notif-badge {
       position: absolute;
       top: -6px;
@@ -202,6 +288,7 @@
       text-align: center;
       transition: transform 0.2s ease;
     }
+
     #notif-dropdown {
       display: none;
       position: absolute;
@@ -210,16 +297,21 @@
       background: var(--card-bg);
       border: 1px solid var(--muted-text);
       border-radius: var(--border-radius);
-      box-shadow: 0 3px 10px rgba(0,0,0,0.4);
+      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
       width: 320px;
       z-index: 10001;
     }
-    #notif-dropdown.active { display: block; }
+
+    #notif-dropdown.active {
+      display: block;
+    }
+
     #notif-dropdown .dropdown-header {
       padding: 12px;
       border-bottom: 1px solid var(--muted-text);
       font-weight: 600;
     }
+
     #notif-dropdown .dropdown-item {
       padding: 12px;
       border-bottom: 1px solid var(--muted-text);
@@ -227,13 +319,21 @@
       align-items: center;
       transition: background 0.2s;
     }
-    #notif-dropdown .dropdown-item:hover { background: var(--hover-shadow); }
-    #notif-dropdown .dropdown-item:last-child { border-bottom: none; }
+
+    #notif-dropdown .dropdown-item:hover {
+      background: var(--hover-shadow);
+    }
+
+    #notif-dropdown .dropdown-item:last-child {
+      border-bottom: none;
+    }
+
     #notif-dropdown .dropdown-item a {
       flex-grow: 1;
       font-size: 0.9rem;
       color: var(--text-color);
     }
+
     #notif-dropdown .dropdown-item img.dropdown-image {
       max-width: 40px;
       max-height: 40px;
@@ -241,6 +341,7 @@
       margin-right: 8px;
       object-fit: cover;
     }
+
     #notif-dropdown .dropdown-item button {
       background: none;
       border: none;
@@ -248,11 +349,16 @@
       cursor: pointer;
       font-size: 0.8rem;
     }
-    #notif-dropdown .dropdown-item button:hover { text-decoration: underline; }
+
+    #notif-dropdown .dropdown-item button:hover {
+      text-decoration: underline;
+    }
+
     #notif-dropdown .dropdown-footer {
       padding: 12px;
       text-align: center;
     }
+
     #notif-dropdown .dropdown-footer button,
     #notif-dropdown .dropdown-footer a {
       background: var(--primary-color);
@@ -266,10 +372,12 @@
       margin: 0 5px;
       transition: background 0.3s;
     }
+
     #notif-dropdown .dropdown-footer button:hover,
     #notif-dropdown .dropdown-footer a:hover {
       background: #9333ea;
     }
+
     /* ------------------------------------------------------------
        TOGGLE SLIDER
        ------------------------------------------------------------ */
@@ -289,12 +397,14 @@
       justify-content: space-between;
       padding: 0 5px;
     }
+
     .toggle-slider .left-icon,
     .toggle-slider .right-icon {
       font-size: 14px;
       color: #fff;
       opacity: 0.8;
     }
+
     .toggle-slider .toggle-knob {
       position: absolute;
       top: 2px;
@@ -304,28 +414,42 @@
       background-color: #fff;
       border-radius: 50%;
       transition: left 0.3s ease;
-      box-shadow: 0 3px 8px rgba(0,0,0,0.2);
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
     }
-    .toggle-slider.active { background-color: var(--primary-color); }
-    .toggle-slider.active .toggle-knob { left: calc(100% - 28px); }
+
+    .toggle-slider.active {
+      background-color: var(--primary-color);
+    }
+
+    .toggle-slider.active .toggle-knob {
+      left: calc(100% - 28px);
+    }
+
     /* ------------------------------------------------------------
        MAIN CONTENT
        ------------------------------------------------------------ */
-    .main-content { flex-grow: 1; display: flex; flex-direction: column; }
+    .main-content {
+      flex-grow: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
     .content {
       flex-grow: 1;
       padding: 40px;
       background: var(--background-color);
       animation: fadeInUp 0.5s ease-out;
     }
+
     .section-title {
       margin: 35px 0 25px;
       font-size: 1.8rem;
       font-weight: 700;
-      border-bottom: 2px solid rgba(255,255,255,0.2);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.2);
       padding-bottom: 10px;
       letter-spacing: 0.8px;
     }
+
     /* ------------------------------------------------------------
        FOOTER
        ------------------------------------------------------------ */
@@ -334,29 +458,62 @@
       background: var(--header-bg);
       text-align: center;
       font-size: 0.85rem;
-      border-top: 1px solid rgba(255,255,255,0.15);
+      border-top: 1px solid rgba(255, 255, 255, 0.15);
       backdrop-filter: blur(10px);
     }
-    .footer a { margin: 0 10px; color: var(--text-color); transition: color var(--transition-speed) ease; }
-    .footer a:hover { color: var(--primary-color); }
+
+    .footer a {
+      margin: 0 10px;
+      color: var(--text-color);
+      transition: color var(--transition-speed) ease;
+    }
+
+    .footer a:hover {
+      color: var(--primary-color);
+    }
+
     /* ------------------------------------------------------------
        KEYFRAMES
        ------------------------------------------------------------ */
     @keyframes fadeInUp {
-      0% { opacity: 0; transform: translateY(20px); }
-      100% { opacity: 1; transform: translateY(0); }
+      0% {
+        opacity: 0;
+        transform: translateY(20px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
+
     @keyframes fadeInDown {
-      0% { opacity: 0; transform: translateY(-20px); }
-      100% { opacity: 1; transform: translateY(0); }
+      0% {
+        opacity: 0;
+        transform: translateY(-20px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateY(0);
+      }
     }
+
     @keyframes fadeInLeft {
-      0% { opacity: 0; transform: translateX(-20px); }
-      100% { opacity: 1; transform: translateX(0); }
+      0% {
+        opacity: 0;
+        transform: translateX(-20px);
+      }
+
+      100% {
+        opacity: 1;
+        transform: translateX(0);
+      }
     }
   </style>
   {% block extra_styles %}{% endblock %}
 </head>
+
 <body>
   <div class="dashboard">
     <!-- SIDEBAR -->
@@ -423,40 +580,40 @@
         </div>
         <div class="header-handlinger">
           {% if session.get('user') %}
-            <span>Hej, {{ session.get('user') }}</span>
-            <span id="credits-display" style="margin-left:10px;">
-              {% if session.get('credits') %}
-                <i class="fa-solid fa-coins"></i> {{ session.get('credits') }}
-              {% else %}
-                {% if local_storage_credits %} 
-                  <i class="fa-solid fa-coins"></i> {{ local_storage_credits }}
-                {% else %}
-                  <i class="fa-solid fa-spinner fa-spin"></i>
-                {% endif %}
-              {% endif %}
-            </span>
-            <a href="/profile">Min Profil</a>
-            <a href="/logout">Log ud</a>
-            <!-- Header notifications dropdown -->
-            <div id="header-notif-wrapper">
-              <div id="header-notifications">
-                <i class="fa-solid fa-bell"></i>
-                <span id="notif-badge">0</span>
+          <span>Hej, {{ session.get('user') }}</span>
+          <span id="credits-display" style="margin-left:10px;">
+            {% if session.get('credits') %}
+            <i class="fa-solid fa-coins"></i> {{ session.get('credits') }}
+            {% else %}
+            {% if local_storage_credits %}
+            <i class="fa-solid fa-coins"></i> {{ local_storage_credits }}
+            {% else %}
+            <i class="fa-solid fa-spinner fa-spin"></i>
+            {% endif %}
+            {% endif %}
+          </span>
+          <a href="/profile">Min Profil</a>
+          <a href="/logout">Log ud</a>
+          <!-- Header notifications dropdown -->
+          <div id="header-notif-wrapper">
+            <div id="header-notifications">
+              <i class="fa-solid fa-bell"></i>
+              <span id="notif-badge">0</span>
+            </div>
+            <div id="notif-dropdown">
+              <div class="dropdown-header">Nye Notifikationer</div>
+              <div id="notif-list">
+                <!-- Unread notifications will be loaded here -->
               </div>
-              <div id="notif-dropdown">
-                <div class="dropdown-header">Nye Notifikationer</div>
-                <div id="notif-list">
-                  <!-- Unread notifications will be loaded here -->
-                </div>
-                <div class="dropdown-footer">
-                  <button id="mark-all-btn">Markér alle som læst</button>
-                  <a href="/notifications">Se alle</a>
-                </div>
+              <div class="dropdown-footer">
+                <button id="mark-all-btn">Markér alle som læst</button>
+                <a href="/notifications">Se alle</a>
               </div>
             </div>
+          </div>
           {% else %}
-            <a href="/login">Log ind</a>
-            <a href="/register">Registrer</a>
+          <a href="/login">Log ind</a>
+          <a href="/register">Registrer</a>
           {% endif %}
           <!-- Day/Night Toggle Slider -->
           <button id="mode-toggle" class="toggle-slider" aria-label="Toggle Dark/Light Mode">
@@ -486,7 +643,7 @@
 
   <!-- JavaScript: Dark/Light Mode, Sidebar Toggle, Credits Updater & Notifications Dropdown -->
   <script>
-    document.addEventListener('DOMContentLoaded', function(){
+    document.addEventListener('DOMContentLoaded', function () {
       // Dark/Light Mode Toggle
       const modeToggle = document.getElementById('mode-toggle');
       const body = document.body;
@@ -499,7 +656,7 @@
         modeToggle.classList.toggle('active');
         localStorage.setItem('mode', body.classList.contains('light-mode') ? 'light' : 'dark');
       });
-      
+
       // Sidebar Toggle
       const sidebar = document.getElementById('sidebar');
       const sidebarToggle = document.getElementById('sidebar-toggle');
@@ -509,10 +666,11 @@
 
       // Credits updater
       const creditsDisplay = document.getElementById('credits-display');
-      if (localStorage.getItem('credits')) {
+      if (creditsDisplay && localStorage.getItem('credits')) {
         creditsDisplay.innerHTML = '<i class="fa-solid fa-coins"></i> ' + localStorage.getItem('credits');
       }
       function updateCredits() {
+        if (!creditsDisplay) return;
         fetch('/api/credits', { credentials: 'same-origin' })
           .then(response => response.json())
           .then(data => {
@@ -530,9 +688,11 @@
           .then(response => response.json())
           .then(data => {
             const badge = document.getElementById('notif-badge');
-            badge.textContent = data.unread_count;
-            badge.style.transform = 'scale(1.2)';
-            setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
+            if (badge) {
+              badge.textContent = data.unread_count;
+              badge.style.transform = 'scale(1.2)';
+              setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
+            }
           })
           .catch(error => console.error('Error fetching notifications count:', error));
       }
@@ -545,6 +705,8 @@
           .then(response => response.json())
           .then(data => {
             const list = document.getElementById('notif-list');
+            if (!list) return;
+
             list.innerHTML = '';
             if (data.notifications && data.notifications.length > 0) {
               data.notifications.forEach(notif => {
@@ -552,7 +714,7 @@
                 item.className = 'dropdown-item';
                 item.id = 'dropdown-notif-' + notif.id;
                 let imageHTML = '';
-                if(notif.image_url) {
+                if (notif.image_url) {
                   imageHTML = `<img src="${notif.image_url}" class="dropdown-image">`;
                 }
                 item.innerHTML = `
@@ -573,60 +735,63 @@
           })
           .catch(err => console.error(err));
       }
-      
+
       const headerNotif = document.getElementById('header-notifications');
       const notifDropdown = document.getElementById('notif-dropdown');
-      headerNotif.addEventListener('click', function(e) {
-        notifDropdown.classList.toggle('active');
-        if (notifDropdown.classList.contains('active')) {
-          updateDropdown();
-        }
-      });
-      
+      if (headerNotif && notifDropdown) {
+        headerNotif.addEventListener('click', function (e) {
+          notifDropdown.classList.toggle('active');
+          if (notifDropdown.classList.contains('active')) {
+            updateDropdown();
+          }
+        });
+      }
+
       // Mark individual notification from dropdown as read
-      window.markDropdownRead = function(notifId) {
+      window.markDropdownRead = function (notifId) {
         fetch('/api/notifications/' + notifId + '/mark_read', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' }
         })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            const item = document.getElementById('dropdown-notif-' + notifId);
-            if (item) { item.remove(); }
-            updateNotifBadge();
-          } else {
-            alert('Fejl: ' + data.error);
-          }
-        })
-        .catch(err => console.error(err));
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              const item = document.getElementById('dropdown-notif-' + notifId);
+              if (item) { item.remove(); }
+              updateNotifBadge();
+            } else {
+              alert('Fejl: ' + data.error);
+            }
+          })
+          .catch(err => console.error(err));
       };
-      
+
       // Mark all notifications as read from dropdown
-      document.getElementById('mark-all-btn').addEventListener('click', function() {
+      document.getElementById('mark-all-btn').addEventListener('click', function () {
         fetch('/api/mark-notifications-read', {
           method: 'POST',
           credentials: 'same-origin',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ mark_all: true })
         })
-        .then(response => response.json())
-        .then(data => {
-          if (data.success) {
-            notifDropdown.classList.remove('active');
-            updateNotifBadge();
-          } else {
-            alert('Fejl: ' + data.error);
-          }
-        })
-        .catch(err => console.error(err));
+          .then(response => response.json())
+          .then(data => {
+            if (data.success) {
+              notifDropdown.classList.remove('active');
+              updateNotifBadge();
+            } else {
+              alert('Fejl: ' + data.error);
+            }
+          })
+          .catch(err => console.error(err));
       });
-      
+
       // Force update dropdown on window load in case it's needed
       window.addEventListener('load', updateDropdown);
     });
   </script>
   {% block extra_scripts %}{% endblock %}
 </body>
+
 </html>

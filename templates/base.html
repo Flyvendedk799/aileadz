@@ -786,13 +786,12 @@
                 alert('Fejl: ' + data.error);
               }
             })
-        })
-          .catch(err => console.error(err));
-      });
+            .catch(err => console.error(err));
+        });
       }
 
-    // Force update dropdown on window load in case it's needed
-    window.addEventListener('load', updateDropdown);
+      // Force update dropdown on window load in case it's needed
+      window.addEventListener('load', updateDropdown);
     });
   </script>
   {% block extra_scripts %}{% endblock %}

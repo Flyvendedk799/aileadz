@@ -423,6 +423,7 @@
       let isFirstChunk = true;
       let fullAssistantText = "";
       let textContainer = null;
+      let cardWrapper = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -451,10 +452,27 @@
                 botMsg.innerHTML = ''; // Clear thinking dots
                 isFirstChunk = false;
 
+                // Add flex layout to botMsg for side-by-side
+                botMsg.style.display = 'flex';
+                botMsg.style.flexWrap = 'wrap';
+                botMsg.style.gap = '24px';
+                botMsg.style.alignItems = 'flex-start';
+
                 // Create a container for sequential text to avoid overwriting cards
                 textContainer = document.createElement('div');
                 textContainer.className = 'markdown-body';
+                textContainer.style.flex = '1 1 300px';
+                textContainer.style.minWidth = '0';
                 botMsg.appendChild(textContainer);
+
+                // Create a right-side wrapper for cards
+                cardWrapper = document.createElement('div');
+                cardWrapper.className = 'ai-cards-wrapper';
+                cardWrapper.style.display = 'flex';
+                cardWrapper.style.flexDirection = 'column';
+                cardWrapper.style.gap = '16px';
+                cardWrapper.style.flex = '0 1 450px'; // max width of cards
+                botMsg.appendChild(cardWrapper);
               }
 
               if (data.type === 'chunk') {
@@ -464,10 +482,9 @@
               } else if (data.type === 'product') {
                 // If a product card is sent mid-stream, append it gracefully
                 const cardContainer = document.createElement('div');
-                cardContainer.style.marginTop = "12px";
-                cardContainer.style.marginBottom = "12px";
+                cardContainer.className = 'animate-slide-in';
                 cardContainer.innerHTML = data.html;
-                botMsg.appendChild(cardContainer);
+                cardWrapper.appendChild(cardContainer);
               }
               chatBox.scrollTop = chatBox.scrollHeight;
             } catch (e) {
@@ -499,6 +516,22 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 <style>
+  @keyframes slideInRight {
+    from {
+      opacity: 0;
+      transform: translateX(40px);
+    }
+
+    to {
+      opacity: 1;
+      transform: translateX(0);
+    }
+  }
+
+  .animate-slide-in {
+    animation: slideInRight 0.5s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  }
+
   /* Markdown styling fixes for the stream parser */
   .markdown-body p {
     margin-top: 0;

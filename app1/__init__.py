@@ -472,6 +472,46 @@ def feedback():
         print(f"[Feedback Error] {e}")
         return jsonify({"status": "ok"})  # Don't break UI on feedback errors
 
+# ── Admin Debug Log ──
+
+@app1_bp.route("/adminlog")
+def adminlog():
+    from app1.memory_store import get_debug_sessions, get_debug_logs_for_session
+    import datetime as _dt
+
+    sessions = get_debug_sessions(limit=50)
+
+    # Enrich each session with formatted time and first query preview
+    for s in sessions:
+        ts = s.get("started", 0)
+        s["started_fmt"] = _dt.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M") if ts else "?"
+
+        # Get the first user_query log entry for preview
+        logs = get_debug_logs_for_session(s["session_id"])
+        first_query = ""
+        for log in logs:
+            if log.get("step") == "user_query":
+                first_query = (log.get("data", {}).get("query", "") or "")[:80]
+                break
+        s["first_query"] = first_query
+
+    return render_template("adminlog.html", sessions=sessions)
+
+
+@app1_bp.route("/adminlog/session/<session_id>")
+def adminlog_session(session_id):
+    from app1.memory_store import get_debug_logs_for_session
+    logs = get_debug_logs_for_session(session_id)
+    return jsonify({"logs": logs})
+
+
+@app1_bp.route("/adminlog/clear", methods=["POST"])
+def adminlog_clear():
+    from app1.memory_store import clear_debug_logs
+    clear_debug_logs()
+    return jsonify({"status": "ok"})
+
+
 app.register_blueprint(app1_bp, url_prefix='/app1')
 
 if __name__ == "__main__":

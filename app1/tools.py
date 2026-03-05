@@ -84,17 +84,19 @@ def classify_intent(user_query, user_profile="", shown_products_count=0):
                 {"role": "system", "content": f"""Klassificer brugerens intent og omskriv søgeforespørgslen.
 
 Mulige intents:
-- discovery: Brugeren søger kurser åbent ("vis mig ledelseskurser", "noget med IT")
+- discovery: Brugeren søger kurser eller giver nok info til at søge (emne, budget, format, lokation). Brug dette OGSÅ når brugeren besvarer spørgsmål med konkrete krav som "under 8000 og fysisk" — det ER en søgeanmodning.
 - comparison: Brugeren vil sammenligne kurser ("hvad er forskellen?", "hvilken er bedst?")
 - detail: Brugeren vil vide mere om ét kursus ("fortæl mere", "hvad koster den?")
 - follow_up: Brugeren refererer til tidligere viste kurser ("den billigste", "nummer 2")
 - chit_chat: Smalltalk, hilsner, tak ("hej", "tak", "hvem er du?")
-- needs_clarification: For vagt til at søge ("hjælp mig", "noget billigt", bare "kursus")
+- needs_clarification: KUN hvis det er umuligt at gætte hvad brugeren leder efter (bare "hej" eller "hjælp"). Brug IKKE dette hvis brugeren har givet budget, emne eller format.
 {context}
 
+VIGTIGT: Vær handlingsorienteret. Når brugeren giver budget, format eller krav, er intent ALTID "discovery" — ikke "needs_clarification".
+
 Svar PRÆCIS som JSON: {{"intent": "...", "search_query": "...", "hint": "..."}}
-- search_query: Optimeret søgeterm (udtræk kernebehov, tilføj relevante synonymer). Tomt for chit_chat/follow_up.
-- hint: Kort instruktion til AI-rådgiveren om hvordan den skal håndtere dette intent (på dansk, maks 1 sætning)."""},
+- search_query: Optimeret søgeterm baseret på ALLE brugerens behov fra samtalen (ikke kun denne besked). Kombiner emne + krav. Tomt KUN for chit_chat/follow_up.
+- hint: Kort instruktion til AI-rådgiveren (på dansk, maks 1 sætning). For discovery: "Søg med det samme, stil ikke flere spørgsmål."."""},
                 {"role": "user", "content": user_query}
             ],
             temperature=0.1,

@@ -94,7 +94,8 @@ def handle_agentic_ask(user_query, session):
         
         full_assistant_reply = ""
         for chunk in stream:
-                txt = chunk.choices[0].delta.content
+            txt = chunk.choices[0].delta.content
+            if txt:
                 full_assistant_reply += txt
                 # Yield text chunk to frontend SSE
                 yield f"data: {json.dumps({'type': 'chunk', 'content': txt})}\n\n"

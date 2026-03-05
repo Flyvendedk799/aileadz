@@ -425,7 +425,7 @@
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\\n\\n');
+        const lines = buffer.split('\n\n');
 
         // Keep the last incomplete chunk in the buffer
         buffer = lines.pop();
@@ -446,7 +446,7 @@
 
               if (data.type === 'chunk') {
                 // Append text securely as HTML (replace newlines with breaks)
-                botMsg.innerHTML += data.content.replace(/\\n/g, '<br>');
+                botMsg.innerHTML += data.content.replace(/\n/g, '<br>');
               } else if (data.type === 'product') {
                 // If a product card is sent mid-stream, append it gracefully
                 const cardContainer = document.createElement('div');

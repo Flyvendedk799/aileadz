@@ -312,6 +312,40 @@
   .light-mode .product-ref-remove { color: #9ca3af; }
   .light-mode .product-ref-remove:hover { color: #dc2626; }
 
+  /* ── Suggestion Chips ── */
+  .suggestion-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 8px;
+    animation: msgIn 0.3s ease-out forwards;
+  }
+  .suggestion-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 6px 12px;
+    border-radius: 16px;
+    background: rgba(168,85,247,0.08);
+    border: 1px solid rgba(168,85,247,0.18);
+    color: #c084fc;
+    font-size: 12.5px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s;
+    font-family: inherit;
+    white-space: nowrap;
+  }
+  .suggestion-chip:hover {
+    background: rgba(168,85,247,0.15);
+    border-color: rgba(168,85,247,0.3);
+    transform: translateY(-1px);
+  }
+  .suggestion-chip:active { transform: translateY(0); }
+  .suggestion-chip svg { width: 11px; height: 11px; flex-shrink: 0; }
+  .light-mode .suggestion-chip { background: rgba(168,85,247,0.05); border-color: rgba(168,85,247,0.12); color: #7c3aed; }
+  .light-mode .suggestion-chip:hover { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.25); }
+
   /* ── Input ── */
   .chat-input-wrapper {
     padding: 12px 24px 16px;
@@ -901,6 +935,22 @@
               wrap.className = 'animate-slide-in';
               wrap.innerHTML = data.html;
               cardsEl.appendChild(wrap);
+            } else if (data.type === 'suggestions') {
+              const chips = document.createElement('div');
+              chips.className = 'suggestion-chips';
+              for (const item of (data.items || [])) {
+                const chip = document.createElement('button');
+                chip.className = 'suggestion-chip';
+                chip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
+                  '<span>' + item.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
+                chip.addEventListener('click', function() {
+                  chatInput.value = item;
+                  updateSendBtn();
+                  sendMessage();
+                });
+                chips.appendChild(chip);
+              }
+              botContent.appendChild(chips);
             }
             chatBox.scrollTop = chatBox.scrollHeight;
           } catch (e) { console.error('Parse error:', e); }

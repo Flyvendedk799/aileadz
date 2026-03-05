@@ -142,6 +142,9 @@ def _track_shown_products(sid, compact_results):
                 "price": cr.get("price"),
                 "vendor": cr.get("vendor"),
                 "locations": cr.get("locations", []),
+                "summary": (cr.get("summary") or "")[:120],
+                "product_type": cr.get("product_type", ""),
+                "tags": cr.get("tags", [])[:3],
             })
     # Persist to SQLite
     try:
@@ -155,10 +158,20 @@ def _build_shown_products_message(sid):
     sp = SHOWN_PRODUCTS.get(sid, {}).get("products", [])
     if not sp:
         return None
-    lines = ["VISTE KURSER (brug denne liste til at besvare opfølgningsspørgsmål):"]
+    lines = ["VISTE KURSER (brug denne liste til at besvare opfølgningsspørgsmål, sammenligninger, og anbefalinger):"]
     for p in sp:
         locs = ", ".join(p.get("locations", [])) if p.get("locations") else "N/A"
-        lines.append(f"{p['index']}. \"{p['title']}\" — {p['price']} kr — handle: {p['handle']} — lokationer: {locs}")
+        summary = p.get("summary", "")
+        tags = ", ".join(p.get("tags", []))
+        ptype = p.get("product_type", "")
+        detail = f"{p['index']}. \"{p['title']}\" — {p['price']} kr — handle: {p['handle']} — lokationer: {locs}"
+        if ptype:
+            detail += f" — type: {ptype}"
+        if tags:
+            detail += f" — tags: {tags}"
+        if summary:
+            detail += f" — {summary}"
+        lines.append(detail)
     return {"role": "system", "content": "\n".join(lines)}
 
 
@@ -307,6 +320,68 @@ def _build_few_shot_examples():
         return None
 
 
+# ── Follow-up Suggestions ──
+
+def _generate_followup_suggestions(shown_products, user_query, stage):
+    """Generate 2-3 contextual follow-up suggestion chips based on what was shown."""
+    if not shown_products:
+        return []
+
+    product_titles = [p.get("title", "") for p in shown_products[-4:]]
+    titles_str = ", ".join(product_titles)
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"""Generer 2-3 korte forslag til opfølgningsspørgsmål som brugeren kan klikke på.
+Kontekst: Brugeren søgte "{user_query}" og fik vist disse kurser: {titles_str}.
+Samtalefase: {stage}.
+
+Regler:
+- Hvert forslag maks 6 ord
+- Skriv på dansk
+- Gør dem handlingsorienterede (sammenlign, filtrer, udforsk)
+- Eksempler: "Sammenlign de to billigste", "Vis kun e-learning", "Fortæl mere om den første"
+- Svar som JSON array: ["forslag1", "forslag2", "forslag3"]"""},
+                {"role": "user", "content": "Generer forslag"}
+            ],
+            temperature=0.7,
+            max_tokens=100
+        )
+        result = json.loads(response.choices[0].message.content.strip())
+        if isinstance(result, list):
+            return result[:3]
+    except Exception as e:
+        print(f"[Suggestions Error] {e}")
+
+    return []
+
+
+def _generate_alternative_searches(user_query, user_profile=""):
+    """When search returns 0 results, suggest alternative search terms."""
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": f"""Brugerens søgning "{user_query}" gav 0 resultater i en kursuskatalog.
+{('Brugerprofil: ' + user_profile) if user_profile else ''}
+Foreslå 2-3 alternative søgetermer der kunne give bedre resultater.
+Tænk på bredere termer, relaterede emner, eller alternative formuleringer.
+Svar som JSON array: ["alternativ1", "alternativ2", "alternativ3"]"""},
+                {"role": "user", "content": "Foreslå alternativer"}
+            ],
+            temperature=0.5,
+            max_tokens=80
+        )
+        result = json.loads(response.choices[0].message.content.strip())
+        if isinstance(result, list):
+            return result[:3]
+    except Exception as e:
+        print(f"[Alternatives Error] {e}")
+    return []
+
+
 # ── Main Agent Loop ──
 
 def handle_agentic_ask(user_query, session):
@@ -346,12 +421,18 @@ def handle_agentic_ask(user_query, session):
     if sid in SHOWN_PRODUCTS:
         SHOWN_PRODUCTS[sid]["last_active"] = time.time()
 
-    # Phase 1: Intent classification (lightweight, fast)
+    # Phase 1: Intent classification (now with conversation history)
     user_profile_text = USER_PROFILES.get(sid, {}).get("summary", "")
     shown_count = len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
-    intent_result = classify_intent(user_query, user_profile=user_profile_text, shown_products_count=shown_count)
+    intent_result = classify_intent(
+        user_query,
+        user_profile=user_profile_text,
+        shown_products_count=shown_count,
+        conversation_messages=messages
+    )
     intent = intent_result.get("intent", "discovery")
     intent_hint = intent_result.get("hint", "")
+    rewritten_query = intent_result.get("search_query", "").strip()
 
     # Phase 3: Detect conversation stage
     stage = _detect_conversation_stage(sid, messages)
@@ -417,12 +498,14 @@ def handle_agentic_ask(user_query, session):
                 ephemeral_messages.insert(insert_idx, shown_msg)
                 insert_idx += 1
 
-            # Phase 1 + 3: Inject intent + stage hints as guidance
+            # Phase 1 + 3: Inject intent + stage hints + rewritten query as guidance
             guidance_parts = []
             if intent_hint:
                 guidance_parts.append(f"INTENT: {intent} — {intent_hint}")
             if stage_hint:
                 guidance_parts.append(f"SAMTALEFASE: {stage} — {stage_hint}")
+            if rewritten_query and rewritten_query.lower() != user_query.lower():
+                guidance_parts.append(f"OPTIMERET SØGETERM (brug denne i stedet for brugerens rå tekst når du kalder search_courses eller filter_courses): \"{rewritten_query}\"")
             if guidance_parts:
                 ephemeral_messages.insert(insert_idx, {
                     "role": "system",
@@ -520,11 +603,18 @@ def handle_agentic_ask(user_query, session):
                 except Exception:
                     pass  # Use original if correction fails
 
-            # Phase 6: Low-confidence warning
+            # Smart failure recovery: when 0 results, suggest alternatives
             if had_tool_calls and not buffered_ui_html:
-                # Tools were called but no products rendered = likely 0 results
-                if "no_results" not in full_text.lower() and "ingen" not in full_text.lower():
+                alt_suggestions = _generate_alternative_searches(user_query, user_profile_text)
+                if alt_suggestions:
+                    if "ingen" not in full_text.lower() and "no_results" not in full_text.lower():
+                        full_text += "\n\n*Jeg fandt desværre ingen kurser der matchede.*"
+                    # Alt suggestions will be sent as suggestion chips below
+                elif "no_results" not in full_text.lower() and "ingen" not in full_text.lower():
                     full_text += "\n\n*Jeg fandt desværre ingen kurser der matchede. Prøv eventuelt at omformulere din søgning.*"
+                    alt_suggestions = []
+            else:
+                alt_suggestions = None
 
             # Stream text response
             chunk_size = 12
@@ -534,6 +624,19 @@ def handle_agentic_ask(user_query, session):
             # Stream buffered product HTML cards
             for html_chunk in buffered_ui_html:
                 yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
+
+            # Generate and stream follow-up suggestions
+            suggestions = []
+            if alt_suggestions:
+                # Failure recovery: suggest alternative searches
+                suggestions = alt_suggestions
+            elif buffered_ui_html and had_tool_calls:
+                # Success: suggest follow-up actions
+                sp = SHOWN_PRODUCTS.get(sid, {}).get("products", [])
+                suggestions = _generate_followup_suggestions(sp, user_query, stage)
+
+            if suggestions:
+                yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions})}\n\n"
 
             # Send message index for feedback tracking (Phase 6)
             msg_index = len([m for m in messages if m.get("role") == "assistant"])

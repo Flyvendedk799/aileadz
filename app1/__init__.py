@@ -365,7 +365,10 @@ PRODUCT_MEDIA_TEMPLATE = """
       <span>{% if product.variants and product.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
       <span>{% if product.location %}{{ product.location | e }}{% else %}Online{% endif %}</span>
     </div>
-    <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="display: block; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 9px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
+    <div style="display: flex; gap: 8px;">
+      <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="flex: 1; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 9px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
+      <button onclick="event.stopPropagation(); window.attachProductToChat('{{ product.handle | e }}', '{{ product.title | e }}')" style="padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(168,85,247,0.25); background: rgba(168,85,247,0.08); color: #c084fc; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; font-family: inherit;" onmouseover="this.style.background='rgba(168,85,247,0.15)';this.style.borderColor='rgba(168,85,247,0.4)'" onmouseout="this.style.background='rgba(168,85,247,0.08)';this.style.borderColor='rgba(168,85,247,0.25)'">Spørg om</button>
+    </div>
   </div>
 </div>
 """
@@ -409,7 +412,10 @@ MULTIPLE_COURSES_TEMPLATE = """
               <span>{% if course.variants and course.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
               <span>{% if course.location %}{{ course.location | e }}{% else %}Online{% endif %}</span>
             </div>
-            <a onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="display: block; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 8px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
+            <div style="display: flex; gap: 8px;">
+              <a onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="flex: 1; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 8px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
+              <button onclick="event.stopPropagation(); window.attachProductToChat('{{ course.handle | e }}', '{{ course.title | e }}')" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(168,85,247,0.25); background: rgba(168,85,247,0.08); color: #c084fc; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; font-family: inherit;" onmouseover="this.style.background='rgba(168,85,247,0.15)';this.style.borderColor='rgba(168,85,247,0.4)'" onmouseout="this.style.background='rgba(168,85,247,0.08)';this.style.borderColor='rgba(168,85,247,0.25)'">Spørg om</button>
+            </div>
           </div>
         </div>
       </div>
@@ -431,14 +437,40 @@ def ask():
         user_query = request.json.get("query", "").strip()
         if not user_query:
             return jsonify({"answers": [{"type": "text", "content": "Skriv venligst et spørgsmål."}]}), 400
-            
+
         return handle_agentic_ask(user_query, session)
-        
+
     except Exception as ex:
         print(f"Unexpected error: {ex}")
         return jsonify({"answers": [
             {"type": "text", "content": "Der opstod en uventet fejl. Prøv venligst igen."}
         ]}), 500
+
+
+# Phase 6: Feedback endpoint
+@app1_bp.route("/feedback", methods=["POST"])
+def feedback():
+    try:
+        from app1.memory_store import log_event
+        data = request.json or {}
+        sid = session.get("session_id", "unknown")
+        rating = data.get("rating", 0)  # 1 = thumbs up, -1 = thumbs down
+        message_index = data.get("message_index", 0)
+        query_text = data.get("query_text", "")
+        assistant_response = data.get("assistant_response", "")
+
+        log_event(
+            session_id=sid,
+            event_type="feedback",
+            query_text=query_text,
+            feedback_rating=rating,
+            message_index=message_index,
+            extra={"assistant_response": assistant_response[:300]}
+        )
+        return jsonify({"status": "ok"})
+    except Exception as e:
+        print(f"[Feedback Error] {e}")
+        return jsonify({"status": "ok"})  # Don't break UI on feedback errors
 
 app.register_blueprint(app1_bp, url_prefix='/app1')
 

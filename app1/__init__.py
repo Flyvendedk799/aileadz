@@ -339,31 +339,34 @@ def get_course_detail(query, product):
 
 # Single-course HTML snippet
 PRODUCT_MEDIA_TEMPLATE = """
-<div style="background: #fff; border-radius: 12px; overflow: hidden; font-family: 'Inter', Arial, sans-serif; color: #333; box-shadow: 0 8px 24px rgba(0,0,0,0.08); width: 100%; max-width: 450px; margin: 0 auto;">
-  
+<div style="background: #1e1e22; border-radius: 14px; overflow: hidden; font-family: 'Inter', Arial, sans-serif; color: #e4e4e7; box-shadow: 0 8px 32px rgba(0,0,0,0.2); width: 100%; max-width: 450px; margin: 0 auto; border: 1px solid rgba(255,255,255,0.06);">
+
   {# Image Header Area #}
-  <div style="background-color: #f6efe8; padding: 30px; display: flex; justify-content: center; align-items: center; position: relative;">
+  <div style="background: linear-gradient(135deg, #1a1a2e, #16162a); padding: 30px; display: flex; justify-content: center; align-items: center; position: relative; min-height: 120px;">
     {% if product.image and product.image.src %}
-      <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}" style="max-height: 120px; object-fit: contain;">
+      <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}" style="max-height: 120px; object-fit: contain; filter: drop-shadow(0 4px 12px rgba(0,0,0,0.3));">
     {% else %}
-      <div style="height: 120px; display: flex; align-items: center; justify-content: center; color: #888;">Ingen Billede</div>
+      <div style="height: 120px; display: flex; flex-direction: column; align-items: center; justify-content: center; color: #71717a; gap: 8px;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity: 0.5;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+        <span style="font-size: 12px;">Ingen billede</span>
+      </div>
     {% endif %}
   </div>
 
   {# Details Area #}
   <div style="padding: 24px;">
-    <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 700; color: #1a1a1a;">
-      <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: #1a1a1a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ product.title | e }}</a>
+    <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 700; color: #f4f4f5;">
+      <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: #f4f4f5; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#f4f4f5'">{{ product.title | e }}</a>
     </h3>
-    <p style="margin: 0 0 20px 0; font-size: 14px; color: #666;">Kursus</p>
-    
+    <p style="margin: 0 0 20px 0; font-size: 14px; color: #71717a;">Kursus</p>
+
     <div style="display: flex; gap: 40px; margin-bottom: 24px;">
       <div>
-        <div style="display: flex; align-items: center; gap: 6px; color: #1a1a1a; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+        <div style="display: flex; align-items: center; gap: 6px; color: #a1a1aa; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           Varighed
         </div>
-        <div style="color: #666; font-size: 13px;">
+        <div style="color: #71717a; font-size: 13px;">
           {% if product.variants and product.variants|length > 1 %}
             Flere muligheder
           {% else %}
@@ -372,11 +375,11 @@ PRODUCT_MEDIA_TEMPLATE = """
         </div>
       </div>
       <div>
-        <div style="display: flex; align-items: center; gap: 6px; color: #1a1a1a; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
+        <div style="display: flex; align-items: center; gap: 6px; color: #a1a1aa; font-weight: 600; font-size: 13px; margin-bottom: 4px;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
           Lokation
         </div>
-        <div style="color: #666; font-size: 13px;">
+        <div style="color: #71717a; font-size: 13px;">
           {% if product.location %}
             {{ product.location | e }}
           {% else %}
@@ -386,8 +389,8 @@ PRODUCT_MEDIA_TEMPLATE = """
       </div>
     </div>
 
-    {# Price Floating Card #}
-    <div style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; font-weight: 600; font-size: 16px;">
+    {# Price Badge #}
+    <div style="display: inline-block; background: linear-gradient(135deg, #a855f7, #ec4899); border-radius: 10px; padding: 10px 20px; margin-bottom: 24px; font-weight: 700; font-size: 16px; color: #fff; box-shadow: 0 4px 16px rgba(168,85,247,0.25);">
       {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
       {% if price in ["0", "0.00", "0.0", "", "None"] %}
         Gratis
@@ -395,17 +398,17 @@ PRODUCT_MEDIA_TEMPLATE = """
         kr {{ price | e }}
       {% endif %}
     </div>
-    
+
     {# Short desc #}
     {% if product.ai_summary or product.body_html %}
-    <div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 24px;">
+    <div style="font-size: 13px; color: #a1a1aa; line-height: 1.6; margin-bottom: 24px;">
       {{ get_short_description(product) | e }}
     </div>
     {% endif %}
 
-    {# Floating Action Button #}
+    {# CTA Button #}
     <div style="display: flex; justify-content: center;">
-      <button onclick="window.open('https://futurematch.dk/products/{{ product.handle }}', '_blank')" style="background-color: #1a1a1a; color: #fff; border: none; padding: 12px 24px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s ease;">
+      <button onclick="window.open('https://futurematch.dk/products/{{ product.handle }}', '_blank')" style="background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; border: none; padding: 12px 28px; border-radius: 12px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s ease; box-shadow: 0 4px 16px rgba(168,85,247,0.3);" onmouseover="this.style.transform='translateY(-2px)'; this.style.boxShadow='0 6px 24px rgba(168,85,247,0.4)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(168,85,247,0.3)';">
         Vælg kursus
       </button>
     </div>
@@ -420,26 +423,26 @@ MULTIPLE_COURSES_TEMPLATE = """
 <div style="display: flex; flex-direction: column; gap: 12px; max-width: 450px;">
   {% for course in courses %}
     <div class="course-card" onclick="this.classList.toggle('expanded');">
-      
+
       {# Header / Always Visible Part #}
       <div class="course-card-header">
-        
+
         {# Left Icon/Logo #}
-        <div style="background-color: #f8f6f2; border-radius: 8px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; position: relative;">
+        <div style="background: linear-gradient(135deg, #1a1a2e, #16162a); border-radius: 10px; width: 56px; height: 56px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; position: relative;">
           {% if course.image and course.image.src %}
-              <img src="{{ course.image.src | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain;">
+              <img src="{{ course.image.src | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.2));">
           {% else %}
-              <div style="font-size: 10px; color: #aaa;">Logo</div>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#71717a" stroke-width="1.5" style="opacity: 0.6;"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
           {% endif %}
         </div>
-        
+
         {# Right Details Summary #}
         <div style="flex-grow: 1; min-width: 0; font-family: 'Inter', Arial, sans-serif;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
-              <h4 style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;">
-                  <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: #1a1a1a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ course.title | e }}</a>
+              <h4 style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%; color: #f4f4f5;">
+                  <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: #f4f4f5; text-decoration: none; transition: color 0.2s;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#f4f4f5'">{{ course.title | e }}</a>
               </h4>
-              <div style="font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap;">
+              <div style="font-size: 13px; font-weight: 700; white-space: nowrap; background: linear-gradient(135deg, #a855f7, #ec4899); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">
                   {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
                   {% if price in ['0', '0.00', '0.0', '', 'None'] %}
                       Gratis
@@ -448,33 +451,33 @@ MULTIPLE_COURSES_TEMPLATE = """
                   {% endif %}
               </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #666;">
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #71717a;">
               <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">{{ course.vendor | e }}</div>
               <div style="display: flex; align-items: center; gap: 6px;">
                   {% if price not in ['0', '0.00', '0.0', '', 'None'] %}
-                      <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">Ekskl. moms</span>
+                      <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.7;">Ekskl. moms</span>
                   {% endif %}
                   <svg class="course-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
               </div>
           </div>
         </div>
       </div>
-      
+
       {# Collapsible Details Body #}
       <div class="course-details-wrapper">
         <div class="course-details-inner">
           <div class="course-details-content" style="font-family: 'Inter', Arial, sans-serif;">
-            <div style="margin-top: 12px; font-size: 13px; color: #444; line-height: 1.6;">
+            <div style="margin-top: 12px; font-size: 13px; color: #a1a1aa; line-height: 1.6;">
               {{ get_short_description(course) | e }}
             </div>
-            
+
             <div style="display: flex; gap: 24px; margin-top: 20px; margin-bottom: 20px;">
               <div>
-                <div style="display: flex; align-items: center; gap: 6px; color: #222; font-weight: 700; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                <div style="display: flex; align-items: center; gap: 6px; color: #a1a1aa; font-weight: 700; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
                   Varighed
                 </div>
-                <div style="color: #666; font-size: 13px; font-weight: 500;">
+                <div style="color: #71717a; font-size: 13px; font-weight: 500;">
                   {% if course.variants and course.variants|length > 1 %}
                     Flere muligheder
                   {% else %}
@@ -483,11 +486,11 @@ MULTIPLE_COURSES_TEMPLATE = """
                 </div>
               </div>
               <div>
-                <div style="display: flex; align-items: center; gap: 6px; color: #222; font-weight: 700; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"></path></svg>
+                <div style="display: flex; align-items: center; gap: 6px; color: #a1a1aa; font-weight: 700; font-size: 12px; margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.5px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2.5"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"></path></svg>
                   Lokation
                 </div>
-                <div style="color: #666; font-size: 13px; font-weight: 500;">
+                <div style="color: #71717a; font-size: 13px; font-weight: 500;">
                   {% if course.location %}
                     {{ course.location | e }}
                   {% else %}
@@ -497,13 +500,13 @@ MULTIPLE_COURSES_TEMPLATE = """
               </div>
             </div>
 
-            <button onclick="event.stopPropagation(); window.open('https://futurematch.dk/products/{{ course.handle }}', '_blank')" style="width: 100%; background-color: #111; color: #fff; border: 1px solid #111; padding: 12px 0; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); outline: none;" onmouseover="this.style.backgroundColor='#fff'; this.style.color='#111'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';" onmouseout="this.style.backgroundColor='#111'; this.style.color='#fff'; this.style.boxShadow='none';">
+            <button onclick="event.stopPropagation(); window.open('https://futurematch.dk/products/{{ course.handle }}', '_blank')" style="width: 100%; background: linear-gradient(135deg, #a855f7, #ec4899); color: #fff; border: none; padding: 12px 0; border-radius: 10px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); outline: none; box-shadow: 0 4px 16px rgba(168,85,247,0.25);" onmouseover="this.style.transform='translateY(-1px)'; this.style.boxShadow='0 6px 20px rgba(168,85,247,0.35)';" onmouseout="this.style.transform='translateY(0)'; this.style.boxShadow='0 4px 16px rgba(168,85,247,0.25)';">
               Vælg kursus
             </button>
           </div>
         </div>
       </div>
-      
+
     </div>
   {% endfor %}
 </div>

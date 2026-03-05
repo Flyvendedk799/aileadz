@@ -768,27 +768,31 @@
       };
 
       // Mark all notifications as read from dropdown
-      document.getElementById('mark-all-btn').addEventListener('click', function () {
-        fetch('/api/mark-notifications-read', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ mark_all: true })
-        })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              notifDropdown.classList.remove('active');
-              updateNotifBadge();
-            } else {
-              alert('Fejl: ' + data.error);
-            }
+      const markAllBtn = document.getElementById('mark-all-btn');
+      if (markAllBtn) {
+        markAllBtn.addEventListener('click', function () {
+          fetch('/api/mark-notifications-read', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mark_all: true })
           })
+            .then(response => response.json())
+            .then(data => {
+              if (data.success) {
+                notifDropdown.classList.remove('active');
+                updateNotifBadge();
+              } else {
+                alert('Fejl: ' + data.error);
+              }
+            })
+        })
           .catch(err => console.error(err));
       });
+      }
 
-      // Force update dropdown on window load in case it's needed
-      window.addEventListener('load', updateDropdown);
+    // Force update dropdown on window load in case it's needed
+    window.addEventListener('load', updateDropdown);
     });
   </script>
   {% block extra_scripts %}{% endblock %}

@@ -66,9 +66,10 @@ def _extract_compact_fields(product):
 
 # ── Phase 1: Intent Classification ──
 
-def classify_intent(user_query, user_profile="", shown_products_count=0):
+def classify_intent(user_query, user_profile="", shown_products_count=0, conversation_messages=None):
     """
     Classify user intent and optionally rewrite the query for better search.
+    Now receives conversation history for multi-turn context.
     Returns: {"intent": str, "search_query": str, "hint": str}
     """
     context = ""
@@ -76,6 +77,22 @@ def classify_intent(user_query, user_profile="", shown_products_count=0):
         context += f"\nBrugerprofil: {user_profile}"
     if shown_products_count > 0:
         context += f"\nAntal viste kurser: {shown_products_count}"
+
+    # Build conversation context from recent messages
+    conv_context = ""
+    if conversation_messages:
+        recent = []
+        for m in conversation_messages[-8:]:
+            role = m.get("role", "")
+            content = m.get("content", "")
+            if not content or role == "system" or role == "tool":
+                continue
+            if role == "user":
+                recent.append(f"Bruger: {content[:150]}")
+            elif role == "assistant":
+                recent.append(f"Rådgiver: {content[:100]}")
+        if recent:
+            conv_context = "\n\nSAMTALEHISTORIK:\n" + "\n".join(recent[-6:])
 
     try:
         response = openai.chat.completions.create(
@@ -90,9 +107,10 @@ Mulige intents:
 - follow_up: Brugeren refererer til tidligere viste kurser ("den billigste", "nummer 2")
 - chit_chat: Smalltalk, hilsner, tak ("hej", "tak", "hvem er du?")
 - needs_clarification: KUN hvis det er umuligt at gætte hvad brugeren leder efter (bare "hej" eller "hjælp"). Brug IKKE dette hvis brugeren har givet budget, emne eller format.
-{context}
+{context}{conv_context}
 
 VIGTIGT: Vær handlingsorienteret. Når brugeren giver budget, format eller krav, er intent ALTID "discovery" — ikke "needs_clarification".
+VIGTIGT: search_query skal kombinere info fra HELE samtalen. Hvis brugeren først sagde "planlægning" og nu siger "under 8000 og fysisk", skal search_query være "planlægning kursus fysisk".
 
 Svar PRÆCIS som JSON: {{"intent": "...", "search_query": "...", "hint": "..."}}
 - search_query: Optimeret søgeterm baseret på ALLE brugerens behov fra samtalen (ikke kun denne besked). Kombiner emne + krav. Tomt KUN for chit_chat/follow_up.

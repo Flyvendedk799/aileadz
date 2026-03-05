@@ -32,6 +32,26 @@ _STOP_WORDS = {
 }
 
 
+# Danish synonym expansion for query enrichment
+_QUERY_SYNONYMS = {
+    "ledelse": ["leder", "leadership", "ledelsesstil", "teamledelse"],
+    "projektledelse": ["projektstyring", "projektleder", "project", "planlægning"],
+    "planlægning": ["projektledelse", "projektstyring", "planning", "plan"],
+    "kommunikation": ["kommunikere", "samtale", "dialog", "præsentation"],
+    "it": ["informationsteknologi", "computer", "software", "digital"],
+    "økonomi": ["finans", "regnskab", "budget", "bogholderi"],
+    "salg": ["sælger", "salgsarbejde", "forhandling", "kundekontakt"],
+    "marketing": ["markedsføring", "digital", "kampagne", "branding"],
+    "coaching": ["coach", "mentor", "mentoring", "personlig"],
+    "agil": ["agile", "scrum", "kanban", "sprint"],
+    "scrum": ["agil", "agile", "sprint", "kanban"],
+    "prince2": ["prince", "projektledelse", "projektstyring"],
+    "certificering": ["certifikat", "eksamen", "akkreditering"],
+    "excel": ["regneark", "spreadsheet", "microsoft"],
+    "personlig": ["personligudvikling", "selvudvikling", "udvikling"],
+}
+
+
 def _tokenize(text):
     """Simple tokenizer: lowercase, split on non-alphanumeric, filter stop words."""
     if not text:
@@ -39,6 +59,17 @@ def _tokenize(text):
     text = text.lower()
     tokens = re.findall(r'[a-zæøå0-9]+', text)
     return [t for t in tokens if t not in _STOP_WORDS and len(t) > 1]
+
+
+def _expand_query_tokens(tokens):
+    """Expand query tokens with synonyms for better BM25 recall."""
+    expanded = list(tokens)
+    for token in tokens:
+        synonyms = _QUERY_SYNONYMS.get(token, [])
+        for syn in synonyms:
+            syn_tokens = _tokenize(syn)
+            expanded.extend(syn_tokens)
+    return expanded
 
 
 def _build_bm25_index(products):
@@ -182,9 +213,10 @@ def semantic_search_courses(query, limit=5, min_score=0.35):
         # Take top 20 for RRF
         vector_ranked = scored[:20]
 
-    # ── 2. BM25 keyword search ──
+    # ── 2. BM25 keyword search (with synonym expansion) ──
     query_tokens = _tokenize(query)
-    bm25_ranked = _bm25_search(query_tokens, limit=20)
+    expanded_tokens = _expand_query_tokens(query_tokens)
+    bm25_ranked = _bm25_search(expanded_tokens, limit=20)
 
     # ── 3. Reciprocal Rank Fusion ──
     if vector_ranked and bm25_ranked:

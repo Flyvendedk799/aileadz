@@ -22,7 +22,7 @@ def handle_agentic_ask(user_query, session):
     # 1. Initialize or load Conversation Memory
     if sid not in CHAT_MEMORY:
         CHAT_MEMORY[sid] = [
-            {"role": "system", "content": "Du er en professionel, dansk AI-assistent for AiLead, der hjælper brugerne med at finde og forstå kurser og uddannelser. Svar altid på dansk. Hvis brugeren spørger om prisen eller detaljer for et specifikt kursus, MÅ du IKKE gætte! Du skal bruge 'get_course_details' via handle. Ellers, brug 'search_courses' til løse søgninger."}
+            {"role": "system", "content": "Du er en professionel, formidulerende dansk AI-assistent for AiLead, der rådgiver og guider brugerne til at finde de bedste kurser. VIGTIGT: Når du foreslår kurser via tools (som 'search_courses' eller 'get_course_details'), vises produkterne automatisk som flotte visuelle kort i brugergrænsefladen. Derfor må du ALDRIG blot opremse de samme kurser, deres priser eller detaljer i din egen tekst! Din opgave i teksten er i stedet at agere som en rådgiver: stil afklarende spørgsmål for at spore dig ind på kundens behov, kom med overordnede anbefalinger baseret på deres situation, og forklar kort *hvorfor* produkterne på skærmen er relevante. Vær nærværende og hjælp kunden på vej som en ægte vejleder."}
         ]
         
     messages = CHAT_MEMORY[sid]
@@ -36,6 +36,8 @@ def handle_agentic_ask(user_query, session):
     def stream_generator():
         # Ping Nginx immediately to keep the HTTP connection alive while the LLM thinks
         yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
+
+        buffered_ui_html = []
 
         # Agent Loop
         while True:
@@ -65,16 +67,16 @@ def handle_agentic_ask(user_query, session):
                     })
 
                     # ---> UI Interceptor <---
-                    # If the tool returned raw product data, we proactively stream the HTML UI component back to the frontend immediately!
+                    # If the tool returned raw product data, we buffer the HTML UI component to stream after the text!
                     if tool_call.function.name == "search_courses" and "raw_products" in tool_result_dict:
                         raw_products = tool_result_dict["raw_products"]
                         if raw_products:
                             ui_html = render_multi_course_media(raw_products)
-                            yield f"data: {json.dumps({'type': 'product', 'html': ui_html})}\n\n"
+                            buffered_ui_html.append(ui_html)
                     
                     elif tool_call.function.name == "get_course_details" and "raw_product" in tool_result_dict:
                         ui_html = render_product_media(tool_result_dict["raw_product"])
-                        yield f"data: {json.dumps({'type': 'product', 'html': ui_html})}\n\n"
+                        buffered_ui_html.append(ui_html)
 
                 # Loop continues, allowing LLM to read the tool output and stream its final answer
                 continue
@@ -92,11 +94,14 @@ def handle_agentic_ask(user_query, session):
         
         full_assistant_reply = ""
         for chunk in stream:
-            if chunk.choices[0].delta.content:
                 txt = chunk.choices[0].delta.content
                 full_assistant_reply += txt
                 # Yield text chunk to frontend SSE
                 yield f"data: {json.dumps({'type': 'chunk', 'content': txt})}\n\n"
+        
+        # After text has finished typing out, yield any buffered product HTML cards!
+        for html_chunk in buffered_ui_html:
+            yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
         
         # Save final text to memory
         messages[-1] = {"role": "assistant", "content": full_assistant_reply}

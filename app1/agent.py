@@ -10,6 +10,7 @@ import json
 import openai
 import time
 from app1.tools import OPENAI_TOOLS, execute_tool, classify_intent
+from app1.memory_store import log_debug
 from . import render_multi_course_media, render_product_media
 
 import uuid
@@ -434,10 +435,22 @@ def handle_agentic_ask(user_query, session):
     intent_hint = intent_result.get("hint", "")
     rewritten_query = intent_result.get("search_query", "").strip()
 
+    # Debug: log user query + intent classification
+    try:
+        log_debug(sid, "user_query", {"query": user_query, "intent": intent, "hint": intent_hint, "rewritten_query": rewritten_query})
+    except Exception:
+        pass
+
     # Phase 3: Detect conversation stage
     stage = _detect_conversation_stage(sid, messages)
     CONVERSATION_STAGES[sid] = stage
     stage_hint = _STAGE_HINTS.get(stage, "")
+
+    # Debug: log stage detection
+    try:
+        log_debug(sid, "stage_detection", {"stage": stage, "hint": stage_hint, "user_profile": user_profile_text[:200] if user_profile_text else None, "shown_count": shown_count})
+    except Exception:
+        pass
 
     # Extract user profile periodically
     _extract_user_profile(sid, messages)
@@ -546,12 +559,26 @@ def handle_agentic_ask(user_query, session):
                         ephemeral_messages.append(tool_msg)
 
                         # Log tool call (Phase 4)
+                        results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
                         try:
-                            results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
                             _get_store().log_event(sid, "tool_call",
                                                    query_text=user_query,
                                                    tool_used=tool_call.function.name,
                                                    results_count=results_count)
+                        except Exception:
+                            pass
+
+                        # Debug: log tool call details
+                        try:
+                            tool_args = json.loads(tool_call.function.arguments)
+                            result_titles = [r.get("title", "?") for r in tool_result_dict.get("results", [])[:5]]
+                            log_debug(sid, "tool_call", {
+                                "tool": tool_call.function.name,
+                                "args": tool_args,
+                                "results_count": results_count,
+                                "result_titles": result_titles,
+                                "status": tool_result_dict.get("status", "unknown"),
+                            })
                         except Exception:
                             pass
 
@@ -584,7 +611,20 @@ def handle_agentic_ask(user_query, session):
             # Phase 6: Quality guardrail check
             full_text = message.content or ""
 
-            if not _check_response_quality(full_text, had_tool_calls):
+            quality_ok = _check_response_quality(full_text, had_tool_calls)
+
+            # Debug: log AI response
+            try:
+                log_debug(sid, "ai_response", {
+                    "response_text": full_text[:500],
+                    "had_tool_calls": had_tool_calls,
+                    "quality_ok": quality_ok,
+                    "iterations": iteration,
+                })
+            except Exception:
+                pass
+
+            if not quality_ok:
                 # Response violates visual rule — regenerate with correction
                 ephemeral_messages.append({
                     "role": "system",
@@ -637,6 +677,15 @@ def handle_agentic_ask(user_query, session):
 
             if suggestions:
                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions})}\n\n"
+
+            # Debug: log suggestions
+            try:
+                log_debug(sid, "suggestions", {
+                    "type": "failure_recovery" if alt_suggestions else "follow_up",
+                    "items": suggestions,
+                })
+            except Exception:
+                pass
 
             # Send message index for feedback tracking (Phase 6)
             msg_index = len([m for m in messages if m.get("role") == "assistant"])

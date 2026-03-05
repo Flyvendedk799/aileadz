@@ -1,0 +1,426 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AI Admin Log - AiLead</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background: #0a0a0b;
+      color: #d4d4d8;
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    .top-bar {
+      position: sticky;
+      top: 0;
+      z-index: 100;
+      background: rgba(10,10,11,0.85);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(255,255,255,0.06);
+      padding: 14px 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .top-bar h1 {
+      font-size: 18px;
+      font-weight: 700;
+      color: #f4f4f5;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .top-bar h1 span {
+      color: #a855f7;
+    }
+    .top-bar-actions {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+    .top-bar-actions .badge {
+      font-size: 12px;
+      color: #71717a;
+      background: rgba(255,255,255,0.04);
+      padding: 4px 10px;
+      border-radius: 6px;
+    }
+    .btn {
+      padding: 7px 14px;
+      border-radius: 8px;
+      border: 1px solid rgba(255,255,255,0.08);
+      background: rgba(255,255,255,0.04);
+      color: #a1a1aa;
+      font-size: 12.5px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+    }
+    .btn:hover { background: rgba(255,255,255,0.08); color: #f4f4f5; }
+    .btn-danger { border-color: rgba(239,68,68,0.2); color: #fca5a5; }
+    .btn-danger:hover { background: rgba(239,68,68,0.1); }
+    .btn-back { color: #a855f7; border-color: rgba(168,85,247,0.2); }
+    .btn-back:hover { background: rgba(168,85,247,0.08); }
+
+    .container {
+      max-width: 960px;
+      margin: 0 auto;
+      padding: 20px 24px 60px;
+    }
+
+    .session-card {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid rgba(255,255,255,0.06);
+      border-radius: 12px;
+      margin-bottom: 12px;
+      overflow: hidden;
+      transition: border-color 0.2s;
+    }
+    .session-card:hover { border-color: rgba(255,255,255,0.1); }
+    .session-card.expanded { border-color: rgba(168,85,247,0.25); }
+
+    .session-header {
+      padding: 14px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      cursor: pointer;
+      user-select: none;
+      gap: 12px;
+    }
+    .session-header:hover { background: rgba(255,255,255,0.02); }
+
+    .session-meta {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex: 1;
+      min-width: 0;
+    }
+    .session-id {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      color: #a855f7;
+      background: rgba(168,85,247,0.08);
+      padding: 3px 8px;
+      border-radius: 5px;
+      flex-shrink: 0;
+    }
+    .session-time {
+      font-size: 12.5px;
+      color: #71717a;
+      white-space: nowrap;
+    }
+    .session-preview {
+      font-size: 13px;
+      color: #a1a1aa;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      flex: 1;
+    }
+    .session-stats {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .stat-pill {
+      font-size: 11px;
+      padding: 2px 8px;
+      border-radius: 10px;
+      background: rgba(255,255,255,0.04);
+      color: #71717a;
+      white-space: nowrap;
+    }
+    .session-chevron {
+      width: 16px;
+      height: 16px;
+      color: #52525b;
+      transition: transform 0.25s cubic-bezier(0.34,1.56,0.64,1);
+      flex-shrink: 0;
+    }
+    .session-card.expanded .session-chevron { transform: rotate(180deg); color: #a855f7; }
+
+    .session-body {
+      display: none;
+      border-top: 1px solid rgba(255,255,255,0.04);
+    }
+    .session-card.expanded .session-body { display: block; }
+
+    .session-toolbar {
+      padding: 10px 18px;
+      display: flex;
+      gap: 8px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+    }
+
+    .log-entries {
+      padding: 0;
+    }
+    .log-entry {
+      padding: 12px 18px;
+      border-bottom: 1px solid rgba(255,255,255,0.03);
+      display: flex;
+      gap: 12px;
+      align-items: flex-start;
+    }
+    .log-entry:last-child { border-bottom: none; }
+    .log-entry:hover { background: rgba(255,255,255,0.015); }
+
+    .log-timestamp {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: #52525b;
+      white-space: nowrap;
+      padding-top: 2px;
+      min-width: 70px;
+    }
+    .log-step {
+      font-size: 11.5px;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 5px;
+      white-space: nowrap;
+      flex-shrink: 0;
+      min-width: 100px;
+      text-align: center;
+    }
+    .log-step.user_query { background: rgba(59,130,246,0.12); color: #60a5fa; }
+    .log-step.stage_detection { background: rgba(234,179,8,0.12); color: #facc15; }
+    .log-step.tool_call { background: rgba(34,197,94,0.12); color: #4ade80; }
+    .log-step.ai_response { background: rgba(168,85,247,0.12); color: #c084fc; }
+    .log-step.suggestions { background: rgba(244,114,182,0.12); color: #f472b6; }
+
+    .log-data {
+      flex: 1;
+      min-width: 0;
+    }
+    .log-data pre {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 12px;
+      line-height: 1.6;
+      color: #a1a1aa;
+      white-space: pre-wrap;
+      word-break: break-word;
+      margin: 0;
+    }
+    .log-data .key { color: #a855f7; }
+    .log-data .str { color: #4ade80; }
+    .log-data .num { color: #60a5fa; }
+    .log-data .bool { color: #facc15; }
+    .log-data .null { color: #52525b; }
+
+    .empty-state {
+      text-align: center;
+      padding: 80px 20px;
+      color: #52525b;
+    }
+    .empty-state h2 { font-size: 18px; color: #71717a; margin-bottom: 6px; }
+    .empty-state p { font-size: 13.5px; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #18181b;
+      border: 1px solid rgba(168,85,247,0.2);
+      color: #c084fc;
+      padding: 10px 18px;
+      border-radius: 10px;
+      font-size: 13px;
+      font-weight: 500;
+      opacity: 0;
+      transform: translateY(8px);
+      transition: all 0.25s ease;
+      pointer-events: none;
+      z-index: 200;
+    }
+    .toast.show { opacity: 1; transform: translateY(0); }
+
+    @media (max-width: 768px) {
+      .session-preview { display: none; }
+      .session-meta { gap: 8px; }
+      .log-timestamp { min-width: 50px; font-size: 10px; }
+      .log-step { min-width: 80px; font-size: 10.5px; }
+    }
+  </style>
+</head>
+<body>
+  <div class="top-bar">
+    <h1><span>AI</span> Debug Log</h1>
+    <div class="top-bar-actions">
+      <span class="badge">{{ sessions|length }} session{{ 's' if sessions|length != 1 }}</span>
+      <button class="btn btn-danger" onclick="clearLogs()">Ryd logs</button>
+      <a href="/app1/" class="btn btn-back">Tilbage til chat</a>
+    </div>
+  </div>
+
+  <div class="container">
+    {% if sessions %}
+      {% for s in sessions %}
+      <div class="session-card" data-sid="{{ s.session_id }}">
+        <div class="session-header" onclick="toggleSession(this)">
+          <div class="session-meta">
+            <span class="session-id">{{ s.session_id[:8] }}</span>
+            <span class="session-time">{{ s.started_fmt }}</span>
+            <span class="session-preview">{{ s.first_query or 'Ingen query' }}</span>
+          </div>
+          <div class="session-stats">
+            <span class="stat-pill">{{ s.entry_count }} trin</span>
+          </div>
+          <svg class="session-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+        </div>
+        <div class="session-body">
+          <div class="session-toolbar">
+            <button class="btn" onclick="copySession('{{ s.session_id }}')">Kopier session log</button>
+            <button class="btn" onclick="copySessionJSON('{{ s.session_id }}')">Kopier som JSON</button>
+          </div>
+          <div class="log-entries" id="logs-{{ s.session_id }}">
+            <div style="padding: 20px; text-align: center; color: #52525b; font-size: 13px;">Indlæser...</div>
+          </div>
+        </div>
+      </div>
+      {% endfor %}
+    {% else %}
+      <div class="empty-state">
+        <h2>Ingen sessioner endnu</h2>
+        <p>Debug logs vises her efter chatsamtaler med AI-rådgiveren.</p>
+      </div>
+    {% endif %}
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script>
+  const loadedSessions = {};
+
+  function toggleSession(headerEl) {
+    const card = headerEl.closest('.session-card');
+    const sid = card.dataset.sid;
+    const wasExpanded = card.classList.contains('expanded');
+    card.classList.toggle('expanded');
+
+    if (!wasExpanded && !loadedSessions[sid]) {
+      fetchSessionLogs(sid);
+    }
+  }
+
+  function fetchSessionLogs(sid) {
+    fetch('/app1/adminlog/session/' + sid)
+      .then(r => r.json())
+      .then(data => {
+        loadedSessions[sid] = data.logs;
+        renderLogs(sid, data.logs);
+      })
+      .catch(e => {
+        document.getElementById('logs-' + sid).innerHTML =
+          '<div style="padding:20px;text-align:center;color:#ef4444;">Fejl ved indlæsning</div>';
+      });
+  }
+
+  function renderLogs(sid, logs) {
+    const container = document.getElementById('logs-' + sid);
+    if (!logs || logs.length === 0) {
+      container.innerHTML = '<div style="padding:20px;text-align:center;color:#52525b;">Ingen log entries</div>';
+      return;
+    }
+
+    let html = '';
+    for (const entry of logs) {
+      const ts = new Date(entry.timestamp * 1000);
+      const timeStr = ts.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+      const stepClass = entry.step.replace(/[^a-z_]/g, '');
+      const formatted = formatData(entry.data);
+
+      html += `<div class="log-entry">
+        <span class="log-timestamp">${timeStr}</span>
+        <span class="log-step ${stepClass}">${entry.step}</span>
+        <div class="log-data"><pre>${formatted}</pre></div>
+      </div>`;
+    }
+    container.innerHTML = html;
+  }
+
+  function formatData(data) {
+    if (!data || typeof data !== 'object') return String(data);
+    const lines = [];
+    for (const [key, val] of Object.entries(data)) {
+      const fmtVal = formatValue(val);
+      lines.push(`<span class="key">${esc(key)}</span>: ${fmtVal}`);
+    }
+    return lines.join('\n');
+  }
+
+  function formatValue(val) {
+    if (val === null || val === undefined) return '<span class="null">null</span>';
+    if (typeof val === 'boolean') return `<span class="bool">${val}</span>`;
+    if (typeof val === 'number') return `<span class="num">${val}</span>`;
+    if (Array.isArray(val)) {
+      if (val.length === 0) return '<span class="null">[]</span>';
+      const items = val.map(v => typeof v === 'string' ? `<span class="str">"${esc(v)}"</span>` : formatValue(v));
+      return '[' + items.join(', ') + ']';
+    }
+    if (typeof val === 'object') {
+      const inner = Object.entries(val).map(([k, v]) => `<span class="key">${esc(k)}</span>: ${formatValue(v)}`);
+      return '{ ' + inner.join(', ') + ' }';
+    }
+    // string — truncate long ones
+    const s = String(val);
+    const display = s.length > 300 ? s.substring(0, 300) + '...' : s;
+    return `<span class="str">"${esc(display)}"</span>`;
+  }
+
+  function esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  }
+
+  function copySession(sid) {
+    const logs = loadedSessions[sid];
+    if (!logs) { showToast('Indlæs sessionen først'); return; }
+
+    let text = `Session: ${sid}\n${'='.repeat(60)}\n\n`;
+    for (const entry of logs) {
+      const ts = new Date(entry.timestamp * 1000);
+      const timeStr = ts.toLocaleTimeString('da-DK', { hour:'2-digit', minute:'2-digit', second:'2-digit' });
+      text += `[${timeStr}] ${entry.step.toUpperCase()}\n`;
+      for (const [key, val] of Object.entries(entry.data || {})) {
+        const valStr = typeof val === 'object' ? JSON.stringify(val, null, 2) : String(val);
+        text += `  ${key}: ${valStr}\n`;
+      }
+      text += '\n';
+    }
+    navigator.clipboard.writeText(text).then(() => showToast('Kopieret til udklipsholder'));
+  }
+
+  function copySessionJSON(sid) {
+    const logs = loadedSessions[sid];
+    if (!logs) { showToast('Indlæs sessionen først'); return; }
+    const json = JSON.stringify({ session_id: sid, logs: logs }, null, 2);
+    navigator.clipboard.writeText(json).then(() => showToast('JSON kopieret'));
+  }
+
+  function clearLogs() {
+    if (!confirm('Er du sikker? Alle debug logs slettes permanent.')) return;
+    fetch('/app1/adminlog/clear', { method: 'POST' })
+      .then(r => r.json())
+      .then(() => location.reload())
+      .catch(e => showToast('Fejl ved sletning'));
+  }
+
+  function showToast(msg) {
+    const t = document.getElementById('toast');
+    t.textContent = msg;
+    t.classList.add('show');
+    setTimeout(() => t.classList.remove('show'), 2000);
+  }
+  </script>
+</body>
+</html>

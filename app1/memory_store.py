@@ -53,6 +53,17 @@ def init_db():
         CREATE INDEX IF NOT EXISTS idx_analytics_session ON analytics(session_id);
         CREATE INDEX IF NOT EXISTS idx_analytics_event ON analytics(event_type);
         CREATE INDEX IF NOT EXISTS idx_analytics_rating ON analytics(feedback_rating);
+
+        CREATE TABLE IF NOT EXISTS debug_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            timestamp REAL NOT NULL,
+            step TEXT NOT NULL,
+            data TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_debug_session ON debug_logs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_debug_timestamp ON debug_logs(timestamp);
     """)
     conn.commit()
 
@@ -144,6 +155,59 @@ def get_search_analytics(limit=20):
         ORDER BY timestamp DESC LIMIT ?
     """, (limit,)).fetchall()
     return [dict(r) for r in rows]
+
+
+# ── Debug Logging ──
+
+def log_debug(session_id, step, data=None):
+    """Log a debug entry for the admin log page."""
+    conn = _get_conn()
+    conn.execute(
+        "INSERT INTO debug_logs (session_id, timestamp, step, data) VALUES (?, ?, ?, ?)",
+        (session_id, time.time(), step, json.dumps(data or {}, ensure_ascii=False))
+    )
+    conn.commit()
+
+
+def get_debug_sessions(limit=50):
+    """Get recent sessions that have debug logs, ordered by last activity."""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT session_id, MIN(timestamp) as started, MAX(timestamp) as last_active, COUNT(*) as entry_count
+        FROM debug_logs
+        GROUP BY session_id
+        ORDER BY last_active DESC
+        LIMIT ?
+    """, (limit,)).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_debug_logs_for_session(session_id):
+    """Get all debug log entries for a specific session, ordered chronologically."""
+    conn = _get_conn()
+    rows = conn.execute(
+        "SELECT step, timestamp, data FROM debug_logs WHERE session_id = ? ORDER BY timestamp ASC",
+        (session_id,)
+    ).fetchall()
+    result = []
+    for r in rows:
+        entry = {"step": r["step"], "timestamp": r["timestamp"]}
+        try:
+            entry["data"] = json.loads(r["data"])
+        except (json.JSONDecodeError, TypeError):
+            entry["data"] = r["data"]
+        result.append(entry)
+    return result
+
+
+def clear_debug_logs(before_timestamp=None):
+    """Clear debug logs, optionally only those before a timestamp."""
+    conn = _get_conn()
+    if before_timestamp:
+        conn.execute("DELETE FROM debug_logs WHERE timestamp < ?", (before_timestamp,))
+    else:
+        conn.execute("DELETE FROM debug_logs")
+    conn.commit()
 
 
 # Initialize on import

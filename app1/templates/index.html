@@ -59,12 +59,14 @@
     flex-direction: column;
     flex-grow: 1;
     height: 100%;
+    min-height: 0;
   }
 
   #chatApp .chat-container {
     width: 100%;
     max-width: 100%;
     flex-grow: 1;
+    min-height: 0;
     background: transparent;
     /* blend with dashboard */
     border: none;
@@ -419,6 +421,8 @@
       const decoder = new TextDecoder("utf-8");
       let buffer = "";
       let isFirstChunk = true;
+      let fullAssistantText = "";
+      let textContainer = null;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -439,14 +443,24 @@
             try {
               const data = JSON.parse(dataStr);
 
+              if (data.type === 'ping') {
+                continue;
+              }
+
               if (isFirstChunk) {
                 botMsg.innerHTML = ''; // Clear thinking dots
                 isFirstChunk = false;
+
+                // Create a container for sequential text to avoid overwriting cards
+                textContainer = document.createElement('div');
+                textContainer.className = 'markdown-body';
+                botMsg.appendChild(textContainer);
               }
 
               if (data.type === 'chunk') {
-                // Append text securely as HTML (replace newlines with breaks)
-                botMsg.innerHTML += data.content.replace(/\n/g, '<br>');
+                fullAssistantText += data.content;
+                // Parse markdown into HTML safely
+                textContainer.innerHTML = marked.parse(fullAssistantText);
               } else if (data.type === 'product') {
                 // If a product card is sent mid-stream, append it gracefully
                 const cardContainer = document.createElement('div');
@@ -483,4 +497,28 @@
     }
   }
 </script>
+<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+<style>
+  /* Markdown styling fixes for the stream parser */
+  .markdown-body p {
+    margin-top: 0;
+    margin-bottom: 12px;
+  }
+
+  .markdown-body ul,
+  .markdown-body ol {
+    margin-top: 0;
+    margin-bottom: 12px;
+    padding-left: 20px;
+  }
+
+  .markdown-body li {
+    margin-bottom: 4px;
+  }
+
+  .markdown-body strong {
+    font-weight: 600;
+    color: #fff;
+  }
+</style>
 {% endblock %}

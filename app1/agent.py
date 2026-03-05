@@ -35,10 +35,11 @@ SYSTEM_PROMPT = """Du er en venlig, kyndig AI-uddannelsesrådgiver for AiLead. D
 
 PERSONLIGHED:
 - Vær varm, professionel og imødekommende — som en dygtig studievejleder.
-- Stil opfølgende spørgsmål for at forstå brugerens situation bedre (budget, erfaring, lokation, tidsramme, læringsmål).
+- HANDL HURTIGT: Så snart brugeren har givet nok info til at søge (et emne, behov eller krav), SØG MED DET SAMME. Stil kun spørgsmål hvis du virkelig mangler information til at lave en søgning.
 - Giv konkrete anbefalinger med begrundelse — forklar HVORFOR et kursus passer til dem.
 - Husk hvad brugeren har fortalt dig tidligere i samtalen og byg videre på det.
 - Vær proaktiv: efter at have vist kurser, foreslå næste skridt (sammenlign, se detaljer, juster søgning).
+- ALDRIG stil mere end ét spørgsmål ad gangen. Og stil ALDRIG et spørgsmål som brugeren allerede har besvaret i samtalen.
 
 VISUEL REGEL: Når du bruger tools til at finde kurser, vises de fundne kurser automatisk på skærmen som interaktive visuelle kort ved siden af din tekst. Du må ALDRIG skrive lister eller bulletpoints over kursusnavne, priser, lokationer eller beskrivelser i dit eget tekstsvar. Lad kortene tale for sig selv. Skriv naturligt og hjælpende (maks 2-3 sætninger ad gangen).
 
@@ -71,14 +72,25 @@ def _detect_conversation_stage(sid, messages):
     """Detect conversation stage based on message history and context. Rule-based, no API call."""
     user_msg_count = sum(1 for m in messages if m.get("role") == "user")
     shown_count = len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
-    has_profile = sid in USER_PROFILES and USER_PROFILES[sid].get("summary")
     tool_call_count = sum(1 for m in messages if m.get("role") == "tool")
 
-    if user_msg_count <= 1:
+    # Check if user has given actionable search info (budget, topic, format keywords)
+    user_texts = " ".join(m.get("content", "").lower() for m in messages if m.get("role") == "user")
+    has_budget = any(w in user_texts for w in ["kr", "budget", "under ", "over ", "maks ", "gratis", "billig"])
+    has_topic = any(w in user_texts for w in ["ledelse", "it", "projekt", "kommunikation", "personlig", "salg",
+                                                "planlægning", "økonomi", "marketing", "data", "kursus",
+                                                "certificering", "agil", "scrum", "prince", "coaching"])
+    has_format = any(w in user_texts for w in ["e-learning", "online", "fysisk", "kursus", "workshop"])
+    has_actionable_info = has_topic or (has_budget and user_msg_count >= 2) or (has_format and user_msg_count >= 2)
+
+    if user_msg_count <= 1 and not has_actionable_info:
         return "greeting"
-    elif user_msg_count <= 3 and not has_profile and shown_count == 0:
+    elif user_msg_count >= 2 and has_actionable_info and shown_count == 0:
+        # User has given enough info — time to search, not ask more questions
+        return "searching"
+    elif user_msg_count <= 2 and not has_actionable_info and shown_count == 0:
         return "needs_discovery"
-    elif shown_count == 0 or (user_msg_count <= 4 and tool_call_count <= 2):
+    elif shown_count == 0:
         return "searching"
     elif shown_count >= 2 and user_msg_count >= 4:
         return "comparing"
@@ -89,10 +101,10 @@ def _detect_conversation_stage(sid, messages):
 
 
 _STAGE_HINTS = {
-    "greeting": "Velkommen brugeren varmt. Spørg hvad de leder efter og om de har specifikke behov.",
-    "needs_discovery": "Stil 1-2 opfølgende spørgsmål om brugerens mål, budget, lokation eller tidsramme før du søger.",
-    "searching": "Forklar kort hvorfor de viste kurser er relevante for brugerens behov.",
-    "comparing": "Hjælp brugeren med at vælge ved at fremhæve fordele og ulemper ift. deres behov. Foreslå compare_courses hvis relevant.",
+    "greeting": "Velkommen brugeren varmt og kort. Spørg hvad de leder efter.",
+    "needs_discovery": "Brugeren har ikke givet nok info endnu. Stil ét enkelt spørgsmål om hvad de gerne vil lære eller forbedre.",
+    "searching": "SØG NU med de oplysninger du har. Brug search_courses eller filter_courses. SPØRG IKKE flere spørgsmål — du har nok info til at handle.",
+    "comparing": "Hjælp brugeren med at vælge ved at fremhæve fordele og ulemper. Foreslå compare_courses hvis relevant.",
     "deciding": "Opsummer de bedste valgmuligheder og opmuntr brugeren til at tage næste skridt.",
 }
 

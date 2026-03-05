@@ -339,67 +339,33 @@ def get_course_detail(query, product):
 
 # Single-course HTML snippet
 PRODUCT_MEDIA_TEMPLATE = """
-<div style="background: rgba(255,255,255,0.03); border-radius: 14px; overflow: hidden; font-family: 'Inter', Arial, sans-serif; color: #d4d4d8; width: 100%; max-width: 480px; border: 1px solid rgba(255,255,255,0.06);">
-
-  {# Image Header #}
-  <div style="background: rgba(0,0,0,0.2); padding: 28px; display: flex; justify-content: center; align-items: center; min-height: 100px;">
-    {% if product.image and product.image.src %}
-      <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}" style="max-height: 100px; object-fit: contain;">
-    {% else %}
-      <div style="height: 80px; display: flex; align-items: center; justify-content: center; color: #52525b;">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
-      </div>
-    {% endif %}
+<div style="background: rgba(255,255,255,0.03); border-radius: 10px; overflow: hidden; font-family: 'Inter', Arial, sans-serif; color: #d4d4d8; width: 100%; max-width: 420px; border: 1px solid rgba(255,255,255,0.06);">
+  {% if product.image and product.image.src %}
+  <div style="background: rgba(0,0,0,0.15); padding: 20px; display: flex; justify-content: center; align-items: center;">
+    <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}" style="max-height: 80px; object-fit: contain;">
   </div>
-
-  <div style="padding: 20px;">
-    {# Title + Price row #}
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 4px;">
-      <h3 style="margin: 0; font-size: 17px; font-weight: 700; color: #f4f4f5; line-height: 1.3;">
-        <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#f4f4f5'">{{ product.title | e }}</a>
-      </h3>
-      <div style="font-size: 15px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0;">
+  {% endif %}
+  <div style="padding: 16px;">
+    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
+      <div>
+        <h3 style="margin: 0 0 2px; font-size: 15px; font-weight: 700; color: #f4f4f5; line-height: 1.3;">
+          <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#f4f4f5'">{{ product.title | e }}</a>
+        </h3>
+        <div style="font-size: 12px; color: #52525b;">{{ product.vendor | e }}</div>
+      </div>
+      <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0;">
         {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
-        {% if price in ["0", "0.00", "0.0", "", "None"] %}
-          Gratis
-        {% else %}
-          kr {{ price | e }}
-        {% endif %}
+        {% if price in ["0", "0.00", "0.0", "", "None"] %}Gratis{% else %}kr {{ price | e }}{% endif %}
       </div>
     </div>
-    <p style="margin: 0 0 16px 0; font-size: 13px; color: #52525b;">Kursus</p>
-
-    {# Meta row #}
-    <div style="display: flex; gap: 24px; margin-bottom: 16px; font-size: 13px;">
-      <div>
-        <div style="color: #71717a; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 5px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-          Varighed
-        </div>
-        <div style="color: #52525b;">
-          {% if product.variants and product.variants|length > 1 %}Flere muligheder{% else %}Ikke angivet{% endif %}
-        </div>
-      </div>
-      <div>
-        <div style="color: #71717a; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 5px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"></path></svg>
-          Lokation
-        </div>
-        <div style="color: #52525b;">
-          {% if product.location %}{{ product.location | e }}{% else %}Online / Flere{% endif %}
-        </div>
-      </div>
-    </div>
-
     {% if product.ai_summary or product.body_html %}
-    <div style="font-size: 13.5px; color: #a1a1aa; line-height: 1.6; margin-bottom: 16px;">
-      {{ get_short_description(product) | e }}
-    </div>
+    <div style="font-size: 13px; color: #a1a1aa; line-height: 1.5; margin-bottom: 12px;">{{ get_short_description(product) | e }}</div>
     {% endif %}
-
-    <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="display: block; text-align: center; background: #a855f7; color: #fff; text-decoration: none; padding: 11px 0; border-radius: 10px; font-size: 14px; font-weight: 600; transition: background 0.2s;" onmouseover="this.style.background='#9333ea'" onmouseout="this.style.background='#a855f7'">
-      Vælg kursus
-    </a>
+    <div style="display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; color: #52525b;">
+      <span>{% if product.variants and product.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
+      <span>{% if product.location %}{{ product.location | e }}{% else %}Online{% endif %}</span>
+    </div>
+    <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="display: block; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 9px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
   </div>
 </div>
 """
@@ -408,80 +374,45 @@ def render_product_media(product):
     return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=product, get_short_description=get_short_description)
 
 MULTIPLE_COURSES_TEMPLATE = """
-<div style="display: flex; flex-direction: column; gap: 8px; width: 100%;">
+<div style="display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 420px;">
   {% for course in courses %}
     <div class="course-card" onclick="this.classList.toggle('expanded');">
-
       <div class="course-card-header">
-        <div style="background: rgba(0,0,0,0.25); border-radius: 10px; width: 48px; height: 48px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;">
+        <div style="background: rgba(0,0,0,0.2); border-radius: 8px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;">
           {% if course.image and course.image.src %}
               <img src="{{ course.image.src | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain;">
           {% else %}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
           {% endif %}
         </div>
-
         <div style="flex-grow: 1; min-width: 0; font-family: 'Inter', Arial, sans-serif;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 3px;">
-              <h4 style="margin: 0; font-size: 14.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%; color: #e4e4e7;">
+          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px;">
+              <h4 style="margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%; color: #e4e4e7;">
                   <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#e4e4e7'">{{ course.title | e }}</a>
               </h4>
-              <div style="font-size: 13px; font-weight: 700; color: #a855f7; white-space: nowrap;">
+              <div style="font-size: 12.5px; font-weight: 700; color: #a855f7; white-space: nowrap;">
                   {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
-                  {% if price in ['0', '0.00', '0.0', '', 'None'] %}
-                      Gratis
-                  {% else %}
-                      kr {{ price | e }}
-                  {% endif %}
+                  {% if price in ['0', '0.00', '0.0', '', 'None'] %}Gratis{% else %}kr {{ price | e }}{% endif %}
               </div>
           </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; color: #52525b;">
-              <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">{{ course.vendor | e }}</div>
-              <div style="display: flex; align-items: center; gap: 5px;">
-                  {% if price not in ['0', '0.00', '0.0', '', 'None'] %}
-                      <span style="font-size: 10px; text-transform: uppercase; letter-spacing: 0.5px;">Ekskl. moms</span>
-                  {% endif %}
-                  <svg class="course-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-              </div>
+          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #52525b;">
+              <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%;">{{ course.vendor | e }}</div>
+              <svg class="course-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
           </div>
         </div>
       </div>
-
       <div class="course-details-wrapper">
         <div class="course-details-inner">
           <div class="course-details-content" style="font-family: 'Inter', Arial, sans-serif;">
-            <div style="margin-top: 10px; font-size: 13px; color: #a1a1aa; line-height: 1.6;">
-              {{ get_short_description(course) | e }}
+            <div style="margin-top: 8px; font-size: 13px; color: #a1a1aa; line-height: 1.55;">{{ get_short_description(course) | e }}</div>
+            <div style="display: flex; gap: 16px; margin: 10px 0; font-size: 12px; color: #52525b;">
+              <span>{% if course.variants and course.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
+              <span>{% if course.location %}{{ course.location | e }}{% else %}Online{% endif %}</span>
             </div>
-
-            <div style="display: flex; gap: 20px; margin-top: 14px; margin-bottom: 14px; font-size: 12.5px;">
-              <div>
-                <div style="color: #71717a; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 4px;">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-                  Varighed
-                </div>
-                <div style="color: #52525b;">
-                  {% if course.variants and course.variants|length > 1 %}Flere muligheder{% else %}Ikke angivet{% endif %}
-                </div>
-              </div>
-              <div>
-                <div style="color: #71717a; font-weight: 600; margin-bottom: 2px; display: flex; align-items: center; gap: 4px;">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><circle cx="12" cy="12" r="10"></circle><line x1="2" y1="12" x2="22" y2="12"></line><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1 4-10z"></path></svg>
-                  Lokation
-                </div>
-                <div style="color: #52525b;">
-                  {% if course.location %}{{ course.location | e }}{% else %}Online/Flere{% endif %}
-                </div>
-              </div>
-            </div>
-
-            <a onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="display: block; text-align: center; background: #a855f7; color: #fff; text-decoration: none; padding: 10px 0; border-radius: 8px; font-size: 13.5px; font-weight: 600; transition: background 0.2s;" onmouseover="this.style.background='#9333ea'" onmouseout="this.style.background='#a855f7'">
-              Vælg kursus
-            </a>
+            <a onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="display: block; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 8px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
           </div>
         </div>
       </div>
-
     </div>
   {% endfor %}
 </div>

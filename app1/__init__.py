@@ -220,10 +220,15 @@ def filter_upcoming_variants(variants):
 _short_description_cache = {}
 
 def get_short_description(product):
+    # First check for the pre-computed RAG summary
+    if product.get("ai_summary"):
+        return product.get("ai_summary")
+
     pid = product.get("handle")
     if pid in _short_description_cache:
         return _short_description_cache[pid]
-    full_desc = product.get("description", "")
+        
+    full_desc = product.get("body_html", "")
     if not full_desc:
         summary = "Ingen beskrivelse tilgængelig."
     else:
@@ -347,7 +352,9 @@ PRODUCT_MEDIA_TEMPLATE = """
 
   {# Details Area #}
   <div style="padding: 24px;">
-    <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 700; color: #1a1a1a;">{{ product.title | e }}</h3>
+    <h3 style="margin: 0 0 4px 0; font-size: 20px; font-weight: 700; color: #1a1a1a;">
+      <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: #1a1a1a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ product.title | e }}</a>
+    </h3>
     <p style="margin: 0 0 20px 0; font-size: 14px; color: #666;">Kursus</p>
     
     <div style="display: flex; gap: 40px; margin-bottom: 24px;">
@@ -389,7 +396,7 @@ PRODUCT_MEDIA_TEMPLATE = """
     </div>
     
     {# Short desc #}
-    {% if product.description %}
+    {% if product.ai_summary or product.body_html %}
     <div style="font-size: 13px; color: #555; line-height: 1.5; margin-bottom: 24px;">
       {{ get_short_description(product) | e }}
     </div>
@@ -397,7 +404,7 @@ PRODUCT_MEDIA_TEMPLATE = """
 
     {# Floating Action Button #}
     <div style="display: flex; justify-content: center;">
-      <button onclick="window.open('{{ product.url | e }}', '_blank')" style="background-color: #1a1a1a; color: #fff; border: none; padding: 12px 24px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s ease;">
+      <button onclick="window.open('https://futurematch.dk/products/{{ product.handle }}', '_blank')" style="background-color: #1a1a1a; color: #fff; border: none; padding: 12px 24px; border-radius: 20px; font-size: 14px; font-weight: 600; cursor: pointer; transition: transform 0.2s ease;">
         Vælg kursus
       </button>
     </div>
@@ -428,8 +435,8 @@ MULTIPLE_COURSES_TEMPLATE = """
         {# Right Details Summary #}
         <div style="flex-grow: 1; min-width: 0; font-family: 'Inter', Arial, sans-serif;">
           <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 4px;">
-              <h4 style="margin: 0; font-size: 15px; font-weight: 700; color: #1a1a1a; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;">
-                  {{ course.title | e }}
+              <h4 style="margin: 0; font-size: 15px; font-weight: 700; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;">
+                  <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: #1a1a1a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ course.title | e }}</a>
               </h4>
               <div style="font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap;">
                   {% if course.price in ['0', '0.00'] %}
@@ -488,7 +495,7 @@ MULTIPLE_COURSES_TEMPLATE = """
               </div>
             </div>
 
-            <button onclick="event.stopPropagation(); window.open('{{ course.url | e }}', '_blank')" style="width: 100%; background-color: #111; color: #fff; border: 1px solid #111; padding: 12px 0; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); outline: none;" onmouseover="this.style.backgroundColor='#fff'; this.style.color='#111'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';" onmouseout="this.style.backgroundColor='#111'; this.style.color='#fff'; this.style.boxShadow='none';">
+            <button onclick="event.stopPropagation(); window.open('https://futurematch.dk/products/{{ course.handle }}', '_blank')" style="width: 100%; background-color: #111; color: #fff; border: 1px solid #111; padding: 12px 0; border-radius: 8px; font-size: 14px; font-weight: 600; cursor: pointer; transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1); outline: none;" onmouseover="this.style.backgroundColor='#fff'; this.style.color='#111'; this.style.boxShadow='0 4px 12px rgba(0,0,0,0.1)';" onmouseout="this.style.backgroundColor='#111'; this.style.color='#fff'; this.style.boxShadow='none';">
               Vælg kursus
             </button>
           </div>

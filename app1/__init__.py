@@ -388,8 +388,8 @@ PRODUCT_MEDIA_TEMPLATE = """
 
     {# Price Floating Card #}
     <div style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; font-weight: 600; font-size: 16px;">
-      {% set price = product.variants[0].price if product.variants and product.variants|length > 0 else '0' %}
-      {% if price in ["0", "0.00", "0.0", None] %}
+      {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
+      {% if price in ["0", "0.00", "0.0", "", "None"] %}
         Gratis
       {% else %}
         kr {{ price | e }}
@@ -440,8 +440,8 @@ MULTIPLE_COURSES_TEMPLATE = """
                   <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: #1a1a1a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ course.title | e }}</a>
               </h4>
               <div style="font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap;">
-                  {% set price = course.variants[0].price if course.variants and course.variants|length > 0 else '0' %}
-                  {% if price in ['0', '0.00', '0.0', None] %}
+                  {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
+                  {% if price in ['0', '0.00', '0.0', '', 'None'] %}
                       Gratis
                   {% else %}
                       kr {{ price | e }}
@@ -451,7 +451,7 @@ MULTIPLE_COURSES_TEMPLATE = """
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #666;">
               <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">{{ course.vendor | e }}</div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                  {% if price not in ['0', '0.00', '0.0', None] %}
+                  {% if price not in ['0', '0.00', '0.0', '', 'None'] %}
                       <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">Ekskl. moms</span>
                   {% endif %}
                   <svg class="course-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>

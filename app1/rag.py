@@ -47,28 +47,31 @@ def semantic_search_courses(query, limit=5, min_score=0.4):
     """
     Given a user query (e.g., "Ledelse kursus i Aarhus"), find the top matching
     products based on vector cosine similarity.
+
+    Returns:
+        list of products on success,
+        dict with "error" key on failure: {"error": "embedding_failed"|"index_not_loaded"}
     """
     products = load_augmented_products()
     if not products:
-        # Fallback to empty if index isn't built yet
-        return []
-        
+        return {"error": "index_not_loaded", "message": "Produktindekset er ikke indlæst."}
+
     query_vector = get_query_embedding(query)
     if not query_vector:
-        return []
+        return {"error": "embedding_failed", "message": "Kunne ikke oprette embedding for søgningen."}
 
     scored_products = []
     for product in products:
         product_vector = product.get("embedding")
         if not product_vector:
             continue
-            
+
         score = cosine_similarity(query_vector, product_vector)
         if score >= min_score:
             scored_products.append((score, product))
 
     # Sort descendants by score
     scored_products.sort(key=lambda x: x[0], reverse=True)
-    
+
     # Return top N products
     return [item[1] for item in scored_products[:limit]]

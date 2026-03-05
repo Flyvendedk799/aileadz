@@ -343,8 +343,8 @@ PRODUCT_MEDIA_TEMPLATE = """
   
   {# Image Header Area #}
   <div style="background-color: #f6efe8; padding: 30px; display: flex; justify-content: center; align-items: center; position: relative;">
-    {% if product.image_url %}
-      <img src="{{ product.image_url | e }}" alt="{{ product.title | e }}" style="max-height: 120px; object-fit: contain;">
+    {% if product.image and product.image.src %}
+      <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}" style="max-height: 120px; object-fit: contain;">
     {% else %}
       <div style="height: 120px; display: flex; align-items: center; justify-content: center; color: #888;">Ingen Billede</div>
     {% endif %}
@@ -388,10 +388,11 @@ PRODUCT_MEDIA_TEMPLATE = """
 
     {# Price Floating Card #}
     <div style="background: #fff; border-radius: 8px; padding: 16px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; font-weight: 600; font-size: 16px;">
-      {% if product.price in ["0", "0.00"] %}
+      {% set price = product.variants[0].price if product.variants and product.variants|length > 0 else '0' %}
+      {% if price in ["0", "0.00", "0.0", None] %}
         Gratis
       {% else %}
-        kr {{ product.price | e }}
+        kr {{ price | e }}
       {% endif %}
     </div>
     
@@ -425,8 +426,8 @@ MULTIPLE_COURSES_TEMPLATE = """
         
         {# Left Icon/Logo #}
         <div style="background-color: #f8f6f2; border-radius: 8px; width: 60px; height: 60px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden; position: relative;">
-          {% if course.image_url %}
-              <img src="{{ course.image_url | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain;">
+          {% if course.image and course.image.src %}
+              <img src="{{ course.image.src | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain;">
           {% else %}
               <div style="font-size: 10px; color: #aaa;">Logo</div>
           {% endif %}
@@ -439,17 +440,18 @@ MULTIPLE_COURSES_TEMPLATE = """
                   <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: #1a1a1a; text-decoration: none;" onmouseover="this.style.textDecoration='underline'" onmouseout="this.style.textDecoration='none'">{{ course.title | e }}</a>
               </h4>
               <div style="font-size: 13px; font-weight: 700; color: #1a1a1a; white-space: nowrap;">
-                  {% if course.price in ['0', '0.00'] %}
+                  {% set price = course.variants[0].price if course.variants and course.variants|length > 0 else '0' %}
+                  {% if price in ['0', '0.00', '0.0', None] %}
                       Gratis
                   {% else %}
-                      kr {{ course.price | e }}
+                      kr {{ price | e }}
                   {% endif %}
               </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 13px; color: #666;">
               <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%;">{{ course.vendor | e }}</div>
               <div style="display: flex; align-items: center; gap: 6px;">
-                  {% if course.price not in ['0', '0.00'] %}
+                  {% if price not in ['0', '0.00', '0.0', None] %}
                       <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; opacity: 0.8;">Ekskl. moms</span>
                   {% endif %}
                   <svg class="course-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>

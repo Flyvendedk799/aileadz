@@ -75,7 +75,15 @@ PERSONLIGHED:
 - Vær proaktiv: efter at have vist kurser, foreslå næste skridt (sammenlign, se detaljer, juster søgning).
 - ALDRIG stil mere end ét spørgsmål ad gangen. Og stil ALDRIG et spørgsmål som brugeren allerede har besvaret i samtalen.
 
-VISUEL REGEL: Når du bruger tools til at finde kurser, vises de fundne kurser automatisk på skærmen som interaktive visuelle kort ved siden af din tekst. Du må ALDRIG skrive lister eller bulletpoints over kursusnavne, priser, lokationer eller beskrivelser i dit eget tekstsvar. Lad kortene tale for sig selv. Skriv naturligt og hjælpende (maks 2-3 sætninger ad gangen).
+VISUEL REGEL (VIGTIGSTE REGEL — OVERTRUMFER ALT ANDET):
+Når du bruger tools til at finde kurser, vises de fundne kurser AUTOMATISK på skærmen som interaktive visuelle kort ved siden af din tekst.
+Du må ALDRIG:
+- Skrive kursusnavne i dit svar
+- Liste priser, lokationer eller beskrivelser
+- Bruge bulletpoints eller nummererede lister over kurser
+- Skrive "1.", "2.", "3." efterfulgt af kursusinfo
+- Bruge **fed skrift** til kursusnavne
+Dit svar skal KUN være 1-2 korte, naturlige sætninger som "Her er nogle gode muligheder inden for planlægning — tag et kig på kortene!" ALDRIG mere.
 
 VÆRKTØJSSTRATEGI:
 - search_courses: Brug til åbne/semantiske forespørgsler ("kurser om ledelse", "noget med kommunikation"). Hybrid søgning (semantisk + nøgleord).
@@ -364,27 +372,25 @@ def _check_response_quality(response_text, had_tool_calls):
     if not had_tool_calls or not response_text:
         return True  # No violation possible
 
-    # Check for bullet-point lists of courses in the response
+    # Check for bullet-point or numbered lists of courses in the response
     lines = response_text.strip().split('\n')
-    list_line_count = sum(1 for line in lines if line.strip().startswith(('-', '•', '*', '1.', '2.', '3.')))
-    if list_line_count >= 3:
+    list_line_count = sum(1 for line in lines if _re.match(r'\s*[-•*]\s', line) or _re.match(r'\s*\d+[\.\)]\s', line))
+    if list_line_count >= 2:
         return False  # Likely listing courses in text
 
-    # Check for "kr" appearing multiple times (price listing) — both "kr" and regex patterns like "9.999 kr"
+    # Check for "kr" appearing multiple times (price listing)
     kr_count = response_text.lower().count(' kr')
     price_pattern_count = len(_re.findall(r'\d[\d.]+\s*kr', response_text))
-    if kr_count >= 3 or price_pattern_count >= 3:
+    if kr_count >= 2 or price_pattern_count >= 2:
         return False
 
-    # Check for 3+ quoted or bold course titles (paragraph-style listing)
+    # Check for 2+ quoted or bold course titles (paragraph-style listing)
     quoted_titles = len(_re.findall(r'[""«»].*?[""«»]|(?:\*\*|__).+?(?:\*\*|__)', response_text))
-    if quoted_titles >= 3:
+    if quoted_titles >= 2:
         return False
 
-    # Check for long responses with many detail-heavy sentences after tool calls
-    sentences = _re.split(r'[.!?]\s+', response_text)
-    detail_sentences = sum(1 for s in sentences if _re.search(r'\d[\d.]*\s*kr', s) or _re.search(r'[""«»\*\*]', s))
-    if detail_sentences >= 4 and len(response_text) > 300:
+    # Response too long after tool calls — should be 1-2 sentences max
+    if len(response_text) > 250:
         return False
 
     return True
@@ -840,7 +846,7 @@ def handle_agentic_ask(user_query, session):
                 # Response violates visual rule — regenerate with correction
                 ephemeral_messages.append({
                     "role": "system",
-                    "content": "KORREKTION: Dit svar indeholder en liste over kurser i teksten. Husk VISUEL REGEL: kursuskortene vises automatisk. Omskriv dit svar til 1-2 naturlige sætninger uden lister, priser eller kursusnavne."
+                    "content": "KORREKTION: Dit svar BRYDER den vigtigste regel. Du har listet kursusnavne, priser eller beskrivelser i teksten. Kursuskortene vises AUTOMATISK — brugeren kan allerede SE dem. Omskriv dit svar til PRÆCIS 1-2 korte sætninger der IKKE nævner nogen kursusnavne, priser, lokationer eller beskrivelser. Eksempel: 'Her er nogle gode muligheder inden for planlægning — se kortene for detaljer!'"
                 })
                 try:
                     correction = openai.chat.completions.create(

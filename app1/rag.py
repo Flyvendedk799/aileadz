@@ -32,6 +32,10 @@ _STOP_WORDS = {
     "the", "and", "of", "to", "in", "a", "is", "for", "on", "with",
 }
 
+_GENERIC_QUERY_TOKENS = {
+    "kursus", "kurser", "uddannelse", "forløb", "træning", "training", "course"
+}
+
 
 # Danish synonym expansion for query enrichment
 _QUERY_SYNONYMS = {
@@ -115,6 +119,26 @@ def _expand_query_tokens(tokens):
             syn_tokens = _tokenize(syn)
             expanded.extend(syn_tokens)
     return expanded
+
+
+def _core_query_tokens(tokens):
+    """Keep only topical query terms (drop generic course words)."""
+    return [t for t in tokens if t not in _GENERIC_QUERY_TOKENS]
+
+
+def _product_text_tokens(product):
+    """Flatten searchable product fields into a token set for lexical checks."""
+    tokens = []
+    tokens.extend(_tokenize(product.get("title", "")))
+    tokens.extend(_tokenize(product.get("ai_summary", "")))
+    tokens.extend(_tokenize(product.get("product_type", "")))
+
+    tags = product.get("tags", [])
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",")]
+    for tag in tags:
+        tokens.extend(_tokenize(tag))
+    return set(tokens)
 
 
 def _build_bm25_index(products):
@@ -284,6 +308,7 @@ def semantic_search_courses(query, limit=5, min_score=0.35):
 
     # ── 2. BM25 keyword search (with synonym expansion) ──
     query_tokens = _tokenize(query)
+    core_query_tokens = _core_query_tokens(query_tokens)
     expanded_tokens = _expand_query_tokens(query_tokens)
     bm25_ranked = _bm25_search(expanded_tokens, limit=20)
 
@@ -320,7 +345,25 @@ def semantic_search_courses(query, limit=5, min_score=0.35):
                 filtered_fused.append((doc_idx, rrf_score))
         fused = filtered_fused if filtered_fused else fused[:limit]
 
-    # ── 5. Return top N products ──
+    # ── 5. Topical lexical sanity-check + rerank ──
+    # Avoid returning unrelated courses just to fill `limit`.
+    if core_query_tokens and fused:
+        lexical_scored = []
+        for doc_idx, base_score in fused:
+            product_tokens = _product_text_tokens(products[doc_idx])
+            core_hits = sum(1 for tok in core_query_tokens if tok in product_tokens)
+            # Large bonus for direct topical overlap.
+            lexical_scored.append((doc_idx, base_score + (core_hits * 0.03), core_hits))
+
+        lexical_scored.sort(key=lambda x: x[1], reverse=True)
+        with_hits = [x for x in lexical_scored if x[2] > 0]
+
+        # If we have at least one topical match, prioritize those results.
+        # This ensures e.g. "planlægning kursus" does not get padded with unrelated items.
+        chosen = with_hits if with_hits else lexical_scored
+        fused = [(doc_idx, score) for doc_idx, score, _hits in chosen]
+
+    # ── 6. Return top N products ──
     result_indices = [doc_idx for doc_idx, _ in fused[:limit]]
     return [products[idx] for idx in result_indices if idx < len(products)]
 

@@ -11,6 +11,47 @@ from app1.rag import semantic_search_courses, load_augmented_products, hybrid_ra
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
 _EXCLUDED_TAGS = {"kursus", "kurser", "uddannelse", "training", "course", "denmark", "danmark"}
 
+# ── Location aliases for fuzzy matching (Improvement #5) ──
+_LOCATION_ALIASES = {
+    "kbh": "københavn",
+    "kbh.": "københavn",
+    "copenhagen": "københavn",
+    "cph": "københavn",
+    "århus": "aarhus",
+    "odense c": "odense",
+    "aalborg c": "aalborg",
+    "ålborg": "aalborg",
+}
+
+# Copenhagen metro area — searching "København" should also match these
+_COPENHAGEN_METRO = {"frederiksberg", "herlev", "ballerup", "glostrup", "taastrup",
+                     "lyngby", "gentofte", "hellerup", "valby", "vanløse", "amager",
+                     "nordhavn", "ørestad", "brøndby", "hvidovre", "rødovre"}
+
+
+def _normalize_location(loc_input):
+    """Normalize a location query: apply aliases, lowercase."""
+    loc = loc_input.lower().strip()
+    return _LOCATION_ALIASES.get(loc, loc)
+
+
+def _location_matches(query_loc, variant_loc_raw):
+    """Check if a normalized query location matches a variant location string."""
+    variant_loc = variant_loc_raw.lower()
+    normalized = _normalize_location(query_loc)
+
+    # Direct substring match
+    if normalized in variant_loc:
+        return True
+
+    # Copenhagen metro expansion: if searching for "københavn", also match metro cities
+    if normalized == "københavn":
+        for metro_city in _COPENHAGEN_METRO:
+            if metro_city in variant_loc:
+                return True
+
+    return False
+
 def extract_city_name(address):
     """Turn addresses like 'Kongsvang Alle 29, 8000 Aarhus C' into 'Aarhus'."""
     if not address:
@@ -278,8 +319,8 @@ def _execute_filter_courses(args):
         variants = p.get("variants", [])
 
         if location:
-            locs = [v.get("option1", "").lower() for v in variants if v.get("option1")]
-            if not any(location in loc for loc in locs):
+            variant_locs = [v.get("option1", "") for v in variants if v.get("option1")]
+            if not any(_location_matches(location, vloc) for vloc in variant_locs):
                 continue
 
         if price_min is not None or price_max is not None:
@@ -396,7 +437,276 @@ def _execute_compare_courses(args):
     })
 
 
-def execute_tool(tool_call):
+# ── Profile Management Tools (connected to MySQL user system) ──
+
+PROFILE_TOOLS = [
+    {
+        "type": "function",
+        "function": {
+            "name": "get_user_profile",
+            "description": "Hent brugerens fulde profil: kompetencer, erfaring, uddannelse, gennemførte kurser og præferencer. Brug dette til at give personlige anbefalinger baseret på brugerens baggrund.",
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "update_user_profile",
+            "description": "Opdater brugerens profil: tilføj/fjern kompetencer, erfaring, uddannelse, gennemførte kurser, eller opdater profiloversigt (headline, bio, mål, præferencer). Brug dette når brugeren fortæller om sig selv, tilføjer en kompetence, eller vil opdatere sin profil.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "action": {
+                        "type": "string",
+                        "enum": ["add_skill", "remove_skill", "update_skill_level",
+                                 "add_experience", "remove_experience",
+                                 "add_education", "remove_education",
+                                 "add_course", "remove_course",
+                                 "update_summary"],
+                        "description": "The profile update action to perform."
+                    },
+                    "data": {
+                        "type": "object",
+                        "description": "Data for the action. For add_skill: {skill_name, skill_level?}. For remove_skill: {skill_name}. For update_skill_level: {skill_name, skill_level}. For add_experience: {title, company?, start_year?, end_year?, is_current?, description?}. For remove_experience: {id}. For add_education: {degree, institution?, year_completed?}. For remove_education: {id}. For add_course: {course_title, course_handle?, vendor?, completed_date?}. For remove_course: {course_title}. For update_summary: {headline?, bio?, goals?, preferred_location?, preferred_format?, budget_range?}."
+                    }
+                },
+                "required": ["action", "data"]
+            }
+        }
+    }
+]
+
+
+def _execute_get_user_profile(args, username):
+    """Fetch the full user profile from MySQL."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1.user_profile_db import get_full_profile, format_profile_for_ai, ensure_tables
+        ensure_tables()
+        profile = get_full_profile(username)
+        formatted = format_profile_for_ai(profile)
+        return json.dumps({
+            "status": "success",
+            "profile": profile,
+            "formatted": formatted if formatted else "Brugeren har endnu ikke udfyldt sin profil."
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
+
+
+def _execute_update_user_profile(args, username):
+    """Execute a profile update action."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+
+    action = args.get("action", "")
+    data = args.get("data", {})
+
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+
+        if action == "add_skill":
+            name = data.get("skill_name", "").strip()
+            level = data.get("skill_level", "mellem")
+            if not name:
+                return json.dumps({"status": "error", "message": "skill_name mangler."})
+            db.add_skill(username, name, level, source="chatbot")
+            return json.dumps({"status": "success", "message": f'Kompetencen "{name}" er tilføjet med niveau "{level}".'})
+
+        elif action == "remove_skill":
+            name = data.get("skill_name", "").strip()
+            if not name:
+                return json.dumps({"status": "error", "message": "skill_name mangler."})
+            removed = db.remove_skill(username, name)
+            if removed:
+                return json.dumps({"status": "success", "message": f'Kompetencen "{name}" er fjernet.'})
+            return json.dumps({"status": "not_found", "message": f'Kompetencen "{name}" blev ikke fundet.'})
+
+        elif action == "update_skill_level":
+            name = data.get("skill_name", "").strip()
+            level = data.get("skill_level", "")
+            if not name or not level:
+                return json.dumps({"status": "error", "message": "skill_name og skill_level kræves."})
+            updated = db.update_skill_level(username, name, level)
+            if updated:
+                return json.dumps({"status": "success", "message": f'Niveau for "{name}" opdateret til "{level}".'})
+            return json.dumps({"status": "not_found", "message": f'Kompetencen "{name}" blev ikke fundet.'})
+
+        elif action == "add_experience":
+            title = data.get("title", "").strip()
+            if not title:
+                return json.dumps({"status": "error", "message": "title mangler."})
+            new_id = db.add_experience(
+                username, title,
+                company=data.get("company", ""),
+                start_year=data.get("start_year"),
+                end_year=data.get("end_year"),
+                is_current=data.get("is_current", False),
+                description=data.get("description", "")
+            )
+            return json.dumps({"status": "success", "message": f'Erfaring "{title}" tilføjet.', "id": new_id})
+
+        elif action == "remove_experience":
+            exp_id = data.get("id")
+            if not exp_id:
+                return json.dumps({"status": "error", "message": "id mangler."})
+            removed = db.remove_experience(username, exp_id)
+            if removed:
+                return json.dumps({"status": "success", "message": "Erfaring fjernet."})
+            return json.dumps({"status": "not_found", "message": "Erfaring ikke fundet."})
+
+        elif action == "add_education":
+            degree = data.get("degree", "").strip()
+            if not degree:
+                return json.dumps({"status": "error", "message": "degree mangler."})
+            new_id = db.add_education(
+                username, degree,
+                institution=data.get("institution", ""),
+                year_completed=data.get("year_completed"),
+                description=data.get("description", "")
+            )
+            return json.dumps({"status": "success", "message": f'Uddannelse "{degree}" tilføjet.', "id": new_id})
+
+        elif action == "remove_education":
+            edu_id = data.get("id")
+            if not edu_id:
+                return json.dumps({"status": "error", "message": "id mangler."})
+            removed = db.remove_education(username, edu_id)
+            if removed:
+                return json.dumps({"status": "success", "message": "Uddannelse fjernet."})
+            return json.dumps({"status": "not_found", "message": "Uddannelse ikke fundet."})
+
+        elif action == "add_course":
+            title = data.get("course_title", "").strip()
+            if not title:
+                return json.dumps({"status": "error", "message": "course_title mangler."})
+            db.add_completed_course(
+                username, title,
+                course_handle=data.get("course_handle"),
+                vendor=data.get("vendor", ""),
+                completed_date=data.get("completed_date"),
+                certificate_note=data.get("certificate_note")
+            )
+            return json.dumps({"status": "success", "message": f'Kursus "{title}" tilføjet til gennemførte kurser.'})
+
+        elif action == "remove_course":
+            title = data.get("course_title", "").strip()
+            if not title:
+                return json.dumps({"status": "error", "message": "course_title mangler."})
+            removed = db.remove_completed_course(username, title)
+            if removed:
+                return json.dumps({"status": "success", "message": f'Kursus "{title}" fjernet.'})
+            return json.dumps({"status": "not_found", "message": f'Kursus "{title}" ikke fundet.'})
+
+        elif action == "update_summary":
+            db.update_profile_summary(username, **data)
+            return json.dumps({"status": "success", "message": "Profiloversigt opdateret."})
+
+        else:
+            return json.dumps({"status": "error", "message": f"Ukendt action: {action}"})
+
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl: {e}"})
+
+
+def _execute_recommend_for_profile(args, username):
+    """Phase 5A: Recommend courses based on user profile gaps."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        ensure_tables()
+        profile = get_full_profile(username)
+
+        # Build search query from goals + low-level skills
+        query_parts = []
+        focus = args.get("focus", "").strip()
+        if focus:
+            query_parts.append(focus)
+
+        goals = profile.get("goals", "")
+        if goals:
+            query_parts.append(goals[:100])
+
+        # Target skills at begynder/mellem level for upskilling
+        low_skills = [s["name"] for s in profile.get("skills", []) if s.get("level") in ("begynder", "mellem")]
+        if low_skills:
+            query_parts.extend(low_skills[:3])
+
+        if not query_parts:
+            query_parts.append("populære kurser")
+
+        search_query = " ".join(query_parts)
+        results = semantic_search_courses(search_query, limit=6)
+
+        if isinstance(results, dict) and "error" in results:
+            return json.dumps({"status": "error", "message": results["message"]})
+
+        # Filter out completed courses
+        completed_titles = {c["title"].lower() for c in profile.get("completed_courses", [])}
+        completed_handles = {c.get("handle", "").lower() for c in profile.get("completed_courses", []) if c.get("handle")}
+
+        filtered = []
+        for r in (results or []):
+            title_lower = r.get("title", "").lower()
+            handle_lower = r.get("handle", "").lower()
+            if title_lower in completed_titles or handle_lower in completed_handles:
+                continue
+            filtered.append(r)
+
+        if not filtered:
+            return json.dumps({"status": "no_results", "message": "Ingen nye kursusanbefalinger fundet baseret på din profil."})
+
+        compact_results = [_extract_compact_fields(r) for r in filtered[:4]]
+
+        # Annotate with reason
+        all_skills = {s["name"].lower(): s["level"] for s in profile.get("skills", [])}
+        for cr in compact_results:
+            reason_parts = []
+            title_lower = cr.get("title", "").lower()
+            for skill_name, skill_level in all_skills.items():
+                if skill_name in title_lower and skill_level in ("begynder", "mellem"):
+                    reason_parts.append(f"bygger videre på din {skill_name}-kompetence")
+            if goals and any(w in title_lower for w in goals.lower().split()[:3]):
+                reason_parts.append("matcher dine mål")
+            cr["recommendation_reason"] = "; ".join(reason_parts) if reason_parts else "relevant for din profil"
+
+        return json.dumps({
+            "status": "success",
+            "count": len(compact_results),
+            "results": compact_results,
+            "raw_products": filtered[:4]
+        })
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl: {e}"})
+
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "recommend_for_profile",
+        "description": "Anbefal kurser baseret på brugerens profil: kompetenceniveauer, mål, og gennemførte kurser. Filtrerer automatisk allerede gennemførte kurser fra. Brug dette når brugeren spørger 'hvad bør jeg lære?', 'anbefal noget til mig', eller lignende.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "focus": {
+                    "type": "string",
+                    "description": "Valgfrit fokusområde for anbefalinger (f.eks. 'ledelse', 'programmering')."
+                }
+            },
+            "required": []
+        }
+    }
+})
+
+
+def execute_tool(tool_call, username=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
 
@@ -414,6 +724,12 @@ def execute_tool(tool_call):
             return _execute_get_course_details(args)
         elif function_name == "compare_courses":
             return _execute_compare_courses(args)
+        elif function_name == "get_user_profile":
+            return _execute_get_user_profile(args, username)
+        elif function_name == "update_user_profile":
+            return _execute_update_user_profile(args, username)
+        elif function_name == "recommend_for_profile":
+            return _execute_recommend_for_profile(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

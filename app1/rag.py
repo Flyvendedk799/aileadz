@@ -6,6 +6,7 @@ import json
 import math
 import os
 import re
+import time
 import openai
 from collections import defaultdict
 from dotenv import load_dotenv
@@ -34,21 +35,65 @@ _STOP_WORDS = {
 
 # Danish synonym expansion for query enrichment
 _QUERY_SYNONYMS = {
-    "ledelse": ["leder", "leadership", "ledelsesstil", "teamledelse"],
-    "projektledelse": ["projektstyring", "projektleder", "project", "planlægning"],
+    # Management & leadership
+    "ledelse": ["leder", "leadership", "ledelsesstil", "teamledelse", "management"],
+    "projektledelse": ["projektstyring", "projektleder", "project", "planlægning", "pmp"],
     "planlægning": ["projektledelse", "projektstyring", "planning", "plan"],
+    "strategi": ["strategisk", "forretningsstrategi", "virksomhedsstrategi"],
+    # Communication & soft skills
     "kommunikation": ["kommunikere", "samtale", "dialog", "præsentation"],
+    "præsentation": ["powerpoint", "kommunikation", "formidling"],
+    "facilitering": ["facilitator", "workshop", "mødeledelse"],
+    "konflikthåndtering": ["konflikt", "mediation", "mægling"],
+    "coaching": ["coach", "mentor", "mentoring", "personlig"],
+    "personlig": ["personligudvikling", "selvudvikling", "udvikling"],
+    # IT certifications
+    "itil": ["itsm", "it service management", "serviceledelse", "itil4"],
+    "devops": ["ci cd", "continuous", "deployment", "automation", "pipeline"],
+    "cloud": ["azure", "aws", "skyløsning", "cloudcomputing"],
+    "azure": ["microsoft", "cloud", "skyløsning"],
+    "aws": ["amazon", "cloud", "skyløsning"],
+    "cybersecurity": ["sikkerhed", "informationssikkerhed", "it sikkerhed", "hacking"],
+    "sikkerhed": ["cybersecurity", "informationssikkerhed", "datasikkerhed"],
+    # Data & analytics
+    "power bi": ["powerbi", "bi", "dashboard", "datavisualisering", "rapport"],
+    "powerbi": ["power bi", "bi", "dashboard", "datavisualisering"],
+    "bi": ["business intelligence", "powerbi", "dashboard", "rapport", "datavisualisering"],
+    "data": ["dataanalyse", "analytics", "statistik", "big data"],
+    "analyse": ["analytics", "dataanalyse", "data", "statistik"],
+    "tableau": ["datavisualisering", "dashboard", "bi"],
+    "excel": ["regneark", "spreadsheet", "microsoft", "vba"],
+    # Business & finance
     "it": ["informationsteknologi", "computer", "software", "digital"],
     "økonomi": ["finans", "regnskab", "budget", "bogholderi"],
     "salg": ["sælger", "salgsarbejde", "forhandling", "kundekontakt"],
     "marketing": ["markedsføring", "digital", "kampagne", "branding"],
-    "coaching": ["coach", "mentor", "mentoring", "personlig"],
+    "forhandling": ["forhandlingsteknik", "salg", "aftale", "negotiation"],
+    "innovation": ["nytænkning", "forretningsudvikling", "kreativitet"],
+    # Lean & quality
+    "lean": ["lean management", "waste", "kaizen", "procesforbedring", "six sigma"],
+    "six sigma": ["sixsigma", "kvalitetsstyring", "lean", "procesforbedring"],
+    "kvalitet": ["kvalitetsstyring", "kvalitetsledelse", "six sigma"],
+    # HR & organization
+    "hr": ["human resources", "personale", "rekruttering", "medarbejder"],
+    "rekruttering": ["ansættelse", "hr", "talent", "onboarding"],
+    "onboarding": ["introduktion", "rekruttering", "ny medarbejder"],
+    # Legal & compliance
+    "jura": ["juridisk", "lovgivning", "kontrakt", "ret"],
+    "gdpr": ["persondataforordningen", "persondata", "databeskyttelse", "privacy"],
+    "compliance": ["regeloverholdelse", "gdpr", "lovgivning", "audit"],
+    "arbejdsmiljø": ["trivsel", "sikkerhed", "hms", "ergonomi"],
+    # Agile & project methods
     "agil": ["agile", "scrum", "kanban", "sprint"],
-    "scrum": ["agil", "agile", "sprint", "kanban"],
+    "scrum": ["agil", "agile", "sprint", "kanban", "scrummaster"],
+    "kanban": ["agil", "lean", "flow", "board"],
     "prince2": ["prince", "projektledelse", "projektstyring"],
+    "pmp": ["projektledelse", "pmi", "project management"],
     "certificering": ["certifikat", "eksamen", "akkreditering"],
-    "excel": ["regneark", "spreadsheet", "microsoft"],
-    "personlig": ["personligudvikling", "selvudvikling", "udvikling"],
+    # Programming
+    "programmering": ["kode", "software", "udvikling", "coding"],
+    "python": ["programmering", "scripting", "dataanalyse", "machine learning"],
+    "sql": ["database", "forespørgsel", "data"],
 }
 
 
@@ -159,14 +204,38 @@ def cosine_similarity(v1, v2):
     return dot_product / (norm_a * norm_b)
 
 
+_embedding_cache = {}  # {lowered_query: (embedding, timestamp)}
+_EMBEDDING_CACHE_TTL = 3600  # 1 hour
+_EMBEDDING_CACHE_MAX = 200
+
+
 def get_query_embedding(query_text):
-    """Get the embedding vector for the user query."""
+    """Get the embedding vector for the user query, with caching."""
+    cache_key = query_text.lower().strip()
+    now = time.time()
+
+    # Check cache
+    if cache_key in _embedding_cache:
+        emb, ts = _embedding_cache[cache_key]
+        if now - ts < _EMBEDDING_CACHE_TTL:
+            return emb
+        else:
+            del _embedding_cache[cache_key]
+
     try:
         response = openai.embeddings.create(
             input=query_text,
             model="text-embedding-3-small"
         )
-        return response.data[0].embedding
+        embedding = response.data[0].embedding
+
+        # Evict oldest entries if cache is full
+        if len(_embedding_cache) >= _EMBEDDING_CACHE_MAX:
+            oldest_key = min(_embedding_cache, key=lambda k: _embedding_cache[k][1])
+            del _embedding_cache[oldest_key]
+
+        _embedding_cache[cache_key] = (embedding, now)
+        return embedding
     except Exception as e:
         print(f"Error getting query embedding: {e}")
         return None
@@ -282,19 +351,39 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
                 vector_ranked.append((handle, score))
         vector_ranked.sort(key=lambda x: x[1], reverse=True)
 
-    # BM25 scoring (on filtered set only)
+    # BM25 scoring (on filtered set only) — proper BM25 with IDF from global index
     query_tokens = _tokenize(query)
+    expanded_query_tokens = _expand_query_tokens(query_tokens)
+    k1 = 1.5
+    b = 0.75
     bm25_scored = []
     for handle, p in handle_to_product.items():
-        doc_tokens = _tokenize(p.get("title", "")) * 3 + _tokenize(p.get("ai_summary", ""))
+        title_tokens = _tokenize(p.get("title", "")) * 3
+        summary_tokens = _tokenize(p.get("ai_summary", ""))
+        tags = p.get("tags", [])
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",")]
+        tag_tokens = []
+        for tg in tags:
+            tag_tokens.extend(_tokenize(tg) * 2)
+        doc_tokens = title_tokens + summary_tokens + tag_tokens
         if not doc_tokens:
             bm25_scored.append((handle, 0))
             continue
-        score = 0
-        for qt in query_tokens:
-            tf = doc_tokens.count(qt)
-            if tf > 0:
-                score += tf / len(doc_tokens)
+        dl = len(doc_tokens)
+        tf_map = defaultdict(int)
+        for tok in doc_tokens:
+            tf_map[tok] += 1
+        score = 0.0
+        for qt in expanded_query_tokens:
+            tf = tf_map.get(qt, 0)
+            if tf == 0:
+                continue
+            # IDF from global index
+            df = len(_bm25_index.get(qt, {})) if _bm25_index else 1
+            idf = math.log((_bm25_N - df + 0.5) / (df + 0.5) + 1.0) if _bm25_N else 1.0
+            tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / max(_bm25_avg_dl, 1)))
+            score += idf * tf_norm
         bm25_scored.append((handle, score))
     bm25_scored.sort(key=lambda x: x[1], reverse=True)
 

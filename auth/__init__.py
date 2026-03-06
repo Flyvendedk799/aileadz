@@ -75,6 +75,12 @@ def profile():
     except Exception as e:
         flash("Fejl ved hentning af brands: " + str(e), "danger")
         brands = None
+    # Ensure CV/profile tables exist
+    try:
+        from app1.user_profile_db import ensure_tables
+        ensure_tables()
+    except Exception:
+        pass
     # Pass current timestamp to force image refresh in template
     return render_template('profile.html', username=session['user'], brands=brands, timestamp=int(time.time()))
 

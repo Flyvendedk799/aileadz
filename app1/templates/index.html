@@ -616,6 +616,38 @@
   .light-mode .retry-btn { color: #dc2626; border-color: rgba(239,68,68,0.12); }
   .light-mode .chat-input-wrapper { border-top-color: rgba(0,0,0,0.04); }
 
+  /* ── Profile Update Toast ── */
+  .profile-toast {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    background: rgba(30, 30, 47, 0.95);
+    border: 1px solid rgba(168,85,247,0.3);
+    border-left: 3px solid #a855f7;
+    border-radius: 10px;
+    padding: 12px 16px;
+    color: #d4d4d8;
+    font-size: 13px;
+    z-index: 9999;
+    max-width: 320px;
+    animation: toastIn 0.3s ease-out;
+    backdrop-filter: blur(8px);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .profile-toast a { color: #c084fc; text-decoration: none; font-weight: 600; margin-left: 6px; }
+  .profile-toast a:hover { text-decoration: underline; }
+  @keyframes toastIn {
+    from { opacity: 0; transform: translateX(40px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes toastOut {
+    from { opacity: 1; transform: translateX(0); }
+    to { opacity: 0; transform: translateX(40px); }
+  }
+  .light-mode .profile-toast { background: rgba(255,255,255,0.95); border-color: rgba(168,85,247,0.2); color: #374151; }
+
   /* ── Responsive ── */
   @media (max-width: 768px) {
     .msg-row { padding: 0 16px; }
@@ -646,6 +678,11 @@
         </div>
         <div class="welcome-heading">Hvad kan jeg hjælpe med?</div>
         <div class="welcome-sub">Find kurser, sammenlign priser og vælg det rigtige forløb.</div>
+        {% if logged_in_user %}
+        <div style="font-size: 12px; color: #a855f7; margin-bottom: 16px; opacity: 0.85;">Logget ind som {{ logged_in_user | e }} — jeg kan tilpasse anbefalinger til din profil</div>
+        {% else %}
+        <div style="font-size: 12px; color: #71717a; margin-bottom: 16px;"><a href="/login" style="color: #a855f7; text-decoration: none;">Log ind</a> for personlige anbefalinger</div>
+        {% endif %}
         <div class="welcome-grid">
           <div class="welcome-card" onclick="sendFromChip('Vis mig populære kurser')">
             <div class="welcome-card-title">Populære kurser</div>
@@ -691,6 +728,20 @@
 <script>
 (function() {
   'use strict';
+
+  // ── Profile Update Toast ──
+  function showProfileToast(msg) {
+    const toast = document.createElement('div');
+    toast.className = 'profile-toast';
+    toast.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
+      '<span>' + msg.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>' +
+      '<a href="/profile">Vis profil</a>';
+    document.body.appendChild(toast);
+    setTimeout(() => {
+      toast.style.animation = 'toastOut 0.3s ease-in forwards';
+      setTimeout(() => toast.remove(), 300);
+    }, 3000);
+  }
 
   const chatBox = document.getElementById('chatBox');
   const chatInput = document.getElementById('chatInput');
@@ -935,6 +986,8 @@
               wrap.className = 'animate-slide-in';
               wrap.innerHTML = data.html;
               cardsEl.appendChild(wrap);
+            } else if (data.type === 'profile_update') {
+              showProfileToast(data.message || 'Profil opdateret');
             } else if (data.type === 'suggestions') {
               const chips = document.createElement('div');
               chips.className = 'suggestion-chips';

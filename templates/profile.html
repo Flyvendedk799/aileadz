@@ -530,6 +530,19 @@
     opacity: 0.7;
   }
 
+  /* CV Section additions */
+  #cv-section .brand-number {
+    margin-bottom: 1rem;
+  }
+
+  #skills-list span {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  #skills-list span:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+  }
+
   @media (max-width: 768px) {
     .brand-card-inner {
       flex-direction: column;
@@ -603,6 +616,121 @@
         </svg>
         Log ud
       </a>
+    </div>
+  </div>
+
+  <!-- CV / Resume Section -->
+  <div class="brands-section" id="cv-section">
+    <div class="brands-header">
+      <h2 class="section-title">Dit CV / Profil</h2>
+      <a href="/app1" class="add-brand-btn" title="AI-rådgiveren kan opdatere din profil automatisk">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Opdater via AI Chat
+      </a>
+    </div>
+
+    <!-- Profile Summary -->
+    <div class="brand-card" id="profile-summary-card">
+      <div class="brand-card-inner" style="flex-direction: column;">
+        <div class="brand-number">Profiloversigt</div>
+        <div id="profile-summary-view" style="width: 100%;">
+          <div class="brand-info-list">
+            <p class="brand-info-item"><span class="brand-info-label">Overskrift</span><span class="brand-info-value" id="cv-headline">—</span></p>
+            <p class="brand-info-item"><span class="brand-info-label">Mål</span><span class="brand-info-value" id="cv-goals">—</span></p>
+            <p class="brand-info-item"><span class="brand-info-label">Lokation</span><span class="brand-info-value" id="cv-location">—</span></p>
+            <p class="brand-info-item"><span class="brand-info-label">Format</span><span class="brand-info-value" id="cv-format">—</span></p>
+            <p class="brand-info-item"><span class="brand-info-label">Budget</span><span class="brand-info-value" id="cv-budget">—</span></p>
+          </div>
+          <div class="brand-description" id="cv-bio-section" style="display:none;">
+            <span class="brand-info-label">Bio</span>
+            <p id="cv-bio"></p>
+          </div>
+        </div>
+        <div id="profile-summary-edit" style="display: none; width: 100%; margin-top: 1rem;">
+          <div class="form-group"><label class="form-label">Overskrift</label><input type="text" id="edit-headline" class="form-control" placeholder="F.eks. Projektleder med fokus på IT"></div>
+          <div class="form-group"><label class="form-label">Bio</label><textarea id="edit-bio" class="form-control" rows="2" placeholder="Kort om dig selv"></textarea></div>
+          <div class="form-group"><label class="form-label">Mål</label><input type="text" id="edit-goals" class="form-control" placeholder="Hvad vil du opnå?"></div>
+          <div class="form-grid">
+            <div class="form-group"><label class="form-label">Foretrukken lokation</label><input type="text" id="edit-location" class="form-control" placeholder="F.eks. København"></div>
+            <div class="form-group"><label class="form-label">Foretrukken format</label><input type="text" id="edit-format" class="form-control" placeholder="F.eks. E-learning"></div>
+            <div class="form-group"><label class="form-label">Budget</label><input type="text" id="edit-budget" class="form-control" placeholder="F.eks. 5000-10000 kr"></div>
+          </div>
+          <div class="brand-actions">
+            <button class="brand-btn edit-btn" onclick="saveSummary()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Gem</button>
+            <button class="brand-btn cancel-btn" onclick="toggleSummaryEdit(false)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Annuller</button>
+          </div>
+        </div>
+        <div class="brand-actions" id="summary-edit-btn-row">
+          <button onclick="toggleSummaryEdit(true)" class="brand-btn edit-btn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Rediger</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Skills -->
+    <div class="brand-card">
+      <div class="brand-card-inner" style="flex-direction: column;">
+        <div class="brand-number">Kompetencer</div>
+        <div id="skills-list" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem;"></div>
+        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+          <input type="text" id="new-skill-name" class="form-control" style="flex: 1; min-width: 150px;" placeholder="Ny kompetence...">
+          <select id="new-skill-level" class="form-control" style="width: auto;">
+            <option value="begynder">Begynder</option>
+            <option value="mellem" selected>Mellem</option>
+            <option value="avanceret">Avanceret</option>
+            <option value="ekspert">Ekspert</option>
+          </select>
+          <button class="brand-btn edit-btn" onclick="addSkill()" style="white-space: nowrap;">+ Tilføj</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Experience -->
+    <div class="brand-card">
+      <div class="brand-card-inner" style="flex-direction: column;">
+        <div class="brand-number">Erfaring</div>
+        <div id="experience-list"></div>
+        <div style="margin-top: 1rem;">
+          <div class="form-grid">
+            <div class="form-group"><input type="text" id="new-exp-title" class="form-control" placeholder="Jobtitel"></div>
+            <div class="form-group"><input type="text" id="new-exp-company" class="form-control" placeholder="Virksomhed"></div>
+            <div class="form-group"><input type="number" id="new-exp-start" class="form-control" placeholder="Startår"></div>
+            <div class="form-group"><input type="number" id="new-exp-end" class="form-control" placeholder="Slutår (tom = nu)"></div>
+          </div>
+          <button class="brand-btn edit-btn" onclick="addExperience()">+ Tilføj erfaring</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Education -->
+    <div class="brand-card">
+      <div class="brand-card-inner" style="flex-direction: column;">
+        <div class="brand-number">Uddannelse</div>
+        <div id="education-list"></div>
+        <div style="margin-top: 1rem;">
+          <div class="form-grid">
+            <div class="form-group"><input type="text" id="new-edu-degree" class="form-control" placeholder="Uddannelse / Grad"></div>
+            <div class="form-group"><input type="text" id="new-edu-institution" class="form-control" placeholder="Institution"></div>
+            <div class="form-group"><input type="number" id="new-edu-year" class="form-control" placeholder="Afsluttet år"></div>
+          </div>
+          <button class="brand-btn edit-btn" onclick="addEducation()">+ Tilføj uddannelse</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Completed Courses -->
+    <div class="brand-card">
+      <div class="brand-card-inner" style="flex-direction: column;">
+        <div class="brand-number">Gennemførte Kurser</div>
+        <div id="courses-list"></div>
+        <div style="margin-top: 1rem;">
+          <div class="form-grid">
+            <div class="form-group"><input type="text" id="new-course-title" class="form-control" placeholder="Kursusnavn"></div>
+            <div class="form-group"><input type="text" id="new-course-vendor" class="form-control" placeholder="Udbyder"></div>
+            <div class="form-group"><input type="text" id="new-course-date" class="form-control" placeholder="Gennemført dato"></div>
+          </div>
+          <button class="brand-btn edit-btn" onclick="addCourse()">+ Tilføj kursus</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -854,6 +982,192 @@
         message.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
       }, 5000);
     });
+    // Load CV data
+    loadFullProfile();
   });
+
+  // ── CV / Profile Management ──
+  function escapeHtml(str) {
+    if (!str) return '';
+    const d = document.createElement('div');
+    d.appendChild(document.createTextNode(str));
+    return d.innerHTML;
+  }
+  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#a855f7', avanceret:'#f59e0b', ekspert:'#ef4444'};
+
+  function showToast(msg, type='success') {
+    const toast = document.createElement('div');
+    toast.style.cssText = `position:fixed;top:16px;right:16px;padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;color:#fff;animation:fadeIn 0.3s ease;background:${type==='success'?'#22c55e':'#ef4444'};box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
+    toast.textContent = msg;
+    document.body.appendChild(toast);
+    setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+  }
+
+  async function apiFetch(url, opts={}) {
+    const res = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
+    return res.json();
+  }
+
+  async function loadFullProfile() {
+    try {
+      const data = await apiFetch('/api/profile/full');
+      if (!data.success) return;
+      const p = data.profile;
+      // Summary
+      document.getElementById('cv-headline').textContent = p.headline || '—';
+      document.getElementById('cv-goals').textContent = p.goals || '—';
+      document.getElementById('cv-location').textContent = p.preferred_location || '—';
+      document.getElementById('cv-format').textContent = p.preferred_format || '—';
+      document.getElementById('cv-budget').textContent = p.budget_range || '—';
+      if (p.bio) { document.getElementById('cv-bio').textContent = p.bio; document.getElementById('cv-bio-section').style.display = ''; }
+      // Skills
+      renderSkills(p.skills || []);
+      // Experience
+      renderExperience(p.experience || []);
+      // Education
+      renderEducation(p.education || []);
+      // Courses
+      renderCourses(p.completed_courses || []);
+    } catch(e) { console.error('Profile load error:', e); }
+  }
+
+  function renderSkills(skills) {
+    const el = document.getElementById('skills-list');
+    if (!skills.length) { el.innerHTML = '<span style="color: var(--muted-text); font-size: 14px;">Ingen kompetencer endnu. Tilføj nedenfor eller bed AI-chatten om at tilføje dem.</span>'; return; }
+    el.innerHTML = skills.map(s => `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.25);border-radius:50px;padding:6px 14px;font-size:13px;"><span style="width:8px;height:8px;border-radius:50%;background:${LEVEL_COLORS[s.level]||'#888'}"></span>${escapeHtml(s.name)}<span style="color:var(--muted-text);font-size:11px;">${escapeHtml(s.level)}</span><button onclick="removeSkill('${escapeHtml(s.name).replace(/'/g, "&#39;")}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:14px;padding:0 0 0 4px;">&times;</button></span>`).join('');
+  }
+
+  function renderExperience(items) {
+    const el = document.getElementById('experience-list');
+    if (!items.length) { el.innerHTML = '<p style="color: var(--muted-text); font-size: 14px;">Ingen erfaring tilføjet endnu.</p>'; return; }
+    el.innerHTML = items.map(e => `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;"><div><strong>${escapeHtml(e.title)}</strong>${e.company ? ' @ '+escapeHtml(e.company) : ''}<br><span style="color:var(--muted-text);font-size:12px;">${e.start_year||'?'} – ${e.is_current?'nu':(e.end_year||'?')}</span></div><button onclick="removeExperience(${e.id})" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:18px;">&times;</button></div>`).join('');
+  }
+
+  function renderEducation(items) {
+    const el = document.getElementById('education-list');
+    if (!items.length) { el.innerHTML = '<p style="color: var(--muted-text); font-size: 14px;">Ingen uddannelse tilføjet endnu.</p>'; return; }
+    el.innerHTML = items.map(e => `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;"><div><strong>${escapeHtml(e.degree)}</strong>${e.institution ? ' — '+escapeHtml(e.institution) : ''}<br><span style="color:var(--muted-text);font-size:12px;">${e.year_completed||''}</span></div><button onclick="removeEducation(${e.id})" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:18px;">&times;</button></div>`).join('');
+  }
+
+  function renderCourses(items) {
+    const el = document.getElementById('courses-list');
+    if (!items.length) { el.innerHTML = '<p style="color: var(--muted-text); font-size: 14px;">Ingen gennemførte kurser endnu. AI-chatten kan tilføje kurser automatisk.</p>'; return; }
+    el.innerHTML = items.map(c => `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;"><div><strong>${escapeHtml(c.title)}</strong>${c.vendor ? ' — '+escapeHtml(c.vendor) : ''}<br><span style="color:var(--muted-text);font-size:12px;">${escapeHtml(c.completed_date)||''}</span></div><button onclick="removeCourse('${escapeHtml(c.title).replace(/'/g, "&#39;")}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:18px;">&times;</button></div>`).join('');
+  }
+
+  // Add/Remove functions
+  async function addSkill() {
+    const name = document.getElementById('new-skill-name').value.trim();
+    const level = document.getElementById('new-skill-level').value;
+    if (!name) return;
+    const btn = event && event.target; if (btn) btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/profile/skills', {method:'POST', body:JSON.stringify({skill_name:name, skill_level:level, source:'manual'})});
+      if (res.success) { showToast('Kompetence tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
+    } catch(e) { showToast('Netværksfejl', 'error'); }
+    document.getElementById('new-skill-name').value = '';
+    if (btn) btn.disabled = false;
+    loadFullProfile();
+  }
+  async function removeSkill(name) {
+    await apiFetch('/api/profile/skills', {method:'DELETE', body:JSON.stringify({skill_name:name})});
+    loadFullProfile();
+  }
+  async function addExperience() {
+    const title = document.getElementById('new-exp-title').value.trim();
+    if (!title) return;
+    const endVal = document.getElementById('new-exp-end').value;
+    const btn = event && event.target; if (btn) btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/profile/experience', {method:'POST', body:JSON.stringify({
+        title, company: document.getElementById('new-exp-company').value.trim(),
+        start_year: parseInt(document.getElementById('new-exp-start').value) || null,
+        end_year: endVal ? parseInt(endVal) : null, is_current: !endVal
+      })});
+      if (res.success) { showToast('Erfaring tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
+    } catch(e) { showToast('Netværksfejl', 'error'); }
+    document.getElementById('new-exp-title').value = '';
+    document.getElementById('new-exp-company').value = '';
+    document.getElementById('new-exp-start').value = '';
+    document.getElementById('new-exp-end').value = '';
+    if (btn) btn.disabled = false;
+    loadFullProfile();
+  }
+  async function removeExperience(id) {
+    await apiFetch('/api/profile/experience', {method:'DELETE', body:JSON.stringify({id})});
+    loadFullProfile();
+  }
+  async function addEducation() {
+    const degree = document.getElementById('new-edu-degree').value.trim();
+    if (!degree) return;
+    const btn = event && event.target; if (btn) btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/profile/education', {method:'POST', body:JSON.stringify({
+        degree, institution: document.getElementById('new-edu-institution').value.trim(),
+        year_completed: parseInt(document.getElementById('new-edu-year').value) || null
+      })});
+      if (res.success) { showToast('Uddannelse tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
+    } catch(e) { showToast('Netværksfejl', 'error'); }
+    document.getElementById('new-edu-degree').value = '';
+    document.getElementById('new-edu-institution').value = '';
+    document.getElementById('new-edu-year').value = '';
+    if (btn) btn.disabled = false;
+    loadFullProfile();
+  }
+  async function removeEducation(id) {
+    await apiFetch('/api/profile/education', {method:'DELETE', body:JSON.stringify({id})});
+    loadFullProfile();
+  }
+  async function addCourse() {
+    const title = document.getElementById('new-course-title').value.trim();
+    if (!title) return;
+    const btn = event && event.target; if (btn) btn.disabled = true;
+    try {
+      const res = await apiFetch('/api/profile/courses', {method:'POST', body:JSON.stringify({
+        course_title: title, vendor: document.getElementById('new-course-vendor').value.trim(),
+        completed_date: document.getElementById('new-course-date').value.trim()
+      })});
+      if (res.success) { showToast('Kursus tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
+    } catch(e) { showToast('Netværksfejl', 'error'); }
+    document.getElementById('new-course-title').value = '';
+    document.getElementById('new-course-vendor').value = '';
+    document.getElementById('new-course-date').value = '';
+    if (btn) btn.disabled = false;
+    loadFullProfile();
+  }
+  async function removeCourse(title) {
+    await apiFetch('/api/profile/courses', {method:'DELETE', body:JSON.stringify({course_title:title})});
+    loadFullProfile();
+  }
+
+  // Summary edit toggle
+  function toggleSummaryEdit(show) {
+    document.getElementById('profile-summary-view').style.display = show ? 'none' : '';
+    document.getElementById('profile-summary-edit').style.display = show ? '' : 'none';
+    document.getElementById('summary-edit-btn-row').style.display = show ? 'none' : '';
+    if (show) {
+      document.getElementById('edit-headline').value = document.getElementById('cv-headline').textContent === '—' ? '' : document.getElementById('cv-headline').textContent;
+      document.getElementById('edit-bio').value = document.getElementById('cv-bio').textContent || '';
+      document.getElementById('edit-goals').value = document.getElementById('cv-goals').textContent === '—' ? '' : document.getElementById('cv-goals').textContent;
+      document.getElementById('edit-location').value = document.getElementById('cv-location').textContent === '—' ? '' : document.getElementById('cv-location').textContent;
+      document.getElementById('edit-format').value = document.getElementById('cv-format').textContent === '—' ? '' : document.getElementById('cv-format').textContent;
+      document.getElementById('edit-budget').value = document.getElementById('cv-budget').textContent === '—' ? '' : document.getElementById('cv-budget').textContent;
+    }
+  }
+  async function saveSummary() {
+    try {
+      const res = await apiFetch('/api/profile/summary', {method:'POST', body:JSON.stringify({
+        headline: document.getElementById('edit-headline').value.trim(),
+        bio: document.getElementById('edit-bio').value.trim(),
+        goals: document.getElementById('edit-goals').value.trim(),
+        preferred_location: document.getElementById('edit-location').value.trim(),
+        preferred_format: document.getElementById('edit-format').value.trim(),
+        budget_range: document.getElementById('edit-budget').value.trim()
+      })});
+      if (res.success) { showToast('Profil gemt!'); } else { showToast(res.error || 'Fejl', 'error'); }
+    } catch(e) { showToast('Netværksfejl', 'error'); }
+    toggleSummaryEdit(false);
+    loadFullProfile();
+  }
 </script>
 {% endblock %}

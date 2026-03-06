@@ -101,8 +101,13 @@ def save_session(session_id, user_profile="", conversation_summary="", shown_pro
     conn.commit()
 
 
+_ALLOWED_SESSION_FIELDS = {"user_profile", "conversation_summary", "shown_products"}
+
+
 def update_session_field(session_id, field, value):
     """Update a single field on an existing session."""
+    if field not in _ALLOWED_SESSION_FIELDS:
+        raise ValueError(f"Field '{field}' is not allowed. Must be one of: {_ALLOWED_SESSION_FIELDS}")
     conn = _get_conn()
     if field == "shown_products":
         value = json.dumps(value)

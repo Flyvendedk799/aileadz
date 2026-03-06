@@ -20,7 +20,7 @@ app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
 @app1_bp.route('/')
 def index():
-    return render_template('index.html')
+    return render_template('index.html', logged_in_user=session.get('user'))
 
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -437,6 +437,12 @@ def ask():
         user_query = request.json.get("query", "").strip()
         if not user_query:
             return jsonify({"answers": [{"type": "text", "content": "Skriv venligst et spørgsmål."}]}), 400
+
+        # Phase 1B: Input length cap
+        if len(user_query) > 5000:
+            return jsonify({"answers": [{"type": "text", "content": "Din besked er for lang. Prøv at forkorte den."}]}), 400
+        if len(user_query) > 2000:
+            user_query = user_query[:2000]
 
         return handle_agentic_ask(user_query, session)
 

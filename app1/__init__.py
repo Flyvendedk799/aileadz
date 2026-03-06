@@ -505,14 +505,22 @@ def adminlog():
         ts = s.get("started", 0)
         s["started_fmt"] = _dt.datetime.fromtimestamp(ts).strftime("%d/%m %H:%M") if ts else "?"
 
-        # Get the first user_query log entry for preview
+        # Get quick per-session insights for better admin triage
         logs = get_debug_logs_for_session(s["session_id"])
         first_query = ""
+        tool_calls = 0
+        no_results = 0
         for log in logs:
-            if log.get("step") == "user_query":
+            if log.get("step") == "user_query" and not first_query:
                 first_query = (log.get("data", {}).get("query", "") or "")[:80]
-                break
+            if log.get("step") == "tool_call":
+                tool_calls += 1
+                if (log.get("data", {}) or {}).get("status") == "no_results":
+                    no_results += 1
+
         s["first_query"] = first_query
+        s["tool_calls"] = tool_calls
+        s["no_results"] = no_results
 
     return render_template("adminlog.html", sessions=sessions)
 

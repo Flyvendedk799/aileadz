@@ -5,7 +5,7 @@
 import re
 import json
 import openai
-from app1.rag import semantic_search_courses, load_augmented_products, hybrid_rank_products
+from app1.rag import semantic_search_courses, semantic_search_courses_detailed, load_augmented_products, hybrid_rank_products
 
 # Tags to exclude from compact results (too generic or region-based)
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
@@ -282,11 +282,12 @@ def _execute_search_courses(args):
     query = args.get("query", "")
     limit = args.get("limit", 3)
 
-    results = semantic_search_courses(query, limit=limit)
+    detailed = semantic_search_courses_detailed(query, limit=limit)
 
-    if isinstance(results, dict) and "error" in results:
-        return json.dumps({"status": "error", "message": results["message"]})
+    if isinstance(detailed, dict) and "error" in detailed:
+        return json.dumps({"status": "error", "message": detailed["message"]})
 
+    results = detailed.get("products", [])
     if not results:
         return json.dumps({"status": "no_results", "message": "Ingen kurser matchede din søgning."})
 
@@ -296,7 +297,8 @@ def _execute_search_courses(args):
         "status": "success",
         "count": len(compact_results),
         "results": compact_results,
-        "raw_products": results
+        "raw_products": results,
+        "search_debug": detailed.get("debug", {}),
     })
 
 

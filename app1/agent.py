@@ -784,13 +784,28 @@ def handle_agentic_ask(user_query, session):
                         try:
                             tool_args = json.loads(tool_call.function.arguments)
                             result_titles = [r.get("title", "?") for r in tool_result_dict.get("results", [])[:5]]
-                            log_debug(sid, "tool_call", {
+                            search_debug = tool_result_dict.get("search_debug") if isinstance(tool_result_dict, dict) else None
+
+                            debug_payload = {
                                 "tool": tool_call.function.name,
                                 "args": tool_args,
                                 "results_count": results_count,
                                 "result_titles": result_titles,
                                 "status": tool_result_dict.get("status", "unknown"),
-                            })
+                            }
+                            if search_debug:
+                                debug_payload["matching_debug"] = {
+                                    "query_tokens": search_debug.get("query_tokens", []),
+                                    "core_query_tokens": search_debug.get("core_query_tokens", []),
+                                    "expanded_query_tokens": search_debug.get("expanded_query_tokens", [])[:20],
+                                    "preferences": search_debug.get("preferences", {}),
+                                    "vector_candidates": search_debug.get("vector_candidates", 0),
+                                    "bm25_candidates": search_debug.get("bm25_candidates", 0),
+                                    "fused_candidates": search_debug.get("fused_candidates", 0),
+                                    "top_vector_score": search_debug.get("top_vector_score", 0),
+                                    "selected": search_debug.get("selected", []),
+                                }
+                            log_debug(sid, "tool_call", debug_payload)
                         except Exception:
                             pass
 
@@ -803,6 +818,19 @@ def handle_agentic_ask(user_query, session):
                                 buffered_ui_html.append(ui_html)
                                 compact = tool_result_dict.get("results", [])
                                 _track_shown_products(sid, compact)
+
+                            if fn == "search_courses":
+                                try:
+                                    dbg = tool_result_dict.get("search_debug", {})
+                                    log_debug(sid, "matching_summary", {
+                                        "query": dbg.get("query", user_query),
+                                        "preferences": dbg.get("preferences", {}),
+                                        "core_query_tokens": dbg.get("core_query_tokens", []),
+                                        "selected_count": len(dbg.get("selected", [])),
+                                        "top_selected": dbg.get("selected", [])[:3],
+                                    })
+                                except Exception:
+                                    pass
 
                         elif fn == "get_course_details" and "raw_product" in tool_result_dict:
                             ui_html = render_product_media(tool_result_dict["raw_product"])
@@ -901,6 +929,9 @@ def handle_agentic_ask(user_query, session):
                 log_debug(sid, "suggestions", {
                     "type": "failure_recovery" if alt_suggestions else "follow_up",
                     "items": suggestions,
+                    "count": len(suggestions),
+                    "stage": stage,
+                    "had_results_ui": bool(buffered_ui_html),
                 })
             except Exception:
                 pass

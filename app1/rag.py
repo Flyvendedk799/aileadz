@@ -36,6 +36,19 @@ _GENERIC_QUERY_TOKENS = {
     "kursus", "kurser", "uddannelse", "forløb", "træning", "training", "course"
 }
 
+_LOCATION_HINTS = {
+    "københavn": {"københavn", "herlev", "hørkær", "lyngby", "taastrup", "ballerup", "glostrup", "brøndby"},
+    "aarhus": {"aarhus", "århus"},
+    "odense": {"odense"},
+    "aalborg": {"aalborg", "ålborg"},
+    "online": {"online", "virtuelt", "fjern", "remote"},
+}
+
+_FORMAT_HINTS = {
+    "online": {"online", "e-learning", "elearning", "fjernundervisning", "virtuelt", "remote"},
+    "fysisk": {"fysisk", "fremmøde", "klasseundervisning", "on-site", "onsite"},
+}
+
 
 # Danish synonym expansion for query enrichment
 _QUERY_SYNONYMS = {
@@ -139,6 +152,89 @@ def _product_text_tokens(product):
     for tag in tags:
         tokens.extend(_tokenize(tag))
     return set(tokens)
+
+
+def _extract_price_value(product):
+    variants = product.get("variants", [])
+    if not variants:
+        return None
+    raw = variants[0].get("price")
+    try:
+        return float(raw)
+    except (TypeError, ValueError):
+        return None
+
+
+def _detect_query_preferences(query_tokens):
+    """Extract soft constraints from query: location, format, and price intent."""
+    token_set = set(query_tokens)
+    location_targets = set()
+    for city, variants in _LOCATION_HINTS.items():
+        if token_set.intersection(variants):
+            location_targets.add(city)
+
+    format_targets = set()
+    for fmt, variants in _FORMAT_HINTS.items():
+        if token_set.intersection(variants):
+            format_targets.add(fmt)
+
+    price_intent = None
+    if token_set.intersection({"billig", "billigste", "budget", "prisvenlig", "lavpris"}):
+        price_intent = "low"
+    elif token_set.intersection({"avanceret", "premium", "eksklusiv", "mest", "dyreste"}):
+        price_intent = "high"
+
+    return {
+        "locations": sorted(location_targets),
+        "formats": sorted(format_targets),
+        "price_intent": price_intent,
+    }
+
+
+def _preference_rerank_score(product, preferences, global_price_span):
+    """Score product against inferred user preferences for smarter ranking."""
+    bonus = 0.0
+    reasons = []
+
+    # Location preference
+    if preferences.get("locations"):
+        locations_text = " ".join((v.get("option1") or "").lower() for v in product.get("variants", []))
+        for loc in preferences["locations"]:
+            aliases = _LOCATION_HINTS.get(loc, {loc})
+            if any(alias in locations_text for alias in aliases):
+                bonus += 0.06
+                reasons.append(f"location:{loc}")
+                break
+
+    # Format preference
+    if preferences.get("formats"):
+        searchable = " ".join([
+            product.get("title", ""),
+            product.get("ai_summary", ""),
+            product.get("product_type", ""),
+            " ".join(product.get("tags", []) if isinstance(product.get("tags", []), list) else [str(product.get("tags", ""))])
+        ]).lower()
+        for fmt in preferences["formats"]:
+            if any(tok in searchable for tok in _FORMAT_HINTS.get(fmt, {fmt})):
+                bonus += 0.05
+                reasons.append(f"format:{fmt}")
+                break
+
+    # Price preference
+    price_intent = preferences.get("price_intent")
+    price = _extract_price_value(product)
+    if price_intent and price is not None and global_price_span:
+        low, high = global_price_span
+        span = max(high - low, 1.0)
+        normalized = (price - low) / span
+        if price_intent == "low":
+            bonus += (1 - normalized) * 0.05
+            reasons.append("price:low")
+        elif price_intent == "high":
+            bonus += normalized * 0.05
+            reasons.append("price:high")
+
+    return bonus, reasons
 
 
 def _build_bm25_index(products):
@@ -279,6 +375,13 @@ def _reciprocal_rank_fusion(ranked_lists, k=60):
 
 
 def semantic_search_courses(query, limit=5, min_score=0.35):
+    detailed = semantic_search_courses_detailed(query, limit=limit, min_score=min_score)
+    if isinstance(detailed, dict) and "error" in detailed:
+        return detailed
+    return detailed.get("products", [])
+
+
+def semantic_search_courses_detailed(query, limit=5, min_score=0.35):
     """
     Hybrid search: combines vector similarity with BM25 keyword matching
     using Reciprocal Rank Fusion for best results.
@@ -363,9 +466,58 @@ def semantic_search_courses(query, limit=5, min_score=0.35):
         chosen = with_hits if with_hits else lexical_scored
         fused = [(doc_idx, score) for doc_idx, score, _hits in chosen]
 
-    # ── 6. Return top N products ──
-    result_indices = [doc_idx for doc_idx, _ in fused[:limit]]
-    return [products[idx] for idx in result_indices if idx < len(products)]
+    # ── 6. Preference-aware reranking (location/format/price intent) ──
+    preferences = _detect_query_preferences(query_tokens)
+    all_prices = [p for p in (_extract_price_value(prod) for prod in products) if p is not None]
+    price_span = (min(all_prices), max(all_prices)) if all_prices else None
+
+    reranked = []
+    vector_scores = {idx: score for idx, score in vector_ranked}
+    bm25_map = {idx: score for idx, score in bm25_ranked}
+    for doc_idx, base_score in fused:
+        pref_bonus, pref_reasons = _preference_rerank_score(products[doc_idx], preferences, price_span)
+        phrase_bonus = 0.0
+        title_lower = products[doc_idx].get("title", "").lower()
+        if query.lower().strip() and query.lower().strip() in title_lower:
+            phrase_bonus = 0.08
+        final_score = base_score + pref_bonus + phrase_bonus
+        reranked.append((doc_idx, final_score, {
+            "base_score": round(base_score, 4),
+            "vector_score": round(vector_scores.get(doc_idx, 0.0), 4),
+            "bm25_score": round(bm25_map.get(doc_idx, 0.0), 4),
+            "pref_bonus": round(pref_bonus, 4),
+            "phrase_bonus": round(phrase_bonus, 4),
+            "pref_reasons": pref_reasons,
+        }))
+
+    reranked.sort(key=lambda x: x[1], reverse=True)
+
+    # ── 7. Return top N products + debug diagnostics ──
+    result_indices = [doc_idx for doc_idx, _, _ in reranked[:limit]]
+    selected_products = [products[idx] for idx in result_indices if idx < len(products)]
+
+    diagnostics = {
+        "query": query,
+        "query_tokens": query_tokens,
+        "core_query_tokens": core_query_tokens,
+        "expanded_query_tokens": expanded_tokens[:30],
+        "preferences": preferences,
+        "vector_candidates": len(vector_ranked),
+        "bm25_candidates": len(bm25_ranked),
+        "fused_candidates": len(fused),
+        "top_vector_score": round(vector_ranked[0][1], 4) if vector_ranked else 0,
+        "effective_limit": limit,
+        "selected": [
+            {
+                "handle": products[idx].get("handle"),
+                "title": products[idx].get("title"),
+                "score": round(score, 4),
+                "explain": explain,
+            }
+            for idx, score, explain in reranked[:limit]
+        ]
+    }
+    return {"products": selected_products, "debug": diagnostics}
 
 
 def hybrid_rank_products(filtered_products, query, all_products, limit=5):

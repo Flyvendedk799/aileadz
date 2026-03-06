@@ -464,6 +464,14 @@ def feedback():
         message_index = data.get("message_index", 0)
         query_text = data.get("query_text", "")
         assistant_response = data.get("assistant_response", "")
+        reason = data.get("reason", "")
+        comment = data.get("comment", "")
+        latency_ms = data.get("latency_ms", 0)
+
+        try:
+            latency_val = int(float(latency_ms))
+        except (TypeError, ValueError):
+            latency_val = 0
 
         log_event(
             session_id=sid,
@@ -471,7 +479,12 @@ def feedback():
             query_text=query_text,
             feedback_rating=rating,
             message_index=message_index,
-            extra={"assistant_response": assistant_response[:300]}
+            extra={
+                "assistant_response": assistant_response[:300],
+                "reason": reason[:80],
+                "comment": comment[:400],
+                "latency_ms": latency_val,
+            }
         )
         return jsonify({"status": "ok"})
     except Exception as e:

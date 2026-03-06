@@ -104,6 +104,8 @@
     max-width: 420px;
   }
   .welcome-card {
+    appearance: none;
+    width: 100%;
     padding: 14px 16px;
     border-radius: 12px;
     background: rgba(255,255,255,0.03);
@@ -111,10 +113,16 @@
     cursor: pointer;
     transition: all 0.2s ease;
     text-align: left;
+    font-family: inherit;
   }
   .welcome-card:hover {
     background: rgba(168,85,247,0.06);
     border-color: rgba(168,85,247,0.15);
+  }
+  .welcome-card:focus-visible {
+    outline: none;
+    border-color: rgba(168,85,247,0.45);
+    box-shadow: 0 0 0 2px rgba(168,85,247,0.16);
   }
   .welcome-card-title {
     font-size: 13px;
@@ -234,6 +242,68 @@
   .light-mode .feedback-btn:hover { color: #6b7280; border-color: rgba(0,0,0,0.06); }
   .light-mode .feedback-btn.voted-up { color: #16a34a; }
   .light-mode .feedback-btn.voted-down { color: #dc2626; }
+
+  .feedback-details {
+    margin-top: 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    max-width: 480px;
+  }
+  .feedback-reasons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .feedback-reason-chip {
+    background: rgba(239,68,68,0.06);
+    border: 1px solid rgba(239,68,68,0.2);
+    color: #fca5a5;
+    border-radius: 999px;
+    padding: 4px 10px;
+    font-size: 11.5px;
+    font-family: inherit;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+  .feedback-reason-chip:hover {
+    background: rgba(239,68,68,0.12);
+    border-color: rgba(239,68,68,0.35);
+  }
+  .feedback-reason-chip.selected {
+    background: rgba(239,68,68,0.18);
+    border-color: rgba(239,68,68,0.5);
+  }
+  .feedback-comment {
+    width: 100%;
+    min-height: 62px;
+    max-height: 96px;
+    resize: vertical;
+    border-radius: 8px;
+    border: 1px solid rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.03);
+    color: #e4e4e7;
+    padding: 8px 10px;
+    font-size: 12.5px;
+    font-family: inherit;
+  }
+  .feedback-comment::placeholder { color: #71717a; }
+  .feedback-save {
+    align-self: flex-end;
+    border: 1px solid rgba(239,68,68,0.25);
+    background: rgba(239,68,68,0.08);
+    color: #fca5a5;
+    border-radius: 8px;
+    padding: 5px 10px;
+    font-size: 12px;
+    font-family: inherit;
+    cursor: pointer;
+  }
+  .feedback-save:disabled { opacity: 0.55; cursor: not-allowed; }
+  .light-mode .feedback-reason-chip { color: #dc2626; background: rgba(239,68,68,0.04); border-color: rgba(239,68,68,0.2); }
+  .light-mode .feedback-comment { border-color: #e5e7eb; background: #fff; color: #111827; }
+  .light-mode .feedback-comment::placeholder { color: #9ca3af; }
+  .light-mode .feedback-save { color: #dc2626; }
 
   /* ── Thinking ── */
   .thinking-row {
@@ -405,6 +475,23 @@
   .send-btn.active:hover { background: #6d28d9; transform: scale(1.04); }
   .send-btn:active { transform: scale(0.94); }
   .send-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+  .stop-btn {
+    height: 34px;
+    border-radius: 10px;
+    border: 1px solid rgba(239,68,68,0.25);
+    background: rgba(239,68,68,0.08);
+    color: #fca5a5;
+    cursor: pointer;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 0 10px;
+    font-family: inherit;
+    display: none;
+    align-items: center;
+  }
+  .stop-btn.visible { display: inline-flex; }
+  .stop-btn:hover { background: rgba(239,68,68,0.14); }
+  .light-mode .stop-btn { color: #dc2626; border-color: rgba(239,68,68,0.2); }
   .send-btn.sending {
     animation: pulse 1.8s ease-in-out infinite;
   }
@@ -684,22 +771,22 @@
         <div style="font-size: 12px; color: #71717a; margin-bottom: 16px;"><a href="/login" style="color: #a855f7; text-decoration: none;">Log ind</a> for personlige anbefalinger</div>
         {% endif %}
         <div class="welcome-grid">
-          <div class="welcome-card" onclick="sendFromChip('Vis mig populære kurser')">
+          <button class="welcome-card" type="button" onclick="sendFromChip('Vis mig populære kurser')" aria-label="Start med populære kurser">
             <div class="welcome-card-title">Populære kurser</div>
             <div class="welcome-card-hint">Se hvad andre vælger</div>
-          </div>
-          <div class="welcome-card" onclick="sendFromChip('Hvilke kurser er gratis?')">
+          </button>
+          <button class="welcome-card" type="button" onclick="sendFromChip('Hvilke kurser er gratis?')" aria-label="Start med gratis kurser">
             <div class="welcome-card-title">Gratis kurser</div>
             <div class="welcome-card-hint">Kom i gang uden omkostninger</div>
-          </div>
-          <div class="welcome-card" onclick="sendFromChip('Kurser inden for ledelse')">
+          </button>
+          <button class="welcome-card" type="button" onclick="sendFromChip('Kurser inden for ledelse')" aria-label="Start med ledelseskurser">
             <div class="welcome-card-title">Ledelseskurser</div>
             <div class="welcome-card-hint">Udvikl dine lederevner</div>
-          </div>
-          <div class="welcome-card" onclick="sendFromChip('Hjælp mig med at vælge et kursus')">
+          </button>
+          <button class="welcome-card" type="button" onclick="sendFromChip('Hjælp mig med at vælge et kursus')" aria-label="Start med personlig rådgivning">
             <div class="welcome-card-title">Personlig rådgivning</div>
             <div class="welcome-card-hint">Jeg hjælper dig med at vælge</div>
-          </div>
+          </button>
         </div>
       </div>
     </div>
@@ -712,6 +799,7 @@
       <div class="product-ref-bar" id="productRefBar"></div>
       <div class="chat-input-inner">
         <textarea id="chatInput" rows="1" placeholder="Stil et spørgsmål..." aria-label="Skriv en besked"></textarea>
+        <button class="stop-btn" id="stopBtn" type="button" onclick="stopStreaming()" aria-label="Stop generering">Stop</button>
         <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
         </button>
@@ -746,9 +834,46 @@
   const chatBox = document.getElementById('chatBox');
   const chatInput = document.getElementById('chatInput');
   const sendBtn = document.getElementById('sendBtn');
+  const stopBtn = document.getElementById('stopBtn');
   const scrollFab = document.getElementById('scrollFab');
   const productRefBar = document.getElementById('productRefBar');
   const BOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const CHAT_STATE_KEY = 'app1-chat-state-v1';
+  let activeController = null;
+
+  function saveChatState() {
+    try {
+      const hasMessages = chatBox.querySelector('.msg-row');
+      if (!hasMessages) {
+        sessionStorage.removeItem(CHAT_STATE_KEY);
+        return;
+      }
+      sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify({ html: chatBox.innerHTML }));
+    } catch (e) { console.warn('Unable to save state:', e); }
+  }
+
+  function restoreChatState() {
+    try {
+      const raw = sessionStorage.getItem(CHAT_STATE_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw);
+      if (!parsed || !parsed.html) return;
+      chatBox.innerHTML = parsed.html;
+      chatBox.scrollTop = chatBox.scrollHeight;
+    } catch (e) { console.warn('Unable to restore state:', e); }
+  }
+
+  function setStreamingState(sending) {
+    sendBtn.disabled = sending;
+    sendBtn.classList.toggle('sending', sending);
+    stopBtn.classList.toggle('visible', sending);
+    chatInput.disabled = sending;
+  }
+
+  function stopStreaming() {
+    if (activeController) activeController.abort();
+  }
+  window.stopStreaming = stopStreaming;
 
   // ── Product Reference System ──
   let attachedProducts = []; // [{handle, title}]
@@ -795,7 +920,7 @@
   }
 
   // ── Phase 6: Feedback System ──
-  function addFeedbackButtons(botContent, queryText, fullResponseText, messageIndex) {
+  function addFeedbackButtons(botContent, queryText, fullResponseText, messageIndex, responseLatencyMs) {
     const row = document.createElement('div');
     row.className = 'feedback-row';
     row.innerHTML =
@@ -804,29 +929,96 @@
       '</button>' +
       '<button class="feedback-btn" data-vote="down" title="Dårligt svar">' +
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>' +
-      '</button>';
+      '</button>' +
+      '<button class="feedback-btn" data-vote="regen" title="Regenerér svar">Regenerér</button>';
+
+    const details = document.createElement('div');
+    details.className = 'feedback-details';
+    details.style.display = 'none';
+
+    function sendFeedback(rating, reason, comment) {
+      fetch("{{ url_for('app1.feedback') }}", {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          rating: rating,
+          message_index: messageIndex,
+          query_text: queryText,
+          assistant_response: fullResponseText.substring(0, 300),
+          reason: reason || '',
+          comment: comment || '',
+          latency_ms: responseLatencyMs || 0
+        })
+      }).catch(() => {});
+    }
+
+    function renderDownvoteDetails() {
+      details.style.display = 'flex';
+      details.innerHTML = '';
+      const reasonWrap = document.createElement('div');
+      reasonWrap.className = 'feedback-reasons';
+      const reasons = ['Ikke relevant', 'Manglende detaljer', 'Forkert svar', 'For langt'];
+      let selectedReason = '';
+
+      for (const reason of reasons) {
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.className = 'feedback-reason-chip';
+        chip.textContent = reason;
+        chip.addEventListener('click', function() {
+          selectedReason = reason;
+          reasonWrap.querySelectorAll('.feedback-reason-chip').forEach(c => c.classList.remove('selected'));
+          chip.classList.add('selected');
+        });
+        reasonWrap.appendChild(chip);
+      }
+
+      const comment = document.createElement('textarea');
+      comment.className = 'feedback-comment';
+      comment.placeholder = 'Valgfri kommentar (hjælper os med at forbedre svarene)';
+
+      const saveBtn = document.createElement('button');
+      saveBtn.type = 'button';
+      saveBtn.className = 'feedback-save';
+      saveBtn.textContent = 'Send feedback';
+      saveBtn.addEventListener('click', function() {
+        sendFeedback(-1, selectedReason, comment.value.trim());
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Tak for feedback';
+      });
+
+      details.appendChild(reasonWrap);
+      details.appendChild(comment);
+      details.appendChild(saveBtn);
+    }
+
+    function regenerateAnswer() {
+      const botRow = botContent.closest('.msg-row.bot-row');
+      if (botRow) botRow.remove();
+      sendMessage({ queryOverride: queryText, skipUserBubble: true });
+    }
 
     row.querySelectorAll('.feedback-btn').forEach(btn => {
       btn.addEventListener('click', function() {
         const vote = this.dataset.vote;
+        if (vote === 'regen') {
+          regenerateAnswer();
+          return;
+        }
         const rating = vote === 'up' ? 1 : -1;
-        row.querySelectorAll('.feedback-btn').forEach(b => b.classList.add('voted'));
+        row.querySelectorAll('.feedback-btn[data-vote="up"], .feedback-btn[data-vote="down"]').forEach(b => b.classList.add('voted'));
         this.classList.add(vote === 'up' ? 'voted-up' : 'voted-down');
 
-        fetch("{{ url_for('app1.feedback') }}", {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            rating: rating,
-            message_index: messageIndex,
-            query_text: queryText,
-            assistant_response: fullResponseText.substring(0, 300)
-          })
-        }).catch(() => {});
+        if (vote === 'down') {
+          renderDownvoteDetails();
+        } else {
+          sendFeedback(rating, '', '');
+        }
       });
     });
 
     botContent.appendChild(row);
+    botContent.appendChild(details);
   }
 
   function scrollToBottom() {
@@ -875,6 +1067,7 @@
     bubble.textContent = text;
     row.appendChild(bubble);
     chatBox.appendChild(row);
+    saveChatState();
   }
 
   // ── Add bot message row (avatar + content area) ──
@@ -892,29 +1085,32 @@
     row.appendChild(avatar);
     row.appendChild(content);
     chatBox.appendChild(row);
+    saveChatState();
     return content;
   }
 
   // ── Send ──
   let isSending = false;
 
-  async function sendMessage() {
-    const query = chatInput.value.trim();
+  async function sendMessage(opts = {}) {
+    const query = (opts.queryOverride || chatInput.value).trim();
     if (!query || isSending) return;
     isSending = true;
+    const startedAt = performance.now();
 
     // Collect attached products before clearing
-    const refProducts = getAndClearAttachedProducts();
+    const refProducts = opts.skipUserBubble ? [] : getAndClearAttachedProducts();
 
     removeWelcome();
-    addUserMsg(query);
+    if (!opts.skipUserBubble) addUserMsg(query);
     chatBox.scrollTop = chatBox.scrollHeight;
 
     chatInput.value = '';
     chatInput.style.height = 'auto';
     updateSendBtn();
-    sendBtn.disabled = true;
-    sendBtn.classList.add('sending');
+    setStreamingState(true);
+    const controller = new AbortController();
+    activeController = controller;
 
     const botContent = addBotRow();
 
@@ -938,7 +1134,8 @@
       const resp = await fetch("{{ url_for('app1.ask') }}", {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: actualQuery })
+        body: JSON.stringify({ query: actualQuery }),
+        signal: controller.signal
       });
       if (!resp.ok) throw new Error('HTTP ' + resp.status);
 
@@ -981,11 +1178,13 @@
             if (data.type === 'chunk') {
               fullText += data.content;
               textEl.innerHTML = marked.parse(fullText);
+              saveChatState();
             } else if (data.type === 'product') {
               const wrap = document.createElement('div');
               wrap.className = 'animate-slide-in';
               wrap.innerHTML = data.html;
               cardsEl.appendChild(wrap);
+              saveChatState();
             } else if (data.type === 'profile_update') {
               showProfileToast(data.message || 'Profil opdateret');
             } else if (data.type === 'suggestions') {
@@ -1004,6 +1203,7 @@
                 chips.appendChild(chip);
               }
               botContent.appendChild(chips);
+              saveChatState();
             }
             chatBox.scrollTop = chatBox.scrollHeight;
           } catch (e) { console.error('Parse error:', e); }
@@ -1012,38 +1212,41 @@
 
       // Add feedback buttons after response completes
       if (fullText) {
-        addFeedbackButtons(botContent, savedQuery, fullText, msgIndex);
+        addFeedbackButtons(botContent, savedQuery, fullText, msgIndex, Math.round(performance.now() - startedAt));
+        saveChatState();
       }
     } catch (err) {
       console.error('Fetch error:', err);
       think.remove();
       const errEl = document.createElement('div');
       errEl.className = 'error-msg';
+      const errText = err.name === 'AbortError'
+        ? 'Genereringen blev stoppet.'
+        : (err.message && err.message.includes('HTTP 5')
+          ? 'Serveren havde et problem. Prøv igen om et øjeblik.'
+          : 'Der opstod en netværksfejl. Tjek forbindelsen og prøv igen.');
       errEl.innerHTML =
         '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
-        '<span>Noget gik galt. Prøv igen.</span>' +
-        '<button class="retry-btn" onclick="retryMsg()">Prøv igen</button>';
+        '<span>' + errText + '</span>' +
+        '<button class="retry-btn" onclick="retryMsg(this)">Prøv igen</button>';
       botContent.appendChild(errEl);
-      window._lastQuery = savedQuery;
+      window._lastFailed = { query: savedQuery, botContent: botContent };
+      saveChatState();
     } finally {
       isSending = false;
-      sendBtn.disabled = false;
-      sendBtn.classList.remove('sending');
+      activeController = null;
+      setStreamingState(false);
       updateSendBtn();
       chatInput.focus();
     }
   }
   window.sendMessage = sendMessage;
 
-  window.retryMsg = function() {
-    if (!window._lastQuery) return;
-    const bots = chatBox.querySelectorAll('.msg-row.bot-row');
-    if (bots.length) bots[bots.length - 1].remove();
-    const users = chatBox.querySelectorAll('.msg-row.user-row');
-    if (users.length) users[users.length - 1].remove();
-    chatInput.value = window._lastQuery;
-    updateSendBtn();
-    sendMessage();
+  window.retryMsg = function(btn) {
+    if (!window._lastFailed || !window._lastFailed.query) return;
+    const row = btn ? btn.closest('.msg-row.bot-row') : null;
+    if (row) row.remove();
+    sendMessage({ queryOverride: window._lastFailed.query, skipUserBubble: true });
   };
 
   window.toggleDetails = function(id, btn) {
@@ -1056,6 +1259,7 @@
     }
   };
 
+  restoreChatState();
   chatInput.focus();
 })();
 </script>

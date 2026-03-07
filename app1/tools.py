@@ -411,13 +411,14 @@ def _execute_get_course_details(args):
 
     for p in products:
         if p.get("handle") == handle:
-            locations = set(v.get("option1") for v in p.get("variants", []) if v.get("option1"))
+            raw_locs = [v.get("option1") for v in p.get("variants", []) if v.get("option1")]
+            locations = list(dict.fromkeys(extract_city_name(loc) for loc in raw_locs if extract_city_name(loc)))
             dates = [v.get("option2") for v in p.get("variants", []) if v.get("option2")]
             return json.dumps({
                 "title": p.get("title"),
                 "price": p.get("variants", [{}])[0].get("price", "N/A"),
                 "vendor": p.get("vendor"),
-                "locations": list(locations),
+                "locations": locations,
                 "upcoming_dates": dates,
                 "description": p.get("ai_summary", p.get("body_html", "")[:200]),
                 "raw_product": p

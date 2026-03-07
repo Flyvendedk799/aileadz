@@ -578,6 +578,10 @@ def load_conversation_endpoint():
         return jsonify({"status": "empty", "messages": []})
     except Exception as e:
         print(f"[Load Conversation Error] {e}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
         return jsonify({"status": "error", "messages": []})
 
 

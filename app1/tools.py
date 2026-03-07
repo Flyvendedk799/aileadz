@@ -687,6 +687,11 @@ def _execute_update_user_profile(args, username):
             return json.dumps({"status": "error", "message": f"Ukendt action: {action}"})
 
     except Exception as e:
+        try:
+            from flask import current_app as _app
+            _app.mysql.connection.rollback()
+        except Exception:
+            pass
         return json.dumps({"status": "error", "message": f"Fejl: {e}"})
 
 

@@ -20,6 +20,9 @@ class OrderHandler:
     def __init__(self):
         self.order_statuses = {
             'pending': 'Afventer betaling',
+            'pending_approval': 'Afventer godkendelse',
+            'approved': 'Godkendt',
+            'rejected': 'Afvist',
             'processing': 'Behandler',
             'confirmed': 'Bekræftet',
             'cancelled': 'Annulleret',
@@ -116,15 +119,32 @@ class OrderHandler:
 
             cur = conn.cursor()
 
+            # Determine if enterprise approval is needed
+            company_id = session.get('company_id')
+            needs_approval = False
+            if company_id:
+                try:
+                    cur_check = conn.cursor(MySQLdb.cursors.DictCursor)
+                    role = session.get('company_role', 'employee')
+                    # Employees need approval; managers/admins don't
+                    if role in ('employee',):
+                        needs_approval = True
+                    cur_check.close()
+                except Exception:
+                    pass
+
+            initial_status = 'pending_approval' if needs_approval else order['status']
+
             # Store in orders table
             cur.execute("""
                 INSERT INTO course_orders
                 (order_id, company_id, user_id, username, product_handle, product_title, price,
-                 variant_date, variant_location, status, created_at, user_email, user_name, user_phone)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                 variant_date, variant_location, status, created_at, user_email, user_name, user_phone,
+                 chatbot_session_id, chatbot_queries_before_order, recommended_by_tool, department)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 order['order_id'],
-                session.get('company_id'),
+                company_id,
                 session.get('user_id'),
                 session.get('user', 'guest'),
                 order['product']['handle'],
@@ -132,12 +152,49 @@ class OrderHandler:
                 order['product']['price'],
                 order['variant'].get('date', ''),
                 order['variant'].get('location', ''),
-                order['status'],
+                initial_status,
                 order['timestamp'],
                 order['user'].get('email', ''),
                 order['user'].get('name', ''),
-                order['user'].get('phone', '')
+                order['user'].get('phone', ''),
+                session.get('sid', ''),
+                session.get('_chatbot_query_count', 0),
+                session.get('_last_recommending_tool', ''),
+                session.get('company_department', ''),
             ))
+
+            # Phase 2.2: Create approval request for enterprise employees
+            if needs_approval and company_id:
+                try:
+                    cur.execute("""
+                        INSERT INTO order_approvals
+                        (order_id, company_id, requester_user_id, status)
+                        VALUES (%s, %s, %s, 'pending')
+                    """, (order['order_id'], company_id, session.get('user_id')))
+                except Exception as ap_err:
+                    logger.warning(f"Approval creation failed: {ap_err}")
+
+            # Phase 2.3: Check department budget
+            if company_id and order['product']['price'] and float(order['product']['price']) > 0:
+                dept = session.get('company_department', '')
+                if dept:
+                    try:
+                        import datetime as _dt
+                        fiscal_year = _dt.datetime.now().year
+                        cur_b = conn.cursor(MySQLdb.cursors.DictCursor)
+                        cur_b.execute("""
+                            SELECT id, annual_budget, spent FROM department_budgets
+                            WHERE company_id = %s AND department = %s AND fiscal_year = %s
+                        """, (company_id, dept, fiscal_year))
+                        budget_row = cur_b.fetchone()
+                        if budget_row:
+                            new_spent = float(budget_row['spent'] or 0) + float(order['product']['price'])
+                            cur_b.execute("""
+                                UPDATE department_budgets SET spent = %s WHERE id = %s
+                            """, (new_spent, budget_row['id']))
+                        cur_b.close()
+                    except Exception as bg_err:
+                        logger.warning(f"Budget update failed: {bg_err}")
 
             conn.commit()
             cur.close()

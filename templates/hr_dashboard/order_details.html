@@ -211,6 +211,68 @@
                 </div>
             </div>
 
+            <!-- Billing Card -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-file-invoice-dollar me-2"></i>Fakturering & Betaling
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-4 text-center mb-3">
+                            {% set bs = order.billing_status or 'not_invoiced' %}
+                            {% if bs == 'paid' %}
+                            <i class="fas fa-check-circle fa-3x text-success mb-2"></i>
+                            <h5 class="text-success">Betalt</h5>
+                            {% elif bs == 'invoiced' %}
+                            <i class="fas fa-file-invoice fa-3x text-warning mb-2"></i>
+                            <h5 class="text-warning">Faktureret</h5>
+                            {% elif bs == 'credited' %}
+                            <i class="fas fa-undo fa-3x text-dark mb-2"></i>
+                            <h5>Krediteret</h5>
+                            {% else %}
+                            <i class="fas fa-times-circle fa-3x text-danger mb-2"></i>
+                            <h5 class="text-danger">Ikke faktureret</h5>
+                            {% endif %}
+                        </div>
+                        <div class="col-md-8">
+                            <table class="table table-borderless table-sm">
+                                <tr><td class="fw-bold">Fakturanr.:</td><td>{{ order.invoice_number or '-' }}</td></tr>
+                                <tr><td class="fw-bold">Fakturdato:</td><td>{{ order.invoice_date.strftime('%Y-%m-%d') if order.invoice_date else '-' }}</td></tr>
+                                <tr><td class="fw-bold">Betalingsdato:</td><td>{{ order.payment_date.strftime('%Y-%m-%d') if order.payment_date else '-' }}</td></tr>
+                                <tr><td class="fw-bold">Metode:</td><td>{{ order.payment_method or '-' }}</td></tr>
+                                <tr><td class="fw-bold">Reference:</td><td>{{ order.payment_reference or '-' }}</td></tr>
+                                {% if order.billing_note %}<tr><td class="fw-bold">Note:</td><td>{{ order.billing_note }}</td></tr>{% endif %}
+                            </table>
+                        </div>
+                    </div>
+                    {% if session.company_role in ['company_admin', 'hr_manager'] %}
+                    <hr>
+                    <div class="d-flex gap-2 flex-wrap">
+                        {% if bs == 'not_invoiced' %}
+                        <button class="btn btn-warning btn-sm" onclick="updateBilling('invoiced')">
+                            <i class="fas fa-file-invoice"></i> Marker som faktureret
+                        </button>
+                        {% endif %}
+                        {% if bs in ['not_invoiced', 'invoiced'] %}
+                        <button class="btn btn-success btn-sm" onclick="updateBilling('paid')">
+                            <i class="fas fa-check-circle"></i> Marker som betalt
+                        </button>
+                        {% endif %}
+                        {% if bs in ['invoiced', 'paid'] %}
+                        <button class="btn btn-outline-dark btn-sm" onclick="updateBilling('credited')">
+                            <i class="fas fa-undo"></i> Krediter
+                        </button>
+                        {% endif %}
+                        <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="btn btn-outline-primary btn-sm ms-auto">
+                            <i class="fas fa-list"></i> Alle faktureringer
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
             <!-- Actions Card -->
             {% if session.company_role in ['company_admin', 'hr_manager'] %}
             <div class="card shadow mb-4">
@@ -269,6 +331,22 @@ function updateOrderStatus(orderId, newStatus) {
             console.error('Error:', error);
             showAlert('danger', 'Error updating order status');
         });
+    }
+}
+
+function updateBilling(newStatus) {
+    if (confirm(`Marker denne ordre som ${newStatus}?`)) {
+        const data = {billing_status: newStatus};
+        if (newStatus === 'paid') data.payment_date = new Date().toISOString().split('T')[0];
+        if (newStatus === 'invoiced') data.invoice_date = new Date().toISOString().split('T')[0];
+        fetch(`{{ url_for('hr_dashboard.update_billing', order_id=order.order_id) }}`, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(data)
+        }).then(r => r.json()).then(d => {
+            if (d.success) { showAlert('success', d.message); setTimeout(() => location.reload(), 1000); }
+            else { showAlert('danger', 'Fejl: ' + d.message); }
+        }).catch(() => showAlert('danger', 'Netvaerksfejl'));
     }
 }
 

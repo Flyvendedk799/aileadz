@@ -1,0 +1,348 @@
+{% extends "base.html" %}
+{% block title %}Fakturering - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Fakturering & Betaling</h2>
+            <p class="text-muted mb-0">{{ company.company_name }} - Oversigt over ordrer og betalingsstatus</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-success btn-sm" id="bulkInvoiceBtn" style="display:none;" onclick="bulkAction('invoiced')">
+                <i class="fas fa-file-invoice"></i> Marker som faktureret
+            </button>
+            <button class="btn btn-primary btn-sm" id="bulkPaidBtn" style="display:none;" onclick="bulkAction('paid')">
+                <i class="fas fa-check-circle"></i> Marker som betalt
+            </button>
+            <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-secondary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Ikke faktureret</div>
+                    <div class="h5 mb-0 fw-bold text-danger">{{ summary.not_invoiced or 0 }} ordrer</div>
+                    <small class="text-muted">{{ "{:,.0f}".format(summary.not_invoiced_value or 0).replace(",", ".") }} kr</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Faktureret (afventer)</div>
+                    <div class="h5 mb-0 fw-bold text-warning">{{ summary.invoiced or 0 }} ordrer</div>
+                    <small class="text-muted">{{ "{:,.0f}".format(summary.invoiced_value or 0).replace(",", ".") }} kr</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Betalt</div>
+                    <div class="h5 mb-0 fw-bold text-success">{{ summary.paid or 0 }} ordrer</div>
+                    <small class="text-muted">{{ "{:,.0f}".format(summary.paid_value or 0).replace(",", ".") }} kr</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Total vaerdi</div>
+                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(summary.total_value or 0).replace(",", ".") }} kr</div>
+                    <small class="text-muted">{{ summary.total_orders or 0 }} ordrer i alt</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="card shadow mb-4">
+        <div class="card-body py-2">
+            <form method="GET" class="d-flex gap-3 align-items-center flex-wrap">
+                <div class="d-flex align-items-center gap-2">
+                    <label class="form-label mb-0 small fw-bold">Status:</label>
+                    <select name="billing_status" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+                        <option value="">Alle</option>
+                        <option value="not_invoiced" {{ 'selected' if billing_filter == 'not_invoiced' }}>Ikke faktureret</option>
+                        <option value="invoiced" {{ 'selected' if billing_filter == 'invoiced' }}>Faktureret</option>
+                        <option value="paid" {{ 'selected' if billing_filter == 'paid' }}>Betalt</option>
+                        <option value="credited" {{ 'selected' if billing_filter == 'credited' }}>Krediteret</option>
+                    </select>
+                </div>
+                <div class="d-flex align-items-center gap-2">
+                    <label class="form-label mb-0 small fw-bold">Afdeling:</label>
+                    <select name="department" class="form-select form-select-sm" style="width:auto;" onchange="this.form.submit()">
+                        <option value="">Alle</option>
+                        {% for d in departments %}
+                        <option value="{{ d }}" {{ 'selected' if dept_filter == d }}>{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <span class="text-muted small">{{ orders|length }} ordrer vist</span>
+            </form>
+        </div>
+    </div>
+
+    <!-- Orders Table -->
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
+                            <th>Ordre</th>
+                            <th>Kursus</th>
+                            <th>Medarbejder</th>
+                            <th>Afdeling</th>
+                            <th>Pris</th>
+                            <th>Ordrestatus</th>
+                            <th>Fakturering</th>
+                            <th>Fakturanr.</th>
+                            <th>Handlinger</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in orders %}
+                        <tr>
+                            <td><input type="checkbox" class="order-check" value="{{ o.order_id }}" onchange="updateBulkButtons()"></td>
+                            <td><small class="text-monospace">{{ o.order_id[:12] }}</small></td>
+                            <td class="text-truncate" style="max-width:200px;" title="{{ o.product_title }}">{{ o.product_title }}</td>
+                            <td>{{ o.username }}</td>
+                            <td><span class="badge bg-light text-dark">{{ o.department or 'N/A' }}</span></td>
+                            <td class="fw-bold">{{ "{:,.0f}".format(o.price or 0).replace(",", ".") }} kr</td>
+                            <td>
+                                {% if o.status == 'completed' %}
+                                <span class="badge bg-success">Afsluttet</span>
+                                {% elif o.status == 'confirmed' %}
+                                <span class="badge bg-info">Bekraeftet</span>
+                                {% elif o.status == 'processing' %}
+                                <span class="badge bg-info">Behandles</span>
+                                {% elif o.status == 'pending_approval' %}
+                                <span class="badge bg-warning text-dark">Afventer godkendelse</span>
+                                {% else %}
+                                <span class="badge bg-secondary">{{ o.status|title }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if o.billing_status == 'paid' %}
+                                <span class="badge bg-success"><i class="fas fa-check"></i> Betalt</span>
+                                {% elif o.billing_status == 'invoiced' %}
+                                <span class="badge bg-warning text-dark"><i class="fas fa-file-invoice"></i> Faktureret</span>
+                                {% elif o.billing_status == 'credited' %}
+                                <span class="badge bg-dark"><i class="fas fa-undo"></i> Krediteret</span>
+                                {% else %}
+                                <span class="badge bg-danger"><i class="fas fa-times"></i> Ikke faktureret</span>
+                                {% endif %}
+                            </td>
+                            <td><small>{{ o.invoice_number or '-' }}</small></td>
+                            <td>
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-outline-primary" onclick="openBillingModal('{{ o.order_id }}', '{{ o.billing_status }}', '{{ o.invoice_number or '' }}', '{{ o.payment_method or '' }}', '{{ o.payment_reference or '' }}', '{{ o.billing_note or '' }}')" title="Rediger fakturering">
+                                        <i class="fas fa-edit"></i>
+                                    </button>
+                                    {% if o.billing_status == 'not_invoiced' %}
+                                    <button class="btn btn-outline-warning" onclick="quickBilling('{{ o.order_id }}', 'invoiced')" title="Marker faktureret">
+                                        <i class="fas fa-file-invoice"></i>
+                                    </button>
+                                    {% elif o.billing_status == 'invoiced' %}
+                                    <button class="btn btn-outline-success" onclick="quickBilling('{{ o.order_id }}', 'paid')" title="Marker betalt">
+                                        <i class="fas fa-check-circle"></i>
+                                    </button>
+                                    {% endif %}
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% if not orders %}
+            <div class="text-center py-4 text-muted">
+                <i class="fas fa-file-invoice fa-3x mb-3" style="opacity:.3;"></i>
+                <p>Ingen ordrer matcher dine filtre.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<!-- Billing Edit Modal -->
+<div class="modal fade" id="billingModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-invoice-dollar me-2"></i>Rediger fakturering</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="billingOrderId">
+                <div class="mb-3">
+                    <label class="form-label">Faktureringsstatus</label>
+                    <select class="form-select" id="billingStatus">
+                        <option value="not_invoiced">Ikke faktureret</option>
+                        <option value="invoiced">Faktureret</option>
+                        <option value="paid">Betalt</option>
+                        <option value="credited">Krediteret</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Fakturanummer</label>
+                    <input type="text" class="form-control" id="billingInvoiceNr" placeholder="f.eks. INV-2026-001">
+                </div>
+                <div class="row mb-3">
+                    <div class="col-6">
+                        <label class="form-label">Fakturdato</label>
+                        <input type="date" class="form-control" id="billingInvoiceDate">
+                    </div>
+                    <div class="col-6">
+                        <label class="form-label">Betalingsdato</label>
+                        <input type="date" class="form-control" id="billingPaymentDate">
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Betalingsmetode</label>
+                    <select class="form-select" id="billingPaymentMethod">
+                        <option value="">Vaelg...</option>
+                        <option value="bankoverfoersel">Bankoverfoersel</option>
+                        <option value="faktura">Faktura (EAN/EHF)</option>
+                        <option value="kreditkort">Kreditkort</option>
+                        <option value="mobilepay">MobilePay</option>
+                        <option value="andet">Andet</option>
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Betalingsreference</label>
+                    <input type="text" class="form-control" id="billingPaymentRef" placeholder="Transaktions-ID, FI-nummer, etc.">
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Note</label>
+                    <textarea class="form-control" id="billingNote" rows="2" placeholder="Intern note om fakturering..."></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-primary" onclick="saveBilling()"><i class="fas fa-save"></i> Gem</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Bulk Invoice Number Modal -->
+<div class="modal fade" id="bulkInvoiceModal" tabindex="-1">
+    <div class="modal-dialog modal-sm">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Fakturanummer</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="bulkBillingStatus">
+                <div class="mb-3">
+                    <label class="form-label">Fakturanr. (valgfrit)</label>
+                    <input type="text" class="form-control" id="bulkInvoiceNr" placeholder="INV-2026-001">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-primary" onclick="executeBulk()">Opdater</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+function toggleAll(el) {
+    document.querySelectorAll('.order-check').forEach(cb => { cb.checked = el.checked; });
+    updateBulkButtons();
+}
+
+function updateBulkButtons() {
+    const checked = document.querySelectorAll('.order-check:checked').length;
+    document.getElementById('bulkInvoiceBtn').style.display = checked > 0 ? '' : 'none';
+    document.getElementById('bulkPaidBtn').style.display = checked > 0 ? '' : 'none';
+}
+
+function getSelectedIds() {
+    return Array.from(document.querySelectorAll('.order-check:checked')).map(cb => cb.value);
+}
+
+function bulkAction(status) {
+    document.getElementById('bulkBillingStatus').value = status;
+    if (status === 'invoiced') {
+        new bootstrap.Modal(document.getElementById('bulkInvoiceModal')).show();
+    } else {
+        executeBulk();
+    }
+}
+
+function executeBulk() {
+    const ids = getSelectedIds();
+    const status = document.getElementById('bulkBillingStatus').value || 'paid';
+    const invoiceNr = document.getElementById('bulkInvoiceNr').value;
+
+    fetch('{{ url_for("hr_dashboard.bulk_billing_update") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({order_ids: ids, billing_status: status, invoice_number: invoiceNr})
+    }).then(r => r.json()).then(d => {
+        if (d.success) { location.reload(); }
+        else { alert('Fejl: ' + d.message); }
+    });
+}
+
+function openBillingModal(orderId, status, invoiceNr, payMethod, payRef, note) {
+    document.getElementById('billingOrderId').value = orderId;
+    document.getElementById('billingStatus').value = status || 'not_invoiced';
+    document.getElementById('billingInvoiceNr').value = invoiceNr;
+    document.getElementById('billingPaymentMethod').value = payMethod;
+    document.getElementById('billingPaymentRef').value = payRef;
+    document.getElementById('billingNote').value = note;
+    new bootstrap.Modal(document.getElementById('billingModal')).show();
+}
+
+function saveBilling() {
+    const orderId = document.getElementById('billingOrderId').value;
+    const data = {
+        billing_status: document.getElementById('billingStatus').value,
+        invoice_number: document.getElementById('billingInvoiceNr').value,
+        invoice_date: document.getElementById('billingInvoiceDate').value,
+        payment_date: document.getElementById('billingPaymentDate').value,
+        payment_method: document.getElementById('billingPaymentMethod').value,
+        payment_reference: document.getElementById('billingPaymentRef').value,
+        billing_note: document.getElementById('billingNote').value,
+    };
+    fetch(`/hr-dashboard/order/${orderId}/billing`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(d => {
+        if (d.success) { location.reload(); }
+        else { alert('Fejl: ' + d.message); }
+    });
+}
+
+function quickBilling(orderId, status) {
+    const data = {billing_status: status};
+    if (status === 'paid') data.payment_date = new Date().toISOString().split('T')[0];
+    if (status === 'invoiced') data.invoice_date = new Date().toISOString().split('T')[0];
+    fetch(`/hr-dashboard/order/${orderId}/billing`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }).then(r => r.json()).then(d => {
+        if (d.success) { location.reload(); }
+        else { alert('Fejl: ' + d.message); }
+    });
+}
+</script>
+{% endblock %}

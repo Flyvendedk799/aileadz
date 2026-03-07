@@ -337,6 +337,70 @@ OPENAI_TOOLS = [
             }
         }
     },
+    # Phase 2.2: Check order approval status
+    {
+        "type": "function",
+        "function": {
+            "name": "check_order_approval_status",
+            "description": (
+                "Tjek godkendelsesstatus for en ordre. Brug dette når en medarbejder spørger om deres "
+                "ordrebestilling er godkendt af deres leder. Kan også vise alle afventende godkendelser for brugeren."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {
+                        "type": "string",
+                        "description": "Ordre-ID (de første 8 tegn). Valgfrit — udelad for at se alle afventende."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    # Phase 3.1: Skill gap analysis
+    {
+        "type": "function",
+        "function": {
+            "name": "analyze_skill_gaps",
+            "description": (
+                "Analyser kompetencegab for brugerens afdeling eller hele virksomheden. "
+                "Sammenligner medarbejdernes nuvaerende kompetencer med virksomhedens maal. "
+                "Brug dette naar brugeren spoerger om kompetencer, skills, gaps, eller hvad de skal laere."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {
+                        "type": "string",
+                        "description": "Afdelingsnavn. Valgfrit — bruger brugerens egen afdeling."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    # Phase 2.3: Get department budget
+    {
+        "type": "function",
+        "function": {
+            "name": "get_department_budget",
+            "description": (
+                "Vis afdelingens uddannelsesbudget og forbrug. Brug dette når brugeren spørger om budget, "
+                "resterende midler, eller om der er råd til et kursus. Virker kun for virksomhedsbrugere."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {
+                        "type": "string",
+                        "description": "Afdelingsnavn. Valgfrit — bruger brugerens egen afdeling som standard."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
 ]
 
 
@@ -1333,6 +1397,195 @@ def _execute_create_order(args):
         })
 
 
+def _execute_analyze_skill_gaps(args):
+    """Analyze skill gaps for user's department or company."""
+    from flask import session as flask_session, current_app
+    import MySQLdb.cursors
+
+    company_id = flask_session.get('company_id')
+    if not company_id:
+        return json.dumps({"status": "error", "message": "Denne funktion er kun for virksomhedsbrugere."})
+
+    department = args.get("department", "").strip() or flask_session.get('company_department', '')
+
+    conn = current_app.mysql.connection
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+
+    # Get skill targets
+    if department:
+        cur.execute("""
+            SELECT skill_name, target_level, priority
+            FROM company_skill_targets
+            WHERE company_id = %s AND (department = %s OR department IS NULL OR department = '')
+            ORDER BY priority DESC, skill_name
+        """, (company_id, department))
+    else:
+        cur.execute("""
+            SELECT skill_name, target_level, priority, department
+            FROM company_skill_targets WHERE company_id = %s
+            ORDER BY priority DESC, skill_name
+        """, (company_id,))
+    targets = cur.fetchall()
+
+    if not targets:
+        cur.close()
+        return json.dumps({
+            "status": "ok",
+            "message": "Der er ingen kompetencemaal defineret for din virksomhed endnu. "
+                       "Bed din HR-afdeling om at opsaette kompetencemaal.",
+            "gaps": []
+        })
+
+    # Get user's own skills
+    user_id = flask_session.get('user_id')
+    cur.execute("""
+        SELECT skill_name, current_level FROM employee_skills_matrix
+        WHERE employee_id = %s AND company_id = %s
+    """, (user_id, company_id))
+    user_skills = {r['skill_name']: r['current_level'] for r in cur.fetchall()}
+    cur.close()
+
+    level_labels = {0: 'Ingen', 1: 'Begynder', 2: 'Grundlaeggende', 3: 'Kompetent', 4: 'Avanceret', 5: 'Ekspert'}
+    gaps = []
+    for t in targets:
+        current = user_skills.get(t['skill_name'], 0)
+        target = t['target_level']
+        gap = target - current
+        gaps.append({
+            "skill": t['skill_name'],
+            "current_level": current,
+            "current_label": level_labels.get(current, str(current)),
+            "target_level": target,
+            "target_label": level_labels.get(target, str(target)),
+            "gap": gap,
+            "status": "ok" if gap <= 0 else ("warning" if gap == 1 else "critical"),
+            "priority": t.get('priority', 'medium'),
+        })
+
+    gaps.sort(key=lambda g: g['gap'], reverse=True)
+
+    critical = [g for g in gaps if g['status'] == 'critical']
+    summary = f"Du har {len(critical)} kritiske kompetencegab." if critical else "Du opfylder de fleste kompetencemaal."
+
+    return json.dumps({
+        "status": "ok",
+        "department": department or "Alle",
+        "summary": summary,
+        "gaps": gaps[:10],
+    })
+
+
+def _execute_check_approval_status(args):
+    """Check approval status for an order or list pending approvals."""
+    from flask import session as flask_session, current_app
+    import MySQLdb.cursors
+
+    user_id = flask_session.get('user_id')
+    company_id = flask_session.get('company_id')
+    if not company_id:
+        return json.dumps({"status": "error", "message": "Denne funktion er kun for virksomhedsbrugere."})
+
+    order_id_prefix = args.get("order_id", "").strip()
+    conn = current_app.mysql.connection
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+
+    if order_id_prefix:
+        # Look up specific order
+        cur.execute("""
+            SELECT oa.status, oa.notes, oa.requested_at, oa.decided_at,
+                   co.product_title, co.price, co.order_id
+            FROM order_approvals oa
+            JOIN course_orders co ON oa.order_id = co.order_id
+            WHERE oa.company_id = %s AND co.order_id LIKE %s
+            ORDER BY oa.requested_at DESC LIMIT 1
+        """, (company_id, f"{order_id_prefix}%"))
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return json.dumps({"status": "not_found", "message": f"Ingen godkendelsesanmodning fundet for ordre {order_id_prefix}."})
+        status_map = {'pending': 'Afventer godkendelse', 'approved': 'Godkendt', 'rejected': 'Afvist'}
+        return json.dumps({
+            "status": "ok",
+            "approval_status": row['status'],
+            "approval_status_text": status_map.get(row['status'], row['status']),
+            "course": row['product_title'],
+            "price": str(row['price']),
+            "requested_at": str(row['requested_at']),
+            "decided_at": str(row['decided_at']) if row['decided_at'] else None,
+            "notes": row['notes'],
+        })
+    else:
+        # List all pending for this user
+        cur.execute("""
+            SELECT oa.status, oa.requested_at, co.product_title, co.price, co.order_id
+            FROM order_approvals oa
+            JOIN course_orders co ON oa.order_id = co.order_id
+            WHERE oa.company_id = %s AND oa.requester_user_id = %s AND oa.status = 'pending'
+            ORDER BY oa.requested_at DESC LIMIT 10
+        """, (company_id, user_id))
+        rows = cur.fetchall()
+        cur.close()
+        if not rows:
+            return json.dumps({"status": "ok", "message": "Du har ingen afventende godkendelser.", "pending": []})
+        pending = []
+        for r in rows:
+            pending.append({
+                "order_id_short": r['order_id'][:8],
+                "course": r['product_title'],
+                "price": str(r['price']),
+                "requested_at": str(r['requested_at']),
+            })
+        return json.dumps({"status": "ok", "pending_count": len(pending), "pending": pending})
+
+
+def _execute_get_department_budget(args):
+    """Get department training budget and spending."""
+    from flask import session as flask_session, current_app
+    import MySQLdb.cursors
+
+    company_id = flask_session.get('company_id')
+    if not company_id:
+        return json.dumps({"status": "error", "message": "Denne funktion er kun for virksomhedsbrugere."})
+
+    department = args.get("department", "").strip() or flask_session.get('company_department', '')
+    if not department:
+        return json.dumps({"status": "error", "message": "Ingen afdeling angivet og din afdeling er ukendt."})
+
+    fiscal_year = datetime.datetime.now().year
+    conn = current_app.mysql.connection
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute("""
+        SELECT annual_budget, spent, fiscal_year FROM department_budgets
+        WHERE company_id = %s AND department = %s AND fiscal_year = %s
+    """, (company_id, department, fiscal_year))
+    row = cur.fetchone()
+    cur.close()
+
+    if not row:
+        return json.dumps({
+            "status": "ok",
+            "message": f"Intet budget fundet for afdeling '{department}' i {fiscal_year}.",
+            "has_budget": False,
+        })
+
+    budget = float(row['annual_budget'] or 0)
+    spent = float(row['spent'] or 0)
+    remaining = budget - spent
+    utilization = round((spent / budget * 100), 1) if budget > 0 else 0
+
+    return json.dumps({
+        "status": "ok",
+        "has_budget": True,
+        "department": department,
+        "fiscal_year": fiscal_year,
+        "annual_budget": f"{budget:,.0f} kr",
+        "spent": f"{spent:,.0f} kr",
+        "remaining": f"{remaining:,.0f} kr",
+        "utilization_pct": utilization,
+        "warning": "Budget er over 80% brugt!" if utilization > 80 else None,
+    })
+
+
 def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
@@ -1366,6 +1619,12 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_request_user_input(args, username)
         elif function_name == "create_course_order":
             return _execute_create_order(args)
+        elif function_name == "analyze_skill_gaps":
+            return _execute_analyze_skill_gaps(args)
+        elif function_name == "check_order_approval_status":
+            return _execute_check_approval_status(args)
+        elif function_name == "get_department_budget":
+            return _execute_get_department_budget(args)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

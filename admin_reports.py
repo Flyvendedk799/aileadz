@@ -148,6 +148,147 @@ def chatbot_dashboard():
     if not user_locations:
         user_locations = {"Ukendt": 1}
 
+    # --- Tool usage breakdown ---
+    tool_usage = {}
+    try:
+        cur.execute("""
+            SELECT tools_used FROM chatbot_interactions
+            WHERE tools_used IS NOT NULL AND tools_used != ''
+        """)
+        for r in cur.fetchall():
+            for tool in r['tools_used'].split(','):
+                tool = tool.strip()
+                if tool:
+                    tool_usage[tool] = tool_usage.get(tool, 0) + 1
+        # Sort by count desc, keep top 10
+        tool_usage = dict(sorted(tool_usage.items(), key=lambda x: x[1], reverse=True)[:10])
+    except Exception:
+        pass
+    if not tool_usage:
+        tool_usage = {"Ingen data": 1}
+
+    # --- Feedback ratings ---
+    avg_feedback = 0
+    feedback_distribution = {}
+    try:
+        cur.execute("""
+            SELECT AVG(feedback_rating) AS avg_fb
+            FROM chatbot_interactions
+            WHERE feedback_rating IS NOT NULL AND feedback_rating > 0
+        """)
+        row = cur.fetchone()
+        avg_feedback = round(row['avg_fb'] or 0, 1)
+    except Exception:
+        pass
+    try:
+        cur.execute("""
+            SELECT feedback_rating AS rating, COUNT(*) AS cnt
+            FROM chatbot_interactions
+            WHERE feedback_rating IS NOT NULL AND feedback_rating > 0
+            GROUP BY feedback_rating
+            ORDER BY feedback_rating
+        """)
+        for r in cur.fetchall():
+            feedback_distribution[str(r['rating'])] = r['cnt']
+    except Exception:
+        pass
+
+    # --- Conversation depth ---
+    avg_depth = 0
+    try:
+        cur.execute("""
+            SELECT AVG(conversation_depth) AS avg_d
+            FROM chatbot_interactions
+            WHERE conversation_depth IS NOT NULL AND conversation_depth > 0
+        """)
+        row = cur.fetchone()
+        avg_depth = round(row['avg_d'] or 0, 1)
+    except Exception:
+        pass
+
+    # --- Logged-in vs anonymous ---
+    logged_in_count = 0
+    anonymous_count = 0
+    try:
+        cur.execute("""
+            SELECT
+                SUM(CASE WHEN is_logged_in = 1 THEN 1 ELSE 0 END) AS logged_in,
+                SUM(CASE WHEN is_logged_in = 0 OR is_logged_in IS NULL THEN 1 ELSE 0 END) AS anonymous
+            FROM chatbot_interactions
+        """)
+        row = cur.fetchone()
+        logged_in_count = row['logged_in'] or 0
+        anonymous_count = row['anonymous'] or 0
+    except Exception:
+        pass
+
+    # --- Products shown by chatbot (most recommended) ---
+    products_shown_ranking = {}
+    try:
+        cur.execute("""
+            SELECT products_shown FROM chatbot_interactions
+            WHERE products_shown IS NOT NULL AND products_shown != ''
+        """)
+        for r in cur.fetchall():
+            try:
+                handles = json.loads(r['products_shown'])
+                for h in handles:
+                    if h:
+                        products_shown_ranking[h] = products_shown_ranking.get(h, 0) + 1
+            except (json.JSONDecodeError, TypeError):
+                pass
+        products_shown_ranking = dict(sorted(products_shown_ranking.items(), key=lambda x: x[1], reverse=True)[:10])
+    except Exception:
+        pass
+
+    # --- Quality score distribution ---
+    avg_quality = 0
+    try:
+        cur.execute("""
+            SELECT AVG(interaction_quality_score) AS avg_q
+            FROM chatbot_interactions
+            WHERE interaction_quality_score IS NOT NULL AND interaction_quality_score > 0
+        """)
+        row = cur.fetchone()
+        avg_quality = round(row['avg_q'] or 0, 2)
+    except Exception:
+        pass
+
+    # --- Conversion attribution (Phase 2.1) ---
+    conversion_by_tool = {}
+    avg_queries_before_order = 0
+    try:
+        cur.execute("""
+            SELECT COALESCE(recommended_by_tool, 'direct') AS tool, COUNT(*) AS cnt
+            FROM course_orders
+            WHERE recommended_by_tool IS NOT NULL AND recommended_by_tool != ''
+            GROUP BY recommended_by_tool
+            ORDER BY cnt DESC
+        """)
+        for r in cur.fetchall():
+            conversion_by_tool[r['tool']] = r['cnt']
+    except Exception:
+        pass
+    try:
+        cur.execute("""
+            SELECT AVG(chatbot_queries_before_order) AS avg_q
+            FROM course_orders
+            WHERE chatbot_queries_before_order > 0
+        """)
+        row = cur.fetchone()
+        avg_queries_before_order = round(row['avg_q'] or 0, 1)
+    except Exception:
+        pass
+
+    # --- Pending approvals (Phase 2.2) ---
+    total_pending_approvals = 0
+    try:
+        cur.execute("SELECT COUNT(*) AS cnt FROM order_approvals WHERE status = 'pending'")
+        row = cur.fetchone()
+        total_pending_approvals = row['cnt'] or 0
+    except Exception:
+        pass
+
     # --- Popular courses ---
     popular_courses = []
     try:
@@ -231,4 +372,15 @@ def chatbot_dashboard():
                            popular_courses=popular_courses,
                            recent_orders=recent_orders,
                            frequent_questions=frequent_questions,
-                           recent_conversations=recent_conversations)
+                           recent_conversations=recent_conversations,
+                           tool_usage=tool_usage,
+                           avg_feedback=avg_feedback,
+                           feedback_distribution=feedback_distribution,
+                           avg_depth=avg_depth,
+                           avg_quality=avg_quality,
+                           logged_in_count=logged_in_count,
+                           anonymous_count=anonymous_count,
+                           products_shown_ranking=products_shown_ranking,
+                           conversion_by_tool=conversion_by_tool,
+                           avg_queries_before_order=avg_queries_before_order,
+                           total_pending_approvals=total_pending_approvals)

@@ -114,7 +114,40 @@ def ensure_enterprise_tables(app):
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id),
                     INDEX idx_user (user_id),
+                    chatbot_session_id VARCHAR(255),
+                    chatbot_queries_before_order INT DEFAULT 0,
+                    recommended_by_tool VARCHAR(100),
                     INDEX idx_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Order Approvals ──
+                """CREATE TABLE IF NOT EXISTS order_approvals (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    order_id VARCHAR(50) NOT NULL,
+                    company_id INT NOT NULL,
+                    requester_user_id INT NOT NULL,
+                    approver_user_id INT,
+                    status VARCHAR(30) DEFAULT 'pending',
+                    notes TEXT,
+                    requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    decided_at DATETIME,
+                    INDEX idx_order (order_id),
+                    INDEX idx_company_status (company_id, status),
+                    INDEX idx_approver (approver_user_id, status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Department Budgets ──
+                """CREATE TABLE IF NOT EXISTS department_budgets (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    department VARCHAR(100) NOT NULL,
+                    annual_budget DECIMAL(12,2) DEFAULT 0,
+                    spent DECIMAL(12,2) DEFAULT 0,
+                    fiscal_year INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_company_dept_year (company_id, department, fiscal_year),
+                    INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
                 # ── Audit Log ──
@@ -203,6 +236,12 @@ def ensure_enterprise_tables(app):
                     user_location VARCHAR(255),
                     response_time_ms INT,
                     interaction_quality_score DECIMAL(3,2),
+                    tools_used VARCHAR(500),
+                    tool_results_count INT DEFAULT 0,
+                    products_shown TEXT,
+                    conversation_depth INT DEFAULT 1,
+                    is_logged_in TINYINT DEFAULT 0,
+                    feedback_rating TINYINT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id),
                     INDEX idx_username (username),
@@ -388,6 +427,36 @@ def ensure_enterprise_tables(app):
                     INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Company Skill Targets (Phase 3.1) ──
+                """CREATE TABLE IF NOT EXISTS company_skill_targets (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    department VARCHAR(100),
+                    skill_name VARCHAR(150) NOT NULL,
+                    target_level INT DEFAULT 3,
+                    priority VARCHAR(20) DEFAULT 'medium',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_company_dept (company_id, department),
+                    UNIQUE KEY uk_company_dept_skill (company_id, department, skill_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Company Insights (Phase 3.2) ──
+                """CREATE TABLE IF NOT EXISTS company_insights (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    insight_type VARCHAR(50) NOT NULL,
+                    title VARCHAR(255),
+                    body TEXT,
+                    data JSON,
+                    severity VARCHAR(20) DEFAULT 'info',
+                    is_read TINYINT DEFAULT 0,
+                    generated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME,
+                    INDEX idx_company (company_id),
+                    INDEX idx_type (company_id, insight_type)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company Custom Code ──
                 """CREATE TABLE IF NOT EXISTS company_custom_code (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -434,6 +503,38 @@ def ensure_enterprise_tables(app):
                     is_active TINYINT DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── HR Notification Queue (Phase 5.3: proactive alerts) ──
+                """CREATE TABLE IF NOT EXISTS hr_notification_queue (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    recipient_user_id INT,
+                    notification_type VARCHAR(50) NOT NULL,
+                    title VARCHAR(255),
+                    message TEXT,
+                    data JSON,
+                    action_url VARCHAR(500),
+                    priority TINYINT DEFAULT 3,
+                    is_dismissed TINYINT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    expires_at DATETIME,
+                    INDEX idx_company (company_id),
+                    INDEX idx_recipient (company_id, recipient_user_id, is_dismissed)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── HR Chatbot Interactions (separate log for HR chatbot) ──
+                """CREATE TABLE IF NOT EXISTS hr_chatbot_interactions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    username VARCHAR(255),
+                    session_id VARCHAR(255),
+                    query_text TEXT,
+                    response_text TEXT,
+                    tools_used VARCHAR(500),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_company (company_id),
+                    INDEX idx_session (session_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
             ]
 
             for sql in tables:
@@ -454,6 +555,24 @@ def ensure_enterprise_tables(app):
                 "ALTER TABLE chatbot_interactions ADD COLUMN user_location VARCHAR(255) AFTER category",
                 "ALTER TABLE chatbot_interactions ADD COLUMN response_time_ms INT AFTER user_location",
                 "ALTER TABLE chatbot_interactions ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+                "ALTER TABLE chatbot_interactions ADD COLUMN tools_used VARCHAR(500) AFTER interaction_quality_score",
+                "ALTER TABLE chatbot_interactions ADD COLUMN tool_results_count INT DEFAULT 0 AFTER tools_used",
+                "ALTER TABLE chatbot_interactions ADD COLUMN products_shown TEXT AFTER tool_results_count",
+                "ALTER TABLE chatbot_interactions ADD COLUMN conversation_depth INT DEFAULT 1 AFTER products_shown",
+                "ALTER TABLE chatbot_interactions ADD COLUMN is_logged_in TINYINT DEFAULT 0 AFTER conversation_depth",
+                "ALTER TABLE chatbot_interactions ADD COLUMN feedback_rating TINYINT DEFAULT 0 AFTER is_logged_in",
+                # Phase 2: session linkage on orders
+                "ALTER TABLE course_orders ADD COLUMN chatbot_session_id VARCHAR(255) AFTER user_phone",
+                "ALTER TABLE course_orders ADD COLUMN chatbot_queries_before_order INT DEFAULT 0 AFTER chatbot_session_id",
+                "ALTER TABLE course_orders ADD COLUMN recommended_by_tool VARCHAR(100) AFTER chatbot_queries_before_order",
+                # Phase 6-lite: billing fields for manual off-platform billing
+                "ALTER TABLE course_orders ADD COLUMN billing_status VARCHAR(30) DEFAULT 'not_invoiced' AFTER recommended_by_tool",
+                "ALTER TABLE course_orders ADD COLUMN invoice_number VARCHAR(100) AFTER billing_status",
+                "ALTER TABLE course_orders ADD COLUMN invoice_date DATE AFTER invoice_number",
+                "ALTER TABLE course_orders ADD COLUMN payment_date DATE AFTER invoice_date",
+                "ALTER TABLE course_orders ADD COLUMN payment_method VARCHAR(50) AFTER payment_date",
+                "ALTER TABLE course_orders ADD COLUMN payment_reference VARCHAR(255) AFTER payment_method",
+                "ALTER TABLE course_orders ADD COLUMN billing_note TEXT AFTER payment_reference",
             ]
             for stmt in alter_stmts:
                 try:

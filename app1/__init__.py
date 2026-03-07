@@ -374,8 +374,41 @@ PRODUCT_MEDIA_TEMPLATE = """
 </div>
 """
 
+def _extract_product_location(product):
+    """Extract a display-friendly location string from variant option1 fields."""
+    variants = product.get("variants") or []
+    raw_locs = [v.get("option1") for v in variants if v.get("option1")]
+    if not raw_locs:
+        return None
+    # Try to extract city names from addresses
+    cities = []
+    for loc in raw_locs:
+        loc_stripped = loc.strip()
+        if not loc_stripped:
+            continue
+        # Try postal-code based extraction: "Kongsvang Alle 29, 8000 Aarhus C" → "Aarhus"
+        m = re.search(r'\b\d{4}\s+([A-ZÆØÅa-zæøå]+)', loc_stripped)
+        if m:
+            cities.append(m.group(1))
+        elif ',' not in loc_stripped and not re.search(r'\d', loc_stripped):
+            cities.append(loc_stripped)
+        else:
+            parts = loc_stripped.split(',')
+            last_part = parts[-1].strip()
+            cleaned = re.sub(r'\b\d{4}\s*', '', last_part).strip()
+            cities.append(cleaned if cleaned else loc_stripped)
+    unique = list(dict.fromkeys(c for c in cities if c))  # dedupe, preserve order
+    if not unique:
+        return None
+    if len(unique) <= 3:
+        return ", ".join(unique)
+    return f"{unique[0]}, {unique[1]} +{len(unique)-2} mere"
+
 def render_product_media(product):
-    return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=product, get_short_description=get_short_description)
+    p = dict(product)
+    if not p.get("location"):
+        p["location"] = _extract_product_location(p)
+    return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=p, get_short_description=get_short_description)
 
 MULTIPLE_COURSES_TEMPLATE = """
 <div style="display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 420px;">
@@ -428,7 +461,13 @@ MULTIPLE_COURSES_TEMPLATE = """
 
 def render_multi_course_media(courses):
     unique_prefix = str(uuid.uuid4())[:8]
-    return render_template_string(MULTIPLE_COURSES_TEMPLATE, courses=courses, get_short_description=get_short_description, unique_prefix=unique_prefix)
+    enriched = []
+    for c in courses:
+        c2 = dict(c)
+        if not c2.get("location"):
+            c2["location"] = _extract_product_location(c2)
+        enriched.append(c2)
+    return render_template_string(MULTIPLE_COURSES_TEMPLATE, courses=enriched, get_short_description=get_short_description, unique_prefix=unique_prefix)
 
 # 6.3: Anonymous browser token endpoint
 @app1_bp.route("/anon-token", methods=["POST"])

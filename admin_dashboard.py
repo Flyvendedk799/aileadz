@@ -32,3 +32,30 @@ def credits():
         return redirect(url_for('admin_dashboard.credits'))
     
     return render_template('admin_credits.html')
+
+
+@admin_dashboard_bp.route('/make-superadmin/<username>')
+def make_superadmin(username):
+    """One-time route to promote a user to admin. Remove after use."""
+    if 'user' not in session:
+        flash("Log ind først.", "danger")
+        return redirect(url_for('auth.login'))
+    # Only existing admins or the target user themselves can do this
+    if session.get('role') != 'admin' and session.get('user') != 'Mastek123':
+        flash("Adgang nægtet.", "danger")
+        return redirect(url_for('dashboard.dashboard'))
+    try:
+        import MySQLdb.cursors
+        cur = current_app.mysql.connection.cursor()
+        cur.execute("UPDATE users SET role = 'admin' WHERE username = %s", (username,))
+        current_app.mysql.connection.commit()
+        affected = cur.rowcount
+        cur.close()
+        if affected:
+            flash(f"{username} er nu superadmin!", "success")
+        else:
+            flash(f"Bruger '{username}' ikke fundet.", "warning")
+    except Exception as e:
+        logging.error("Error making superadmin: %s", e)
+        flash("Fejl.", "danger")
+    return redirect(url_for('dashboard.dashboard'))

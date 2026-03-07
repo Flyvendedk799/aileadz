@@ -563,15 +563,15 @@ PROFILE_TOOLS = [
                     "action": {
                         "type": "string",
                         "enum": ["add_skill", "remove_skill", "update_skill_level",
-                                 "add_experience", "remove_experience",
-                                 "add_education", "remove_education",
-                                 "add_course", "remove_course",
+                                 "add_experience", "remove_experience", "update_experience",
+                                 "add_education", "remove_education", "update_education",
+                                 "add_course", "remove_course", "update_course",
                                  "update_summary"],
                         "description": "The profile update action to perform."
                     },
                     "data": {
                         "type": "object",
-                        "description": "Data for the action. For add_skill: {skill_name, skill_level?}. For remove_skill: {skill_name}. For update_skill_level: {skill_name, skill_level}. For add_experience: {title, company?, start_year?, end_year?, is_current?, description?}. For remove_experience: {id}. For add_education: {degree, institution?, year_completed?}. For remove_education: {id}. For add_course: {course_title, course_handle?, vendor?, completed_date?}. For remove_course: {course_title}. For update_summary: {headline?, bio?, goals?, preferred_location?, preferred_format?, budget_range?}."
+                        "description": "Data for the action. For add_skill: {skill_name, skill_level?}. For remove_skill: {skill_name}. For update_skill_level: {skill_name, skill_level}. For add_experience: {title, company?, start_year?, end_year?, is_current?, description?}. For remove_experience: {id}. For update_experience: {id, title?, company?, start_year?, end_year?, is_current?, description?}. For add_education: {degree, institution?, year_completed?}. For remove_education: {id}. For update_education: {id, degree?, institution?, year_completed?, description?}. For add_course: {course_title, course_handle?, vendor?, completed_date?}. For remove_course: {course_title}. For update_course: {course_title, vendor?, completed_date?, certificate_note?}. For update_summary: {headline?, bio?, goals?, preferred_location?, preferred_format?, budget_range?}."
                     }
                 },
                 "required": ["action", "data"]
@@ -761,6 +761,18 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "success", "section": "experience", "message": "Erfaring fjernet."})
             return json.dumps({"status": "not_found", "message": "Erfaring ikke fundet."})
 
+        elif action == "update_experience":
+            exp_id = data.get("id")
+            if not exp_id:
+                return json.dumps({"status": "error", "message": "id mangler."})
+            fields = {k: v for k, v in data.items() if k != "id" and v is not None and str(v).strip()}
+            if not fields:
+                return json.dumps({"status": "error", "message": "Ingen felter at opdatere."})
+            updated = db.update_experience(username, exp_id, **fields)
+            if updated:
+                return json.dumps({"status": "success", "section": "experience", "message": "Erfaring opdateret."})
+            return json.dumps({"status": "not_found", "message": "Erfaring ikke fundet."})
+
         elif action == "remove_education":
             edu_id = data.get("id")
             if not edu_id:
@@ -770,14 +782,17 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "success", "section": "education", "message": "Uddannelse fjernet."})
             return json.dumps({"status": "not_found", "message": "Uddannelse ikke fundet."})
 
-        elif action == "add_course":
-            pass  # handled above in proposed section
-
-        elif action == "remove_course":
-            title = data.get("course_title", "").strip()
-            if not title:
-                return json.dumps({"status": "error", "message": "course_title mangler."})
-            removed = db.remove_completed_course(username, title)
+        elif action == "update_education":
+            edu_id = data.get("id")
+            if not edu_id:
+                return json.dumps({"status": "error", "message": "id mangler."})
+            fields = {k: v for k, v in data.items() if k != "id" and v is not None and str(v).strip()}
+            if not fields:
+                return json.dumps({"status": "error", "message": "Ingen felter at opdatere."})
+            updated = db.update_education(username, edu_id, **fields)
+            if updated:
+                return json.dumps({"status": "success", "section": "education", "message": "Uddannelse opdateret."})
+            return json.dumps({"status": "not_found", "message": "Uddannelse ikke fundet."})
 
         elif action == "remove_course":
             title = data.get("course_title", "").strip()
@@ -787,6 +802,20 @@ def _execute_update_user_profile(args, username):
             if removed:
                 return json.dumps({"status": "success", "section": "courses", "message": f'Kursus "{title}" fjernet.'})
             return json.dumps({"status": "not_found", "message": f'Kursus "{title}" ikke fundet.'})
+
+        elif action == "update_course":
+            title = data.get("course_title", "").strip()
+            if not title:
+                return json.dumps({"status": "error", "message": "course_title mangler."})
+            # Re-add with updated fields (ON DUPLICATE KEY UPDATE handles it)
+            db.add_completed_course(
+                username,
+                course_title=title,
+                vendor=data.get("vendor", ""),
+                completed_date=data.get("completed_date"),
+                certificate_note=data.get("certificate_note")
+            )
+            return json.dumps({"status": "success", "section": "courses", "message": f'Kursus "{title}" opdateret.'})
 
         elif action == "update_summary":
             # Fallback: if AI put fields at top level instead of in data
@@ -926,7 +955,7 @@ PROFILE_TOOLS.append({
                 },
                 "save_action": {
                     "type": "string",
-                    "enum": ["add_skill", "add_experience", "add_education", "add_course", "update_summary"],
+                    "enum": ["add_skill", "add_experience", "add_education", "add_course", "update_experience", "update_education", "update_course", "update_summary"],
                     "description": "Hvilken profil-handling der udføres når brugeren bekræfter."
                 },
                 "prefilled": {

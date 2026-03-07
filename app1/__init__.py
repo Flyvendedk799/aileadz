@@ -801,6 +801,42 @@ def confirm_profile_update():
             )
             return _success("Kursus tilføjet")
 
+        elif action == "update_experience":
+            from app1.user_profile_db import update_experience
+            exp_id = payload.get("id")
+            if not exp_id:
+                return jsonify({"status": "error", "message": "id mangler"}), 400
+            fields = {k: v for k, v in payload.items() if k != "id" and v is not None and str(v).strip()}
+            if fields:
+                update_experience(logged_in_user, exp_id, **fields)
+                return _success("Erfaring opdateret")
+            return _success("Ingen ændringer")
+
+        elif action == "update_education":
+            from app1.user_profile_db import update_education
+            edu_id = payload.get("id")
+            if not edu_id:
+                return jsonify({"status": "error", "message": "id mangler"}), 400
+            fields = {k: v for k, v in payload.items() if k != "id" and v is not None and str(v).strip()}
+            if fields:
+                update_education(logged_in_user, edu_id, **fields)
+                return _success("Uddannelse opdateret")
+            return _success("Ingen ændringer")
+
+        elif action == "update_course":
+            from app1.user_profile_db import add_completed_course
+            title = (payload.get("course_title") or "").strip()
+            if not title:
+                return jsonify({"status": "error", "message": "Kursusnavn mangler"}), 400
+            add_completed_course(
+                logged_in_user,
+                course_title=title,
+                vendor=payload.get("vendor", ""),
+                completed_date=payload.get("completed_date"),
+                certificate_note=payload.get("certificate_note", "")
+            )
+            return _success("Kursus opdateret")
+
         elif action == "update_summary":
             from app1.user_profile_db import update_profile_summary
             clean = {k: v for k, v in payload.items() if v is not None and str(v).strip()}

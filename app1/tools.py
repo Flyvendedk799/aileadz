@@ -667,6 +667,13 @@ def _execute_update_user_profile(args, username):
             return json.dumps({"status": "not_found", "message": f'Kursus "{title}" ikke fundet.'})
 
         elif action == "update_summary":
+            # Fallback: if AI put fields at top level instead of in data
+            if not data:
+                summary_fields = {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range", "summary"}
+                data = {k: v for k, v in args.items() if k in summary_fields and v}
+                # Map "summary" → "bio" if AI used generic key
+                if "summary" in data and "bio" not in data:
+                    data["bio"] = data.pop("summary")
             # Filter out empty strings so we only update actual changes
             clean_data = {k: v for k, v in data.items() if v is not None and str(v).strip()}
             if not clean_data:

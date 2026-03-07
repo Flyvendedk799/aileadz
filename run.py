@@ -19,6 +19,7 @@ from api import api_bp  # Import the API blueprint
 from admin_notifications import admin_notifications_bp
 from admin_dashboard import admin_dashboard_bp
 from reports import reports_bp
+from admin_reports import admin_reports_bp
 
 # Enterprise / B2B modules
 from companies import companies_bp
@@ -57,6 +58,7 @@ def create_app():
     app.register_blueprint(admin_notifications_bp, url_prefix='/admin')  # Register admin notifications
     app.register_blueprint(admin_dashboard_bp, url_prefix='/admin')
     app.register_blueprint(reports_bp, url_prefix='/reports')
+    app.register_blueprint(admin_reports_bp)
 
     # Enterprise / B2B blueprints
     app.register_blueprint(companies_bp, url_prefix='/companies')

@@ -80,13 +80,12 @@ def create_app():
     @app.before_request
     def _ensure_enterprise_tables_once():
         if not getattr(app, '_enterprise_tables_created', False):
+            app._enterprise_tables_created = True  # set early to prevent concurrent runs
             try:
                 from enterprise_tables import ensure_enterprise_tables
                 ensure_enterprise_tables(app)
-                app._enterprise_tables_created = True
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
-                app._enterprise_tables_created = True  # don't retry
 
     @app.route('/')
     def home():

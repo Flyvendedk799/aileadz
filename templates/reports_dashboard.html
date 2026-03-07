@@ -835,7 +835,7 @@
                             <td>{{ order.created_at }}</td>
                             <td>{{ order.user_email }}</td>
                             <td>
-                                <a href="{{ url_for('reports.order_detail', order_id=order.order_id) }}" class="btn-action btn-primary">
+                                <a href="{{ url_for('multitenant_reports.order_detail', order_id=order.order_id) }}" class="btn-action btn-primary">
                                     View Details →
                                 </a>
                             </td>

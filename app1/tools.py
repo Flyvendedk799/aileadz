@@ -7,9 +7,26 @@ import json
 import openai
 from app1.rag import semantic_search_courses, semantic_search_courses_detailed, load_augmented_products, hybrid_rank_products
 
+import os as _os
+
 # Tags to exclude from compact results (too generic or region-based)
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
 _EXCLUDED_TAGS = {"kursus", "kurser", "uddannelse", "training", "course", "denmark", "danmark"}
+
+# 4.3: Vendor profiles
+_VENDOR_PROFILES = None
+
+def _load_vendor_profiles():
+    global _VENDOR_PROFILES
+    if _VENDOR_PROFILES is None:
+        try:
+            vp_path = _os.path.join(_os.path.dirname(__file__), "vendor_profiles.json")
+            with open(vp_path, "r", encoding="utf-8") as f:
+                _VENDOR_PROFILES = json.load(f)
+        except Exception as e:
+            print(f"[Vendor Profiles] Could not load: {e}")
+            _VENDOR_PROFILES = {}
+    return _VENDOR_PROFILES
 
 # ── Location aliases for fuzzy matching (Improvement #5) ──
 _LOCATION_ALIASES = {
@@ -92,7 +109,7 @@ def _extract_compact_fields(product):
         if len(filtered_tags) >= 4:
             break
 
-    return {
+    result = {
         "title": product.get("title"),
         "handle": product.get("handle"),
         "vendor": product.get("vendor"),
@@ -104,68 +121,21 @@ def _extract_compact_fields(product):
         "tags": filtered_tags,
     }
 
+    # 4.2: Include structured metadata if available
+    meta = product.get("structured_metadata", {})
+    if meta:
+        if meta.get("duration_days"):
+            result["duration_days"] = meta["duration_days"]
+        if meta.get("difficulty"):
+            result["difficulty"] = meta["difficulty"]
+        if meta.get("certification"):
+            result["certification"] = meta["certification"]
+        if meta.get("includes"):
+            result["includes"] = meta["includes"][:3]
+        if meta.get("target_audience"):
+            result["target_audience"] = meta["target_audience"][:2]
 
-# ── Phase 1: Intent Classification ──
-
-def classify_intent(user_query, user_profile="", shown_products_count=0, conversation_messages=None):
-    """
-    Classify user intent and optionally rewrite the query for better search.
-    Now receives conversation history for multi-turn context.
-    Returns: {"intent": str, "search_query": str, "hint": str}
-    """
-    context = ""
-    if user_profile:
-        context += f"\nBrugerprofil: {user_profile}"
-    if shown_products_count > 0:
-        context += f"\nAntal viste kurser: {shown_products_count}"
-
-    # Build conversation context from recent messages
-    conv_context = ""
-    if conversation_messages:
-        recent = []
-        for m in conversation_messages[-8:]:
-            role = m.get("role", "")
-            content = m.get("content", "")
-            if not content or role == "system" or role == "tool":
-                continue
-            if role == "user":
-                recent.append(f"Bruger: {content[:150]}")
-            elif role == "assistant":
-                recent.append(f"Rådgiver: {content[:100]}")
-        if recent:
-            conv_context = "\n\nSAMTALEHISTORIK:\n" + "\n".join(recent[-6:])
-
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"""Klassificer brugerens intent og omskriv søgeforespørgslen.
-
-Mulige intents:
-- discovery: Brugeren søger kurser eller giver nok info til at søge (emne, budget, format, lokation). Brug dette OGSÅ når brugeren besvarer spørgsmål med konkrete krav som "under 8000 og fysisk" — det ER en søgeanmodning.
-- comparison: Brugeren vil sammenligne kurser ("hvad er forskellen?", "hvilken er bedst?")
-- detail: Brugeren vil vide mere om ét kursus ("fortæl mere", "hvad koster den?")
-- follow_up: Brugeren refererer til tidligere viste kurser ("den billigste", "nummer 2")
-- chit_chat: Smalltalk, hilsner, tak ("hej", "tak", "hvem er du?")
-- needs_clarification: KUN hvis det er umuligt at gætte hvad brugeren leder efter (bare "hej" eller "hjælp"). Brug IKKE dette hvis brugeren har givet budget, emne eller format.
-{context}{conv_context}
-
-VIGTIGT: Vær handlingsorienteret. Når brugeren giver budget, format eller krav, er intent ALTID "discovery" — ikke "needs_clarification".
-VIGTIGT: search_query skal kombinere info fra HELE samtalen. Hvis brugeren først sagde "planlægning" og nu siger "under 8000 og fysisk", skal search_query være "planlægning kursus fysisk".
-
-Svar PRÆCIS som JSON: {{"intent": "...", "search_query": "...", "hint": "..."}}
-- search_query: Optimeret søgeterm baseret på ALLE brugerens behov fra samtalen (ikke kun denne besked). Kombiner emne + krav. Tomt KUN for chit_chat/follow_up.
-- hint: Kort instruktion til AI-rådgiveren (på dansk, maks 1 sætning). For discovery: "Søg med det samme, stil ikke flere spørgsmål."."""},
-                {"role": "user", "content": user_query}
-            ],
-            temperature=0.1,
-            max_tokens=150
-        )
-        result = json.loads(response.choices[0].message.content.strip())
-        return result
-    except Exception as e:
-        print(f"[Intent Error] {e}")
-        return {"intent": "discovery", "search_query": user_query, "hint": ""}
+    return result
 
 
 # ── Tool Definitions ──
@@ -271,27 +241,73 @@ OPENAI_TOOLS = [
                 "required": ["handles"]
             }
         }
+    },
+    # 4.3: Vendor intelligence tool
+    {
+        "type": "function",
+        "function": {
+            "name": "get_vendor_info",
+            "description": "Get information about a course vendor/provider: their specializations, reputation, typical price range, locations, and what they're best for. Use when the user asks about a vendor ('Hvem er Teknologisk Institut?'), wants to know which vendor is best for a topic, or when comparing courses from different vendors.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "vendor_name": {
+                        "type": "string",
+                        "description": "The vendor name to look up (e.g. 'Teknologisk Institut', 'SuperUsers')."
+                    },
+                    "topic": {
+                        "type": "string",
+                        "description": "Optional topic to find the best vendor for (e.g. 'ITIL', 'projektledelse', 'Excel')."
+                    }
+                },
+                "required": []
+            }
+        }
     }
 ]
 
 
 # ── Tool Execution ──
 
+# Module-level state for contextual search (set by agent before tool execution)
+_current_shown_handles = set()
+_current_user_prefs = {}
+
+
+def set_search_context(shown_handles=None, user_prefs=None):
+    """Set contextual search state for the current request.
+    Called by agent.py before tool execution to pass session context."""
+    global _current_shown_handles, _current_user_prefs
+    _current_shown_handles = shown_handles or set()
+    _current_user_prefs = user_prefs or {}
+
+
 def _execute_search_courses(args):
     """Handle search_courses tool execution with hybrid search."""
     query = args.get("query", "")
     limit = args.get("limit", 3)
 
-    detailed = semantic_search_courses_detailed(query, limit=limit)
+    detailed = semantic_search_courses_detailed(
+        query, limit=limit,
+        shown_handles=_current_shown_handles,
+        user_prefs=_current_user_prefs
+    )
 
     if isinstance(detailed, dict) and "error" in detailed:
         return json.dumps({"status": "error", "message": detailed["message"]})
 
     results = detailed.get("products", [])
+    confidence = detailed.get("confidence", "medium")
+
     if not results:
-        return json.dumps({"status": "no_results", "message": "Ingen kurser matchede din søgning."})
+        return json.dumps({"status": "no_results", "message": "Ingen kurser matchede din søgning.", "confidence": confidence})
 
     compact_results = [_extract_compact_fields(r) for r in results]
+
+    # Mark re-shown products so the AI can address it
+    for cr in compact_results:
+        if cr.get("handle") in _current_shown_handles:
+            cr["previously_shown"] = True
 
     return json.dumps({
         "status": "success",
@@ -299,6 +315,7 @@ def _execute_search_courses(args):
         "results": compact_results,
         "raw_products": results,
         "search_debug": detailed.get("debug", {}),
+        "confidence": confidence,
     })
 
 
@@ -366,7 +383,19 @@ def _execute_filter_courses(args):
     if not filtered:
         return json.dumps({"status": "no_results", "message": "Ingen kurser matchede dine filtre."})
 
+    # Deprioritize already-shown products (move to end, don't remove)
+    if _current_shown_handles:
+        new_results = [p for p in filtered if p.get("handle") not in _current_shown_handles]
+        reshown = [p for p in filtered if p.get("handle") in _current_shown_handles]
+        filtered = new_results + reshown
+
     compact_results = [_extract_compact_fields(r) for r in filtered]
+
+    # Mark re-shown products
+    for cr in compact_results:
+        if cr.get("handle") in _current_shown_handles:
+            cr["previously_shown"] = True
+
     return json.dumps({
         "status": "success",
         "count": len(compact_results),
@@ -502,7 +531,7 @@ def _execute_get_user_profile(args, username):
 
 
 def _execute_update_user_profile(args, username):
-    """Execute a profile update action."""
+    """Execute a profile update action with duplicate detection and detailed feedback."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
 
@@ -516,10 +545,24 @@ def _execute_update_user_profile(args, username):
         if action == "add_skill":
             name = data.get("skill_name", "").strip()
             level = data.get("skill_level", "mellem")
-            if not name:
-                return json.dumps({"status": "error", "message": "skill_name mangler."})
+            if not name or len(name) < 2:
+                return json.dumps({"status": "error", "message": "skill_name mangler eller er for kort."})
+            # Duplicate check — if exists, upgrade level instead
+            existing = db.get_skills(username)
+            existing_map = {s["skill_name"].lower(): s for s in existing}
+            if name.lower() in existing_map:
+                old_level = existing_map[name.lower()]["skill_level"]
+                level_order = ["begynder", "mellem", "avanceret", "ekspert"]
+                if level in level_order and old_level in level_order:
+                    if level_order.index(level) > level_order.index(old_level):
+                        db.update_skill_level(username, existing_map[name.lower()]["skill_name"], level)
+                        return json.dumps({"status": "success", "section": "skills",
+                            "message": f'"{name}" opgraderet fra {old_level} til {level}.'})
+                return json.dumps({"status": "already_exists",
+                    "message": f'"{name}" findes allerede ({old_level}). Brug update_skill_level for at ændre niveau.'})
             db.add_skill(username, name, level, source="chatbot")
-            return json.dumps({"status": "success", "message": f'Kompetencen "{name}" er tilføjet med niveau "{level}".'})
+            return json.dumps({"status": "success", "section": "skills",
+                "message": f'Kompetence tilføjet: {name} ({level})'})
 
         elif action == "remove_skill":
             name = data.get("skill_name", "").strip()
@@ -527,7 +570,7 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "error", "message": "skill_name mangler."})
             removed = db.remove_skill(username, name)
             if removed:
-                return json.dumps({"status": "success", "message": f'Kompetencen "{name}" er fjernet.'})
+                return json.dumps({"status": "success", "section": "skills", "message": f'"{name}" fjernet fra kompetencer.'})
             return json.dumps({"status": "not_found", "message": f'Kompetencen "{name}" blev ikke fundet.'})
 
         elif action == "update_skill_level":
@@ -535,24 +578,34 @@ def _execute_update_user_profile(args, username):
             level = data.get("skill_level", "")
             if not name or not level:
                 return json.dumps({"status": "error", "message": "skill_name og skill_level kræves."})
+            if level not in ("begynder", "mellem", "avanceret", "ekspert"):
+                return json.dumps({"status": "error", "message": f'Ugyldigt niveau: "{level}". Brug: begynder/mellem/avanceret/ekspert.'})
             updated = db.update_skill_level(username, name, level)
             if updated:
-                return json.dumps({"status": "success", "message": f'Niveau for "{name}" opdateret til "{level}".'})
+                return json.dumps({"status": "success", "section": "skills", "message": f'"{name}" opdateret til {level}.'})
             return json.dumps({"status": "not_found", "message": f'Kompetencen "{name}" blev ikke fundet.'})
 
         elif action == "add_experience":
             title = data.get("title", "").strip()
             if not title:
                 return json.dumps({"status": "error", "message": "title mangler."})
+            company = data.get("company", "").strip()
+            # Duplicate check — same title + company
+            existing = db.get_experience(username)
+            for e in existing:
+                if e["title"].lower() == title.lower() and (e.get("company", "") or "").lower() == company.lower():
+                    return json.dumps({"status": "already_exists",
+                        "message": f'Erfaring "{title}" @ {company or "ukendt"} findes allerede.'})
             new_id = db.add_experience(
-                username, title,
-                company=data.get("company", ""),
+                username, title, company=company,
                 start_year=data.get("start_year"),
                 end_year=data.get("end_year"),
                 is_current=data.get("is_current", False),
                 description=data.get("description", "")
             )
-            return json.dumps({"status": "success", "message": f'Erfaring "{title}" tilføjet.', "id": new_id})
+            label = f'{title}' + (f' @ {company}' if company else '')
+            return json.dumps({"status": "success", "section": "experience",
+                "message": f'Erfaring tilføjet: {label}', "id": new_id})
 
         elif action == "remove_experience":
             exp_id = data.get("id")
@@ -560,20 +613,28 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "error", "message": "id mangler."})
             removed = db.remove_experience(username, exp_id)
             if removed:
-                return json.dumps({"status": "success", "message": "Erfaring fjernet."})
+                return json.dumps({"status": "success", "section": "experience", "message": "Erfaring fjernet."})
             return json.dumps({"status": "not_found", "message": "Erfaring ikke fundet."})
 
         elif action == "add_education":
             degree = data.get("degree", "").strip()
             if not degree:
                 return json.dumps({"status": "error", "message": "degree mangler."})
+            institution = data.get("institution", "").strip()
+            # Duplicate check
+            existing = db.get_education(username)
+            for e in existing:
+                if e["degree"].lower() == degree.lower() and (e.get("institution", "") or "").lower() == institution.lower():
+                    return json.dumps({"status": "already_exists",
+                        "message": f'Uddannelse "{degree}" fra {institution or "ukendt"} findes allerede.'})
             new_id = db.add_education(
-                username, degree,
-                institution=data.get("institution", ""),
+                username, degree, institution=institution,
                 year_completed=data.get("year_completed"),
                 description=data.get("description", "")
             )
-            return json.dumps({"status": "success", "message": f'Uddannelse "{degree}" tilføjet.', "id": new_id})
+            label = degree + (f' — {institution}' if institution else '')
+            return json.dumps({"status": "success", "section": "education",
+                "message": f'Uddannelse tilføjet: {label}', "id": new_id})
 
         elif action == "remove_education":
             edu_id = data.get("id")
@@ -581,7 +642,7 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "error", "message": "id mangler."})
             removed = db.remove_education(username, edu_id)
             if removed:
-                return json.dumps({"status": "success", "message": "Uddannelse fjernet."})
+                return json.dumps({"status": "success", "section": "education", "message": "Uddannelse fjernet."})
             return json.dumps({"status": "not_found", "message": "Uddannelse ikke fundet."})
 
         elif action == "add_course":
@@ -595,7 +656,10 @@ def _execute_update_user_profile(args, username):
                 completed_date=data.get("completed_date"),
                 certificate_note=data.get("certificate_note")
             )
-            return json.dumps({"status": "success", "message": f'Kursus "{title}" tilføjet til gennemførte kurser.'})
+            vendor = data.get("vendor", "")
+            label = title + (f' ({vendor})' if vendor else '')
+            return json.dumps({"status": "success", "section": "courses",
+                "message": f'Kursus tilføjet: {label}'})
 
         elif action == "remove_course":
             title = data.get("course_title", "").strip()
@@ -603,12 +667,18 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "error", "message": "course_title mangler."})
             removed = db.remove_completed_course(username, title)
             if removed:
-                return json.dumps({"status": "success", "message": f'Kursus "{title}" fjernet.'})
+                return json.dumps({"status": "success", "section": "courses", "message": f'Kursus "{title}" fjernet.'})
             return json.dumps({"status": "not_found", "message": f'Kursus "{title}" ikke fundet.'})
 
         elif action == "update_summary":
-            db.update_profile_summary(username, **data)
-            return json.dumps({"status": "success", "message": "Profiloversigt opdateret."})
+            # Filter out empty strings so we only update actual changes
+            clean_data = {k: v for k, v in data.items() if v is not None and str(v).strip()}
+            if not clean_data:
+                return json.dumps({"status": "error", "message": "Ingen data at opdatere."})
+            db.update_profile_summary(username, **clean_data)
+            fields_updated = ", ".join(clean_data.keys())
+            return json.dumps({"status": "success", "section": "summary",
+                "message": f'Profil opdateret: {fields_updated}'})
 
         else:
             return json.dumps({"status": "error", "message": f"Ukendt action: {action}"})
@@ -645,10 +715,14 @@ def _execute_recommend_for_profile(args, username):
             query_parts.append("populære kurser")
 
         search_query = " ".join(query_parts)
-        results = semantic_search_courses(search_query, limit=6)
+        detailed = semantic_search_courses_detailed(search_query, limit=6,
+                                                     shown_handles=_current_shown_handles,
+                                                     user_prefs=_current_user_prefs)
 
-        if isinstance(results, dict) and "error" in results:
-            return json.dumps({"status": "error", "message": results["message"]})
+        if isinstance(detailed, dict) and "error" in detailed:
+            return json.dumps({"status": "error", "message": detailed["message"]})
+
+        results = detailed.get("products", [])
 
         # Filter out completed courses
         completed_titles = {c["title"].lower() for c in profile.get("completed_courses", [])}
@@ -692,6 +766,29 @@ def _execute_recommend_for_profile(args, username):
 PROFILE_TOOLS.append({
     "type": "function",
     "function": {
+        "name": "suggest_learning_path",
+        "description": "Byg en sekventiel læringssti baseret på brugerens profil, kompetencer og mål. Analyserer kompetencehuller og foreslår kurser i logisk rækkefølge (fundament → mellemniveau → avanceret). Brug dette når brugeren spørger 'hvad bør jeg lære i hvilken rækkefølge?', 'lav en læringsplan', eller 'hvad er næste skridt?'.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "goal": {
+                    "type": "string",
+                    "description": "Brugerens overordnede mål (f.eks. 'blive IT-projektleder', 'mestre data analytics')."
+                },
+                "focus_area": {
+                    "type": "string",
+                    "description": "Valgfrit fokusområde (f.eks. 'ledelse', 'data', 'IT-sikkerhed')."
+                }
+            },
+            "required": []
+        }
+    }
+})
+
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
         "name": "recommend_for_profile",
         "description": "Anbefal kurser baseret på brugerens profil: kompetenceniveauer, mål, og gennemførte kurser. Filtrerer automatisk allerede gennemførte kurser fra. Brug dette når brugeren spørger 'hvad bør jeg lære?', 'anbefal noget til mig', eller lignende.",
         "parameters": {
@@ -706,6 +803,171 @@ PROFILE_TOOLS.append({
         }
     }
 })
+
+
+def _execute_suggest_learning_path(args, username):
+    """6.2: Build a sequenced learning path based on user profile and goals."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        ensure_tables()
+        profile = get_full_profile(username)
+
+        goal = args.get("goal", "").strip()
+        focus_area = args.get("focus_area", "").strip()
+
+        # Build context for GPT-4o-mini to reason about skill gaps
+        context_parts = []
+        skills = profile.get("skills", [])
+        if skills:
+            skill_strs = [f"{s['name']} ({s['level']})" for s in skills]
+            context_parts.append(f"Nuværende kompetencer: {', '.join(skill_strs)}")
+        completed = profile.get("completed_courses", [])
+        if completed:
+            context_parts.append(f"Gennemførte kurser: {', '.join(c['title'] for c in completed[:8])}")
+        if profile.get("goals"):
+            context_parts.append(f"Mål: {profile['goals']}")
+        if goal:
+            context_parts.append(f"Specifikt mål: {goal}")
+        if focus_area:
+            context_parts.append(f"Fokusområde: {focus_area}")
+        exp = profile.get("experience", [])
+        if exp:
+            context_parts.append(f"Erfaring: {exp[0].get('title', '')} @ {exp[0].get('company', '')}")
+
+        if not context_parts:
+            context_parts.append("Ingen profildata — foreslå en generel læringssti")
+            if goal:
+                context_parts.append(f"Mål: {goal}")
+
+        context = "\n".join(context_parts)
+
+        # Use GPT-4o-mini to plan the learning path
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """Du er en uddannelsesrådgiver. Analyser brugerens profil og lav en læringssti.
+Svar som JSON med denne struktur:
+{
+  "path_title": "Overskrift for læringssti",
+  "steps": [
+    {"order": 1, "level": "fundament", "topic": "emne at søge efter", "reason": "hvorfor dette er næste skridt"},
+    {"order": 2, "level": "mellemniveau", "topic": "...", "reason": "..."},
+    {"order": 3, "level": "avanceret", "topic": "...", "reason": "..."}
+  ]
+}
+Regler:
+- Maks 4 trin
+- Hvert trin bygger logisk på det forrige
+- "topic" skal være et konkret søgeord der kan bruges til at finde kurser
+- Spring kompetencer over som brugeren allerede mestrer (avanceret/ekspert niveau)
+- Vær specifik — "PRINCE2 Foundation" er bedre end "projektledelse"
+- Skriv på dansk"""},
+                {"role": "user", "content": context}
+            ],
+            temperature=0.3,
+            max_tokens=500
+        )
+
+        raw = response.choices[0].message.content.strip()
+        if raw.startswith("```"):
+            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = re.sub(r'\s*```$', '', raw)
+        path_plan = json.loads(raw)
+
+        # Search for courses matching each step
+        steps_with_courses = []
+        for step in path_plan.get("steps", [])[:4]:
+            topic = step.get("topic", "")
+            if not topic:
+                continue
+            results = semantic_search_courses(topic, limit=2,
+                                               shown_handles=_current_shown_handles)
+            courses = []
+            if isinstance(results, list):
+                courses = [_extract_compact_fields(r) for r in results[:2]]
+
+            steps_with_courses.append({
+                "order": step.get("order", len(steps_with_courses) + 1),
+                "level": step.get("level", ""),
+                "topic": topic,
+                "reason": step.get("reason", ""),
+                "courses": courses,
+                "raw_products": results[:2] if isinstance(results, list) else []
+            })
+
+        return json.dumps({
+            "status": "success",
+            "path_title": path_plan.get("path_title", "Din læringssti"),
+            "steps": steps_with_courses,
+            "raw_products": [c for step in steps_with_courses for c in step.get("raw_products", [])]
+        }, ensure_ascii=False)
+
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl ved opbygning af læringssti: {e}"})
+
+
+def _execute_get_vendor_info(args):
+    """4.3: Get vendor profile information."""
+    vendor_name = args.get("vendor_name", "").strip()
+    topic = args.get("topic", "").strip().lower()
+    profiles = _load_vendor_profiles()
+
+    if vendor_name:
+        # Direct vendor lookup
+        profile = profiles.get(vendor_name)
+        if not profile:
+            # Fuzzy match: try case-insensitive partial match
+            for key, val in profiles.items():
+                if key == "_default":
+                    continue
+                if vendor_name.lower() in key.lower() or key.lower() in vendor_name.lower():
+                    profile = val
+                    vendor_name = key
+                    break
+        if not profile:
+            profile = profiles.get("_default", {})
+            return json.dumps({
+                "status": "not_found",
+                "message": f"Ingen detaljeret profil fundet for '{vendor_name}'.",
+                "available_vendors": [k for k in profiles.keys() if k != "_default"]
+            })
+        return json.dumps({
+            "status": "success",
+            "vendor": vendor_name,
+            "profile": profile
+        })
+
+    elif topic:
+        # Find best vendors for a topic
+        matches = []
+        for key, val in profiles.items():
+            if key == "_default":
+                continue
+            specs = [s.lower() for s in val.get("specializations", [])]
+            best_for = val.get("best_for", "").lower()
+            score = 0
+            if any(topic in s for s in specs):
+                score = 2
+            elif topic in best_for:
+                score = 1
+            if score > 0:
+                matches.append({"vendor": key, "score": score, "best_for": val.get("best_for", ""), "reputation": val.get("reputation", ""), "price_range": val.get("price_range", "")})
+        matches.sort(key=lambda x: x["score"], reverse=True)
+        if matches:
+            return json.dumps({
+                "status": "success",
+                "topic": topic,
+                "recommended_vendors": matches[:3]
+            })
+        return json.dumps({
+            "status": "no_match",
+            "message": f"Ingen specifik udbyder-anbefaling fundet for '{topic}'.",
+            "tip": "Prøv at søge med search_courses i stedet."
+        })
+
+    return json.dumps({"status": "error", "message": "Angiv enten vendor_name eller topic."})
 
 
 def execute_tool(tool_call, username=None):
@@ -726,12 +988,16 @@ def execute_tool(tool_call, username=None):
             return _execute_get_course_details(args)
         elif function_name == "compare_courses":
             return _execute_compare_courses(args)
+        elif function_name == "get_vendor_info":
+            return _execute_get_vendor_info(args)
         elif function_name == "get_user_profile":
             return _execute_get_user_profile(args, username)
         elif function_name == "update_user_profile":
             return _execute_update_user_profile(args, username)
         elif function_name == "recommend_for_profile":
             return _execute_recommend_for_profile(args, username)
+        elif function_name == "suggest_learning_path":
+            return _execute_suggest_learning_path(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

@@ -316,12 +316,13 @@ def get_full_profile(username):
         ],
         "education": [
             {"id": e["id"], "degree": e["degree"], "institution": e["institution"],
-             "year_completed": e["year_completed"]}
+             "year_completed": e["year_completed"], "description": e.get("description", "")}
             for e in education
         ],
         "completed_courses": [
             {"title": c["course_title"], "vendor": c["vendor"],
-             "completed_date": c.get("completed_date", ""), "handle": c.get("course_handle", "")}
+             "completed_date": c.get("completed_date", ""), "handle": c.get("course_handle", ""),
+             "certificate_note": c.get("certificate_note", "")}
             for c in courses
         ],
     }

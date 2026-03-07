@@ -58,6 +58,79 @@ def get_filtered_tags(product):
     return filtered
 
 
+def extract_structured_metadata(product):
+    """Extract structured metadata from body_html using GPT-4o-mini.
+    Returns a dict with: duration_days, difficulty, prerequisites, target_audience,
+    certification, language, includes."""
+    description = product.get("body_html", "")
+    title = product.get("title", "")
+    tags = get_filtered_tags(product)
+    product_type = product.get("product_type", "")
+    vendor = product.get("vendor", "")
+
+    # Build context for extraction
+    context_parts = [f"Kursusnavn: {title}"]
+    if vendor:
+        context_parts.append(f"Udbyder: {vendor}")
+    if product_type:
+        context_parts.append(f"Produkttype: {product_type}")
+    if tags:
+        context_parts.append(f"Tags: {', '.join(tags[:8])}")
+
+    # Clean HTML for the description
+    clean_desc = ""
+    if description:
+        clean_desc = re.sub(r'<[^>]+>', ' ', description)
+        clean_desc = re.sub(r'\s+', ' ', clean_desc).strip()[:1500]
+        context_parts.append(f"Beskrivelse: {clean_desc}")
+
+    if not clean_desc and not tags:
+        # Not enough info to extract metadata
+        return {}
+
+    context = "\n".join(context_parts)
+
+    try:
+        response = openai.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": """Udtræk struktureret metadata fra denne kursusbeskrivelse.
+Svar PRÆCIS som JSON med disse felter (udelad felter du ikke kan bestemme):
+{
+  "duration_days": <antal dage som tal, f.eks. 1, 2, 3, 5. Brug 0.5 for halv dag>,
+  "difficulty": "<beginner|intermediate|advanced>",
+  "prerequisites": ["forudsætning 1", "forudsætning 2"],
+  "target_audience": ["målgruppe 1", "målgruppe 2"],
+  "certification": "<certificeringsnavn hvis relevant, ellers udelad>",
+  "language": "<dansk|engelsk|begge>",
+  "includes": ["hvad der er inkluderet, f.eks. eksamen, materiale, frokost, certifikat"],
+  "primary_topic": "<det primære emne kurset handler om i 2-4 ord, f.eks. 'projektledelse', 'Excel grundlæggende', 'ITIL certificering', 'personlig udvikling'>"
+}
+Vær konservativ — kun medtag info der klart fremgår af teksten. Gæt ikke.
+primary_topic skal altid udfyldes baseret på titel og indhold."""},
+                {"role": "user", "content": context}
+            ],
+            temperature=0.1,
+            max_tokens=300
+        )
+        raw = response.choices[0].message.content.strip()
+        # Strip markdown code fences if present
+        if raw.startswith("```"):
+            raw = re.sub(r'^```(?:json)?\s*', '', raw)
+            raw = re.sub(r'\s*```$', '', raw)
+        metadata = json.loads(raw)
+        # Validate types
+        if not isinstance(metadata, dict):
+            return {}
+        # Normalize difficulty
+        if metadata.get("difficulty") not in ("beginner", "intermediate", "advanced", None):
+            metadata.pop("difficulty", None)
+        return metadata
+    except Exception as e:
+        print(f"  [X] Error extracting metadata: {e}")
+        return {}
+
+
 def generate_summary(product):
     """Generate a short Danish summary from the HTML description."""
     description = product.get("body_html", "")
@@ -103,7 +176,14 @@ def build_embedding_context(product, summary):
     product_type = product.get("product_type", "")
     variants = product.get("variants", [])
 
-    parts = [f"Titel: {title}", f"Udbyder: {vendor}", f"Beskrivelse: {summary}"]
+    # Primary topic first — this is the most important signal for what the course is ABOUT
+    meta = product.get("structured_metadata", {})
+    primary_topic = meta.get("primary_topic", "")
+
+    parts = []
+    if primary_topic:
+        parts.append(f"Primært emne: {primary_topic}")
+    parts.extend([f"Titel: {title}", f"Udbyder: {vendor}", f"Beskrivelse: {summary}"])
 
     # Product type
     if product_type:
@@ -135,15 +215,30 @@ def build_embedding_context(product, summary):
     if dates:
         parts.append(f"Datoer: {', '.join(dates)}")
 
+    # 4.2: Structured metadata for richer embeddings
+    meta = product.get("structured_metadata", {})
+    if meta.get("duration_days"):
+        parts.append(f"Varighed: {meta['duration_days']} dag(e)")
+    if meta.get("difficulty"):
+        diff_labels = {"beginner": "Begynder", "intermediate": "Mellemniveau", "advanced": "Avanceret"}
+        parts.append(f"Niveau: {diff_labels.get(meta['difficulty'], meta['difficulty'])}")
+    if meta.get("certification"):
+        parts.append(f"Certificering: {meta['certification']}")
+    if meta.get("target_audience"):
+        parts.append(f"Målgruppe: {', '.join(meta['target_audience'][:3])}")
+    if meta.get("includes"):
+        parts.append(f"Inkluderer: {', '.join(meta['includes'][:4])}")
+
     return "\n".join(parts)
 
 
 def generate_embeddings_batch(texts):
-    """Generate embeddings for a batch of texts in a single API call."""
+    """Generate embeddings for a batch of texts using text-embedding-3-large (1024 dims)."""
     try:
         response = openai.embeddings.create(
             input=texts,
-            model="text-embedding-3-small"
+            model="text-embedding-3-large",
+            dimensions=1024
         )
         return [item.embedding for item in response.data]
     except Exception as e:
@@ -152,11 +247,12 @@ def generate_embeddings_batch(texts):
 
 
 def generate_embedding(text):
-    """Generate text embeddings for a single text (fallback)."""
+    """Generate text embedding for a single text (fallback)."""
     try:
         response = openai.embeddings.create(
             input=text,
-            model="text-embedding-3-small"
+            model="text-embedding-3-large",
+            dimensions=1024
         )
         return response.data[0].embedding
     except Exception as e:
@@ -205,7 +301,13 @@ def main():
         summary = generate_summary(product)
         product["ai_summary"] = summary
 
-        # 2. Build rich embedding context
+        # 1b. Extract structured metadata (4.2)
+        metadata = extract_structured_metadata(product)
+        if metadata:
+            product["structured_metadata"] = metadata
+            print(f"  -> Metadata: {json.dumps(metadata, ensure_ascii=False)[:120]}")
+
+        # 2. Build rich embedding context (now includes structured metadata)
         context_string = build_embedding_context(product, summary)
         product["embedding_context"] = context_string
 

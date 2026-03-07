@@ -1,0 +1,186 @@
+{
+  "Teknologisk Institut": {
+    "short_name": "TI",
+    "specializations": ["IT-certificeringer", "Ledelse", "Projektledelse", "Kvalitetsstyring", "Lean/Six Sigma", "Teknik"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Blended learning"],
+    "reputation": "Danmarks største kursus- og uddannelsesudbyder. Bredt katalog med stærk teknisk og praktisk fokus. Anerkendt for høj kvalitet og erfarne undervisere.",
+    "locations": ["Taastrup", "Aarhus", "Odense", "Aalborg"],
+    "best_for": "Tekniske kurser, certificeringer (ITIL, PRINCE2, PMP), og ledelsesudvikling"
+  },
+  "SuperUsers": {
+    "short_name": "SU",
+    "specializations": ["Microsoft Office", "IT-værktøjer", "Excel", "Power BI", "SharePoint", "Teams"],
+    "price_range": "budget-standard",
+    "format_strengths": ["E-learning", "Fysisk fremmøde", "Virtuelle hold"],
+    "reputation": "Specialiseret i Microsoft-værktøjer og daglig IT. Kendt for praktiske, hands-on kurser med fokus på produktivitet.",
+    "locations": ["København", "Aarhus", "Online"],
+    "best_for": "Microsoft Office-kurser, daglige IT-værktøjer, og digital produktivitet"
+  },
+  "Peoplenet": {
+    "short_name": "PN",
+    "specializations": ["Personlig udvikling", "Kommunikation", "Ledelse", "Coaching", "HR"],
+    "price_range": "standard",
+    "format_strengths": ["Fysisk fremmøde", "Workshops"],
+    "reputation": "Fokuseret på bløde kompetencer og personlig udvikling. Stærke på kommunikation, coaching, og ledelsesudvikling.",
+    "locations": ["København", "Aarhus"],
+    "best_for": "Bløde kompetencer, kommunikation, coaching, og personlig udvikling"
+  },
+  "Computerworld kurser": {
+    "short_name": "CW",
+    "specializations": ["IT-ledelse", "Digital transformation", "Cybersecurity", "Cloud", "DevOps", "AI"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Konferencer"],
+    "reputation": "Tilknyttet Computerworld-mediet. Stærk på IT-strategi, digital transformation, og nye teknologier. Ofte med brancheeksperter som undervisere.",
+    "locations": ["København"],
+    "best_for": "IT-strategi, digital transformation, og teknologiledelse"
+  },
+  "DANSK IT": {
+    "short_name": "DIT",
+    "specializations": ["IT-certificeringer", "ITIL", "PRINCE2", "Agil", "Scrum", "Cybersecurity"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Certificeringsprogrammer"],
+    "reputation": "Brancheforening for IT-professionelle. Specialiseret i internationale certificeringer med akkrediterede undervisere.",
+    "locations": ["København", "Online"],
+    "best_for": "IT-certificeringer (ITIL, PRINCE2, Scrum), akkrediterede forløb"
+  },
+  "Nohrcon": {
+    "short_name": "NC",
+    "specializations": ["Jura", "HR", "Compliance", "GDPR", "Arbejdsret", "Offentlig forvaltning"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Seminarer"],
+    "reputation": "Førende inden for juridiske og compliance-kurser. Undervisere er typisk praktiserende advokater og eksperter.",
+    "locations": ["København", "Aarhus"],
+    "best_for": "Jura, HR-jura, GDPR, compliance, og offentlig forvaltning"
+  },
+  "TestHuset A/S": {
+    "short_name": "TH",
+    "specializations": ["Software test", "QA", "ISTQB", "Testledelse", "Agil test"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Certificeringsprogrammer"],
+    "reputation": "Danmarks specialister i softwaretest. Akkrediteret ISTQB-udbyder med meget erfarne testeksperter.",
+    "locations": ["København", "Aarhus", "Online"],
+    "best_for": "ISTQB-certificering, software test, QA, og testledelse"
+  },
+  "Fortuna Kurser": {
+    "short_name": "FK",
+    "specializations": ["Personlig udvikling", "Kommunikation", "Salg", "Forhandling", "Præsentation"],
+    "price_range": "budget-standard",
+    "format_strengths": ["Fysisk fremmøde", "Korte intensive kurser"],
+    "reputation": "Praktisk orienteret med fokus på færdighedstræning. Gode på salg, forhandling, og præsentationsteknik.",
+    "locations": ["København"],
+    "best_for": "Salg, forhandling, præsentationsteknik, og personlige færdigheder"
+  },
+  "Uddannelseshuset": {
+    "short_name": "UH",
+    "specializations": ["Ledelse", "Projektledelse", "Coaching", "Facilitering", "Teamudvikling"],
+    "price_range": "standard",
+    "format_strengths": ["Fysisk fremmøde", "Længere forløb"],
+    "reputation": "Erfaren udbyder med fokus på ledelse og organisationsudvikling. Tilbyder både korte kurser og længere uddannelsesforløb.",
+    "locations": ["København", "Aarhus"],
+    "best_for": "Ledelses- og organisationsudvikling, coaching, facilitering"
+  },
+  "JOBLIFE": {
+    "short_name": "JL",
+    "specializations": ["Arbejdsmiljø", "Sikkerhed", "Trivsel", "Ergonomi", "APV"],
+    "price_range": "budget-standard",
+    "format_strengths": ["Fysisk fremmøde", "In-house"],
+    "reputation": "Specialiseret i arbejdsmiljø, trivsel, og sikkerhedskurser. Tilbyder ofte in-house løsninger for virksomheder.",
+    "locations": ["Landsdækkende"],
+    "best_for": "Arbejdsmiljø, trivsel, sikkerhedsrepræsentant, og AMO-kurser"
+  },
+  "Gottleben Institute": {
+    "short_name": "GI",
+    "specializations": ["Ledelse", "Executive education", "Strategi", "Bestyrelse", "Forandringsledelse"],
+    "price_range": "premium",
+    "format_strengths": ["Fysisk fremmøde", "Executive programmer"],
+    "reputation": "Premium ledelsesuddannelser og executive programmer. Fokus på top- og mellemledere.",
+    "locations": ["København"],
+    "best_for": "Executive education, strategisk ledelse, og bestyrelsesarbejde"
+  },
+  "AROS Kurser": {
+    "short_name": "AK",
+    "specializations": ["IT-værktøjer", "Office", "Projektledelse", "Personlig effektivitet"],
+    "price_range": "budget-standard",
+    "format_strengths": ["Fysisk fremmøde", "E-learning"],
+    "locations": ["Aarhus", "Online"],
+    "reputation": "Jysk kursusvirksomhed med bredt udvalg. Stærk lokal tilstedeværelse i Aarhus-området.",
+    "best_for": "IT-værktøjer og praktiske færdigheder i Jylland"
+  },
+  "TACK International A/S": {
+    "short_name": "TACK",
+    "specializations": ["Salg", "Ledelse", "Kundeservice", "Forhandling", "Præsentation"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "In-house", "Skræddersyede forløb"],
+    "reputation": "Internationalt konsulentfirma med fokus på salg og ledelse. Tilbyder skræddersyede virksomhedsforløb.",
+    "locations": ["København"],
+    "best_for": "Salgstræning, kundeservice, og skræddersyede ledelsesforløb"
+  },
+  "MBK a/s": {
+    "short_name": "MBK",
+    "specializations": ["Økonomi", "Regnskab", "Controlling", "Excel for økonomer", "SAP"],
+    "price_range": "standard",
+    "format_strengths": ["Fysisk fremmøde"],
+    "reputation": "Specialiseret i kurser til økonomi- og finansfunktionen. Praktisk orienteret med fokus på regnskab og controlling.",
+    "locations": ["København", "Aarhus"],
+    "best_for": "Økonomi, regnskab, controlling, og finansielle værktøjer"
+  },
+  "Aros Business Academy": {
+    "short_name": "ABA",
+    "specializations": ["Ledelse", "Strategi", "Innovation", "Forretningsudvikling"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Akademiforløb"],
+    "reputation": "Fokuseret på forretnings- og ledelsesuddannelse med akademisk tilgang.",
+    "locations": ["Aarhus"],
+    "best_for": "Forretningsudvikling og strategisk ledelse i Jylland"
+  },
+  "CFL": {
+    "short_name": "CFL",
+    "specializations": ["Ledelse", "Offentlig ledelse", "Pædagogik", "Coaching", "Facilitering"],
+    "price_range": "standard",
+    "format_strengths": ["Fysisk fremmøde", "Længere forløb"],
+    "reputation": "Center for Ledelse. Stærk på ledelsesudvikling, særligt i den offentlige sektor.",
+    "locations": ["København"],
+    "best_for": "Offentlig ledelse, pædagogisk ledelse, og organisationsudvikling"
+  },
+  "Retorikfirmaet": {
+    "short_name": "RF",
+    "specializations": ["Retorik", "Præsentation", "Kommunikation", "Formidling", "Stemmetræning"],
+    "price_range": "standard",
+    "format_strengths": ["Fysisk fremmøde", "Workshops"],
+    "reputation": "Specialister i retorik og mundtlig kommunikation. Praktiske øvelser med personlig feedback.",
+    "locations": ["København"],
+    "best_for": "Præsentationsteknik, retorik, og mundtlig formidling"
+  },
+  "Key2Quality": {
+    "short_name": "K2Q",
+    "specializations": ["Lean", "Six Sigma", "Kvalitetsstyring", "Procesforbedring"],
+    "price_range": "standard-premium",
+    "format_strengths": ["Fysisk fremmøde", "Certificeringsprogrammer"],
+    "reputation": "Specialiseret i Lean og Six Sigma certificeringer. Akkrediteret udbyder med erfarne Master Black Belts.",
+    "locations": ["København", "Aarhus"],
+    "best_for": "Lean Six Sigma certificeringer (Yellow/Green/Black Belt)"
+  },
+  "PwC": {
+    "short_name": "PwC",
+    "specializations": ["Økonomi", "Revision", "Skat", "Compliance", "Risikostyring"],
+    "price_range": "premium",
+    "format_strengths": ["Fysisk fremmøde", "Seminarer"],
+    "reputation": "Del af det globale PwC-netværk. Ekspertkurser i økonomi, skat, og compliance med praktiserende revisorer og konsulenter.",
+    "locations": ["København"],
+    "best_for": "Revision, skat, compliance, og risikostyring"
+  },
+  "KForum": {
+    "short_name": "KF",
+    "specializations": ["Kommunikation", "Marketing", "Digital markedsføring", "Content", "PR"],
+    "price_range": "standard",
+    "format_strengths": ["Fysisk fremmøde", "Seminarer"],
+    "reputation": "Kommunikationsbranchens kursusudbyder. Stærk på digital markedsføring, PR, og corporate communication.",
+    "locations": ["København"],
+    "best_for": "Digital markedsføring, PR, corporate communication, og content"
+  },
+  "_default": {
+    "reputation": "Ingen detaljeret profilinformation tilgængelig for denne udbyder.",
+    "best_for": "Se kursusbeskrivelsen for detaljer."
+  }
+}

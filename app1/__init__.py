@@ -429,6 +429,45 @@ def render_multi_course_media(courses):
     unique_prefix = str(uuid.uuid4())[:8]
     return render_template_string(MULTIPLE_COURSES_TEMPLATE, courses=courses, get_short_description=get_short_description, unique_prefix=unique_prefix)
 
+# 6.3: Anonymous browser token endpoint
+@app1_bp.route("/anon-token", methods=["POST"])
+def anon_token():
+    """Create or retrieve anonymous browser token for cross-visit persistence."""
+    try:
+        data = request.json or {}
+        existing_token = data.get("token", "")
+
+        if existing_token:
+            from app1.memory_store import load_anonymous_profile
+            profile = load_anonymous_profile(existing_token)
+            if profile:
+                session["browser_token"] = existing_token
+                return jsonify({"status": "ok", "token": existing_token, "has_profile": True})
+
+        # Generate new token
+        new_token = str(uuid.uuid4())
+        session["browser_token"] = new_token
+        from app1.memory_store import save_anonymous_profile
+        save_anonymous_profile(new_token)
+        return jsonify({"status": "ok", "token": new_token, "has_profile": False})
+    except Exception as e:
+        print(f"[Anon Token Error] {e}")
+        return jsonify({"status": "ok", "token": "", "has_profile": False})
+
+
+# 5.4: Observability dashboard endpoint
+@app1_bp.route("/dashboard")
+def dashboard():
+    try:
+        from app1.memory_store import get_observability_dashboard
+        hours = request.args.get("hours", 24, type=int)
+        data = get_observability_dashboard(hours=hours)
+        return jsonify(data)
+    except Exception as e:
+        print(f"[Dashboard Error] {e}")
+        return jsonify({"error": str(e)}), 500
+
+
 from app1.agent import handle_agentic_ask
 
 @app1_bp.route("/ask", methods=["POST"])

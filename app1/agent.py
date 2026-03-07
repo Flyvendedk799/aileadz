@@ -980,6 +980,10 @@ def handle_agentic_ask(user_query, session):
                             CHAT_MEMORY[sid].append(msg)
             except Exception as e:
                 print(f"[Conversation Restore Error] {e}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
 
         # 6.3: Anonymous user persistence — load profile from browser token
         elif not logged_in_user:
@@ -1577,6 +1581,10 @@ def handle_agentic_ask(user_query, session):
                     save_conversation(logged_in_user, sid, messages)
                 except Exception as e:
                     print(f"[Conversation Save Error] {e}")
+                    try:
+                        current_app.mysql.connection.rollback()
+                    except Exception:
+                        pass
 
         except Exception as e:
             print(f"[Agent Error] {e}")

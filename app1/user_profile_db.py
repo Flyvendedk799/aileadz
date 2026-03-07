@@ -86,6 +86,20 @@ def ensure_tables():
         for sql in _TABLES_SQL:
             cur.execute(sql)
         current_app.mysql.connection.commit()
+
+        # Migration: if user_conversations exists with wrong schema, recreate it
+        try:
+            cur.execute("SELECT username, session_id FROM user_conversations LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("DROP TABLE IF EXISTS user_conversations")
+                cur.execute(_TABLES_SQL[-1])  # Re-create with correct schema
+                current_app.mysql.connection.commit()
+                print("[UserProfileDB] Recreated user_conversations table with correct schema")
+            except Exception as e2:
+                print(f"[UserProfileDB] Migration error for user_conversations: {e2}")
+
         cur.close()
         _tables_ensured = True
     except Exception as e:

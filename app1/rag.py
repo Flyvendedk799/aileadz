@@ -124,11 +124,50 @@ def _tokenize(text):
     return [t for t in tokens if t not in _STOP_WORDS and len(t) > 1]
 
 
+def _fuzzy_synonym_match(token, threshold=0.85):
+    """Find best synonym key match for a token, tolerating minor typos."""
+    if token in _QUERY_SYNONYMS:
+        return token
+    # Quick check: for tokens > 5 chars, try edit distance 1-2 matches
+    if len(token) < 4:
+        return None
+    best_key = None
+    best_ratio = 0
+    for key in _QUERY_SYNONYMS:
+        # Quick length filter — skip keys too different in length
+        if abs(len(key) - len(token)) > 2:
+            continue
+        # Simple ratio: count matching chars in order (Levenshtein-like)
+        shorter, longer = (token, key) if len(token) <= len(key) else (key, token)
+        matches = 0
+        j = 0
+        for c in shorter:
+            while j < len(longer):
+                if longer[j] == c:
+                    matches += 1
+                    j += 1
+                    break
+                j += 1
+        ratio = matches / max(len(shorter), len(longer))
+        if ratio > best_ratio:
+            best_ratio = ratio
+            best_key = key
+    return best_key if best_ratio >= threshold else None
+
+
 def _expand_query_tokens(tokens):
-    """Expand query tokens with synonyms for better BM25 recall."""
+    """Expand query tokens with synonyms for better BM25 recall. Handles typos via fuzzy matching."""
     expanded = list(tokens)
     for token in tokens:
+        # Direct match first
         synonyms = _QUERY_SYNONYMS.get(token, [])
+        if not synonyms:
+            # Try fuzzy match for typos (e.g., "konflikhåndtering" → "konflikthåndtering")
+            fuzzy_key = _fuzzy_synonym_match(token)
+            if fuzzy_key:
+                synonyms = _QUERY_SYNONYMS[fuzzy_key]
+                # Also add the corrected key itself as an expansion
+                expanded.extend(_tokenize(fuzzy_key))
         for syn in synonyms:
             syn_tokens = _tokenize(syn)
             expanded.extend(syn_tokens)
@@ -700,7 +739,11 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     else:
         confidence = "low"
 
-    # ── 10. Return top N products + debug diagnostics ──
+    # ── 10. Apply minimum relevance threshold + return top N ──
+    # Filter out garbage results (e.g. typo queries returning irrelevant vector matches)
+    _MIN_COMBINED_SCORE = 0.12  # Below this, results are essentially random
+    reranked = [(idx, score, explain) for idx, score, explain in reranked if score >= _MIN_COMBINED_SCORE]
+
     result_indices = [doc_idx for doc_idx, _, _ in reranked[:limit]]
     selected_products = [products[idx] for idx in result_indices if idx < len(products)]
 

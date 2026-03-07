@@ -1412,6 +1412,19 @@ def handle_agentic_ask(user_query, session):
                     except Exception:
                         pass
 
+                    # Log tool errors for visibility
+                    if tool_result_dict.get("status") == "error":
+                        error_msg = tool_result_dict.get("message", "Ukendt fejl")
+                        print(f"[Tool Error] {tool_call.function.name}: {error_msg}")
+                        try:
+                            log_debug(sid, "tool_error", {
+                                "tool": tool_call.function.name,
+                                "error": error_msg,
+                                "args": json.loads(tool_call.function.arguments),
+                            })
+                        except Exception:
+                            pass
+
                     # UI Interceptor — buffer product cards
                     fn = tool_call.function.name
                     if fn in ("search_courses", "filter_courses", "recommend_for_profile") and "raw_products" in tool_result_dict:
@@ -1506,15 +1519,17 @@ def handle_agentic_ask(user_query, session):
             # Stream the response in real-time, buffering only the <suggestions> tag
             def _stream_final_response(msgs):
                 """Stream GPT-4o response, yielding text chunks and returning full text.
-                Buffers content near <suggestions> tag to avoid showing raw JSON to user."""
+                Uses a state machine to cleanly handle <suggestions> tag detection across chunk boundaries."""
                 resp = openai.chat.completions.create(
                     model="gpt-4o",
                     messages=msgs,
                     stream=True
                 )
                 full = ""
-                in_suggestions_tag = False
-                pending_buffer = ""  # Buffer for partial tag detection
+                _TAG = "<suggestions>"
+                _TAG_LEN = len(_TAG)
+                state = "streaming"  # "streaming" | "buffering" | "in_tag"
+                buffer = ""
 
                 for chunk in resp:
                     delta = chunk.choices[0].delta if chunk.choices else None
@@ -1524,37 +1539,49 @@ def handle_agentic_ask(user_query, session):
                     text_piece = delta.content
                     full += text_piece
 
-                    if in_suggestions_tag:
-                        continue  # Already inside tag — buffer silently
+                    if state == "in_tag":
+                        continue  # Silently consume everything after <suggestions>
 
-                    # Check if we've entered the suggestions tag
-                    if "<suggestions>" in full:
-                        in_suggestions_tag = True
-                        # Flush any pending buffer content before the tag
-                        before_tag = full.split("<suggestions>")[0]
-                        unflushed = before_tag[len(full) - len(pending_buffer) - len(text_piece):]
-                        if pending_buffer or unflushed:
-                            clean = (pending_buffer + text_piece).split("<")[0] if "<" in (pending_buffer + text_piece) else pending_buffer + text_piece
-                            if clean:
-                                yield f"data: {json.dumps({'type': 'chunk', 'content': clean})}\n\n"
-                        pending_buffer = ""
+                    # Accumulate into buffer for tag detection
+                    buffer += text_piece
+
+                    # Check if full tag is present in buffer
+                    tag_pos = buffer.find(_TAG)
+                    if tag_pos >= 0:
+                        # Flush text before the tag
+                        before = buffer[:tag_pos]
+                        if before:
+                            yield f"data: {json.dumps({'type': 'chunk', 'content': before})}\n\n"
+                        state = "in_tag"
+                        buffer = ""
                         continue
 
-                    # Buffer when we see a potential partial "<" that could be start of <suggestions>
-                    if "<" in text_piece or pending_buffer:
-                        pending_buffer += text_piece
-                        # If buffer grows past tag length without matching, flush it
-                        if len(pending_buffer) > 15 and "<suggestions>" not in pending_buffer:
-                            yield f"data: {json.dumps({'type': 'chunk', 'content': pending_buffer})}\n\n"
-                            pending_buffer = ""
-                        continue
+                    # Check if buffer could still be a partial tag match
+                    # e.g., buffer ends with "<", "<s", "<su", ..., "<suggestion"
+                    could_be_partial = False
+                    for i in range(1, min(len(buffer) + 1, _TAG_LEN)):
+                        if buffer.endswith(_TAG[:i]):
+                            could_be_partial = True
+                            break
 
-                    # Normal streaming — no tag concerns
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': text_piece})}\n\n"
+                    if could_be_partial:
+                        # Keep potential tag prefix in buffer, flush the safe prefix
+                        # Find the start of the partial match
+                        for i in range(min(len(buffer), _TAG_LEN), 0, -1):
+                            if buffer.endswith(_TAG[:i]):
+                                safe = buffer[:-i]
+                                if safe:
+                                    yield f"data: {json.dumps({'type': 'chunk', 'content': safe})}\n\n"
+                                buffer = buffer[-i:]
+                                break
+                    else:
+                        # No tag possibility — flush entire buffer
+                        yield f"data: {json.dumps({'type': 'chunk', 'content': buffer})}\n\n"
+                        buffer = ""
 
-                # Flush any remaining buffer (if model ended without <suggestions>)
-                if pending_buffer and not in_suggestions_tag:
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': pending_buffer})}\n\n"
+                # Flush any remaining buffer (model ended without <suggestions>)
+                if buffer and state != "in_tag":
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': buffer})}\n\n"
 
                 # Store full text for post-processing
                 _stream_final_response._full_text = full
@@ -1582,7 +1609,12 @@ def handle_agentic_ask(user_query, session):
                 for _ci in range(0, len(visible_text), _csz):
                     yield f"data: {json.dumps({'type': 'chunk', 'content': visible_text[_ci:_ci+_csz]})}\n\n"
             else:
-                # Max iterations exhausted — stream a fresh response
+                # Max iterations exhausted — log warning and stream a fresh response
+                try:
+                    log_debug(sid, "iteration_limit", {"iterations": iteration, "max": max_iterations})
+                except Exception:
+                    pass
+                print(f"[Agent Warning] Max iterations ({max_iterations}) reached for session {sid}")
                 stream_start = time.time()
                 for sse_chunk in _stream_final_response(ephemeral_messages):
                     yield sse_chunk

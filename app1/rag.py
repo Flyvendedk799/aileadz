@@ -504,7 +504,8 @@ Eksempel svar: [9, 3, 7, 5]"""},
                 {"role": "user", "content": f"Søgning: \"{query}\"\n\nKurser:\n" + "\n".join(course_lines)}
             ],
             temperature=0.0,
-            max_tokens=50
+            max_tokens=50,
+            timeout=5.0
         )
         raw = response.choices[0].message.content.strip()
         # Parse the scores
@@ -533,7 +534,9 @@ Eksempel svar: [9, 3, 7, 5]"""},
         return reranked[:limit] if reranked else candidates[:limit]
 
     except Exception as e:
+        import traceback
         print(f"[Cross-encoder Error] Falling back to retrieval ranking. Query='{query[:80]}', candidates={len(candidates)}. Error: {e}")
+        print(f"[Cross-encoder Traceback] {traceback.format_exc()}")
         return candidates  # Fallback to original ranking on error
 
 

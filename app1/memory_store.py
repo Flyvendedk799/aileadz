@@ -162,6 +162,36 @@ def cleanup_old_sessions(ttl=3600):
     conn.commit()
 
 
+# ── Automatic Periodic Cleanup ──
+_last_cleanup_time = 0
+_CLEANUP_INTERVAL = 3600  # Run cleanup at most once per hour
+
+def _auto_cleanup():
+    """Run periodic cleanup of old debug logs, sessions, and anonymous profiles.
+    Safe to call frequently — skips if last cleanup was < 1 hour ago."""
+    global _last_cleanup_time
+    now = time.time()
+    if now - _last_cleanup_time < _CLEANUP_INTERVAL:
+        return
+    _last_cleanup_time = now
+    try:
+        conn = _get_conn()
+        # Debug logs older than 7 days
+        conn.execute("DELETE FROM debug_logs WHERE timestamp < ?", (now - 7 * 86400,))
+        # Analytics older than 30 days
+        conn.execute("DELETE FROM analytics WHERE timestamp < ?", (now - 30 * 86400,))
+        # Sessions inactive for > 24 hours
+        conn.execute("DELETE FROM sessions WHERE last_active < ?", (now - 86400,))
+        # Anonymous profiles inactive for > 30 days
+        conn.execute("DELETE FROM anonymous_profiles WHERE last_active < ?", (now - 30 * 86400,))
+        # Latency logs older than 7 days
+        conn.execute("DELETE FROM latency_logs WHERE timestamp < ?", (now - 7 * 86400,))
+        conn.commit()
+        print(f"[DB Cleanup] Completed periodic cleanup at {now:.0f}")
+    except Exception as e:
+        print(f"[DB Cleanup Error] {e}")
+
+
 # ── Analytics ──
 
 def log_event(session_id, event_type, query_text="", tool_used="", results_count=0,
@@ -204,6 +234,7 @@ def get_search_analytics(limit=20):
 
 def log_debug(session_id, step, data=None):
     """Log a debug entry for the admin log page."""
+    _auto_cleanup()  # Periodic cleanup (skips if < 1 hour since last)
     conn = _get_conn()
     conn.execute(
         "INSERT INTO debug_logs (session_id, timestamp, step, data) VALUES (?, ?, ?, ?)",

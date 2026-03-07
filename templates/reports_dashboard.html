@@ -1,0 +1,1202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Chatbot Admin Dashboard - Futurematch</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}" />
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        /* Modern CSS Variables */
+        :root {
+            --primary: #5B47E0;
+            --primary-dark: #4936C9;
+            --primary-light: #7B6CF0;
+            --secondary: #1E1B4B;
+            --accent: #F97316;
+            --success: #10B981;
+            --danger: #EF4444;
+            --warning: #F59E0B;
+            --info: #3B82F6;
+            
+            --bg-primary: #0F0E17;
+            --bg-secondary: #1A1825;
+            --bg-card: rgba(255, 255, 255, 0.02);
+            --bg-hover: rgba(255, 255, 255, 0.05);
+            
+            --text-primary: #FFFFFF;
+            --text-secondary: #94A3B8;
+            --text-muted: #64748B;
+            
+            --border-color: rgba(255, 255, 255, 0.1);
+            --shadow-color: rgba(0, 0, 0, 0.3);
+            
+            --gradient-primary: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --gradient-card: linear-gradient(135deg, rgba(91, 71, 224, 0.1) 0%, rgba(123, 108, 240, 0.05) 100%);
+            --gradient-accent: linear-gradient(135deg, #F97316 0%, #EA580C 100%);
+        }
+
+        /* Global Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.6;
+            overflow-x: hidden;
+            position: relative;
+        }
+
+        /* Animated Background */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: 
+                radial-gradient(circle at 20% 80%, rgba(91, 71, 224, 0.3) 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, rgba(249, 115, 22, 0.2) 0%, transparent 50%),
+                radial-gradient(circle at 40% 40%, rgba(123, 108, 240, 0.1) 0%, transparent 50%);
+            z-index: -1;
+            animation: gradientShift 20s ease infinite;
+        }
+
+        @keyframes gradientShift {
+            0%, 100% { transform: translate(0, 0); }
+            33% { transform: translate(-20px, -20px); }
+            66% { transform: translate(20px, -20px); }
+        }
+
+        /* Dashboard Header */
+        .dashboard-header {
+            background: rgba(30, 27, 75, 0.4);
+            backdrop-filter: blur(20px);
+            border-bottom: 1px solid var(--border-color);
+            padding: 30px 0;
+            position: sticky;
+            top: 0;
+            z-index: 1000;
+            animation: slideDown 0.6s ease-out;
+        }
+
+        @keyframes slideDown {
+            from {
+                transform: translateY(-100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateY(0);
+                opacity: 1;
+            }
+        }
+
+        .header-content {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .dashboard-header h1 {
+            font-size: 2.5em;
+            font-weight: 700;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+        }
+
+        .header-actions {
+            display: flex;
+            gap: 15px;
+        }
+
+        .header-btn {
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            backdrop-filter: blur(10px);
+        }
+
+        .header-btn:hover {
+            background: var(--primary);
+            transform: translateY(-2px);
+            box-shadow: 0 10px 20px rgba(91, 71, 224, 0.3);
+        }
+
+        /* Container */
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 40px 20px;
+        }
+
+        /* Metrics Grid */
+        .metrics-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 25px;
+            margin-bottom: 50px;
+        }
+
+        .metric-card {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            padding: 30px;
+            border-radius: 20px;
+            position: relative;
+            overflow: hidden;
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.6s ease-out forwards;
+            opacity: 0;
+        }
+
+        .metric-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--gradient-card);
+            opacity: 0;
+            transition: opacity 0.3s ease;
+            z-index: -1;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--primary);
+            box-shadow: 0 20px 40px rgba(91, 71, 224, 0.2);
+        }
+
+        .metric-card:hover::before {
+            opacity: 1;
+        }
+
+        .metric-icon {
+            width: 50px;
+            height: 50px;
+            background: var(--gradient-primary);
+            border-radius: 15px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 20px;
+            font-size: 24px;
+        }
+
+        .metric-card h3 {
+            color: var(--text-secondary);
+            font-size: 0.9em;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+
+        .metric-card .value {
+            font-size: 2.5em;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin: 10px 0;
+            background: var(--gradient-primary);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .metric-card .subtitle {
+            color: var(--text-muted);
+            font-size: 0.85em;
+            margin-top: 10px;
+        }
+
+        .metric-card .trend {
+            position: absolute;
+            top: 30px;
+            right: 30px;
+            padding: 5px 12px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .trend.up {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .trend.down {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        /* Charts Grid */
+        .charts-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(500px, 1fr));
+            gap: 30px;
+            margin-bottom: 50px;
+        }
+
+        .chart-container {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            padding: 30px;
+            border-radius: 20px;
+            min-height: 450px;
+            display: flex;
+            flex-direction: column;
+            transition: all 0.3s ease;
+            animation: fadeInUp 0.8s ease-out forwards;
+            opacity: 0;
+        }
+
+        .chart-container:hover {
+            border-color: var(--primary);
+            box-shadow: 0 20px 40px rgba(91, 71, 224, 0.1);
+        }
+
+        .chart-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .chart-container h3 {
+            color: var(--text-primary);
+            font-size: 1.4em;
+            font-weight: 600;
+        }
+
+        .chart-options {
+            display: flex;
+            gap: 10px;
+        }
+
+        .chart-option {
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            color: var(--text-secondary);
+            font-size: 0.85em;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .chart-option:hover,
+        .chart-option.active {
+            background: var(--primary);
+            color: var(--text-primary);
+            border-color: var(--primary);
+        }
+
+        .chart-container canvas {
+            flex: 1;
+            max-height: 350px;
+        }
+
+        /* Tables */
+        .table-container {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(10px);
+            border: 1px solid var(--border-color);
+            padding: 30px;
+            border-radius: 20px;
+            margin-bottom: 30px;
+            overflow: hidden;
+            animation: fadeInUp 1s ease-out forwards;
+            opacity: 0;
+        }
+
+        .table-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 25px;
+        }
+
+        .table-container h3 {
+            color: var(--text-primary);
+            font-size: 1.4em;
+            font-weight: 600;
+        }
+
+        .table-search {
+            position: relative;
+        }
+
+        .table-search input {
+            padding: 10px 15px 10px 40px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 0.9em;
+            width: 250px;
+            transition: all 0.3s ease;
+        }
+
+        .table-search input:focus {
+            outline: none;
+            border-color: var(--primary);
+            background: rgba(255, 255, 255, 0.08);
+        }
+
+        .table-search::before {
+            content: '🔍';
+            position: absolute;
+            left: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+        }
+
+        .table-wrapper {
+            overflow-x: auto;
+            margin: 0 -30px;
+            padding: 0 30px;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: separate;
+            border-spacing: 0;
+            min-width: 600px;
+        }
+
+        th, td {
+            padding: 15px 20px;
+            text-align: left;
+        }
+
+        th {
+            background: rgba(91, 71, 224, 0.1);
+            font-weight: 600;
+            color: var(--text-primary);
+            position: sticky;
+            top: 0;
+            z-index: 10;
+            text-transform: uppercase;
+            font-size: 0.85em;
+            letter-spacing: 1px;
+            border-bottom: 2px solid var(--primary);
+        }
+
+        tbody tr {
+            transition: all 0.2s ease;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.05);
+            transform: translateX(5px);
+        }
+
+        tbody tr:last-child {
+            border-bottom: none;
+        }
+
+        /* Status Badges */
+        .status-badge {
+            padding: 6px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            display: inline-flex;
+            align-items: center;
+            gap: 6px;
+            text-transform: capitalize;
+        }
+
+        .status-badge::before {
+            content: '';
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+
+        .status-pending {
+            background: rgba(245, 158, 11, 0.2);
+            color: var(--warning);
+        }
+
+        .status-pending::before {
+            background: var(--warning);
+            animation: pulse 2s infinite;
+        }
+
+        .status-completed {
+            background: rgba(16, 185, 129, 0.2);
+            color: var(--success);
+        }
+
+        .status-completed::before {
+            background: var(--success);
+        }
+
+        .status-cancelled {
+            background: rgba(239, 68, 68, 0.2);
+            color: var(--danger);
+        }
+
+        .status-cancelled::before {
+            background: var(--danger);
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+
+        /* Action Buttons */
+        .btn-action {
+            padding: 8px 18px;
+            border: none;
+            border-radius: 10px;
+            cursor: pointer;
+            font-size: 0.9em;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn-action::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn-action:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--gradient-primary);
+            color: white;
+            box-shadow: 0 4px 15px rgba(91, 71, 224, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(91, 71, 224, 0.4);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            border: 1px solid var(--border-color);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.15);
+            border-color: var(--primary);
+            transform: translateY(-2px);
+        }
+
+        /* Empty State */
+        .empty-state {
+            text-align: center;
+            padding: 60px 40px;
+            color: var(--text-secondary);
+        }
+
+        .empty-state-icon {
+            width: 80px;
+            height: 80px;
+            margin: 0 auto 20px;
+            background: rgba(91, 71, 224, 0.1);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 40px;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        @keyframes float {
+            0%, 100% { transform: translateY(0); }
+            50% { transform: translateY(-10px); }
+        }
+
+        .empty-state p {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+        }
+
+        .empty-state-hint {
+            font-size: 0.9em;
+            color: var(--text-muted);
+        }
+
+        /* Animations */
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .metric-card:nth-child(1) { animation-delay: 0.1s; }
+        .metric-card:nth-child(2) { animation-delay: 0.2s; }
+        .metric-card:nth-child(3) { animation-delay: 0.3s; }
+        .metric-card:nth-child(4) { animation-delay: 0.4s; }
+        .metric-card:nth-child(5) { animation-delay: 0.5s; }
+        .metric-card:nth-child(6) { animation-delay: 0.6s; }
+        .chart-container:nth-child(1) { animation-delay: 0.7s; }
+        .chart-container:nth-child(2) { animation-delay: 0.8s; }
+        .chart-container:nth-child(3) { animation-delay: 0.9s; }
+        .chart-container:nth-child(4) { animation-delay: 1s; }
+        .table-container:nth-child(1) { animation-delay: 1.1s; }
+        .table-container:nth-child(2) { animation-delay: 1.2s; }
+        .table-container:nth-child(3) { animation-delay: 1.3s; }
+        .table-container:nth-child(4) { animation-delay: 1.4s; }
+
+        /* Loading Shimmer */
+        .shimmer {
+            background: linear-gradient(90deg, 
+                rgba(255, 255, 255, 0.05) 25%, 
+                rgba(255, 255, 255, 0.1) 50%, 
+                rgba(255, 255, 255, 0.05) 75%);
+            background-size: 200% 100%;
+            animation: shimmer 1.5s infinite;
+        }
+
+        @keyframes shimmer {
+            0% { background-position: 200% 0; }
+            100% { background-position: -200% 0; }
+        }
+
+        /* Responsive */
+        @media (max-width: 768px) {
+            .dashboard-header h1 {
+                font-size: 2em;
+            }
+            
+            .header-content {
+                flex-direction: column;
+                gap: 20px;
+            }
+            
+            .charts-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .metrics-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .container {
+                padding: 20px 15px;
+            }
+            
+            .table-wrapper {
+                margin: 0 -15px;
+                padding: 0 15px;
+            }
+            
+            .metric-card {
+                padding: 20px;
+            }
+            
+            .metric-card .value {
+                font-size: 2em;
+            }
+            
+            .table-search input {
+                width: 100%;
+            }
+            
+            .table-header {
+                flex-direction: column;
+                gap: 15px;
+                align-items: stretch;
+            }
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 10px;
+            height: 10px;
+        }
+
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.05);
+        }
+
+        ::-webkit-scrollbar-thumb {
+            background: var(--primary);
+            border-radius: 5px;
+        }
+
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--primary-light);
+        }
+    </style>
+</head>
+<body>
+    <div class="dashboard-header">
+        <div class="header-content">
+            <h1>Chatbot Analytics</h1>
+            <div class="header-actions">
+                <a href="#" class="header-btn">Export Data</a>
+                <a href="#" class="header-btn">Settings</a>
+            </div>
+        </div>
+    </div>
+
+    <div class="container">
+        <!-- Key Metrics -->
+        <div class="metrics-grid">
+            <div class="metric-card">
+                <div class="metric-icon">💬</div>
+                <h3>Total Queries</h3>
+                <div class="value">{{ total_chatbot_queries }}</div>
+                <div class="subtitle">All time chatbot interactions</div>
+                <div class="trend up">↑ 12%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">📊</div>
+                <h3>Avg. Conversation Length</h3>
+                <div class="value">{{ avg_conversation_length }}</div>
+                <div class="subtitle">Messages per conversation</div>
+                <div class="trend up">↑ 5%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">⚡</div>
+                <h3>Response Time</h3>
+                <div class="value">{{ avg_chatbot_response_time }}ms</div>
+                <div class="subtitle">Average response time</div>
+                <div class="trend up">↑ 8%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">🎯</div>
+                <h3>Conversion Rate</h3>
+                <div class="value">{{ conversion_rate }}%</div>
+                <div class="subtitle">Queries to orders</div>
+                <div class="trend up">↑ 15%</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">📦</div>
+                <h3>Active Orders</h3>
+                <div class="value">{{ pending_orders_count }}</div>
+                <div class="subtitle">Pending processing</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">💰</div>
+                <h3>Total Revenue</h3>
+                <div class="value">{{ total_revenue|round|int }} kr</div>
+                <div class="subtitle">From completed orders</div>
+                <div class="trend up">↑ 23%</div>
+            </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="charts-grid">
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Daily Chat Activity</h3>
+                    <div class="chart-options">
+                        <button class="chart-option active">7D</button>
+                        <button class="chart-option">30D</button>
+                        <button class="chart-option">90D</button>
+                    </div>
+                </div>
+                <canvas id="dailyActivityChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Query Types Distribution</h3>
+                </div>
+                <canvas id="queryTypeChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Popular Course Categories</h3>
+                </div>
+                <canvas id="categoryChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>User Locations</h3>
+                </div>
+                <canvas id="locationChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Popular Courses Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>Most Viewed Courses</h3>
+                <div class="table-search">
+                    <input type="text" placeholder="Search courses...">
+                </div>
+            </div>
+            <div class="table-wrapper">
+                {% if popular_courses %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Course Handle</th>
+                            <th>Views</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for handle, count in popular_courses %}
+                        <tr>
+                            <td>{{ handle }}</td>
+                            <td>{{ count }}</td>
+                            <td>
+                                <a href="https://futurematch.dk/products/{{ handle }}" target="_blank" class="btn-action btn-secondary">
+                                    View Course →
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">📚</div>
+                    <p>No course view data available yet</p>
+                    <div class="empty-state-hint">Course analytics will appear here once users start browsing</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recent Orders Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>Recent Orders</h3>
+                <div class="table-search">
+                    <input type="text" placeholder="Search orders...">
+                </div>
+            </div>
+            <div class="table-wrapper">
+                {% if recent_orders %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Order ID</th>
+                            <th>Course</th>
+                            <th>Price</th>
+                            <th>Status</th>
+                            <th>Date</th>
+                            <th>Customer</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for order in recent_orders %}
+                        <tr>
+                            <td>{{ order.order_id_short }}</td>
+                            <td>{{ order.product_title }}</td>
+                            <td>{{ order.price }} kr</td>
+                            <td><span class="status-badge status-{{ order.status }}">{{ order.status }}</span></td>
+                            <td>{{ order.created_at }}</td>
+                            <td>{{ order.user_email }}</td>
+                            <td>
+                                <a href="{{ url_for('reports.order_detail', order_id=order.order_id) }}" class="btn-action btn-primary">
+                                    View Details →
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">🛒</div>
+                    <p>No orders yet</p>
+                    <div class="empty-state-hint">Orders will appear here as customers complete purchases</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Frequent Questions Table -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>Frequently Asked Questions</h3>
+                <div class="table-search">
+                    <input type="text" placeholder="Search questions...">
+                </div>
+            </div>
+            <div class="table-wrapper">
+                {% if frequent_questions %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th style="width: 40%;">Question</th>
+                            <th style="width: 10%;">Count</th>
+                            <th style="width: 50%;">Typical Response</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for question in frequent_questions[:10] %}
+                        <tr>
+                            <td>{{ question.text }}</td>
+                            <td>{{ question.count }}</td>
+                            <td style="font-size: 0.9em; color: var(--text-secondary);">{{ question.top_response }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">❓</div>
+                    <p>No FAQ data available yet</p>
+                    <div class="empty-state-hint">Common questions will be tracked and displayed here</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recent Conversations -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>Recent Conversations</h3>
+                <div class="table-search">
+                    <input type="text" placeholder="Search conversations...">
+                </div>
+            </div>
+            <div class="table-wrapper">
+                {% if recent_conversations %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Session ID</th>
+                            <th>Started At</th>
+                            <th>Duration (min)</th>
+                            <th>Messages</th>
+                            <th>Topics</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for conv in recent_conversations %}
+                        <tr>
+                            <td>{{ conv.session_id }}</td>
+                            <td>{{ conv.start_time }}</td>
+                            <td>{{ conv.duration }}</td>
+                            <td>{{ conv.query_count }}</td>
+                            <td>{{ conv.topics|join(", ") if conv.topics else "General" }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">💭</div>
+                    <p>No conversation data available</p>
+                    <div class="empty-state-hint">Conversation analytics will populate as users interact with the chatbot</div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Modern Chart Configuration
+        Chart.defaults.font.family = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, sans-serif';
+        Chart.defaults.color = '#94A3B8';
+
+        // Daily Activity Chart with Gradient
+        const dailyActivityCtx = document.getElementById('dailyActivityChart').getContext('2d');
+        const gradientFill = dailyActivityCtx.createLinearGradient(0, 0, 0, 300);
+        gradientFill.addColorStop(0, 'rgba(91, 71, 224, 0.3)');
+        gradientFill.addColorStop(1, 'rgba(91, 71, 224, 0)');
+
+        new Chart(dailyActivityCtx, {
+            type: 'line',
+            data: {
+                labels: {{ daily_chatbot_query_labels | tojson | safe }},
+                datasets: [{
+                    label: 'Daily Queries',
+                    data: {{ daily_chatbot_query_data | tojson | safe }},
+                    borderColor: '#5B47E0',
+                    backgroundColor: gradientFill,
+                    tension: 0.4,
+                    fill: true,
+                    pointRadius: 0,
+                    pointHoverRadius: 8,
+                    pointBackgroundColor: '#5B47E0',
+                    pointBorderColor: '#fff',
+                    pointBorderWidth: 3,
+                    borderWidth: 3
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                interaction: {
+                    intersect: false,
+                    mode: 'index'
+                },
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 27, 75, 0.9)',
+                        padding: 15,
+                        cornerRadius: 10,
+                        titleFont: {
+                            size: 14,
+                            weight: '600'
+                        },
+                        bodyFont: {
+                            size: 13
+                        },
+                        borderColor: 'rgba(91, 71, 224, 0.3)',
+                        borderWidth: 1,
+                        displayColors: false
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            padding: 10
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            padding: 10
+                        }
+                    }
+                }
+            }
+        });
+
+        // Query Type Distribution with Modern Colors
+        const queryTypeCtx = document.getElementById('queryTypeChart').getContext('2d');
+        const queryTypeData = {{ query_type_distribution | tojson | safe }};
+        new Chart(queryTypeCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(queryTypeData).map(key => {
+                    const labels = {
+                        'price_inquiry': 'Price Questions',
+                        'date_inquiry': 'Date Questions',
+                        'location_inquiry': 'Location Questions',
+                        'recommendation': 'Recommendations',
+                        'general': 'General Queries'
+                    };
+                    return labels[key] || key;
+                }),
+                datasets: [{
+                    data: Object.values(queryTypeData),
+                    backgroundColor: [
+                        '#5B47E0',
+                        '#7B6CF0',
+                        '#F97316',
+                        '#10B981',
+                        '#3B82F6'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            padding: 20,
+                            font: {
+                                size: 13
+                            },
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 27, 75, 0.9)',
+                        padding: 15,
+                        cornerRadius: 10,
+                        borderColor: 'rgba(91, 71, 224, 0.3)',
+                        borderWidth: 1
+                    }
+                },
+                cutout: '70%'
+            }
+        });
+
+        // Category Distribution with Gradient Bars
+        const categoryCtx = document.getElementById('categoryChart').getContext('2d');
+        const categoryData = {{ category_distribution | tojson | safe }};
+        const categoryGradient = categoryCtx.createLinearGradient(0, 0, 0, 300);
+        categoryGradient.addColorStop(0, '#5B47E0');
+        categoryGradient.addColorStop(1, '#7B6CF0');
+
+        new Chart(categoryCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(categoryData),
+                datasets: [{
+                    label: 'Mentions',
+                    data: Object.values(categoryData),
+                    backgroundColor: categoryGradient,
+                    borderRadius: 10,
+                    barThickness: 40
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 27, 75, 0.9)',
+                        padding: 15,
+                        cornerRadius: 10,
+                        borderColor: 'rgba(91, 71, 224, 0.3)',
+                        borderWidth: 1
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        grid: {
+                            color: 'rgba(255, 255, 255, 0.05)',
+                            drawBorder: false
+                        },
+                        ticks: {
+                            padding: 10
+                        }
+                    },
+                    x: {
+                        grid: {
+                            display: false,
+                            drawBorder: false
+                        },
+                        ticks: {
+                            padding: 10
+                        }
+                    }
+                }
+            }
+        });
+
+        // Location Chart with Modern Palette
+        const locationCtx = document.getElementById('locationChart').getContext('2d');
+        const locationData = {{ user_locations | tojson | safe }};
+        new Chart(locationCtx, {
+            type: 'pie',
+            data: {
+                labels: Object.keys(locationData),
+                datasets: [{
+                    data: Object.values(locationData),
+                    backgroundColor: [
+                        '#5B47E0',
+                        '#7B6CF0',
+                        '#9B8EF5',
+                        '#F97316',
+                        '#FB923C',
+                        '#10B981',
+                        '#34D399',
+                        '#3B82F6'
+                    ],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'right',
+                        labels: {
+                            padding: 20,
+                            font: {
+                                size: 13
+                            },
+                            usePointStyle: true
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(30, 27, 75, 0.9)',
+                        padding: 15,
+                        cornerRadius: 10,
+                        borderColor: 'rgba(91, 71, 224, 0.3)',
+                        borderWidth: 1
+                    }
+                }
+            }
+        });
+
+        // Search functionality
+        document.querySelectorAll('.table-search input').forEach(input => {
+            input.addEventListener('input', function() {
+                const searchTerm = this.value.toLowerCase();
+                const table = this.closest('.table-container').querySelector('table');
+                if (table) {
+                    const rows = table.querySelectorAll('tbody tr');
+                    rows.forEach(row => {
+                        const text = row.textContent.toLowerCase();
+                        row.style.display = text.includes(searchTerm) ? '' : 'none';
+                    });
+                }
+            });
+        });
+
+        // Chart time range switcher
+        document.querySelectorAll('.chart-option').forEach(option => {
+            option.addEventListener('click', function() {
+                this.parentElement.querySelectorAll('.chart-option').forEach(opt => opt.classList.remove('active'));
+                this.classList.add('active');
+                // Here you would typically reload the chart with new data
+            });
+        });
+    </script>
+</body>
+</html>

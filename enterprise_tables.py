@@ -194,13 +194,20 @@ def ensure_enterprise_tables(app):
                 """CREATE TABLE IF NOT EXISTS chatbot_interactions (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     company_id INT,
+                    session_id VARCHAR(255),
                     username VARCHAR(255),
-                    query TEXT,
-                    response TEXT,
+                    query_text TEXT,
+                    response_text TEXT,
+                    query_type VARCHAR(100),
+                    category VARCHAR(100),
+                    user_location VARCHAR(255),
+                    response_time_ms INT,
                     interaction_quality_score DECIMAL(3,2),
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id),
-                    INDEX idx_username (username)
+                    INDEX idx_username (username),
+                    INDEX idx_session (session_id),
+                    INDEX idx_created (created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
                 # ── Employee Performance Reviews ──
@@ -435,6 +442,24 @@ def ensure_enterprise_tables(app):
                 except Exception as e:
                     logging.warning("Table creation warning: %s", e)
 
+            conn.commit()
+
+            # Migrate chatbot_interactions if it was created with old schema
+            alter_stmts = [
+                "ALTER TABLE chatbot_interactions ADD COLUMN session_id VARCHAR(255) AFTER company_id",
+                "ALTER TABLE chatbot_interactions ADD COLUMN query_text TEXT AFTER username",
+                "ALTER TABLE chatbot_interactions ADD COLUMN response_text TEXT AFTER query_text",
+                "ALTER TABLE chatbot_interactions ADD COLUMN query_type VARCHAR(100) AFTER response_text",
+                "ALTER TABLE chatbot_interactions ADD COLUMN category VARCHAR(100) AFTER query_type",
+                "ALTER TABLE chatbot_interactions ADD COLUMN user_location VARCHAR(255) AFTER category",
+                "ALTER TABLE chatbot_interactions ADD COLUMN response_time_ms INT AFTER user_location",
+                "ALTER TABLE chatbot_interactions ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
+            ]
+            for stmt in alter_stmts:
+                try:
+                    cur.execute(stmt)
+                except Exception:
+                    pass  # column already exists
             conn.commit()
             cur.close()
             logging.info("Enterprise tables ensured (%d tables)", len(tables))

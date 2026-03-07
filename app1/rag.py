@@ -16,6 +16,7 @@ openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 AUGMENTED_FILE = os.path.join(os.path.dirname(__file__), "shopify_products_augmented.json")
 _augmented_cache = None
+_augmented_mtime = 0  # Track file modification time for auto-rebuild
 
 # ── BM25 Inverted Index ──
 _bm25_index = None  # {"token": {doc_idx: tf, ...}}
@@ -124,34 +125,36 @@ def _tokenize(text):
     return [t for t in tokens if t not in _STOP_WORDS and len(t) > 1]
 
 
-def _fuzzy_synonym_match(token, threshold=0.85):
-    """Find best synonym key match for a token, tolerating minor typos."""
+def _fuzzy_synonym_match(token, threshold=80):
+    """Find best synonym key match for a token, tolerating typos.
+    Uses Levenshtein ratio (0-100) via fuzzywuzzy for accurate typo detection.
+    Also checks against synonym values, not just keys."""
     if token in _QUERY_SYNONYMS:
         return token
-    # Quick check: for tokens > 5 chars, try edit distance 1-2 matches
     if len(token) < 4:
         return None
+
+    from fuzzywuzzy import fuzz
+
     best_key = None
     best_ratio = 0
-    for key in _QUERY_SYNONYMS:
-        # Quick length filter — skip keys too different in length
-        if abs(len(key) - len(token)) > 2:
-            continue
-        # Simple ratio: count matching chars in order (Levenshtein-like)
-        shorter, longer = (token, key) if len(token) <= len(key) else (key, token)
-        matches = 0
-        j = 0
-        for c in shorter:
-            while j < len(longer):
-                if longer[j] == c:
-                    matches += 1
-                    j += 1
-                    break
-                j += 1
-        ratio = matches / max(len(shorter), len(longer))
-        if ratio > best_ratio:
-            best_ratio = ratio
-            best_key = key
+
+    for key, synonyms in _QUERY_SYNONYMS.items():
+        # Check against the key itself
+        if abs(len(key) - len(token)) <= 3:
+            ratio = fuzz.ratio(token, key)
+            if ratio > best_ratio:
+                best_ratio = ratio
+                best_key = key
+
+        # Also check against synonym values (e.g., user types "databeskytelse" → match "databeskyttelse" in gdpr synonyms)
+        for syn in synonyms:
+            if abs(len(syn) - len(token)) <= 3:
+                ratio = fuzz.ratio(token, syn)
+                if ratio > best_ratio:
+                    best_ratio = ratio
+                    best_key = key
+
     return best_key if best_ratio >= threshold else None
 
 
@@ -354,18 +357,25 @@ def _bm25_search(query_tokens, limit=20):
 
 
 def load_augmented_products():
-    """Load the pre-computed products with embeddings into memory. Builds BM25 index on first load."""
-    global _augmented_cache
-    if _augmented_cache is None:
+    """Load the pre-computed products with embeddings into memory. Builds BM25 index on first load.
+    Auto-rebuilds if the JSON file has been modified since last load."""
+    global _augmented_cache, _augmented_mtime
+    try:
+        current_mtime = os.path.getmtime(AUGMENTED_FILE) if os.path.exists(AUGMENTED_FILE) else 0
+    except OSError:
+        current_mtime = 0
+
+    if _augmented_cache is None or (current_mtime > _augmented_mtime and current_mtime > 0):
         try:
             with open(AUGMENTED_FILE, "r", encoding="utf-8") as f:
                 _augmented_cache = json.load(f)
-            # Build BM25 index alongside
+            _augmented_mtime = current_mtime
             _build_bm25_index(_augmented_cache)
             print(f"[RAG] Loaded {len(_augmented_cache)} products, BM25 index built ({len(_bm25_index)} terms)")
         except Exception as e:
             print(f"Error loading augmented products: {e}")
-            _augmented_cache = []
+            if _augmented_cache is None:
+                _augmented_cache = []
     return _augmented_cache
 
 
@@ -410,6 +420,11 @@ def get_query_embedding(query_text):
             dimensions=1024
         )
         embedding = response.data[0].embedding
+
+        # Validate embedding dimensions before caching
+        if not embedding or len(embedding) != 1024:
+            print(f"[Embedding Warning] Bad dimensions ({len(embedding) if embedding else 0}) for query: {query_text[:80]}")
+            return embedding if embedding else None
 
         # Evict oldest entries if cache is full
         if len(_embedding_cache) >= _EMBEDDING_CACHE_MAX:

@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block title %}Indstillinger - {{ company.company_name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:700px; margin:40px auto; padding:20px;">
+  <h2>Virksomhedsindstillinger</h2>
+  <form method="POST" style="margin-top:30px;">
+    <div style="margin-bottom:15px;">
+      <label>Virksomhedsnavn</label>
+      <input type="text" name="company_name" value="{{ company.company_name or '' }}" class="form-control">
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Kontakt-email</label>
+      <input type="email" name="contact_email" value="{{ company.contact_email or '' }}" class="form-control">
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Hjemmeside</label>
+      <input type="url" name="website" value="{{ company.website or '' }}" class="form-control">
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Branche</label>
+      <input type="text" name="industry" value="{{ company.industry or '' }}" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">Gem indstillinger</button>
+  </form>
+</div>
+{% endblock %}

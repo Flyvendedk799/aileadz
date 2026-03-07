@@ -1,0 +1,40 @@
+{% extends "base.html" %}
+{% block title %}Rediger Medarbejder - {{ company.company_name }}{% endblock %}
+{% block content %}
+<div class="container" style="max-width:700px; margin:40px auto; padding:20px;">
+  <h2>Rediger Medarbejder</h2>
+  <form method="POST">
+    <div style="margin-bottom:15px;">
+      <label>Navn</label>
+      <input type="text" name="name" value="{{ employee.name or '' }}" class="form-control" required>
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Email</label>
+      <input type="email" name="email" value="{{ employee.email or '' }}" class="form-control" required>
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Rolle</label>
+      <select name="role" class="form-control">
+        <option value="employee" {% if employee.role == 'employee' %}selected{% endif %}>Medarbejder</option>
+        <option value="manager" {% if employee.role == 'manager' %}selected{% endif %}>Leder</option>
+        <option value="company_admin" {% if employee.role == 'company_admin' %}selected{% endif %}>Admin</option>
+      </select>
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Afdeling</label>
+      <select name="department" class="form-control">
+        <option value="">-- Vaelg --</option>
+        {% for dept in departments %}
+        <option value="{{ dept }}" {% if employee.department == dept %}selected{% endif %}>{{ dept }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div style="margin-bottom:15px;">
+      <label>Titel</label>
+      <input type="text" name="title" value="{{ employee.title or '' }}" class="form-control">
+    </div>
+    <button type="submit" class="btn btn-primary">Gem</button>
+    <a href="{{ url_for('companies.employees') }}" class="btn btn-secondary">Annuller</a>
+  </form>
+</div>
+{% endblock %}

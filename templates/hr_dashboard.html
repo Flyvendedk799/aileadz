@@ -1,0 +1,357 @@
+{% extends "base.html" %}
+
+{% block title %}HR Dashboard - {{ company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h2><i class="fas fa-chart-bar text-primary"></i> HR Analytics Dashboard</h2>
+                    <p class="text-muted mb-0">{{ company_name }} - Employee Learning & Development</p>
+                </div>
+                <div>
+                    <a href="{{ url_for('companies.dashboard') }}" class="btn btn-outline-secondary me-2">
+                        <i class="fas fa-arrow-left"></i> Company Dashboard
+                    </a>
+                    <div class="btn-group" role="group">
+                        <button type="button" class="btn btn-primary dropdown-toggle" data-bs-toggle="dropdown">
+                            <i class="fas fa-download"></i> Export Reports
+                        </button>
+                        <ul class="dropdown-menu">
+                            <li><a class="dropdown-item" href="{{ url_for('hr_dashboard.export', report_type='employee_progress') }}">Employee Progress</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('hr_dashboard.export', report_type='learning_analytics') }}">Learning Analytics</a></li>
+                            <li><a class="dropdown-item" href="{{ url_for('hr_dashboard.export', report_type='department_summary') }}">Department Summary</a></li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Metrics Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card bg-gradient-primary text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="mb-0">{{ metrics.total_employees }}</h3>
+                            <p class="mb-0">Total Employees</p>
+                            <small class="opacity-75">+{{ metrics.new_employees_this_month }} this month</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-users fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-gradient-success text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="mb-0">{{ metrics.active_learners }}</h3>
+                            <p class="mb-0">Active Learners</p>
+                            <small class="opacity-75">{{ metrics.engagement_rate }}% engagement</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-graduation-cap fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-gradient-info text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="mb-0">{{ metrics.courses_completed }}</h3>
+                            <p class="mb-0">Courses Completed</p>
+                            <small class="opacity-75">{{ metrics.avg_completion_time }} avg days</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-trophy fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card bg-gradient-warning text-white">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between">
+                        <div>
+                            <h3 class="mb-0">{{ metrics.skills_developed }}</h3>
+                            <p class="mb-0">Skills Developed</p>
+                            <small class="opacity-75">{{ metrics.skill_growth_rate }}% growth</small>
+                        </div>
+                        <div class="align-self-center">
+                            <i class="fas fa-brain fa-2x opacity-75"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Employee Progress Overview -->
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="fas fa-chart-line"></i> Employee Progress Overview</h5>
+                    <a href="{{ url_for('hr_dashboard.employee_progress') }}" class="btn btn-sm btn-outline-primary">View All</a>
+                </div>
+                <div class="card-body">
+                    <div class="table-responsive">
+                        <table class="table table-hover">
+                            <thead>
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th>Progress</th>
+                                    <th>Last Activity</th>
+                                    <th>Performance</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for employee in top_performers %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-sm me-2">{{ employee.name[0] }}</div>
+                                            <div>
+                                                <strong>{{ employee.name }}</strong>
+                                                <br><small class="text-muted">{{ employee.email }}</small>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td><span class="badge bg-secondary">{{ employee.department }}</span></td>
+                                    <td>
+                                        <div class="progress" style="height: 15px;">
+                                            <div class="progress-bar bg-success" style="width: {{ employee.progress }}%">
+                                                {{ employee.progress }}%
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>{{ employee.last_activity.strftime('%Y-%m-%d') if employee.last_activity else 'N/A' }}</td>
+                                    <td>
+                                        {% if employee.performance_score >= 80 %}
+                                            <span class="badge bg-success">Excellent</span>
+                                        {% elif employee.performance_score >= 60 %}
+                                            <span class="badge bg-warning">Good</span>
+                                        {% else %}
+                                            <span class="badge bg-danger">Needs Improvement</span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Department Performance -->
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-sitemap"></i> Department Performance</h5>
+                </div>
+                <div class="card-body">
+                    {% for dept in department_stats %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-1">
+                            <strong>{{ dept.name }}</strong>
+                            <span class="text-muted">{{ dept.completion_rate }}%</span>
+                        </div>
+                        <div class="progress mb-1" style="height: 8px;">
+                            <div class="progress-bar" style="width: {{ dept.completion_rate }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ dept.active_employees }}/{{ dept.total_employees }} active</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            <!-- Quick Actions -->
+            <div class="card mt-4">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-bolt"></i> Quick Actions</h5>
+                </div>
+                <div class="card-body">
+                    <div class="d-grid gap-2">
+                        <a href="{{ url_for('hr_dashboard.learning_analytics') }}" class="btn btn-outline-primary">
+                            <i class="fas fa-chart-pie"></i> Learning Analytics
+                        </a>
+                        <a href="{{ url_for('hr_dashboard.reports') }}" class="btn btn-outline-success">
+                            <i class="fas fa-file-alt"></i> Generate Reports
+                        </a>
+                        <a href="{{ url_for('companies.employees') }}" class="btn btn-outline-info">
+                            <i class="fas fa-users"></i> Manage Employees
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Learning Trends Chart -->
+    <div class="row mt-4">
+        <div class="col-12">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-chart-area"></i> Learning Trends (Last 6 Months)</h5>
+                </div>
+                <div class="card-body">
+                    <canvas id="learningTrendsChart" height="100"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Skills Gap Analysis -->
+    <div class="row mt-4">
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-target"></i> Skills Gap Analysis</h5>
+                </div>
+                <div class="card-body">
+                    {% for skill in skills_gap %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span><strong>{{ skill.name }}</strong></span>
+                            <span class="text-danger">{{ skill.gap_percentage }}% gap</span>
+                        </div>
+                        <div class="progress">
+                            <div class="progress-bar bg-success" style="width: {{ skill.current_level }}%"></div>
+                            <div class="progress-bar bg-danger" style="width: {{ skill.gap_percentage }}%"></div>
+                        </div>
+                        <small class="text-muted">{{ skill.employees_needing_training }} employees need training</small>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Recent Achievements -->
+        <div class="col-md-6">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="fas fa-medal"></i> Recent Achievements</h5>
+                </div>
+                <div class="card-body">
+                    {% for achievement in recent_achievements %}
+                    <div class="d-flex align-items-center mb-3">
+                        <div class="achievement-icon me-3">
+                            <i class="fas fa-trophy text-warning"></i>
+                        </div>
+                        <div>
+                            <strong>{{ achievement.employee_name }}</strong>
+                            <br>
+                            <small class="text-muted">{{ achievement.description }}</small>
+                            <br>
+                            <small class="text-success">{{ achievement.date.strftime('%Y-%m-%d') }}</small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.bg-gradient-primary {
+    background: linear-gradient(45deg, #007bff, #0056b3);
+}
+.bg-gradient-success {
+    background: linear-gradient(45deg, #28a745, #1e7e34);
+}
+.bg-gradient-info {
+    background: linear-gradient(45deg, #17a2b8, #117a8b);
+}
+.bg-gradient-warning {
+    background: linear-gradient(45deg, #ffc107, #d39e00);
+}
+.avatar-sm {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    background-color: #007bff;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 14px;
+}
+.achievement-icon {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background-color: #fff3cd;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+// Learning Trends Chart
+document.addEventListener('DOMContentLoaded', function() {
+    const ctx = document.getElementById('learningTrendsChart').getContext('2d');
+    const chartData = {
+        months: {{ chart_data.months | tojson if chart_data else '[]' }},
+        coursesCompleted: {{ chart_data.courses_completed | tojson if chart_data else '[]' }},
+        activeLearners: {{ chart_data.active_learners | tojson if chart_data else '[]' }}
+    };
+    
+    const learningTrendsChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+            labels: chartData.months,
+            datasets: [{
+                label: 'Courses Completed',
+                data: chartData.coursesCompleted,
+                borderColor: '#007bff',
+                backgroundColor: 'rgba(0, 123, 255, 0.1)',
+                tension: 0.4
+            }, {
+                label: 'Active Learners',
+                data: chartData.activeLearners,
+                borderColor: '#28a745',
+                backgroundColor: 'rgba(40, 167, 69, 0.1)',
+                tension: 0.4
+            }]
+        },
+        options: {
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+                y: {
+                    beginAtZero: true
+                }
+            },
+            plugins: {
+                legend: {
+                    position: 'top'
+                }
+            }
+        }
+    });
+});
+</script>
+{% endblock %}

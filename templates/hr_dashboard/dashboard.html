@@ -1,0 +1,961 @@
+{% extends "base.html" %}
+
+{% block title %}HR Analytics Dashboard - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <!-- Header Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0 text-gray-800">
+                        <i class="fas fa-chart-line text-primary me-2"></i>
+                        HR Analytics Dashboard
+                    </h1>
+                    <p class="text-muted mb-0">{{ company.company_name }} - Comprehensive Employee Analytics & Management</p>
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-outline-primary btn-sm" onclick="exportReport()">
+                        <i class="fas fa-download"></i> Export Report
+                    </button>
+                    <a href="/" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left"></i> Back to Dashboard
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Key Performance Indicators -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Total Employees</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ hr_metrics.total_employees or 0 }}</div>
+                            <div class="text-xs text-success">
+                                <i class="fas fa-arrow-up"></i> {{ hr_metrics.active_employees or 0 }} Active
+                                <span class="text-muted">| {{ hr_metrics.new_hires_30_days or 0 }} New Hires</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-users fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Learning Progress</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ completion_rate or 0 }}%</div>
+                            <div class="text-xs text-success">
+                                <i class="fas fa-graduation-cap"></i> {{ learning_metrics.completed_courses or 0 }} Completed
+                                <span class="text-muted">| {{ learning_metrics.in_progress_courses or 0 }} In Progress</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-chart-line fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Company Orders</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ recent_orders|length or 0 }}</div>
+                            <div class="text-xs text-info">
+                                <i class="fas fa-shopping-cart"></i> {{ completed_orders_count or 0 }} Completed
+                                <span class="text-muted">| {{ pending_orders_count or 0 }} Pending</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-shopping-cart fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="col-xl-3 col-md-6 mb-4">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Training ROI</div>
+                            <div class="h5 mb-0 font-weight-bold text-gray-800">{{ total_revenue|round(2) or 0 }} kr</div>
+                            <div class="text-xs text-warning">
+                                <i class="fas fa-chart-line"></i> {{ conversion_rate or 0 }}% Conversion
+                                <span class="text-muted">| {{ total_chatbot_queries or 0 }} Interactions</span>
+                            </div>
+                        </div>
+                        <div class="col-auto">
+                            <i class="fas fa-dollar-sign fa-2x text-gray-300"></i>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Company Orders Section -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-shopping-cart me-2"></i>Company Training Orders
+                    </h6>
+                    <div class="d-flex gap-3">
+                        <span class="text-muted small">Pending: <strong>{{ pending_orders_count or 0 }}</strong></span>
+                        <span class="text-muted small">Completed: <strong>{{ completed_orders_count or 0 }}</strong></span>
+                        <span class="text-muted small">Revenue: <strong>{{ total_revenue|round(2) or 0 }} kr</strong></span>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if recent_orders %}
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="ordersTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Order ID</th>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th>Course</th>
+                                    <th>Price</th>
+                                    <th>Status</th>
+                                    <th>Progress</th>
+                                    <th>Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for order in recent_orders %}
+                                <tr>
+                                    <td>
+                                        <div class="font-monospace small">{{ order.order_id_short }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-circle me-3">
+                                                {{ order.username[0].upper() if order.username else 'U' }}
+                                            </div>
+                                            <div>
+                                                <div class="font-weight-bold">{{ order.username }}</div>
+                                                <div class="text-muted small">{{ order.user_email }}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-department">{{ order.department }}</span>
+                                        {% if order.job_title and order.job_title != 'N/A' %}
+                                        <div class="text-muted small">{{ order.job_title }}</div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="font-weight-medium">{{ order.product_title }}</div>
+                                        {% if order.variant_location %}
+                                        <div class="text-muted small">
+                                            <i class="fas fa-map-marker-alt"></i> {{ order.variant_location }}
+                                            {% if order.variant_date %}
+                                            • {{ order.variant_date }}
+                                            {% endif %}
+                                        </div>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="font-weight-bold">{{ order.price }} kr</div>
+                                    </td>
+                                    <td>
+                                        {% if order.status == 'completed' %}
+                                            <span class="badge bg-success">Completed</span>
+                                        {% elif order.status == 'pending' %}
+                                            <span class="badge bg-warning">Pending</span>
+                                        {% elif order.status == 'processing' %}
+                                            <span class="badge bg-info">Processing</span>
+                                        {% else %}
+                                            <span class="badge bg-secondary">{{ order.status|title }}</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if order.completion_status == 'completed' %}
+                                        <span class="badge bg-success">
+                                            <i class="fas fa-check"></i> Completed
+                                        </span>
+                                        {% elif order.completion_status == 'in_progress' %}
+                                        <span class="badge bg-info">
+                                            <i class="fas fa-play"></i> In Progress
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-light text-dark">
+                                            <i class="fas fa-clock"></i> Not Started
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="small">{{ order.created_at }}</div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="viewOrderDetails('{{ order.order_id }}')" data-bs-toggle="tooltip" title="View Details">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            {% if session.company_role in ['company_admin', 'hr_manager'] %}
+                                            <div class="dropdown">
+                                                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
+                                                    <i class="fas fa-cog"></i>
+                                                </button>
+                                                <ul class="dropdown-menu">
+                                                    <li><a class="dropdown-item text-success" href="#" onclick="updateOrderStatus('{{ order.order_id }}', 'completed')">
+                                                        <i class="fas fa-check"></i> Mark Completed
+                                                    </a></li>
+                                                    <li><a class="dropdown-item text-info" href="#" onclick="updateOrderStatus('{{ order.order_id }}', 'processing')">
+                                                        <i class="fas fa-cog"></i> Mark Processing
+                                                    </a></li>
+                                                    <li><a class="dropdown-item text-danger" href="#" onclick="updateOrderStatus('{{ order.order_id }}', 'cancelled')">
+                                                        <i class="fas fa-times"></i> Cancel Order
+                                                    </a></li>
+                                                </ul>
+                                            </div>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-shopping-cart fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">No training orders yet.</p>
+                        <p class="text-muted small">Employee training orders will appear here when they start enrolling in courses.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Analytics Row -->
+    <div class="row">
+        <!-- Employee Performance Analytics -->
+        <div class="col-xl-8 col-lg-7">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-star me-2"></i>Employee Performance Analytics
+                    </h6>
+                    <div class="dropdown no-arrow">
+                        <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-v fa-sm fa-fw text-gray-400"></i>
+                        </a>
+                        <div class="dropdown-menu dropdown-menu-right shadow">
+                            <a class="dropdown-item" href="#" onclick="filterTopPerformers('all')">All Employees</a>
+                            <a class="dropdown-item" href="#" onclick="filterTopPerformers('month')">This Month</a>
+                            <a class="dropdown-item" href="#" onclick="filterTopPerformers('quarter')">This Quarter</a>
+                        </div>
+                    </div>
+                </div>
+                <div class="card-body">
+                    {% if top_performers %}
+                    <div class="table-responsive">
+                        <table class="table table-hover" id="performanceTable">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Employee</th>
+                                    <th>Department</th>
+                                    <th>Courses</th>
+                                    <th>AI Interactions</th>
+                                    <th>Progress</th>
+                                    <th>Performance Score</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for employee in top_performers %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <div class="avatar-circle me-3">
+                                                {{ employee.username[0].upper() }}
+                                            </div>
+                                            <div>
+                                                <div class="font-weight-bold">{{ employee.username }}</div>
+                                                <div class="text-muted small">{{ employee.job_title or 'Employee' }}</div>
+                                            </div>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <span class="badge badge-department">{{ employee.department or 'General' }}</span>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center">
+                                            <span class="badge bg-success me-2">{{ employee.courses_completed or 0 }}</span>
+                                            <small class="text-muted">completed</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="text-center">
+                                            <div class="font-weight-bold">{{ employee.total_chatbot_queries or 0 }}</div>
+                                            <small class="text-muted">queries</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="progress progress-sm">
+                                            <div class="progress-bar bg-gradient-success" 
+                                                 style="width: {{ employee.avg_progress or 0 }}%"
+                                                 data-bs-toggle="tooltip" 
+                                                 title="{{ "%.1f"|format(employee.avg_progress or 0) }}% Complete">
+                                            </div>
+                                        </div>
+                                        <small class="text-muted">{{ "%.1f"|format(employee.avg_progress or 0) }}%</small>
+                                    </td>
+                                    <td>
+                                        {% set score = ((employee.avg_progress or 0) + (employee.courses_completed or 0) * 10) / 2 %}
+                                        <div class="text-center">
+                                            {% if score >= 80 %}
+                                                <span class="badge bg-success">{{ "%.0f"|format(score) }}</span>
+                                            {% elif score >= 60 %}
+                                                <span class="badge bg-warning">{{ "%.0f"|format(score) }}</span>
+                                            {% else %}
+                                                <span class="badge bg-danger">{{ "%.0f"|format(score) }}</span>
+                                            {% endif %}
+                                        </div>
+                                    </td>
+                                    <td>
+                                        <div class="btn-group btn-group-sm">
+                                            <button class="btn btn-outline-primary btn-sm" onclick="viewEmployeeDetail('{{ employee.username }}')">
+                                                <i class="fas fa-eye"></i>
+                                            </button>
+                                            <button class="btn btn-outline-success btn-sm" onclick="assignCourse('{{ employee.username }}')">
+                                                <i class="fas fa-plus"></i>
+                                            </button>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-users fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">No employee performance data available yet.</p>
+                        <button class="btn btn-primary" onclick="refreshData()">Refresh Data</button>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Department & Activity Sidebar -->
+        <div class="col-xl-4 col-lg-5">
+            <!-- Department Performance -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-sitemap me-2"></i>Department Performance
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if department_performance %}
+                        {% for dept in department_performance %}
+                        <div class="mb-4">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div>
+                                    <span class="font-weight-bold">{{ dept.department or 'Unknown' }}</span>
+                                    <small class="text-muted d-block">{{ dept.employee_count or 0 }} employees</small>
+                                </div>
+                                <div class="text-right">
+                                    <span class="font-weight-bold text-success">{{ "%.1f"|format(dept.completion_rate or 0) }}%</span>
+                                </div>
+                            </div>
+                            <div class="progress progress-sm mb-2">
+                                {% set rate = dept.completion_rate or 0 %}
+                                <div class="progress-bar {% if rate >= 90 %}bg-success{% elif rate >= 70 %}bg-info{% elif rate >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
+                                     style="width: {{ rate }}%"></div>
+                            </div>
+                            <div class="d-flex justify-content-between text-xs text-muted">
+                                <span>Completion Rate</span>
+                                <span>Target: 85%</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    {% else %}
+                    <p class="text-muted text-center">No department data available.</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Recent Activity Feed -->
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-bell me-2"></i>Recent Activity
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if recent_alerts %}
+                        <div class="activity-feed">
+                            {% for alert in recent_alerts[:8] %}
+                            <div class="activity-item d-flex align-items-start mb-3">
+                                <div class="activity-icon me-3">
+                                    {% if alert.alert_level == 'success' %}
+                                        <div class="icon-circle bg-success">
+                                            <i class="fas fa-check text-white"></i>
+                                        </div>
+                                    {% elif alert.alert_level == 'warning' %}
+                                        <div class="icon-circle bg-warning">
+                                            <i class="fas fa-exclamation text-white"></i>
+                                        </div>
+                                    {% else %}
+                                        <div class="icon-circle bg-info">
+                                            <i class="fas fa-info text-white"></i>
+                                        </div>
+                                    {% endif %}
+                                </div>
+                                <div class="activity-content">
+                                    <div class="activity-text">{{ alert.message }}</div>
+                                    <div class="activity-time text-muted small">
+                                        {{ alert.alert_time.strftime('%Y-%m-%d %H:%M') if alert.alert_time else 'Just now' }}
+                                    </div>
+                                </div>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="fas fa-bell-slash fa-2x text-gray-300 mb-2"></i>
+                        <p class="text-muted small">No recent activity to display.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Learning Paths & Analytics -->
+    {% if learning_paths_progress %}
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-route me-2"></i>Learning Paths & Development Programs
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        {% for path in learning_paths_progress %}
+                        <div class="col-xl-4 col-md-6 mb-4">
+                            <div class="card border-left-primary h-100">
+                                <div class="card-body">
+                                    <div class="d-flex justify-content-between align-items-start mb-3">
+                                        <div>
+                                            <h6 class="card-title font-weight-bold">{{ path.path_name }}</h6>
+                                            <span class="badge badge-category">{{ path.path_category }}</span>
+                                        </div>
+                                        <div class="dropdown">
+                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
+                                                <i class="fas fa-cog"></i>
+                                            </button>
+                                            <div class="dropdown-menu">
+                                                <a class="dropdown-item" href="#" onclick="editLearningPath('{{ path.path_name }}')">
+                                                    <i class="fas fa-edit me-2"></i>Edit Path
+                                                </a>
+                                                <a class="dropdown-item" href="#" onclick="viewPathAnalytics('{{ path.path_name }}')">
+                                                    <i class="fas fa-chart-bar me-2"></i>View Analytics
+                                                </a>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="progress mb-3" style="height: 10px;">
+                                        <div class="progress-bar bg-gradient-primary" 
+                                             style="width: {{ path.avg_progress or 0 }}%"
+                                             data-bs-toggle="tooltip" 
+                                             title="Average Progress: {{ "%.1f"|format(path.avg_progress or 0) }}%">
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="row text-center">
+                                        <div class="col-6">
+                                            <div class="font-weight-bold text-primary">{{ path.enrolled_employees or 0 }}</div>
+                                            <small class="text-muted">Enrolled</small>
+                                        </div>
+                                        <div class="col-6">
+                                            <div class="font-weight-bold text-success">{{ path.completed_employees or 0 }}</div>
+                                            <small class="text-muted">Completed</small>
+                                        </div>
+                                    </div>
+                                    
+                                    <div class="mt-3">
+                                        <button class="btn btn-primary btn-sm btn-block" onclick="manageLearningPath('{{ path.path_name }}')">
+                                            <i class="fas fa-users me-1"></i>Manage Enrollments
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Quick Actions Panel -->
+    <div class="row">
+        <div class="col-12">
+            <div class="card shadow mb-4">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-bolt me-2"></i>Quick Actions
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('hr_dashboard.employee_progress') }}" class="btn btn-outline-primary btn-block">
+                                <i class="fas fa-users fa-2x mb-2"></i>
+                                <div>View Employees</div>
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('hr_dashboard.learning_analytics') }}" class="btn btn-outline-success btn-block">
+                                <i class="fas fa-chart-bar fa-2x mb-2"></i>
+                                <div>Learning Analytics</div>
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('hr_dashboard.reports') }}" class="btn btn-outline-info btn-block">
+                                <i class="fas fa-file-download fa-2x mb-2"></i>
+                                <div>Export Reports</div>
+                            </a>
+                        </div>
+                        <div class="col-md-3 mb-3">
+                            <a href="{{ url_for('hr_dashboard.notifications') }}" class="btn btn-outline-warning btn-block">
+                                <i class="fas fa-bell fa-2x mb-2"></i>
+                                <div>Notifications</div>
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Employee Detail Modal -->
+<div class="modal fade" id="employeeDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Employee Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="employeeDetailContent">
+                <!-- Employee details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Order Detail Modal -->
+<div class="modal fade" id="orderDetailModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Order Details</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body" id="orderDetailContent">
+                <!-- Order details will be loaded here -->
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+/* Custom HR Dashboard Styles */
+.border-left-primary { border-left: 0.25rem solid #4e73df !important; }
+.border-left-success { border-left: 0.25rem solid #1cc88a !important; }
+.border-left-info { border-left: 0.25rem solid #36b9cc !important; }
+.border-left-warning { border-left: 0.25rem solid #f6c23e !important; }
+
+.avatar-circle {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    background: linear-gradient(45deg, #4e73df, #224abe);
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: bold;
+    font-size: 16px;
+}
+
+.badge-department {
+    background: linear-gradient(45deg, #36b9cc, #258391);
+    color: white;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+}
+
+.badge-category {
+    background: linear-gradient(45deg, #f6c23e, #dda20a);
+    color: white;
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    font-size: 0.75rem;
+}
+
+.progress-sm {
+    height: 0.5rem;
+}
+
+.bg-gradient-primary {
+    background: linear-gradient(45deg, #4e73df, #224abe);
+}
+
+.bg-gradient-success {
+    background: linear-gradient(45deg, #1cc88a, #13855c);
+}
+
+.icon-circle {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.activity-feed {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.activity-item {
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #e3e6f0;
+}
+
+.activity-item:last-child {
+    border-bottom: none;
+    padding-bottom: 0;
+}
+
+.btn-block {
+    display: block;
+    width: 100%;
+    text-align: center;
+    padding: 1rem;
+    border-radius: 0.5rem;
+    transition: all 0.3s ease;
+    text-decoration: none;
+}
+
+.btn-block:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+    text-decoration: none;
+}
+
+.card {
+    border: none;
+    border-radius: 0.5rem;
+}
+
+.card-header {
+    background: linear-gradient(45deg, #f8f9fc, #eaecf4);
+    border-bottom: 1px solid #e3e6f0;
+}
+
+.table-hover tbody tr:hover {
+    background-color: rgba(78, 115, 223, 0.05);
+}
+
+/* Status badges */
+.badge.bg-success { background-color: #1cc88a !important; }
+.badge.bg-warning { background-color: #f6c23e !important; }
+.badge.bg-info { background-color: #36b9cc !important; }
+.badge.bg-danger { background-color: #e74a3b !important; }
+.badge.bg-secondary { background-color: #858796 !important; }
+.badge.bg-light { background-color: #f8f9fc !important; color: #5a5c69 !important; }
+
+/* Alert styling for notifications */
+.alert {
+    border-radius: 0.5rem;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+/* Responsive adjustments */
+@media (max-width: 768px) {
+    .btn-group-sm .btn {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    .avatar-circle {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+    
+    .table-responsive {
+        font-size: 0.875rem;
+    }
+}
+
+/* Animation for loading states */
+.loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.fade-in {
+    animation: fadeIn 0.5s ease-in;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(10px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+/* Custom scrollbar for activity feed */
+.activity-feed::-webkit-scrollbar {
+    width: 6px;
+}
+
+.activity-feed::-webkit-scrollbar-track {
+    background: #f1f1f1;
+}
+
+.activity-feed::-webkit-scrollbar-thumb {
+    background: #c1c1c1;
+    border-radius: 3px;
+}
+
+.activity-feed::-webkit-scrollbar-thumb:hover {
+    background: #a8a8a8;
+}
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+// HR Dashboard JavaScript Functions
+function exportReport() {
+    window.location.href = "{{ url_for('hr_dashboard.export_report', report_type='employee_progress') }}";
+}
+
+function filterTopPerformers(period) {
+    console.log('Filtering by period:', period);
+    // Add filtering logic here
+}
+
+function viewEmployeeDetail(username) {
+    $('#employeeDetailModal').modal('show');
+    $('#employeeDetailContent').html(`
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading employee details for ${username}...</p>
+        </div>
+    `);
+    
+    // In a real implementation, you would fetch actual employee data
+    setTimeout(() => {
+        $('#employeeDetailContent').html(`
+            <div class="row">
+                <div class="col-md-4 text-center">
+                    <div class="avatar-circle mx-auto mb-3" style="width: 80px; height: 80px; font-size: 24px;">
+                        ${username[0].toUpperCase()}
+                    </div>
+                    <h5>${username}</h5>
+                    <p class="text-muted">Employee Details</p>
+                </div>
+                <div class="col-md-8">
+                    <h6>Performance Overview</h6>
+                    <div class="row">
+                        <div class="col-6">
+                            <div class="border p-3 rounded text-center">
+                                <h4 class="text-primary">{{ top_performers[0].courses_completed if top_performers else 0 }}</h4>
+                                <small>Courses Completed</small>
+                            </div>
+                        </div>
+                        <div class="col-6">
+                            <div class="border p-3 rounded text-center">
+                                <h4 class="text-success">{{ "%.1f"|format(top_performers[0].avg_progress if top_performers else 0) }}%</h4>
+                                <small>Average Progress</small>
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <h6>Recent Activity</h6>
+                    <ul class="list-unstyled">
+                        <li class="mb-2"><i class="fas fa-check text-success me-2"></i>Completed recent training module</li>
+                        <li class="mb-2"><i class="fas fa-play text-info me-2"></i>Started new learning path</li>
+                        <li class="mb-2"><i class="fas fa-comments text-primary me-2"></i>Active in AI coaching sessions</li>
+                    </ul>
+                </div>
+            </div>
+        `);
+    }, 1000);
+}
+
+function viewOrderDetails(orderId) {
+    $('#orderDetailModal').modal('show');
+    $('#orderDetailContent').html(`
+        <div class="text-center py-4">
+            <div class="spinner-border text-primary" role="status">
+                <span class="visually-hidden">Loading...</span>
+            </div>
+            <p class="mt-2">Loading order details...</p>
+        </div>
+    `);
+    
+    // Load order details via AJAX
+    fetch(`{{ url_for('hr_dashboard.company_order_details', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId))
+        .then(response => response.text())
+        .then(html => {
+            $('#orderDetailContent').html(html);
+        })
+        .catch(error => {
+            $('#orderDetailContent').html(`
+                <div class="alert alert-danger">
+                    <i class="fas fa-exclamation-triangle me-2"></i>
+                    Error loading order details. Please try again.
+                </div>
+            `);
+        });
+}
+
+function updateOrderStatus(orderId, newStatus) {
+    if (confirm(`Are you sure you want to mark this order as ${newStatus}?`)) {
+        const button = event.target.closest('button') || event.target;
+        const originalHTML = button.innerHTML;
+        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+        button.disabled = true;
+
+        fetch(`{{ url_for('hr_dashboard.update_company_order_status', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId), {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: JSON.stringify({
+                status: newStatus
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            button.innerHTML = originalHTML;
+            button.disabled = false;
+            
+            if (data.success) {
+                showAlert('success', data.message);
+                setTimeout(() => location.reload(), 1500);
+            } else {
+                showAlert('danger', 'Error: ' + data.message);
+            }
+        })
+        .catch(error => {
+            button.innerHTML = originalHTML;
+            button.disabled = false;
+            console.error('Error:', error);
+            showAlert('danger', 'Error updating order status');
+        });
+    }
+}
+
+function showAlert(type, message) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+    alertDiv.innerHTML = `
+        <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    document.body.appendChild(alertDiv);
+    
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+function assignCourse(username) {
+    alert(`Assigning new course to ${username}...`);
+}
+
+function refreshData() {
+    location.reload();
+}
+
+function editLearningPath(pathName) {
+    alert(`Editing learning path: ${pathName}`);
+}
+
+function viewPathAnalytics(pathName) {
+    alert(`Viewing analytics for: ${pathName}`);
+}
+
+function manageLearningPath(pathName) {
+    alert(`Managing enrollments for: ${pathName}`);
+}
+
+// Initialize tooltips and other Bootstrap components
+document.addEventListener('DOMContentLoaded', function() {
+    // Enable Bootstrap tooltips
+    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+        return new bootstrap.Tooltip(tooltipTriggerEl);
+    });
+
+    // Enable Bootstrap dropdowns
+    var dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
+    var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+        return new bootstrap.Dropdown(dropdownToggleEl);
+    });
+
+    // Auto-refresh dashboard every 5 minutes
+    setInterval(function() {
+        console.log('Auto-refreshing HR dashboard data...');
+        // You can add automatic data refresh logic here
+    }, 300000);
+});
+
+// Add loading states to buttons
+document.querySelectorAll('button[onclick]').forEach(button => {
+    button.addEventListener('click', function(e) {
+        // Add a subtle loading state
+        this.style.opacity = '0.8';
+        setTimeout(() => {
+            this.style.opacity = '1';
+        }, 500);
+    });
+});
+</script>
+{% endblock %}

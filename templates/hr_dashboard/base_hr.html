@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{% block title %}HR Dashboard{% endblock %}</title>
+    
+    <!-- Bootstrap 5 CSS -->
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    
+    <!-- Font Awesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    {% block extra_css %}{% endblock %}
+    
+    <style>
+        /* Reset and base styles for HR Dashboard */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: #f8f9fc;
+            color: #5a5c69;
+            line-height: 1.6;
+        }
+        
+        /* Override any conflicting styles */
+        .container-fluid {
+            padding: 0;
+        }
+        
+        /* Ensure proper spacing and layout */
+        .main-wrapper {
+            min-height: 100vh;
+            background: #f8f9fc;
+        }
+        
+        /* Navigation styles */
+        .navbar-brand {
+            font-weight: 700;
+            color: #4e73df !important;
+        }
+        
+        .navbar {
+            background: white !important;
+            box-shadow: 0 0.15rem 1.75rem 0 rgba(58, 59, 69, 0.15);
+            border-bottom: 1px solid #e3e6f0;
+        }
+        
+        /* Content area */
+        .content-wrapper {
+            padding: 2rem 0;
+            min-height: calc(100vh - 120px);
+        }
+        
+        /* Footer */
+        .footer {
+            background: white;
+            border-top: 1px solid #e3e6f0;
+            padding: 1rem 0;
+            margin-top: auto;
+            text-align: center;
+            color: #858796;
+            font-size: 0.875rem;
+        }
+        
+        /* Utility classes */
+        .text-primary {
+            color: #4e73df !important;
+        }
+        
+        .bg-primary {
+            background-color: #4e73df !important;
+        }
+        
+        .btn-primary {
+            background-color: #4e73df;
+            border-color: #4e73df;
+        }
+        
+        .btn-primary:hover {
+            background-color: #224abe;
+            border-color: #224abe;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-wrapper">
+        <!-- Navigation -->
+        <nav class="navbar navbar-expand-lg navbar-light">
+            <div class="container-fluid px-4">
+                <a class="navbar-brand" href="/">
+                    <i class="fas fa-chart-line me-2"></i>
+                    AiLead HR
+                </a>
+                
+                <div class="navbar-nav ms-auto">
+                    {% if session.get('user') %}
+                        <div class="nav-item dropdown">
+                            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">
+                                <i class="fas fa-user-circle me-1"></i>
+                                {{ session.get('user') }}
+                            </a>
+                            <ul class="dropdown-menu">
+                                <li><a class="dropdown-item" href="/profile"><i class="fas fa-user me-2"></i>Profile</a></li>
+                                <li><a class="dropdown-item" href="/dashboard"><i class="fas fa-home me-2"></i>Main Dashboard</a></li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li><a class="dropdown-item" href="/logout"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+                            </ul>
+                        </div>
+                    {% else %}
+                        <a class="nav-link" href="/login">
+                            <i class="fas fa-sign-in-alt me-1"></i>Login
+                        </a>
+                    {% endif %}
+                </div>
+            </div>
+        </nav>
+        
+        <!-- Main Content -->
+        <div class="content-wrapper">
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                    <div class="container-fluid px-4 mb-4">
+                        {% for category, message in messages %}
+                            <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show" role="alert">
+                                {{ message }}
+                                <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                            </div>
+                        {% endfor %}
+                    </div>
+                {% endif %}
+            {% endwith %}
+            
+            {% block content %}{% endblock %}
+        </div>
+        
+        <!-- Footer -->
+        <footer class="footer">
+            <div class="container-fluid px-4">
+                <div class="row">
+                    <div class="col-12">
+                        <p class="mb-0">&copy; 2025 AiLead HR Dashboard. All rights reserved.</p>
+                    </div>
+                </div>
+            </div>
+        </footer>
+    </div>
+    
+    <!-- Bootstrap 5 JS -->
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    
+    {% block extra_js %}{% endblock %}
+</body>
+</html>

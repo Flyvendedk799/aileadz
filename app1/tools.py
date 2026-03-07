@@ -293,7 +293,50 @@ OPENAI_TOOLS = [
                 "required": []
             }
         }
-    }
+    },
+    # 4.4: Order creation tool
+    {
+        "type": "function",
+        "function": {
+            "name": "create_course_order",
+            "description": (
+                "Opret en kursusbestilling for brugeren. Brug dette når brugeren eksplicit vil tilmelde sig / bestille et kursus. "
+                "Du SKAL have følgende inden du kalder dette: kursets handle (fra get_course_details), "
+                "brugerens fulde navn, email og telefonnummer. Spørg brugeren om de manglende oplysninger først. "
+                "For logget-ind brugere kan du hente info fra get_user_profile."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_handle": {
+                        "type": "string",
+                        "description": "Kursets handle (f.eks. 'prince2-grundkursus'). Fås fra get_course_details."
+                    },
+                    "user_name": {
+                        "type": "string",
+                        "description": "Brugerens fulde navn."
+                    },
+                    "user_email": {
+                        "type": "string",
+                        "description": "Brugerens email-adresse."
+                    },
+                    "user_phone": {
+                        "type": "string",
+                        "description": "Brugerens telefonnummer."
+                    },
+                    "variant_date": {
+                        "type": "string",
+                        "description": "Valgt startdato (f.eks. '2026-04-15'). Valgfrit."
+                    },
+                    "variant_location": {
+                        "type": "string",
+                        "description": "Valgt lokation (f.eks. 'København'). Valgfrit."
+                    }
+                },
+                "required": ["product_handle", "user_name", "user_email", "user_phone"]
+            }
+        }
+    },
 ]
 
 
@@ -1223,6 +1266,73 @@ def _execute_request_user_input(args, username):
     })
 
 
+def _execute_create_order(args):
+    """Create a course order from chatbot conversation."""
+    from flask import session as flask_session
+    from app1.rag import load_augmented_products
+    from app1.order_handler import order_handler, store_user_info_for_order
+
+    handle = args.get("product_handle", "")
+    user_name = args.get("user_name", "").strip()
+    user_email = args.get("user_email", "").strip()
+    user_phone = args.get("user_phone", "").strip()
+
+    if not handle:
+        return json.dumps({"status": "error", "message": "product_handle mangler."})
+    if not user_name or not user_email:
+        return json.dumps({"status": "error", "message": "Navn og email er påkrævet."})
+
+    # Look up product
+    products = load_augmented_products()
+    product = None
+    for p in products:
+        if p.get("handle") == handle:
+            product = p
+            break
+    if not product:
+        return json.dumps({"status": "error", "message": f"Kursus '{handle}' ikke fundet."})
+
+    # Build product_data
+    variants = product.get("variants", [])
+    price_str = variants[0].get("price", "0") if variants else "0"
+    product_data = {
+        "handle": handle,
+        "title": product.get("title", ""),
+        "price": price_str,
+        "vendor": product.get("vendor", ""),
+        "product_type": product.get("product_type", ""),
+    }
+
+    # Store user info in session
+    user_info = {"name": user_name, "email": user_email, "phone": user_phone}
+    store_user_info_for_order(user_info)
+
+    # Variant selection
+    variant_selection = {}
+    if args.get("variant_date"):
+        variant_selection["date"] = args["variant_date"]
+    if args.get("variant_location"):
+        variant_selection["location"] = args["variant_location"]
+
+    # Create order
+    from app1.order_handler import create_order_from_chatbot
+    result = create_order_from_chatbot(product_data, variant_selection or None)
+
+    if result.get("success"):
+        return json.dumps({
+            "status": "order_created",
+            "order_id": result.get("order_id", ""),
+            "message": result.get("message", "Ordre oprettet!"),
+        })
+    else:
+        return json.dumps({
+            "status": "error",
+            "action": result.get("action", ""),
+            "message": result.get("message", "Ordre kunne ikke oprettes."),
+            "errors": result.get("errors", []),
+        })
+
+
 def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
@@ -1254,6 +1364,8 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_suggest_learning_path(args, username)
         elif function_name == "request_user_input":
             return _execute_request_user_input(args, username)
+        elif function_name == "create_course_order":
+            return _execute_create_order(args)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

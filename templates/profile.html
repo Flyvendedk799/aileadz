@@ -138,6 +138,12 @@
   .cv-section-body { padding: 0 1.5rem 1.5rem; }
 
   /* ── Skills ── */
+  .skills-level-group { margin-bottom: 16px; }
+  .skills-level-label {
+    font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+    margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+  }
+  .skills-level-label .level-bar { flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
   .skills-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; }
   .skill-pill {
     display: inline-flex; align-items: center; gap: 8px;
@@ -145,15 +151,35 @@
     background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
     font-size: 0.82rem; transition: var(--transition);
     animation: growIn 0.3s ease;
+    position: relative;
   }
-  .skill-pill:hover { background: rgba(106,17,203,0.12); border-color: rgba(106,17,203,0.3); transform: translateY(-1px); }
+  .skill-pill:hover { background: rgba(106,17,203,0.12); border-color: rgba(106,17,203,0.3); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
+  .skill-pill.level-ekspert { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
+  .skill-pill.level-avanceret { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.06); }
+  .skill-pill.level-mellem { border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.06); }
+  .skill-pill.level-begynder { border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.06); }
   .skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .skill-level { font-size: 0.68rem; color: var(--muted-text); text-transform: capitalize; }
   .skill-remove {
     background: none; border: none; color: var(--muted-text); cursor: pointer;
     font-size: 14px; padding: 0; margin-left: 2px; transition: var(--transition);
+    opacity: 0;
   }
+  .skill-pill:hover .skill-remove { opacity: 1; }
   .skill-remove:hover { color: var(--danger-color); }
+
+  /* ── Profile Stats Banner ── */
+  .profile-stats {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 12px; margin-bottom: 1.5rem;
+  }
+  .stat-card {
+    background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
+    padding: 16px; text-align: center; transition: var(--transition);
+  }
+  .stat-card:hover { border-color: rgba(106,17,203,0.3); transform: translateY(-2px); }
+  .stat-value { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+  .stat-label { font-size: 0.7rem; color: var(--muted-text); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
 
   /* ── Timeline (Experience & Education) ── */
   .timeline { position: relative; padding-left: 24px; }
@@ -190,10 +216,16 @@
   }
   .timeline-period.active { color: var(--success-color); background: rgba(74,222,128,0.08); }
   .timeline-desc { font-size: 0.82rem; color: var(--muted-text); margin-top: 8px; line-height: 1.5; }
+  .timeline-duration {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.68rem; color: var(--secondary-color); margin-left: 8px;
+    padding: 2px 6px; background: rgba(37,117,252,0.08); border-radius: 4px;
+  }
   .timeline-actions {
     display: flex; gap: 6px; margin-top: 8px; opacity: 0; transition: opacity 0.2s;
   }
   .timeline-content:hover .timeline-actions { opacity: 1; }
+  @media (max-width: 768px) { .timeline-actions { opacity: 1; } .skill-remove { opacity: 1; } }
 
   /* ── Inline Edit Mode ── */
   .inline-edit-form {
@@ -377,8 +409,17 @@
   .empty-state {
     text-align: center; padding: 2rem; color: var(--muted-text);
     font-size: 0.85rem; line-height: 1.6;
+    border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px;
+    background: rgba(255,255,255,0.01);
   }
   .empty-state svg { opacity: 0.4; margin-bottom: 0.5rem; }
+  .empty-state-cta {
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
+    padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
+    background: rgba(106,17,203,0.12); color: var(--secondary-color);
+    border: 1px solid rgba(106,17,203,0.2); cursor: pointer; transition: var(--transition);
+  }
+  .empty-state-cta:hover { background: rgba(106,17,203,0.2); transform: translateY(-1px); }
 
   @media (max-width: 768px) {
     .profile-header { flex-direction: column; text-align: center; }
@@ -436,6 +477,9 @@
     </div>
     <div class="completeness-tips" id="completeness-tips"></div>
   </div>
+
+  <!-- Stats Banner -->
+  <div class="profile-stats" id="profile-stats" style="display:none;"></div>
 
   <!-- Profile Summary -->
   <div class="cv-section" id="section-summary">
@@ -753,12 +797,42 @@
     // Header headline
     document.getElementById('header-headline').textContent = p.headline || 'Tilføj en overskrift til din profil';
 
+    renderStats(p);
     renderSummary(p);
     renderSkills(p.skills || []);
     renderExperience(p.experience || []);
     renderEducation(p.education || []);
     renderCourses(p.completed_courses || []);
     updateCompleteness(p);
+  }
+
+  // ── Stats Banner ──
+  function renderStats(p) {
+    const el = document.getElementById('profile-stats');
+    const skills = p.skills || [];
+    const exp = p.experience || [];
+    const edu = p.education || [];
+    const courses = p.completed_courses || [];
+
+    // Calculate total years of experience
+    const now = new Date().getFullYear();
+    let totalYrs = 0;
+    for (const e of exp) {
+      const start = e.start_year || now;
+      const end = e.is_current ? now : (e.end_year || start);
+      totalYrs += Math.max(0, end - start);
+    }
+
+    const hasData = skills.length || exp.length || edu.length || courses.length;
+    if (!hasData) { el.style.display = 'none'; return; }
+
+    el.style.display = '';
+    el.innerHTML = `
+      <div class="stat-card"><div class="stat-value">${skills.length}</div><div class="stat-label">Kompetencer</div></div>
+      <div class="stat-card"><div class="stat-value">${totalYrs}+</div><div class="stat-label">Års erfaring</div></div>
+      <div class="stat-card"><div class="stat-value">${exp.length}</div><div class="stat-label">Stillinger</div></div>
+      <div class="stat-card"><div class="stat-value">${courses.length}</div><div class="stat-label">Kurser</div></div>
+    `;
   }
 
   // ── Summary ──
@@ -783,34 +857,79 @@
     document.getElementById('skills-count').textContent = skills.length;
     const el = document.getElementById('skills-list');
     if (!skills.length) {
-      el.innerHTML = '<div class="empty-state" style="width:100%;padding:1rem;"><p>Ingen kompetencer endnu. Tilføj dem her eller bed AI-chatten om at tilføje dem.</p></div>';
+      el.innerHTML = `<div class="empty-state" style="width:100%;padding:1.5rem;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <p>Ingen kompetencer endnu</p>
+        <button class="empty-state-cta" onclick="toggleAddForm('skills')">+ Tilføj kompetence</button>
+      </div>`;
       return;
     }
-    el.innerHTML = skills.map(s => `<div class="skill-pill">
+    // Group by level for visual hierarchy (ekspert first)
+    const levelOrder = ['ekspert', 'avanceret', 'mellem', 'begynder'];
+    const grouped = {};
+    for (const s of skills) {
+      const lvl = s.level || 'mellem';
+      (grouped[lvl] = grouped[lvl] || []).push(s);
+    }
+    // If all same level, render flat
+    const usedLevels = levelOrder.filter(l => grouped[l] && grouped[l].length > 0);
+    if (usedLevels.length <= 1) {
+      el.innerHTML = renderSkillPills(skills);
+      return;
+    }
+    el.innerHTML = usedLevels.map(lvl => {
+      const items = grouped[lvl];
+      return `<div class="skills-level-group">
+        <div class="skills-level-label" style="color:${LEVEL_COLORS[lvl]||'#888'}">
+          ${LEVEL_LABELS[lvl]||lvl} (${items.length}) <span class="level-bar"></span>
+        </div>
+        <div class="skills-grid">${renderSkillPills(items)}</div>
+      </div>`;
+    }).join('');
+  }
+
+  function renderSkillPills(skills) {
+    return skills.map(s => `<div class="skill-pill level-${s.level||'mellem'}">
       <span class="skill-dot" style="background:${LEVEL_COLORS[s.level]||'#888'}"></span>
       <span>${esc(s.name)}</span>
-      <span class="skill-level">${LEVEL_LABELS[s.level]||s.level}</span>
       <button class="skill-remove" onclick="removeSkill('${esc(s.name).replace(/'/g,"&#39;")}')" title="Fjern">&times;</button>
     </div>`).join('');
   }
 
   // ── Experience Timeline ──
+  function _calcDuration(startYear, endYear, isCurrent) {
+    const now = new Date().getFullYear();
+    const start = startYear || now;
+    const end = isCurrent ? now : (endYear || start);
+    const yrs = Math.max(0, end - start);
+    if (yrs === 0) return '< 1 år';
+    return yrs === 1 ? '1 år' : `${yrs} år`;
+  }
+
   function renderExperience(items) {
     document.getElementById('exp-count').textContent = items.length;
     const el = document.getElementById('experience-list');
     if (!items.length) {
-      el.innerHTML = '<div class="empty-state"><p>Ingen erfaring tilføjet endnu.</p></div>';
+      el.innerHTML = `<div class="empty-state">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        <p>Ingen erfaring tilføjet endnu</p>
+        <button class="empty-state-cta" onclick="toggleAddForm('exp')">+ Tilføj erfaring</button>
+      </div>`;
       return;
     }
     el.innerHTML = items.map(e => {
       const isCurrent = e.is_current;
       const period = `${e.start_year||'?'} – ${isCurrent ? 'nu' : (e.end_year||'?')}`;
+      const duration = (e.start_year) ? _calcDuration(e.start_year, e.end_year, isCurrent) : '';
       return `<div class="timeline-item ${isCurrent?'current':''}" id="exp-item-${e.id}">
         <div class="timeline-dot"></div>
         <div class="timeline-content" id="exp-view-${e.id}">
           <div class="timeline-title">${esc(e.title)}</div>
           ${e.company ? `<div class="timeline-subtitle">${esc(e.company)}</div>` : ''}
-          <div class="timeline-period ${isCurrent?'active':''}">${isCurrent?'<span style="width:6px;height:6px;border-radius:50%;background:#4ade80;"></span>':''} ${period}</div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:4px;margin-top:6px;">
+            <div class="timeline-period ${isCurrent?'active':''}">${isCurrent?'<span style="width:6px;height:6px;border-radius:50%;background:#4ade80;"></span>':''} ${period}</div>
+            ${duration ? `<span class="timeline-duration">${duration}</span>` : ''}
+          </div>
           ${e.description ? `<div class="timeline-desc">${esc(e.description)}</div>` : ''}
           <div class="timeline-actions">
             <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;" onclick="editExperience(${e.id})">Rediger</button>
@@ -866,7 +985,11 @@
     document.getElementById('edu-count').textContent = items.length;
     const el = document.getElementById('education-list');
     if (!items.length) {
-      el.innerHTML = '<div class="empty-state"><p>Ingen uddannelse tilføjet endnu.</p></div>';
+      el.innerHTML = `<div class="empty-state">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg>
+        <p>Ingen uddannelse tilføjet endnu</p>
+        <button class="empty-state-cta" onclick="toggleAddForm('edu')">+ Tilføj uddannelse</button>
+      </div>`;
       return;
     }
     el.innerHTML = items.map(e => `<div class="timeline-item" id="edu-item-${e.id}">
@@ -920,7 +1043,11 @@
     document.getElementById('courses-count').textContent = items.length;
     const el = document.getElementById('courses-list');
     if (!items.length) {
-      el.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><p>Ingen gennemførte kurser endnu. AI-chatten kan tilføje kurser automatisk.</p></div>';
+      el.innerHTML = `<div class="empty-state" style="grid-column:1/-1;">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:0.3;"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+        <p>Ingen gennemførte kurser endnu</p>
+        <button class="empty-state-cta" onclick="toggleAddForm('course')">+ Tilføj kursus</button>
+      </div>`;
       return;
     }
     el.innerHTML = items.map(c => `<div class="course-card">

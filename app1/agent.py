@@ -180,7 +180,10 @@ FORETRUKKEN METODE — request_user_input (samler alt i ét kort):
 HVORNÅR BRUGE HVAD:
 - request_user_input: Når info mangler detaljer (erfaring → spørg om årstal, uddannelse → spørg om institution). Viser kort med forudfyldt + tomme felter.
 - update_user_profile: Til simple opdateringer (mål, præferencer, fjern/ændr). Til ting der ikke behøver ekstra detaljer.
+  Opdatér eksisterende: update_experience (kræver id), update_education (kræver id), update_course (kræver course_title).
+  Hent profil først med get_user_profile for at finde id'er.
 HUSK: Jobtitel/stilling = erfaring. Uddannelse = education. Kompetencer = skills. Certifikat/gennemført kursus = courses (add_course).
+HUSK: Ændr/opdatér erfaring = update_experience. Ændr uddannelse = update_education. Ændr kursus = update_course. Alle kræver id/titel fra get_user_profile.
 
 Regler:
 - Når du bruger request_user_input, sig noget som: "Jeg har lavet et kort hvor du kan tilføje detaljerne — udfyld det herunder."

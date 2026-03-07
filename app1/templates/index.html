@@ -745,6 +745,13 @@
       font-family: inherit; white-space: nowrap; transition: all 0.15s;
     }
     .profile-nejtak-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .profile-chat-btn {
+      background: none; border: 1px solid rgba(168,85,247,0.3); color: var(--purple);
+      font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; white-space: nowrap; transition: all 0.15s; display: inline-flex; align-items: center; gap: 4px;
+    }
+    .profile-chat-btn:hover { background: rgba(168,85,247,0.1); border-color: var(--purple); }
+    .profile-chat-btn svg { width: 12px; height: 12px; }
     .ui-card { flex-wrap: wrap; }
     .ui-card .profile-confirm-body { width: 100%; }
     .ui-card .profile-confirm-actions { margin-top: 10px; width: 100%; justify-content: flex-end; }
@@ -1176,6 +1183,25 @@
       }
     };
 
+    window.answerInChat = function(btn) {
+      const card = btn.closest('.profile-confirm-card');
+      if (!card) return;
+      const msgEl = card.querySelector('.profile-confirm-msg');
+      const contextMsg = msgEl ? msgEl.textContent.replace(/^[?\u2713]\s*/, '').trim() : '';
+      // Collapse card to show it was answered in chat
+      card.style.opacity = '0.6';
+      const actions = card.querySelector('.profile-confirm-actions');
+      if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--purple);">Svarer i chat\u2026</span>';
+      card.querySelectorAll('.ui-field').forEach(inp => { inp.disabled = true; });
+      // Pre-fill chat input with context
+      chatInput.value = contextMsg ? 'Ang. "' + contextMsg.substring(0, 80) + '": ' : '';
+      chatInput.focus();
+      // Place cursor at end
+      chatInput.selectionStart = chatInput.selectionEnd = chatInput.value.length;
+      updateSendBtn();
+      saveChatState();
+    };
+
     // ── Chat core ──
     const chatBox = document.getElementById('chatBox');
     const chatInput = document.getElementById('chatInput');
@@ -1482,6 +1508,7 @@
                   `<div class="profile-confirm-body"><span class="profile-confirm-msg">? ${safeMsg}</span></div>` +
                   `<div class="profile-confirm-actions">` +
                     `<button class="profile-gem-btn" onclick="confirmProfileUpdate(this, ${confirmPayload})">Gem</button>` +
+                    `<button class="profile-chat-btn" onclick="answerInChat(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Svar i chat</button>` +
                     `<button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button>` +
                   `</div>`;
                 botContent.appendChild(card);
@@ -1538,7 +1565,7 @@
                     `<div class="profile-confirm-body" style="flex:1;min-width:0;"><span class="profile-confirm-msg">${safeMsg}</span>` +
                     (prefilledLabels ? `<div style="margin-top:4px;">${prefilledLabels}</div>` : '') +
                     fieldsHtml + choicesHtml + `</div>` +
-                    `<div class="profile-confirm-actions" style="align-self:flex-end;"><button class="profile-gem-btn ui-card-submit">Gem</button><button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button></div>`;
+                    `<div class="profile-confirm-actions" style="align-self:flex-end;"><button class="profile-gem-btn ui-card-submit">Gem</button><button class="profile-chat-btn" onclick="answerInChat(this)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Svar i chat</button><button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button></div>`;
                 }
                 card.innerHTML = cardBody;
                 const submitBtn = card.querySelector('.ui-card-submit');

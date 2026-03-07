@@ -1156,6 +1156,7 @@ def handle_agentic_ask(user_query, session):
             yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
 
             buffered_ui_html = []
+            buffered_profile_events = []
 
             # Build ephemeral messages with all context layers
             ephemeral_messages = list(messages)
@@ -1418,13 +1419,19 @@ def handle_agentic_ask(user_query, session):
                     elif fn == "update_user_profile":
                         tool_status = tool_result_dict.get("status", "")
                         if tool_status == "proposed":
-                            # Send confirmation request to frontend — NOT saved yet
-                            buffered_ui_html.append(None)
-                            yield f"data: {json.dumps({'type': 'profile_confirm_request', 'message': tool_result_dict.get('message', ''), 'section': tool_result_dict.get('section', ''), 'confirm': tool_result_dict.get('confirm', {})})}\n\n"
+                            # Buffer — will be sent AFTER text for natural top-to-bottom flow
+                            buffered_profile_events.append(json.dumps({
+                                'type': 'profile_confirm_request',
+                                'message': tool_result_dict.get('message', ''),
+                                'section': tool_result_dict.get('section', ''),
+                                'confirm': tool_result_dict.get('confirm', {})
+                            }))
                         elif tool_status in ("success", "already_exists"):
-                            # Direct execution (remove/update actions)
-                            buffered_ui_html.append(None)
-                            yield f"data: {json.dumps({'type': 'profile_update', 'message': tool_result_dict.get('message', 'Profil opdateret'), 'section': tool_result_dict.get('section', '')})}\n\n"
+                            buffered_profile_events.append(json.dumps({
+                                'type': 'profile_update',
+                                'message': tool_result_dict.get('message', 'Profil opdateret'),
+                                'section': tool_result_dict.get('section', '')
+                            }))
 
                     elif fn == "compare_courses" and "raw_products" in tool_result_dict:
                         raw_products = tool_result_dict["raw_products"]
@@ -1496,11 +1503,6 @@ def handle_agentic_ask(user_query, session):
 
             _stream_final_response._full_text = ""
 
-            # ── Stream product cards FIRST (before text) for better UX ──
-            for html_chunk in buffered_ui_html:
-                if html_chunk is not None:
-                    yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
-
             # Add reinforcement before final response when we have product cards
             if had_tool_calls and buffered_ui_html:
                 ephemeral_messages.append({
@@ -1510,7 +1512,7 @@ def handle_agentic_ask(user_query, session):
                                "ALDRIG liste kursusnavne, priser, beskrivelser eller detaljer i teksten."
                 })
 
-            # Stream the final text response
+            # Stream the final text response FIRST for natural top-to-bottom flow
             if last_message_is_final:
                 full_text = message.content or ""
                 visible_text = _strip_suggestions_tag(full_text)
@@ -1529,6 +1531,15 @@ def handle_agentic_ask(user_query, session):
                 _log_latency(sid, "llm_stream_response", stream_start)
                 full_text = _stream_final_response._full_text
             messages.append({"role": "assistant", "content": _strip_suggestions_tag(full_text)})
+
+            # ── Stream profile events AFTER text (natural reading order) ──
+            for evt in buffered_profile_events:
+                yield f"data: {evt}\n\n"
+
+            # ── Stream product cards AFTER text + profile events ──
+            for html_chunk in buffered_ui_html:
+                if html_chunk is not None:
+                    yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
 
             # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)

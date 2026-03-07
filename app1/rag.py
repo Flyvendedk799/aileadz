@@ -369,6 +369,11 @@ def load_augmented_products():
         try:
             with open(AUGMENTED_FILE, "r", encoding="utf-8") as f:
                 _augmented_cache = json.load(f)
+            # Normalize tags to list at load time (avoids repeated isinstance checks)
+            for p in _augmented_cache:
+                tags = p.get("tags", [])
+                if isinstance(tags, str):
+                    p["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
             _augmented_mtime = current_mtime
             _build_bm25_index(_augmented_cache)
             print(f"[RAG] Loaded {len(_augmented_cache)} products, BM25 index built ({len(_bm25_index)} terms)")
@@ -391,7 +396,7 @@ def cosine_similarity(v1, v2):
 
 _embedding_cache = {}  # {lowered_query: (embedding, timestamp)}
 _EMBEDDING_CACHE_TTL = 3600  # 1 hour
-_EMBEDDING_CACHE_MAX = 200
+_EMBEDDING_CACHE_MAX = 1000  # Increased from 200 to reduce cache churn
 
 # 5.3: Search result cache — avoids full pipeline for repeated queries
 _search_cache = {}  # {cache_key: (result_dict, timestamp)}

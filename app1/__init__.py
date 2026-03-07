@@ -750,6 +750,8 @@ def adminlog():
                     low_confidence += 1
             if step in ("profile_event", "ui_card"):
                 profile_events += 1
+            if step == "tool_error":
+                errors += 1
 
         s["first_query"] = first_query
         s["tool_calls"] = tool_calls

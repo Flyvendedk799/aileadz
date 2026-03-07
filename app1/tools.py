@@ -1187,5 +1187,7 @@ def execute_tool(tool_call, username=None):
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:
+        import traceback
         print(f"[Tool Error] {function_name}: {e}")
+        print(f"[Tool Traceback] {traceback.format_exc()}")
         return json.dumps({"status": "error", "message": f"Intern fejl i {function_name}: {str(e)}"})

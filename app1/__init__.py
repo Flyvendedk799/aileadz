@@ -17,7 +17,9 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # For production, use a secure and unpredictable key.
 
-@app.template_filter('dkprice')
+app1_bp = Blueprint('app1', __name__, template_folder='templates')
+
+@app1_bp.app_template_filter('dkprice')
 def _dkprice_filter(value):
     """Format a price string with Danish thousands separator (dot)."""
     try:
@@ -27,8 +29,6 @@ def _dkprice_filter(value):
         return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except (ValueError, TypeError):
         return value
-
-app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
 @app1_bp.route('/')
 def index():

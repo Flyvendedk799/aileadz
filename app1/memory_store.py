@@ -64,8 +64,46 @@ def init_db():
 
         CREATE INDEX IF NOT EXISTS idx_debug_session ON debug_logs(session_id);
         CREATE INDEX IF NOT EXISTS idx_debug_timestamp ON debug_logs(timestamp);
+
+        CREATE TABLE IF NOT EXISTS anonymous_profiles (
+            browser_token TEXT PRIMARY KEY,
+            interests TEXT DEFAULT '[]',
+            budget_range TEXT DEFAULT '',
+            preferred_location TEXT DEFAULT '',
+            preferred_format TEXT DEFAULT '',
+            last_viewed TEXT DEFAULT '[]',
+            last_searches TEXT DEFAULT '[]',
+            conversation_summary TEXT DEFAULT '',
+            created_at REAL DEFAULT 0,
+            last_active REAL DEFAULT 0
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_anon_last_active ON anonymous_profiles(last_active);
+
+        CREATE TABLE IF NOT EXISTS latency_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL,
+            timestamp REAL NOT NULL,
+            operation TEXT NOT NULL,
+            latency_ms REAL NOT NULL,
+            prompt_version TEXT DEFAULT '',
+            extra TEXT DEFAULT '{}'
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_latency_session ON latency_logs(session_id);
+        CREATE INDEX IF NOT EXISTS idx_latency_op ON latency_logs(operation);
     """)
     conn.commit()
+
+    # Schema migration: add conversation_summary to anonymous_profiles if missing
+    try:
+        cursor = conn.execute("PRAGMA table_info(anonymous_profiles)")
+        columns = {row["name"] for row in cursor.fetchall()}
+        if "conversation_summary" not in columns:
+            conn.execute("ALTER TABLE anonymous_profiles ADD COLUMN conversation_summary TEXT DEFAULT ''")
+            conn.commit()
+    except Exception:
+        pass
 
 
 # ── Session CRUD ──
@@ -212,6 +250,205 @@ def clear_debug_logs(before_timestamp=None):
         conn.execute("DELETE FROM debug_logs WHERE timestamp < ?", (before_timestamp,))
     else:
         conn.execute("DELETE FROM debug_logs")
+    conn.commit()
+
+
+# ── 5.4: Latency & Observability ──
+
+def log_latency(session_id, operation, latency_ms, prompt_version="", extra=None):
+    """Log latency for a specific operation (API call, tool execution, etc.)."""
+    conn = _get_conn()
+    conn.execute(
+        "INSERT INTO latency_logs (session_id, timestamp, operation, latency_ms, prompt_version, extra) VALUES (?, ?, ?, ?, ?, ?)",
+        (session_id, time.time(), operation, latency_ms, prompt_version, json.dumps(extra or {}))
+    )
+    conn.commit()
+
+
+def get_latency_stats(hours=24, operation=None):
+    """Get latency statistics for the given time window."""
+    conn = _get_conn()
+    cutoff = time.time() - (hours * 3600)
+    if operation:
+        rows = conn.execute(
+            "SELECT operation, AVG(latency_ms) as avg_ms, MIN(latency_ms) as min_ms, MAX(latency_ms) as max_ms, COUNT(*) as count "
+            "FROM latency_logs WHERE timestamp > ? AND operation = ? GROUP BY operation",
+            (cutoff, operation)
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT operation, AVG(latency_ms) as avg_ms, MIN(latency_ms) as min_ms, MAX(latency_ms) as max_ms, COUNT(*) as count "
+            "FROM latency_logs WHERE timestamp > ? GROUP BY operation ORDER BY avg_ms DESC",
+            (cutoff,)
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_observability_dashboard(hours=24):
+    """Get key metrics for the observability dashboard."""
+    conn = _get_conn()
+    cutoff = time.time() - (hours * 3600)
+
+    # Response times
+    latency = get_latency_stats(hours)
+
+    # Search hit rate
+    searches = conn.execute(
+        "SELECT COUNT(*) as total, SUM(CASE WHEN results_count > 0 THEN 1 ELSE 0 END) as hits "
+        "FROM analytics WHERE event_type = 'tool_call' AND timestamp > ?", (cutoff,)
+    ).fetchone()
+    total_searches = searches["total"] if searches else 0
+    hit_rate = (searches["hits"] / total_searches * 100) if total_searches > 0 else 0
+
+    # Feedback stats
+    feedback = conn.execute(
+        "SELECT COUNT(*) as total, SUM(CASE WHEN feedback_rating > 0 THEN 1 ELSE 0 END) as positive, "
+        "SUM(CASE WHEN feedback_rating < 0 THEN 1 ELSE 0 END) as negative "
+        "FROM analytics WHERE event_type = 'feedback' AND timestamp > ?", (cutoff,)
+    ).fetchone()
+
+    # Conversation depth
+    depth = conn.execute(
+        "SELECT session_id, COUNT(*) as msgs FROM analytics WHERE event_type = 'user_query' AND timestamp > ? "
+        "GROUP BY session_id", (cutoff,)
+    ).fetchall()
+    avg_depth = sum(r["msgs"] for r in depth) / max(len(depth), 1) if depth else 0
+
+    # A/B version breakdown
+    versions = conn.execute(
+        "SELECT prompt_version, COUNT(*) as count, AVG(latency_ms) as avg_latency "
+        "FROM latency_logs WHERE timestamp > ? AND prompt_version != '' GROUP BY prompt_version",
+        (cutoff,)
+    ).fetchall()
+
+    return {
+        "latency_by_operation": latency,
+        "search_hit_rate": round(hit_rate, 1),
+        "total_searches": total_searches,
+        "feedback_total": feedback["total"] if feedback else 0,
+        "feedback_positive": feedback["positive"] if feedback else 0,
+        "feedback_negative": feedback["negative"] if feedback else 0,
+        "avg_conversation_depth": round(avg_depth, 1),
+        "unique_sessions": len(depth),
+        "ab_versions": [dict(r) for r in versions] if versions else [],
+    }
+
+
+# ── 6.3: Anonymous User Persistence ──
+
+def save_anonymous_profile(browser_token, interests=None, budget_range="",
+                           preferred_location="", preferred_format="",
+                           last_viewed=None, last_searches=None, conversation_summary=""):
+    """Upsert an anonymous user profile by browser token."""
+    conn = _get_conn()
+    now = time.time()
+    conn.execute("""
+        INSERT INTO anonymous_profiles (browser_token, interests, budget_range, preferred_location,
+                                         preferred_format, last_viewed, last_searches, conversation_summary,
+                                         created_at, last_active)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(browser_token) DO UPDATE SET
+            interests = excluded.interests,
+            budget_range = excluded.budget_range,
+            preferred_location = excluded.preferred_location,
+            preferred_format = excluded.preferred_format,
+            last_viewed = excluded.last_viewed,
+            last_searches = excluded.last_searches,
+            conversation_summary = excluded.conversation_summary,
+            last_active = excluded.last_active
+    """, (browser_token, json.dumps(interests or []), budget_range,
+          preferred_location, preferred_format,
+          json.dumps(last_viewed or []), json.dumps(last_searches or []),
+          conversation_summary, now, now))
+    conn.commit()
+
+
+def load_anonymous_profile(browser_token):
+    """Load an anonymous user profile. Returns dict or None."""
+    conn = _get_conn()
+    row = conn.execute("SELECT * FROM anonymous_profiles WHERE browser_token = ?",
+                       (browser_token,)).fetchone()
+    if not row:
+        return None
+    return {
+        "browser_token": row["browser_token"],
+        "interests": json.loads(row["interests"]) if row["interests"] else [],
+        "budget_range": row["budget_range"],
+        "preferred_location": row["preferred_location"],
+        "preferred_format": row["preferred_format"],
+        "last_viewed": json.loads(row["last_viewed"]) if row["last_viewed"] else [],
+        "last_searches": json.loads(row["last_searches"]) if row["last_searches"] else [],
+        "conversation_summary": row["conversation_summary"] if "conversation_summary" in row.keys() else "",
+        "created_at": row["created_at"],
+        "last_active": row["last_active"],
+    }
+
+
+def update_anonymous_interests(browser_token, new_interests=None, new_search=None, new_viewed=None):
+    """Incrementally update an anonymous profile with new activity."""
+    profile = load_anonymous_profile(browser_token)
+    if not profile:
+        profile = {"interests": [], "last_viewed": [], "last_searches": [],
+                    "budget_range": "", "preferred_location": "", "preferred_format": ""}
+
+    if new_interests:
+        existing = set(profile["interests"])
+        for interest in new_interests:
+            existing.add(interest)
+        profile["interests"] = list(existing)[-10:]  # Keep last 10
+
+    if new_search:
+        searches = profile["last_searches"]
+        searches.append(new_search)
+        profile["last_searches"] = searches[-10:]  # Keep last 10
+
+    if new_viewed:
+        viewed = profile["last_viewed"]
+        # Add as {handle, title} dicts, dedup by handle
+        existing_handles = {v.get("handle") for v in viewed}
+        for item in new_viewed:
+            if item.get("handle") not in existing_handles:
+                viewed.append(item)
+                existing_handles.add(item.get("handle"))
+        profile["last_viewed"] = viewed[-5:]  # Keep last 5
+
+    save_anonymous_profile(
+        browser_token,
+        interests=profile["interests"],
+        budget_range=profile.get("budget_range", ""),
+        preferred_location=profile.get("preferred_location", ""),
+        preferred_format=profile.get("preferred_format", ""),
+        last_viewed=profile["last_viewed"],
+        last_searches=profile["last_searches"],
+        conversation_summary=profile.get("conversation_summary", ""),
+    )
+    return profile
+
+
+def update_anonymous_summary(browser_token, summary_text):
+    """Store conversation summary for an anonymous user (persists across sessions)."""
+    profile = load_anonymous_profile(browser_token)
+    if not profile:
+        profile = {"interests": [], "last_viewed": [], "last_searches": [],
+                    "budget_range": "", "preferred_location": "", "preferred_format": ""}
+    profile["conversation_summary"] = summary_text[:2000]  # Cap at 2000 chars
+    save_anonymous_profile(
+        browser_token,
+        interests=profile["interests"],
+        budget_range=profile.get("budget_range", ""),
+        preferred_location=profile.get("preferred_location", ""),
+        preferred_format=profile.get("preferred_format", ""),
+        last_viewed=profile.get("last_viewed", []),
+        last_searches=profile.get("last_searches", []),
+        conversation_summary=profile["conversation_summary"],
+    )
+
+
+def cleanup_anonymous_profiles(ttl=604800):
+    """Remove anonymous profiles older than TTL seconds (default 7 days)."""
+    conn = _get_conn()
+    cutoff = time.time() - ttl
+    conn.execute("DELETE FROM anonymous_profiles WHERE last_active < ?", (cutoff,))
     conn.commit()
 
 

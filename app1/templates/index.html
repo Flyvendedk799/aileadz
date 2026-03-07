@@ -704,27 +704,46 @@
   .light-mode .chat-input-wrapper { border-top-color: rgba(0,0,0,0.04); }
 
   /* ── Profile Update Toast ── */
+  .profile-toast-stack {
+    position: fixed; top: 16px; right: 16px; z-index: 9999;
+    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+  }
   .profile-toast {
-    position: fixed;
-    top: 16px;
-    right: 16px;
     background: rgba(30, 30, 47, 0.95);
     border: 1px solid rgba(168,85,247,0.3);
     border-left: 3px solid #a855f7;
-    border-radius: 10px;
+    border-radius: 12px;
     padding: 12px 16px;
     color: #d4d4d8;
     font-size: 13px;
-    z-index: 9999;
-    max-width: 320px;
+    max-width: 360px;
     animation: toastIn 0.3s ease-out;
-    backdrop-filter: blur(8px);
+    backdrop-filter: blur(12px);
     display: flex;
-    align-items: center;
-    gap: 8px;
+    align-items: flex-start;
+    gap: 10px;
+    pointer-events: all;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
   }
-  .profile-toast a { color: #c084fc; text-decoration: none; font-weight: 600; margin-left: 6px; }
-  .profile-toast a:hover { text-decoration: underline; }
+  .profile-toast .toast-icon {
+    width: 28px; height: 28px; border-radius: 8px;
+    background: rgba(168,85,247,0.15);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .profile-toast .toast-body { flex: 1; }
+  .profile-toast .toast-msg { font-weight: 500; line-height: 1.4; }
+  .profile-toast .toast-link {
+    display: inline-flex; align-items: center; gap: 4px;
+    color: #c084fc; text-decoration: none; font-weight: 600;
+    font-size: 12px; margin-top: 4px;
+  }
+  .profile-toast .toast-link:hover { text-decoration: underline; }
+  .profile-toast .toast-dismiss {
+    background: none; border: none; color: #71717a; cursor: pointer;
+    font-size: 16px; padding: 0; line-height: 1; flex-shrink: 0;
+  }
+  .profile-toast .toast-dismiss:hover { color: #d4d4d8; }
   @keyframes toastIn {
     from { opacity: 0; transform: translateX(40px); }
     to { opacity: 1; transform: translateX(0); }
@@ -733,7 +752,7 @@
     from { opacity: 1; transform: translateX(0); }
     to { opacity: 0; transform: translateX(40px); }
   }
-  .light-mode .profile-toast { background: rgba(255,255,255,0.95); border-color: rgba(168,85,247,0.2); color: #374151; }
+  .light-mode .profile-toast { background: rgba(255,255,255,0.97); border-color: rgba(168,85,247,0.15); color: #374151; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
 
   /* ── Responsive ── */
   @media (max-width: 768px) {
@@ -783,10 +802,17 @@
             <div class="welcome-card-title">Ledelseskurser</div>
             <div class="welcome-card-hint">Udvikl dine lederevner</div>
           </button>
+          {% if session.get('user') %}
+          <button class="welcome-card" type="button" onclick="sendFromChip('Opdater mit CV — jeg vil gerne fortælle om min baggrund og erfaring')" aria-label="Opdater dit CV via chat">
+            <div class="welcome-card-title">Opdater dit CV</div>
+            <div class="welcome-card-hint">Fortæl mig om din erfaring</div>
+          </button>
+          {% else %}
           <button class="welcome-card" type="button" onclick="sendFromChip('Hjælp mig med at vælge et kursus')" aria-label="Start med personlig rådgivning">
             <div class="welcome-card-title">Personlig rådgivning</div>
             <div class="welcome-card-hint">Jeg hjælper dig med at vælge</div>
           </button>
+          {% endif %}
         </div>
       </div>
     </div>
@@ -817,18 +843,51 @@
 (function() {
   'use strict';
 
-  // ── Profile Update Toast ──
-  function showProfileToast(msg) {
+  // ── Profile Update Toast (stacking, section-aware) ──
+  let _toastStack = null;
+  function _getToastStack() {
+    if (!_toastStack) {
+      _toastStack = document.createElement('div');
+      _toastStack.className = 'profile-toast-stack';
+      document.body.appendChild(_toastStack);
+    }
+    return _toastStack;
+  }
+
+  const _sectionIcons = {
+    skills: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+    experience: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+    education: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg>',
+    courses: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff512f" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+    summary: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2575fc" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+  };
+
+  function showProfileToast(msg, section) {
+    const stack = _getToastStack();
     const toast = document.createElement('div');
     toast.className = 'profile-toast';
-    toast.innerHTML = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>' +
-      '<span>' + msg.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>' +
-      '<a href="/profile">Vis profil</a>';
-    document.body.appendChild(toast);
+    const icon = _sectionIcons[section] || _sectionIcons.summary;
+    const anchor = section ? `#section-${section}` : '';
+    const safeMsg = msg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    toast.innerHTML =
+      `<div class="toast-icon">${icon}</div>` +
+      `<div class="toast-body">` +
+        `<div class="toast-msg">${safeMsg}</div>` +
+        `<a class="toast-link" href="/profile${anchor}" target="_blank">` +
+          `Vis i profil <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>` +
+        `</a>` +
+      `</div>` +
+      `<button class="toast-dismiss" onclick="this.closest('.profile-toast').remove()">&times;</button>`;
+    stack.appendChild(toast);
+    // Auto-dismiss after 5s
     setTimeout(() => {
-      toast.style.animation = 'toastOut 0.3s ease-in forwards';
-      setTimeout(() => toast.remove(), 300);
-    }, 3000);
+      if (toast.parentNode) {
+        toast.style.animation = 'toastOut 0.3s ease-in forwards';
+        setTimeout(() => toast.remove(), 300);
+      }
+    }, 5000);
+    // Max 3 visible toasts
+    while (stack.children.length > 3) stack.firstChild.remove();
   }
 
   const chatBox = document.getElementById('chatBox');
@@ -1186,7 +1245,7 @@
               cardsEl.appendChild(wrap);
               saveChatState();
             } else if (data.type === 'profile_update') {
-              showProfileToast(data.message || 'Profil opdateret');
+              showProfileToast(data.message || 'Profil opdateret', data.section || '');
             } else if (data.type === 'suggestions') {
               const chips = document.createElement('div');
               chips.className = 'suggestion-chips';

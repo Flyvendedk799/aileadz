@@ -2,10 +2,8 @@
 
 {% block extra_styles %}
 <style>
-  /* Import a modern font */
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap');
+  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
-  /* Global Variables & Base Styles */
   :root {
     --primary-color: #6a11cb;
     --secondary-color: #2575fc;
@@ -14,722 +12,591 @@
     --warning-color: #fbbf24;
     --danger-color: #f87171;
     --text-color: #fff;
-    --muted-text: #d1d5db;
+    --muted-text: #9ca3af;
     --bg-color: #1e1e2f;
-    --card-bg: rgba(255, 255, 255, 0.1);
-    --border-color: rgba(255, 255, 255, 0.2);
+    --card-bg: rgba(255, 255, 255, 0.06);
+    --card-bg-hover: rgba(255, 255, 255, 0.1);
+    --border-color: rgba(255, 255, 255, 0.12);
     --border-radius: 16px;
     --shadow: 0 8px 16px rgba(0,0,0,0.3);
-    --transition-speed: 0.4s;
-    --overlay: rgba(0, 0, 0, 0.3);
+    --transition: 0.3s ease;
   }
 
   body {
     font-family: 'Inter', sans-serif;
     background: linear-gradient(135deg, #1e1e2f, #2c2c3c);
     color: var(--text-color);
-    margin: 0;
-    padding: 0;
+    margin: 0; padding: 0;
   }
 
-  .profile-container {
-    max-width: 1200px;
-    margin: 3rem auto;
-    padding: 2rem;
-  }
+  .profile-container { max-width: 1100px; margin: 2rem auto; padding: 1.5rem; }
 
-  /* Section Titles with Underline Effect */
-  .section-title {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-bottom: 1.5rem;
-    position: relative;
-    padding-bottom: 0.75rem;
-    text-transform: uppercase;
-  }
-
-  .section-title:after {
-    content: '';
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    width: 80px;
-    height: 5px;
-    background: linear-gradient(to right, var(--accent-color), var(--secondary-color));
-    border-radius: var(--border-radius);
-  }
-
-  /* Flash Messages */
-  .flash-messages {
-    margin-bottom: 1.5rem;
-  }
-
+  /* ── Flash Messages ── */
+  .flash-messages { margin-bottom: 1.5rem; }
   .flash-message {
-    padding: 1rem;
-    border-radius: var(--border-radius);
-    margin-bottom: 1rem;
-    background: var(--card-bg);
-    border: 1px solid var(--border-color);
-    animation: fadeIn 0.5s ease-out;
+    padding: 1rem; border-radius: 12px; margin-bottom: 0.75rem;
+    background: var(--card-bg); border: 1px solid var(--border-color);
+    animation: fadeIn 0.4s ease;
   }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+  @keyframes growIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
 
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-20px); }
-    to { opacity: 1; transform: translateY(0); }
+  /* ── Profile Header ── */
+  .profile-header {
+    background: var(--card-bg); backdrop-filter: blur(12px);
+    border: 1px solid var(--border-color); border-radius: var(--border-radius);
+    box-shadow: var(--shadow); padding: 2rem; margin-bottom: 2rem;
+    display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;
   }
-
-  /* Profile Information Card with Glassmorphism */
-  .profile-info {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow);
-    padding: 2.5rem;
-    margin-bottom: 2rem;
-    position: relative;
-    overflow: hidden;
+  .profile-avatar {
+    width: 80px; height: 80px; border-radius: 50%;
+    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
+    display: flex; align-items: center; justify-content: center;
+    font-size: 2rem; font-weight: 700; flex-shrink: 0;
+    box-shadow: 0 4px 15px rgba(106, 17, 203, 0.4);
   }
+  .profile-header-info { flex: 1; min-width: 200px; }
+  .profile-header-info h1 { font-size: 1.5rem; margin: 0 0 4px; }
+  .profile-header-info .headline { color: var(--muted-text); font-size: 0.95rem; margin: 0; }
+  .profile-header-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
-  .profile-info:before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: var(--overlay);
-    z-index: 0;
+  /* ── Completeness Bar ── */
+  .completeness-wrap { margin-bottom: 2rem; }
+  .completeness-label {
+    display: flex; justify-content: space-between; align-items: center;
+    font-size: 0.8rem; font-weight: 600; color: var(--muted-text);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
   }
+  .completeness-bar {
+    height: 8px; border-radius: 8px; background: rgba(255,255,255,0.08); overflow: hidden;
+  }
+  .completeness-fill {
+    height: 100%; border-radius: 8px; transition: width 0.8s ease;
+    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color), var(--success-color));
+  }
+  .completeness-tips {
+    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 8px;
+  }
+  .completeness-tip {
+    font-size: 0.72rem; padding: 4px 10px; border-radius: 20px;
+    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
+    color: var(--muted-text); cursor: pointer; transition: var(--transition);
+  }
+  .completeness-tip:hover { background: rgba(106,17,203,0.15); color: #fff; border-color: var(--primary-color); }
+  .completeness-tip.done { opacity: 0.4; text-decoration: line-through; cursor: default; }
 
-  .profile-info * { position: relative; z-index: 1; }
+  /* ── Buttons ── */
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 0.6rem 1.2rem; border-radius: 10px; font-weight: 600;
+    font-size: 0.85rem; transition: var(--transition); text-decoration: none;
+    border: none; cursor: pointer; white-space: nowrap;
+  }
+  .btn-primary { background: var(--primary-color); color: #fff; }
+  .btn-primary:hover { background: var(--secondary-color); transform: translateY(-2px); }
+  .btn-ghost { background: transparent; color: var(--muted-text); border: 1px solid var(--border-color); }
+  .btn-ghost:hover { background: rgba(255,255,255,0.05); color: #fff; }
+  .btn-danger { background: var(--danger-color); color: #fff; }
+  .btn-danger:hover { background: #ff4b4b; transform: translateY(-2px); }
+  .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.78rem; border-radius: 8px; }
+  .btn-ai {
+    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
+    color: #fff; box-shadow: 0 4px 12px rgba(106,17,203,0.3);
+  }
+  .btn-ai:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(106,17,203,0.4); }
 
-  .greeting {
-    font-size: 2rem;
-    font-weight: 700;
-    margin-bottom: 1rem;
+  /* ── Section Cards ── */
+  .cv-section {
+    background: var(--card-bg); backdrop-filter: blur(10px);
+    border: 1px solid var(--border-color); border-radius: var(--border-radius);
+    box-shadow: var(--shadow); margin-bottom: 1.5rem;
+    overflow: hidden; transition: var(--transition);
+  }
+  .cv-section:hover { border-color: rgba(255,255,255,0.18); }
+  .cv-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 1.25rem 1.5rem; cursor: pointer; user-select: none;
+  }
+  .cv-section-header h3 {
+    font-size: 1rem; font-weight: 700; margin: 0;
+    display: flex; align-items: center; gap: 10px;
+  }
+  .cv-section-header .section-icon {
+    width: 32px; height: 32px; border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.9rem;
+  }
+  .cv-section-header .count-badge {
+    font-size: 0.7rem; font-weight: 600; padding: 2px 8px;
+    border-radius: 20px; background: rgba(106,17,203,0.2);
     color: var(--secondary-color);
   }
+  .cv-section-header .toggle-icon { transition: transform 0.3s ease; color: var(--muted-text); }
+  .cv-section.collapsed .cv-section-body { display: none; }
+  .cv-section.collapsed .toggle-icon { transform: rotate(-90deg); }
+  .cv-section-body { padding: 0 1.5rem 1.5rem; }
 
-  .credits-badge {
-    display: inline-flex;
-    align-items: center;
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: #fff;
-    padding: 0.5rem 1rem;
-    border-radius: 50px;
-    font-weight: 600;
-    margin-top: 1rem;
-    transition: transform var(--transition-speed) ease;
+  /* ── Skills ── */
+  .skills-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; }
+  .skill-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 14px; border-radius: 50px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+    font-size: 0.82rem; transition: var(--transition);
+    animation: growIn 0.3s ease;
+  }
+  .skill-pill:hover { background: rgba(106,17,203,0.12); border-color: rgba(106,17,203,0.3); transform: translateY(-1px); }
+  .skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .skill-level { font-size: 0.68rem; color: var(--muted-text); text-transform: capitalize; }
+  .skill-remove {
+    background: none; border: none; color: var(--muted-text); cursor: pointer;
+    font-size: 14px; padding: 0; margin-left: 2px; transition: var(--transition);
+  }
+  .skill-remove:hover { color: var(--danger-color); }
+
+  /* ── Timeline (Experience & Education) ── */
+  .timeline { position: relative; padding-left: 24px; }
+  .timeline::before {
+    content: ''; position: absolute; left: 7px; top: 8px; bottom: 8px;
+    width: 2px; background: linear-gradient(to bottom, var(--primary-color), var(--secondary-color), transparent);
+  }
+  .timeline-item {
+    position: relative; padding: 0 0 1.5rem 16px;
+    animation: slideIn 0.4s ease;
+  }
+  .timeline-item:last-child { padding-bottom: 0; }
+  .timeline-dot {
+    position: absolute; left: -21px; top: 6px;
+    width: 12px; height: 12px; border-radius: 50%;
+    background: var(--primary-color); border: 2px solid var(--bg-color);
+    box-shadow: 0 0 0 3px rgba(106,17,203,0.2);
+  }
+  .timeline-item.current .timeline-dot {
+    background: var(--success-color);
+    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 0 8px rgba(74,222,128,0.3);
+  }
+  .timeline-content {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
+    border-radius: 12px; padding: 1rem 1.25rem; transition: var(--transition);
+  }
+  .timeline-content:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
+  .timeline-title { font-weight: 600; font-size: 0.92rem; margin: 0; }
+  .timeline-subtitle { color: var(--muted-text); font-size: 0.82rem; margin: 3px 0 0; }
+  .timeline-period {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 0.72rem; color: var(--muted-text); margin-top: 6px;
+    padding: 3px 8px; background: rgba(255,255,255,0.04); border-radius: 6px;
+  }
+  .timeline-period.active { color: var(--success-color); background: rgba(74,222,128,0.08); }
+  .timeline-desc { font-size: 0.82rem; color: var(--muted-text); margin-top: 8px; line-height: 1.5; }
+  .timeline-actions {
+    display: flex; gap: 6px; margin-top: 8px; opacity: 0; transition: opacity 0.2s;
+  }
+  .timeline-content:hover .timeline-actions { opacity: 1; }
+
+  /* ── Inline Edit Mode ── */
+  .inline-edit-form {
+    display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
+    padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;
+    border: 1px solid rgba(106,17,203,0.2); animation: fadeIn 0.2s ease;
+  }
+  .inline-edit-form .form-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .inline-edit-form input, .inline-edit-form textarea {
+    flex: 1; min-width: 120px; padding: 6px 10px; border-radius: 6px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-color); font-size: 0.82rem; font-family: inherit;
+  }
+  .inline-edit-form input:focus, .inline-edit-form textarea:focus {
+    outline: none; border-color: var(--primary-color);
+  }
+  .inline-edit-actions { display: flex; gap: 6px; margin-top: 4px; }
+
+  /* ── Highlight animation for anchor scroll ── */
+  .highlight-pulse {
+    animation: highlightPulse 1.5s ease;
+  }
+  @keyframes highlightPulse {
+    0% { box-shadow: 0 0 0 0 rgba(168,85,247,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(168,85,247,0.1); }
+    100% { box-shadow: 0 0 0 0 transparent; }
   }
 
-  .credits-badge:hover { transform: scale(1.05); }
+  /* ── Courses Grid ── */
+  .courses-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 1rem; }
+  .course-card {
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px; padding: 1rem 1.25rem; transition: var(--transition);
+    display: flex; flex-direction: column; animation: growIn 0.3s ease;
+  }
+  .course-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
+  .course-title { font-weight: 600; font-size: 0.88rem; margin: 0 0 4px; }
+  .course-vendor { font-size: 0.78rem; color: var(--muted-text); }
+  .course-meta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .course-badge {
+    font-size: 0.68rem; padding: 3px 8px; border-radius: 6px;
+    background: rgba(106,17,203,0.15); color: var(--secondary-color);
+    display: inline-flex; align-items: center; gap: 4px;
+  }
+  .course-badge.cert { background: rgba(251,191,36,0.15); color: var(--warning-color); }
+  .course-remove {
+    margin-top: auto; padding-top: 8px; opacity: 0; transition: opacity 0.2s;
+  }
+  .course-card:hover .course-remove { opacity: 1; }
 
-  .profile-actions {
-    display: flex;
-    gap: 1.5rem;
-    margin-top: 2rem;
-    flex-wrap: wrap;
+  /* ── Summary Info Grid ── */
+  .summary-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
+    margin-bottom: 1rem;
+  }
+  .summary-item { padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.03); }
+  .summary-label {
+    font-size: 0.68rem; font-weight: 600; color: var(--muted-text);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+  }
+  .summary-value { font-size: 0.9rem; font-weight: 500; }
+  .summary-bio { grid-column: 1 / -1; }
+
+  /* ── Add Forms ── */
+  .add-form {
+    display: none; padding: 1rem; margin-top: 0.75rem;
+    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
+    border-radius: 12px;
+  }
+  .add-form.visible { display: block; animation: fadeIn 0.3s ease; }
+  .form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
+  .form-field { flex: 1; min-width: 140px; }
+  .form-field label {
+    display: block; font-size: 0.72rem; font-weight: 600;
+    color: var(--muted-text); margin-bottom: 4px; text-transform: uppercase;
+  }
+  .form-field input, .form-field select, .form-field textarea {
+    width: 100%; padding: 8px 12px; border-radius: 8px;
+    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+    color: var(--text-color); font-size: 0.85rem; font-family: inherit;
+    transition: var(--transition);
+  }
+  .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
+    outline: none; border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(106,17,203,0.15);
   }
 
-  .btn {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    padding: 1rem 2rem;
-    border-radius: var(--border-radius);
-    font-weight: 600;
-    transition: all var(--transition-speed) ease;
-    text-decoration: none;
-    border: none;
-    cursor: pointer;
+  /* ── Edit overlay for summary ── */
+  .edit-overlay {
+    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
+    z-index: 1000; align-items: center; justify-content: center;
   }
-
-  .btn svg { margin-right: 0.5rem; }
-
-  .btn-primary {
-    background: var(--primary-color);
-    color: #fff;
-    box-shadow: var(--shadow);
+  .edit-overlay.visible { display: flex; animation: fadeIn 0.2s ease; }
+  .edit-modal {
+    background: #2a2a3d; border: 1px solid var(--border-color);
+    border-radius: var(--border-radius); padding: 2rem; width: 90%; max-width: 600px;
+    max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.5);
   }
+  .edit-modal h3 { margin: 0 0 1.5rem; font-size: 1.1rem; }
 
-  .btn-primary:hover {
-    background: var(--secondary-color);
-    transform: translateY(-3px);
-    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  /* ── Toast ── */
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+  .toast {
+    padding: 10px 18px; border-radius: 10px; font-size: 0.82rem; color: #fff;
+    animation: fadeIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    display: flex; align-items: center; gap: 8px;
   }
+  .toast.success { background: #22c55e; }
+  .toast.error { background: #ef4444; }
 
-  .btn-danger {
-    background: var(--danger-color);
-    color: #fff;
-    box-shadow: var(--shadow);
+  /* ── Brands Section (kept from original) ── */
+  .brands-section { margin-top: 2rem; }
+  .brands-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
+  .section-title {
+    font-size: 1.3rem; font-weight: 700; position: relative;
+    padding-bottom: 0.5rem; margin: 0;
   }
-
-  .btn-danger:hover {
-    background: #ff4b4b;
-    transform: translateY(-3px);
-    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
+  .section-title::after {
+    content: ''; position: absolute; bottom: 0; left: 0; width: 60px; height: 3px;
+    background: linear-gradient(to right, var(--accent-color), var(--secondary-color)); border-radius: 3px;
   }
-
-  /* Dashboard Stats (if applicable) */
-  .dashboard-stats {
-    display: flex;
-    gap: 1.5rem;
-    margin-bottom: 2rem;
-    flex-wrap: wrap;
+  .brand-card {
+    background: var(--card-bg); border: 1px solid var(--border-color);
+    border-radius: var(--border-radius); box-shadow: var(--shadow);
+    margin-bottom: 1.5rem; overflow: hidden; transition: var(--transition);
   }
-
-  .stat-card {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    box-shadow: var(--shadow);
-    padding: 2rem;
-    flex: 1;
-    transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
-  }
-
-  .stat-card:hover {
-    transform: translateY(-5px);
-    box-shadow: 0 14px 25px rgba(0, 0, 0, 0.4);
-  }
-
-  .stat-title {
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: var(--muted-text);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .stat-value {
-    font-size: 2.5rem;
-    font-weight: 700;
-    color: var(--accent-color);
-    margin: 0.5rem 0;
-  }
-
-  /* Brands Section */
-  .brands-section { margin-top: 3rem; }
-
-  .brands-header {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    margin-bottom: 2rem;
-  }
-
-  .add-brand-btn {
-    display: inline-flex;
-    align-items: center;
-    padding: 1rem 2rem;
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: #fff;
-    border-radius: var(--border-radius);
-    text-decoration: none;
-    font-weight: 600;
-    transition: all var(--transition-speed) ease;
-    box-shadow: var(--shadow);
-  }
-
-  .add-brand-btn:hover {
-    transform: translateY(-3px);
-    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
-  }
-
-  .add-brand-btn svg { margin-right: 0.5rem; }
-
-/* Updated Brand Card with Separated Blurred Background */
-.brand-card {
-  position: relative;
-  background: var(--card-bg);
-  border: 1px solid var(--border-color);
-  border-radius: var(--border-radius);
-  box-shadow: var(--shadow);
-  margin-bottom: 2rem;
-  overflow: hidden;
-  transition: transform var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
-}
-
-/* Create the glass effect using a pseudo-element */
-.brand-card::before {
-  content: "";
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background: inherit;
-  backdrop-filter: blur(10px);
-  z-index: 0;
-  transition: backdrop-filter var(--transition-speed) ease;
-}
-
-/* Ensure inner content stays above the blurred background */
-.brand-card > * {
-  position: relative;
-  z-index: 1;
-}
-
-/* Hover state: reduce blur to keep text clear and add scale effect */
-.brand-card:hover {
-  transform: scale(1.02);
-  box-shadow: 0 16px 30px rgba(0, 0, 0, 0.5);
-}
-
-.brand-card:hover::before {
-  backdrop-filter: blur(5px);
-}
-
-
-  .brand-card-inner {
-    display: flex;
-    flex-wrap: wrap;
-    padding: 2rem;
-  }
-
-  .brand-logo-container {
-    margin-right: 2rem;
-    flex-shrink: 0;
-  }
-
+  .brand-card:hover { transform: scale(1.01); }
+  .brand-card-inner { display: flex; flex-wrap: wrap; padding: 1.5rem; }
+  .brand-logo-container { margin-right: 1.5rem; flex-shrink: 0; }
   .brand-logo, .no-logo {
-    width: 140px;
-    height: 140px;
-    object-fit: cover;
-    border-radius: var(--border-radius);
+    width: 100px; height: 100px; object-fit: cover; border-radius: 12px;
     box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-    transition: transform var(--transition-speed) ease;
   }
-
-  .brand-card:hover .brand-logo { transform: scale(1.05); }
-
   .no-logo {
     background: linear-gradient(135deg, #2c2c3c, #3a3a4d);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--muted-text);
-    font-weight: 600;
+    display: flex; align-items: center; justify-content: center; color: var(--muted-text);
   }
-
-  .brand-details { flex-grow: 1; width: 100%; }
-
+  .brand-details { flex-grow: 1; }
   .brand-number {
-    display: inline-block;
-    font-size: 0.875rem;
-    font-weight: 600;
-    color: #fff;
+    display: inline-block; font-size: 0.75rem; font-weight: 600;
     background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    padding: 0.5rem 1rem;
-    border-radius: 50px;
-    margin-bottom: 1rem;
+    padding: 4px 12px; border-radius: 50px; margin-bottom: 0.75rem; color: #fff;
   }
-
-  .brand-info-list {
-    display: grid;
-    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
-    gap: 1.5rem;
-  }
-
-  .brand-info-item {
-    margin: 0;
-    line-height: 1.6;
-  }
-
+  .brand-info-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+  .brand-info-item { margin: 0; line-height: 1.5; }
   .brand-info-label {
-    display: block;
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--muted-text);
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    margin-bottom: 0.25rem;
+    display: block; font-size: 0.7rem; font-weight: 600; color: var(--muted-text);
+    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px;
   }
-
-  .brand-info-value { font-weight: 500; }
-
-  .brand-info-value a {
-    color: var(--primary-color);
-    text-decoration: none;
-  }
-
+  .brand-info-value { font-weight: 500; font-size: 0.9rem; }
+  .brand-info-value a { color: var(--secondary-color); text-decoration: none; }
   .brand-info-value a:hover { text-decoration: underline; }
+  .brand-description { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); line-height: 1.6; font-size: 0.9rem; }
+  .brand-actions { margin-top: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
 
-  .brand-actions {
-    margin-top: 2rem;
-    display: flex;
-    gap: 1rem;
-    flex-wrap: wrap;
+  /* ── Brand edit form ── */
+  .brand-edit .form-group { margin-bottom: 1rem; }
+  .brand-edit .form-label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.85rem; }
+  .brand-edit .form-control {
+    width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 10px;
+    background: transparent; color: var(--text-color); font-family: inherit; font-size: 0.85rem;
   }
-
-  .brand-btn {
-    padding: 0.75rem 1.5rem;
-    border-radius: var(--border-radius);
-    font-weight: 600;
-    transition: all var(--transition-speed) ease;
-    display: inline-flex;
-    align-items: center;
-    cursor: pointer;
-    border: none;
-  }
-
-  .brand-btn svg { margin-right: 0.5rem; }
-
-  .edit-btn {
-    background: var(--primary-color);
-    color: #fff;
-    box-shadow: var(--shadow);
-  }
-
-  .edit-btn:hover {
-    background: var(--secondary-color);
-    transform: translateY(-3px);
-    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
-  }
-
-  .cancel-btn {
-    background: var(--muted-text);
-    color: #fff;
-    box-shadow: var(--shadow);
-  }
-
-  .cancel-btn:hover {
-    background: #475569;
-    transform: translateY(-3px);
-    box-shadow: 0 12px 20px rgba(0, 0, 0, 0.35);
-  }
-
-  .brand-description {
-    margin-top: 1.5rem;
-    padding-top: 1.5rem;
-    border-top: 1px solid var(--border-color);
-    line-height: 1.6;
-  }
-
-  /* Form Styling */
-  .form-group { margin-bottom: 1.5rem; }
-
-  .form-label {
-    display: block;
-    font-weight: 600;
-    margin-bottom: 0.75rem;
-    color: var(--text-color);
-  }
-
-  .form-control {
-    width: 100%;
-    padding: 1rem;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    background: transparent;
-    color: var(--text-color);
-    transition: border var(--transition-speed) ease, box-shadow var(--transition-speed) ease;
-  }
-
-  .form-control:focus {
-    outline: none;
-    border-color: var(--primary-color);
-    box-shadow: 0 0 0 4px rgba(106, 17, 203, 0.2);
-  }
-
-  .form-grid {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
-    gap: 1rem;
-  }
-
-  .social-media-group {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-  }
-
-  .social-media-icon {
-    width: 24px;
-    height: 24px;
-    color: var(--muted-text);
-  }
-
-  .file-input-wrapper {
-    position: relative;
-    overflow: hidden;
-    display: inline-block;
-  }
-
+  .brand-edit .form-control:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(106,17,203,0.15); }
+  .brand-edit .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
+  .brand-edit .social-media-group { display: flex; align-items: center; gap: 0.5rem; }
+  .brand-edit .social-media-icon { width: 20px; height: 20px; color: var(--muted-text); flex-shrink: 0; }
+  .file-input-wrapper { position: relative; overflow: hidden; display: inline-block; }
   .file-input-button {
-    display: inline-flex;
-    align-items: center;
-    padding: 1rem 1.5rem;
-    background: transparent;
-    border: 1px solid var(--border-color);
-    border-radius: var(--border-radius);
-    color: var(--text-color);
-    font-weight: 600;
-    cursor: pointer;
-    transition: all var(--transition-speed) ease;
+    display: inline-flex; align-items: center; gap: 6px; padding: 0.6rem 1rem;
+    background: transparent; border: 1px solid var(--border-color); border-radius: 10px;
+    color: var(--text-color); font-weight: 600; cursor: pointer; font-size: 0.82rem;
   }
-
-  .file-input-button:hover { background: rgba(255, 255, 255, 0.1); }
-
-  .file-input-button svg { margin-right: 0.5rem; }
-
-  .file-input-wrapper input[type=file] {
-    font-size: 100px;
-    position: absolute;
-    left: 0;
-    top: 0;
-    opacity: 0;
-    cursor: pointer;
-  }
-
-  .logo-preview-section {
-    display: flex;
-    gap: 1.5rem;
-    margin-top: 1rem;
-    align-items: flex-start;
-  }
-
-  .current-logo-container,
-  .new-logo-container { text-align: center; }
-
-  .logo-preview-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    color: var(--muted-text);
-    margin-bottom: 0.5rem;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-  }
-
-  .current-logo,
-  .image-preview {
-    width: 100px;
-    height: 100px;
-    object-fit: cover;
-    border-radius: var(--border-radius);
-    border: 1px solid var(--border-color);
-  }
-
+  .file-input-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; }
+  .logo-preview-section { display: flex; gap: 1rem; margin-top: 0.75rem; }
+  .current-logo-container, .new-logo-container { text-align: center; }
+  .logo-preview-title { font-size: 0.68rem; font-weight: 600; color: var(--muted-text); margin-bottom: 4px; text-transform: uppercase; }
+  .current-logo, .image-preview { width: 80px; height: 80px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border-color); }
   .image-preview { display: none; }
 
-  .empty-brands-message {
-    background: var(--card-bg);
-    backdrop-filter: blur(10px);
-    border: 1px dashed var(--border-color);
-    border-radius: var(--border-radius);
-    padding: 3rem;
-    text-align: center;
-    color: var(--muted-text);
+  .empty-state {
+    text-align: center; padding: 2rem; color: var(--muted-text);
+    font-size: 0.85rem; line-height: 1.6;
   }
-
-  .empty-brands-icon {
-    font-size: 3rem;
-    margin-bottom: 1rem;
-    opacity: 0.7;
-  }
-
-  /* CV Section additions */
-  #cv-section .brand-number {
-    margin-bottom: 1rem;
-  }
-
-  #skills-list span {
-    transition: transform 0.2s ease, box-shadow 0.2s ease;
-  }
-  #skills-list span:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
-  }
+  .empty-state svg { opacity: 0.4; margin-bottom: 0.5rem; }
 
   @media (max-width: 768px) {
-    .brand-card-inner {
-      flex-direction: column;
-      align-items: center;
-    }
-
-    .brand-logo-container {
-      margin-right: 0;
-      margin-bottom: 1.5rem;
-    }
-
-    .brand-info-list { grid-template-columns: 1fr; }
-
-    .profile-actions {
-      flex-direction: column;
-    }
-
-    .btn {
-      width: 100%;
-      justify-content: center;
-    }
+    .profile-header { flex-direction: column; text-align: center; }
+    .profile-header-actions { justify-content: center; }
+    .summary-grid { grid-template-columns: 1fr; }
+    .courses-grid { grid-template-columns: 1fr; }
+    .brand-card-inner { flex-direction: column; align-items: center; }
+    .brand-logo-container { margin: 0 0 1rem; }
+    .form-row { flex-direction: column; }
+    .form-field { min-width: 100%; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="profile-container">
-  <h2 class="section-title">Profil</h2>
+  <div id="toast-container" class="toast-container"></div>
 
   <!-- Flash Messages -->
   {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
       <div class="flash-messages">
         {% for category, message in messages %}
-          <div class="flash-message {{ category }}">
-            {{ message }}
-          </div>
+          <div class="flash-message {{ category }}">{{ message }}</div>
         {% endfor %}
       </div>
     {% endif %}
   {% endwith %}
 
-  <!-- Profile Info Card -->
-  <div class="profile-info">
-    <p class="greeting">Hej, {{ session.get('user') }}!</p>
-    <p>Velkommen til din profilside. Her kan du se og opdatere dine personlige oplysninger samt administrere dine brands.</p>
-
-    <div class="credits-badge">
-      <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-        <circle cx="12" cy="12" r="10"></circle>
-        <path d="M16 8h-6.5a2.5 2.5 0 0 0 0 5h1a2.5 2.5 0 0 1 0 5H4"></path>
-        <path d="M12 18v2"></path>
-        <path d="M12 4v2"></path>
-      </svg>
-      Dine credits: <strong>{{ session.get('credits', 0) }}</strong>
+  <!-- Profile Header -->
+  <div class="profile-header">
+    <div class="profile-avatar" id="avatar-initials"></div>
+    <div class="profile-header-info">
+      <h1>{{ session.get('user') }}</h1>
+      <p class="headline" id="header-headline">Indlæser profil...</p>
     </div>
-
-    <div class="profile-actions">
-      <a href="/dashboard" class="btn btn-primary">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-          <polyline points="9 22 9 12 15 12 15 22"></polyline>
-        </svg>
-        Tilbage til Oversigt
+    <div class="profile-header-actions">
+      <a href="/app1" class="btn btn-ai">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+        Opdater via AI Chat
       </a>
-      <a href="/logout" class="btn btn-danger">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
-          <polyline points="16 17 21 12 16 7"></polyline>
-          <line x1="21" y1="12" x2="9" y2="12"></line>
-        </svg>
-        Log ud
-      </a>
+      <a href="/dashboard" class="btn btn-ghost">Oversigt</a>
+      <a href="/logout" class="btn btn-ghost" style="color: var(--danger-color); border-color: rgba(248,113,113,0.3);">Log ud</a>
     </div>
   </div>
 
-  <!-- CV / Resume Section -->
-  <div class="brands-section" id="cv-section">
-    <div class="brands-header">
-      <h2 class="section-title">Dit CV / Profil</h2>
-      <a href="/app1" class="add-brand-btn" title="AI-rådgiveren kan opdatere din profil automatisk">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        Opdater via AI Chat
-      </a>
+  <!-- Completeness Bar -->
+  <div class="completeness-wrap" id="completeness-section">
+    <div class="completeness-label">
+      <span>Profilfuldstændighed</span>
+      <span id="completeness-pct">0%</span>
     </div>
+    <div class="completeness-bar">
+      <div class="completeness-fill" id="completeness-fill" style="width: 0%"></div>
+    </div>
+    <div class="completeness-tips" id="completeness-tips"></div>
+  </div>
 
-    <!-- Profile Summary -->
-    <div class="brand-card" id="profile-summary-card">
-      <div class="brand-card-inner" style="flex-direction: column;">
-        <div class="brand-number">Profiloversigt</div>
-        <div id="profile-summary-view" style="width: 100%;">
-          <div class="brand-info-list">
-            <p class="brand-info-item"><span class="brand-info-label">Overskrift</span><span class="brand-info-value" id="cv-headline">—</span></p>
-            <p class="brand-info-item"><span class="brand-info-label">Mål</span><span class="brand-info-value" id="cv-goals">—</span></p>
-            <p class="brand-info-item"><span class="brand-info-label">Lokation</span><span class="brand-info-value" id="cv-location">—</span></p>
-            <p class="brand-info-item"><span class="brand-info-label">Format</span><span class="brand-info-value" id="cv-format">—</span></p>
-            <p class="brand-info-item"><span class="brand-info-label">Budget</span><span class="brand-info-value" id="cv-budget">—</span></p>
+  <!-- Profile Summary -->
+  <div class="cv-section" id="section-summary">
+    <div class="cv-section-header" onclick="toggleSection('summary')">
+      <h3>
+        <span class="section-icon" style="background: rgba(37,117,252,0.15);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2575fc" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        </span>
+        Profiloversigt
+      </h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openSummaryEdit()">Rediger</button>
+        <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+    <div class="cv-section-body">
+      <div class="summary-grid" id="summary-grid"></div>
+    </div>
+  </div>
+
+  <!-- Skills -->
+  <div class="cv-section" id="section-skills">
+    <div class="cv-section-header" onclick="toggleSection('skills')">
+      <h3>
+        <span class="section-icon" style="background: rgba(168,85,247,0.15);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </span>
+        Kompetencer
+        <span class="count-badge" id="skills-count">0</span>
+      </h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('skills')">+ Tilføj</button>
+        <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+    <div class="cv-section-body">
+      <div class="skills-grid" id="skills-list"></div>
+      <div class="add-form" id="add-form-skills">
+        <div class="form-row">
+          <div class="form-field" style="flex:2"><label>Kompetence</label><input type="text" id="new-skill-name" placeholder="F.eks. Projektledelse, Excel, Python..."></div>
+          <div class="form-field" style="flex:1">
+            <label>Niveau</label>
+            <select id="new-skill-level">
+              <option value="begynder">Begynder</option>
+              <option value="mellem" selected>Mellem</option>
+              <option value="avanceret">Avanceret</option>
+              <option value="ekspert">Ekspert</option>
+            </select>
           </div>
-          <div class="brand-description" id="cv-bio-section" style="display:none;">
-            <span class="brand-info-label">Bio</span>
-            <p id="cv-bio"></p>
-          </div>
-        </div>
-        <div id="profile-summary-edit" style="display: none; width: 100%; margin-top: 1rem;">
-          <div class="form-group"><label class="form-label">Overskrift</label><input type="text" id="edit-headline" class="form-control" placeholder="F.eks. Projektleder med fokus på IT"></div>
-          <div class="form-group"><label class="form-label">Bio</label><textarea id="edit-bio" class="form-control" rows="2" placeholder="Kort om dig selv"></textarea></div>
-          <div class="form-group"><label class="form-label">Mål</label><input type="text" id="edit-goals" class="form-control" placeholder="Hvad vil du opnå?"></div>
-          <div class="form-grid">
-            <div class="form-group"><label class="form-label">Foretrukken lokation</label><input type="text" id="edit-location" class="form-control" placeholder="F.eks. København"></div>
-            <div class="form-group"><label class="form-label">Foretrukken format</label><input type="text" id="edit-format" class="form-control" placeholder="F.eks. E-learning"></div>
-            <div class="form-group"><label class="form-label">Budget</label><input type="text" id="edit-budget" class="form-control" placeholder="F.eks. 5000-10000 kr"></div>
-          </div>
-          <div class="brand-actions">
-            <button class="brand-btn edit-btn" onclick="saveSummary()"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg> Gem</button>
-            <button class="brand-btn cancel-btn" onclick="toggleSummaryEdit(false)"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg> Annuller</button>
-          </div>
-        </div>
-        <div class="brand-actions" id="summary-edit-btn-row">
-          <button onclick="toggleSummaryEdit(true)" class="brand-btn edit-btn"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg> Rediger</button>
+          <button class="btn btn-sm btn-primary" onclick="addSkill()" style="align-self:flex-end;">Tilføj</button>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Skills -->
-    <div class="brand-card">
-      <div class="brand-card-inner" style="flex-direction: column;">
-        <div class="brand-number">Kompetencer</div>
-        <div id="skills-list" style="display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem;"></div>
-        <div style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-          <input type="text" id="new-skill-name" class="form-control" style="flex: 1; min-width: 150px;" placeholder="Ny kompetence...">
-          <select id="new-skill-level" class="form-control" style="width: auto;">
-            <option value="begynder">Begynder</option>
-            <option value="mellem" selected>Mellem</option>
-            <option value="avanceret">Avanceret</option>
-            <option value="ekspert">Ekspert</option>
-          </select>
-          <button class="brand-btn edit-btn" onclick="addSkill()" style="white-space: nowrap;">+ Tilføj</button>
+  <!-- Experience -->
+  <div class="cv-section" id="section-experience">
+    <div class="cv-section-header" onclick="toggleSection('experience')">
+      <h3>
+        <span class="section-icon" style="background: rgba(74,222,128,0.15);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
+        </span>
+        Erfaring
+        <span class="count-badge" id="exp-count">0</span>
+      </h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('exp')">+ Tilføj</button>
+        <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+    <div class="cv-section-body">
+      <div class="timeline" id="experience-list"></div>
+      <div class="add-form" id="add-form-exp">
+        <div class="form-row">
+          <div class="form-field"><label>Jobtitel</label><input type="text" id="new-exp-title" placeholder="F.eks. Projektleder"></div>
+          <div class="form-field"><label>Virksomhed</label><input type="text" id="new-exp-company" placeholder="F.eks. Novo Nordisk"></div>
+        </div>
+        <div class="form-row" style="margin-top:8px;">
+          <div class="form-field"><label>Startår</label><input type="number" id="new-exp-start" placeholder="2020"></div>
+          <div class="form-field"><label>Slutår (tom = nuværende)</label><input type="number" id="new-exp-end" placeholder="2024"></div>
+          <div class="form-field" style="flex:2"><label>Beskrivelse (valgfri)</label><input type="text" id="new-exp-desc" placeholder="Kort om dine opgaver..."></div>
+        </div>
+        <div style="margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="addExperience()">Tilføj erfaring</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Education -->
+  <div class="cv-section" id="section-education">
+    <div class="cv-section-header" onclick="toggleSection('education')">
+      <h3>
+        <span class="section-icon" style="background: rgba(251,191,36,0.15);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg>
+        </span>
+        Uddannelse
+        <span class="count-badge" id="edu-count">0</span>
+      </h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('edu')">+ Tilføj</button>
+        <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+    <div class="cv-section-body">
+      <div class="timeline" id="education-list"></div>
+      <div class="add-form" id="add-form-edu">
+        <div class="form-row">
+          <div class="form-field" style="flex:2"><label>Uddannelse / Grad</label><input type="text" id="new-edu-degree" placeholder="F.eks. Cand.merc., HD, Datamatiker"></div>
+          <div class="form-field" style="flex:2"><label>Institution</label><input type="text" id="new-edu-institution" placeholder="F.eks. CBS, DTU, Aalborg Universitet"></div>
+          <div class="form-field"><label>Afsluttet år</label><input type="number" id="new-edu-year" placeholder="2022"></div>
+        </div>
+        <div style="margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="addEducation()">Tilføj uddannelse</button></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Completed Courses -->
+  <div class="cv-section" id="section-courses">
+    <div class="cv-section-header" onclick="toggleSection('courses')">
+      <h3>
+        <span class="section-icon" style="background: rgba(255,81,47,0.15);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff512f" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+        </span>
+        Gennemførte Kurser
+        <span class="count-badge" id="courses-count">0</span>
+      </h3>
+      <div style="display:flex;gap:8px;align-items:center;">
+        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('course')">+ Tilføj</button>
+        <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
+      </div>
+    </div>
+    <div class="cv-section-body">
+      <div class="courses-grid" id="courses-list"></div>
+      <div class="add-form" id="add-form-course">
+        <div class="form-row">
+          <div class="form-field" style="flex:2"><label>Kursusnavn</label><input type="text" id="new-course-title" placeholder="F.eks. PRINCE2 Foundation"></div>
+          <div class="form-field"><label>Udbyder</label><input type="text" id="new-course-vendor" placeholder="F.eks. Teknologisk Institut"></div>
+          <div class="form-field"><label>Dato</label><input type="text" id="new-course-date" placeholder="F.eks. marts 2024"></div>
+        </div>
+        <div class="form-row" style="margin-top:8px;">
+          <div class="form-field" style="flex:2"><label>Certifikat (valgfri)</label><input type="text" id="new-course-cert" placeholder="F.eks. PRINCE2 Practitioner certificeret"></div>
+          <button class="btn btn-sm btn-primary" onclick="addCourse()" style="align-self:flex-end;">Tilføj kursus</button>
         </div>
       </div>
     </div>
+  </div>
 
-    <!-- Experience -->
-    <div class="brand-card">
-      <div class="brand-card-inner" style="flex-direction: column;">
-        <div class="brand-number">Erfaring</div>
-        <div id="experience-list"></div>
-        <div style="margin-top: 1rem;">
-          <div class="form-grid">
-            <div class="form-group"><input type="text" id="new-exp-title" class="form-control" placeholder="Jobtitel"></div>
-            <div class="form-group"><input type="text" id="new-exp-company" class="form-control" placeholder="Virksomhed"></div>
-            <div class="form-group"><input type="number" id="new-exp-start" class="form-control" placeholder="Startår"></div>
-            <div class="form-group"><input type="number" id="new-exp-end" class="form-control" placeholder="Slutår (tom = nu)"></div>
-          </div>
-          <button class="brand-btn edit-btn" onclick="addExperience()">+ Tilføj erfaring</button>
-        </div>
+  <!-- Summary Edit Modal -->
+  <div class="edit-overlay" id="summary-modal">
+    <div class="edit-modal">
+      <h3>Rediger Profiloversigt</h3>
+      <div class="form-field" style="margin-bottom:12px"><label>Overskrift</label><input type="text" id="edit-headline" placeholder="F.eks. IT-projektleder med fokus på agil udvikling"></div>
+      <div class="form-field" style="margin-bottom:12px"><label>Bio</label><textarea id="edit-bio" rows="3" placeholder="Kort om dig selv og din baggrund..."></textarea></div>
+      <div class="form-field" style="margin-bottom:12px"><label>Mål</label><input type="text" id="edit-goals" placeholder="Hvad vil du opnå? F.eks. PRINCE2 certificering, lederudvikling"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+        <div class="form-field"><label>Lokation</label><input type="text" id="edit-location" placeholder="København"></div>
+        <div class="form-field"><label>Format</label><input type="text" id="edit-format" placeholder="E-learning, fysisk"></div>
+        <div class="form-field"><label>Budget</label><input type="text" id="edit-budget" placeholder="5000-10000 kr"></div>
       </div>
-    </div>
-
-    <!-- Education -->
-    <div class="brand-card">
-      <div class="brand-card-inner" style="flex-direction: column;">
-        <div class="brand-number">Uddannelse</div>
-        <div id="education-list"></div>
-        <div style="margin-top: 1rem;">
-          <div class="form-grid">
-            <div class="form-group"><input type="text" id="new-edu-degree" class="form-control" placeholder="Uddannelse / Grad"></div>
-            <div class="form-group"><input type="text" id="new-edu-institution" class="form-control" placeholder="Institution"></div>
-            <div class="form-group"><input type="number" id="new-edu-year" class="form-control" placeholder="Afsluttet år"></div>
-          </div>
-          <button class="brand-btn edit-btn" onclick="addEducation()">+ Tilføj uddannelse</button>
-        </div>
-      </div>
-    </div>
-
-    <!-- Completed Courses -->
-    <div class="brand-card">
-      <div class="brand-card-inner" style="flex-direction: column;">
-        <div class="brand-number">Gennemførte Kurser</div>
-        <div id="courses-list"></div>
-        <div style="margin-top: 1rem;">
-          <div class="form-grid">
-            <div class="form-group"><input type="text" id="new-course-title" class="form-control" placeholder="Kursusnavn"></div>
-            <div class="form-group"><input type="text" id="new-course-vendor" class="form-control" placeholder="Udbyder"></div>
-            <div class="form-group"><input type="text" id="new-course-date" class="form-control" placeholder="Gennemført dato"></div>
-          </div>
-          <button class="brand-btn edit-btn" onclick="addCourse()">+ Tilføj kursus</button>
-        </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;">
+        <button class="btn btn-ghost" onclick="closeSummaryEdit()">Annuller</button>
+        <button class="btn btn-primary" onclick="saveSummary()">Gem ændringer</button>
       </div>
     </div>
   </div>
@@ -738,194 +605,77 @@
   <div class="brands-section">
     <div class="brands-header">
       <h2 class="section-title">Dine Brands</h2>
-      <a href="/add_brand" class="add-brand-btn">
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          <line x1="12" y1="5" x2="12" y2="19"></line>
-          <line x1="5" y1="12" x2="19" y2="12"></line>
-        </svg>
-        Tilføj Nyt Brand
+      <a href="/add_brand" class="btn btn-ai">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Tilføj Brand
       </a>
     </div>
-
     {% if brands %}
       {% for brand in brands %}
       <div class="brand-card" id="brand-slot-{{ brand.id }}">
         <div class="brand-card-inner">
-          <!-- Logo -->
           <div class="brand-logo-container">
             {% if brand.brand_logo %}
-            <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }} logo" class="brand-logo">
+            <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }}" class="brand-logo">
             {% else %}
             <div class="brand-logo no-logo">
-              <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
-                <rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>
-                <circle cx="8.5" cy="8.5" r="1.5"></circle>
-                <polyline points="21 15 16 10 5 21"></polyline>
-              </svg>
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
             </div>
             {% endif %}
           </div>
-
-          <!-- Details -->
           <div class="brand-details">
             <div class="brand-number">Brand {{ loop.index }}</div>
-
-            <!-- View Mode -->
             <div class="brand-view" id="brand-view-{{ brand.id }}">
               <div class="brand-info-list">
-                <p class="brand-info-item">
-                  <span class="brand-info-label">Navn</span>
-                  <span class="brand-info-value">{{ brand.brand_name }}</span>
-                </p>
-                <p class="brand-info-item">
-                  <span class="brand-info-label">Hjemmeside</span>
-                  <span class="brand-info-value">
-                    <a href="{{ brand.brand_site }}" target="_blank">{{ brand.brand_site }}</a>
-                  </span>
-                </p>
-                <p class="brand-info-item">
-                  <span class="brand-info-label">Facebook</span>
-                  <span class="brand-info-value">{{ brand.brand_facebook or '—' }}</span>
-                </p>
-                <p class="brand-info-item">
-                  <span class="brand-info-label">Twitter</span>
-                  <span class="brand-info-value">{{ brand.brand_twitter or '—' }}</span>
-                </p>
-                <p class="brand-info-item">
-                  <span class="brand-info-label">Instagram</span>
-                  <span class="brand-info-value">{{ brand.brand_instagram or '—' }}</span>
-                </p>
-                <p class="brand-info-item">
-                  <span class="brand-info-label">LinkedIn</span>
-                  <span class="brand-info-value">{{ brand.brand_linkedin or '—' }}</span>
-                </p>
+                <p class="brand-info-item"><span class="brand-info-label">Navn</span><span class="brand-info-value">{{ brand.brand_name }}</span></p>
+                <p class="brand-info-item"><span class="brand-info-label">Hjemmeside</span><span class="brand-info-value"><a href="{{ brand.brand_site }}" target="_blank">{{ brand.brand_site }}</a></span></p>
+                {% if brand.brand_facebook %}<p class="brand-info-item"><span class="brand-info-label">Facebook</span><span class="brand-info-value">{{ brand.brand_facebook }}</span></p>{% endif %}
+                {% if brand.brand_twitter %}<p class="brand-info-item"><span class="brand-info-label">Twitter</span><span class="brand-info-value">{{ brand.brand_twitter }}</span></p>{% endif %}
+                {% if brand.brand_instagram %}<p class="brand-info-item"><span class="brand-info-label">Instagram</span><span class="brand-info-value">{{ brand.brand_instagram }}</span></p>{% endif %}
+                {% if brand.brand_linkedin %}<p class="brand-info-item"><span class="brand-info-label">LinkedIn</span><span class="brand-info-value">{{ brand.brand_linkedin }}</span></p>{% endif %}
               </div>
-
               {% if brand.brand_description %}
-              <div class="brand-description">
-                <span class="brand-info-label">Beskrivelse</span>
-                <p>{{ brand.brand_description }}</p>
-              </div>
+              <div class="brand-description"><span class="brand-info-label">Beskrivelse</span><p>{{ brand.brand_description }}</p></div>
               {% endif %}
-
               <div class="brand-actions">
-                <button onclick="editBrand({{ brand.id }})" class="brand-btn edit-btn">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                  </svg>
+                <button onclick="editBrand({{ brand.id }})" class="btn btn-sm btn-ghost">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                   Rediger
                 </button>
               </div>
             </div>
-
-            <!-- Edit Mode (hidden by default) -->
-            <div class="brand-edit" id="brand-edit-{{ brand.id }}" style="display: none;">
+            <div class="brand-edit" id="brand-edit-{{ brand.id }}" style="display:none;">
               <form method="post" action="/update_brand/{{ brand.id }}" enctype="multipart/form-data">
+                <div class="form-group"><label class="form-label">Navn:</label><input type="text" name="brand_name" value="{{ brand.brand_name }}" required class="form-control"></div>
+                <div class="form-group"><label class="form-label">Hjemmeside:</label><input type="text" name="brand_site" value="{{ brand.brand_site }}" required class="form-control"></div>
                 <div class="form-group">
-                  <label for="brand_name_{{ brand.id }}" class="form-label">Navn:</label>
-                  <input type="text" name="brand_name" id="brand_name_{{ brand.id }}" value="{{ brand.brand_name }}" required class="form-control">
-                </div>
-
-                <div class="form-group">
-                  <label for="brand_site_{{ brand.id }}" class="form-label">Hjemmeside:</label>
-                  <input type="text" name="brand_site" id="brand_site_{{ brand.id }}" value="{{ brand.brand_site }}" required class="form-control">
-                </div>
-
-                <div class="form-group">
-                  <label for="brand_logo_{{ brand.id }}" class="form-label">Logo:</label>
+                  <label class="form-label">Logo:</label>
                   <div class="file-input-wrapper">
                     <div class="file-input-button">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="17 8 12 3 7 8"></polyline>
-                        <line x1="12" y1="3" x2="12" y2="15"></line>
-                      </svg>
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
                       Vælg billede
                     </div>
-                    <input type="file" name="brand_logo" id="brand_logo_{{ brand.id }}" accept="image/*" onchange="previewImage(event, 'preview_{{ brand.id }}')">
+                    <input type="file" name="brand_logo" accept="image/*" onchange="previewImage(event, 'preview_{{ brand.id }}')">
                   </div>
-
                   <div class="logo-preview-section">
                     {% if brand.brand_logo %}
-                    <div class="current-logo-container">
-                      <div class="logo-preview-title">Nuværende logo</div>
-                      <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }} logo" class="current-logo">
-                    </div>
+                    <div class="current-logo-container"><div class="logo-preview-title">Nuværende</div><img src="{{ brand.brand_logo }}?v={{ timestamp }}" class="current-logo"></div>
                     {% endif %}
-                    <div class="new-logo-container">
-                      <div class="logo-preview-title">Nyt logo</div>
-                      <img id="preview_{{ brand.id }}" class="image-preview" alt="Nyt logo preview">
-                    </div>
+                    <div class="new-logo-container"><div class="logo-preview-title">Nyt</div><img id="preview_{{ brand.id }}" class="image-preview"></div>
                   </div>
                 </div>
-
-                <div class="form-group">
-                  <label for="brand_description_{{ brand.id }}" class="form-label">Beskrivelse:</label>
-                  <textarea name="brand_description" id="brand_description_{{ brand.id }}" rows="3" placeholder="Kort beskrivelse af dit brand" class="form-control">{{ brand.brand_description or '' }}</textarea>
-                </div>
-
-                <div class="form-group">
-                  <label class="form-label">Sociale Medier:</label>
+                <div class="form-group"><label class="form-label">Beskrivelse:</label><textarea name="brand_description" rows="2" class="form-control">{{ brand.brand_description or '' }}</textarea></div>
+                <div class="form-group"><label class="form-label">Sociale Medier:</label>
                   <div class="form-grid">
-                    <div class="form-group">
-                      <div class="social-media-group">
-                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"></path>
-                        </svg>
-                        <input type="text" name="brand_fb" id="brand_fb_{{ brand.id }}" value="{{ brand.brand_facebook or '' }}" placeholder="fb.com/brand" class="form-control">
-                      </div>
-                    </div>
-
-                    <div class="form-group">
-                      <div class="social-media-group">
-                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"></path>
-                        </svg>
-                        <input type="text" name="brand_twitter" id="brand_twitter_{{ brand.id }}" value="{{ brand.brand_twitter or '' }}" placeholder="twitter.com/brand" class="form-control">
-                      </div>
-                    </div>
-
-                    <div class="form-group">
-                      <div class="social-media-group">
-                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <rect x="2" y="2" width="20" height="20" rx="5" ry="5"></rect>
-                          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"></path>
-                          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5"></line>
-                        </svg>
-                        <input type="text" name="brand_instagram" id="brand_instagram_{{ brand.id }}" value="{{ brand.brand_instagram or '' }}" placeholder="instagram.com/brand" class="form-control">
-                      </div>
-                    </div>
-
-                    <div class="form-group">
-                      <div class="social-media-group">
-                        <svg class="social-media-icon" xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-2-2 2 2 0 0 0-2 2v7h-4v-7a6 6 0 0 1 6-6z"></path>
-                          <rect x="2" y="9" width="4" height="12"></rect>
-                          <circle cx="4" cy="4" r="2"></circle>
-                        </svg>
-                        <input type="text" name="brand_linkedin" id="brand_linkedin_{{ brand.id }}" value="{{ brand.brand_linkedin or '' }}" placeholder="linkedin.com/company/brand" class="form-control">
-                      </div>
-                    </div>
+                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg><input type="text" name="brand_fb" value="{{ brand.brand_facebook or '' }}" placeholder="fb.com/brand" class="form-control"></div>
+                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg><input type="text" name="brand_twitter" value="{{ brand.brand_twitter or '' }}" placeholder="twitter.com/brand" class="form-control"></div>
+                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg><input type="text" name="brand_instagram" value="{{ brand.brand_instagram or '' }}" placeholder="instagram.com/brand" class="form-control"></div>
+                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg><input type="text" name="brand_linkedin" value="{{ brand.brand_linkedin or '' }}" placeholder="linkedin.com/company/brand" class="form-control"></div>
                   </div>
                 </div>
-
                 <div class="brand-actions">
-                  <button type="submit" class="brand-btn edit-btn">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path>
-                      <polyline points="17 21 17 13 7 13 7 21"></polyline>
-                      <polyline points="7 3 7 8 15 8"></polyline>
-                    </svg>
-                    Gem
-                  </button>
-                  <button type="button" class="brand-btn cancel-btn" onclick="cancelEdit({{ brand.id }})">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <line x1="18" y1="6" x2="6" y2="18"></line>
-                      <line x1="6" y1="6" x2="18" y2="18"></line>
-                    </svg>
-                    Annuller
-                  </button>
+                  <button type="submit" class="btn btn-sm btn-primary">Gem</button>
+                  <button type="button" class="btn btn-sm btn-ghost" onclick="cancelEdit({{ brand.id }})">Annuller</button>
                 </div>
               </form>
             </div>
@@ -934,229 +684,320 @@
       </div>
       {% endfor %}
     {% else %}
-      <div class="empty-brands-message">
-        <div class="empty-brands-icon">
-          <svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"></path>
-            <line x1="7" y1="7" x2="7.01" y2="7"></line>
-          </svg>
-        </div>
-        <h3>Ingen brands registreret endnu</h3>
-        <p>Kom i gang ved at tilføje dit første brand med knappen ovenfor.</p>
+      <div class="empty-state" style="background:var(--card-bg);border:1px dashed var(--border-color);border-radius:var(--border-radius);padding:2.5rem;">
+        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
+        <h3 style="margin:0.5rem 0;color:var(--text-color);">Ingen brands endnu</h3>
+        <p>Tilføj dit første brand med knappen ovenfor.</p>
       </div>
     {% endif %}
   </div>
 </div>
 
 <script>
-  function editBrand(brandId) {
-    document.getElementById('brand-view-' + brandId).style.display = 'none';
-    document.getElementById('brand-edit-' + brandId).style.display = 'block';
-  }
+  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#a855f7', avanceret:'#f59e0b', ekspert:'#ef4444'};
+  const LEVEL_LABELS = {begynder:'Begynder', mellem:'Mellem', avanceret:'Avanceret', ekspert:'Ekspert'};
+  let _profileData = null;
 
-  function cancelEdit(brandId) {
-    document.getElementById('brand-edit-' + brandId).style.display = 'none';
-    document.getElementById('brand-view-' + brandId).style.display = 'block';
-
-    // Reset the image preview
-    const previewImg = document.getElementById('preview_' + brandId);
-    if (previewImg) {
-      previewImg.style.display = 'none';
-      previewImg.src = '';
-    }
-  }
-
-  function previewImage(event, previewId) {
-    const output = document.getElementById(previewId);
-    output.src = URL.createObjectURL(event.target.files[0]);
-    output.style.display = 'block';
-  }
-
-  // Animate flash messages fade out after a delay
-  document.addEventListener('DOMContentLoaded', function() {
-    const flashMessages = document.querySelectorAll('.flash-message');
-    flashMessages.forEach(message => {
-      setTimeout(() => {
-        message.style.opacity = '0';
-        message.style.transform = 'translateY(-20px)';
-        message.style.transition = 'opacity 0.5s ease, transform 0.5s ease';
-      }, 5000);
-    });
-    // Load CV data
-    loadFullProfile();
-  });
-
-  // ── CV / Profile Management ──
-  function escapeHtml(str) {
+  function esc(str) {
     if (!str) return '';
     const d = document.createElement('div');
     d.appendChild(document.createTextNode(str));
     return d.innerHTML;
   }
-  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#a855f7', avanceret:'#f59e0b', ekspert:'#ef4444'};
 
   function showToast(msg, type='success') {
-    const toast = document.createElement('div');
-    toast.style.cssText = `position:fixed;top:16px;right:16px;padding:10px 18px;border-radius:10px;font-size:13px;z-index:9999;color:#fff;animation:fadeIn 0.3s ease;background:${type==='success'?'#22c55e':'#ef4444'};box-shadow:0 4px 12px rgba(0,0,0,0.3);`;
-    toast.textContent = msg;
-    document.body.appendChild(toast);
-    setTimeout(() => { toast.style.opacity='0'; toast.style.transition='opacity 0.3s'; setTimeout(() => toast.remove(), 300); }, 3000);
+    const c = document.getElementById('toast-container');
+    const t = document.createElement('div');
+    t.className = `toast ${type}`;
+    t.innerHTML = `${type==='success'?'&#10003;':'&#10007;'} ${esc(msg)}`;
+    c.appendChild(t);
+    setTimeout(() => { t.style.opacity='0'; t.style.transition='opacity 0.3s'; setTimeout(() => t.remove(), 300); }, 3000);
   }
 
-  async function apiFetch(url, opts={}) {
+  async function api(url, opts={}) {
     const res = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opts});
     return res.json();
   }
 
-  async function loadFullProfile() {
+  function toggleSection(name) {
+    document.getElementById('section-' + name).classList.toggle('collapsed');
+  }
+
+  function toggleAddForm(name) {
+    const form = document.getElementById('add-form-' + name);
+    form.classList.toggle('visible');
+    if (form.classList.contains('visible')) {
+      const input = form.querySelector('input');
+      if (input) setTimeout(() => input.focus(), 100);
+    }
+  }
+
+  // ── Load Full Profile ──
+  async function loadProfile() {
     try {
-      const data = await apiFetch('/api/profile/full');
+      const data = await api('/api/profile/full');
       if (!data.success) return;
-      const p = data.profile;
-      // Summary
-      document.getElementById('cv-headline').textContent = p.headline || '—';
-      document.getElementById('cv-goals').textContent = p.goals || '—';
-      document.getElementById('cv-location').textContent = p.preferred_location || '—';
-      document.getElementById('cv-format').textContent = p.preferred_format || '—';
-      document.getElementById('cv-budget').textContent = p.budget_range || '—';
-      if (p.bio) { document.getElementById('cv-bio').textContent = p.bio; document.getElementById('cv-bio-section').style.display = ''; }
-      // Skills
-      renderSkills(p.skills || []);
-      // Experience
-      renderExperience(p.experience || []);
-      // Education
-      renderEducation(p.education || []);
-      // Courses
-      renderCourses(p.completed_courses || []);
+      _profileData = data.profile;
+      renderAll();
     } catch(e) { console.error('Profile load error:', e); }
   }
 
-  function renderSkills(skills) {
-    const el = document.getElementById('skills-list');
-    if (!skills.length) { el.innerHTML = '<span style="color: var(--muted-text); font-size: 14px;">Ingen kompetencer endnu. Tilføj nedenfor eller bed AI-chatten om at tilføje dem.</span>'; return; }
-    el.innerHTML = skills.map(s => `<span style="display:inline-flex;align-items:center;gap:6px;background:rgba(168,85,247,0.1);border:1px solid rgba(168,85,247,0.25);border-radius:50px;padding:6px 14px;font-size:13px;"><span style="width:8px;height:8px;border-radius:50%;background:${LEVEL_COLORS[s.level]||'#888'}"></span>${escapeHtml(s.name)}<span style="color:var(--muted-text);font-size:11px;">${escapeHtml(s.level)}</span><button onclick="removeSkill('${escapeHtml(s.name).replace(/'/g, "&#39;")}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:14px;padding:0 0 0 4px;">&times;</button></span>`).join('');
+  function renderAll() {
+    const p = _profileData;
+    if (!p) return;
+
+    // Avatar
+    const initials = (p.username || '?').substring(0, 2).toUpperCase();
+    document.getElementById('avatar-initials').textContent = initials;
+
+    // Header headline
+    document.getElementById('header-headline').textContent = p.headline || 'Tilføj en overskrift til din profil';
+
+    renderSummary(p);
+    renderSkills(p.skills || []);
+    renderExperience(p.experience || []);
+    renderEducation(p.education || []);
+    renderCourses(p.completed_courses || []);
+    updateCompleteness(p);
   }
 
-  function renderExperience(items) {
-    const el = document.getElementById('experience-list');
-    if (!items.length) { el.innerHTML = '<p style="color: var(--muted-text); font-size: 14px;">Ingen erfaring tilføjet endnu.</p>'; return; }
-    el.innerHTML = items.map(e => `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;"><div><strong>${escapeHtml(e.title)}</strong>${e.company ? ' @ '+escapeHtml(e.company) : ''}<br><span style="color:var(--muted-text);font-size:12px;">${e.start_year||'?'} – ${e.is_current?'nu':(e.end_year||'?')}</span></div><button onclick="removeExperience(${e.id})" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:18px;">&times;</button></div>`).join('');
-  }
+  // ── Summary ──
+  function renderSummary(p) {
+    const grid = document.getElementById('summary-grid');
+    const items = [];
+    if (p.bio) items.push({label:'Bio', value: p.bio, cls:'summary-bio'});
+    if (p.goals) items.push({label:'Mål', value: p.goals});
+    if (p.preferred_location) items.push({label:'Foretrukken lokation', value: p.preferred_location});
+    if (p.preferred_format) items.push({label:'Foretrukken format', value: p.preferred_format});
+    if (p.budget_range) items.push({label:'Budget', value: p.budget_range});
 
-  function renderEducation(items) {
-    const el = document.getElementById('education-list');
-    if (!items.length) { el.innerHTML = '<p style="color: var(--muted-text); font-size: 14px;">Ingen uddannelse tilføjet endnu.</p>'; return; }
-    el.innerHTML = items.map(e => `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;"><div><strong>${escapeHtml(e.degree)}</strong>${e.institution ? ' — '+escapeHtml(e.institution) : ''}<br><span style="color:var(--muted-text);font-size:12px;">${e.year_completed||''}</span></div><button onclick="removeEducation(${e.id})" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:18px;">&times;</button></div>`).join('');
-  }
-
-  function renderCourses(items) {
-    const el = document.getElementById('courses-list');
-    if (!items.length) { el.innerHTML = '<p style="color: var(--muted-text); font-size: 14px;">Ingen gennemførte kurser endnu. AI-chatten kan tilføje kurser automatisk.</p>'; return; }
-    el.innerHTML = items.map(c => `<div style="padding:12px 0;border-bottom:1px solid var(--border-color);display:flex;justify-content:space-between;align-items:center;"><div><strong>${escapeHtml(c.title)}</strong>${c.vendor ? ' — '+escapeHtml(c.vendor) : ''}<br><span style="color:var(--muted-text);font-size:12px;">${escapeHtml(c.completed_date)||''}</span></div><button onclick="removeCourse('${escapeHtml(c.title).replace(/'/g, "&#39;")}')" style="background:none;border:none;color:#f87171;cursor:pointer;font-size:18px;">&times;</button></div>`).join('');
-  }
-
-  // Add/Remove functions
-  async function addSkill() {
-    const name = document.getElementById('new-skill-name').value.trim();
-    const level = document.getElementById('new-skill-level').value;
-    if (!name) return;
-    const btn = event && event.target; if (btn) btn.disabled = true;
-    try {
-      const res = await apiFetch('/api/profile/skills', {method:'POST', body:JSON.stringify({skill_name:name, skill_level:level, source:'manual'})});
-      if (res.success) { showToast('Kompetence tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
-    } catch(e) { showToast('Netværksfejl', 'error'); }
-    document.getElementById('new-skill-name').value = '';
-    if (btn) btn.disabled = false;
-    loadFullProfile();
-  }
-  async function removeSkill(name) {
-    await apiFetch('/api/profile/skills', {method:'DELETE', body:JSON.stringify({skill_name:name})});
-    loadFullProfile();
-  }
-  async function addExperience() {
-    const title = document.getElementById('new-exp-title').value.trim();
-    if (!title) return;
-    const endVal = document.getElementById('new-exp-end').value;
-    const btn = event && event.target; if (btn) btn.disabled = true;
-    try {
-      const res = await apiFetch('/api/profile/experience', {method:'POST', body:JSON.stringify({
-        title, company: document.getElementById('new-exp-company').value.trim(),
-        start_year: parseInt(document.getElementById('new-exp-start').value) || null,
-        end_year: endVal ? parseInt(endVal) : null, is_current: !endVal
-      })});
-      if (res.success) { showToast('Erfaring tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
-    } catch(e) { showToast('Netværksfejl', 'error'); }
-    document.getElementById('new-exp-title').value = '';
-    document.getElementById('new-exp-company').value = '';
-    document.getElementById('new-exp-start').value = '';
-    document.getElementById('new-exp-end').value = '';
-    if (btn) btn.disabled = false;
-    loadFullProfile();
-  }
-  async function removeExperience(id) {
-    await apiFetch('/api/profile/experience', {method:'DELETE', body:JSON.stringify({id})});
-    loadFullProfile();
-  }
-  async function addEducation() {
-    const degree = document.getElementById('new-edu-degree').value.trim();
-    if (!degree) return;
-    const btn = event && event.target; if (btn) btn.disabled = true;
-    try {
-      const res = await apiFetch('/api/profile/education', {method:'POST', body:JSON.stringify({
-        degree, institution: document.getElementById('new-edu-institution').value.trim(),
-        year_completed: parseInt(document.getElementById('new-edu-year').value) || null
-      })});
-      if (res.success) { showToast('Uddannelse tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
-    } catch(e) { showToast('Netværksfejl', 'error'); }
-    document.getElementById('new-edu-degree').value = '';
-    document.getElementById('new-edu-institution').value = '';
-    document.getElementById('new-edu-year').value = '';
-    if (btn) btn.disabled = false;
-    loadFullProfile();
-  }
-  async function removeEducation(id) {
-    await apiFetch('/api/profile/education', {method:'DELETE', body:JSON.stringify({id})});
-    loadFullProfile();
-  }
-  async function addCourse() {
-    const title = document.getElementById('new-course-title').value.trim();
-    if (!title) return;
-    const btn = event && event.target; if (btn) btn.disabled = true;
-    try {
-      const res = await apiFetch('/api/profile/courses', {method:'POST', body:JSON.stringify({
-        course_title: title, vendor: document.getElementById('new-course-vendor').value.trim(),
-        completed_date: document.getElementById('new-course-date').value.trim()
-      })});
-      if (res.success) { showToast('Kursus tilføjet!'); } else { showToast(res.error || 'Fejl', 'error'); }
-    } catch(e) { showToast('Netværksfejl', 'error'); }
-    document.getElementById('new-course-title').value = '';
-    document.getElementById('new-course-vendor').value = '';
-    document.getElementById('new-course-date').value = '';
-    if (btn) btn.disabled = false;
-    loadFullProfile();
-  }
-  async function removeCourse(title) {
-    await apiFetch('/api/profile/courses', {method:'DELETE', body:JSON.stringify({course_title:title})});
-    loadFullProfile();
-  }
-
-  // Summary edit toggle
-  function toggleSummaryEdit(show) {
-    document.getElementById('profile-summary-view').style.display = show ? 'none' : '';
-    document.getElementById('profile-summary-edit').style.display = show ? '' : 'none';
-    document.getElementById('summary-edit-btn-row').style.display = show ? 'none' : '';
-    if (show) {
-      document.getElementById('edit-headline').value = document.getElementById('cv-headline').textContent === '—' ? '' : document.getElementById('cv-headline').textContent;
-      document.getElementById('edit-bio').value = document.getElementById('cv-bio').textContent || '';
-      document.getElementById('edit-goals').value = document.getElementById('cv-goals').textContent === '—' ? '' : document.getElementById('cv-goals').textContent;
-      document.getElementById('edit-location').value = document.getElementById('cv-location').textContent === '—' ? '' : document.getElementById('cv-location').textContent;
-      document.getElementById('edit-format').value = document.getElementById('cv-format').textContent === '—' ? '' : document.getElementById('cv-format').textContent;
-      document.getElementById('edit-budget').value = document.getElementById('cv-budget').textContent === '—' ? '' : document.getElementById('cv-budget').textContent;
+    if (!items.length) {
+      grid.innerHTML = '<div class="empty-state"><p>Ingen profildetaljer endnu. Klik "Rediger" eller fortæl AI-chatten om dig selv.</p></div>';
+      return;
     }
+    grid.innerHTML = items.map(i => `<div class="summary-item ${i.cls||''}"><div class="summary-label">${esc(i.label)}</div><div class="summary-value">${esc(i.value)}</div></div>`).join('');
   }
+
+  // ── Skills ──
+  function renderSkills(skills) {
+    document.getElementById('skills-count').textContent = skills.length;
+    const el = document.getElementById('skills-list');
+    if (!skills.length) {
+      el.innerHTML = '<div class="empty-state" style="width:100%;padding:1rem;"><p>Ingen kompetencer endnu. Tilføj dem her eller bed AI-chatten om at tilføje dem.</p></div>';
+      return;
+    }
+    el.innerHTML = skills.map(s => `<div class="skill-pill">
+      <span class="skill-dot" style="background:${LEVEL_COLORS[s.level]||'#888'}"></span>
+      <span>${esc(s.name)}</span>
+      <span class="skill-level">${LEVEL_LABELS[s.level]||s.level}</span>
+      <button class="skill-remove" onclick="removeSkill('${esc(s.name).replace(/'/g,"&#39;")}')" title="Fjern">&times;</button>
+    </div>`).join('');
+  }
+
+  // ── Experience Timeline ──
+  function renderExperience(items) {
+    document.getElementById('exp-count').textContent = items.length;
+    const el = document.getElementById('experience-list');
+    if (!items.length) {
+      el.innerHTML = '<div class="empty-state"><p>Ingen erfaring tilføjet endnu.</p></div>';
+      return;
+    }
+    el.innerHTML = items.map(e => {
+      const isCurrent = e.is_current;
+      const period = `${e.start_year||'?'} – ${isCurrent ? 'nu' : (e.end_year||'?')}`;
+      return `<div class="timeline-item ${isCurrent?'current':''}" id="exp-item-${e.id}">
+        <div class="timeline-dot"></div>
+        <div class="timeline-content" id="exp-view-${e.id}">
+          <div class="timeline-title">${esc(e.title)}</div>
+          ${e.company ? `<div class="timeline-subtitle">${esc(e.company)}</div>` : ''}
+          <div class="timeline-period ${isCurrent?'active':''}">${isCurrent?'<span style="width:6px;height:6px;border-radius:50%;background:#4ade80;"></span>':''} ${period}</div>
+          ${e.description ? `<div class="timeline-desc">${esc(e.description)}</div>` : ''}
+          <div class="timeline-actions">
+            <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;" onclick="editExperience(${e.id})">Rediger</button>
+            <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);border-color:rgba(248,113,113,0.2);padding:2px 8px;font-size:0.72rem;" onclick="removeExperience(${e.id})">Fjern</button>
+          </div>
+        </div>
+        <div class="inline-edit-form" id="exp-edit-${e.id}" style="display:none;">
+          <div class="form-row">
+            <input type="text" id="edit-exp-title-${e.id}" value="${esc(e.title)}" placeholder="Jobtitel">
+            <input type="text" id="edit-exp-company-${e.id}" value="${esc(e.company||'')}" placeholder="Virksomhed">
+          </div>
+          <div class="form-row">
+            <input type="number" id="edit-exp-start-${e.id}" value="${e.start_year||''}" placeholder="Startår" style="max-width:90px;">
+            <input type="number" id="edit-exp-end-${e.id}" value="${e.end_year||''}" placeholder="Slutår" style="max-width:90px;">
+            <input type="text" id="edit-exp-desc-${e.id}" value="${esc(e.description||'')}" placeholder="Beskrivelse..." style="flex:2;">
+          </div>
+          <div class="inline-edit-actions">
+            <button class="btn btn-sm btn-primary" onclick="saveExperience(${e.id})">Gem</button>
+            <button class="btn btn-sm btn-ghost" onclick="cancelEditExp(${e.id})">Annuller</button>
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+  }
+
+  function editExperience(id) {
+    document.getElementById('exp-view-'+id).style.display = 'none';
+    document.getElementById('exp-edit-'+id).style.display = '';
+  }
+  function cancelEditExp(id) {
+    document.getElementById('exp-edit-'+id).style.display = 'none';
+    document.getElementById('exp-view-'+id).style.display = '';
+  }
+  async function saveExperience(id) {
+    const endVal = document.getElementById('edit-exp-end-'+id).value;
+    try {
+      const res = await api('/api/profile/experience', {method:'PUT', body:JSON.stringify({
+        id,
+        title: document.getElementById('edit-exp-title-'+id).value.trim(),
+        company: document.getElementById('edit-exp-company-'+id).value.trim(),
+        start_year: parseInt(document.getElementById('edit-exp-start-'+id).value) || null,
+        end_year: endVal ? parseInt(endVal) : null,
+        is_current: !endVal,
+        description: document.getElementById('edit-exp-desc-'+id).value.trim()
+      })});
+      if (res.success) showToast('Erfaring opdateret!'); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    loadProfile();
+  }
+
+  // ── Education Timeline ──
+  function renderEducation(items) {
+    document.getElementById('edu-count').textContent = items.length;
+    const el = document.getElementById('education-list');
+    if (!items.length) {
+      el.innerHTML = '<div class="empty-state"><p>Ingen uddannelse tilføjet endnu.</p></div>';
+      return;
+    }
+    el.innerHTML = items.map(e => `<div class="timeline-item" id="edu-item-${e.id}">
+      <div class="timeline-dot"></div>
+      <div class="timeline-content" id="edu-view-${e.id}">
+        <div class="timeline-title">${esc(e.degree)}</div>
+        ${e.institution ? `<div class="timeline-subtitle">${esc(e.institution)}</div>` : ''}
+        ${e.year_completed ? `<div class="timeline-period">${e.year_completed}</div>` : ''}
+        <div class="timeline-actions">
+          <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;" onclick="editEducation(${e.id})">Rediger</button>
+          <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);border-color:rgba(248,113,113,0.2);padding:2px 8px;font-size:0.72rem;" onclick="removeEducation(${e.id})">Fjern</button>
+        </div>
+      </div>
+      <div class="inline-edit-form" id="edu-edit-${e.id}" style="display:none;">
+        <div class="form-row">
+          <input type="text" id="edit-edu-degree-${e.id}" value="${esc(e.degree)}" placeholder="Uddannelse">
+          <input type="text" id="edit-edu-inst-${e.id}" value="${esc(e.institution||'')}" placeholder="Institution">
+          <input type="number" id="edit-edu-year-${e.id}" value="${e.year_completed||''}" placeholder="År" style="max-width:90px;">
+        </div>
+        <div class="inline-edit-actions">
+          <button class="btn btn-sm btn-primary" onclick="saveEducation(${e.id})">Gem</button>
+          <button class="btn btn-sm btn-ghost" onclick="cancelEditEdu(${e.id})">Annuller</button>
+        </div>
+      </div>
+    </div>`).join('');
+  }
+
+  function editEducation(id) {
+    document.getElementById('edu-view-'+id).style.display = 'none';
+    document.getElementById('edu-edit-'+id).style.display = '';
+  }
+  function cancelEditEdu(id) {
+    document.getElementById('edu-edit-'+id).style.display = 'none';
+    document.getElementById('edu-view-'+id).style.display = '';
+  }
+  async function saveEducation(id) {
+    try {
+      const res = await api('/api/profile/education', {method:'PUT', body:JSON.stringify({
+        id,
+        degree: document.getElementById('edit-edu-degree-'+id).value.trim(),
+        institution: document.getElementById('edit-edu-inst-'+id).value.trim(),
+        year_completed: parseInt(document.getElementById('edit-edu-year-'+id).value) || null
+      })});
+      if (res.success) showToast('Uddannelse opdateret!'); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    loadProfile();
+  }
+
+  // ── Courses Grid ──
+  function renderCourses(items) {
+    document.getElementById('courses-count').textContent = items.length;
+    const el = document.getElementById('courses-list');
+    if (!items.length) {
+      el.innerHTML = '<div class="empty-state" style="grid-column:1/-1;"><p>Ingen gennemførte kurser endnu. AI-chatten kan tilføje kurser automatisk.</p></div>';
+      return;
+    }
+    el.innerHTML = items.map(c => `<div class="course-card">
+      <div class="course-title">${esc(c.title)}</div>
+      ${c.vendor ? `<div class="course-vendor">${esc(c.vendor)}</div>` : ''}
+      <div class="course-meta">
+        ${c.completed_date ? `<span class="course-badge">${esc(c.completed_date)}</span>` : ''}
+        ${c.certificate_note ? `<span class="course-badge cert">&#127942; Certifikat</span>` : ''}
+      </div>
+      <div class="course-remove">
+        <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);border-color:rgba(248,113,113,0.2);padding:2px 8px;font-size:0.72rem;" onclick="removeCourse('${esc(c.title).replace(/'/g,"&#39;")}')">Fjern</button>
+      </div>
+    </div>`).join('');
+  }
+
+  // ── Completeness ──
+  function updateCompleteness(p) {
+    const checks = [
+      { key: 'headline', label: 'Tilføj overskrift', done: !!p.headline },
+      { key: 'bio', label: 'Skriv bio', done: !!p.bio },
+      { key: 'goals', label: 'Sæt mål', done: !!p.goals },
+      { key: 'skills', label: 'Tilføj kompetencer', done: (p.skills||[]).length > 0 },
+      { key: 'experience', label: 'Tilføj erfaring', done: (p.experience||[]).length > 0 },
+      { key: 'education', label: 'Tilføj uddannelse', done: (p.education||[]).length > 0 },
+      { key: 'courses', label: 'Tilføj kurser', done: (p.completed_courses||[]).length > 0 },
+      { key: 'location', label: 'Angiv lokation', done: !!p.preferred_location },
+    ];
+    const done = checks.filter(c => c.done).length;
+    const pct = Math.round((done / checks.length) * 100);
+    document.getElementById('completeness-pct').textContent = pct + '%';
+    document.getElementById('completeness-fill').style.width = pct + '%';
+
+    const tipsEl = document.getElementById('completeness-tips');
+    if (pct >= 100) {
+      tipsEl.innerHTML = '<span class="completeness-tip done" style="opacity:0.7;">Profil komplet!</span>';
+      return;
+    }
+    tipsEl.innerHTML = checks.filter(c => !c.done).slice(0, 4).map(c =>
+      `<span class="completeness-tip" onclick="handleTip('${c.key}')">${c.label}</span>`
+    ).join('');
+  }
+
+  function handleTip(key) {
+    const map = {
+      headline: () => openSummaryEdit(),
+      bio: () => openSummaryEdit(),
+      goals: () => openSummaryEdit(),
+      skills: () => { scrollTo('section-skills'); toggleAddForm('skills'); },
+      experience: () => { scrollTo('section-experience'); toggleAddForm('exp'); },
+      education: () => { scrollTo('section-education'); toggleAddForm('edu'); },
+      courses: () => { scrollTo('section-courses'); toggleAddForm('course'); },
+      location: () => openSummaryEdit(),
+    };
+    (map[key] || (() => {}))();
+  }
+
+  function scrollTo(id) {
+    const el = document.getElementById(id);
+    if (el) { if (el.classList.contains('collapsed')) el.classList.remove('collapsed'); el.scrollIntoView({behavior:'smooth', block:'center'}); }
+  }
+
+  // ── Summary Edit Modal ──
+  function openSummaryEdit() {
+    const p = _profileData || {};
+    document.getElementById('edit-headline').value = p.headline || '';
+    document.getElementById('edit-bio').value = p.bio || '';
+    document.getElementById('edit-goals').value = p.goals || '';
+    document.getElementById('edit-location').value = p.preferred_location || '';
+    document.getElementById('edit-format').value = p.preferred_format || '';
+    document.getElementById('edit-budget').value = p.budget_range || '';
+    document.getElementById('summary-modal').classList.add('visible');
+  }
+  function closeSummaryEdit() { document.getElementById('summary-modal').classList.remove('visible'); }
+
   async function saveSummary() {
     try {
-      const res = await apiFetch('/api/profile/summary', {method:'POST', body:JSON.stringify({
+      const res = await api('/api/profile/summary', {method:'POST', body:JSON.stringify({
         headline: document.getElementById('edit-headline').value.trim(),
         bio: document.getElementById('edit-bio').value.trim(),
         goals: document.getElementById('edit-goals').value.trim(),
@@ -1164,10 +1005,157 @@
         preferred_format: document.getElementById('edit-format').value.trim(),
         budget_range: document.getElementById('edit-budget').value.trim()
       })});
-      if (res.success) { showToast('Profil gemt!'); } else { showToast(res.error || 'Fejl', 'error'); }
-    } catch(e) { showToast('Netværksfejl', 'error'); }
-    toggleSummaryEdit(false);
-    loadFullProfile();
+      if (res.success) showToast('Profil gemt!'); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    closeSummaryEdit();
+    loadProfile();
   }
+
+  // ── CRUD Actions ──
+  async function addSkill() {
+    const name = document.getElementById('new-skill-name').value.trim();
+    const level = document.getElementById('new-skill-level').value;
+    if (!name) return;
+    try {
+      const res = await api('/api/profile/skills', {method:'POST', body:JSON.stringify({skill_name:name, skill_level:level, source:'manual'})});
+      if (res.success) showToast(`"${name}" tilføjet!`); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    document.getElementById('new-skill-name').value = '';
+    loadProfile();
+  }
+  async function removeSkill(name) {
+    await api('/api/profile/skills', {method:'DELETE', body:JSON.stringify({skill_name:name})});
+    showToast(`"${name}" fjernet`);
+    loadProfile();
+  }
+
+  async function addExperience() {
+    const title = document.getElementById('new-exp-title').value.trim();
+    if (!title) return;
+    const endVal = document.getElementById('new-exp-end').value;
+    try {
+      const res = await api('/api/profile/experience', {method:'POST', body:JSON.stringify({
+        title, company: document.getElementById('new-exp-company').value.trim(),
+        start_year: parseInt(document.getElementById('new-exp-start').value) || null,
+        end_year: endVal ? parseInt(endVal) : null,
+        is_current: !endVal,
+        description: document.getElementById('new-exp-desc').value.trim()
+      })});
+      if (res.success) showToast('Erfaring tilføjet!'); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    ['new-exp-title','new-exp-company','new-exp-start','new-exp-end','new-exp-desc'].forEach(id => document.getElementById(id).value = '');
+    loadProfile();
+  }
+  async function removeExperience(id) {
+    await api('/api/profile/experience', {method:'DELETE', body:JSON.stringify({id})});
+    showToast('Erfaring fjernet');
+    loadProfile();
+  }
+
+  async function addEducation() {
+    const degree = document.getElementById('new-edu-degree').value.trim();
+    if (!degree) return;
+    try {
+      const res = await api('/api/profile/education', {method:'POST', body:JSON.stringify({
+        degree, institution: document.getElementById('new-edu-institution').value.trim(),
+        year_completed: parseInt(document.getElementById('new-edu-year').value) || null
+      })});
+      if (res.success) showToast('Uddannelse tilføjet!'); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    ['new-edu-degree','new-edu-institution','new-edu-year'].forEach(id => document.getElementById(id).value = '');
+    loadProfile();
+  }
+  async function removeEducation(id) {
+    await api('/api/profile/education', {method:'DELETE', body:JSON.stringify({id})});
+    showToast('Uddannelse fjernet');
+    loadProfile();
+  }
+
+  async function addCourse() {
+    const title = document.getElementById('new-course-title').value.trim();
+    if (!title) return;
+    try {
+      const res = await api('/api/profile/courses', {method:'POST', body:JSON.stringify({
+        course_title: title,
+        vendor: document.getElementById('new-course-vendor').value.trim(),
+        completed_date: document.getElementById('new-course-date').value.trim(),
+        certificate_note: document.getElementById('new-course-cert').value.trim()
+      })});
+      if (res.success) showToast('Kursus tilføjet!'); else showToast(res.error||'Fejl','error');
+    } catch(e) { showToast('Netværksfejl','error'); }
+    ['new-course-title','new-course-vendor','new-course-date','new-course-cert'].forEach(id => document.getElementById(id).value = '');
+    loadProfile();
+  }
+  async function removeCourse(title) {
+    await api('/api/profile/courses', {method:'DELETE', body:JSON.stringify({course_title:title})});
+    showToast('Kursus fjernet');
+    loadProfile();
+  }
+
+  // ── Brand Editing ──
+  function editBrand(id) { document.getElementById('brand-view-'+id).style.display='none'; document.getElementById('brand-edit-'+id).style.display='block'; }
+  function cancelEdit(id) { document.getElementById('brand-edit-'+id).style.display='none'; document.getElementById('brand-view-'+id).style.display='block'; }
+  function previewImage(event, previewId) { const o=document.getElementById(previewId); o.src=URL.createObjectURL(event.target.files[0]); o.style.display='block'; }
+
+  // ── Close modal on backdrop click ──
+  document.addEventListener('click', e => {
+    if (e.target.classList.contains('edit-overlay')) closeSummaryEdit();
+  });
+
+  // ── Keyboard: Enter submits in skill input ──
+  // ── Handle URL hash anchors (e.g. /profile#section-skills from chat toast) ──
+  function handleAnchor() {
+    const hash = window.location.hash;
+    if (!hash) return;
+    const target = document.querySelector(hash);
+    if (target) {
+      // Uncollapse if collapsed
+      if (target.classList.contains('collapsed')) target.classList.remove('collapsed');
+      // Scroll to it
+      setTimeout(() => {
+        target.scrollIntoView({behavior:'smooth', block:'center'});
+        target.classList.add('highlight-pulse');
+        setTimeout(() => target.classList.remove('highlight-pulse'), 2000);
+      }, 300);
+    }
+  }
+
+  // ── Auto-refresh: poll for changes from chat (when tab is visible) ──
+  let _lastProfileHash = '';
+  function profileHash(p) {
+    return JSON.stringify([
+      (p.skills||[]).length, (p.experience||[]).length,
+      (p.education||[]).length, (p.completed_courses||[]).length,
+      p.headline||'', p.goals||''
+    ]);
+  }
+  async function pollProfileChanges() {
+    if (document.hidden) return;
+    try {
+      const data = await api('/api/profile/full');
+      if (!data.success) return;
+      const newHash = profileHash(data.profile);
+      if (_lastProfileHash && newHash !== _lastProfileHash) {
+        _profileData = data.profile;
+        renderAll();
+        showToast('Profil opdateret fra chat!');
+      }
+      _lastProfileHash = newHash;
+    } catch(e) {}
+  }
+
+  document.addEventListener('DOMContentLoaded', () => {
+    loadProfile().then(() => {
+      if (_profileData) _lastProfileHash = profileHash(_profileData);
+      handleAnchor();
+    });
+    document.getElementById('new-skill-name').addEventListener('keydown', e => { if (e.key === 'Enter') addSkill(); });
+    // Flash message fade
+    document.querySelectorAll('.flash-message').forEach(m => {
+      setTimeout(() => { m.style.opacity='0'; m.style.transition='opacity 0.5s'; }, 4000);
+    });
+    // Poll for chat-driven changes every 10s
+    setInterval(pollProfileChanges, 10000);
+  });
 </script>
 {% endblock %}

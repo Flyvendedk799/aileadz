@@ -686,17 +686,37 @@ def adminlog():
         first_query = ""
         tool_calls = 0
         no_results = 0
+        profile_events = 0
+        errors = 0
+        logged_in = False
+        low_confidence = 0
         for log in logs:
-            if log.get("step") == "user_query" and not first_query:
-                first_query = (log.get("data", {}).get("query", "") or "")[:80]
-            if log.get("step") == "tool_call":
+            step = log.get("step", "")
+            data = log.get("data", {}) or {}
+            if step == "user_query" and not first_query:
+                first_query = (data.get("query", "") or "")[:80]
+                if data.get("logged_in"):
+                    logged_in = True
+            if step == "tool_call":
                 tool_calls += 1
-                if (log.get("data", {}) or {}).get("status") == "no_results":
+                status = data.get("status", "")
+                if status == "no_results":
                     no_results += 1
+                if status == "error":
+                    errors += 1
+                md = data.get("matching_debug", {})
+                if md.get("confidence") == "low":
+                    low_confidence += 1
+            if step in ("profile_event", "ui_card"):
+                profile_events += 1
 
         s["first_query"] = first_query
         s["tool_calls"] = tool_calls
         s["no_results"] = no_results
+        s["profile_events"] = profile_events
+        s["errors"] = errors
+        s["logged_in"] = logged_in
+        s["low_confidence"] = low_confidence
 
     return render_template("adminlog.html", sessions=sessions)
 

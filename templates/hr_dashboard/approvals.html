@@ -1,0 +1,175 @@
+{% extends "base.html" %}
+
+{% block title %}Godkendelser - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-clipboard-check text-primary me-2"></i>Ordregodkendelser</h2>
+            <p class="text-muted mb-0">{{ company.company_name }} - {{ pending_count }} afventende</p>
+        </div>
+        <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Dashboard
+        </a>
+    </div>
+
+    {% if pending_count > 0 %}
+    <div class="alert alert-warning d-flex align-items-center mb-4">
+        <i class="fas fa-exclamation-triangle me-2"></i>
+        <strong>{{ pending_count }} ordre{{ 'r' if pending_count > 1 else '' }} afventer godkendelse.</strong>
+    </div>
+    {% endif %}
+
+    <div class="card shadow mb-4">
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle" id="approvalsTable">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Medarbejder</th>
+                            <th>Afdeling</th>
+                            <th>Kursus</th>
+                            <th>Pris</th>
+                            <th>Dato/Sted</th>
+                            <th>Anmodet</th>
+                            <th>Status</th>
+                            <th>Handling</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for a in approvals %}
+                        <tr id="approval-row-{{ a.id }}">
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="avatar-circle me-2" style="width:32px;height:32px;font-size:0.8em;background:#eef2ff;color:#4338ca;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;">
+                                        {{ a.requester_username[0].upper() if a.requester_username else 'U' }}
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold small">{{ a.user_name or a.requester_username }}</div>
+                                        <div class="text-muted" style="font-size:0.75em;">{{ a.user_email }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td><span class="badge bg-light text-dark">{{ a.department or 'N/A' }}</span></td>
+                            <td>
+                                <div class="fw-medium">{{ a.product_title }}</div>
+                            </td>
+                            <td><strong>{{ a.price }} kr</strong></td>
+                            <td>
+                                <small>
+                                    {% if a.variant_location %}{{ a.variant_location }}{% endif %}
+                                    {% if a.variant_date %}<br>{{ a.variant_date }}{% endif %}
+                                </small>
+                            </td>
+                            <td><small>{{ a.requested_at.strftime('%d/%m %H:%M') if a.requested_at else 'N/A' }}</small></td>
+                            <td>
+                                {% if a.status == 'pending' %}
+                                    <span class="badge bg-warning text-dark">Afventer</span>
+                                {% elif a.status == 'approved' %}
+                                    <span class="badge bg-success">Godkendt</span>
+                                {% elif a.status == 'rejected' %}
+                                    <span class="badge bg-danger">Afvist</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if a.status == 'pending' %}
+                                <div class="btn-group btn-group-sm">
+                                    <button class="btn btn-success btn-sm" onclick="decideApproval({{ a.id }}, 'approved')" title="Godkend">
+                                        <i class="fas fa-check"></i>
+                                    </button>
+                                    <button class="btn btn-danger btn-sm" onclick="decideApproval({{ a.id }}, 'rejected')" title="Afvis">
+                                        <i class="fas fa-times"></i>
+                                    </button>
+                                </div>
+                                {% elif a.status == 'approved' %}
+                                    <small class="text-success">{{ a.decided_at.strftime('%d/%m %H:%M') if a.decided_at else '' }}</small>
+                                {% elif a.status == 'rejected' %}
+                                    <small class="text-danger">{{ a.decided_at.strftime('%d/%m %H:%M') if a.decided_at else '' }}</small>
+                                    {% if a.notes %}<br><small class="text-muted">{{ a.notes }}</small>{% endif %}
+                                {% endif %}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not approvals %}
+                        <tr>
+                            <td colspan="8" class="text-center py-4 text-muted">
+                                <i class="fas fa-check-circle fa-2x mb-2 d-block text-success"></i>
+                                Ingen godkendelsesanmodninger endnu.
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Rejection modal -->
+<div class="modal fade" id="rejectModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Afvis ordre</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <label class="form-label">Begrundelse (valgfrit)</label>
+                <textarea class="form-control" id="rejectNotes" rows="3" placeholder="Skriv en begrundelse..."></textarea>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-danger" id="confirmRejectBtn">Afvis ordre</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+let _pendingRejectId = null;
+
+function decideApproval(approvalId, decision) {
+    if (decision === 'rejected') {
+        _pendingRejectId = approvalId;
+        new bootstrap.Modal(document.getElementById('rejectModal')).show();
+        return;
+    }
+    sendDecision(approvalId, decision, '');
+}
+
+document.getElementById('confirmRejectBtn').addEventListener('click', function() {
+    const notes = document.getElementById('rejectNotes').value;
+    sendDecision(_pendingRejectId, 'rejected', notes);
+    bootstrap.Modal.getInstance(document.getElementById('rejectModal')).hide();
+});
+
+function sendDecision(approvalId, decision, notes) {
+    fetch(`{{ url_for('hr_dashboard.decide_approval', approval_id=0) }}`.replace('/0/', '/' + approvalId + '/'), {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({decision: decision, notes: notes})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            const row = document.getElementById('approval-row-' + approvalId);
+            const statusCell = row.querySelectorAll('td')[6];
+            const actionCell = row.querySelectorAll('td')[7];
+            if (decision === 'approved') {
+                statusCell.innerHTML = '<span class="badge bg-success">Godkendt</span>';
+            } else {
+                statusCell.innerHTML = '<span class="badge bg-danger">Afvist</span>';
+            }
+            actionCell.innerHTML = '<small class="text-muted">Lige nu</small>';
+        } else {
+            alert('Fejl: ' + data.message);
+        }
+    })
+    .catch(err => alert('Netvaerksfejl: ' + err));
+}
+</script>
+{% endblock %}

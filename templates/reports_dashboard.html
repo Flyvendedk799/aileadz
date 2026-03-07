@@ -690,28 +690,24 @@
                 <h3>Total Queries</h3>
                 <div class="value">{{ total_chatbot_queries }}</div>
                 <div class="subtitle">All time chatbot interactions</div>
-                <div class="trend up">↑ 12%</div>
             </div>
             <div class="metric-card">
                 <div class="metric-icon">📊</div>
                 <h3>Avg. Conversation Length</h3>
                 <div class="value">{{ avg_conversation_length }}</div>
                 <div class="subtitle">Messages per conversation</div>
-                <div class="trend up">↑ 5%</div>
             </div>
             <div class="metric-card">
                 <div class="metric-icon">⚡</div>
                 <h3>Response Time</h3>
                 <div class="value">{{ avg_chatbot_response_time }}ms</div>
                 <div class="subtitle">Average response time</div>
-                <div class="trend up">↑ 8%</div>
             </div>
             <div class="metric-card">
                 <div class="metric-icon">🎯</div>
                 <h3>Conversion Rate</h3>
                 <div class="value">{{ conversion_rate }}%</div>
                 <div class="subtitle">Queries to orders</div>
-                <div class="trend up">↑ 15%</div>
             </div>
             <div class="metric-card">
                 <div class="metric-icon">📦</div>
@@ -724,8 +720,39 @@
                 <h3>Total Revenue</h3>
                 <div class="value">{{ total_revenue|round|int }} kr</div>
                 <div class="subtitle">From completed orders</div>
-                <div class="trend up">↑ 23%</div>
             </div>
+            <div class="metric-card">
+                <div class="metric-icon">⭐</div>
+                <h3>Avg Feedback</h3>
+                <div class="value">{{ avg_feedback }}/5</div>
+                <div class="subtitle">User satisfaction score</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">🔄</div>
+                <h3>Avg Depth</h3>
+                <div class="value">{{ avg_depth }}</div>
+                <div class="subtitle">Messages per session</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">✅</div>
+                <h3>Quality Score</h3>
+                <div class="value">{{ (avg_quality * 100)|round|int }}%</div>
+                <div class="subtitle">Interaction quality avg</div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-icon">🔀</div>
+                <h3>Avg Queries Before Order</h3>
+                <div class="value">{{ avg_queries_before_order }}</div>
+                <div class="subtitle">Messages before conversion</div>
+            </div>
+            {% if total_pending_approvals > 0 %}
+            <div class="metric-card" style="border-color: var(--warning);">
+                <div class="metric-icon" style="background: var(--gradient-accent);">⏳</div>
+                <h3>Pending Approvals</h3>
+                <div class="value">{{ total_pending_approvals }}</div>
+                <div class="subtitle">Enterprise orders awaiting approval</div>
+            </div>
+            {% endif %}
         </div>
 
         <!-- Charts Section -->
@@ -758,6 +785,71 @@
                     <h3>User Locations</h3>
                 </div>
                 <canvas id="locationChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Tool Usage Breakdown</h3>
+                </div>
+                <canvas id="toolUsageChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Feedback Ratings</h3>
+                </div>
+                <canvas id="feedbackChart"></canvas>
+            </div>
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Logged-in vs Anonymous</h3>
+                </div>
+                <canvas id="loginChart"></canvas>
+            </div>
+            {% if conversion_by_tool %}
+            <div class="chart-container">
+                <div class="chart-header">
+                    <h3>Conversions by Tool</h3>
+                </div>
+                <canvas id="conversionToolChart"></canvas>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- Products Shown by Chatbot -->
+        <div class="table-container">
+            <div class="table-header">
+                <h3>Most Recommended Products (by chatbot)</h3>
+            </div>
+            <div class="table-wrapper">
+                {% if products_shown_ranking %}
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Product Handle</th>
+                            <th>Times Shown</th>
+                            <th>Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for handle, count in products_shown_ranking.items() %}
+                        <tr>
+                            <td>{{ handle }}</td>
+                            <td>{{ count }}</td>
+                            <td>
+                                <a href="https://futurematch.dk/products/{{ handle }}" target="_blank" class="btn-action btn-secondary">
+                                    View Product
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+                {% else %}
+                <div class="empty-state">
+                    <div class="empty-state-icon">🛍</div>
+                    <p>No product recommendation data yet</p>
+                    <div class="empty-state-hint">Products shown by the chatbot will appear here</div>
+                </div>
+                {% endif %}
             </div>
         </div>
 
@@ -1173,6 +1265,118 @@
                 }
             }
         });
+
+        // Tool Usage Chart (horizontal bar)
+        const toolUsageCtx = document.getElementById('toolUsageChart').getContext('2d');
+        const toolUsageData = {{ tool_usage | tojson | safe }};
+        const toolGradient = toolUsageCtx.createLinearGradient(0, 0, 400, 0);
+        toolGradient.addColorStop(0, '#F97316');
+        toolGradient.addColorStop(1, '#FB923C');
+        new Chart(toolUsageCtx, {
+            type: 'bar',
+            data: {
+                labels: Object.keys(toolUsageData),
+                datasets: [{
+                    label: 'Calls',
+                    data: Object.values(toolUsageData),
+                    backgroundColor: toolGradient,
+                    borderRadius: 8,
+                    barThickness: 30
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false },
+                    tooltip: { backgroundColor: 'rgba(30, 27, 75, 0.9)', padding: 15, cornerRadius: 10, borderColor: 'rgba(249, 115, 22, 0.3)', borderWidth: 1 }
+                },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false }, ticks: { padding: 10 } },
+                    y: { grid: { display: false, drawBorder: false }, ticks: { padding: 10 } }
+                }
+            }
+        });
+
+        // Feedback Ratings Chart (bar)
+        const feedbackCtx = document.getElementById('feedbackChart').getContext('2d');
+        const feedbackData = {{ feedback_distribution | tojson | safe }};
+        const fbLabels = Object.keys(feedbackData).length ? Object.keys(feedbackData) : ['No data'];
+        const fbValues = Object.values(feedbackData).length ? Object.values(feedbackData) : [0];
+        const fbColors = ['#EF4444', '#F59E0B', '#F97316', '#10B981', '#5B47E0'];
+        new Chart(feedbackCtx, {
+            type: 'bar',
+            data: {
+                labels: fbLabels.map(r => r + ' star' + (r !== '1' ? 's' : '')),
+                datasets: [{
+                    label: 'Ratings',
+                    data: fbValues,
+                    backgroundColor: fbLabels.map((_, i) => fbColors[i % fbColors.length]),
+                    borderRadius: 10,
+                    barThickness: 40
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: { legend: { display: false },
+                    tooltip: { backgroundColor: 'rgba(30, 27, 75, 0.9)', padding: 15, cornerRadius: 10 }
+                },
+                scales: {
+                    y: { beginAtZero: true, grid: { color: 'rgba(255,255,255,0.05)', drawBorder: false } },
+                    x: { grid: { display: false, drawBorder: false } }
+                }
+            }
+        });
+
+        // Login ratio (doughnut)
+        const loginCtx = document.getElementById('loginChart').getContext('2d');
+        new Chart(loginCtx, {
+            type: 'doughnut',
+            data: {
+                labels: ['Logged In', 'Anonymous'],
+                datasets: [{
+                    data: [{{ logged_in_count }}, {{ anonymous_count }}],
+                    backgroundColor: ['#10B981', '#64748B'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '70%',
+                plugins: {
+                    legend: { position: 'right', labels: { padding: 20, font: { size: 13 }, usePointStyle: true } },
+                    tooltip: { backgroundColor: 'rgba(30, 27, 75, 0.9)', padding: 15, cornerRadius: 10 }
+                }
+            }
+        });
+
+        // Conversions by tool chart
+        {% if conversion_by_tool %}
+        const convToolCtx = document.getElementById('conversionToolChart').getContext('2d');
+        const convToolData = {{ conversion_by_tool | tojson | safe }};
+        new Chart(convToolCtx, {
+            type: 'doughnut',
+            data: {
+                labels: Object.keys(convToolData),
+                datasets: [{
+                    data: Object.values(convToolData),
+                    backgroundColor: ['#10B981', '#5B47E0', '#F97316', '#3B82F6', '#EF4444', '#8B5CF6'],
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                cutout: '65%',
+                plugins: {
+                    legend: { position: 'right', labels: { padding: 15, font: { size: 12 }, usePointStyle: true } },
+                    tooltip: { backgroundColor: 'rgba(30, 27, 75, 0.9)', padding: 15, cornerRadius: 10 }
+                }
+            }
+        });
+        {% endif %}
 
         // Search functionality
         document.querySelectorAll('.table-search input').forEach(input => {

@@ -587,6 +587,22 @@ def feedback():
                 "latency_ms": latency_val,
             }
         )
+
+        # Phase 1.2: Sync feedback to MySQL chatbot_interactions
+        try:
+            username = session.get('user') or session.get('browser_token', 'anonymous')
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                UPDATE chatbot_interactions
+                SET feedback_rating = %s
+                WHERE session_id = %s AND username = %s
+                ORDER BY created_at DESC LIMIT 1
+            """, (rating, sid, username))
+            current_app.mysql.connection.commit()
+            cur.close()
+        except Exception as fb_err:
+            print(f"[Feedback MySQL Sync] {fb_err}")
+
         return jsonify({"status": "ok"})
     except Exception as e:
         print(f"[Feedback Error] {e}")

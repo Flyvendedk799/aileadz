@@ -1,0 +1,253 @@
+{% extends "base.html" %}
+{% block title %}Training ROI - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-chart-pie text-primary me-2"></i>Training ROI & Predictions</h2>
+            <p class="text-muted mb-0">{{ company.company_name }}</p>
+        </div>
+        <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Dashboard
+        </a>
+    </div>
+
+    <!-- ROI KPIs -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Samlet Uddannelsesudgift</div>
+                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(roi.total_training_spend).replace(",", ".") }} kr</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Medarbejdere Traenet</div>
+                    <div class="h5 mb-0 fw-bold">{{ roi.employees_trained }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Udgift pr. Medarbejder</div>
+                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(roi.spend_per_employee).replace(",", ".") }} kr</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Gns. Tid til Faerdiggoering</div>
+                    <div class="h5 mb-0 fw-bold">{{ roi.avg_completion_days }} dage</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Kurser Gennemfoert</div>
+                    <div class="h5 mb-0 fw-bold">{{ roi.courses_completed }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-uppercase mb-1">Kurser pr. 1.000 kr</div>
+                    <div class="h5 mb-0 fw-bold">{{ roi.courses_per_kr }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Department ROI -->
+    {% if roi.department_roi %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-building me-2"></i>ROI pr. Afdeling</h6>
+        </div>
+        <div class="card-body">
+            <div class="row mb-3">
+                <div class="col-md-6"><canvas id="deptRoiChart" height="250"></canvas></div>
+                <div class="col-md-6"><canvas id="deptCompletionChart" height="250"></canvas></div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Afdeling</th><th>Udgift</th><th>Medarbejdere</th>
+                            <th>Gennemfoert</th><th>Faerdiggoerelsesrate</th><th>Pris pr. Gennemfoering</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for d in roi.department_roi %}
+                        <tr>
+                            <td><strong>{{ d.department }}</strong></td>
+                            <td>{{ "{:,.0f}".format(d.spend).replace(",", ".") }} kr</td>
+                            <td>{{ d.employees }}</td>
+                            <td>{{ d.completed }} / {{ d.total_orders }}</td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="progress flex-grow-1" style="height:6px;min-width:60px;">
+                                        <div class="progress-bar bg-success" style="width:{{ d.completion_rate }}%"></div>
+                                    </div>
+                                    <small>{{ d.completion_rate }}%</small>
+                                </div>
+                            </td>
+                            <td>{{ "{:,.0f}".format(d.cost_per_completion).replace(",", ".") }} kr</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Predictive Analytics -->
+    <div class="row">
+        <!-- Churn Risk -->
+        <div class="col-xl-6 mb-4">
+            <div class="card shadow h-100">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-danger">
+                        <i class="fas fa-user-clock me-2"></i>Churn-risiko (inaktive brugere)
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if predictions.churn_risk %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Inaktive dage</th><th>Tidl. queries</th></tr></thead>
+                            <tbody>
+                                {% for e in predictions.churn_risk %}
+                                <tr>
+                                    <td>{{ e.username }}</td>
+                                    <td><span class="badge bg-light text-dark">{{ e.department or 'N/A' }}</span></td>
+                                    <td><span class="text-danger fw-bold">{{ e.days_inactive }}d</span></td>
+                                    <td>{{ e.total_chatbot_queries }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3 text-muted">
+                        <i class="fas fa-check-circle text-success fa-2x mb-2"></i>
+                        <p>Ingen medarbejdere med churn-risiko.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Skill Gap At-Risk -->
+        <div class="col-xl-6 mb-4">
+            <div class="card shadow h-100">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-warning">
+                        <i class="fas fa-exclamation-triangle me-2"></i>Medarbejdere med store kompetencegab
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if predictions.at_risk_employees %}
+                    <div class="table-responsive">
+                        <table class="table table-sm">
+                            <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kompetence</th><th>Gab</th></tr></thead>
+                            <tbody>
+                                {% for e in predictions.at_risk_employees %}
+                                <tr>
+                                    <td>{{ e.username }}</td>
+                                    <td>{{ e.department or 'N/A' }}</td>
+                                    <td>{{ e.skill_name }}</td>
+                                    <td><span class="badge bg-danger">-{{ e.gap }}</span> ({{ e.current_level }} &rarr; {{ e.target_level }})</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3 text-muted">
+                        <p>Ingen kritiske kompetencegab fundet.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Trending searches -->
+    {% if predictions.trending_courses %}
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-info"><i class="fas fa-search me-2"></i>Trending kursussoegninger (14 dage)</h6>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                {% for t in predictions.trending_courses %}
+                <div class="col-md-4 col-lg-3 mb-2">
+                    <div class="border rounded p-2 d-flex justify-content-between align-items-center">
+                        <small class="text-truncate" style="max-width:180px;" title="{{ t.query_text }}">{{ t.query_text }}</small>
+                        <span class="badge bg-primary">{{ t.cnt }}</span>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+{% if roi.department_roi %}
+<script>
+const deptData = {{ roi.department_roi | tojson | safe }};
+const labels = deptData.map(d => d.department);
+
+new Chart(document.getElementById('deptRoiChart'), {
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Udgift (kr)',
+            data: deptData.map(d => d.spend),
+            backgroundColor: 'rgba(78, 115, 223, 0.7)',
+            borderRadius: 6
+        }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true } } }
+});
+
+new Chart(document.getElementById('deptCompletionChart'), {
+    type: 'bar',
+    data: {
+        labels: labels,
+        datasets: [{
+            label: 'Faerdiggoerelsesrate %',
+            data: deptData.map(d => d.completion_rate),
+            backgroundColor: deptData.map(d => d.completion_rate > 70 ? 'rgba(28,200,138,0.7)' : 'rgba(246,194,62,0.7)'),
+            borderRadius: 6
+        }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } },
+        scales: { y: { beginAtZero: true, max: 100 } } }
+});
+</script>
+{% endif %}
+{% endblock %}

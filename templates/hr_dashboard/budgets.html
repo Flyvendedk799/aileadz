@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Uddannelsesbudget - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-wallet text-primary me-2"></i>Afdelingsbudgetter</h2>
+            <p class="text-muted mb-0">{{ company.company_name }} - {{ fiscal_year }}</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year - 1) }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> {{ fiscal_year - 1 }}
+            </a>
+            <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year + 1) }}" class="btn btn-outline-secondary btn-sm">
+                {{ fiscal_year + 1 }} <i class="fas fa-arrow-right"></i>
+            </a>
+            <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left"></i> Dashboard
+            </a>
+        </div>
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Samlet budget</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_budget).replace(",", ".") }} kr</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Brugt</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_spent).replace(",", ".") }} kr</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Resterende</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_budget - total_spent).replace(",", ".") }} kr</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Afdelinger</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ budgets|length }}</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget Table -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3 d-flex justify-content-between align-items-center">
+            <h6 class="m-0 font-weight-bold text-primary">Budget per afdeling</h6>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addBudgetModal">
+                <i class="fas fa-plus"></i> Tilfoej budget
+            </button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-hover align-middle">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Afdeling</th>
+                            <th>Medarbejdere</th>
+                            <th>Budget</th>
+                            <th>Brugt</th>
+                            <th>Resterende</th>
+                            <th>Udnyttelse</th>
+                            <th>Handling</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for b in budgets %}
+                        {% set budget_val = b.annual_budget|float %}
+                        {% set spent_val = b.spent|float %}
+                        {% set remaining = budget_val - spent_val %}
+                        {% set util_pct = ((spent_val / budget_val * 100)|round(1)) if budget_val > 0 else 0 %}
+                        <tr>
+                            <td><strong>{{ b.department }}</strong></td>
+                            <td>{{ b.employee_count or 0 }}</td>
+                            <td>{{ "{:,.0f}".format(budget_val).replace(",", ".") }} kr</td>
+                            <td>{{ "{:,.0f}".format(spent_val).replace(",", ".") }} kr</td>
+                            <td class="{{ 'text-danger fw-bold' if remaining < 0 else '' }}">
+                                {{ "{:,.0f}".format(remaining).replace(",", ".") }} kr
+                            </td>
+                            <td>
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="progress flex-grow-1" style="height:8px; min-width:80px;">
+                                        <div class="progress-bar {{ 'bg-danger' if util_pct > 90 else ('bg-warning' if util_pct > 80 else 'bg-success') }}"
+                                             style="width: {{ [util_pct, 100]|min }}%"></div>
+                                    </div>
+                                    <small class="{{ 'text-danger fw-bold' if util_pct > 80 else '' }}">{{ util_pct }}%</small>
+                                </div>
+                                {% if util_pct > 80 %}
+                                <small class="text-danger"><i class="fas fa-exclamation-triangle"></i> Over 80%</small>
+                                {% endif %}
+                            </td>
+                            <td>
+                                <button class="btn btn-outline-primary btn-sm"
+                                        onclick="editBudget('{{ b.department }}', {{ budget_val }})">
+                                    <i class="fas fa-edit"></i>
+                                </button>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                        {% if not budgets %}
+                        <tr>
+                            <td colspan="7" class="text-center py-4 text-muted">
+                                <i class="fas fa-wallet fa-2x mb-2 d-block"></i>
+                                Ingen budgetter oprettet for {{ fiscal_year }}. Klik "Tilfoej budget" for at starte.
+                            </td>
+                        </tr>
+                        {% endif %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Add/Edit Budget Modal -->
+<div class="modal fade" id="addBudgetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="budgetModalTitle">Tilfoej afdelingsbudget</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Afdeling</label>
+                    <select class="form-select" id="budgetDepartment">
+                        {% for dept in unbudgeted_depts %}
+                        <option value="{{ dept }}">{{ dept }}</option>
+                        {% endfor %}
+                        {% for b in budgets %}
+                        <option value="{{ b.department }}">{{ b.department }} (opdater)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label">Budget (DKK)</label>
+                    <input type="number" class="form-control" id="budgetAmount" placeholder="f.eks. 100000" min="0" step="1000">
+                </div>
+                <input type="hidden" id="budgetYear" value="{{ fiscal_year }}">
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-primary" onclick="saveBudget()">
+                    <i class="fas fa-save"></i> Gem
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+function editBudget(dept, amount) {
+    document.getElementById('budgetDepartment').value = dept;
+    document.getElementById('budgetAmount').value = amount;
+    document.getElementById('budgetModalTitle').textContent = 'Opdater budget: ' + dept;
+    new bootstrap.Modal(document.getElementById('addBudgetModal')).show();
+}
+
+function saveBudget() {
+    const dept = document.getElementById('budgetDepartment').value;
+    const amount = document.getElementById('budgetAmount').value;
+    const year = document.getElementById('budgetYear').value;
+
+    if (!dept || !amount) { alert('Udfyld alle felter.'); return; }
+
+    fetch('{{ url_for("hr_dashboard.save_budget") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({department: dept, annual_budget: parseFloat(amount), fiscal_year: parseInt(year)})
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            location.reload();
+        } else {
+            alert('Fejl: ' + data.message);
+        }
+    })
+    .catch(err => alert('Netvaerksfejl: ' + err));
+}
+</script>
+{% endblock %}

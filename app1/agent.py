@@ -1202,6 +1202,9 @@ def handle_agentic_ask(user_query, session):
 
             buffered_ui_html = []
             buffered_profile_events = []
+            _tools_used = []          # Phase 1.1: track tool names
+            _total_results = 0        # Phase 1.1: total search results
+            _products_shown_handles = []  # Phase 1.1: product handles shown
 
             # Build ephemeral messages with all context layers
             ephemeral_messages = list(messages)
@@ -1397,6 +1400,17 @@ def handle_agentic_ask(user_query, session):
 
                     # Log tool call
                     results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
+                    _tools_used.append(tool_call.function.name)
+                    _total_results += results_count
+                    # Collect shown product handles
+                    for _rp in tool_result_dict.get("raw_products", []):
+                        _h = _rp.get("handle") if isinstance(_rp, dict) else None
+                        if _h:
+                            _products_shown_handles.append(_h)
+                    if "raw_product" in tool_result_dict:
+                        _h = tool_result_dict["raw_product"].get("handle") if isinstance(tool_result_dict.get("raw_product"), dict) else None
+                        if _h:
+                            _products_shown_handles.append(_h)
                     try:
                         _get_store().log_event(sid, "tool_call",
                                                query_text=user_query,
@@ -1736,13 +1750,33 @@ def handle_agentic_ask(user_query, session):
                     _quality -= 0.2
                 _quality = round(max(0.1, min(1.0, _quality)), 2)
 
+                # Compute conversation depth (how many user messages in this session)
+                _conv_depth = len([m for m in messages if m.get("role") == "user"])
+
+                # Detect user location from request or company data
+                _user_location = None
+                try:
+                    from flask import request as _req
+                    # Use X-Forwarded-For or remote_addr; map to city if possible
+                    _user_location = _req.headers.get('X-City') or _req.headers.get('CF-IPCity')
+                    if not _user_location and logged_in_user:
+                        # Fall back to user's preferred location from profile
+                        _user_location = USER_PROFILES.get(sid, {}).get("summary", "")
+                        if "preferred_location" in str(_user_location):
+                            pass  # already text
+                        else:
+                            _user_location = None
+                except Exception:
+                    pass
+
                 ci_cur = current_app.mysql.connection.cursor()
                 ci_cur.execute("""
                     INSERT INTO chatbot_interactions
                         (company_id, session_id, username, query_text, response_text,
-                         query_type, category, response_time_ms,
-                         interaction_quality_score, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                         query_type, category, user_location, response_time_ms,
+                         interaction_quality_score, tools_used, tool_results_count,
+                         products_shown, conversation_depth, is_logged_in, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 """, (
                     session.get('company_id'),
                     sid,
@@ -1751,8 +1785,14 @@ def handle_agentic_ask(user_query, session):
                     (full_text or '')[:2000],
                     intent or 'unknown',
                     stage or 'unknown',
+                    _user_location,
                     response_time_ms,
                     _quality,
+                    ','.join(dict.fromkeys(_tools_used))[:500] if _tools_used else None,
+                    _total_results,
+                    json.dumps(_products_shown_handles[:20]) if _products_shown_handles else None,
+                    _conv_depth,
+                    1 if logged_in_user else 0,
                 ))
 
                 # Update company_users engagement counters (if user belongs to a company)
@@ -1766,6 +1806,16 @@ def handle_agentic_ask(user_query, session):
 
                 current_app.mysql.connection.commit()
                 ci_cur.close()
+
+                # Phase 2.1: Store session-level context for order attribution
+                session['_chatbot_query_count'] = _conv_depth
+                if _tools_used:
+                    # Track last tool that showed results (for recommended_by_tool)
+                    for _t in reversed(_tools_used):
+                        if _t in ('search_courses', 'filter_courses', 'recommend_for_profile', 'suggest_learning_path'):
+                            session['_last_recommending_tool'] = _t
+                            break
+                session.modified = True
             except Exception as e:
                 print(f"[Chatbot Interaction Log Error] {e}")
 

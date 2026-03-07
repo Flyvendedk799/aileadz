@@ -16,6 +16,9 @@
                     <p class="text-muted mb-0">{{ company.company_name }} - Comprehensive Employee Analytics & Management</p>
                 </div>
                 <div class="d-flex gap-2">
+                    <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="btn btn-primary btn-sm">
+                        <i class="fas fa-robot"></i> HR AI Assistent
+                    </a>
                     <button class="btn btn-outline-primary btn-sm" onclick="exportReport()">
                         <i class="fas fa-download"></i> Export Report
                     </button>
@@ -110,6 +113,52 @@
         </div>
     </div>
 
+    <!-- Pending Approvals Banner + Budget Overview -->
+    <div class="row mb-4">
+        {% if pending_approvals_count > 0 %}
+        <div class="col-xl-6 mb-3">
+            <div class="card border-left-warning shadow h-100">
+                <div class="card-body d-flex align-items-center justify-content-between">
+                    <div>
+                        <div class="text-warning fw-bold mb-1">
+                            <i class="fas fa-clipboard-check me-1"></i>
+                            {{ pending_approvals_count }} ordre{{ 'r' if pending_approvals_count > 1 else '' }} afventer godkendelse
+                        </div>
+                        <small class="text-muted">Medarbejdere har bestilt kurser der kraever godkendelse.</small>
+                    </div>
+                    <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-warning btn-sm">
+                        <i class="fas fa-arrow-right"></i> Se godkendelser
+                    </a>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+        {% if total_training_budget > 0 %}
+        <div class="col-xl-{{ '6' if pending_approvals_count > 0 else '12' }} mb-3">
+            <div class="card shadow h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="fw-bold text-primary"><i class="fas fa-wallet me-1"></i> Uddannelsesbudget {{ current_year|default('') }}</div>
+                        <a href="{{ url_for('hr_dashboard.department_budgets') }}" class="btn btn-outline-primary btn-sm">Administrer</a>
+                    </div>
+                    <div class="d-flex justify-content-between small text-muted mb-1">
+                        <span>Brugt: {{ "{:,.0f}".format(total_budget_spent).replace(",", ".") }} kr</span>
+                        <span>Budget: {{ "{:,.0f}".format(total_training_budget).replace(",", ".") }} kr</span>
+                    </div>
+                    <div class="progress" style="height:10px;">
+                        <div class="progress-bar {{ 'bg-danger' if budget_utilization > 90 else ('bg-warning' if budget_utilization > 80 else 'bg-success') }}"
+                             style="width: {{ [budget_utilization, 100]|min }}%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between small mt-1">
+                        <span class="{{ 'text-danger fw-bold' if budget_utilization > 80 else 'text-muted' }}">{{ budget_utilization }}% brugt</span>
+                        <span class="text-success">{{ "{:,.0f}".format(budget_remaining).replace(",", ".") }} kr resterende</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+
     <!-- Company Orders Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -183,6 +232,12 @@
                                             <span class="badge bg-success">Completed</span>
                                         {% elif order.status == 'pending' %}
                                             <span class="badge bg-warning">Pending</span>
+                                        {% elif order.status == 'pending_approval' %}
+                                            <span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Afventer godkendelse</span>
+                                        {% elif order.status == 'approved' %}
+                                            <span class="badge bg-primary">Godkendt</span>
+                                        {% elif order.status == 'rejected' %}
+                                            <span class="badge bg-danger">Afvist</span>
                                         {% elif order.status == 'processing' %}
                                             <span class="badge bg-info">Processing</span>
                                         {% else %}
@@ -518,6 +573,162 @@
     </div>
     {% endif %}
 
+    <!-- Trending Topics & Chatbot Intelligence -->
+    <div class="row mb-4">
+        <div class="col-xl-6">
+            <div class="card shadow h-100">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-fire me-2"></i>Trending Topics (Last 30 Days)
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if trending_topics %}
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover">
+                            <thead><tr><th>Topic / Query Type</th><th>Interactions</th><th>Share</th></tr></thead>
+                            <tbody>
+                            {% set ns = namespace(total=0) %}
+                            {% for t in trending_topics %}{% set ns.total = ns.total + t.cnt %}{% endfor %}
+                            {% for t in trending_topics %}
+                            <tr>
+                                <td><span class="badge bg-primary bg-opacity-10 text-primary">{{ t.topic }}</span></td>
+                                <td>{{ t.cnt }}</td>
+                                <td>
+                                    <div class="progress" style="height:8px; min-width:80px;">
+                                        <div class="progress-bar bg-primary" style="width: {{ (t.cnt / ns.total * 100) if ns.total else 0 }}%"></div>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="fas fa-search fa-2x text-gray-300 mb-2"></i>
+                        <p class="text-muted small">No chatbot topic data yet. Topics appear once employees use the chatbot.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3">
+            <div class="card shadow h-100">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-star me-2"></i>Employee Feedback
+                    </h6>
+                </div>
+                <div class="card-body text-center">
+                    <div class="h1 font-weight-bold text-warning mb-1">{{ company_avg_feedback }}<small class="text-muted">/5</small></div>
+                    <p class="text-muted small mb-2">Based on {{ company_feedback_count }} ratings</p>
+                    <div class="d-flex justify-content-center gap-1">
+                        {% for i in range(1, 6) %}
+                        <i class="fas fa-star {{ 'text-warning' if i <= (company_avg_feedback|round|int) else 'text-gray-300' }}"></i>
+                        {% endfor %}
+                    </div>
+                    <hr>
+                    <p class="text-muted small">Chatbot satisfaction score from employee interactions</p>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3">
+            <div class="card shadow h-100">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-wrench me-2"></i>Popular Tools
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% if company_tool_usage %}
+                    {% for tool, cnt in company_tool_usage.items() %}
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <small class="text-truncate" style="max-width:140px;" title="{{ tool }}">{{ tool }}</small>
+                        <span class="badge bg-info bg-opacity-10 text-info">{{ cnt }}</span>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="fas fa-tools fa-2x text-gray-300 mb-2"></i>
+                        <p class="text-muted small">No tool usage data yet.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- AI Insights & ROI Summary (Phase 3) -->
+    <div class="row mb-4">
+        <div class="col-xl-8">
+            <div class="card shadow h-100">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-brain me-2"></i>AI Insights
+                    </h6>
+                    <button class="btn btn-outline-primary btn-sm" onclick="generateInsights()" id="genInsightsBtn">
+                        <i class="fas fa-sync-alt"></i> Generer nye
+                    </button>
+                </div>
+                <div class="card-body" id="insightsContainer">
+                    {% if recent_insights %}
+                    {% for ins in recent_insights %}
+                    <div class="alert alert-{{ 'warning' if ins.severity == 'warning' else ('danger' if ins.severity == 'critical' else 'info') }} py-2 mb-2">
+                        <strong>{{ ins.title }}</strong>
+                        <p class="mb-0 small">{{ ins.body }}</p>
+                        <small class="text-muted">{{ ins.generated_at.strftime('%d/%m %H:%M') if ins.generated_at else '' }}</small>
+                    </div>
+                    {% endfor %}
+                    {% else %}
+                    <div class="text-center py-3 text-muted">
+                        <i class="fas fa-brain fa-2x mb-2"></i>
+                        <p class="small">Ingen insights endnu. Klik "Generer nye" for at analysere data.</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="card shadow h-100">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-chart-pie me-2"></i>Training ROI
+                    </h6>
+                    <a href="{{ url_for('hr_dashboard.roi_dashboard') }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-arrow-right"></i> Detaljer
+                    </a>
+                </div>
+                <div class="card-body">
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small text-muted"><span>Samlet udgift</span><span class="fw-bold">{{ "{:,.0f}".format(roi_total_spend).replace(",", ".") }} kr</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small text-muted"><span>Medarbejdere traenet</span><span class="fw-bold">{{ roi_employees_trained }}</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small text-muted"><span>Kurser gennemfoert</span><span class="fw-bold text-success">{{ roi_courses_completed }}</span></div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small text-muted"><span>Udgift pr. medarbejder</span><span class="fw-bold">{{ "{:,.0f}".format(roi_spend_per_employee).replace(",", ".") }} kr</span></div>
+                    </div>
+                    <hr>
+                    <div class="d-flex gap-2 flex-wrap">
+                        <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-outline-warning btn-sm flex-fill">
+                            <i class="fas fa-th"></i> Skill Gaps
+                        </a>
+                        <a href="{{ url_for('hr_dashboard.roi_dashboard') }}" class="btn btn-outline-info btn-sm flex-fill">
+                            <i class="fas fa-chart-line"></i> Predictions
+                        </a>
+                        <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="btn btn-outline-success btn-sm flex-fill">
+                            <i class="fas fa-file-invoice-dollar"></i> Fakturering
+                        </a>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Quick Actions Panel -->
     <div class="row">
         <div class="col-12">
@@ -765,6 +976,35 @@
 // HR Dashboard JavaScript Functions
 function exportReport() {
     window.location.href = "{{ url_for('hr_dashboard.export_report', report_type='employee_progress') }}";
+}
+
+function generateInsights() {
+    const btn = document.getElementById('genInsightsBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyserer...';
+    fetch('{{ url_for("hr_dashboard.generate_insights") }}', {method: 'POST'})
+    .then(r => r.json())
+    .then(data => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync-alt"></i> Generer nye';
+        if (data.success && data.insights && data.insights.length > 0) {
+            const container = document.getElementById('insightsContainer');
+            container.innerHTML = '';
+            data.insights.forEach(ins => {
+                const cls = ins.severity === 'warning' ? 'warning' : (ins.severity === 'critical' ? 'danger' : 'info');
+                container.innerHTML += `<div class="alert alert-${cls} py-2 mb-2"><strong>${ins.title}</strong><p class="mb-0 small">${ins.body}</p></div>`;
+            });
+        } else if (data.success) {
+            document.getElementById('insightsContainer').innerHTML = '<div class="text-center py-3 text-muted"><p class="small">Ikke nok data til at generere insights endnu.</p></div>';
+        } else {
+            alert('Fejl: ' + (data.message || 'Ukendt fejl'));
+        }
+    })
+    .catch(err => {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-sync-alt"></i> Generer nye';
+        alert('Netvaerksfejl');
+    });
 }
 
 function filterTopPerformers(period) {

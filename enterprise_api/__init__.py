@@ -729,6 +729,489 @@ def create_api_key():
     except Exception as e:
         return jsonify({'error': 'Failed to create API key'}), 500
 
+# =====================================================
+# PHASE 4.2: ADDITIONAL API ENDPOINTS
+# =====================================================
+
+@api_enterprise_bp.route('/api/v1/employees/<int:employee_id>/training')
+@require_api_auth('read:learning')
+def get_employee_training(employee_id):
+    """Get employee training history (orders + progress)"""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id FROM company_users WHERE user_id = %s AND company_id = %s",
+                     (employee_id, g.company_id))
+        if not cur.fetchone():
+            cur.close()
+            return jsonify({'error': 'Employee not found'}), 404
+
+        cur.execute("""
+            SELECT order_id, product_handle, product_title, price, status,
+                   completion_status, completion_date, variant_date, variant_location,
+                   created_at, updated_at
+            FROM course_orders
+            WHERE user_id = %s AND company_id = %s
+            ORDER BY created_at DESC
+        """, (employee_id, g.company_id))
+        orders = cur.fetchall()
+
+        cur.execute("""
+            SELECT content_name, course_handle, status, progress_percentage,
+                   time_spent_minutes, completed_at, final_score, created_at
+            FROM employee_learning_progress
+            WHERE user_id = %s AND company_id = %s
+            ORDER BY created_at DESC
+        """, (employee_id, g.company_id))
+        progress = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'data': {'orders': orders, 'learning_progress': progress}
+        })
+    except Exception as e:
+        return jsonify({'error': 'Failed to retrieve training history'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/analytics/overview')
+@require_api_auth('read:analytics')
+def get_analytics_overview():
+    """Get company KPIs overview"""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+        # Employee stats
+        cur.execute("""
+            SELECT COUNT(*) AS total, COUNT(CASE WHEN status='active' THEN 1 END) AS active,
+                   COUNT(DISTINCT department) AS departments
+            FROM company_users WHERE company_id = %s
+        """, (g.company_id,))
+        emp = cur.fetchone()
+
+        # Order/training stats
+        cur.execute("""
+            SELECT COUNT(*) AS total_orders,
+                   COALESCE(SUM(price), 0) AS total_spend,
+                   COUNT(CASE WHEN completion_status='completed' THEN 1 END) AS completed,
+                   COUNT(CASE WHEN status='pending_approval' THEN 1 END) AS pending_approvals
+            FROM course_orders WHERE company_id = %s AND status NOT IN ('cancelled','rejected')
+        """, (g.company_id,))
+        orders = cur.fetchone()
+
+        # Chatbot engagement
+        cur.execute("""
+            SELECT COUNT(*) AS total_interactions,
+                   COUNT(DISTINCT ci.username) AS active_users,
+                   AVG(ci.feedback_rating) AS avg_feedback
+            FROM chatbot_interactions ci
+            JOIN users u ON ci.username = u.username
+            JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = %s
+            WHERE ci.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+        """, (g.company_id,))
+        engagement = cur.fetchone()
+
+        # Budget
+        import datetime as _dt
+        fy = _dt.datetime.now().year
+        cur.execute("""
+            SELECT COALESCE(SUM(annual_budget), 0) AS total_budget,
+                   COALESCE(SUM(spent), 0) AS total_spent
+            FROM department_budgets WHERE company_id = %s AND fiscal_year = %s
+        """, (g.company_id, fy))
+        budget = cur.fetchone()
+
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'data': {
+                'employees': emp,
+                'training': orders,
+                'engagement': {
+                    'interactions_30d': engagement['total_interactions'] or 0,
+                    'active_users_30d': engagement['active_users'] or 0,
+                    'avg_feedback': round(float(engagement['avg_feedback'] or 0), 1),
+                },
+                'budget': {
+                    'total': float(budget['total_budget'] or 0),
+                    'spent': float(budget['total_spent'] or 0),
+                    'remaining': float((budget['total_budget'] or 0) - (budget['total_spent'] or 0)),
+                    'fiscal_year': fy,
+                }
+            }
+        })
+    except Exception as e:
+        return jsonify({'error': 'Failed to retrieve analytics overview'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/analytics/skills')
+@require_api_auth('read:analytics')
+def get_skills_matrix():
+    """Get company skill matrix and targets"""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+        cur.execute("""
+            SELECT cst.department, cst.skill_name, cst.target_level, cst.priority
+            FROM company_skill_targets cst
+            WHERE cst.company_id = %s ORDER BY cst.department, cst.skill_name
+        """, (g.company_id,))
+        targets = cur.fetchall()
+
+        cur.execute("""
+            SELECT esm.skill_name, esm.current_level, esm.target_level,
+                   cu.department, u.username
+            FROM employee_skills_matrix esm
+            JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
+            JOIN users u ON cu.user_id = u.id
+            WHERE esm.company_id = %s AND cu.status = 'active'
+        """, (g.company_id,))
+        skills = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'data': {'targets': targets, 'employee_skills': skills}
+        })
+    except Exception as e:
+        return jsonify({'error': 'Failed to retrieve skills data'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/orders')
+@require_api_auth('read:orders')
+def get_orders():
+    """List company orders"""
+    try:
+        page = int(request.args.get('page', 1))
+        per_page = min(int(request.args.get('per_page', 50)), 100)
+        status = request.args.get('status')
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+        where = ['company_id = %s']
+        params = [g.company_id]
+        if status:
+            where.append('status = %s')
+            params.append(status)
+
+        where_clause = ' AND '.join(where)
+        cur.execute(f"SELECT COUNT(*) AS total FROM course_orders WHERE {where_clause}", params)
+        total = cur.fetchone()['total']
+
+        offset = (page - 1) * per_page
+        cur.execute(f"""
+            SELECT order_id, product_handle, product_title, price, status,
+                   completion_status, department, user_name, user_email,
+                   variant_date, variant_location, chatbot_session_id,
+                   recommended_by_tool, created_at, updated_at
+            FROM course_orders WHERE {where_clause}
+            ORDER BY created_at DESC LIMIT %s OFFSET %s
+        """, params + [per_page, offset])
+        orders = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'data': orders,
+            'pagination': {'page': page, 'per_page': per_page, 'total': total,
+                           'pages': (total + per_page - 1) // per_page}
+        })
+    except Exception as e:
+        return jsonify({'error': 'Failed to retrieve orders'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/orders', methods=['POST'])
+@require_api_auth('write:orders')
+def create_order_api():
+    """Create order programmatically"""
+    try:
+        data = request.get_json()
+        for f in ['product_handle', 'product_title', 'user_email', 'user_name']:
+            if not data.get(f):
+                return jsonify({'error': f'Missing required field: {f}'}), 400
+
+        import uuid
+        order_id = str(uuid.uuid4())
+        cur = current_app.mysql.connection.cursor()
+        cur.execute("""
+            INSERT INTO course_orders
+            (order_id, company_id, product_handle, product_title, price, status,
+             user_email, user_name, user_phone, variant_date, variant_location,
+             department, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+        """, (
+            order_id, g.company_id,
+            data['product_handle'], data['product_title'],
+            data.get('price', 0), data.get('status', 'pending'),
+            data['user_email'], data['user_name'], data.get('user_phone', ''),
+            data.get('variant_date', ''), data.get('variant_location', ''),
+            data.get('department', ''),
+        ))
+        current_app.mysql.connection.commit()
+        cur.close()
+
+        # Fire webhook
+        _fire_webhook(g.company_id, 'order.created', {'order_id': order_id, 'product': data['product_title']})
+
+        return jsonify({
+            'success': True, 'message': 'Order created',
+            'data': {'order_id': order_id}
+        }), 201
+    except Exception as e:
+        return jsonify({'error': 'Failed to create order'}), 500
+
+
+# =====================================================
+# PHASE 4.3: BULK OPERATIONS
+# =====================================================
+
+@api_enterprise_bp.route('/api/v1/bulk/import-employees', methods=['POST'])
+@require_api_auth('write:employees')
+def bulk_import_employees():
+    """Bulk import employees from CSV data.
+    Expects JSON body: {"employees": [{"full_name": ..., "email": ..., "department": ..., "role": ...}, ...]}
+    """
+    try:
+        data = request.get_json()
+        employees = data.get('employees', [])
+        if not employees:
+            return jsonify({'error': 'No employees provided'}), 400
+        if len(employees) > 500:
+            return jsonify({'error': 'Maximum 500 employees per request'}), 400
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        created = 0
+        skipped = 0
+        errors = []
+
+        for i, emp in enumerate(employees):
+            if not emp.get('email') or not emp.get('full_name'):
+                errors.append(f"Row {i+1}: missing email or full_name")
+                skipped += 1
+                continue
+
+            # Check duplicate
+            cur.execute("SELECT id FROM company_users WHERE company_id = %s AND email = %s",
+                        (g.company_id, emp['email']))
+            if cur.fetchone():
+                skipped += 1
+                continue
+
+            cur.execute("""
+                INSERT INTO company_users
+                (company_id, full_name, email, role, department, job_title,
+                 hire_date, employment_type, phone, status, added_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', NOW())
+            """, (
+                g.company_id, emp['full_name'], emp['email'],
+                emp.get('role', 'employee'), emp.get('department', ''),
+                emp.get('job_title', ''), emp.get('hire_date'),
+                emp.get('employment_type', 'full_time'), emp.get('phone', ''),
+            ))
+            created += 1
+
+            # Fire webhook per employee
+            _fire_webhook(g.company_id, 'employee.added', {'email': emp['email'], 'name': emp['full_name']})
+
+        current_app.mysql.connection.commit()
+
+        # Update company employee count
+        cur.execute("""
+            UPDATE companies SET current_employee_count = (
+                SELECT COUNT(*) FROM company_users WHERE company_id = %s AND status = 'active'
+            ) WHERE id = %s
+        """, (g.company_id, g.company_id))
+        current_app.mysql.connection.commit()
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'created': created, 'skipped': skipped,
+            'errors': errors[:20]
+        })
+    except Exception as e:
+        return jsonify({'error': f'Bulk import failed: {str(e)}'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/bulk/enroll', methods=['POST'])
+@require_api_auth('write:orders')
+def bulk_enroll():
+    """Bulk enroll employees in a course.
+    Body: {"employee_ids": [1,2,3], "product_handle": "...", "product_title": "...", "price": 0, ...}
+    """
+    try:
+        data = request.get_json()
+        employee_ids = data.get('employee_ids', [])
+        product_handle = data.get('product_handle', '')
+        product_title = data.get('product_title', '')
+
+        if not employee_ids or not product_handle:
+            return jsonify({'error': 'employee_ids and product_handle required'}), 400
+        if len(employee_ids) > 200:
+            return jsonify({'error': 'Maximum 200 employees per bulk enroll'}), 400
+
+        import uuid
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        created_orders = []
+
+        for eid in employee_ids:
+            # Verify employee belongs to company
+            cur.execute("""
+                SELECT user_id, full_name, email, department FROM company_users
+                WHERE user_id = %s AND company_id = %s AND status = 'active'
+            """, (eid, g.company_id))
+            emp = cur.fetchone()
+            if not emp:
+                continue
+
+            order_id = str(uuid.uuid4())
+            cur.execute("""
+                INSERT INTO course_orders
+                (order_id, company_id, user_id, username, product_handle, product_title,
+                 price, status, user_email, user_name, department, variant_date, variant_location, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+            """, (
+                order_id, g.company_id, emp['user_id'], emp['full_name'],
+                product_handle, product_title,
+                data.get('price', 0), data.get('status', 'pending'),
+                emp['email'], emp['full_name'], emp.get('department', ''),
+                data.get('variant_date', ''), data.get('variant_location', ''),
+            ))
+            created_orders.append({'order_id': order_id, 'employee': emp['full_name']})
+
+        current_app.mysql.connection.commit()
+        cur.close()
+
+        if created_orders:
+            _fire_webhook(g.company_id, 'order.created', {
+                'bulk': True, 'count': len(created_orders), 'product': product_title
+            })
+
+        return jsonify({
+            'success': True,
+            'enrolled': len(created_orders),
+            'orders': created_orders
+        })
+    except Exception as e:
+        return jsonify({'error': f'Bulk enroll failed: {str(e)}'}), 500
+
+
+@api_enterprise_bp.route('/api/v1/bulk/export')
+@require_api_auth('read:reports')
+def bulk_export():
+    """Bulk export company data. ?type=employees|orders|training|chatbot_logs"""
+    try:
+        export_type = request.args.get('type', 'employees')
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+        if export_type == 'employees':
+            cur.execute("""
+                SELECT user_id, full_name, email, department, job_title, role,
+                       hire_date, employment_type, status, total_chatbot_queries,
+                       total_courses_completed, total_learning_hours,
+                       last_chatbot_interaction, added_at
+                FROM company_users WHERE company_id = %s ORDER BY full_name
+            """, (g.company_id,))
+        elif export_type == 'orders':
+            cur.execute("""
+                SELECT order_id, product_handle, product_title, price, status,
+                       completion_status, department, user_name, user_email,
+                       variant_date, variant_location, chatbot_session_id,
+                       chatbot_queries_before_order, recommended_by_tool,
+                       created_at, updated_at
+                FROM course_orders WHERE company_id = %s ORDER BY created_at DESC
+            """, (g.company_id,))
+        elif export_type == 'training':
+            cur.execute("""
+                SELECT cu.full_name, cu.email, cu.department,
+                       elp.content_name, elp.course_handle, elp.status,
+                       elp.progress_percentage, elp.time_spent_minutes,
+                       elp.completed_at, elp.final_score
+                FROM employee_learning_progress elp
+                JOIN company_users cu ON elp.user_id = cu.user_id AND elp.company_id = cu.company_id
+                WHERE elp.company_id = %s ORDER BY cu.full_name
+            """, (g.company_id,))
+        elif export_type == 'chatbot_logs':
+            cur.execute("""
+                SELECT ci.username, ci.session_id, ci.query_text, ci.query_type,
+                       ci.tools_used, ci.feedback_rating, ci.conversation_depth,
+                       ci.response_time_ms, ci.created_at
+                FROM chatbot_interactions ci
+                JOIN users u ON ci.username = u.username
+                JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = %s
+                WHERE ci.created_at >= DATE_SUB(NOW(), INTERVAL 90 DAY)
+                ORDER BY ci.created_at DESC LIMIT 5000
+            """, (g.company_id,))
+        else:
+            cur.close()
+            return jsonify({'error': f'Invalid export type: {export_type}. Use: employees, orders, training, chatbot_logs'}), 400
+
+        rows = cur.fetchall()
+        cur.close()
+
+        fmt = request.args.get('format', 'json')
+        if fmt == 'csv' and rows:
+            import csv, io
+            output = io.StringIO()
+            writer = csv.DictWriter(output, fieldnames=rows[0].keys())
+            writer.writeheader()
+            for r in rows:
+                # Convert datetime objects to strings
+                row = {}
+                for k, v in r.items():
+                    row[k] = v.isoformat() if hasattr(v, 'isoformat') else v
+                writer.writerow(row)
+            from flask import Response
+            return Response(output.getvalue(), mimetype='text/csv',
+                            headers={'Content-Disposition': f'attachment; filename={export_type}_export.csv'})
+
+        # Serialize datetimes for JSON
+        for r in rows:
+            for k, v in r.items():
+                if hasattr(v, 'isoformat'):
+                    r[k] = v.isoformat()
+
+        return jsonify({'success': True, 'type': export_type, 'count': len(rows), 'data': rows})
+    except Exception as e:
+        return jsonify({'error': f'Export failed: {str(e)}'}), 500
+
+
+# ── Webhook firing helper ──
+def _fire_webhook(company_id, event_type, payload):
+    """Fire webhooks for a given event (best-effort, non-blocking)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("""
+            SELECT id, url, secret FROM company_webhooks
+            WHERE company_id = %s AND is_active = 1
+        """, (company_id,))
+        webhooks = cur.fetchall()
+
+        for wh in webhooks:
+            events = wh.get('events', '[]')
+            if isinstance(events, str):
+                events = json.loads(events)
+            if event_type not in events and '*' not in events:
+                continue
+            # Best-effort POST (non-blocking would need celery/threading, keep sync for now)
+            try:
+                import hashlib, hmac, urllib.request
+                body = json.dumps({'event': event_type, 'data': payload,
+                                   'timestamp': datetime.now().isoformat()}).encode()
+                sig = hmac.new(wh['secret'].encode(), body, hashlib.sha256).hexdigest()
+                req = urllib.request.Request(wh['url'], data=body,
+                    headers={'Content-Type': 'application/json', 'X-Webhook-Signature': sig})
+                urllib.request.urlopen(req, timeout=5)
+                cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, successful_deliveries=successful_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
+            except Exception:
+                cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, failed_deliveries=failed_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
+
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception:
+        pass
+
+
 # Health check endpoint
 @api_enterprise_bp.route('/api/v1/health')
 def health_check():

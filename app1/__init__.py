@@ -352,7 +352,7 @@ PRODUCT_MEDIA_TEMPLATE = """
         <h3 style="margin: 0 0 2px; font-size: 15px; font-weight: 700; color: #f4f4f5; line-height: 1.3;">
           <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#f4f4f5'">{{ product.title | e }}</a>
         </h3>
-        <div style="font-size: 12px; color: #52525b;">{{ product.vendor | e }}</div>
+        <div style="font-size: 12px; color: #52525b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="{{ product.vendor | e }}">{{ product.vendor | e }}</div>
       </div>
       <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0;">
         {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
@@ -361,7 +361,8 @@ PRODUCT_MEDIA_TEMPLATE = """
       </div>
     </div>
     {% if product.ai_summary or product.body_html %}
-    <div style="font-size: 13px; color: #a1a1aa; line-height: 1.5; margin-bottom: 12px;">{{ get_short_description(product) | e }}</div>
+    {% set _desc = get_short_description(product) %}
+    <div style="font-size: 13px; color: #a1a1aa; line-height: 1.5; margin-bottom: 12px;">{{ (_desc[:150] + '...') if _desc|length > 150 else _desc | e }}</div>
     {% endif %}
     <div style="display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; color: #52525b;">
       <span>{% if product.variants and product.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
@@ -443,7 +444,8 @@ MULTIPLE_COURSES_TEMPLATE = """
       <div class="course-details-wrapper">
         <div class="course-details-inner">
           <div class="course-details-content" style="font-family: 'Inter', Arial, sans-serif;">
-            <div style="margin-top: 8px; font-size: 13px; color: #a1a1aa; line-height: 1.55;">{{ get_short_description(course) | e }}</div>
+            {% set _cdesc = get_short_description(course) %}
+            <div style="margin-top: 8px; font-size: 13px; color: #a1a1aa; line-height: 1.55;">{{ (_cdesc[:150] + '...') if _cdesc|length > 150 else _cdesc | e }}</div>
             <div style="display: flex; gap: 16px; margin: 10px 0; font-size: 12px; color: #52525b;">
               <span>{% if course.variants and course.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
               <span>{% if course.location %}{{ course.location | e }}{% else %}Online{% endif %}</span>
@@ -636,6 +638,18 @@ def confirm_profile_update():
     data = request.json or {}
     action = data.get("action", "")
     payload = data.get("data", {})
+    # Trim whitespace from all string fields
+    payload = {k: v.strip() if isinstance(v, str) else v for k, v in payload.items()}
+
+    def _success(msg):
+        """Return success and log the profile update."""
+        try:
+            from app1.memory_store import log_event
+            log_event(session.get("sid", "unknown"), "profile_confirm",
+                      tool_used=action, extra={"status": "success", "user": logged_in_user})
+        except Exception:
+            pass
+        return jsonify({"status": "success", "message": msg})
 
     try:
         from app1.user_profile_db import (
@@ -645,7 +659,7 @@ def confirm_profile_update():
 
         if action == "add_skill":
             add_skill(logged_in_user, payload.get("skill_name", ""), payload.get("skill_level", "mellem"))
-            return jsonify({"status": "success", "message": "Kompetence tilføjet"})
+            return _success("Kompetence tilføjet")
 
         elif action == "add_experience":
             # Check if this is a follow-up update (entry already exists)
@@ -666,8 +680,8 @@ def confirm_profile_update():
                 if payload.get("description"): updates["description"] = payload["description"]
                 if updates:
                     update_experience(logged_in_user, existing_entry["id"], **updates)
-                    return jsonify({"status": "success", "message": "Detaljer opdateret"})
-                return jsonify({"status": "success", "message": "Ingen ændringer"})
+                    return _success("Detaljer opdateret")
+                return _success("Ingen ændringer")
             else:
                 add_experience(
                     logged_in_user,
@@ -678,7 +692,7 @@ def confirm_profile_update():
                     is_current=payload.get("is_current", False),
                     description=payload.get("description", ""),
                 )
-                return jsonify({"status": "success", "message": "Erfaring tilføjet"})
+                return _success("Erfaring tilføjet")
 
         elif action == "add_education":
             add_education(
@@ -688,25 +702,31 @@ def confirm_profile_update():
                 year_completed=payload.get("year_completed"),
                 description=payload.get("description", ""),
             )
-            return jsonify({"status": "success", "message": "Uddannelse tilføjet"})
+            return _success("Uddannelse tilføjet")
 
         elif action == "add_course":
             add_skill(logged_in_user, payload.get("course_title", "") or payload.get("course_name", ""), "kursus")
-            return jsonify({"status": "success", "message": "Kursus tilføjet"})
+            return _success("Kursus tilføjet")
 
         elif action == "update_summary":
             from app1.user_profile_db import update_profile_summary
             clean = {k: v for k, v in payload.items() if v is not None and str(v).strip()}
             if clean:
                 update_profile_summary(logged_in_user, **clean)
-                return jsonify({"status": "success", "message": "Profil opdateret"})
-            return jsonify({"status": "success", "message": "Ingen ændringer"})
+                return _success("Profil opdateret")
+            return _success("Ingen ændringer")
 
         else:
             return jsonify({"status": "error", "message": f"Ukendt handling: {action}"}), 400
 
     except Exception as e:
         logging.error("Confirm profile update error: %s", e)
+        try:
+            from app1.memory_store import log_event
+            log_event(session.get("sid", "unknown"), "profile_confirm",
+                      tool_used=action, extra={"status": "error", "error": str(e)})
+        except Exception:
+            pass
         return jsonify({"status": "error", "message": "Fejl ved opdatering"}), 500
 
 

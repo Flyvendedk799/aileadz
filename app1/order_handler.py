@@ -247,9 +247,39 @@ class OrderHandler:
                     "UPDATE course_orders SET status = %s, updated_at = NOW() WHERE order_id = %s",
                     (new_status, order_id)
                 )
+                # On completion, update learning progress + employee counters
+                if new_status == 'completed':
+                    try:
+                        import MySQLdb.cursors
+                        cur2 = conn.cursor(MySQLdb.cursors.DictCursor)
+                        cur2.execute(
+                            "SELECT user_id, company_id, product_handle, product_title FROM course_orders WHERE order_id = %s",
+                            (order_id,))
+                        orow = cur2.fetchone()
+                        if orow and orow.get('user_id') and orow.get('company_id'):
+                            cur2.execute(
+                                "UPDATE course_orders SET completion_status = 'completed', completion_date = NOW() WHERE order_id = %s",
+                                (order_id,))
+                            cur2.execute("""
+                                INSERT INTO employee_learning_progress
+                                    (user_id, company_id, course_handle, content_name, status,
+                                     progress_percentage, completed_at, created_at)
+                                VALUES (%s, %s, %s, %s, 'completed', 100, NOW(), NOW())
+                                ON DUPLICATE KEY UPDATE
+                                    status = 'completed', progress_percentage = 100, completed_at = NOW()
+                            """, (orow['user_id'], orow['company_id'],
+                                  orow.get('product_handle', ''), orow.get('product_title', '')))
+                            cur2.execute("""
+                                UPDATE company_users
+                                SET total_courses_completed = COALESCE(total_courses_completed, 0) + 1
+                                WHERE company_id = %s AND user_id = %s
+                            """, (orow['company_id'], orow['user_id']))
+                        cur2.close()
+                    except Exception as lp_err:
+                        logger.warning(f"Learning progress update failed: {lp_err}")
                 conn.commit()
                 cur.close()
-            
+
             return True
             
         except Exception as e:

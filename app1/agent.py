@@ -1713,12 +1713,26 @@ def handle_agentic_ask(user_query, session):
             # Log to chatbot_interactions for admin + HR dashboards
             try:
                 response_time_ms = int((time.time() - _interaction_start) * 1000)
+                # Quality score: 0.0-1.0 based on response time + content quality signals
+                _resp_len = len(full_text or '')
+                _quality = 1.0
+                if response_time_ms > 15000:
+                    _quality -= 0.3
+                elif response_time_ms > 8000:
+                    _quality -= 0.1
+                if _resp_len < 20:
+                    _quality -= 0.3  # very short = likely error
+                if 'fejl' in (full_text or '').lower() or 'error' in (full_text or '').lower():
+                    _quality -= 0.2
+                _quality = round(max(0.1, min(1.0, _quality)), 2)
+
                 ci_cur = current_app.mysql.connection.cursor()
                 ci_cur.execute("""
                     INSERT INTO chatbot_interactions
                         (company_id, session_id, username, query_text, response_text,
-                         query_type, category, response_time_ms, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                         query_type, category, response_time_ms,
+                         interaction_quality_score, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 """, (
                     session.get('company_id'),
                     sid,
@@ -1728,7 +1742,18 @@ def handle_agentic_ask(user_query, session):
                     intent or 'unknown',
                     stage or 'unknown',
                     response_time_ms,
+                    _quality,
                 ))
+
+                # Update company_users engagement counters (if user belongs to a company)
+                if logged_in_user and session.get('company_id'):
+                    ci_cur.execute("""
+                        UPDATE company_users
+                        SET total_chatbot_queries = COALESCE(total_chatbot_queries, 0) + 1,
+                            last_chatbot_interaction = NOW()
+                        WHERE company_id = %s AND user_id = %s
+                    """, (session.get('company_id'), session.get('user_id')))
+
                 current_app.mysql.connection.commit()
                 ci_cur.close()
             except Exception as e:

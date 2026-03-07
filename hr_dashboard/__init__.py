@@ -353,11 +353,47 @@ def create_hr_dashboard_blueprint():
                 cur.close()
                 return jsonify({'success': False, 'message': 'No rows updated'}), 400
             
+            # When marking completed, also update learning progress + employee counters
+            if new_status == 'completed':
+                try:
+                    cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                    cur2.execute("""
+                        SELECT user_id, company_id, product_handle, product_title
+                        FROM course_orders WHERE order_id = %s
+                    """, (order_id,))
+                    order_row = cur2.fetchone()
+                    if order_row and order_row['user_id']:
+                        # Update completion status on the order itself
+                        cur2.execute("""
+                            UPDATE course_orders
+                            SET completion_status = 'completed', completion_date = NOW()
+                            WHERE order_id = %s
+                        """, (order_id,))
+                        # Insert/update employee_learning_progress
+                        cur2.execute("""
+                            INSERT INTO employee_learning_progress
+                                (user_id, company_id, course_handle, content_name, status,
+                                 progress_percentage, completed_at, created_at)
+                            VALUES (%s, %s, %s, %s, 'completed', 100, NOW(), NOW())
+                            ON DUPLICATE KEY UPDATE
+                                status = 'completed', progress_percentage = 100, completed_at = NOW()
+                        """, (order_row['user_id'], order_row['company_id'],
+                              order_row.get('product_handle', ''), order_row.get('product_title', '')))
+                        # Increment total_courses_completed on company_users
+                        cur2.execute("""
+                            UPDATE company_users
+                            SET total_courses_completed = COALESCE(total_courses_completed, 0) + 1
+                            WHERE company_id = %s AND user_id = %s
+                        """, (order_row['company_id'], order_row['user_id']))
+                    cur2.close()
+                except Exception as lp_err:
+                    current_app.logger.warning(f"Learning progress update failed: {lp_err}")
+
             current_app.mysql.connection.commit()
             cur.close()
 
             current_app.logger.info(f"Company order {order_id} status updated to {new_status} by HR user {session.get('user')} for company {company['id']}")
-            
+
             return jsonify({
                 'success': True,
                 'message': f'Order status updated to {new_status}',

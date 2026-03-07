@@ -106,7 +106,7 @@ def create_multitenant_reports_blueprint():
                     SELECT u.username FROM users u WHERE u.id = cu.user_id
                 ) AND cu.company_id = %s
                 WHERE ci.company_id = %s 
-                ORDER BY ci.timestamp DESC 
+                ORDER BY ci.created_at DESC 
                 LIMIT 1000
             """, (company['id'], company['id']))
             interactions = cur.fetchall()
@@ -121,7 +121,7 @@ def create_multitenant_reports_blueprint():
             
             for interaction in interactions:
                 total_chatbot_queries += 1
-                dt = interaction['timestamp']
+                dt = interaction['created_at']
                 if isinstance(dt, datetime.datetime):
                     date_str = dt.strftime('%Y-%m-%d')
                     hour = dt.hour
@@ -260,15 +260,15 @@ def create_multitenant_reports_blueprint():
                             if tcat in lower_txt:
                                 topics.add(tcat)
                     duration = 5
-                    if (isinstance(first_i['timestamp'], datetime.datetime) and
-                       isinstance(last_i['timestamp'], datetime.datetime)):
-                        duration = int((last_i['timestamp'] - first_i['timestamp']).total_seconds() / 60)
+                    if (isinstance(first_i['created_at'], datetime.datetime) and
+                       isinstance(last_i['created_at'], datetime.datetime)):
+                        duration = int((last_i['created_at'] - first_i['created_at']).total_seconds() / 60)
                     
                     recent_conversations.append({
                         'session_id': sid[:12],
                         'start_time': (
-                            first_i['timestamp'].strftime('%Y-%m-%d %H:%M:%S')
-                            if isinstance(first_i['timestamp'], datetime.datetime)
+                            first_i['created_at'].strftime('%Y-%m-%d %H:%M:%S')
+                            if isinstance(first_i['created_at'], datetime.datetime)
                             else 'N/A'
                         ),
                         'duration': duration,

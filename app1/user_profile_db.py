@@ -70,6 +70,16 @@ _TABLES_SQL = [
         messages LONGTEXT,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS conversation_history (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        session_id VARCHAR(100) NOT NULL,
+        title VARCHAR(255) DEFAULT 'Ny samtale',
+        messages LONGTEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_user_updated (username, updated_at DESC)
+    )""",
 ]
 
 
@@ -436,3 +446,84 @@ def clear_conversation(username):
     cur.execute("DELETE FROM user_conversations WHERE username = %s", (username,))
     current_app.mysql.connection.commit()
     cur.close()
+
+
+# ── Conversation History (multi-session) ──
+
+def _extract_title(messages, max_len=60):
+    """Extract a title from the first user message."""
+    for m in messages:
+        if m.get("role") == "user" and m.get("content"):
+            text = m["content"].strip()
+            if len(text) > max_len:
+                return text[:max_len].rsplit(" ", 1)[0] + "..."
+            return text
+    return "Ny samtale"
+
+
+def save_conversation_history(username, session_id, messages):
+    """Save or update a conversation in the history table."""
+    import json as _json
+    saved = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    if not saved:
+        return
+    title = _extract_title(saved)
+    cur = current_app.mysql.connection.cursor()
+    # Check if this session already exists
+    cur.execute("SELECT id FROM conversation_history WHERE username = %s AND session_id = %s", (username, session_id))
+    row = cur.fetchone()
+    if row:
+        cur.execute(
+            "UPDATE conversation_history SET messages = %s, title = %s WHERE id = %s",
+            (_json.dumps(saved, ensure_ascii=False), title, row[0])
+        )
+    else:
+        cur.execute(
+            "INSERT INTO conversation_history (username, session_id, title, messages) VALUES (%s, %s, %s, %s)",
+            (username, session_id, title, _json.dumps(saved, ensure_ascii=False))
+        )
+    current_app.mysql.connection.commit()
+    cur.close()
+
+
+def list_conversations(username, limit=30):
+    """List conversation history for a user, newest first."""
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, session_id, title, created_at, updated_at FROM conversation_history "
+        "WHERE username = %s ORDER BY updated_at DESC LIMIT %s",
+        (username, limit)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return rows
+
+
+def load_conversation_by_id(username, conv_id):
+    """Load a specific conversation by its ID."""
+    import json as _json
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, session_id, title, messages, updated_at FROM conversation_history "
+        "WHERE id = %s AND username = %s",
+        (conv_id, username)
+    )
+    row = cur.fetchone()
+    cur.close()
+    if not row or not row.get("messages"):
+        return None
+    try:
+        row["messages"] = _json.loads(row["messages"])
+    except Exception:
+        return None
+    return row
+
+
+def delete_conversation(username, conv_id):
+    """Delete a conversation from history."""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM conversation_history WHERE id = %s AND username = %s", (conv_id, username))
+    current_app.mysql.connection.commit()
+    affected = cur.rowcount
+    cur.close()
+    return affected > 0

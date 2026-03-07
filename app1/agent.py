@@ -1685,9 +1685,10 @@ def handle_agentic_ask(user_query, session):
             # Persist conversation for logged-in users
             if logged_in_user:
                 try:
-                    from app1.user_profile_db import save_conversation, ensure_tables
+                    from app1.user_profile_db import save_conversation, save_conversation_history, ensure_tables
                     ensure_tables()
                     save_conversation(logged_in_user, sid, messages)
+                    save_conversation_history(logged_in_user, sid, messages)
                 except Exception as e:
                     print(f"[Conversation Save Error] {e}")
                     try:

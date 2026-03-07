@@ -589,9 +589,19 @@ def feedback():
 
 @app1_bp.route("/new_session", methods=["POST"])
 def new_session():
-    """Start a fresh conversation — clears backend memory and DB."""
+    """Start a fresh conversation — saves current to history, then clears."""
     from app1.agent import CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES, REJECTED_SEARCHES
     old_sid = session.get("session_id")
+    logged_in_user = session.get("user")
+
+    # Save current conversation to history before clearing
+    if logged_in_user and old_sid and old_sid in CHAT_MEMORY:
+        try:
+            from app1.user_profile_db import save_conversation_history, ensure_tables
+            ensure_tables()
+            save_conversation_history(logged_in_user, old_sid, CHAT_MEMORY[old_sid])
+        except Exception as e:
+            print(f"[Save History Error] {e}")
 
     # Clear in-memory state
     if old_sid:
@@ -604,8 +614,7 @@ def new_session():
     new_sid = str(uuid.uuid4())
     session["session_id"] = new_sid
 
-    # Clear saved conversation in MySQL for logged-in users
-    logged_in_user = session.get("user")
+    # Clear active conversation in MySQL for logged-in users
     if logged_in_user:
         try:
             from app1.user_profile_db import clear_conversation, ensure_tables
@@ -637,6 +646,63 @@ def load_conversation_endpoint():
         except Exception:
             pass
         return jsonify({"status": "error", "messages": []})
+
+
+@app1_bp.route("/conversations")
+def list_conversations_endpoint():
+    """List conversation history for the logged-in user."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"conversations": []})
+    try:
+        from app1.user_profile_db import list_conversations, ensure_tables
+        ensure_tables()
+        convs = list_conversations(logged_in_user)
+        return jsonify({"conversations": [
+            {"id": c["id"], "title": c["title"],
+             "updated_at": c["updated_at"].isoformat() if c.get("updated_at") else None}
+            for c in convs
+        ]})
+    except Exception as e:
+        print(f"[List Conversations Error] {e}")
+        return jsonify({"conversations": []})
+
+
+@app1_bp.route("/conversations/<int:conv_id>")
+def load_conversation_history_endpoint(conv_id):
+    """Load a specific past conversation."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error"}), 401
+    try:
+        from app1.user_profile_db import load_conversation_by_id, ensure_tables
+        ensure_tables()
+        conv = load_conversation_by_id(logged_in_user, conv_id)
+        if not conv:
+            return jsonify({"status": "not_found"}), 404
+        return jsonify({"status": "ok", "conversation": {
+            "id": conv["id"], "session_id": conv["session_id"],
+            "title": conv["title"], "messages": conv["messages"]
+        }})
+    except Exception as e:
+        print(f"[Load Conversation History Error] {e}")
+        return jsonify({"status": "error"}), 500
+
+
+@app1_bp.route("/conversations/<int:conv_id>", methods=["DELETE"])
+def delete_conversation_endpoint(conv_id):
+    """Delete a conversation from history."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error"}), 401
+    try:
+        from app1.user_profile_db import delete_conversation, ensure_tables
+        ensure_tables()
+        ok = delete_conversation(logged_in_user, conv_id)
+        return jsonify({"status": "ok" if ok else "not_found"})
+    except Exception as e:
+        print(f"[Delete Conversation Error] {e}")
+        return jsonify({"status": "error"}), 500
 
 
 @app1_bp.route("/confirm_profile_update", methods=["POST"])

@@ -158,6 +158,76 @@
       padding: 0 10px;
       margin: 16px 0 6px;
     }
+    /* ── Conversation list ── */
+    .sb-conv-list { display: flex; flex-direction: column; gap: 1px; }
+    .sb-conv-item {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 7px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+      position: relative;
+    }
+    .sb-conv-item:hover { background: var(--purple-glow); }
+    .sb-conv-item.active { background: var(--purple-glow); }
+    .sb-conv-item.active::before {
+      content: '';
+      position: absolute;
+      left: 0; top: 4px; bottom: 4px;
+      width: 3px;
+      border-radius: 0 3px 3px 0;
+      background: var(--purple);
+    }
+    .sb-conv-icon {
+      width: 16px; height: 16px;
+      flex-shrink: 0;
+      color: var(--text-muted);
+    }
+    .sb-conv-item.active .sb-conv-icon { color: var(--purple); }
+    .sb-conv-title {
+      flex: 1;
+      font-size: 12.5px;
+      color: var(--text-secondary);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      line-height: 1.3;
+    }
+    .sb-conv-item.active .sb-conv-title { color: var(--text); font-weight: 500; }
+    .sb-conv-item:hover .sb-conv-title { color: var(--text); }
+    .sb-conv-delete {
+      display: none;
+      width: 20px; height: 20px;
+      border-radius: 4px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      padding: 0;
+      transition: all 0.15s;
+    }
+    .sb-conv-item:hover .sb-conv-delete { display: flex; }
+    .sb-conv-delete:hover { background: rgba(239,68,68,0.1); color: var(--red); }
+    .sb-conv-delete svg { width: 12px; height: 12px; }
+    .sb-conv-empty {
+      font-size: 11px;
+      color: var(--text-muted);
+      padding: 6px 10px;
+    }
+    .sb-conv-date {
+      font-size: 10px;
+      color: var(--text-faint);
+      padding: 8px 10px 3px;
+      font-weight: 500;
+    }
+    .sidebar.collapsed .sb-conv-list { display: none; }
+    .sidebar.collapsed .sb-conv-date { display: none; }
+
     .sb-nav-item {
       display: flex;
       align-items: center;
@@ -760,26 +830,21 @@
         </button>
         {% endif %}
 
-        <div class="sb-section-label">Navigation</div>
+        {% if session.get('user') %}
+        <div class="sb-section-label">Samtaler</div>
+        <div id="convList" class="sb-conv-list">
+          <div class="sb-conv-empty sb-text" style="font-size:11px;color:var(--text-muted);padding:6px 10px;">Indlæser...</div>
+        </div>
+        {% endif %}
+
+        <div class="sb-section-label" style="margin-top:20px;">Navigation</div>
         <a href="/dashboard" class="sb-nav-item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
           <span class="sb-text">Dashboard</span>
         </a>
-        <a href="/app1/" class="sb-nav-item active">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span class="sb-text">AI Chat</span>
-        </a>
-        <a href="/analytics" class="sb-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
-          <span class="sb-text">Analyse</span>
-        </a>
         <a href="/profile" class="sb-nav-item">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           <span class="sb-text">Profil / CV</span>
-        </a>
-        <a href="/indstillinger" class="sb-nav-item">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-          <span class="sb-text">Indstillinger</span>
         </a>
         {% if session.get('role') == 'admin' %}
         <div class="sb-section-label">Admin</div>
@@ -1545,6 +1610,136 @@
       else { el.style.display = 'none'; btn.innerText = 'Se detaljer'; }
     };
 
+    // ── Conversation History ──
+    let _activeConvId = null;
+    const convListEl = document.getElementById('convList');
+
+    function _relativeTime(isoStr) {
+      if (!isoStr) return '';
+      const d = new Date(isoStr);
+      const now = new Date();
+      const diffMs = now - d;
+      const mins = Math.floor(diffMs / 60000);
+      if (mins < 1) return 'Lige nu';
+      if (mins < 60) return mins + ' min siden';
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return hours + ' t siden';
+      const days = Math.floor(hours / 24);
+      if (days === 1) return 'I går';
+      if (days < 7) return days + ' dage siden';
+      return d.toLocaleDateString('da-DK', { day: 'numeric', month: 'short' });
+    }
+
+    function _groupByDate(convs) {
+      const groups = { today: [], yesterday: [], older: [] };
+      const now = new Date();
+      const todayStr = now.toDateString();
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      const yesterdayStr = yesterday.toDateString();
+      for (const c of convs) {
+        const d = new Date(c.updated_at);
+        const ds = d.toDateString();
+        if (ds === todayStr) groups.today.push(c);
+        else if (ds === yesterdayStr) groups.yesterday.push(c);
+        else groups.older.push(c);
+      }
+      return groups;
+    }
+
+    async function loadConversationList() {
+      if (!IS_LOGGED_IN || !convListEl) return;
+      try {
+        const resp = await fetch("{{ url_for('app1.list_conversations_endpoint') }}");
+        const data = await resp.json();
+        const convs = data.conversations || [];
+        if (!convs.length) {
+          convListEl.innerHTML = '<div class="sb-conv-empty sb-text">Ingen tidligere samtaler</div>';
+          return;
+        }
+        const groups = _groupByDate(convs);
+        let html = '';
+        function renderGroup(label, items) {
+          if (!items.length) return '';
+          let h = `<div class="sb-conv-date sb-text">${label}</div>`;
+          for (const c of items) {
+            const safe = (c.title || 'Samtale').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+            const active = c.id === _activeConvId ? ' active' : '';
+            h += `<div class="sb-conv-item${active}" data-id="${c.id}" onclick="loadConversation(${c.id})" title="${safe}">` +
+              `<svg class="sb-conv-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>` +
+              `<span class="sb-conv-title sb-text">${safe}</span>` +
+              `<button class="sb-conv-delete" onclick="event.stopPropagation();deleteConversation(${c.id})" title="Slet">` +
+                `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>` +
+              `</button></div>`;
+          }
+          return h;
+        }
+        html += renderGroup('I dag', groups.today);
+        html += renderGroup('I går', groups.yesterday);
+        html += renderGroup('Ældre', groups.older);
+        convListEl.innerHTML = html;
+      } catch (e) {
+        console.error('Load conversations error:', e);
+        if (convListEl) convListEl.innerHTML = '<div class="sb-conv-empty sb-text">Kunne ikke indlæse</div>';
+      }
+    }
+
+    function _renderMessages(messages) {
+      chatBox.innerHTML = '';
+      const welcome = document.getElementById('welcomeScreen');
+      if (welcome) welcome.remove();
+      for (const msg of messages) {
+        if (msg.role === 'user' && msg.content) addUserMsg(msg.content);
+        else if (msg.role === 'assistant' && msg.content) {
+          const bc = addBotRow();
+          const textDiv = document.createElement('div');
+          textDiv.className = 'markdown-body bot-text';
+          textDiv.innerHTML = marked.parse(msg.content);
+          bc.appendChild(textDiv);
+        }
+      }
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    window.loadConversation = async function(convId) {
+      if (isSending) return;
+      try {
+        const resp = await fetch(`/app1/conversations/${convId}`);
+        const data = await resp.json();
+        if (data.status === 'ok' && data.conversation) {
+          _activeConvId = convId;
+          _renderMessages(data.conversation.messages || []);
+          saveChatState();
+          // Update active state in sidebar
+          convListEl.querySelectorAll('.sb-conv-item').forEach(el => {
+            el.classList.toggle('active', parseInt(el.dataset.id) === convId);
+          });
+          // Close mobile sidebar
+          closeMobileSidebar();
+        }
+      } catch (e) { console.error('Load conversation error:', e); }
+    };
+
+    window.deleteConversation = async function(convId) {
+      try {
+        await fetch(`/app1/conversations/${convId}`, { method: 'DELETE' });
+        if (_activeConvId === convId) {
+          _activeConvId = null;
+          _storage.removeItem(CHAT_STATE_KEY);
+          location.reload();
+        }
+        loadConversationList();
+      } catch (e) { console.error('Delete conversation error:', e); }
+    };
+
+    // Override startNewConversation to also refresh list
+    const _origNewConv = window.startNewConversation;
+    window.startNewConversation = async function() {
+      await _origNewConv();
+      _activeConvId = null;
+      loadConversationList();
+    };
+
     // ── Init ──
     const hasLocal = restoreChatState();
     if (IS_LOGGED_IN && !hasLocal) {
@@ -1552,24 +1747,13 @@
         .then(r => r.json())
         .then(data => {
           if (data.messages && data.messages.length > 0) {
-            const welcome = document.getElementById('welcomeScreen');
-            if (welcome) welcome.style.display = 'none';
-            for (const msg of data.messages) {
-              if (msg.role === 'user' && msg.content) addUserMsg(msg.content);
-              else if (msg.role === 'assistant' && msg.content) {
-                const bc = addBotRow();
-                const textDiv = document.createElement('div');
-                textDiv.className = 'markdown-body bot-text';
-                textDiv.innerHTML = marked.parse(msg.content);
-                bc.appendChild(textDiv);
-              }
-            }
-            chatBox.scrollTop = chatBox.scrollHeight;
+            _renderMessages(data.messages);
             saveChatState();
           }
         })
         .catch(() => {});
     }
+    if (IS_LOGGED_IN) loadConversationList();
     if (!IS_LOGGED_IN) {
       window.addEventListener('beforeunload', () => {
         navigator.sendBeacon("{{ url_for('app1.new_session') }}");

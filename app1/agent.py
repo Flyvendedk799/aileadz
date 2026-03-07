@@ -224,8 +224,8 @@ def _detect_conversation_stage(sid, messages):
     if shown_count > 0 and _HIGH_INTENT_PATTERNS.search(latest_user):
         return "ready_to_buy"
 
-    # 3.3: Rejection detection on latest message
-    if shown_count > 0 and _REJECTION_PATTERNS.search(latest_user):
+    # 3.3: Rejection/frustration detection on latest message
+    if _REJECTION_PATTERNS.search(latest_user):
         return "correcting"
 
     # 3.4: Team buying detection
@@ -306,7 +306,9 @@ _LOW_INTENT_PATTERNS = _re.compile(
 # 3.3: Conversation repair / rejection detection
 _REJECTION_PATTERNS = _re.compile(
     r'\b(nej|ikke det|forkert|det var ikke|jeg mente|misforstå|helt forkert|'
-    r'det passer ikke|ikke relevant|noget helt andet|prøv igen|det er ikke rigtigt)\b', _re.IGNORECASE
+    r'det passer ikke|ikke relevant|noget helt andet|prøv igen|det er ikke rigtigt|'
+    r'det er forkert|dårligt|ubrugelig|giver ikke mening|det hjælper ikke|'
+    r'ikke godt nok|ikke brugbar|helt ved siden af|nope)\b', _re.IGNORECASE
 )
 
 # 3.4: Team/group buying detection
@@ -1338,7 +1340,7 @@ def handle_agentic_ask(user_query, session):
                 if len(message.tool_calls) > 1:
                     with ThreadPoolExecutor(max_workers=4) as executor:
                         futures = {
-                            executor.submit(execute_tool, tc, username=logged_in_user): tc.id
+                            executor.submit(execute_tool, tc, username=logged_in_user, session_id=sid): tc.id
                             for tc in message.tool_calls
                         }
                         for future in futures:
@@ -1352,7 +1354,7 @@ def handle_agentic_ask(user_query, session):
                     if tool_call.id in tool_results_map:
                         tool_result_str = tool_results_map[tool_call.id]
                     else:
-                        tool_result_str = execute_tool(tool_call, username=logged_in_user)
+                        tool_result_str = execute_tool(tool_call, username=logged_in_user, session_id=sid)
                     try:
                         tool_result_dict = json.loads(tool_result_str)
                     except (json.JSONDecodeError, TypeError) as parse_err:
@@ -1635,16 +1637,22 @@ def handle_agentic_ask(user_query, session):
             visible_text = _strip_suggestions_tag(full_text)
             quality_ok = _check_response_quality(visible_text, had_tool_calls)
 
-            # Debug: log AI response
+            # Debug: log AI response + length validation
+            response_len = len(visible_text)
+            verbose = had_tool_calls and buffered_ui_html and response_len > 300
             try:
                 log_debug(sid, "ai_response", {
                     "response_text": full_text[:500],
                     "had_tool_calls": had_tool_calls,
                     "quality_ok": quality_ok,
                     "iterations": iteration,
+                    "response_length": response_len,
+                    "verbose_warning": verbose,
                 })
             except Exception:
                 pass
+            if verbose:
+                print(f"[Agent Warning] Verbose response ({response_len} chars) after tool calls in session {sid}")
 
             # Smart failure recovery: when tool calls returned 0 results
             if had_tool_calls and not buffered_ui_html:

@@ -410,10 +410,11 @@ def get_query_embedding(query_text):
     cache_key = query_text.lower().strip()
     now = time.time()
 
-    # Check cache
+    # Check cache (update timestamp on access for LRU)
     if cache_key in _embedding_cache:
         emb, ts = _embedding_cache[cache_key]
         if now - ts < _EMBEDDING_CACHE_TTL:
+            _embedding_cache[cache_key] = (emb, now)  # LRU: refresh access time
             return emb
         else:
             del _embedding_cache[cache_key]
@@ -594,6 +595,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     if cache_key in _search_cache:
         cached_result, cached_at = _search_cache[cache_key]
         if now - cached_at < _SEARCH_CACHE_TTL:
+            _search_cache[cache_key] = (cached_result, now)  # LRU: refresh access time
             # Re-apply shown_handles penalty on cached results (since it's session-specific)
             if shown_handles:
                 result_copy = dict(cached_result)

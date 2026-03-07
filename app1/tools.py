@@ -470,15 +470,19 @@ def _execute_get_course_details(args):
             raw_locs = [v.get("option1") for v in p.get("variants", []) if v.get("option1")]
             locations = list(dict.fromkeys(extract_city_name(loc) for loc in raw_locs if extract_city_name(loc)))
             dates = [v.get("option2") for v in p.get("variants", []) if v.get("option2")]
-            return json.dumps({
+            meta = p.get("structured_metadata", {}) or {}
+            result = {
                 "title": p.get("title"),
                 "price": _normalize_price(p.get("variants", [{}])[0].get("price") if p.get("variants") else None),
                 "vendor": p.get("vendor"),
                 "locations": locations,
                 "upcoming_dates": dates,
                 "description": p.get("ai_summary", p.get("body_html", "")[:200]),
-                "raw_product": p
-            })
+                "raw_product": p,
+            }
+            if meta.get("duration_days"):
+                result["duration_days"] = meta["duration_days"]
+            return json.dumps(result)
 
     return json.dumps({"status": "not_found", "message": f"Kunne ikke finde kursus med handle '{handle}'."})
 
@@ -503,7 +507,7 @@ def _execute_compare_courses(args):
         locations = list(set(extract_city_name(v.get("option1", "")) for v in variants if v.get("option1") and extract_city_name(v.get("option1"))))
         dates = [v.get("option2") for v in variants if v.get("option2")][:3]
 
-        comparisons.append({
+        comp = {
             "title": p.get("title"),
             "handle": p.get("handle"),
             "price": _normalize_price(variants[0].get("price") if variants else None),
@@ -513,7 +517,11 @@ def _execute_compare_courses(args):
             "upcoming_dates": dates,
             "summary": p.get("ai_summary", "")[:200],
             "variant_count": len(variants),
-        })
+        }
+        meta = (p.get("structured_metadata") or {})
+        if meta.get("duration_days"):
+            comp["duration_days"] = meta["duration_days"]
+        comparisons.append(comp)
 
     if len(comparisons) < 2:
         return json.dumps({"status": "error", "message": "Kunne ikke finde nok kurser til sammenligning."})
@@ -587,6 +595,25 @@ def _execute_get_user_profile(args, username):
         return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
 
 
+_FIELD_MAX_LENGTHS = {
+    "skill_name": 100, "title": 150, "company": 150, "description": 500,
+    "degree": 150, "institution": 150, "course_title": 200, "vendor": 150,
+    "headline": 100, "bio": 500, "goals": 500, "budget_range": 50,
+    "preferred_location": 100, "preferred_format": 50,
+}
+
+def _clean_profile_data(data):
+    """Trim whitespace and enforce max lengths on profile data fields."""
+    cleaned = {}
+    for k, v in data.items():
+        if isinstance(v, str):
+            v = v.strip()
+            max_len = _FIELD_MAX_LENGTHS.get(k)
+            if max_len and len(v) > max_len:
+                v = v[:max_len]
+        cleaned[k] = v
+    return cleaned
+
 def _execute_update_user_profile(args, username):
     """Validate profile update and return proposed action for user confirmation.
     Add-actions are NOT executed here — they go through frontend confirmation first.
@@ -595,7 +622,7 @@ def _execute_update_user_profile(args, username):
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
 
     action = args.get("action", "")
-    data = args.get("data", {})
+    data = _clean_profile_data(args.get("data", {}))
 
     try:
         from app1 import user_profile_db as db
@@ -636,6 +663,15 @@ def _execute_update_user_profile(args, username):
             title = data.get("title", "").strip()
             if not title:
                 return json.dumps({"status": "error", "message": "title mangler."})
+            # Validate year range
+            start_yr = data.get("start_year")
+            end_yr = data.get("end_year")
+            if start_yr and end_yr:
+                try:
+                    if int(end_yr) < int(start_yr):
+                        return json.dumps({"status": "error", "message": f"Slutår ({end_yr}) kan ikke være før startår ({start_yr})."})
+                except (ValueError, TypeError):
+                    pass
             company = data.get("company", "").strip()
             # Check for duplicates (non-blocking — if DB fails, just propose)
             try:
@@ -1154,13 +1190,14 @@ def _execute_request_user_input(args, username):
     })
 
 
-def execute_tool(tool_call, username=None):
+def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
 
     try:
         args = json.loads(tool_call.function.arguments)
     except Exception as e:
+        print(f"[Tool ArgError] {function_name} session={session_id}: {e}")
         return json.dumps({"status": "error", "message": f"Kunne ikke parse tool-argumenter: {e}"})
 
     try:
@@ -1188,6 +1225,6 @@ def execute_tool(tool_call, username=None):
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:
         import traceback
-        print(f"[Tool Error] {function_name}: {e}")
+        print(f"[Tool Error] {function_name} session={session_id}: {e}")
         print(f"[Tool Traceback] {traceback.format_exc()}")
         return json.dumps({"status": "error", "message": f"Intern fejl i {function_name}: {str(e)}"})

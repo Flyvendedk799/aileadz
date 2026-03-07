@@ -22,7 +22,11 @@ def _normalize_price(price_raw):
         val = float(price_str)
         if val == 0:
             return "Gratis"
-        return f"kr {price_str}"
+        if val == int(val):
+            formatted = f"{int(val):,}".replace(",", ".")
+        else:
+            formatted = f"{val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        return f"kr {formatted}"
     except (ValueError, TypeError):
         return "Pris på forespørgsel"
 

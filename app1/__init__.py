@@ -1,6 +1,7 @@
 from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session
 from markupsafe import escape
 import json
+import logging
 import openai
 import os
 import re
@@ -578,6 +579,61 @@ def load_conversation_endpoint():
     except Exception as e:
         print(f"[Load Conversation Error] {e}")
         return jsonify({"status": "error", "messages": []})
+
+
+@app1_bp.route("/confirm_profile_update", methods=["POST"])
+def confirm_profile_update():
+    """Execute a previously proposed profile update after user clicks 'Gem'."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error", "message": "Ikke logget ind"}), 401
+
+    data = request.json or {}
+    action = data.get("action", "")
+    payload = data.get("data", {})
+
+    try:
+        from app1.user_profile_db import (
+            add_skill, add_experience, add_education, ensure_tables
+        )
+        ensure_tables()
+
+        if action == "add_skill":
+            add_skill(logged_in_user, payload.get("skill_name", ""), payload.get("skill_level", "mellem"))
+            return jsonify({"status": "success", "message": "Kompetence tilføjet"})
+
+        elif action == "add_experience":
+            add_experience(
+                logged_in_user,
+                title=payload.get("title", ""),
+                company=payload.get("company", ""),
+                start_year=payload.get("start_year"),
+                end_year=payload.get("end_year"),
+                is_current=payload.get("is_current", False),
+                description=payload.get("description", ""),
+            )
+            return jsonify({"status": "success", "message": "Erfaring tilføjet"})
+
+        elif action == "add_education":
+            add_education(
+                logged_in_user,
+                degree=payload.get("degree", ""),
+                institution=payload.get("institution", ""),
+                year_completed=payload.get("year_completed"),
+                description=payload.get("description", ""),
+            )
+            return jsonify({"status": "success", "message": "Uddannelse tilføjet"})
+
+        elif action == "add_course":
+            add_skill(logged_in_user, payload.get("course_title", "") or payload.get("course_name", ""), "kursus")
+            return jsonify({"status": "success", "message": "Kursus tilføjet"})
+
+        else:
+            return jsonify({"status": "error", "message": f"Ukendt handling: {action}"}), 400
+
+    except Exception as e:
+        logging.error("Confirm profile update error: %s", e)
+        return jsonify({"status": "error", "message": "Fejl ved opdatering"}), 500
 
 
 @app1_bp.route("/adminlog")

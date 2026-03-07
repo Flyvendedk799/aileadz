@@ -817,6 +817,35 @@
     cursor: default;
     pointer-events: none;
   }
+  .profile-confirm-actions { display: flex; gap: 6px; flex-shrink: 0; }
+  .profile-gem-btn {
+    background: #7c3aed;
+    border: none;
+    color: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 14px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .profile-gem-btn:hover { background: #6d28d9; }
+  .profile-gem-btn:disabled { opacity: 0.5; cursor: default; }
+  .profile-nejtak-btn {
+    background: none;
+    border: 1px solid rgba(113,113,122,0.25);
+    color: #a1a1aa;
+    font-size: 12px;
+    padding: 5px 12px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .profile-nejtak-btn:hover { background: rgba(255,255,255,0.05); color: #f4f4f5; }
   .light-mode .profile-confirm-card { background: rgba(168,85,247,0.04); border-color: rgba(168,85,247,0.12); color: #6b21a8; }
   .light-mode .profile-undo-btn { color: #dc2626; border-color: rgba(220,38,38,0.2); }
 
@@ -963,32 +992,47 @@
     while (stack.children.length > 3) stack.firstChild.remove();
   }
 
-  // ── Undo profile update (called from inline confirm cards) ──
-  window.undoProfileUpdate = async function(btn, undoData) {
-    if (btn.classList.contains('undone')) return;
+  // ── Confirm profile update (called from inline confirm cards) ──
+  window.confirmProfileUpdate = async function(btn, confirmData) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    btn.textContent = '...';
     try {
-      const resp = await fetch(undoData.endpoint, {
-        method: undoData.method || 'DELETE',
+      const resp = await fetch('/app1/confirm_profile_update', {
+        method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(undoData.body || {})
+        body: JSON.stringify(confirmData)
       });
       const data = await resp.json();
-      if (data.success || data.status === 'success') {
-        btn.textContent = 'Fortrudt ✓';
-        btn.classList.add('undone');
-        const card = btn.closest('.profile-confirm-card');
+      const card = btn.closest('.profile-confirm-card');
+      if (data.status === 'success') {
+        btn.textContent = 'Gemt ✓';
+        btn.style.background = '#16a34a';
         if (card) {
-          card.querySelector('.profile-confirm-msg').style.textDecoration = 'line-through';
-          card.querySelector('.profile-confirm-msg').style.opacity = '0.5';
+          card.querySelector('.profile-confirm-msg').innerHTML = '✓ ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[✓?]\s*/, '');
+          const nejBtn = card.querySelector('.profile-nejtak-btn');
+          if (nejBtn) nejBtn.remove();
         }
+        showProfileToast(data.message || 'Profil opdateret', confirmData.section || 'summary');
       } else {
         btn.textContent = 'Fejl';
-        setTimeout(() => { btn.textContent = 'Fortryd'; }, 2000);
+        btn.disabled = false;
+        setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
       }
     } catch (e) {
-      console.error('Undo error:', e);
+      console.error('Confirm error:', e);
       btn.textContent = 'Fejl';
-      setTimeout(() => { btn.textContent = 'Fortryd'; }, 2000);
+      setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
+    }
+  };
+
+  window.dismissProfileUpdate = function(btn) {
+    const card = btn.closest('.profile-confirm-card');
+    if (card) {
+      card.querySelector('.profile-confirm-msg').style.textDecoration = 'line-through';
+      card.querySelector('.profile-confirm-msg').style.opacity = '0.5';
+      const actions = card.querySelector('.profile-confirm-actions');
+      if (actions) actions.innerHTML = '<span style="font-size:12px;color:#71717a;">Afvist</span>';
     }
   };
 
@@ -1374,24 +1418,37 @@
               wrap.innerHTML = data.html;
               cardsEl.appendChild(wrap);
               saveChatState();
+            } else if (data.type === 'profile_confirm_request') {
+              // Pre-confirmation card: user must click Gem before it saves
+              const card = document.createElement('div');
+              card.className = 'profile-confirm-card animate-slide-in';
+              const safeMsg = (data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
+              const confirmPayload = JSON.stringify({action: (data.confirm||{}).action, data: (data.confirm||{}).data, section: data.section}).replace(/"/g, '&quot;');
+              card.innerHTML =
+                `<div class="profile-confirm-icon">${sectionIcon}</div>` +
+                `<div class="profile-confirm-body">` +
+                  `<span class="profile-confirm-msg">? ${safeMsg}</span>` +
+                `</div>` +
+                `<div class="profile-confirm-actions">` +
+                  `<button class="profile-gem-btn" onclick="confirmProfileUpdate(this, ${confirmPayload})">Gem</button>` +
+                  `<button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button>` +
+                `</div>`;
+              botContent.appendChild(card);
+              saveChatState();
             } else if (data.type === 'profile_update') {
-              // Inline confirmation card in chat with undo
+              // Immediate update confirmation (remove/update actions)
               const card = document.createElement('div');
               card.className = 'profile-confirm-card animate-slide-in';
               const safeMsg = (data.message || 'Profil opdateret').replace(/</g, '&lt;').replace(/>/g, '&gt;');
               const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
-              let undoBtn = '';
-              if (data.undo) {
-                undoBtn = `<button class="profile-undo-btn" onclick="undoProfileUpdate(this, ${JSON.stringify(data.undo).replace(/"/g, '&quot;')})">Fortryd</button>`;
-              }
               const anchor = data.section ? `#section-${data.section}` : '';
               card.innerHTML =
                 `<div class="profile-confirm-icon">${sectionIcon}</div>` +
                 `<div class="profile-confirm-body">` +
                   `<span class="profile-confirm-msg">✓ ${safeMsg}</span>` +
                   `<a class="profile-confirm-link" href="/profile${anchor}" target="_blank">Vis i profil</a>` +
-                `</div>` +
-                undoBtn;
+                `</div>`;
               botContent.appendChild(card);
               saveChatState();
             } else if (data.type === 'suggestions') {

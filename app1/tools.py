@@ -531,7 +531,9 @@ def _execute_get_user_profile(args, username):
 
 
 def _execute_update_user_profile(args, username):
-    """Execute a profile update action with duplicate detection and detailed feedback."""
+    """Validate profile update and return proposed action for user confirmation.
+    Add-actions are NOT executed here — they go through frontend confirmation first.
+    Remove/update actions execute immediately."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
 
@@ -542,12 +544,13 @@ def _execute_update_user_profile(args, username):
         from app1 import user_profile_db as db
         db.ensure_tables()
 
+        # ── Add-actions: validate + return proposed (not executed yet) ──
+
         if action == "add_skill":
             name = data.get("skill_name", "").strip()
             level = data.get("skill_level", "mellem")
             if not name or len(name) < 2:
                 return json.dumps({"status": "error", "message": "skill_name mangler eller er for kort."})
-            # Duplicate check — if exists, upgrade level instead
             existing = db.get_skills(username)
             existing_map = {s["skill_name"].lower(): s for s in existing}
             if name.lower() in existing_map:
@@ -555,15 +558,56 @@ def _execute_update_user_profile(args, username):
                 level_order = ["begynder", "mellem", "avanceret", "ekspert"]
                 if level in level_order and old_level in level_order:
                     if level_order.index(level) > level_order.index(old_level):
-                        db.update_skill_level(username, existing_map[name.lower()]["skill_name"], level)
-                        return json.dumps({"status": "success", "section": "skills",
-                            "message": f'"{name}" opgraderet fra {old_level} til {level}.'})
+                        return json.dumps({"status": "proposed", "section": "skills",
+                            "message": f'Opgradér "{name}" fra {old_level} til {level}?',
+                            "confirm": {"action": "add_skill", "data": {"skill_name": name, "skill_level": level}}})
                 return json.dumps({"status": "already_exists",
-                    "message": f'"{name}" findes allerede ({old_level}). Brug update_skill_level for at ændre niveau.'})
-            db.add_skill(username, name, level, source="chatbot")
-            return json.dumps({"status": "success", "section": "skills",
-                "message": f'Kompetence tilføjet: {name} ({level})',
-                "undo": {"endpoint": "/api/profile/skills", "method": "DELETE", "body": {"skill_name": name}}})
+                    "message": f'"{name}" findes allerede ({old_level}).'})
+            return json.dumps({"status": "proposed", "section": "skills",
+                "message": f'Tilføj kompetence: {name} ({level})',
+                "confirm": {"action": "add_skill", "data": {"skill_name": name, "skill_level": level}}})
+
+        elif action == "add_experience":
+            title = data.get("title", "").strip()
+            if not title:
+                return json.dumps({"status": "error", "message": "title mangler."})
+            company = data.get("company", "").strip()
+            existing = db.get_experience(username)
+            for e in existing:
+                if e["title"].lower() == title.lower() and (e.get("company", "") or "").lower() == company.lower():
+                    return json.dumps({"status": "already_exists",
+                        "message": f'Erfaring "{title}" @ {company or "ukendt"} findes allerede.'})
+            label = f'{title}' + (f' @ {company}' if company else '')
+            return json.dumps({"status": "proposed", "section": "experience",
+                "message": f'Tilføj erfaring: {label}',
+                "confirm": {"action": "add_experience", "data": data}})
+
+        elif action == "add_education":
+            degree = data.get("degree", "").strip()
+            if not degree:
+                return json.dumps({"status": "error", "message": "degree mangler."})
+            institution = data.get("institution", "").strip()
+            existing = db.get_education(username)
+            for e in existing:
+                if e["degree"].lower() == degree.lower() and (e.get("institution", "") or "").lower() == institution.lower():
+                    return json.dumps({"status": "already_exists",
+                        "message": f'Uddannelse "{degree}" fra {institution or "ukendt"} findes allerede.'})
+            label = degree + (f' — {institution}' if institution else '')
+            return json.dumps({"status": "proposed", "section": "education",
+                "message": f'Tilføj uddannelse: {label}',
+                "confirm": {"action": "add_education", "data": data}})
+
+        elif action == "add_course":
+            title = data.get("course_title", "").strip()
+            if not title:
+                return json.dumps({"status": "error", "message": "course_title mangler."})
+            vendor = data.get("vendor", "")
+            label = title + (f' ({vendor})' if vendor else '')
+            return json.dumps({"status": "proposed", "section": "courses",
+                "message": f'Tilføj kursus: {label}',
+                "confirm": {"action": "add_course", "data": data}})
+
+        # ── Remove/update actions: execute immediately (no confirmation needed) ──
 
         elif action == "remove_skill":
             name = data.get("skill_name", "").strip()
@@ -586,29 +630,6 @@ def _execute_update_user_profile(args, username):
                 return json.dumps({"status": "success", "section": "skills", "message": f'"{name}" opdateret til {level}.'})
             return json.dumps({"status": "not_found", "message": f'Kompetencen "{name}" blev ikke fundet.'})
 
-        elif action == "add_experience":
-            title = data.get("title", "").strip()
-            if not title:
-                return json.dumps({"status": "error", "message": "title mangler."})
-            company = data.get("company", "").strip()
-            # Duplicate check — same title + company
-            existing = db.get_experience(username)
-            for e in existing:
-                if e["title"].lower() == title.lower() and (e.get("company", "") or "").lower() == company.lower():
-                    return json.dumps({"status": "already_exists",
-                        "message": f'Erfaring "{title}" @ {company or "ukendt"} findes allerede.'})
-            new_id = db.add_experience(
-                username, title, company=company,
-                start_year=data.get("start_year"),
-                end_year=data.get("end_year"),
-                is_current=data.get("is_current", False),
-                description=data.get("description", "")
-            )
-            label = f'{title}' + (f' @ {company}' if company else '')
-            return json.dumps({"status": "success", "section": "experience",
-                "message": f'Erfaring tilføjet: {label}', "id": new_id,
-                "undo": {"endpoint": "/api/profile/experience", "method": "DELETE", "body": {"id": new_id}}})
-
         elif action == "remove_experience":
             exp_id = data.get("id")
             if not exp_id:
@@ -617,27 +638,6 @@ def _execute_update_user_profile(args, username):
             if removed:
                 return json.dumps({"status": "success", "section": "experience", "message": "Erfaring fjernet."})
             return json.dumps({"status": "not_found", "message": "Erfaring ikke fundet."})
-
-        elif action == "add_education":
-            degree = data.get("degree", "").strip()
-            if not degree:
-                return json.dumps({"status": "error", "message": "degree mangler."})
-            institution = data.get("institution", "").strip()
-            # Duplicate check
-            existing = db.get_education(username)
-            for e in existing:
-                if e["degree"].lower() == degree.lower() and (e.get("institution", "") or "").lower() == institution.lower():
-                    return json.dumps({"status": "already_exists",
-                        "message": f'Uddannelse "{degree}" fra {institution or "ukendt"} findes allerede.'})
-            new_id = db.add_education(
-                username, degree, institution=institution,
-                year_completed=data.get("year_completed"),
-                description=data.get("description", "")
-            )
-            label = degree + (f' — {institution}' if institution else '')
-            return json.dumps({"status": "success", "section": "education",
-                "message": f'Uddannelse tilføjet: {label}', "id": new_id,
-                "undo": {"endpoint": "/api/profile/education", "method": "DELETE", "body": {"id": new_id}}})
 
         elif action == "remove_education":
             edu_id = data.get("id")
@@ -649,21 +649,13 @@ def _execute_update_user_profile(args, username):
             return json.dumps({"status": "not_found", "message": "Uddannelse ikke fundet."})
 
         elif action == "add_course":
+            pass  # handled above in proposed section
+
+        elif action == "remove_course":
             title = data.get("course_title", "").strip()
             if not title:
                 return json.dumps({"status": "error", "message": "course_title mangler."})
-            db.add_completed_course(
-                username, title,
-                course_handle=data.get("course_handle"),
-                vendor=data.get("vendor", ""),
-                completed_date=data.get("completed_date"),
-                certificate_note=data.get("certificate_note")
-            )
-            vendor = data.get("vendor", "")
-            label = title + (f' ({vendor})' if vendor else '')
-            return json.dumps({"status": "success", "section": "courses",
-                "message": f'Kursus tilføjet: {label}',
-                "undo": {"endpoint": "/api/profile/courses", "method": "DELETE", "body": {"course_title": title}}})
+            removed = db.remove_completed_course(username, title)
 
         elif action == "remove_course":
             title = data.get("course_title", "").strip()

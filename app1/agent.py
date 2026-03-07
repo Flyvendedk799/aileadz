@@ -156,12 +156,12 @@ Når brugeren fortæller noget om sig selv, skal du ALTID opdatere deres profil 
 - "Budget max 10.000" → update_summary(budget_range="op til 10.000 kr")
 
 Regler:
-- Du SKAL kalde update_user_profile for at gemme. Påstå ALDRIG at du har gemt noget uden at have kaldt værktøjet først.
-- Kombiner med dit svar — afbryd IKKE samtaleflowet for at opdatere profil.
+- Kald update_user_profile når du opdager CV-info. Systemet viser en bekræftelses-knap til brugeren FØR det gemmes.
+- Du får status "proposed" tilbage — det betyder at brugeren ser et kort med "Gem" / "Nej tak". Sig IKKE at det er gemt — sig f.eks. "Jeg har foreslået at tilføje det — bekræft i kortet herunder."
+- Kombiner med dit svar — afbryd IKKE samtaleflowet.
 - Brug ALTID source="chatbot" for skills tilføjet via chat.
 - Du kan lave FLERE update_user_profile kald i én besked hvis brugeren nævner flere ting.
-- Hvis systemet siger "already_exists" — nævn det IKKE for brugeren, det er allerede gemt.
-- Brugeren vil se en bekræftelse med fortryd-knap i chatten — du behøver IKKE bekræfte i tekst.
+- Hvis systemet siger "already_exists" — nævn det IKKE for brugeren.
 
 CV-ONBOARDING (når brugeren beder om at opdatere CV/profil):
 Guid dem naturligt igennem — IKKE som en kedelig formular, men som en samtale:
@@ -1408,19 +1408,16 @@ def handle_agentic_ask(user_query, session):
                         ui_html = render_product_media(tool_result_dict["raw_product"])
                         buffered_ui_html.append(ui_html)
 
-                    elif fn == "update_user_profile" and tool_result_dict.get("status") in ("success", "already_exists"):
-                        buffered_ui_html.append(None)  # placeholder
-                        profile_update_msg = tool_result_dict.get("message", "Profil opdateret")
-                        profile_section = tool_result_dict.get("section", "")
-                        undo_data = tool_result_dict.get("undo")
-                        evt = {
-                            'type': 'profile_update',
-                            'message': profile_update_msg,
-                            'section': profile_section,
-                        }
-                        if undo_data:
-                            evt['undo'] = undo_data
-                        yield f"data: {json.dumps(evt)}\n\n"
+                    elif fn == "update_user_profile":
+                        tool_status = tool_result_dict.get("status", "")
+                        if tool_status == "proposed":
+                            # Send confirmation request to frontend — NOT saved yet
+                            buffered_ui_html.append(None)
+                            yield f"data: {json.dumps({'type': 'profile_confirm_request', 'message': tool_result_dict.get('message', ''), 'section': tool_result_dict.get('section', ''), 'confirm': tool_result_dict.get('confirm', {})})}\n\n"
+                        elif tool_status in ("success", "already_exists"):
+                            # Direct execution (remove/update actions)
+                            buffered_ui_html.append(None)
+                            yield f"data: {json.dumps({'type': 'profile_update', 'message': tool_result_dict.get('message', 'Profil opdateret'), 'section': tool_result_dict.get('section', '')})}\n\n"
 
                     elif fn == "compare_courses" and "raw_products" in tool_result_dict:
                         raw_products = tool_result_dict["raw_products"]

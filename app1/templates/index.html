@@ -846,6 +846,19 @@
     transition: all 0.15s;
   }
   .profile-nejtak-btn:hover { background: rgba(255,255,255,0.05); color: #f4f4f5; }
+  .profile-followup { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
+  .pf-input {
+    background: rgba(255,255,255,0.05);
+    border: 1px solid rgba(255,255,255,0.1);
+    color: #e4e4e7;
+    font-size: 12px;
+    padding: 5px 8px;
+    border-radius: 6px;
+    width: 90px;
+    font-family: inherit;
+  }
+  .pf-input::placeholder { color: #52525b; }
+  .pf-input:focus { outline: none; border-color: rgba(168,85,247,0.4); }
   .light-mode .profile-confirm-card { background: rgba(168,85,247,0.04); border-color: rgba(168,85,247,0.12); color: #6b21a8; }
   .light-mode .profile-undo-btn { color: #dc2626; border-color: rgba(220,38,38,0.2); }
 
@@ -1012,6 +1025,10 @@
           card.querySelector('.profile-confirm-msg').innerHTML = '✓ ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[✓?]\s*/, '');
           const nejBtn = card.querySelector('.profile-nejtak-btn');
           if (nejBtn) nejBtn.remove();
+          // Show follow-up fields for experience (duration + location)
+          if (confirmData.action === 'add_experience') {
+            _showExperienceFollowUp(card, confirmData);
+          }
         }
         showProfileToast(data.message || 'Profil opdateret', confirmData.section || 'summary');
       } else {
@@ -1025,6 +1042,51 @@
       setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
     }
   };
+
+  function _showExperienceFollowUp(card, confirmData) {
+    const followUp = document.createElement('div');
+    followUp.className = 'profile-followup';
+    followUp.innerHTML =
+      `<div style="font-size:12px;color:#a1a1aa;margin-bottom:6px;">Vil du tilføje flere detaljer?</div>` +
+      `<div style="display:flex;gap:6px;flex-wrap:wrap;">` +
+        `<input type="number" placeholder="Startår" min="1970" max="2030" class="pf-input" id="pf-start-${Date.now()}">` +
+        `<input type="number" placeholder="Slutår" min="1970" max="2030" class="pf-input" id="pf-end-${Date.now()}">` +
+      `</div>` +
+      `<div style="display:flex;gap:6px;margin-top:6px;">` +
+        `<button class="profile-gem-btn pf-save-btn" style="font-size:11px;padding:4px 10px;">Gem detaljer</button>` +
+        `<button class="profile-nejtak-btn pf-skip-btn" style="font-size:11px;padding:4px 10px;">Spring over</button>` +
+      `</div>`;
+    card.appendChild(followUp);
+    followUp.querySelector('.pf-skip-btn').onclick = () => {
+      followUp.innerHTML = '<span style="font-size:11px;color:#71717a;">Sprunget over</span>';
+    };
+    followUp.querySelector('.pf-save-btn').onclick = async () => {
+      const inputs = followUp.querySelectorAll('.pf-input');
+      const startYear = inputs[0].value ? parseInt(inputs[0].value) : null;
+      const endYear = inputs[1].value ? parseInt(inputs[1].value) : null;
+      if (!startYear && !endYear) {
+        followUp.innerHTML = '<span style="font-size:11px;color:#71717a;">Sprunget over</span>';
+        return;
+      }
+      try {
+        const updateData = { ...confirmData.data };
+        if (startYear) updateData.start_year = startYear;
+        if (endYear) updateData.end_year = endYear;
+        const r = await fetch('/app1/confirm_profile_update', {
+          method: 'POST',
+          headers: {'Content-Type':'application/json'},
+          body: JSON.stringify({action: 'add_experience', data: updateData})
+        });
+        const d = await r.json();
+        followUp.innerHTML = d.status === 'success'
+          ? '<span style="font-size:11px;color:#4ade80;">✓ Detaljer gemt</span>'
+          : '<span style="font-size:11px;color:#f87171;">Fejl ved gem</span>';
+      } catch(e) {
+        followUp.innerHTML = '<span style="font-size:11px;color:#f87171;">Fejl</span>';
+      }
+    };
+    saveChatState();
+  }
 
   window.dismissProfileUpdate = function(btn) {
     const card = btn.closest('.profile-confirm-card');

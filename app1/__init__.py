@@ -607,16 +607,37 @@ def confirm_profile_update():
             return jsonify({"status": "success", "message": "Kompetence tilføjet"})
 
         elif action == "add_experience":
-            add_experience(
-                logged_in_user,
-                title=payload.get("title", ""),
-                company=payload.get("company", ""),
-                start_year=payload.get("start_year"),
-                end_year=payload.get("end_year"),
-                is_current=payload.get("is_current", False),
-                description=payload.get("description", ""),
-            )
-            return jsonify({"status": "success", "message": "Erfaring tilføjet"})
+            # Check if this is a follow-up update (entry already exists)
+            from app1.user_profile_db import get_experience, update_experience
+            existing = get_experience(logged_in_user)
+            title_match = payload.get("title", "").strip().lower()
+            company_match = payload.get("company", "").strip().lower()
+            existing_entry = None
+            for e in existing:
+                if e["title"].lower() == title_match and (e.get("company", "") or "").lower() == company_match:
+                    existing_entry = e
+                    break
+            if existing_entry:
+                # Update existing entry with new details
+                updates = {}
+                if payload.get("start_year"): updates["start_year"] = payload["start_year"]
+                if payload.get("end_year"): updates["end_year"] = payload["end_year"]
+                if payload.get("description"): updates["description"] = payload["description"]
+                if updates:
+                    update_experience(logged_in_user, existing_entry["id"], **updates)
+                    return jsonify({"status": "success", "message": "Detaljer opdateret"})
+                return jsonify({"status": "success", "message": "Ingen ændringer"})
+            else:
+                add_experience(
+                    logged_in_user,
+                    title=payload.get("title", ""),
+                    company=payload.get("company", ""),
+                    start_year=payload.get("start_year"),
+                    end_year=payload.get("end_year"),
+                    is_current=payload.get("is_current", False),
+                    description=payload.get("description", ""),
+                )
+                return jsonify({"status": "success", "message": "Erfaring tilføjet"})
 
         elif action == "add_education":
             add_education(

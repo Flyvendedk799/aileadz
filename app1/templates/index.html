@@ -1001,9 +1001,9 @@
   const BOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 
   // ── Session management: localStorage for logged-in, sessionStorage for anonymous ──
-  const IS_LOGGED_IN = {{ 'true' if session.get('user') else 'false' }};
-  const LOGGED_IN_USER = {{ ("'" + session.get('user', '') + "'") if session.get('user') else 'null' }};
-  const CHAT_STATE_KEY = IS_LOGGED_IN ? `app1-chat-${LOGGED_IN_USER}` : 'app1-chat-anon';
+  const IS_LOGGED_IN = {% if session.get('user') %}true{% else %}false{% endif %};
+  const LOGGED_IN_USER = {% if session.get('user') %}{{ session.get('user')|tojson }}{% else %}null{% endif %};
+  const CHAT_STATE_KEY = IS_LOGGED_IN ? 'app1-chat-' + LOGGED_IN_USER : 'app1-chat-anon';
   const _storage = IS_LOGGED_IN ? localStorage : sessionStorage;
 
   let activeController = null;

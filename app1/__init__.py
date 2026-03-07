@@ -17,6 +17,17 @@ except ImportError:
 app = Flask(__name__)
 app.secret_key = "supersecretkey"  # For production, use a secure and unpredictable key.
 
+@app.template_filter('dkprice')
+def _dkprice_filter(value):
+    """Format a price string with Danish thousands separator (dot)."""
+    try:
+        num = float(str(value).replace(",", "."))
+        if num == int(num):
+            return f"{int(num):,}".replace(",", ".")
+        return f"{num:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    except (ValueError, TypeError):
+        return value
+
 app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
 @app1_bp.route('/')
@@ -263,7 +274,7 @@ def get_course_detail(query, product):
         if product["price"] in ["0", "0.00"]:
             return f"Prisen for {escape(product['title'])} er Efter aftale."
         else:
-            return f"Prisen for {escape(product['title'])} er {escape(product['price'])} kr."
+            return f"Prisen for {escape(product['title'])} er {escape(_dkprice_filter(product['price']))} kr."
 
     # Date
     if "date" in keywords and "hvornår" in query_lower:
@@ -357,7 +368,7 @@ PRODUCT_MEDIA_TEMPLATE = """
       <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0;">
         {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
         {% set price_val = price | float(-1) %}
-        {% if price in ["", "None", "N/A"] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | e }}{% endif %}
+        {% if price in ["", "None", "N/A"] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
       </div>
     </div>
     {% if product.ai_summary or product.body_html %}
@@ -432,7 +443,7 @@ MULTIPLE_COURSES_TEMPLATE = """
               <div style="font-size: 12.5px; font-weight: 700; color: #a855f7; white-space: nowrap;">
                   {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
                   {% set price_val = price | float(-1) %}
-                  {% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | e }}{% endif %}
+                  {% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
               </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #52525b;">

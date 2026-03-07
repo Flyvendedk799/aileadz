@@ -153,7 +153,7 @@ def create_hr_dashboard_blueprint():
                     COUNT(DISTINCT ci.id) as total_chatbot_interactions,
                     COUNT(DISTINCT ci.username) as employees_using_chatbot,
                     COALESCE(AVG(ci.interaction_quality_score), 0) as avg_interaction_quality,
-                    COUNT(DISTINCT CASE WHEN ci.timestamp >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN ci.username END) as active_users_7_days
+                    COUNT(DISTINCT CASE WHEN ci.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN ci.username END) as active_users_7_days
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
                 JOIN company_users cu ON u.id = cu.user_id
@@ -627,15 +627,15 @@ def create_hr_dashboard_blueprint():
             # Engagement patterns
             cur.execute("""
                 SELECT 
-                    HOUR(ci.timestamp) as hour_of_day,
+                    HOUR(ci.created_at) as hour_of_day,
                     COUNT(DISTINCT ci.id) as interactions,
                     COUNT(DISTINCT ci.username) as unique_users,
                     COALESCE(AVG(ci.interaction_quality_score), 0) as avg_quality
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
                 JOIN company_users cu ON u.id = cu.user_id
-                WHERE cu.company_id = %s AND ci.timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                GROUP BY HOUR(ci.timestamp)
+                WHERE cu.company_id = %s AND ci.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                GROUP BY HOUR(ci.created_at)
                 ORDER BY hour_of_day
             """, (company['id'], period_days))
             hourly_engagement = cur.fetchall()
@@ -881,14 +881,14 @@ def create_hr_dashboard_blueprint():
             # Get chatbot interaction summary
             cur.execute("""
                 SELECT 
-                    DATE(ci.timestamp) as interaction_date,
+                    DATE(ci.created_at) as interaction_date,
                     COUNT(*) as daily_interactions,
                     COALESCE(AVG(ci.interaction_quality_score), 0) as avg_quality
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
                 WHERE u.id = %s
-                    AND ci.timestamp >= DATE_SUB(NOW(), INTERVAL 30 DAY)
-                GROUP BY DATE(ci.timestamp)
+                    AND ci.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                GROUP BY DATE(ci.created_at)
                 ORDER BY interaction_date DESC
                 LIMIT 30
             """, (user_id,))

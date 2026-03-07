@@ -1186,6 +1186,7 @@ def handle_agentic_ask(user_query, session):
                 pass
 
     def stream_generator():
+        _interaction_start = time.time()
         try:
             yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
 
@@ -1708,6 +1709,30 @@ def handle_agentic_ask(user_query, session):
                         current_app.mysql.connection.rollback()
                     except Exception:
                         pass
+
+            # Log to chatbot_interactions for admin + HR dashboards
+            try:
+                response_time_ms = int((time.time() - _interaction_start) * 1000)
+                ci_cur = current_app.mysql.connection.cursor()
+                ci_cur.execute("""
+                    INSERT INTO chatbot_interactions
+                        (company_id, session_id, username, query_text, response_text,
+                         query_type, category, response_time_ms, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                """, (
+                    session.get('company_id'),
+                    sid,
+                    logged_in_user or session.get('browser_token', 'anonymous'),
+                    user_query[:2000],
+                    (full_text or '')[:2000],
+                    intent or 'unknown',
+                    stage or 'unknown',
+                    response_time_ms,
+                ))
+                current_app.mysql.connection.commit()
+                ci_cur.close()
+            except Exception as e:
+                print(f"[Chatbot Interaction Log Error] {e}")
 
         except Exception as e:
             print(f"[Agent Error] {e}")

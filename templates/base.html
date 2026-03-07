@@ -551,6 +551,34 @@
             <span class="nav-text">Indstillinger</span>
           </a>
         </li>
+        {% if session.get('company_id') %}
+        <li>
+          <a href="/companies/dashboard">
+            <i class="fa-solid fa-building"></i>
+            <span class="nav-text">Virksomhed</span>
+          </a>
+        </li>
+        <li>
+          <a href="/hr">
+            <i class="fa-solid fa-users-gear"></i>
+            <span class="nav-text">HR Dashboard</span>
+          </a>
+        </li>
+        <li>
+          <a href="/multitenant-reports">
+            <i class="fa-solid fa-file-chart-line"></i>
+            <span class="nav-text">Rapporter</span>
+          </a>
+        </li>
+        {% endif %}
+        {% if session.get('role') == 'admin' or session.get('company_role') == 'company_admin' %}
+        <li>
+          <a href="/enterprise/company-settings">
+            <i class="fa-solid fa-palette"></i>
+            <span class="nav-text">White Label</span>
+          </a>
+        </li>
+        {% endif %}
         {% if session.get('role') == 'admin' %}
         <li>
           <a href="/admin/notifications">

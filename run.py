@@ -20,6 +20,15 @@ from admin_notifications import admin_notifications_bp
 from admin_dashboard import admin_dashboard_bp
 from reports import reports_bp
 
+# Enterprise / B2B modules
+from companies import companies_bp
+from hr_dashboard import hr_dashboard_bp
+from enterprise_analytics import analytics_bp
+from enterprise_api import api_enterprise_bp
+from enterprise_sso import sso_bp
+from enterprise_company_settings import enterprise_settings_bp
+from multitenant_reports import multitenant_reports_bp
+
 logging.basicConfig(level=logging.INFO)
 
 def create_app():
@@ -48,7 +57,35 @@ def create_app():
     app.register_blueprint(admin_notifications_bp, url_prefix='/admin')  # Register admin notifications
     app.register_blueprint(admin_dashboard_bp, url_prefix='/admin')
     app.register_blueprint(reports_bp, url_prefix='/reports')
-    
+
+    # Enterprise / B2B blueprints
+    app.register_blueprint(companies_bp, url_prefix='/companies')
+    app.register_blueprint(hr_dashboard_bp, url_prefix='/hr')
+    app.register_blueprint(analytics_bp)
+    app.register_blueprint(api_enterprise_bp)
+    app.register_blueprint(sso_bp)
+    app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
+    app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
+
+    # Initialize white-label context processor
+    try:
+        from white_label_global_integration import register_white_label_context_processor
+        register_white_label_context_processor(app)
+    except Exception as e:
+        logging.warning("White-label integration skipped: %s", e)
+
+    # Create enterprise tables on first request
+    @app.before_request
+    def _ensure_enterprise_tables_once():
+        if not getattr(app, '_enterprise_tables_created', False):
+            try:
+                from enterprise_tables import ensure_enterprise_tables
+                ensure_enterprise_tables(app)
+                app._enterprise_tables_created = True
+            except Exception as e:
+                logging.warning("Enterprise table init: %s", e)
+                app._enterprise_tables_created = True  # don't retry
+
     @app.route('/')
     def home():
         return redirect(url_for('dashboard.dashboard'))

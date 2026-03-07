@@ -19,6 +19,13 @@ app.secret_key = "supersecretkey"  # For production, use a secure and unpredicta
 
 app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
+# Register order routes as nested blueprint
+try:
+    from app1.order_routes import order_routes_bp
+    app1_bp.register_blueprint(order_routes_bp, url_prefix='/orders')
+except Exception as _e:
+    logging.warning("Order routes not loaded: %s", _e)
+
 @app1_bp.app_template_filter('dkprice')
 def _dkprice_filter(value):
     """Format a price string with Danish thousands separator (dot)."""

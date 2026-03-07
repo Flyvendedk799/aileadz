@@ -356,7 +356,8 @@ PRODUCT_MEDIA_TEMPLATE = """
       </div>
       <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0;">
         {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
-        {% if price in ["0", "0.00", "0.0", "", "None"] %}Gratis{% else %}kr {{ price | e }}{% endif %}
+        {% set price_val = price | float(-1) %}
+        {% if price in ["", "None", "N/A"] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | e }}{% endif %}
       </div>
     </div>
     {% if product.ai_summary or product.body_html %}
@@ -429,7 +430,8 @@ MULTIPLE_COURSES_TEMPLATE = """
               </h4>
               <div style="font-size: 12.5px; font-weight: 700; color: #a855f7; white-space: nowrap;">
                   {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
-                  {% if price in ['0', '0.00', '0.0', '', 'None'] %}Gratis{% else %}kr {{ price | e }}{% endif %}
+                  {% set price_val = price | float(-1) %}
+                  {% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | e }}{% endif %}
               </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #52525b;">

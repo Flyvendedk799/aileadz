@@ -4,10 +4,28 @@
 # Phase 5: Hybrid search integration
 import re
 import json
+import datetime
 import openai
 from app1.rag import semantic_search_courses, semantic_search_courses_detailed, load_augmented_products, hybrid_rank_products
 
 import os as _os
+
+
+def _normalize_price(price_raw):
+    """Normalize price to a consistent display string: 'Gratis', 'kr X', or 'Pris på forespørgsel'."""
+    if price_raw is None:
+        return "Pris på forespørgsel"
+    price_str = str(price_raw).strip()
+    if price_str in ("0", "0.00", "0.0", "", "None", "N/A"):
+        return "Gratis"
+    try:
+        val = float(price_str)
+        if val == 0:
+            return "Gratis"
+        return f"kr {price_str}"
+    except (ValueError, TypeError):
+        return "Pris på forespørgsel"
+
 
 # Tags to exclude from compact results (too generic or region-based)
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
@@ -86,7 +104,7 @@ def extract_city_name(address):
 def _extract_compact_fields(product):
     """Extract enriched compact fields from a product."""
     variants = product.get("variants", [])
-    price = variants[0].get("price", "N/A") if variants else "N/A"
+    price = _normalize_price(variants[0].get("price") if variants else None)
 
     raw_locations = [v.get("option1") for v in variants if v.get("option1")]
     cities = list(dict.fromkeys(extract_city_name(loc) for loc in raw_locations if extract_city_name(loc)))[:3]
@@ -190,6 +208,14 @@ OPENAI_TOOLS = [
                     "tag": {
                         "type": "string",
                         "description": "Category tag filter (e.g. 'IT-professionel', 'Personlig udvikling', 'Projektledelse')."
+                    },
+                    "start_after": {
+                        "type": "string",
+                        "description": "Only include courses with a start date on or after this date. Format: YYYY-MM-DD (e.g. '2026-04-01')."
+                    },
+                    "start_before": {
+                        "type": "string",
+                        "description": "Only include courses with a start date on or before this date. Format: YYYY-MM-DD (e.g. '2026-06-30')."
                     },
                     "query": {
                         "type": "string",
@@ -326,8 +352,21 @@ def _execute_filter_courses(args):
     price_max = args.get("price_max")
     product_type = args.get("product_type", "").lower().strip()
     tag = args.get("tag", "").lower().strip()
+    start_after_str = args.get("start_after", "").strip()
+    start_before_str = args.get("start_before", "").strip()
     query = args.get("query", "").strip()
     limit = args.get("limit", 5)
+
+    # Parse date filters
+    start_after = None
+    start_before = None
+    try:
+        if start_after_str:
+            start_after = datetime.date.fromisoformat(start_after_str)
+        if start_before_str:
+            start_before = datetime.date.fromisoformat(start_before_str)
+    except ValueError:
+        pass  # Ignore invalid date formats
 
     products = load_augmented_products()
     if not products:
@@ -364,6 +403,23 @@ def _execute_filter_courses(args):
             else:
                 all_tags = [t.lower() for t in all_tags]
             if not any(tag in t for t in all_tags):
+                continue
+
+        # Date range filter: check if any variant date falls within range
+        if start_after or start_before:
+            from app1 import parse_danish_date
+            has_matching_date = False
+            for v in variants:
+                raw_date = (v.get("option2") or "").strip()
+                dt = parse_danish_date(raw_date)
+                if dt:
+                    if start_after and dt < start_after:
+                        continue
+                    if start_before and dt > start_before:
+                        continue
+                    has_matching_date = True
+                    break
+            if not has_matching_date:
                 continue
 
         filtered.append(p)
@@ -416,7 +472,7 @@ def _execute_get_course_details(args):
             dates = [v.get("option2") for v in p.get("variants", []) if v.get("option2")]
             return json.dumps({
                 "title": p.get("title"),
-                "price": p.get("variants", [{}])[0].get("price", "N/A"),
+                "price": _normalize_price(p.get("variants", [{}])[0].get("price") if p.get("variants") else None),
                 "vendor": p.get("vendor"),
                 "locations": locations,
                 "upcoming_dates": dates,
@@ -450,7 +506,7 @@ def _execute_compare_courses(args):
         comparisons.append({
             "title": p.get("title"),
             "handle": p.get("handle"),
-            "price": variants[0].get("price", "N/A") if variants else "N/A",
+            "price": _normalize_price(variants[0].get("price") if variants else None),
             "vendor": p.get("vendor"),
             "product_type": p.get("product_type", ""),
             "locations": locations[:3],

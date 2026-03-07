@@ -83,8 +83,12 @@ def ensure_tables():
         return
     try:
         cur = current_app.mysql.connection.cursor()
-        for sql in _TABLES_SQL:
-            cur.execute(sql)
+        for i, sql in enumerate(_TABLES_SQL):
+            try:
+                cur.execute(sql)
+            except Exception as table_err:
+                print(f"[UserProfileDB] Table {i} creation error: {table_err}")
+                current_app.mysql.connection.rollback()
         current_app.mysql.connection.commit()
 
         # Migration: if user_conversations exists with wrong schema, recreate it

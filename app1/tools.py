@@ -551,18 +551,26 @@ def _execute_update_user_profile(args, username):
             level = data.get("skill_level", "mellem")
             if not name or len(name) < 2:
                 return json.dumps({"status": "error", "message": "skill_name mangler eller er for kort."})
-            existing = db.get_skills(username)
-            existing_map = {s["skill_name"].lower(): s for s in existing}
-            if name.lower() in existing_map:
-                old_level = existing_map[name.lower()]["skill_level"]
-                level_order = ["begynder", "mellem", "avanceret", "ekspert"]
-                if level in level_order and old_level in level_order:
-                    if level_order.index(level) > level_order.index(old_level):
-                        return json.dumps({"status": "proposed", "section": "skills",
-                            "message": f'Opgradér "{name}" fra {old_level} til {level}?',
-                            "confirm": {"action": "add_skill", "data": {"skill_name": name, "skill_level": level}}})
-                return json.dumps({"status": "already_exists",
-                    "message": f'"{name}" findes allerede ({old_level}).'})
+            try:
+                existing = db.get_skills(username)
+                existing_map = {s["skill_name"].lower(): s for s in existing}
+                if name.lower() in existing_map:
+                    old_level = existing_map[name.lower()]["skill_level"]
+                    level_order = ["begynder", "mellem", "avanceret", "ekspert"]
+                    if level in level_order and old_level in level_order:
+                        if level_order.index(level) > level_order.index(old_level):
+                            return json.dumps({"status": "proposed", "section": "skills",
+                                "message": f'Opgradér "{name}" fra {old_level} til {level}?',
+                                "confirm": {"action": "add_skill", "data": {"skill_name": name, "skill_level": level}}})
+                    return json.dumps({"status": "already_exists",
+                        "message": f'"{name}" findes allerede ({old_level}).'})
+            except Exception as dup_err:
+                print(f"[ProfileUpdate] Skill duplicate check failed (proceeding): {dup_err}")
+                try:
+                    from flask import current_app as _app
+                    _app.mysql.connection.rollback()
+                except Exception:
+                    pass
             return json.dumps({"status": "proposed", "section": "skills",
                 "message": f'Tilføj kompetence: {name} ({level})',
                 "confirm": {"action": "add_skill", "data": {"skill_name": name, "skill_level": level}}})
@@ -572,11 +580,20 @@ def _execute_update_user_profile(args, username):
             if not title:
                 return json.dumps({"status": "error", "message": "title mangler."})
             company = data.get("company", "").strip()
-            existing = db.get_experience(username)
-            for e in existing:
-                if e["title"].lower() == title.lower() and (e.get("company", "") or "").lower() == company.lower():
-                    return json.dumps({"status": "already_exists",
-                        "message": f'Erfaring "{title}" @ {company or "ukendt"} findes allerede.'})
+            # Check for duplicates (non-blocking — if DB fails, just propose)
+            try:
+                existing = db.get_experience(username)
+                for e in existing:
+                    if e["title"].lower() == title.lower() and (e.get("company", "") or "").lower() == company.lower():
+                        return json.dumps({"status": "already_exists",
+                            "message": f'Erfaring "{title}" @ {company or "ukendt"} findes allerede.'})
+            except Exception as dup_err:
+                print(f"[ProfileUpdate] Duplicate check failed (proceeding): {dup_err}")
+                try:
+                    from flask import current_app as _app
+                    _app.mysql.connection.rollback()
+                except Exception:
+                    pass
             label = f'{title}' + (f' @ {company}' if company else '')
             return json.dumps({"status": "proposed", "section": "experience",
                 "message": f'Tilføj erfaring: {label}',
@@ -587,11 +604,19 @@ def _execute_update_user_profile(args, username):
             if not degree:
                 return json.dumps({"status": "error", "message": "degree mangler."})
             institution = data.get("institution", "").strip()
-            existing = db.get_education(username)
-            for e in existing:
-                if e["degree"].lower() == degree.lower() and (e.get("institution", "") or "").lower() == institution.lower():
-                    return json.dumps({"status": "already_exists",
-                        "message": f'Uddannelse "{degree}" fra {institution or "ukendt"} findes allerede.'})
+            try:
+                existing = db.get_education(username)
+                for e in existing:
+                    if e["degree"].lower() == degree.lower() and (e.get("institution", "") or "").lower() == institution.lower():
+                        return json.dumps({"status": "already_exists",
+                            "message": f'Uddannelse "{degree}" fra {institution or "ukendt"} findes allerede.'})
+            except Exception as dup_err:
+                print(f"[ProfileUpdate] Education duplicate check failed (proceeding): {dup_err}")
+                try:
+                    from flask import current_app as _app
+                    _app.mysql.connection.rollback()
+                except Exception:
+                    pass
             label = degree + (f' — {institution}' if institution else '')
             return json.dumps({"status": "proposed", "section": "education",
                 "message": f'Tilføj uddannelse: {label}',
@@ -687,6 +712,7 @@ def _execute_update_user_profile(args, username):
             return json.dumps({"status": "error", "message": f"Ukendt action: {action}"})
 
     except Exception as e:
+        print(f"[ProfileUpdate Error] action={action}, username={username}, error={e}")
         try:
             from flask import current_app as _app
             _app.mysql.connection.rollback()

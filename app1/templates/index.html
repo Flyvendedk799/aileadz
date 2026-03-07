@@ -34,7 +34,33 @@
     flex-direction: column;
     position: relative;
   }
-  #chatApp .chat-header { display: none; }
+  #chatApp .chat-header {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    padding: 6px 16px;
+    min-height: 0;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+  }
+  #chatApp .chat-header:empty { display: none; border: none; padding: 0; }
+  .new-chat-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: none;
+    border: 1px solid rgba(255,255,255,0.08);
+    color: #a1a1aa;
+    font-size: 12.5px;
+    font-weight: 500;
+    padding: 5px 12px;
+    border-radius: 8px;
+    cursor: pointer;
+    font-family: inherit;
+    transition: all 0.15s;
+  }
+  .new-chat-btn:hover { background: rgba(255,255,255,0.06); color: #f4f4f5; border-color: rgba(168,85,247,0.3); }
+  .light-mode .new-chat-btn { border-color: rgba(0,0,0,0.1); color: #6b7280; }
+  .light-mode .new-chat-btn:hover { background: rgba(0,0,0,0.04); color: #111827; }
 
   /* ── Chat scroll area ── */
   #chatApp .chat-box {
@@ -816,7 +842,14 @@
 {% block content %}
 <div id="chatApp" aria-label="Kursusrådgiver">
   <div class="chat-container">
-    <div class="chat-header"></div>
+    <div class="chat-header">
+      {% if session.get('user') %}
+      <button class="new-chat-btn" id="newChatBtn" onclick="startNewConversation()" title="Ny samtale">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>Ny samtale</span>
+      </button>
+      {% endif %}
+    </div>
     <div class="chat-box" id="chatBox" role="log" aria-live="polite">
       <div class="welcome-screen" id="welcomeScreen">
         <div class="welcome-logo">
@@ -966,30 +999,54 @@
   const scrollFab = document.getElementById('scrollFab');
   const productRefBar = document.getElementById('productRefBar');
   const BOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  const CHAT_STATE_KEY = 'app1-chat-state-v1';
+
+  // ── Session management: localStorage for logged-in, sessionStorage for anonymous ──
+  const IS_LOGGED_IN = {{ 'true' if session.get('user') else 'false' }};
+  const LOGGED_IN_USER = {{ ("'" + session.get('user', '') + "'") if session.get('user') else 'null' }};
+  const CHAT_STATE_KEY = IS_LOGGED_IN ? `app1-chat-${LOGGED_IN_USER}` : 'app1-chat-anon';
+  const _storage = IS_LOGGED_IN ? localStorage : sessionStorage;
+
   let activeController = null;
 
   function saveChatState() {
     try {
       const hasMessages = chatBox.querySelector('.msg-row');
       if (!hasMessages) {
-        sessionStorage.removeItem(CHAT_STATE_KEY);
+        _storage.removeItem(CHAT_STATE_KEY);
         return;
       }
-      sessionStorage.setItem(CHAT_STATE_KEY, JSON.stringify({ html: chatBox.innerHTML }));
+      _storage.setItem(CHAT_STATE_KEY, JSON.stringify({ html: chatBox.innerHTML }));
     } catch (e) { console.warn('Unable to save state:', e); }
   }
 
   function restoreChatState() {
     try {
-      const raw = sessionStorage.getItem(CHAT_STATE_KEY);
-      if (!raw) return;
+      const raw = _storage.getItem(CHAT_STATE_KEY);
+      if (!raw) return false;
       const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.html) return;
+      if (!parsed || !parsed.html) return false;
       chatBox.innerHTML = parsed.html;
       chatBox.scrollTop = chatBox.scrollHeight;
-    } catch (e) { console.warn('Unable to restore state:', e); }
+      return true;
+    } catch (e) { console.warn('Unable to restore state:', e); return false; }
   }
+
+  // ── New conversation (logged-in users) ──
+  window.startNewConversation = async function() {
+    if (isSending) return;
+    try {
+      await fetch("{{ url_for('app1.new_session') }}", { method: 'POST' });
+    } catch (e) { /* continue anyway */ }
+    _storage.removeItem(CHAT_STATE_KEY);
+    chatBox.innerHTML = '';
+    // Re-show welcome screen
+    const welcome = document.getElementById('welcomeScreen');
+    if (welcome) {
+      welcome.style.display = '';
+    } else {
+      location.reload();
+    }
+  };
 
   function setStreamingState(sending) {
     sendBtn.disabled = sending;
@@ -1409,7 +1466,43 @@
     }
   };
 
-  restoreChatState();
+  // ── Initialize: restore chat state ──
+  const hasLocal = restoreChatState();
+
+  // For logged-in users: if no local state, try loading from server
+  if (IS_LOGGED_IN && !hasLocal) {
+    fetch("{{ url_for('app1.load_conversation') }}")
+      .then(r => r.json())
+      .then(data => {
+        if (data.messages && data.messages.length > 0) {
+          // Rebuild chat UI from saved messages
+          const welcome = document.getElementById('welcomeScreen');
+          if (welcome) welcome.style.display = 'none';
+          for (const msg of data.messages) {
+            if (msg.role === 'user' && msg.content) {
+              addUserMsg(msg.content);
+            } else if (msg.role === 'assistant' && msg.content) {
+              const bc = addBotRow();
+              const textDiv = document.createElement('div');
+              textDiv.className = 'markdown-body bot-text';
+              textDiv.innerHTML = marked.parse(msg.content);
+              bc.appendChild(textDiv);
+            }
+          }
+          chatBox.scrollTop = chatBox.scrollHeight;
+          saveChatState();
+        }
+      })
+      .catch(() => {});
+  }
+
+  // For non-logged-in: clear backend session on tab close
+  if (!IS_LOGGED_IN) {
+    window.addEventListener('beforeunload', () => {
+      navigator.sendBeacon("{{ url_for('app1.new_session') }}");
+    });
+  }
+
   chatInput.focus();
 })();
 </script>

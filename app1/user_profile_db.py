@@ -64,6 +64,12 @@ _TABLES_SQL = [
         budget_range VARCHAR(100) DEFAULT '',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )""",
+    """CREATE TABLE IF NOT EXISTS user_conversations (
+        username VARCHAR(255) PRIMARY KEY,
+        session_id VARCHAR(100) NOT NULL,
+        messages LONGTEXT,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )""",
 ]
 
 
@@ -371,3 +377,44 @@ def format_profile_for_ai(profile_data):
         parts.append(f"Gennemførte kurser: {', '.join(course_strs)}")
 
     return "\n".join(parts) if parts else ""
+
+
+# ── Conversation Persistence (logged-in users) ──
+
+def save_conversation(username, session_id, messages):
+    """Save conversation messages to MySQL for session persistence."""
+    import json as _json
+    # Only save user + assistant messages (skip system/tool for size)
+    saved = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_conversations (username, session_id, messages) VALUES (%s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), messages = VALUES(messages)",
+        (username, session_id, _json.dumps(saved, ensure_ascii=False))
+    )
+    current_app.mysql.connection.commit()
+    cur.close()
+
+
+def load_conversation(username):
+    """Load saved conversation for a logged-in user. Returns dict or None."""
+    import json as _json
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute("SELECT session_id, messages, updated_at FROM user_conversations WHERE username = %s", (username,))
+    row = cur.fetchone()
+    cur.close()
+    if not row or not row.get("messages"):
+        return None
+    try:
+        msgs = _json.loads(row["messages"])
+    except (_json.JSONDecodeError, TypeError):
+        return None
+    return {"session_id": row["session_id"], "messages": msgs, "updated_at": row["updated_at"]}
+
+
+def clear_conversation(username):
+    """Clear saved conversation for a logged-in user (new conversation)."""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM user_conversations WHERE username = %s", (username,))
+    current_app.mysql.connection.commit()
+    cur.close()

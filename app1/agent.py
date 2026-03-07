@@ -966,6 +966,18 @@ def handle_agentic_ask(user_query, session):
             except Exception as e:
                 print(f"[Cross-Session Load Error] {e}")
 
+            # Restore saved conversation messages for logged-in users
+            try:
+                from app1.user_profile_db import load_conversation
+                saved_conv = load_conversation(logged_in_user)
+                if saved_conv and saved_conv.get("messages"):
+                    # Re-inject saved user/assistant messages into memory
+                    for msg in saved_conv["messages"]:
+                        if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                            CHAT_MEMORY[sid].append(msg)
+            except Exception as e:
+                print(f"[Conversation Restore Error] {e}")
+
         # 6.3: Anonymous user persistence — load profile from browser token
         elif not logged_in_user:
             browser_token = session.get("browser_token")
@@ -1556,6 +1568,15 @@ def handle_agentic_ask(user_query, session):
             # Send message index for feedback tracking
             msg_index = len([m for m in messages if m.get("role") == "assistant"])
             yield f"data: {json.dumps({'type': 'meta', 'message_index': msg_index})}\n\n"
+
+            # Persist conversation for logged-in users
+            if logged_in_user:
+                try:
+                    from app1.user_profile_db import save_conversation, ensure_tables
+                    ensure_tables()
+                    save_conversation(logged_in_user, sid, messages)
+                except Exception as e:
+                    print(f"[Conversation Save Error] {e}")
 
         except Exception as e:
             print(f"[Agent Error] {e}")

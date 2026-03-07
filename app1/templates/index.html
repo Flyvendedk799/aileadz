@@ -1471,7 +1471,7 @@
 
   // For logged-in users: if no local state, try loading from server
   if (IS_LOGGED_IN && !hasLocal) {
-    fetch("{{ url_for('app1.load_conversation') }}")
+    fetch("{{ url_for('app1.load_conversation_endpoint') }}")
       .then(r => r.json())
       .then(data => {
         if (data.messages && data.messages.length > 0) {

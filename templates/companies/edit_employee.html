@@ -1,40 +1,146 @@
 {% extends "base.html" %}
+
 {% block title %}Rediger Medarbejder - {{ company.company_name }}{% endblock %}
+
 {% block content %}
-<div class="container" style="max-width:700px; margin:40px auto; padding:20px;">
-  <h2>Rediger Medarbejder</h2>
-  <form method="POST">
-    <div style="margin-bottom:15px;">
-      <label>Navn</label>
-      <input type="text" name="name" value="{{ employee.name or '' }}" class="form-control" required>
+<div class="container mt-4">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            <div class="card shadow">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0"><i class="fas fa-user-edit"></i> Rediger Medarbejder</h4>
+                    <p class="mb-0">{{ company.company_name }}</p>
+                </div>
+                <div class="card-body">
+                    <form method="POST">
+                        <div class="row">
+                            <div class="col-md-6">
+                                <h5 class="text-primary mb-3">Personoplysninger</h5>
+
+                                <div class="form-group mb-3">
+                                    <label for="full_name" class="form-label">Fulde navn</label>
+                                    <input type="text" class="form-control" id="full_name" value="{{ employee.full_name or employee.username or '' }}" disabled>
+                                    <small class="text-muted">Navn kan kun aendres af brugeren selv.</small>
+                                </div>
+
+                                <div class="form-group mb-3">
+                                    <label for="email" class="form-label">Email</label>
+                                    <input type="email" class="form-control" id="email" value="{{ employee.email or '' }}" disabled>
+                                </div>
+
+                                <div class="form-group mb-3">
+                                    <label for="employee_id" class="form-label">Medarbejder-ID</label>
+                                    <input type="text" class="form-control" id="employee_id" name="employee_id" value="{{ employee.employee_id or '' }}">
+                                </div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <h5 class="text-primary mb-3">Arbejdsinformation</h5>
+
+                                <div class="form-group mb-3">
+                                    <label for="department" class="form-label">Afdeling *</label>
+                                    <select class="form-control" id="department" name="department" required>
+                                        <option value="">Vaelg afdeling</option>
+                                        {% for dept in departments %}
+                                        <option value="{{ dept }}" {% if employee.department == dept %}selected{% endif %}>{{ dept }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+
+                                <div class="form-group mb-3">
+                                    <label for="job_title" class="form-label">Jobtitel</label>
+                                    <input type="text" class="form-control" id="job_title" name="job_title" value="{{ employee.job_title or '' }}">
+                                </div>
+
+                                <div class="form-group mb-3">
+                                    <label for="role" class="form-label">Systemrolle *</label>
+                                    <select class="form-control" id="role" name="role" required>
+                                        <option value="employee" {% if employee.role == 'employee' %}selected{% endif %}>Medarbejder</option>
+                                        <option value="department_head" {% if employee.role == 'department_head' %}selected{% endif %}>Afdelingsleder</option>
+                                        <option value="hr_manager" {% if employee.role == 'hr_manager' %}selected{% endif %}>HR Manager</option>
+                                        {% if session.get('company_role') == 'company_admin' %}
+                                        <option value="company_admin" {% if employee.role == 'company_admin' %}selected{% endif %}>Virksomhedsadmin</option>
+                                        {% endif %}
+                                    </select>
+                                </div>
+
+                                <div class="form-group mb-3">
+                                    <label for="employment_type" class="form-label">Ansaettelsestype</label>
+                                    <select class="form-control" id="employment_type" name="employment_type">
+                                        <option value="full_time" {% if employee.employment_type == 'full_time' %}selected{% endif %}>Fuldtid</option>
+                                        <option value="part_time" {% if employee.employment_type == 'part_time' %}selected{% endif %}>Deltid</option>
+                                        <option value="contract" {% if employee.employment_type == 'contract' %}selected{% endif %}>Kontrakt</option>
+                                        <option value="intern" {% if employee.employment_type == 'intern' %}selected{% endif %}>Praktikant</option>
+                                    </select>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="row mt-3">
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label for="status" class="form-label">Status</label>
+                                    <select class="form-control" id="status" name="status">
+                                        <option value="active" {% if employee.status == 'active' %}selected{% endif %}>Aktiv</option>
+                                        <option value="inactive" {% if employee.status == 'inactive' %}selected{% endif %}>Inaktiv</option>
+                                        <option value="on_leave" {% if employee.status == 'on_leave' %}selected{% endif %}>Orlov</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <div class="form-group mb-3">
+                                    <label class="form-label">Ansaettelsesdato</label>
+                                    <input type="text" class="form-control" value="{{ employee.hire_date or 'Ikke angivet' }}" disabled>
+                                </div>
+                            </div>
+                        </div>
+
+                        {% if employee.total_chatbot_queries or employee.total_courses_completed %}
+                        <div class="row mt-3">
+                            <div class="col-12">
+                                <h5 class="text-primary mb-3">Aktivitetsoversigt</h5>
+                                <div class="row">
+                                    <div class="col-md-4">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="text-muted">Chatbot-henvendelser</h6>
+                                                <h3>{{ employee.total_chatbot_queries or 0 }}</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="text-muted">Kurser gennemfoert</h6>
+                                                <h3>{{ employee.total_courses_completed or 0 }}</h3>
+                                            </div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-4">
+                                        <div class="card bg-light">
+                                            <div class="card-body text-center">
+                                                <h6 class="text-muted">Seneste aktivitet</h6>
+                                                <h6>{{ employee.last_chatbot_interaction or 'Ingen' }}</h6>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        {% endif %}
+
+                        <div class="d-flex justify-content-between mt-4">
+                            <a href="{{ url_for('companies.employees') }}" class="btn btn-secondary">
+                                <i class="fas fa-arrow-left"></i> Annuller
+                            </a>
+                            <button type="submit" class="btn btn-primary">
+                                <i class="fas fa-save"></i> Gem aendringer
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
     </div>
-    <div style="margin-bottom:15px;">
-      <label>Email</label>
-      <input type="email" name="email" value="{{ employee.email or '' }}" class="form-control" required>
-    </div>
-    <div style="margin-bottom:15px;">
-      <label>Rolle</label>
-      <select name="role" class="form-control">
-        <option value="employee" {% if employee.role == 'employee' %}selected{% endif %}>Medarbejder</option>
-        <option value="manager" {% if employee.role == 'manager' %}selected{% endif %}>Leder</option>
-        <option value="company_admin" {% if employee.role == 'company_admin' %}selected{% endif %}>Admin</option>
-      </select>
-    </div>
-    <div style="margin-bottom:15px;">
-      <label>Afdeling</label>
-      <select name="department" class="form-control">
-        <option value="">-- Vaelg --</option>
-        {% for dept in departments %}
-        <option value="{{ dept }}" {% if employee.department == dept %}selected{% endif %}>{{ dept }}</option>
-        {% endfor %}
-      </select>
-    </div>
-    <div style="margin-bottom:15px;">
-      <label>Titel</label>
-      <input type="text" name="title" value="{{ employee.title or '' }}" class="form-control">
-    </div>
-    <button type="submit" class="btn btn-primary">Gem</button>
-    <a href="{{ url_for('companies.employees') }}" class="btn btn-secondary">Annuller</a>
-  </form>
 </div>
 {% endblock %}

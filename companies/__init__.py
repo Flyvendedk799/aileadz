@@ -561,27 +561,86 @@ def create_companies_blueprint():
         auth_check = require_company_admin()
         if auth_check:
             return auth_check
-        
+
         company = get_company_context()
         if not company:
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
-        
+
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cid = company['id']
+            period = request.args.get('period', '30d')
+            days = int(period.replace('d', '')) if period.endswith('d') else 30
 
-            # Get comprehensive analytics data
-            # This will be implemented with detailed charts and metrics
-            # For now, basic structure
-            
-            analytics_data = {
-                'company': company,
-                'period': request.args.get('period', '30d')
-            }
-            
+            # Employee stats
+            cur.execute("""
+                SELECT COUNT(*) as total,
+                       COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
+                       COUNT(CASE WHEN added_at >= DATE_SUB(NOW(), INTERVAL %s DAY) THEN 1 END) as new_hires
+                FROM company_users WHERE company_id = %s
+            """, (days, cid))
+            emp_stats = cur.fetchone() or {}
+
+            # Course order stats
+            cur.execute("""
+                SELECT COUNT(*) as total_orders,
+                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) as completed,
+                       COALESCE(SUM(price), 0) as total_spent
+                FROM course_orders WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            """, (cid, days))
+            order_stats = cur.fetchone() or {}
+            total_orders = order_stats.get('total_orders', 0) or 0
+            completed = order_stats.get('completed', 0) or 0
+            completion_rate = round((completed / total_orders * 100) if total_orders else 0, 1)
+
+            # Chatbot engagement
+            cur.execute("""
+                SELECT COUNT(*) as total_interactions,
+                       COUNT(DISTINCT username) as unique_users,
+                       COALESCE(AVG(response_time_ms), 0) as avg_response_time,
+                       COALESCE(AVG(interaction_quality_score), 0) as avg_quality
+                FROM chatbot_interactions WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+            """, (cid, days))
+            chat_stats = cur.fetchone() or {}
+
+            # Daily activity (for chart)
+            cur.execute("""
+                SELECT DATE(created_at) as day, COUNT(*) as interactions
+                FROM chatbot_interactions WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                GROUP BY DATE(created_at) ORDER BY day
+            """, (cid, days))
+            daily_activity = cur.fetchall()
+
+            # Department breakdown
+            cur.execute("""
+                SELECT COALESCE(cu.department, 'Ukendt') as department,
+                       COUNT(DISTINCT cu.user_id) as employees,
+                       COUNT(DISTINCT co.id) as orders,
+                       COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_orders
+                FROM company_users cu
+                LEFT JOIN course_orders co ON cu.user_id = co.user_id AND co.company_id = cu.company_id
+                WHERE cu.company_id = %s
+                GROUP BY cu.department ORDER BY employees DESC
+            """, (cid,))
+            departments = cur.fetchall()
+
+            # Top courses
+            cur.execute("""
+                SELECT product_title, COUNT(*) as order_count, COALESCE(AVG(price), 0) as avg_price
+                FROM course_orders WHERE company_id = %s
+                GROUP BY product_title ORDER BY order_count DESC LIMIT 5
+            """, (cid,))
+            top_courses = cur.fetchall()
+
             cur.close()
-            
-            return render_template('companies/analytics.html', **analytics_data)
+
+            return render_template('companies/analytics.html',
+                company=company, period=period, days=days,
+                emp_stats=emp_stats, order_stats=order_stats,
+                completion_rate=completion_rate, chat_stats=chat_stats,
+                daily_activity=daily_activity, departments=departments,
+                top_courses=top_courses)
             
         except Exception as e:
             current_app.logger.error(f"Error loading analytics: {e}")
@@ -601,12 +660,41 @@ def create_companies_blueprint():
             return redirect(url_for('auth.login'))
         
         if request.method == 'POST':
-            # Handle settings update
-            # This will be implemented with comprehensive settings
-            flash("Settings updated successfully!", "success")
+            try:
+                cur = current_app.mysql.connection.cursor()
+                cur.execute("""
+                    UPDATE companies SET company_name = %s, contact_email = %s,
+                        website = %s, industry = %s, updated_at = NOW()
+                    WHERE id = %s
+                """, (
+                    request.form.get('company_name', company.get('company_name', '')),
+                    request.form.get('contact_email', ''),
+                    request.form.get('website', ''),
+                    request.form.get('industry', ''),
+                    company['id']
+                ))
+                current_app.mysql.connection.commit()
+                cur.close()
+                # Update session
+                if request.form.get('company_name'):
+                    session['company_name'] = request.form['company_name']
+                flash("Indstillinger gemt!", "success")
+            except Exception as e:
+                current_app.logger.error(f"Settings update error: {e}")
+                flash("Fejl ved opdatering.", "danger")
             return redirect(url_for('companies.settings'))
-        
-        return render_template('companies/settings.html', company=company)
+
+        # Load extra settings from company_settings table if exists
+        settings = {}
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("SELECT * FROM company_settings WHERE company_id = %s", (company['id'],))
+            settings = cur.fetchone() or {}
+            cur.close()
+        except Exception:
+            pass
+
+        return render_template('companies/settings.html', company=company, settings=settings)
 
     return companies_bp
 

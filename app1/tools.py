@@ -800,6 +800,79 @@ def _execute_recommend_for_profile(args, username):
 PROFILE_TOOLS.append({
     "type": "function",
     "function": {
+        "name": "request_user_input",
+        "description": (
+            "Vis et interaktivt UI-kort i chatten for at indsamle eller bekræfte information fra brugeren. "
+            "Brug dette til at:\n"
+            "- Bekræfte profildata med ekstra felter (f.eks. erfaring med startår/slutår)\n"
+            "- Samle information via en formular (f.eks. uddannelsesdetaljer)\n"
+            "- Give brugeren valgmuligheder (f.eks. 'online' vs 'fysisk')\n"
+            "Kortet vises inline i chatten. Brugeren udfylder og klikker 'Gem'. "
+            "Data gemmes automatisk i profilen."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "ui_type": {
+                    "type": "string",
+                    "enum": ["confirm", "form", "choice"],
+                    "description": "confirm = vis Gem/Nej tak med forudfyldt data. form = vis inputfelter brugeren skal udfylde. choice = vis valgmuligheder."
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Kort besked der vises øverst i kortet (dansk)."
+                },
+                "section": {
+                    "type": "string",
+                    "enum": ["skills", "experience", "education", "courses", "summary"],
+                    "description": "Hvilken profil-sektion dette handler om."
+                },
+                "save_action": {
+                    "type": "string",
+                    "enum": ["add_skill", "add_experience", "add_education", "add_course", "update_summary"],
+                    "description": "Hvilken profil-handling der udføres når brugeren bekræfter."
+                },
+                "prefilled": {
+                    "type": "object",
+                    "description": "Data der allerede er kendt (vises som forudfyldt/låst). F.eks. {\"title\": \"Varehuschef\", \"company\": \"Bilka\", \"is_current\": true}."
+                },
+                "fields": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "name": {"type": "string", "description": "Feltnavn (bruges som nøgle i data)"},
+                            "label": {"type": "string", "description": "Dansk label vist til brugeren"},
+                            "type": {"type": "string", "enum": ["text", "number", "select"], "description": "Input-type"},
+                            "placeholder": {"type": "string"},
+                            "required": {"type": "boolean"},
+                            "options": {"type": "array", "items": {"type": "string"}, "description": "Kun for select-type"}
+                        },
+                        "required": ["name", "label", "type"]
+                    },
+                    "description": "Felter brugeren skal udfylde. Udelad for confirm-type."
+                },
+                "choices": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "label": {"type": "string"},
+                            "value": {"type": "string"}
+                        }
+                    },
+                    "description": "Kun for choice-type: valgmuligheder brugeren kan vælge imellem."
+                }
+            },
+            "required": ["ui_type", "message", "section", "save_action"]
+        }
+    }
+})
+
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
         "name": "suggest_learning_path",
         "description": "Byg en sekventiel læringssti baseret på brugerens profil, kompetencer og mål. Analyserer kompetencehuller og foreslår kurser i logisk rækkefølge (fundament → mellemniveau → avanceret). Brug dette når brugeren spørger 'hvad bør jeg lære i hvilken rækkefølge?', 'lav en læringsplan', eller 'hvad er næste skridt?'.",
         "parameters": {
@@ -1004,6 +1077,26 @@ def _execute_get_vendor_info(args):
     return json.dumps({"status": "error", "message": "Angiv enten vendor_name eller topic."})
 
 
+def _execute_request_user_input(args, username):
+    """Pass-through: AI requested a UI card. No DB calls — just return the card spec."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    ui_type = args.get("ui_type", "confirm")
+    message = args.get("message", "")
+    if not message:
+        return json.dumps({"status": "error", "message": "Besked mangler."})
+    return json.dumps({
+        "status": "ui_card",
+        "ui_type": ui_type,
+        "message": message,
+        "section": args.get("section", "summary"),
+        "save_action": args.get("save_action", ""),
+        "prefilled": args.get("prefilled", {}),
+        "fields": args.get("fields", []),
+        "choices": args.get("choices", []),
+    })
+
+
 def execute_tool(tool_call, username=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
@@ -1032,6 +1125,8 @@ def execute_tool(tool_call, username=None):
             return _execute_recommend_for_profile(args, username)
         elif function_name == "suggest_learning_path":
             return _execute_suggest_learning_path(args, username)
+        elif function_name == "request_user_input":
+            return _execute_request_user_input(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

@@ -653,6 +653,14 @@ def confirm_profile_update():
             add_skill(logged_in_user, payload.get("course_title", "") or payload.get("course_name", ""), "kursus")
             return jsonify({"status": "success", "message": "Kursus tilføjet"})
 
+        elif action == "update_summary":
+            from app1.user_profile_db import update_profile_summary
+            clean = {k: v for k, v in payload.items() if v is not None and str(v).strip()}
+            if clean:
+                update_profile_summary(logged_in_user, **clean)
+                return jsonify({"status": "success", "message": "Profil opdateret"})
+            return jsonify({"status": "success", "message": "Ingen ændringer"})
+
         else:
             return jsonify({"status": "error", "message": f"Ukendt handling: {action}"}), 400
 

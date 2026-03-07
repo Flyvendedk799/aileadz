@@ -146,24 +146,37 @@ VÆRKTØJER:
 - suggest_learning_path: Sekventiel læringssti (fundament → avanceret). Kræver login.
 
 CV-INTELLIGENS (VIGTIG — gør dette automatisk):
-Når brugeren fortæller noget om sig selv, skal du ALTID opdatere deres profil med update_user_profile.
-VIGTIGT: Brug ALTID korrekt action + data-objekt. Eksempler:
-- "Jeg er varehuschef i Silvan" → action="add_experience", data={"title":"Varehuschef","company":"Silvan","is_current":true}
-- "Jeg arbejder som projektleder hos Maersk" → action="add_experience", data={"title":"Projektleder","company":"Maersk","is_current":true}
-- "Jeg har en HD i ledelse" → action="add_education", data={"degree":"HD","description":"Ledelse"}
-- "Jeg kan Python og Excel" → 2 kald: action="add_skill", data={"skill_name":"Python"} + action="add_skill", data={"skill_name":"Excel"}
-- "Jeg tog PRINCE2 sidste år" → action="add_course", data={"course_title":"PRINCE2","completed_date":"2025"}
-- "Mit mål er at blive IT-chef" → action="update_summary", data={"goals":"Blive IT-chef"}
-- "Jeg foretrækker e-learning" → action="update_summary", data={"preferred_format":"E-learning"}
-- "Budget max 10.000" → action="update_summary", data={"budget_range":"op til 10.000 kr"}
-HUSK: Jobtitel/stilling = add_experience (IKKE update_summary). Uddannelse = add_education. Kompetencer = add_skill.
+Når brugeren fortæller noget om sig selv, brug request_user_input til at vise et smart UI-kort der samler info.
+
+FORETRUKKEN METODE — request_user_input (samler alt i ét kort):
+- "Jeg er varehuschef i Silvan" → request_user_input med:
+  ui_type="form", section="experience", save_action="add_experience",
+  message="Tilføj erfaring: Varehuschef @ Silvan",
+  prefilled={"title":"Varehuschef","company":"Silvan","is_current":true},
+  fields=[{"name":"start_year","label":"Startår","type":"number","placeholder":"f.eks. 2018"},
+          {"name":"end_year","label":"Slutår (tom = nuværende)","type":"number","required":false}]
+- "Jeg har en HD i ledelse" → request_user_input med:
+  ui_type="form", section="education", save_action="add_education",
+  message="Tilføj uddannelse: HD — Ledelse",
+  prefilled={"degree":"HD","description":"Ledelse"},
+  fields=[{"name":"institution","label":"Institution","type":"text","placeholder":"f.eks. CBS"},
+          {"name":"year_completed","label":"Afsluttet år","type":"number"}]
+- "Jeg kan Python og Excel" → 2 kald request_user_input med:
+  ui_type="confirm", section="skills", save_action="add_skill",
+  message="Tilføj kompetence: Python", prefilled={"skill_name":"Python","skill_level":"mellem"}
+  (og ét mere for Excel)
+- "Mit mål er at blive IT-chef" → update_user_profile (simpelt, behøver ikke UI)
+
+HVORNÅR BRUGE HVAD:
+- request_user_input: Når info mangler detaljer (erfaring → spørg om årstal, uddannelse → spørg om institution). Viser kort med forudfyldt + tomme felter.
+- update_user_profile: Til simple opdateringer (mål, præferencer, fjern/ændr). Til ting der ikke behøver ekstra detaljer.
+HUSK: Jobtitel/stilling = erfaring. Uddannelse = education. Kompetencer = skills.
 
 Regler:
-- Kald update_user_profile når du opdager CV-info. Systemet viser en bekræftelses-knap til brugeren FØR det gemmes.
-- Du får status "proposed" tilbage — det betyder at brugeren ser et kort med "Gem" / "Nej tak". Sig IKKE at det er gemt — sig f.eks. "Jeg har foreslået at tilføje det — bekræft i kortet herunder."
+- Når du bruger request_user_input, sig noget som: "Jeg har lavet et kort hvor du kan tilføje detaljerne — udfyld det herunder."
+- Når du bruger update_user_profile, får du "proposed" status — sig: "Bekræft i kortet herunder."
 - Kombiner med dit svar — afbryd IKKE samtaleflowet.
-- Brug ALTID source="chatbot" for skills tilføjet via chat.
-- Du kan lave FLERE update_user_profile kald i én besked hvis brugeren nævner flere ting.
+- Du kan lave FLERE kald i én besked hvis brugeren nævner flere ting.
 - Hvis systemet siger "already_exists" — nævn det IKKE for brugeren.
 
 CV-ONBOARDING (når brugeren beder om at opdatere CV/profil):
@@ -1431,6 +1444,19 @@ def handle_agentic_ask(user_query, session):
                                 'type': 'profile_update',
                                 'message': tool_result_dict.get('message', 'Profil opdateret'),
                                 'section': tool_result_dict.get('section', '')
+                            }))
+
+                    elif fn == "request_user_input":
+                        if tool_result_dict.get("status") == "ui_card":
+                            buffered_profile_events.append(json.dumps({
+                                'type': 'ui_card',
+                                'ui_type': tool_result_dict.get('ui_type', 'confirm'),
+                                'message': tool_result_dict.get('message', ''),
+                                'section': tool_result_dict.get('section', ''),
+                                'save_action': tool_result_dict.get('save_action', ''),
+                                'prefilled': tool_result_dict.get('prefilled', {}),
+                                'fields': tool_result_dict.get('fields', []),
+                                'choices': tool_result_dict.get('choices', []),
                             }))
 
                     elif fn == "compare_courses" and "raw_products" in tool_result_dict:

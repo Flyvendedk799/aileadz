@@ -571,6 +571,17 @@ def adminlog_session(session_id):
     return jsonify({"logs": logs})
 
 
+@app1_bp.route("/adminlog/sessions_summary")
+def adminlog_sessions_summary():
+    """Lightweight endpoint for admin log auto-refresh polling."""
+    from app1.memory_store import get_debug_sessions
+    sessions = get_debug_sessions(limit=50)
+    return jsonify({"sessions": [
+        {"session_id": s["session_id"], "entry_count": s["entry_count"]}
+        for s in sessions
+    ]})
+
+
 @app1_bp.route("/adminlog/clear", methods=["POST"])
 def adminlog_clear():
     from app1.memory_store import clear_debug_logs

@@ -424,6 +424,36 @@
     t.classList.add('show');
     setTimeout(() => t.classList.remove('show'), 2000);
   }
+
+  // ── Auto-refresh: poll for new sessions every 5 seconds ──
+  let _lastSessionCount = {{ sessions|length }};
+  let _autoRefreshEnabled = true;
+
+  async function pollNewSessions() {
+    if (!_autoRefreshEnabled || document.hidden) return;
+    try {
+      const resp = await fetch('/app1/adminlog/sessions_summary');
+      const data = await resp.json();
+      if (!data.sessions) return;
+      if (data.sessions.length !== _lastSessionCount) {
+        _lastSessionCount = data.sessions.length;
+        showToast('Nye sessioner fundet — opdaterer...');
+        setTimeout(() => location.reload(), 500);
+      } else {
+        // Check if any expanded session has new entries
+        for (const s of data.sessions) {
+          const card = document.querySelector(`.session-card[data-sid="${s.session_id}"]`);
+          if (card && card.classList.contains('expanded') && loadedSessions[s.session_id]) {
+            if (s.entry_count > loadedSessions[s.session_id].length) {
+              fetchSessionLogs(s.session_id);
+            }
+          }
+        }
+      }
+    } catch (e) { /* silent */ }
+  }
+
+  setInterval(pollNewSessions, 5000);
   </script>
 </body>
 </html>

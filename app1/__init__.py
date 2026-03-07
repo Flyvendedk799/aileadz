@@ -532,6 +532,54 @@ def feedback():
 
 # ── Admin Debug Log ──
 
+@app1_bp.route("/new_session", methods=["POST"])
+def new_session():
+    """Start a fresh conversation — clears backend memory and DB."""
+    from app1.agent import CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES, REJECTED_SEARCHES
+    old_sid = session.get("session_id")
+
+    # Clear in-memory state
+    if old_sid:
+        CHAT_MEMORY.pop(old_sid, None)
+        SHOWN_PRODUCTS.pop(old_sid, None)
+        CONVERSATION_STAGES.pop(old_sid, None)
+        REJECTED_SEARCHES.pop(old_sid, None)
+
+    # Generate new session ID
+    new_sid = str(uuid.uuid4())
+    session["session_id"] = new_sid
+
+    # Clear saved conversation in MySQL for logged-in users
+    logged_in_user = session.get("user")
+    if logged_in_user:
+        try:
+            from app1.user_profile_db import clear_conversation, ensure_tables
+            ensure_tables()
+            clear_conversation(logged_in_user)
+        except Exception as e:
+            print(f"[New Session Error] {e}")
+
+    return jsonify({"status": "ok", "session_id": new_sid})
+
+
+@app1_bp.route("/load_conversation")
+def load_conversation_endpoint():
+    """Load saved conversation for logged-in user (for frontend restore)."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "no_user", "messages": []})
+    try:
+        from app1.user_profile_db import load_conversation, ensure_tables
+        ensure_tables()
+        saved = load_conversation(logged_in_user)
+        if saved and saved.get("messages"):
+            return jsonify({"status": "ok", "messages": saved["messages"]})
+        return jsonify({"status": "empty", "messages": []})
+    except Exception as e:
+        print(f"[Load Conversation Error] {e}")
+        return jsonify({"status": "error", "messages": []})
+
+
 @app1_bp.route("/adminlog")
 def adminlog():
     from app1.memory_store import get_debug_sessions, get_debug_logs_for_session

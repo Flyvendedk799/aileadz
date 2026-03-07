@@ -754,6 +754,46 @@
   }
   .light-mode .profile-toast { background: rgba(255,255,255,0.97); border-color: rgba(168,85,247,0.15); color: #374151; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
 
+  /* ── Profile Confirm Card (inline in chat) ── */
+  .profile-confirm-card {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: rgba(168,85,247,0.06);
+    border: 1px solid rgba(168,85,247,0.15);
+    border-radius: 10px;
+    padding: 10px 14px;
+    margin: 8px 0;
+    font-size: 13.5px;
+    color: #c4b5fd;
+  }
+  .profile-confirm-icon { font-size: 16px; flex-shrink: 0; }
+  .profile-confirm-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+  .profile-confirm-msg { font-weight: 500; }
+  .profile-confirm-link { font-size: 12px; color: #a855f7; text-decoration: none; }
+  .profile-confirm-link:hover { text-decoration: underline; }
+  .profile-undo-btn {
+    background: none;
+    border: 1px solid rgba(239,68,68,0.25);
+    color: #fca5a5;
+    font-size: 12px;
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    white-space: nowrap;
+    transition: all 0.15s;
+  }
+  .profile-undo-btn:hover { background: rgba(239,68,68,0.1); color: #f87171; }
+  .profile-undo-btn.undone {
+    border-color: rgba(113,113,122,0.2);
+    color: #71717a;
+    cursor: default;
+    pointer-events: none;
+  }
+  .light-mode .profile-confirm-card { background: rgba(168,85,247,0.04); border-color: rgba(168,85,247,0.12); color: #6b21a8; }
+  .light-mode .profile-undo-btn { color: #dc2626; border-color: rgba(220,38,38,0.2); }
+
   /* ── Responsive ── */
   @media (max-width: 768px) {
     .msg-row { padding: 0 16px; }
@@ -889,6 +929,35 @@
     // Max 3 visible toasts
     while (stack.children.length > 3) stack.firstChild.remove();
   }
+
+  // ── Undo profile update (called from inline confirm cards) ──
+  window.undoProfileUpdate = async function(btn, undoData) {
+    if (btn.classList.contains('undone')) return;
+    try {
+      const resp = await fetch(undoData.endpoint, {
+        method: undoData.method || 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(undoData.body || {})
+      });
+      const data = await resp.json();
+      if (data.success || data.status === 'success') {
+        btn.textContent = 'Fortrudt ✓';
+        btn.classList.add('undone');
+        const card = btn.closest('.profile-confirm-card');
+        if (card) {
+          card.querySelector('.profile-confirm-msg').style.textDecoration = 'line-through';
+          card.querySelector('.profile-confirm-msg').style.opacity = '0.5';
+        }
+      } else {
+        btn.textContent = 'Fejl';
+        setTimeout(() => { btn.textContent = 'Fortryd'; }, 2000);
+      }
+    } catch (e) {
+      console.error('Undo error:', e);
+      btn.textContent = 'Fejl';
+      setTimeout(() => { btn.textContent = 'Fortryd'; }, 2000);
+    }
+  };
 
   const chatBox = document.getElementById('chatBox');
   const chatInput = document.getElementById('chatInput');
@@ -1226,26 +1295,48 @@
             if (isFirst) {
               think.remove();
               isFirst = false;
-              textEl = document.createElement('div');
-              textEl.className = 'markdown-body bot-text';
-              botContent.appendChild(textEl);
-              cardsEl = document.createElement('div');
-              cardsEl.className = 'bot-cards';
-              botContent.appendChild(cardsEl);
             }
 
             if (data.type === 'chunk') {
+              if (!textEl) {
+                textEl = document.createElement('div');
+                textEl.className = 'markdown-body bot-text';
+                botContent.appendChild(textEl);
+              }
               fullText += data.content;
               textEl.innerHTML = marked.parse(fullText);
               saveChatState();
             } else if (data.type === 'product') {
+              if (!cardsEl) {
+                cardsEl = document.createElement('div');
+                cardsEl.className = 'bot-cards';
+                botContent.appendChild(cardsEl);
+              }
               const wrap = document.createElement('div');
               wrap.className = 'animate-slide-in';
               wrap.innerHTML = data.html;
               cardsEl.appendChild(wrap);
               saveChatState();
             } else if (data.type === 'profile_update') {
-              showProfileToast(data.message || 'Profil opdateret', data.section || '');
+              // Inline confirmation card in chat with undo
+              const card = document.createElement('div');
+              card.className = 'profile-confirm-card animate-slide-in';
+              const safeMsg = (data.message || 'Profil opdateret').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+              const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
+              let undoBtn = '';
+              if (data.undo) {
+                undoBtn = `<button class="profile-undo-btn" onclick="undoProfileUpdate(this, ${JSON.stringify(data.undo).replace(/"/g, '&quot;')})">Fortryd</button>`;
+              }
+              const anchor = data.section ? `#section-${data.section}` : '';
+              card.innerHTML =
+                `<div class="profile-confirm-icon">${sectionIcon}</div>` +
+                `<div class="profile-confirm-body">` +
+                  `<span class="profile-confirm-msg">✓ ${safeMsg}</span>` +
+                  `<a class="profile-confirm-link" href="/profile${anchor}" target="_blank">Vis i profil</a>` +
+                `</div>` +
+                undoBtn;
+              botContent.appendChild(card);
+              saveChatState();
             } else if (data.type === 'suggestions') {
               const chips = document.createElement('div');
               chips.className = 'suggestion-chips';

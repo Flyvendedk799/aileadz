@@ -562,7 +562,8 @@ def _execute_update_user_profile(args, username):
                     "message": f'"{name}" findes allerede ({old_level}). Brug update_skill_level for at ændre niveau.'})
             db.add_skill(username, name, level, source="chatbot")
             return json.dumps({"status": "success", "section": "skills",
-                "message": f'Kompetence tilføjet: {name} ({level})'})
+                "message": f'Kompetence tilføjet: {name} ({level})',
+                "undo": {"endpoint": "/api/profile/skills", "method": "DELETE", "body": {"skill_name": name}}})
 
         elif action == "remove_skill":
             name = data.get("skill_name", "").strip()
@@ -605,7 +606,8 @@ def _execute_update_user_profile(args, username):
             )
             label = f'{title}' + (f' @ {company}' if company else '')
             return json.dumps({"status": "success", "section": "experience",
-                "message": f'Erfaring tilføjet: {label}', "id": new_id})
+                "message": f'Erfaring tilføjet: {label}', "id": new_id,
+                "undo": {"endpoint": "/api/profile/experience", "method": "DELETE", "body": {"id": new_id}}})
 
         elif action == "remove_experience":
             exp_id = data.get("id")
@@ -634,7 +636,8 @@ def _execute_update_user_profile(args, username):
             )
             label = degree + (f' — {institution}' if institution else '')
             return json.dumps({"status": "success", "section": "education",
-                "message": f'Uddannelse tilføjet: {label}', "id": new_id})
+                "message": f'Uddannelse tilføjet: {label}', "id": new_id,
+                "undo": {"endpoint": "/api/profile/education", "method": "DELETE", "body": {"id": new_id}}})
 
         elif action == "remove_education":
             edu_id = data.get("id")
@@ -659,7 +662,8 @@ def _execute_update_user_profile(args, username):
             vendor = data.get("vendor", "")
             label = title + (f' ({vendor})' if vendor else '')
             return json.dumps({"status": "success", "section": "courses",
-                "message": f'Kursus tilføjet: {label}'})
+                "message": f'Kursus tilføjet: {label}',
+                "undo": {"endpoint": "/api/profile/courses", "method": "DELETE", "body": {"course_title": title}}})
 
         elif action == "remove_course":
             title = data.get("course_title", "").strip()

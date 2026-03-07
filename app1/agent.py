@@ -156,12 +156,12 @@ Når brugeren fortæller noget om sig selv, skal du ALTID opdatere deres profil 
 - "Budget max 10.000" → update_summary(budget_range="op til 10.000 kr")
 
 Regler:
-- Gør det UDEN at spørge om lov — det er en service, ikke en forstyrrelse.
-- Bekræft kort: "Jeg har gemt din PRINCE2-erfaring på din profil." (maks 1 sætning, naturligt i dit svar)
+- Du SKAL kalde update_user_profile for at gemme. Påstå ALDRIG at du har gemt noget uden at have kaldt værktøjet først.
 - Kombiner med dit svar — afbryd IKKE samtaleflowet for at opdatere profil.
 - Brug ALTID source="chatbot" for skills tilføjet via chat.
 - Du kan lave FLERE update_user_profile kald i én besked hvis brugeren nævner flere ting.
 - Hvis systemet siger "already_exists" — nævn det IKKE for brugeren, det er allerede gemt.
+- Brugeren vil se en bekræftelse med fortryd-knap i chatten — du behøver IKKE bekræfte i tekst.
 
 CV-ONBOARDING (når brugeren beder om at opdatere CV/profil):
 Guid dem naturligt igennem — IKKE som en kedelig formular, men som en samtale:
@@ -875,6 +875,24 @@ def _strip_suggestions_tag(text):
     return _re.sub(r'\s*<suggestions>.*?</suggestions>\s*', '', text, flags=_re.DOTALL).strip()
 
 
+def _strip_course_listings(text):
+    """Strip bullet-point/numbered course listings from AI text when product cards handle display."""
+    lines = text.split('\n')
+    cleaned = []
+    for line in lines:
+        stripped = line.strip()
+        # Skip bullet points and numbered lists (course listings)
+        if _re.match(r'^[-•*]\s', stripped) or _re.match(r'^\d+[\.\)]\s', stripped):
+            continue
+        # Skip lines that look like "Et X-dages kursus..." pattern
+        if _re.match(r'^Et\s+(gratis\s+)?\w+', stripped) and any(w in stripped.lower() for w in ['kursus', 'webinar', 'forløb', 'certificering', 'workshop']):
+            continue
+        cleaned.append(line)
+    result = '\n'.join(cleaned).strip()
+    result = _re.sub(r'\n{3,}', '\n\n', result)
+    return result
+
+
 # ── Main Agent Loop ──
 
 def handle_agentic_ask(user_query, session):
@@ -1382,7 +1400,15 @@ def handle_agentic_ask(user_query, session):
                         buffered_ui_html.append(None)  # placeholder
                         profile_update_msg = tool_result_dict.get("message", "Profil opdateret")
                         profile_section = tool_result_dict.get("section", "")
-                        yield f"data: {json.dumps({'type': 'profile_update', 'message': profile_update_msg, 'section': profile_section})}\n\n"
+                        undo_data = tool_result_dict.get("undo")
+                        evt = {
+                            'type': 'profile_update',
+                            'message': profile_update_msg,
+                            'section': profile_section,
+                        }
+                        if undo_data:
+                            evt['undo'] = undo_data
+                        yield f"data: {json.dumps(evt)}\n\n"
 
                     elif fn == "compare_courses" and "raw_products" in tool_result_dict:
                         raw_products = tool_result_dict["raw_products"]
@@ -1454,11 +1480,27 @@ def handle_agentic_ask(user_query, session):
 
             _stream_final_response._full_text = ""
 
-            # Stream the final response
+            # ── Stream product cards FIRST (before text) for better UX ──
+            for html_chunk in buffered_ui_html:
+                if html_chunk is not None:
+                    yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
+
+            # Add reinforcement before final response when we have product cards
+            if had_tool_calls and buffered_ui_html:
+                ephemeral_messages.append({
+                    "role": "system",
+                    "content": "PÅMINDELSE: Kurserne vises allerede som interaktive kort. "
+                               "Dit svar SKAL være 1-2 korte sætninger der knytter resultaterne til brugerens behov. "
+                               "ALDRIG liste kursusnavne, priser, beskrivelser eller detaljer i teksten."
+                })
+
+            # Stream the final text response
             if last_message_is_final:
-                # Reuse the already-generated response — no redundant API call
                 full_text = message.content or ""
                 visible_text = _strip_suggestions_tag(full_text)
+                # Strip course listings when product cards are shown
+                if had_tool_calls and buffered_ui_html:
+                    visible_text = _strip_course_listings(visible_text)
                 # Progressive chunking for smooth streaming UX
                 _csz = 8
                 for _ci in range(0, len(visible_text), _csz):
@@ -1472,7 +1514,7 @@ def handle_agentic_ask(user_query, session):
                 full_text = _stream_final_response._full_text
             messages.append({"role": "assistant", "content": _strip_suggestions_tag(full_text)})
 
-            # Phase 6: Quality guardrail (post-stream check, strip suggestions tag first)
+            # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)
             quality_ok = _check_response_quality(visible_text, had_tool_calls)
 
@@ -1487,22 +1529,11 @@ def handle_agentic_ask(user_query, session):
             except Exception:
                 pass
 
-            if not quality_ok and had_tool_calls:
-                # Response violates visual rule — send a correction inline
-                correction_msg = "\n\n*Se kursuskortene herunder for detaljer om de fundne kurser.*"
-                yield f"data: {json.dumps({'type': 'chunk', 'content': correction_msg})}\n\n"
-                full_text += correction_msg
-
             # Smart failure recovery: when tool calls returned 0 results
             if had_tool_calls and not buffered_ui_html:
                 if "ingen" not in full_text.lower():
                     no_results_msg = "\n\n*Jeg fandt desværre ingen kurser der matchede. Prøv eventuelt at omformulere din søgning.*"
                     yield f"data: {json.dumps({'type': 'chunk', 'content': no_results_msg})}\n\n"
-
-            # Stream buffered product HTML cards
-            for html_chunk in buffered_ui_html:
-                if html_chunk is not None:
-                    yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
 
             # Extract suggestions from the AI response (inline via <suggestions> tag)
             suggestions = _extract_inline_suggestions(full_text)

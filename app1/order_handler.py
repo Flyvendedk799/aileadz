@@ -119,11 +119,13 @@ class OrderHandler:
             # Store in orders table
             cur.execute("""
                 INSERT INTO course_orders
-                (order_id, username, product_handle, product_title, price,
+                (order_id, company_id, user_id, username, product_handle, product_title, price,
                  variant_date, variant_location, status, created_at, user_email, user_name, user_phone)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 order['order_id'],
+                session.get('company_id'),
+                session.get('user_id'),
                 session.get('user', 'guest'),
                 order['product']['handle'],
                 order['product']['title'],

@@ -1,1805 +1,1582 @@
-{% extends "base.html" %}
+<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>AiLeadz — Kursusrådgiver</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    /* ── Theme ── */
+    :root {
+      --bg: #0a0a0b;
+      --sidebar-bg: #111113;
+      --chat-bg: #0a0a0b;
+      --border: rgba(255,255,255,0.06);
+      --border-hover: rgba(255,255,255,0.12);
+      --text: #f4f4f5;
+      --text-secondary: #a1a1aa;
+      --text-muted: #52525b;
+      --text-faint: #3f3f46;
+      --purple: #a855f7;
+      --purple-dark: #7c3aed;
+      --purple-glow: rgba(168,85,247,0.08);
+      --purple-border: rgba(168,85,247,0.18);
+      --green: #4ade80;
+      --red: #ef4444;
+      --red-soft: #fca5a5;
+      --card-bg: rgba(255,255,255,0.03);
+    }
+    .light-mode {
+      --bg: #fafafa;
+      --sidebar-bg: #ffffff;
+      --chat-bg: #fafafa;
+      --border: rgba(0,0,0,0.06);
+      --border-hover: rgba(0,0,0,0.12);
+      --text: #111827;
+      --text-secondary: #6b7280;
+      --text-muted: #9ca3af;
+      --text-faint: #d1d5db;
+      --purple-glow: rgba(168,85,247,0.04);
+      --purple-border: rgba(168,85,247,0.12);
+      --card-bg: #ffffff;
+    }
 
-{% block extra_styles %}
-<style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+    /* ── Reset ── */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+    a { text-decoration: none; color: inherit; }
 
-  .content {
-    padding: 0 !important;
-    display: flex;
-    flex-direction: column;
-    height: calc(100vh - 56px);
-    overflow: hidden;
-  }
+    /* ── Layout: sidebar + chat ── */
+    .app-layout {
+      display: flex;
+      height: 100vh;
+      width: 100vw;
+    }
 
-  #chatApp {
-    margin: 0;
-    font-family: 'Inter', system-ui, -apple-system, sans-serif;
-    display: flex;
-    flex-direction: column;
-    flex-grow: 1;
-    height: 100%;
-    min-height: 0;
-    -webkit-font-smoothing: antialiased;
-  }
+    /* ── Sidebar ── */
+    .sidebar {
+      width: 260px;
+      background: var(--sidebar-bg);
+      border-right: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      transition: width 0.25s cubic-bezier(0.4,0,0.2,1);
+      overflow: hidden;
+      flex-shrink: 0;
+      z-index: 100;
+    }
+    .sidebar.collapsed { width: 56px; }
+    .sidebar.collapsed .sb-text { display: none; }
+    .sidebar.collapsed .sb-logo-text { display: none; }
+    .sidebar.collapsed .sb-section-label { display: none; }
+    .sidebar.collapsed .sb-nav-item { justify-content: center; padding: 10px 0; }
+    .sidebar.collapsed .sb-nav-item svg { margin-right: 0; }
+    .sidebar.collapsed .sb-user-info { display: none; }
+    .sidebar.collapsed .sb-bottom { align-items: center; }
+    .sidebar.collapsed .sb-new-chat { width: 36px; height: 36px; padding: 0; justify-content: center; }
+    .sidebar.collapsed .sb-new-chat .sb-text { display: none; }
 
-  #chatApp .chat-container {
-    width: 100%;
-    flex-grow: 1;
-    min-height: 0;
-    background: transparent;
-    border: none;
-    margin: 0;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-  }
-  #chatApp .chat-header {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    padding: 6px 16px;
-    min-height: 0;
-    border-bottom: 1px solid rgba(255,255,255,0.04);
-  }
-  #chatApp .chat-header:empty { display: none; border: none; padding: 0; }
-  .new-chat-btn {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    background: none;
-    border: 1px solid rgba(255,255,255,0.08);
-    color: #a1a1aa;
-    font-size: 12.5px;
-    font-weight: 500;
-    padding: 5px 12px;
-    border-radius: 8px;
-    cursor: pointer;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .new-chat-btn:hover { background: rgba(255,255,255,0.06); color: #f4f4f5; border-color: rgba(168,85,247,0.3); }
-  .light-mode .new-chat-btn { border-color: rgba(0,0,0,0.1); color: #6b7280; }
-  .light-mode .new-chat-btn:hover { background: rgba(0,0,0,0.04); color: #111827; }
+    .sb-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 16px 14px 12px;
+      border-bottom: 1px solid var(--border);
+      min-height: 56px;
+    }
+    .sb-logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .sb-logo-icon {
+      width: 28px; height: 28px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .sb-logo-icon svg { width: 15px; height: 15px; color: #fff; }
+    .sb-logo-text { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.02em; }
+    .sb-toggle {
+      width: 28px; height: 28px;
+      border-radius: 6px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: all 0.15s;
+    }
+    .sb-toggle:hover { background: var(--purple-glow); color: var(--text-secondary); }
+    .sb-toggle svg { width: 16px; height: 16px; }
 
-  /* ── Chat scroll area ── */
-  #chatApp .chat-box {
-    flex-grow: 1;
-    overflow-y: auto;
-    overflow-x: hidden;
-    padding: 24px 0 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    scroll-behavior: smooth;
-  }
-  #chatApp .chat-box::-webkit-scrollbar { width: 4px; }
-  #chatApp .chat-box::-webkit-scrollbar-track { background: transparent; }
-  #chatApp .chat-box::-webkit-scrollbar-thumb {
-    background: rgba(255,255,255,0.08);
-    border-radius: 4px;
-  }
+    .sb-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 12px 8px;
+    }
+    .sb-body::-webkit-scrollbar { width: 0; }
 
-  /* ── Welcome ── */
-  .welcome-screen {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    flex-grow: 1;
-    text-align: center;
-    padding: 40px 24px;
-    animation: welcomeIn 0.4s ease-out;
-    max-width: 560px;
-    margin: 0 auto;
-    width: 100%;
-  }
-  @keyframes welcomeIn {
-    from { opacity: 0; transform: translateY(16px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .welcome-logo {
-    width: 48px; height: 48px;
-    border-radius: 14px;
-    background: linear-gradient(135deg, #a855f7, #7c3aed);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    margin-bottom: 20px;
-  }
-  .welcome-logo svg { width: 24px; height: 24px; color: #fff; }
-  .welcome-heading {
-    font-size: 1.35rem;
-    font-weight: 700;
-    color: #f4f4f5;
-    margin-bottom: 6px;
-    letter-spacing: -0.02em;
-  }
-  .welcome-sub {
-    font-size: 0.88rem;
-    color: #71717a;
-    margin-bottom: 28px;
-    max-width: 340px;
-    line-height: 1.5;
-  }
-  .welcome-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-    width: 100%;
-    max-width: 420px;
-  }
-  .welcome-card {
-    appearance: none;
-    width: 100%;
-    padding: 14px 16px;
-    border-radius: 12px;
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-    cursor: pointer;
-    transition: all 0.2s ease;
-    text-align: left;
-    font-family: inherit;
-  }
-  .welcome-card:hover {
-    background: rgba(168,85,247,0.06);
-    border-color: rgba(168,85,247,0.15);
-  }
-  .welcome-card:focus-visible {
-    outline: none;
-    border-color: rgba(168,85,247,0.45);
-    box-shadow: 0 0 0 2px rgba(168,85,247,0.16);
-  }
-  .welcome-card-title {
-    font-size: 13px;
-    font-weight: 600;
-    color: #d4d4d8;
-    line-height: 1.3;
-    margin-bottom: 2px;
-  }
-  .welcome-card-hint {
-    font-size: 11.5px;
-    color: #52525b;
-  }
+    .sb-new-chat {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      width: 100%;
+      padding: 9px 12px;
+      border-radius: 8px;
+      border: 1px dashed var(--border-hover);
+      background: transparent;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      font-family: inherit;
+      transition: all 0.15s;
+      margin-bottom: 16px;
+    }
+    .sb-new-chat:hover { background: var(--purple-glow); border-color: var(--purple-border); color: var(--purple); }
+    .sb-new-chat svg { width: 15px; height: 15px; flex-shrink: 0; }
 
-  /* ── Message layout ── */
-  /* Centered column for all messages */
-  .msg-row {
-    max-width: 680px;
-    width: 100%;
-    margin: 0 auto;
-    padding: 0 24px;
-    display: flex;
-    opacity: 0;
-    animation: msgIn 0.25s ease-out forwards;
-  }
-  @keyframes msgIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
+    .sb-section-label {
+      font-size: 10px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--text-muted);
+      padding: 0 10px;
+      margin: 16px 0 6px;
+    }
+    .sb-nav-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+      color: var(--text-secondary);
+      font-size: 13px;
+      font-weight: 500;
+      transition: all 0.15s;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .sb-nav-item:hover { background: var(--purple-glow); color: var(--text); }
+    .sb-nav-item.active { background: var(--purple-glow); color: var(--purple); }
+    .sb-nav-item svg { width: 16px; height: 16px; flex-shrink: 0; }
 
-  /* User: right-aligned bubble */
-  .msg-row.user-row {
-    justify-content: flex-end;
-    padding-top: 8px;
-    padding-bottom: 2px;
-  }
-  .user-bubble {
-    background: #7c3aed;
-    color: #fff;
-    padding: 10px 16px;
-    border-radius: 18px 18px 4px 18px;
-    font-size: 14.5px;
-    line-height: 1.55;
-    max-width: 75%;
-    word-wrap: break-word;
-  }
+    .sb-bottom {
+      padding: 12px 8px;
+      border-top: 1px solid var(--border);
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .sb-user-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 12px;
+      border-radius: 8px;
+    }
+    .sb-user-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, #6366f1, var(--purple));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 700;
+      color: #fff;
+      flex-shrink: 0;
+    }
+    .sb-user-info { display: flex; flex-direction: column; min-width: 0; }
+    .sb-user-name { font-size: 12.5px; font-weight: 600; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sb-user-meta { font-size: 11px; color: var(--text-muted); }
 
-  /* Bot: left-aligned with small avatar */
-  .msg-row.bot-row {
-    justify-content: flex-start;
-    gap: 10px;
-    align-items: flex-start;
-    padding-top: 12px;
-    padding-bottom: 2px;
-  }
-  .bot-avatar {
-    width: 28px; height: 28px;
-    border-radius: 50%;
-    background: linear-gradient(135deg, #a855f7, #7c3aed);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-    margin-top: 1px;
-  }
-  .bot-avatar svg { width: 14px; height: 14px; color: #fff; }
+    .sb-mode-toggle {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .sb-mode-toggle:hover { background: var(--purple-glow); }
+    .sb-mode-toggle svg { width: 15px; height: 15px; color: var(--text-muted); }
+    .sb-mode-toggle .sb-text { font-size: 12px; color: var(--text-muted); }
 
-  .bot-content {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-    max-width: calc(100% - 38px);
-  }
+    /* ── Chat Area ── */
+    .chat-area {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+      height: 100vh;
+      background: var(--chat-bg);
+    }
 
-  .bot-text {
-    font-size: 14.5px;
-    line-height: 1.65;
-    color: #d4d4d8;
-    word-wrap: break-word;
-  }
+    /* ── Chat Header ── */
+    .chat-top-bar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 20px;
+      border-bottom: 1px solid var(--border);
+      min-height: 48px;
+      flex-shrink: 0;
+    }
+    .chat-top-bar-title {
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .chat-top-bar-title .status-dot {
+      width: 6px; height: 6px;
+      border-radius: 50%;
+      background: var(--green);
+    }
+    .chat-top-bar-actions { display: flex; gap: 6px; }
 
-  /* Cards area below text */
-  .bot-cards {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-    max-width: 480px;
-  }
+    /* ── Chat scroll area ── */
+    .chat-box {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+      padding: 24px 0 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      scroll-behavior: smooth;
+      position: relative;
+    }
+    .chat-box::-webkit-scrollbar { width: 4px; }
+    .chat-box::-webkit-scrollbar-track { background: transparent; }
+    .chat-box::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
+    .light-mode .chat-box::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); }
 
-  /* ── Feedback Buttons ── */
-  .feedback-row {
-    display: flex;
-    gap: 4px;
-    margin-top: 2px;
-  }
-  .feedback-btn {
-    background: none;
-    border: 1px solid transparent;
-    border-radius: 6px;
-    padding: 3px 6px;
-    cursor: pointer;
-    color: #52525b;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    font-size: 11px;
-    font-family: inherit;
-    transition: all 0.15s;
-  }
-  .feedback-btn:hover { color: #a1a1aa; border-color: rgba(255,255,255,0.08); }
-  .feedback-btn svg { width: 13px; height: 13px; }
-  .feedback-btn.voted { pointer-events: none; }
-  .feedback-btn.voted-up { color: #22c55e; }
-  .feedback-btn.voted-down { color: #ef4444; }
-  .light-mode .feedback-btn { color: #9ca3af; }
-  .light-mode .feedback-btn:hover { color: #6b7280; border-color: rgba(0,0,0,0.06); }
-  .light-mode .feedback-btn.voted-up { color: #16a34a; }
-  .light-mode .feedback-btn.voted-down { color: #dc2626; }
+    /* ── Welcome ── */
+    .welcome-screen {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      flex-grow: 1;
+      text-align: center;
+      padding: 40px 24px;
+      animation: welcomeIn 0.4s ease-out;
+      max-width: 560px;
+      margin: 0 auto;
+      width: 100%;
+    }
+    @keyframes welcomeIn {
+      from { opacity: 0; transform: translateY(16px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    .welcome-logo {
+      width: 52px; height: 52px;
+      border-radius: 16px;
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 20px;
+      box-shadow: 0 8px 32px rgba(168,85,247,0.2);
+    }
+    .welcome-logo svg { width: 26px; height: 26px; color: #fff; }
+    .welcome-heading {
+      font-size: 1.4rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 6px;
+      letter-spacing: -0.02em;
+    }
+    .welcome-sub {
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      margin-bottom: 28px;
+      max-width: 340px;
+      line-height: 1.5;
+    }
+    .welcome-login-hint {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 16px;
+    }
+    .welcome-login-hint a { color: var(--purple); font-weight: 500; }
+    .welcome-login-hint a:hover { text-decoration: underline; }
+    .welcome-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      width: 100%;
+      max-width: 420px;
+    }
+    .welcome-card {
+      appearance: none;
+      width: 100%;
+      padding: 14px 16px;
+      border-radius: 12px;
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      cursor: pointer;
+      transition: all 0.2s ease;
+      text-align: left;
+      font-family: inherit;
+    }
+    .welcome-card:hover { background: var(--purple-glow); border-color: var(--purple-border); }
+    .welcome-card:focus-visible { outline: none; border-color: rgba(168,85,247,0.45); box-shadow: 0 0 0 2px rgba(168,85,247,0.16); }
+    .welcome-card-title { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.3; margin-bottom: 2px; }
+    .light-mode .welcome-card-title { color: #1f2937; }
+    .welcome-card-hint { font-size: 11.5px; color: var(--text-muted); }
 
-  .feedback-details {
-    margin-top: 6px;
-    display: flex;
-    flex-direction: column;
-    gap: 7px;
-    max-width: 480px;
-  }
-  .feedback-reasons {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-  }
-  .feedback-reason-chip {
-    background: rgba(239,68,68,0.06);
-    border: 1px solid rgba(239,68,68,0.2);
-    color: #fca5a5;
-    border-radius: 999px;
-    padding: 4px 10px;
-    font-size: 11.5px;
-    font-family: inherit;
-    cursor: pointer;
-    transition: all 0.15s;
-  }
-  .feedback-reason-chip:hover {
-    background: rgba(239,68,68,0.12);
-    border-color: rgba(239,68,68,0.35);
-  }
-  .feedback-reason-chip.selected {
-    background: rgba(239,68,68,0.18);
-    border-color: rgba(239,68,68,0.5);
-  }
-  .feedback-comment {
-    width: 100%;
-    min-height: 62px;
-    max-height: 96px;
-    resize: vertical;
-    border-radius: 8px;
-    border: 1px solid rgba(255,255,255,0.1);
-    background: rgba(255,255,255,0.03);
-    color: #e4e4e7;
-    padding: 8px 10px;
-    font-size: 12.5px;
-    font-family: inherit;
-  }
-  .feedback-comment::placeholder { color: #71717a; }
-  .feedback-save {
-    align-self: flex-end;
-    border: 1px solid rgba(239,68,68,0.25);
-    background: rgba(239,68,68,0.08);
-    color: #fca5a5;
-    border-radius: 8px;
-    padding: 5px 10px;
-    font-size: 12px;
-    font-family: inherit;
-    cursor: pointer;
-  }
-  .feedback-save:disabled { opacity: 0.55; cursor: not-allowed; }
-  .light-mode .feedback-reason-chip { color: #dc2626; background: rgba(239,68,68,0.04); border-color: rgba(239,68,68,0.2); }
-  .light-mode .feedback-comment { border-color: #e5e7eb; background: #fff; color: #111827; }
-  .light-mode .feedback-comment::placeholder { color: #9ca3af; }
-  .light-mode .feedback-save { color: #dc2626; }
+    /* ── Message layout ── */
+    .msg-row {
+      max-width: 720px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 24px;
+      display: flex;
+      opacity: 0;
+      animation: msgIn 0.25s ease-out forwards;
+    }
+    @keyframes msgIn {
+      from { opacity: 0; transform: translateY(6px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
 
-  /* ── Thinking ── */
-  .thinking-row {
-    display: flex;
-    align-items: center;
-    gap: 5px;
-    padding: 4px 0;
-  }
-  .thinking-row .dot {
-    width: 5px; height: 5px;
-    border-radius: 50%;
-    background: #a855f7;
-    animation: dotBounce 1.4s ease-in-out infinite;
-  }
-  .thinking-row .dot:nth-child(2) { animation-delay: 0.15s; }
-  .thinking-row .dot:nth-child(3) { animation-delay: 0.3s; }
-  @keyframes dotBounce {
-    0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
-    40% { opacity: 1; transform: translateY(-3px); }
-  }
+    /* User: right-aligned */
+    .msg-row.user-row { justify-content: flex-end; padding-top: 8px; padding-bottom: 2px; }
+    .user-bubble {
+      background: var(--purple-dark);
+      color: #fff;
+      padding: 10px 16px;
+      border-radius: 18px 18px 4px 18px;
+      font-size: 14.5px;
+      line-height: 1.55;
+      max-width: 75%;
+      word-wrap: break-word;
+    }
 
-  /* ── Product Reference Bar ── */
-  .product-ref-bar {
-    max-width: 680px;
-    margin: 0 auto 6px;
-    display: none;
-    padding: 0;
-  }
-  .product-ref-bar.visible {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    animation: msgIn 0.2s ease-out forwards;
-  }
-  .product-ref-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 5px 10px 5px 10px;
-    border-radius: 8px;
-    background: rgba(168,85,247,0.1);
-    border: 1px solid rgba(168,85,247,0.2);
-    font-size: 12px;
-    font-weight: 500;
-    color: #c084fc;
-    max-width: 260px;
-  }
-  .product-ref-chip svg {
-    width: 12px;
-    height: 12px;
-    flex-shrink: 0;
-    color: #a855f7;
-  }
-  .product-ref-chip span {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .product-ref-remove {
-    background: none;
-    border: none;
-    color: #71717a;
-    cursor: pointer;
-    padding: 0;
-    margin-left: 2px;
-    display: flex;
-    align-items: center;
-    transition: color 0.15s;
-    flex-shrink: 0;
-  }
-  .product-ref-remove:hover { color: #ef4444; }
-  .product-ref-remove svg { width: 12px; height: 12px; }
+    /* Bot: left-aligned */
+    .msg-row.bot-row { justify-content: flex-start; gap: 10px; align-items: flex-start; padding-top: 12px; padding-bottom: 2px; }
+    .bot-avatar {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      background: linear-gradient(135deg, var(--purple), var(--purple-dark));
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+    .bot-avatar svg { width: 14px; height: 14px; color: #fff; }
+    .bot-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; max-width: calc(100% - 38px); }
+    .bot-text { font-size: 14.5px; line-height: 1.65; color: var(--text-secondary); word-wrap: break-word; }
+    .light-mode .bot-text { color: #374151; }
+    .bot-cards { display: flex; flex-direction: column; gap: 6px; max-width: 480px; }
 
-  .light-mode .product-ref-chip { background: rgba(168,85,247,0.06); border-color: rgba(168,85,247,0.15); color: #7c3aed; }
-  .light-mode .product-ref-chip svg { color: #7c3aed; }
-  .light-mode .product-ref-remove { color: #9ca3af; }
-  .light-mode .product-ref-remove:hover { color: #dc2626; }
+    /* ── Feedback ── */
+    .feedback-row { display: flex; gap: 4px; margin-top: 2px; }
+    .feedback-btn {
+      background: none; border: 1px solid transparent; border-radius: 6px;
+      padding: 3px 6px; cursor: pointer; color: var(--text-muted);
+      display: flex; align-items: center; gap: 4px; font-size: 11px;
+      font-family: inherit; transition: all 0.15s;
+    }
+    .feedback-btn:hover { color: var(--text-secondary); border-color: var(--border); }
+    .feedback-btn svg { width: 13px; height: 13px; }
+    .feedback-btn.voted { pointer-events: none; }
+    .feedback-btn.voted-up { color: var(--green); }
+    .feedback-btn.voted-down { color: var(--red); }
 
-  /* ── Suggestion Chips ── */
-  .suggestion-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    margin-top: 8px;
-    animation: msgIn 0.3s ease-out forwards;
-  }
-  .suggestion-chip {
-    display: inline-flex;
-    align-items: center;
-    gap: 4px;
-    padding: 6px 12px;
-    border-radius: 16px;
-    background: rgba(168,85,247,0.08);
-    border: 1px solid rgba(168,85,247,0.18);
-    color: #c084fc;
-    font-size: 12.5px;
-    font-weight: 500;
-    cursor: pointer;
-    transition: all 0.15s;
-    font-family: inherit;
-    white-space: nowrap;
-  }
-  .suggestion-chip:hover {
-    background: rgba(168,85,247,0.15);
-    border-color: rgba(168,85,247,0.3);
-    transform: translateY(-1px);
-  }
-  .suggestion-chip:active { transform: translateY(0); }
-  .suggestion-chip svg { width: 11px; height: 11px; flex-shrink: 0; }
-  .light-mode .suggestion-chip { background: rgba(168,85,247,0.05); border-color: rgba(168,85,247,0.12); color: #7c3aed; }
-  .light-mode .suggestion-chip:hover { background: rgba(168,85,247,0.1); border-color: rgba(168,85,247,0.25); }
+    .feedback-details { margin-top: 6px; display: flex; flex-direction: column; gap: 7px; max-width: 480px; }
+    .feedback-reasons { display: flex; flex-wrap: wrap; gap: 6px; }
+    .feedback-reason-chip {
+      background: rgba(239,68,68,0.06); border: 1px solid rgba(239,68,68,0.2);
+      color: var(--red-soft); border-radius: 999px; padding: 4px 10px;
+      font-size: 11.5px; font-family: inherit; cursor: pointer; transition: all 0.15s;
+    }
+    .feedback-reason-chip:hover { background: rgba(239,68,68,0.12); border-color: rgba(239,68,68,0.35); }
+    .feedback-reason-chip.selected { background: rgba(239,68,68,0.18); border-color: rgba(239,68,68,0.5); }
+    .feedback-comment {
+      width: 100%; min-height: 62px; max-height: 96px; resize: vertical;
+      border-radius: 8px; border: 1px solid var(--border);
+      background: var(--card-bg); color: var(--text); padding: 8px 10px;
+      font-size: 12.5px; font-family: inherit;
+    }
+    .feedback-comment::placeholder { color: var(--text-muted); }
+    .feedback-save {
+      align-self: flex-end; border: 1px solid rgba(239,68,68,0.25);
+      background: rgba(239,68,68,0.08); color: var(--red-soft);
+      border-radius: 8px; padding: 5px 10px; font-size: 12px;
+      font-family: inherit; cursor: pointer;
+    }
+    .feedback-save:disabled { opacity: 0.55; cursor: not-allowed; }
 
-  /* ── Input ── */
-  .chat-input-wrapper {
-    padding: 12px 24px 16px;
-    border-top: 1px solid rgba(255,255,255,0.04);
-  }
-  .chat-input-inner {
-    max-width: 680px;
-    margin: 0 auto;
-    display: flex;
-    align-items: flex-end;
-    gap: 10px;
-    background: #18181b;
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 14px;
-    padding: 4px 4px 4px 18px;
-    transition: border-color 0.2s ease, box-shadow 0.2s ease;
-  }
-  .chat-input-inner:focus-within {
-    border-color: rgba(168,85,247,0.3);
-    box-shadow: 0 0 0 2px rgba(168,85,247,0.06);
-  }
-  #chatInput {
-    flex-grow: 1;
-    border: none;
-    outline: none;
-    background: transparent;
-    color: #f4f4f5;
-    font-size: 14.5px;
-    font-family: inherit;
-    line-height: 1.5;
-    padding: 10px 0;
-    resize: none;
-    max-height: 140px;
-    overflow-y: auto;
-    min-height: 22px;
-  }
-  #chatInput::placeholder { color: #52525b; }
-  #chatInput::-webkit-scrollbar { width: 0; }
+    /* ── Thinking ── */
+    .thinking-row { display: flex; align-items: center; gap: 5px; padding: 4px 0; }
+    .thinking-row .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--purple); animation: dotBounce 1.4s ease-in-out infinite; }
+    .thinking-row .dot:nth-child(2) { animation-delay: 0.15s; }
+    .thinking-row .dot:nth-child(3) { animation-delay: 0.3s; }
+    @keyframes dotBounce {
+      0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
+      40% { opacity: 1; transform: translateY(-3px); }
+    }
 
-  .send-btn {
-    width: 34px; height: 34px;
-    border-radius: 10px;
-    border: none;
-    background: #7c3aed;
-    color: #fff;
-    cursor: pointer;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-    flex-shrink: 0;
-    padding: 0;
-    opacity: 0.4;
-  }
-  .send-btn svg { width: 16px; height: 16px; }
-  .send-btn.active { opacity: 1; }
-  .send-btn.active:hover { background: #6d28d9; transform: scale(1.04); }
-  .send-btn:active { transform: scale(0.94); }
-  .send-btn:disabled { opacity: 0.25; cursor: not-allowed; }
-  .stop-btn {
-    height: 34px;
-    border-radius: 10px;
-    border: 1px solid rgba(239,68,68,0.25);
-    background: rgba(239,68,68,0.08);
-    color: #fca5a5;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 0 10px;
-    font-family: inherit;
-    display: none;
-    align-items: center;
-  }
-  .stop-btn.visible { display: inline-flex; }
-  .stop-btn:hover { background: rgba(239,68,68,0.14); }
-  .light-mode .stop-btn { color: #dc2626; border-color: rgba(239,68,68,0.2); }
-  .send-btn.sending {
-    animation: pulse 1.8s ease-in-out infinite;
-  }
-  @keyframes pulse {
-    0%, 100% { opacity: 0.6; }
-    50% { opacity: 1; }
-  }
-  .input-hint {
-    text-align: center;
-    font-size: 11px;
-    color: #3f3f46;
-    margin-top: 6px;
-  }
+    /* ── Product Reference Bar ── */
+    .product-ref-bar { max-width: 720px; margin: 0 auto 6px; display: none; padding: 0; }
+    .product-ref-bar.visible { display: flex; flex-wrap: wrap; gap: 6px; animation: msgIn 0.2s ease-out forwards; }
+    .product-ref-chip {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 5px 10px; border-radius: 8px;
+      background: var(--purple-glow); border: 1px solid var(--purple-border);
+      font-size: 12px; font-weight: 500; color: #c084fc; max-width: 260px;
+    }
+    .product-ref-chip svg { width: 12px; height: 12px; flex-shrink: 0; color: var(--purple); }
+    .product-ref-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .product-ref-remove {
+      background: none; border: none; color: var(--text-muted); cursor: pointer;
+      padding: 0; margin-left: 2px; display: flex; align-items: center; transition: color 0.15s; flex-shrink: 0;
+    }
+    .product-ref-remove:hover { color: var(--red); }
+    .product-ref-remove svg { width: 12px; height: 12px; }
 
-  /* ── Scroll FAB ── */
-  .scroll-fab {
-    position: absolute;
-    bottom: 8px;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 30px; height: 30px;
-    border-radius: 50%;
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.08);
-    color: #a1a1aa;
-    cursor: pointer;
-    display: none;
-    align-items: center;
-    justify-content: center;
-    transition: all 0.15s ease;
-    z-index: 10;
-    backdrop-filter: blur(8px);
-  }
-  .scroll-fab:hover { background: rgba(255,255,255,0.1); }
-  .scroll-fab svg { width: 14px; height: 14px; }
+    /* ── Suggestion Chips ── */
+    .suggestion-chips { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; animation: msgIn 0.3s ease-out forwards; }
+    .suggestion-chip {
+      display: inline-flex; align-items: center; gap: 4px;
+      padding: 6px 12px; border-radius: 16px;
+      background: var(--purple-glow); border: 1px solid var(--purple-border);
+      color: #c084fc; font-size: 12.5px; font-weight: 500;
+      cursor: pointer; transition: all 0.15s; font-family: inherit; white-space: nowrap;
+    }
+    .suggestion-chip:hover { background: rgba(168,85,247,0.15); border-color: rgba(168,85,247,0.3); transform: translateY(-1px); }
+    .suggestion-chip:active { transform: translateY(0); }
+    .suggestion-chip svg { width: 11px; height: 11px; flex-shrink: 0; }
 
-  /* ── Error ── */
-  .error-msg {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 14px;
-    background: rgba(239,68,68,0.06);
-    border: 1px solid rgba(239,68,68,0.1);
-    border-radius: 10px;
-    font-size: 13px;
-    color: #fca5a5;
-  }
-  .error-msg svg { width: 16px; height: 16px; color: #ef4444; flex-shrink: 0; }
-  .retry-btn {
-    margin-left: auto;
-    padding: 4px 10px;
-    border-radius: 6px;
-    border: 1px solid rgba(239,68,68,0.15);
-    background: transparent;
-    color: #fca5a5;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 600;
-    font-family: inherit;
-    white-space: nowrap;
-    transition: background 0.15s ease;
-  }
-  .retry-btn:hover { background: rgba(239,68,68,0.08); }
+    /* ── Input ── */
+    .chat-input-wrapper {
+      padding: 12px 24px 16px;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+    .chat-input-inner {
+      max-width: 720px;
+      margin: 0 auto;
+      display: flex;
+      align-items: flex-end;
+      gap: 10px;
+      background: var(--sidebar-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 4px 4px 4px 18px;
+      transition: border-color 0.2s ease, box-shadow 0.2s ease;
+    }
+    .chat-input-inner:focus-within { border-color: rgba(168,85,247,0.3); box-shadow: 0 0 0 2px rgba(168,85,247,0.06); }
+    #chatInput {
+      flex-grow: 1; border: none; outline: none; background: transparent;
+      color: var(--text); font-size: 14.5px; font-family: inherit;
+      line-height: 1.5; padding: 10px 0; resize: none;
+      max-height: 140px; overflow-y: auto; min-height: 22px;
+    }
+    #chatInput::placeholder { color: var(--text-muted); }
+    #chatInput::-webkit-scrollbar { width: 0; }
+    .send-btn {
+      width: 34px; height: 34px; border-radius: 10px; border: none;
+      background: var(--purple-dark); color: #fff; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s ease; flex-shrink: 0; padding: 0; opacity: 0.4;
+    }
+    .send-btn svg { width: 16px; height: 16px; }
+    .send-btn.active { opacity: 1; }
+    .send-btn.active:hover { background: #6d28d9; transform: scale(1.04); }
+    .send-btn:active { transform: scale(0.94); }
+    .send-btn:disabled { opacity: 0.25; cursor: not-allowed; }
+    .stop-btn {
+      height: 34px; border-radius: 10px; border: 1px solid rgba(239,68,68,0.25);
+      background: rgba(239,68,68,0.08); color: var(--red-soft);
+      cursor: pointer; font-size: 12px; font-weight: 600; padding: 0 10px;
+      font-family: inherit; display: none; align-items: center;
+    }
+    .stop-btn.visible { display: inline-flex; }
+    .stop-btn:hover { background: rgba(239,68,68,0.14); }
+    .send-btn.sending { animation: pulse 1.8s ease-in-out infinite; }
+    @keyframes pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 1; } }
+    .input-hint { text-align: center; font-size: 11px; color: var(--text-faint); margin-top: 6px; }
 
-  /* ── Course Cards ── */
-  .course-card {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 10px;
-    overflow: hidden;
-    transition: all 0.2s ease;
-  }
-  .course-card:hover {
-    border-color: rgba(255,255,255,0.1);
-  }
-  .course-card.expanded {
-    border-color: rgba(168,85,247,0.2);
-  }
-  .course-card-header {
-    padding: 12px 14px;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    cursor: pointer;
-    user-select: none;
-  }
-  .course-chevron {
-    transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1);
-    color: #52525b;
-  }
-  .course-card.expanded .course-chevron {
-    transform: rotate(180deg);
-    color: #a855f7;
-  }
-  .course-details-wrapper {
-    display: grid;
-    grid-template-rows: 0fr;
-    transition: grid-template-rows 0.3s ease;
-  }
-  .course-card.expanded .course-details-wrapper {
-    grid-template-rows: 1fr;
-  }
-  .course-details-inner { overflow: hidden; }
-  .course-details-content {
-    padding: 0 14px 14px;
-    border-top: 1px solid transparent;
-  }
-  .course-card.expanded .course-details-content {
-    border-top-color: rgba(255,255,255,0.04);
-  }
+    /* ── Scroll FAB ── */
+    .scroll-fab {
+      position: absolute; bottom: 8px; left: 50%; transform: translateX(-50%);
+      width: 30px; height: 30px; border-radius: 50%;
+      background: rgba(255,255,255,0.06); border: 1px solid var(--border);
+      color: var(--text-secondary); cursor: pointer; display: none;
+      align-items: center; justify-content: center;
+      transition: all 0.15s ease; z-index: 10; backdrop-filter: blur(8px);
+    }
+    .scroll-fab:hover { background: rgba(255,255,255,0.1); }
+    .scroll-fab svg { width: 14px; height: 14px; }
 
-  /* ── Markdown ── */
-  .markdown-body { font-size: 14.5px; line-height: 1.65; color: #d4d4d8; }
-  .markdown-body p { margin: 0 0 10px; }
-  .markdown-body p:last-child { margin-bottom: 0; }
-  .markdown-body ul, .markdown-body ol { margin: 0 0 10px; padding-left: 20px; }
-  .markdown-body li { margin-bottom: 3px; }
-  .markdown-body strong { font-weight: 600; color: #f4f4f5; }
-  .markdown-body a { color: #c084fc; text-decoration: none; }
-  .markdown-body a:hover { text-decoration: underline; }
-  .markdown-body code {
-    background: rgba(168,85,247,0.08);
-    color: #d8b4fe;
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-size: 0.87em;
-    font-family: 'SF Mono', 'Fira Code', monospace;
-  }
-  .markdown-body pre {
-    background: rgba(0,0,0,0.25);
-    border: 1px solid rgba(255,255,255,0.04);
-    border-radius: 8px;
-    padding: 12px 14px;
-    overflow-x: auto;
-    margin: 0 0 10px;
-  }
-  .markdown-body pre code { background: transparent; padding: 0; font-size: 13px; color: #d4d4d8; }
-  .markdown-body blockquote {
-    border-left: 3px solid rgba(168,85,247,0.35);
-    margin: 0 0 10px;
-    padding: 6px 12px;
-    color: #a1a1aa;
-  }
-  .markdown-body h1, .markdown-body h2, .markdown-body h3 {
-    color: #f4f4f5;
-    margin: 16px 0 6px;
-    font-weight: 700;
-  }
-  .markdown-body h1:first-child, .markdown-body h2:first-child, .markdown-body h3:first-child { margin-top: 0; }
-  .markdown-body h1 { font-size: 1.2rem; }
-  .markdown-body h2 { font-size: 1.08rem; }
-  .markdown-body h3 { font-size: 0.98rem; }
-  .markdown-body hr { border: none; height: 1px; background: rgba(255,255,255,0.05); margin: 16px 0; }
-  .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13.5px; }
-  .markdown-body th { background: rgba(255,255,255,0.04); padding: 6px 10px; text-align: left; font-weight: 600; color: #e4e4e7; border-bottom: 1px solid rgba(255,255,255,0.06); }
-  .markdown-body td { padding: 6px 10px; border-bottom: 1px solid rgba(255,255,255,0.03); color: #a1a1aa; }
+    /* ── Error ── */
+    .error-msg {
+      display: flex; align-items: center; gap: 8px;
+      padding: 10px 14px; background: rgba(239,68,68,0.06);
+      border: 1px solid rgba(239,68,68,0.1); border-radius: 10px;
+      font-size: 13px; color: var(--red-soft);
+    }
+    .error-msg svg { width: 16px; height: 16px; color: var(--red); flex-shrink: 0; }
+    .retry-btn {
+      margin-left: auto; padding: 4px 10px; border-radius: 6px;
+      border: 1px solid rgba(239,68,68,0.15); background: transparent;
+      color: var(--red-soft); cursor: pointer; font-size: 12px; font-weight: 600;
+      font-family: inherit; white-space: nowrap; transition: background 0.15s ease;
+    }
+    .retry-btn:hover { background: rgba(239,68,68,0.08); }
 
-  /* Card animations */
-  @keyframes cardIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-  .animate-slide-in { animation: cardIn 0.35s ease-out forwards; }
-  .animate-slide-in:nth-child(2) { animation-delay: 0.06s; }
-  .animate-slide-in:nth-child(3) { animation-delay: 0.12s; }
-  .animate-slide-in:nth-child(4) { animation-delay: 0.18s; }
+    /* ── Course Cards ── */
+    .course-card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 10px; overflow: hidden; transition: all 0.2s ease;
+    }
+    .course-card:hover { border-color: var(--border-hover); }
+    .course-card.expanded { border-color: var(--purple-border); }
+    .course-card-header { padding: 12px 14px; display: flex; align-items: center; gap: 12px; cursor: pointer; user-select: none; }
+    .course-chevron { transition: transform 0.3s cubic-bezier(0.34,1.56,0.64,1); color: var(--text-muted); }
+    .course-card.expanded .course-chevron { transform: rotate(180deg); color: var(--purple); }
+    .course-details-wrapper { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.3s ease; }
+    .course-card.expanded .course-details-wrapper { grid-template-rows: 1fr; }
+    .course-details-inner { overflow: hidden; }
+    .course-details-content { padding: 0 14px 14px; border-top: 1px solid transparent; }
+    .course-card.expanded .course-details-content { border-top-color: var(--border); }
 
-  /* Legacy */
-  .btn-course { display: inline-block; border: none; padding: 6px 10px; border-radius: 4px; font-size: 13px; color: #fff; cursor: pointer; text-decoration: none; margin-right: 5px; }
-  .btn-course.btn-primary { background-color: #a855f7; }
-  .btn-course.btn-secondary { background-color: #3f3f46; }
+    /* ── Markdown ── */
+    .markdown-body { font-size: 14.5px; line-height: 1.65; color: var(--text-secondary); }
+    .light-mode .markdown-body { color: #374151; }
+    .markdown-body p { margin: 0 0 10px; }
+    .markdown-body p:last-child { margin-bottom: 0; }
+    .markdown-body ul, .markdown-body ol { margin: 0 0 10px; padding-left: 20px; }
+    .markdown-body li { margin-bottom: 3px; }
+    .markdown-body strong { font-weight: 600; color: var(--text); }
+    .markdown-body a { color: #c084fc; text-decoration: none; }
+    .markdown-body a:hover { text-decoration: underline; }
+    .markdown-body code {
+      background: var(--purple-glow); color: #d8b4fe;
+      padding: 1px 5px; border-radius: 4px; font-size: 0.87em;
+      font-family: 'SF Mono', 'Fira Code', monospace;
+    }
+    .markdown-body pre {
+      background: rgba(0,0,0,0.25); border: 1px solid var(--border);
+      border-radius: 8px; padding: 12px 14px; overflow-x: auto; margin: 0 0 10px;
+    }
+    .markdown-body pre code { background: transparent; padding: 0; font-size: 13px; color: var(--text-secondary); }
+    .markdown-body blockquote { border-left: 3px solid rgba(168,85,247,0.35); margin: 0 0 10px; padding: 6px 12px; color: var(--text-secondary); }
+    .markdown-body h1, .markdown-body h2, .markdown-body h3 { color: var(--text); margin: 16px 0 6px; font-weight: 700; }
+    .markdown-body h1:first-child, .markdown-body h2:first-child, .markdown-body h3:first-child { margin-top: 0; }
+    .markdown-body h1 { font-size: 1.2rem; }
+    .markdown-body h2 { font-size: 1.08rem; }
+    .markdown-body h3 { font-size: 0.98rem; }
+    .markdown-body hr { border: none; height: 1px; background: var(--border); margin: 16px 0; }
+    .markdown-body table { width: 100%; border-collapse: collapse; margin-bottom: 10px; font-size: 13.5px; }
+    .markdown-body th { background: var(--card-bg); padding: 6px 10px; text-align: left; font-weight: 600; color: var(--text); border-bottom: 1px solid var(--border); }
+    .markdown-body td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
+    .light-mode .markdown-body code { background: rgba(168,85,247,0.06); color: var(--purple-dark); }
+    .light-mode .markdown-body pre { background: #f3f4f6; border-color: #e5e7eb; }
+    .light-mode .markdown-body pre code { color: #374151; }
 
-  /* ── Light Mode ── */
-  .light-mode .content { background: #fafafa; }
-  .light-mode .user-bubble { background: #7c3aed; color: #fff; }
-  .light-mode .bot-text, .light-mode .markdown-body { color: #374151; }
-  .light-mode .markdown-body strong { color: #111827; }
-  .light-mode .markdown-body a { color: #7c3aed; }
-  .light-mode .markdown-body code { background: rgba(168,85,247,0.06); color: #7c3aed; }
-  .light-mode .markdown-body pre { background: #f3f4f6; border-color: #e5e7eb; }
-  .light-mode .markdown-body pre code { color: #374151; }
-  .light-mode .markdown-body blockquote { color: #6b7280; }
-  .light-mode .markdown-body h1, .light-mode .markdown-body h2, .light-mode .markdown-body h3 { color: #111827; }
-  .light-mode .markdown-body th { background: #f9fafb; color: #374151; border-bottom-color: #e5e7eb; }
-  .light-mode .markdown-body td { border-bottom-color: #f3f4f6; color: #6b7280; }
-  .light-mode .markdown-body hr { background: #e5e7eb; }
-  .light-mode .welcome-heading { color: #111827; }
-  .light-mode .welcome-sub { color: #6b7280; }
-  .light-mode .welcome-card { background: #fff; border-color: #e5e7eb; }
-  .light-mode .welcome-card:hover { background: rgba(168,85,247,0.03); border-color: rgba(168,85,247,0.15); }
-  .light-mode .welcome-card-title { color: #1f2937; }
-  .light-mode .welcome-card-hint { color: #9ca3af; }
-  .light-mode .chat-input-inner { background: #fff; border-color: #e5e7eb; }
-  .light-mode .chat-input-inner:focus-within { border-color: rgba(168,85,247,0.3); box-shadow: 0 0 0 2px rgba(168,85,247,0.06); }
-  .light-mode #chatInput { color: #111827; }
-  .light-mode #chatInput::placeholder { color: #9ca3af; }
-  .light-mode .input-hint { color: #d1d5db; }
-  .light-mode .course-card { background: #fff; border-color: #e5e7eb; }
-  .light-mode .course-card:hover { border-color: #d1d5db; }
-  .light-mode .course-card.expanded { border-color: rgba(168,85,247,0.2); }
-  .light-mode .course-card.expanded .course-details-content { border-top-color: #f3f4f6; }
-  .light-mode .course-chevron { color: #9ca3af; }
-  .light-mode .course-card.expanded .course-chevron { color: #a855f7; }
-  .light-mode .scroll-fab { background: rgba(0,0,0,0.04); border-color: rgba(0,0,0,0.06); color: #6b7280; }
-  .light-mode #chatApp .chat-box::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.08); }
-  .light-mode .error-msg { background: rgba(239,68,68,0.04); border-color: rgba(239,68,68,0.08); color: #dc2626; }
-  .light-mode .error-msg svg { color: #dc2626; }
-  .light-mode .retry-btn { color: #dc2626; border-color: rgba(239,68,68,0.12); }
-  .light-mode .chat-input-wrapper { border-top-color: rgba(0,0,0,0.04); }
+    /* Card animations */
+    @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-slide-in { animation: cardIn 0.35s ease-out forwards; }
+    .animate-slide-in:nth-child(2) { animation-delay: 0.06s; }
+    .animate-slide-in:nth-child(3) { animation-delay: 0.12s; }
+    .animate-slide-in:nth-child(4) { animation-delay: 0.18s; }
 
-  /* ── Profile Update Toast ── */
-  .profile-toast-stack {
-    position: fixed; top: 16px; right: 16px; z-index: 9999;
-    display: flex; flex-direction: column; gap: 8px; pointer-events: none;
-  }
-  .profile-toast {
-    background: rgba(30, 30, 47, 0.95);
-    border: 1px solid rgba(168,85,247,0.3);
-    border-left: 3px solid #a855f7;
-    border-radius: 12px;
-    padding: 12px 16px;
-    color: #d4d4d8;
-    font-size: 13px;
-    max-width: 360px;
-    animation: toastIn 0.3s ease-out;
-    backdrop-filter: blur(12px);
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-    pointer-events: all;
-    box-shadow: 0 8px 24px rgba(0,0,0,0.3);
-  }
-  .profile-toast .toast-icon {
-    width: 28px; height: 28px; border-radius: 8px;
-    background: rgba(168,85,247,0.15);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .profile-toast .toast-body { flex: 1; }
-  .profile-toast .toast-msg { font-weight: 500; line-height: 1.4; }
-  .profile-toast .toast-link {
-    display: inline-flex; align-items: center; gap: 4px;
-    color: #c084fc; text-decoration: none; font-weight: 600;
-    font-size: 12px; margin-top: 4px;
-  }
-  .profile-toast .toast-link:hover { text-decoration: underline; }
-  .profile-toast .toast-dismiss {
-    background: none; border: none; color: #71717a; cursor: pointer;
-    font-size: 16px; padding: 0; line-height: 1; flex-shrink: 0;
-  }
-  .profile-toast .toast-dismiss:hover { color: #d4d4d8; }
-  @keyframes toastIn {
-    from { opacity: 0; transform: translateX(40px); }
-    to { opacity: 1; transform: translateX(0); }
-  }
-  @keyframes toastOut {
-    from { opacity: 1; transform: translateX(0); }
-    to { opacity: 0; transform: translateX(40px); }
-  }
-  .light-mode .profile-toast { background: rgba(255,255,255,0.97); border-color: rgba(168,85,247,0.15); color: #374151; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
+    /* Legacy */
+    .btn-course { display: inline-block; border: none; padding: 6px 10px; border-radius: 4px; font-size: 13px; color: #fff; cursor: pointer; text-decoration: none; margin-right: 5px; }
+    .btn-course.btn-primary { background-color: var(--purple); }
+    .btn-course.btn-secondary { background-color: #3f3f46; }
 
-  /* ── Profile Confirm Card (inline in chat) ── */
-  .profile-confirm-card {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    background: rgba(168,85,247,0.06);
-    border: 1px solid rgba(168,85,247,0.15);
-    border-radius: 10px;
-    padding: 10px 14px;
-    margin: 8px 0;
-    font-size: 13.5px;
-    color: #c4b5fd;
-  }
-  .profile-confirm-icon { font-size: 16px; flex-shrink: 0; }
-  .profile-confirm-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
-  .profile-confirm-msg { font-weight: 500; }
-  .profile-confirm-link { font-size: 12px; color: #a855f7; text-decoration: none; }
-  .profile-confirm-link:hover { text-decoration: underline; }
-  .profile-undo-btn {
-    background: none;
-    border: 1px solid rgba(239,68,68,0.25);
-    color: #fca5a5;
-    font-size: 12px;
-    padding: 4px 10px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-    transition: all 0.15s;
-  }
-  .profile-undo-btn:hover { background: rgba(239,68,68,0.1); color: #f87171; }
-  .profile-undo-btn.undone {
-    border-color: rgba(113,113,122,0.2);
-    color: #71717a;
-    cursor: default;
-    pointer-events: none;
-  }
-  .profile-confirm-actions { display: flex; gap: 6px; flex-shrink: 0; }
-  .profile-gem-btn {
-    background: #7c3aed;
-    border: none;
-    color: #fff;
-    font-size: 12px;
-    font-weight: 600;
-    padding: 5px 14px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-    transition: all 0.15s;
-  }
-  .profile-gem-btn:hover { background: #6d28d9; }
-  .profile-gem-btn:disabled { opacity: 0.5; cursor: default; }
-  .profile-nejtak-btn {
-    background: none;
-    border: 1px solid rgba(113,113,122,0.25);
-    color: #a1a1aa;
-    font-size: 12px;
-    padding: 5px 12px;
-    border-radius: 6px;
-    cursor: pointer;
-    font-family: inherit;
-    white-space: nowrap;
-    transition: all 0.15s;
-  }
-  .profile-nejtak-btn:hover { background: rgba(255,255,255,0.05); color: #f4f4f5; }
-  .ui-card { flex-wrap: wrap; }
-  .ui-card .profile-confirm-body { width: 100%; }
-  .ui-card .profile-confirm-actions { margin-top: 10px; width: 100%; justify-content: flex-end; }
-  .ui-card-tag {
-    display: inline-block;
-    background: rgba(168,85,247,0.12);
-    color: #c4b5fd;
-    font-size: 12px;
-    padding: 3px 10px;
-    border-radius: 5px;
-    font-weight: 500;
-  }
-  .ui-card-fields {
-    display: flex;
-    gap: 10px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-  }
-  .ui-field-group {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-  }
-  .ui-field-label {
-    font-size: 11px;
-    color: #71717a;
-    font-weight: 500;
-  }
-  .ui-field-hint {
-    font-size: 10px;
-    color: #52525b;
-    font-style: italic;
-  }
-  .ui-card-choices {
-    display: flex;
-    gap: 6px;
-    flex-wrap: wrap;
-    margin-top: 8px;
-  }
-  .ui-choice { font-size: 12px !important; padding: 5px 12px !important; }
-  .profile-followup { margin-top: 8px; padding-top: 8px; border-top: 1px solid rgba(255,255,255,0.06); }
-  .pf-input {
-    background: rgba(255,255,255,0.05);
-    border: 1px solid rgba(255,255,255,0.1);
-    color: #e4e4e7;
-    font-size: 12px;
-    padding: 5px 8px;
-    border-radius: 6px;
-    width: 90px;
-    font-family: inherit;
-  }
-  .pf-input::placeholder { color: #52525b; }
-  .pf-input:focus { outline: none; border-color: rgba(168,85,247,0.4); }
-  .light-mode .profile-confirm-card { background: rgba(168,85,247,0.04); border-color: rgba(168,85,247,0.12); color: #6b21a8; }
-  .light-mode .profile-undo-btn { color: #dc2626; border-color: rgba(220,38,38,0.2); }
+    /* ── Profile Update Toast ── */
+    .profile-toast-stack {
+      position: fixed; top: 16px; right: 16px; z-index: 9999;
+      display: flex; flex-direction: column; gap: 8px; pointer-events: none;
+    }
+    .profile-toast {
+      background: rgba(30, 30, 47, 0.95); border: 1px solid rgba(168,85,247,0.3);
+      border-left: 3px solid var(--purple); border-radius: 12px;
+      padding: 12px 16px; color: var(--text-secondary); font-size: 13px;
+      max-width: 360px; animation: toastIn 0.3s ease-out;
+      backdrop-filter: blur(12px); display: flex; align-items: flex-start;
+      gap: 10px; pointer-events: all; box-shadow: 0 8px 24px rgba(0,0,0,0.3);
+    }
+    .profile-toast .toast-icon {
+      width: 28px; height: 28px; border-radius: 8px;
+      background: rgba(168,85,247,0.15);
+      display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+    }
+    .profile-toast .toast-body { flex: 1; }
+    .profile-toast .toast-msg { font-weight: 500; line-height: 1.4; }
+    .profile-toast .toast-link {
+      display: inline-flex; align-items: center; gap: 4px;
+      color: #c084fc; text-decoration: none; font-weight: 600;
+      font-size: 12px; margin-top: 4px;
+    }
+    .profile-toast .toast-link:hover { text-decoration: underline; }
+    .profile-toast .toast-dismiss { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 16px; padding: 0; line-height: 1; flex-shrink: 0; }
+    .profile-toast .toast-dismiss:hover { color: var(--text-secondary); }
+    @keyframes toastIn { from { opacity: 0; transform: translateX(40px); } to { opacity: 1; transform: translateX(0); } }
+    @keyframes toastOut { from { opacity: 1; transform: translateX(0); } to { opacity: 0; transform: translateX(40px); } }
+    .light-mode .profile-toast { background: rgba(255,255,255,0.97); border-color: rgba(168,85,247,0.15); color: #374151; box-shadow: 0 8px 24px rgba(0,0,0,0.08); }
 
-  /* ── Responsive ── */
-  @media (max-width: 768px) {
-    .msg-row { padding: 0 16px; }
-    .chat-input-wrapper { padding: 10px 16px 14px; }
-    .welcome-screen { padding: 32px 20px; }
-    .welcome-grid { grid-template-columns: 1fr; max-width: 280px; }
-    .user-bubble { max-width: 85%; }
-    .bot-avatar { width: 24px; height: 24px; }
-    .bot-avatar svg { width: 12px; height: 12px; }
-  }
-  @media (max-width: 480px) {
-    .msg-row { padding: 0 12px; }
-    .chat-input-wrapper { padding: 8px 12px 12px; }
-    .chat-input-inner { padding: 3px 3px 3px 14px; border-radius: 12px; }
-    .user-bubble, .bot-text, .markdown-body { font-size: 14px; }
-  }
-</style>
-{% endblock %}
+    /* ── Profile Confirm Card ── */
+    .profile-confirm-card {
+      display: flex; align-items: center; gap: 10px;
+      background: var(--purple-glow); border: 1px solid rgba(168,85,247,0.15);
+      border-radius: 10px; padding: 10px 14px; margin: 8px 0;
+      font-size: 13.5px; color: #c4b5fd;
+    }
+    .profile-confirm-icon { font-size: 16px; flex-shrink: 0; }
+    .profile-confirm-body { flex: 1; display: flex; flex-direction: column; gap: 2px; }
+    .profile-confirm-msg { font-weight: 500; }
+    .profile-confirm-link { font-size: 12px; color: var(--purple); text-decoration: none; }
+    .profile-confirm-link:hover { text-decoration: underline; }
+    .profile-undo-btn {
+      background: none; border: 1px solid rgba(239,68,68,0.25); color: var(--red-soft);
+      font-size: 12px; padding: 4px 10px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; white-space: nowrap; transition: all 0.15s;
+    }
+    .profile-undo-btn:hover { background: rgba(239,68,68,0.1); color: #f87171; }
+    .profile-undo-btn.undone { border-color: rgba(113,113,122,0.2); color: var(--text-muted); cursor: default; pointer-events: none; }
+    .profile-confirm-actions { display: flex; gap: 6px; flex-shrink: 0; }
+    .profile-gem-btn {
+      background: var(--purple-dark); border: none; color: #fff;
+      font-size: 12px; font-weight: 600; padding: 5px 14px; border-radius: 6px;
+      cursor: pointer; font-family: inherit; white-space: nowrap; transition: all 0.15s;
+    }
+    .profile-gem-btn:hover { background: #6d28d9; }
+    .profile-gem-btn:disabled { opacity: 0.5; cursor: default; }
+    .profile-nejtak-btn {
+      background: none; border: 1px solid rgba(113,113,122,0.25); color: var(--text-secondary);
+      font-size: 12px; padding: 5px 12px; border-radius: 6px; cursor: pointer;
+      font-family: inherit; white-space: nowrap; transition: all 0.15s;
+    }
+    .profile-nejtak-btn:hover { background: rgba(255,255,255,0.05); color: var(--text); }
+    .ui-card { flex-wrap: wrap; }
+    .ui-card .profile-confirm-body { width: 100%; }
+    .ui-card .profile-confirm-actions { margin-top: 10px; width: 100%; justify-content: flex-end; }
+    .ui-card-tag {
+      display: inline-block; background: rgba(168,85,247,0.12); color: #c4b5fd;
+      font-size: 12px; padding: 3px 10px; border-radius: 5px; font-weight: 500;
+    }
+    .ui-card-fields { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 10px; }
+    .ui-field-group { display: flex; flex-direction: column; gap: 3px; }
+    .ui-field-label { font-size: 11px; color: var(--text-muted); font-weight: 500; }
+    .ui-field-hint { font-size: 10px; color: var(--text-muted); font-style: italic; }
+    .ui-card-choices { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+    .ui-choice { font-size: 12px !important; padding: 5px 12px !important; }
+    .profile-followup { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+    .pf-input {
+      background: rgba(255,255,255,0.05); border: 1px solid var(--border);
+      color: var(--text); font-size: 12px; padding: 5px 8px; border-radius: 6px;
+      width: 90px; font-family: inherit;
+    }
+    .pf-input::placeholder { color: var(--text-muted); }
+    .pf-input:focus { outline: none; border-color: rgba(168,85,247,0.4); }
 
-{% block content %}
-<div id="chatApp" aria-label="Kursusrådgiver">
-  <div class="chat-container">
-    <div class="chat-header">
-      {% if session.get('user') %}
-      <button class="new-chat-btn" id="newChatBtn" onclick="startNewConversation()" title="Ny samtale">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>Ny samtale</span>
-      </button>
-      {% endif %}
-    </div>
-    <div class="chat-box" id="chatBox" role="log" aria-live="polite">
-      <div class="welcome-screen" id="welcomeScreen">
-        <div class="welcome-logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+    /* ── Responsive ── */
+    @media (max-width: 768px) {
+      .sidebar { position: fixed; left: 0; top: 0; height: 100vh; z-index: 200; transform: translateX(-100%); transition: transform 0.25s ease; }
+      .sidebar.mobile-open { transform: translateX(0); }
+      .sidebar.collapsed { transform: translateX(-100%); }
+      .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199; }
+      .mobile-overlay.visible { display: block; }
+      .mobile-hamburger { display: flex !important; }
+      .msg-row { padding: 0 16px; }
+      .chat-input-wrapper { padding: 10px 16px 14px; }
+      .welcome-screen { padding: 32px 20px; }
+      .welcome-grid { grid-template-columns: 1fr; max-width: 280px; }
+      .user-bubble { max-width: 85%; }
+      .bot-avatar { width: 24px; height: 24px; }
+      .bot-avatar svg { width: 12px; height: 12px; }
+    }
+    @media (min-width: 769px) {
+      .mobile-hamburger { display: none !important; }
+      .mobile-overlay { display: none !important; }
+    }
+    @media (max-width: 480px) {
+      .msg-row { padding: 0 12px; }
+      .chat-input-wrapper { padding: 8px 12px 12px; }
+      .chat-input-inner { padding: 3px 3px 3px 14px; border-radius: 12px; }
+      .user-bubble, .bot-text, .markdown-body { font-size: 14px; }
+    }
+
+    .mobile-hamburger {
+      width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border);
+      background: transparent; color: var(--text-secondary); cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .mobile-hamburger:hover { background: var(--purple-glow); }
+    .mobile-hamburger svg { width: 18px; height: 18px; }
+  </style>
+</head>
+<body>
+  <div class="app-layout">
+    <!-- Mobile overlay -->
+    <div class="mobile-overlay" id="mobileOverlay" onclick="closeMobileSidebar()"></div>
+
+    <!-- Sidebar -->
+    <aside class="sidebar" id="sidebar">
+      <div class="sb-header">
+        <div class="sb-logo">
+          <div class="sb-logo-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <span class="sb-logo-text">AiLeadz</span>
         </div>
-        <div class="welcome-heading">Hvad kan jeg hjælpe med?</div>
-        <div class="welcome-sub">Find kurser, sammenlign priser og vælg det rigtige forløb.</div>
-        {% if logged_in_user %}
-        <div style="font-size: 12px; color: #a855f7; margin-bottom: 16px; opacity: 0.85;">Logget ind som {{ logged_in_user | e }} — jeg kan tilpasse anbefalinger til din profil</div>
-        {% else %}
-        <div style="font-size: 12px; color: #71717a; margin-bottom: 16px;"><a href="/login" style="color: #a855f7; text-decoration: none;">Log ind</a> for personlige anbefalinger</div>
+        <button class="sb-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Fold sidebar">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+        </button>
+      </div>
+
+      <div class="sb-body">
+        {% if session.get('user') %}
+        <button class="sb-new-chat" onclick="startNewConversation()" title="Ny samtale">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          <span class="sb-text">Ny samtale</span>
+        </button>
         {% endif %}
-        <div class="welcome-grid">
-          <button class="welcome-card" type="button" onclick="sendFromChip('Vis mig populære kurser')" aria-label="Start med populære kurser">
-            <div class="welcome-card-title">Populære kurser</div>
-            <div class="welcome-card-hint">Se hvad andre vælger</div>
+
+        <div class="sb-section-label">Navigation</div>
+        <a href="/dashboard" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+          <span class="sb-text">Dashboard</span>
+        </a>
+        <a href="/app1/" class="sb-nav-item active">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="sb-text">AI Chat</span>
+        </a>
+        <a href="/analytics" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+          <span class="sb-text">Analyse</span>
+        </a>
+        <a href="/profile" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+          <span class="sb-text">Profil / CV</span>
+        </a>
+        <a href="/indstillinger" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span class="sb-text">Indstillinger</span>
+        </a>
+        {% if session.get('role') == 'admin' %}
+        <div class="sb-section-label">Admin</div>
+        <a href="/admin/notifications" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          <span class="sb-text">Notifikationer</span>
+        </a>
+        <a href="/app1/adminlog" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+          <span class="sb-text">Debug Log</span>
+        </a>
+        {% endif %}
+      </div>
+
+      <div class="sb-bottom">
+        <div class="sb-mode-toggle" onclick="toggleTheme()" title="Skift tema">
+          <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+          <span class="sb-text">Skift tema</span>
+        </div>
+        {% if session.get('user') %}
+        <div class="sb-user-row">
+          <div class="sb-user-avatar">{{ session.get('user', '?')[0] | upper }}</div>
+          <div class="sb-user-info">
+            <div class="sb-user-name">{{ session.get('user') | e }}</div>
+            <div class="sb-user-meta"><a href="/logout" style="color:var(--text-muted);">Log ud</a></div>
+          </div>
+        </div>
+        {% else %}
+        <a href="/login" class="sb-nav-item">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><polyline points="10 17 15 12 10 7"/><line x1="15" y1="12" x2="3" y2="12"/></svg>
+          <span class="sb-text">Log ind</span>
+        </a>
+        {% endif %}
+      </div>
+    </aside>
+
+    <!-- Chat Area -->
+    <div class="chat-area">
+      <div class="chat-top-bar">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <button class="mobile-hamburger" onclick="openMobileSidebar()">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
           </button>
-          <button class="welcome-card" type="button" onclick="sendFromChip('Hvilke kurser er gratis?')" aria-label="Start med gratis kurser">
-            <div class="welcome-card-title">Gratis kurser</div>
-            <div class="welcome-card-hint">Kom i gang uden omkostninger</div>
-          </button>
-          <button class="welcome-card" type="button" onclick="sendFromChip('Kurser inden for ledelse')" aria-label="Start med ledelseskurser">
-            <div class="welcome-card-title">Ledelseskurser</div>
-            <div class="welcome-card-hint">Udvikl dine lederevner</div>
-          </button>
+          <div class="chat-top-bar-title">
+            <span class="status-dot"></span>
+            Kursusrådgiver
+          </div>
+        </div>
+        <div class="chat-top-bar-actions">
           {% if session.get('user') %}
-          <button class="welcome-card" type="button" onclick="sendFromChip('Opdater mit CV — jeg vil gerne fortælle om min baggrund og erfaring')" aria-label="Opdater dit CV via chat">
-            <div class="welcome-card-title">Opdater dit CV</div>
-            <div class="welcome-card-hint">Fortæl mig om din erfaring</div>
-          </button>
-          {% else %}
-          <button class="welcome-card" type="button" onclick="sendFromChip('Hjælp mig med at vælge et kursus')" aria-label="Start med personlig rådgivning">
-            <div class="welcome-card-title">Personlig rådgivning</div>
-            <div class="welcome-card-hint">Jeg hjælper dig med at vælge</div>
+          <button class="sb-new-chat" style="margin:0;width:auto;border-style:solid;" onclick="startNewConversation()" title="Ny samtale">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>Ny samtale</span>
           </button>
           {% endif %}
         </div>
       </div>
-    </div>
 
-    <button class="scroll-fab" id="scrollFab" onclick="scrollToBottom()" aria-label="Scroll ned">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-    </button>
-
-    <div class="chat-input-wrapper">
-      <div class="product-ref-bar" id="productRefBar"></div>
-      <div class="chat-input-inner">
-        <textarea id="chatInput" rows="1" placeholder="Stil et spørgsmål..." aria-label="Skriv en besked"></textarea>
-        <button class="stop-btn" id="stopBtn" type="button" onclick="stopStreaming()" aria-label="Stop generering">Stop</button>
-        <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-        </button>
+      <div class="chat-box" id="chatBox" role="log" aria-live="polite">
+        <div class="welcome-screen" id="welcomeScreen">
+          <div class="welcome-logo">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          </div>
+          <div class="welcome-heading">Hvad kan jeg hjælpe med?</div>
+          <div class="welcome-sub">Find kurser, sammenlign priser og vælg det rigtige forløb.</div>
+          {% if logged_in_user %}
+          <div class="welcome-login-hint" style="color:var(--purple);opacity:0.85;">Logget ind som {{ logged_in_user | e }} — jeg kan tilpasse anbefalinger til din profil</div>
+          {% else %}
+          <div class="welcome-login-hint"><a href="/login">Log ind</a> for personlige anbefalinger</div>
+          {% endif %}
+          <div class="welcome-grid">
+            <button class="welcome-card" type="button" onclick="sendFromChip('Vis mig populære kurser')" aria-label="Start med populære kurser">
+              <div class="welcome-card-title">Populære kurser</div>
+              <div class="welcome-card-hint">Se hvad andre vælger</div>
+            </button>
+            <button class="welcome-card" type="button" onclick="sendFromChip('Hvilke kurser er gratis?')" aria-label="Start med gratis kurser">
+              <div class="welcome-card-title">Gratis kurser</div>
+              <div class="welcome-card-hint">Kom i gang uden omkostninger</div>
+            </button>
+            <button class="welcome-card" type="button" onclick="sendFromChip('Kurser inden for ledelse')" aria-label="Start med ledelseskurser">
+              <div class="welcome-card-title">Ledelseskurser</div>
+              <div class="welcome-card-hint">Udvikl dine lederevner</div>
+            </button>
+            {% if session.get('user') %}
+            <button class="welcome-card" type="button" onclick="sendFromChip('Opdater mit CV — jeg vil gerne fortælle om min baggrund og erfaring')" aria-label="Opdater dit CV via chat">
+              <div class="welcome-card-title">Opdater dit CV</div>
+              <div class="welcome-card-hint">Fortæl mig om din erfaring</div>
+            </button>
+            {% else %}
+            <button class="welcome-card" type="button" onclick="sendFromChip('Hjælp mig med at vælge et kursus')" aria-label="Start med personlig rådgivning">
+              <div class="welcome-card-title">Personlig rådgivning</div>
+              <div class="welcome-card-hint">Jeg hjælper dig med at vælge</div>
+            </button>
+            {% endif %}
+          </div>
+        </div>
       </div>
-      <div class="input-hint">AI kan lave fejl. Bekræft altid vigtig information.</div>
+
+      <button class="scroll-fab" id="scrollFab" onclick="scrollToBottom()" aria-label="Scroll ned">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+      </button>
+
+      <div class="chat-input-wrapper">
+        <div class="product-ref-bar" id="productRefBar"></div>
+        <div class="chat-input-inner">
+          <textarea id="chatInput" rows="1" placeholder="Stil et spørgsmål..." aria-label="Skriv en besked"></textarea>
+          <button class="stop-btn" id="stopBtn" type="button" onclick="stopStreaming()" aria-label="Stop generering">Stop</button>
+          <button class="send-btn" id="sendBtn" onclick="sendMessage()" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
+          </button>
+        </div>
+        <div class="input-hint">AI kan lave fejl. Bekræft altid vigtig information.</div>
+      </div>
     </div>
   </div>
-</div>
-{% endblock %}
 
-{% block extra_scripts %}
-{{ super() }}
-<script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-<script>
-(function() {
-  'use strict';
+  <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+  <script>
+  (function() {
+    'use strict';
 
-  // ── Profile Update Toast (stacking, section-aware) ──
-  let _toastStack = null;
-  function _getToastStack() {
-    if (!_toastStack) {
-      _toastStack = document.createElement('div');
-      _toastStack.className = 'profile-toast-stack';
-      document.body.appendChild(_toastStack);
-    }
-    return _toastStack;
-  }
+    // ── Sidebar ──
+    const sidebar = document.getElementById('sidebar');
+    const overlay = document.getElementById('mobileOverlay');
 
-  const _sectionIcons = {
-    skills: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-    experience: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
-    education: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg>',
-    courses: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff512f" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
-    summary: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2575fc" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
-  };
+    // Restore sidebar state
+    if (localStorage.getItem('sb-collapsed') === '1') sidebar.classList.add('collapsed');
 
-  function showProfileToast(msg, section) {
-    const stack = _getToastStack();
-    const toast = document.createElement('div');
-    toast.className = 'profile-toast';
-    const icon = _sectionIcons[section] || _sectionIcons.summary;
-    const anchor = section ? `#section-${section}` : '';
-    const safeMsg = msg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-    toast.innerHTML =
-      `<div class="toast-icon">${icon}</div>` +
-      `<div class="toast-body">` +
-        `<div class="toast-msg">${safeMsg}</div>` +
-        `<a class="toast-link" href="/profile${anchor}" target="_blank">` +
-          `Vis i profil <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>` +
-        `</a>` +
-      `</div>` +
-      `<button class="toast-dismiss" onclick="this.closest('.profile-toast').remove()">&times;</button>`;
-    stack.appendChild(toast);
-    // Auto-dismiss after 5s
-    setTimeout(() => {
-      if (toast.parentNode) {
-        toast.style.animation = 'toastOut 0.3s ease-in forwards';
-        setTimeout(() => toast.remove(), 300);
-      }
-    }, 5000);
-    // Max 3 visible toasts
-    while (stack.children.length > 3) stack.firstChild.remove();
-  }
+    window.toggleSidebar = function() {
+      sidebar.classList.toggle('collapsed');
+      localStorage.setItem('sb-collapsed', sidebar.classList.contains('collapsed') ? '1' : '0');
+    };
+    window.openMobileSidebar = function() {
+      sidebar.classList.remove('collapsed');
+      sidebar.classList.add('mobile-open');
+      overlay.classList.add('visible');
+    };
+    window.closeMobileSidebar = function() {
+      sidebar.classList.remove('mobile-open');
+      overlay.classList.remove('visible');
+    };
 
-  // ── Confirm profile update (called from inline confirm cards) ──
-  window.confirmProfileUpdate = async function(btn, confirmData) {
-    if (btn.disabled) return;
-    btn.disabled = true;
-    btn.textContent = '...';
-    try {
-      const resp = await fetch('/app1/confirm_profile_update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(confirmData)
-      });
-      const data = await resp.json();
-      const card = btn.closest('.profile-confirm-card');
-      if (data.status === 'success') {
-        btn.textContent = 'Gemt ✓';
-        btn.style.background = '#16a34a';
-        if (card) {
-          card.querySelector('.profile-confirm-msg').innerHTML = '✓ ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[✓?]\s*/, '');
-          const nejBtn = card.querySelector('.profile-nejtak-btn');
-          if (nejBtn) nejBtn.remove();
-          // Show follow-up fields for experience (duration + location)
-          if (confirmData.action === 'add_experience') {
-            _showExperienceFollowUp(card, confirmData);
-          }
-        }
-        showProfileToast(data.message || 'Profil opdateret', confirmData.section || 'summary');
+    // ── Theme ──
+    const themeIcon = document.getElementById('themeIcon');
+    function applyTheme(mode) {
+      document.body.classList.toggle('light-mode', mode === 'light');
+      if (mode === 'light') {
+        themeIcon.innerHTML = '<circle cx="12" cy="12" r="5"/><line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/><line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/><line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/><line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>';
       } else {
+        themeIcon.innerHTML = '<path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>';
+      }
+    }
+    applyTheme(localStorage.getItem('mode') || 'dark');
+    window.toggleTheme = function() {
+      const next = document.body.classList.contains('light-mode') ? 'dark' : 'light';
+      localStorage.setItem('mode', next);
+      applyTheme(next);
+    };
+
+    // ── Profile Update Toast ──
+    let _toastStack = null;
+    function _getToastStack() {
+      if (!_toastStack) {
+        _toastStack = document.createElement('div');
+        _toastStack.className = 'profile-toast-stack';
+        document.body.appendChild(_toastStack);
+      }
+      return _toastStack;
+    }
+    const _sectionIcons = {
+      skills: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
+      experience: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>',
+      education: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg>',
+      courses: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff512f" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
+      summary: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2575fc" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
+    };
+
+    function showProfileToast(msg, section) {
+      const stack = _getToastStack();
+      const toast = document.createElement('div');
+      toast.className = 'profile-toast';
+      const icon = _sectionIcons[section] || _sectionIcons.summary;
+      const anchor = section ? `#section-${section}` : '';
+      const safeMsg = msg.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+      toast.innerHTML =
+        `<div class="toast-icon">${icon}</div>` +
+        `<div class="toast-body">` +
+          `<div class="toast-msg">${safeMsg}</div>` +
+          `<a class="toast-link" href="/profile${anchor}" target="_blank">Vis i profil <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a>` +
+        `</div>` +
+        `<button class="toast-dismiss" onclick="this.closest('.profile-toast').remove()">&times;</button>`;
+      stack.appendChild(toast);
+      setTimeout(() => {
+        if (toast.parentNode) {
+          toast.style.animation = 'toastOut 0.3s ease-in forwards';
+          setTimeout(() => toast.remove(), 300);
+        }
+      }, 5000);
+      while (stack.children.length > 3) stack.firstChild.remove();
+    }
+
+    // ── Confirm profile update ──
+    window.confirmProfileUpdate = async function(btn, confirmData) {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      try {
+        const resp = await fetch('/app1/confirm_profile_update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(confirmData)
+        });
+        const data = await resp.json();
+        const card = btn.closest('.profile-confirm-card');
+        if (data.status === 'success') {
+          btn.textContent = 'Gemt \u2713';
+          btn.style.background = '#16a34a';
+          if (card) {
+            card.querySelector('.profile-confirm-msg').innerHTML = '\u2713 ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[\u2713?]\s*/, '');
+            const nejBtn = card.querySelector('.profile-nejtak-btn');
+            if (nejBtn) nejBtn.remove();
+            if (confirmData.action === 'add_experience') _showExperienceFollowUp(card, confirmData);
+          }
+          showProfileToast(data.message || 'Profil opdateret', confirmData.section || 'summary');
+        } else {
+          btn.textContent = 'Fejl';
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
+        }
+      } catch (e) {
+        console.error('Confirm error:', e);
         btn.textContent = 'Fejl';
-        btn.disabled = false;
         setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
       }
-    } catch (e) {
-      console.error('Confirm error:', e);
-      btn.textContent = 'Fejl';
-      setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
-    }
-  };
-
-  function _showExperienceFollowUp(card, confirmData) {
-    const followUp = document.createElement('div');
-    followUp.className = 'profile-followup';
-    followUp.innerHTML =
-      `<div style="font-size:12px;color:#a1a1aa;margin-bottom:6px;">Vil du tilføje flere detaljer?</div>` +
-      `<div style="display:flex;gap:6px;flex-wrap:wrap;">` +
-        `<input type="number" placeholder="Startår" min="1970" max="2030" class="pf-input" id="pf-start-${Date.now()}">` +
-        `<input type="number" placeholder="Slutår" min="1970" max="2030" class="pf-input" id="pf-end-${Date.now()}">` +
-      `</div>` +
-      `<div style="display:flex;gap:6px;margin-top:6px;">` +
-        `<button class="profile-gem-btn pf-save-btn" style="font-size:11px;padding:4px 10px;">Gem detaljer</button>` +
-        `<button class="profile-nejtak-btn pf-skip-btn" style="font-size:11px;padding:4px 10px;">Spring over</button>` +
-      `</div>`;
-    card.appendChild(followUp);
-    followUp.querySelector('.pf-skip-btn').onclick = () => {
-      followUp.innerHTML = '<span style="font-size:11px;color:#71717a;">Sprunget over</span>';
     };
-    followUp.querySelector('.pf-save-btn').onclick = async () => {
-      const inputs = followUp.querySelectorAll('.pf-input');
-      const startYear = inputs[0].value ? parseInt(inputs[0].value) : null;
-      const endYear = inputs[1].value ? parseInt(inputs[1].value) : null;
-      if (!startYear && !endYear) {
-        followUp.innerHTML = '<span style="font-size:11px;color:#71717a;">Sprunget over</span>';
-        return;
-      }
-      try {
-        const updateData = { ...confirmData.data };
-        if (startYear) updateData.start_year = startYear;
-        if (endYear) updateData.end_year = endYear;
-        const r = await fetch('/app1/confirm_profile_update', {
-          method: 'POST',
-          headers: {'Content-Type':'application/json'},
-          body: JSON.stringify({action: 'add_experience', data: updateData})
-        });
-        const d = await r.json();
-        followUp.innerHTML = d.status === 'success'
-          ? '<span style="font-size:11px;color:#4ade80;">✓ Detaljer gemt</span>'
-          : '<span style="font-size:11px;color:#f87171;">Fejl ved gem</span>';
-      } catch(e) {
-        followUp.innerHTML = '<span style="font-size:11px;color:#f87171;">Fejl</span>';
-      }
-    };
-    saveChatState();
-  }
 
-  async function _submitUiCard(btn, card, cardData) {
-    if (btn.disabled) return;
-    btn.disabled = true;
-    btn.textContent = '...';
-
-    // Gather field values from the card
-    const fieldInputs = card.querySelectorAll('.ui-field');
-    const fieldValues = {};
-    for (const inp of fieldInputs) {
-      const name = inp.dataset.name;
-      const val = inp.value.trim();
-      if (val) {
-        fieldValues[name] = inp.type === 'number' ? parseInt(val) : val;
-      }
-    }
-
-    // Merge prefilled + user-entered fields
-    const mergedData = { ...cardData.prefilled, ...fieldValues };
-
-    try {
-      const resp = await fetch('/app1/confirm_profile_update', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          action: cardData.save_action,
-          data: mergedData
-        })
-      });
-      const result = await resp.json();
-      if (result.status === 'success') {
-        btn.textContent = 'Gemt ✓';
-        btn.style.background = '#16a34a';
-        const nejBtn = card.querySelector('.profile-nejtak-btn');
-        if (nejBtn) nejBtn.remove();
-        // Disable all inputs
-        card.querySelectorAll('.ui-field').forEach(inp => { inp.disabled = true; inp.style.opacity = '0.5'; });
-        card.querySelector('.profile-confirm-msg').innerHTML =
-          '✓ ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[✓?]\s*/, '');
-        showProfileToast(result.message || 'Profil opdateret', cardData.section || 'summary');
-      } else {
-        btn.textContent = 'Fejl';
-        btn.disabled = false;
-        setTimeout(() => { btn.textContent = 'Gem'; }, 2000);
-      }
-    } catch (e) {
-      console.error('UI card submit error:', e);
-      btn.textContent = 'Fejl';
-      setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
-    }
-    saveChatState();
-  }
-
-  window.dismissProfileUpdate = function(btn) {
-    const card = btn.closest('.profile-confirm-card');
-    if (card) {
-      card.querySelector('.profile-confirm-msg').style.textDecoration = 'line-through';
-      card.querySelector('.profile-confirm-msg').style.opacity = '0.5';
-      const actions = card.querySelector('.profile-confirm-actions');
-      if (actions) actions.innerHTML = '<span style="font-size:12px;color:#71717a;">Afvist</span>';
-    }
-  };
-
-  const chatBox = document.getElementById('chatBox');
-  const chatInput = document.getElementById('chatInput');
-  const sendBtn = document.getElementById('sendBtn');
-  const stopBtn = document.getElementById('stopBtn');
-  const scrollFab = document.getElementById('scrollFab');
-  const productRefBar = document.getElementById('productRefBar');
-  const BOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-
-  // ── Session management: localStorage for logged-in, sessionStorage for anonymous ──
-  const IS_LOGGED_IN = {% if session.get('user') %}true{% else %}false{% endif %};
-  const LOGGED_IN_USER = {% if session.get('user') %}{{ session.get('user')|tojson }}{% else %}null{% endif %};
-  const CHAT_STATE_KEY = IS_LOGGED_IN ? 'app1-chat-' + LOGGED_IN_USER : 'app1-chat-anon';
-  const _storage = IS_LOGGED_IN ? localStorage : sessionStorage;
-
-  let activeController = null;
-
-  function saveChatState() {
-    try {
-      const hasMessages = chatBox.querySelector('.msg-row');
-      if (!hasMessages) {
-        _storage.removeItem(CHAT_STATE_KEY);
-        return;
-      }
-      _storage.setItem(CHAT_STATE_KEY, JSON.stringify({ html: chatBox.innerHTML }));
-    } catch (e) { console.warn('Unable to save state:', e); }
-  }
-
-  function restoreChatState() {
-    try {
-      const raw = _storage.getItem(CHAT_STATE_KEY);
-      if (!raw) return false;
-      const parsed = JSON.parse(raw);
-      if (!parsed || !parsed.html) return false;
-      chatBox.innerHTML = parsed.html;
-      chatBox.scrollTop = chatBox.scrollHeight;
-      return true;
-    } catch (e) { console.warn('Unable to restore state:', e); return false; }
-  }
-
-  // ── New conversation (logged-in users) ──
-  window.startNewConversation = async function() {
-    if (isSending) return;
-    try {
-      await fetch("{{ url_for('app1.new_session') }}", { method: 'POST' });
-    } catch (e) { /* continue anyway */ }
-    _storage.removeItem(CHAT_STATE_KEY);
-    chatBox.innerHTML = '';
-    // Re-show welcome screen
-    const welcome = document.getElementById('welcomeScreen');
-    if (welcome) {
-      welcome.style.display = '';
-    } else {
-      location.reload();
-    }
-  };
-
-  function setStreamingState(sending) {
-    sendBtn.disabled = sending;
-    sendBtn.classList.toggle('sending', sending);
-    stopBtn.classList.toggle('visible', sending);
-    chatInput.disabled = sending;
-  }
-
-  function stopStreaming() {
-    if (activeController) activeController.abort();
-  }
-  window.stopStreaming = stopStreaming;
-
-  // ── Product Reference System ──
-  let attachedProducts = []; // [{handle, title}]
-
-  window.attachProductToChat = function(handle, title) {
-    // Avoid duplicates
-    if (attachedProducts.some(p => p.handle === handle)) return;
-    attachedProducts.push({ handle, title });
-    renderRefBar();
-    chatInput.focus();
-  };
-
-  function removeAttachedProduct(handle) {
-    attachedProducts = attachedProducts.filter(p => p.handle !== handle);
-    renderRefBar();
-  }
-
-  function renderRefBar() {
-    productRefBar.innerHTML = '';
-    if (attachedProducts.length === 0) {
-      productRefBar.classList.remove('visible');
-      return;
-    }
-    productRefBar.classList.add('visible');
-    for (const prod of attachedProducts) {
-      const chip = document.createElement('div');
-      chip.className = 'product-ref-chip';
-      chip.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>' +
-        '<span>' + prod.title.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>' +
-        '<button class="product-ref-remove" title="Fjern">' +
-          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>' +
-        '</button>';
-      chip.querySelector('.product-ref-remove').addEventListener('click', () => removeAttachedProduct(prod.handle));
-      productRefBar.appendChild(chip);
-    }
-  }
-
-  function getAndClearAttachedProducts() {
-    const prods = [...attachedProducts];
-    attachedProducts = [];
-    renderRefBar();
-    return prods;
-  }
-
-  // ── Phase 6: Feedback System ──
-  function addFeedbackButtons(botContent, queryText, fullResponseText, messageIndex, responseLatencyMs) {
-    const row = document.createElement('div');
-    row.className = 'feedback-row';
-    row.innerHTML =
-      '<button class="feedback-btn" data-vote="up" title="Godt svar">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>' +
-      '</button>' +
-      '<button class="feedback-btn" data-vote="down" title="Dårligt svar">' +
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg>' +
-      '</button>' +
-      '<button class="feedback-btn" data-vote="regen" title="Regenerér svar">Regenerér</button>';
-
-    const details = document.createElement('div');
-    details.className = 'feedback-details';
-    details.style.display = 'none';
-
-    function sendFeedback(rating, reason, comment) {
-      fetch("{{ url_for('app1.feedback') }}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          rating: rating,
-          message_index: messageIndex,
-          query_text: queryText,
-          assistant_response: fullResponseText.substring(0, 300),
-          reason: reason || '',
-          comment: comment || '',
-          latency_ms: responseLatencyMs || 0
-        })
-      }).catch(() => {});
-    }
-
-    function renderDownvoteDetails() {
-      details.style.display = 'flex';
-      details.innerHTML = '';
-      const reasonWrap = document.createElement('div');
-      reasonWrap.className = 'feedback-reasons';
-      const reasons = ['Ikke relevant', 'Manglende detaljer', 'Forkert svar', 'For langt'];
-      let selectedReason = '';
-
-      for (const reason of reasons) {
-        const chip = document.createElement('button');
-        chip.type = 'button';
-        chip.className = 'feedback-reason-chip';
-        chip.textContent = reason;
-        chip.addEventListener('click', function() {
-          selectedReason = reason;
-          reasonWrap.querySelectorAll('.feedback-reason-chip').forEach(c => c.classList.remove('selected'));
-          chip.classList.add('selected');
-        });
-        reasonWrap.appendChild(chip);
-      }
-
-      const comment = document.createElement('textarea');
-      comment.className = 'feedback-comment';
-      comment.placeholder = 'Valgfri kommentar (hjælper os med at forbedre svarene)';
-
-      const saveBtn = document.createElement('button');
-      saveBtn.type = 'button';
-      saveBtn.className = 'feedback-save';
-      saveBtn.textContent = 'Send feedback';
-      saveBtn.addEventListener('click', function() {
-        sendFeedback(-1, selectedReason, comment.value.trim());
-        saveBtn.disabled = true;
-        saveBtn.textContent = 'Tak for feedback';
-      });
-
-      details.appendChild(reasonWrap);
-      details.appendChild(comment);
-      details.appendChild(saveBtn);
-    }
-
-    function regenerateAnswer() {
-      const botRow = botContent.closest('.msg-row.bot-row');
-      if (botRow) botRow.remove();
-      sendMessage({ queryOverride: queryText, skipUserBubble: true });
-    }
-
-    row.querySelectorAll('.feedback-btn').forEach(btn => {
-      btn.addEventListener('click', function() {
-        const vote = this.dataset.vote;
-        if (vote === 'regen') {
-          regenerateAnswer();
+    function _showExperienceFollowUp(card, confirmData) {
+      const followUp = document.createElement('div');
+      followUp.className = 'profile-followup';
+      followUp.innerHTML =
+        `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">Vil du tilføje flere detaljer?</div>` +
+        `<div style="display:flex;gap:6px;flex-wrap:wrap;">` +
+          `<input type="number" placeholder="Start\u00e5r" min="1970" max="2030" class="pf-input" id="pf-start-${Date.now()}">` +
+          `<input type="number" placeholder="Slut\u00e5r" min="1970" max="2030" class="pf-input" id="pf-end-${Date.now()}">` +
+        `</div>` +
+        `<div style="display:flex;gap:6px;margin-top:6px;">` +
+          `<button class="profile-gem-btn pf-save-btn" style="font-size:11px;padding:4px 10px;">Gem detaljer</button>` +
+          `<button class="profile-nejtak-btn pf-skip-btn" style="font-size:11px;padding:4px 10px;">Spring over</button>` +
+        `</div>`;
+      card.appendChild(followUp);
+      followUp.querySelector('.pf-skip-btn').onclick = () => {
+        followUp.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Sprunget over</span>';
+      };
+      followUp.querySelector('.pf-save-btn').onclick = async () => {
+        const inputs = followUp.querySelectorAll('.pf-input');
+        const startYear = inputs[0].value ? parseInt(inputs[0].value) : null;
+        const endYear = inputs[1].value ? parseInt(inputs[1].value) : null;
+        if (!startYear && !endYear) {
+          followUp.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Sprunget over</span>';
           return;
         }
-        const rating = vote === 'up' ? 1 : -1;
-        row.querySelectorAll('.feedback-btn[data-vote="up"], .feedback-btn[data-vote="down"]').forEach(b => b.classList.add('voted'));
-        this.classList.add(vote === 'up' ? 'voted-up' : 'voted-down');
-
-        if (vote === 'down') {
-          renderDownvoteDetails();
-        } else {
-          sendFeedback(rating, '', '');
+        try {
+          const updateData = { ...confirmData.data };
+          if (startYear) updateData.start_year = startYear;
+          if (endYear) updateData.end_year = endYear;
+          const r = await fetch('/app1/confirm_profile_update', {
+            method: 'POST',
+            headers: {'Content-Type':'application/json'},
+            body: JSON.stringify({action: 'add_experience', data: updateData})
+          });
+          const d = await r.json();
+          followUp.innerHTML = d.status === 'success'
+            ? '<span style="font-size:11px;color:#4ade80;">\u2713 Detaljer gemt</span>'
+            : '<span style="font-size:11px;color:#f87171;">Fejl ved gem</span>';
+        } catch(e) {
+          followUp.innerHTML = '<span style="font-size:11px;color:#f87171;">Fejl</span>';
         }
-      });
-    });
+      };
+      saveChatState();
+    }
 
-    botContent.appendChild(row);
-    botContent.appendChild(details);
-  }
+    async function _submitUiCard(btn, card, cardData) {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      btn.textContent = '...';
+      const fieldInputs = card.querySelectorAll('.ui-field');
+      const fieldValues = {};
+      for (const inp of fieldInputs) {
+        const name = inp.dataset.name;
+        const val = inp.value.trim();
+        if (val) fieldValues[name] = inp.type === 'number' ? parseInt(val) : val;
+      }
+      const mergedData = { ...cardData.prefilled, ...fieldValues };
+      try {
+        const resp = await fetch('/app1/confirm_profile_update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ action: cardData.save_action, data: mergedData })
+        });
+        const result = await resp.json();
+        if (result.status === 'success') {
+          btn.textContent = 'Gemt \u2713';
+          btn.style.background = '#16a34a';
+          const nejBtn = card.querySelector('.profile-nejtak-btn');
+          if (nejBtn) nejBtn.remove();
+          card.querySelectorAll('.ui-field').forEach(inp => { inp.disabled = true; inp.style.opacity = '0.5'; });
+          card.querySelector('.profile-confirm-msg').innerHTML = '\u2713 ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[\u2713?]\s*/, '');
+          showProfileToast(result.message || 'Profil opdateret', cardData.section || 'summary');
+        } else {
+          btn.textContent = 'Fejl';
+          btn.disabled = false;
+          setTimeout(() => { btn.textContent = 'Gem'; }, 2000);
+        }
+      } catch (e) {
+        console.error('UI card submit error:', e);
+        btn.textContent = 'Fejl';
+        setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
+      }
+      saveChatState();
+    }
 
-  function scrollToBottom() {
-    chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' });
-  }
-  window.scrollToBottom = scrollToBottom;
+    window.dismissProfileUpdate = function(btn) {
+      const card = btn.closest('.profile-confirm-card');
+      if (card) {
+        card.querySelector('.profile-confirm-msg').style.textDecoration = 'line-through';
+        card.querySelector('.profile-confirm-msg').style.opacity = '0.5';
+        const actions = card.querySelector('.profile-confirm-actions');
+        if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">Afvist</span>';
+      }
+    };
 
-  function removeWelcome() {
-    const ws = document.getElementById('welcomeScreen');
-    if (!ws) return;
-    ws.style.opacity = '0';
-    ws.style.transition = 'opacity 0.2s ease';
-    setTimeout(() => ws.remove(), 200);
-  }
+    // ── Chat core ──
+    const chatBox = document.getElementById('chatBox');
+    const chatInput = document.getElementById('chatInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const stopBtn = document.getElementById('stopBtn');
+    const scrollFab = document.getElementById('scrollFab');
+    const productRefBar = document.getElementById('productRefBar');
+    const BOT_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
 
-  window.sendFromChip = function(text) {
-    chatInput.value = text;
-    updateSendBtn();
-    sendMessage();
-  };
+    const IS_LOGGED_IN = {% if session.get('user') %}true{% else %}false{% endif %};
+    const LOGGED_IN_USER = {% if session.get('user') %}{{ session.get('user')|tojson }}{% else %}null{% endif %};
+    const CHAT_STATE_KEY = IS_LOGGED_IN ? 'app1-chat-' + LOGGED_IN_USER : 'app1-chat-anon';
+    const _storage = IS_LOGGED_IN ? localStorage : sessionStorage;
 
-  function autoResize() {
-    chatInput.style.height = 'auto';
-    chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + 'px';
-  }
-  function updateSendBtn() {
-    sendBtn.classList.toggle('active', chatInput.value.trim().length > 0);
-  }
+    let activeController = null;
 
-  chatInput.addEventListener('input', () => { autoResize(); updateSendBtn(); });
-  chatInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); }
-  });
+    function saveChatState() {
+      try {
+        const hasMessages = chatBox.querySelector('.msg-row');
+        if (!hasMessages) { _storage.removeItem(CHAT_STATE_KEY); return; }
+        _storage.setItem(CHAT_STATE_KEY, JSON.stringify({ html: chatBox.innerHTML }));
+      } catch (e) { console.warn('Unable to save state:', e); }
+    }
 
-  chatBox.addEventListener('scroll', () => {
-    const dist = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight;
-    scrollFab.style.display = dist > 120 ? 'flex' : 'none';
-  });
+    function restoreChatState() {
+      try {
+        const raw = _storage.getItem(CHAT_STATE_KEY);
+        if (!raw) return false;
+        const parsed = JSON.parse(raw);
+        if (!parsed || !parsed.html) return false;
+        chatBox.innerHTML = parsed.html;
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return true;
+      } catch (e) { console.warn('Unable to restore state:', e); return false; }
+    }
 
-  // ── Add user message (right-aligned bubble) ──
-  function addUserMsg(text) {
-    const row = document.createElement('div');
-    row.className = 'msg-row user-row';
-    const bubble = document.createElement('div');
-    bubble.className = 'user-bubble';
-    bubble.textContent = text;
-    row.appendChild(bubble);
-    chatBox.appendChild(row);
-    saveChatState();
-  }
+    window.startNewConversation = async function() {
+      if (isSending) return;
+      try { await fetch("{{ url_for('app1.new_session') }}", { method: 'POST' }); } catch (e) {}
+      _storage.removeItem(CHAT_STATE_KEY);
+      chatBox.innerHTML = '';
+      const welcome = document.getElementById('welcomeScreen');
+      if (welcome) welcome.style.display = '';
+      else location.reload();
+    };
 
-  // ── Add bot message row (avatar + content area) ──
-  function addBotRow() {
-    const row = document.createElement('div');
-    row.className = 'msg-row bot-row';
+    function setStreamingState(sending) {
+      sendBtn.disabled = sending;
+      sendBtn.classList.toggle('sending', sending);
+      stopBtn.classList.toggle('visible', sending);
+      chatInput.disabled = sending;
+    }
 
-    const avatar = document.createElement('div');
-    avatar.className = 'bot-avatar';
-    avatar.innerHTML = BOT_SVG;
+    function stopStreaming() { if (activeController) activeController.abort(); }
+    window.stopStreaming = stopStreaming;
 
-    const content = document.createElement('div');
-    content.className = 'bot-content';
+    // ── Product Reference System ──
+    let attachedProducts = [];
+    window.attachProductToChat = function(handle, title) {
+      if (attachedProducts.some(p => p.handle === handle)) return;
+      attachedProducts.push({ handle, title });
+      renderRefBar();
+      chatInput.focus();
+    };
+    function removeAttachedProduct(handle) {
+      attachedProducts = attachedProducts.filter(p => p.handle !== handle);
+      renderRefBar();
+    }
+    function renderRefBar() {
+      productRefBar.innerHTML = '';
+      if (attachedProducts.length === 0) { productRefBar.classList.remove('visible'); return; }
+      productRefBar.classList.add('visible');
+      for (const prod of attachedProducts) {
+        const chip = document.createElement('div');
+        chip.className = 'product-ref-chip';
+        chip.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>' +
+          '<span>' + prod.title.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>' +
+          '<button class="product-ref-remove" title="Fjern"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>';
+        chip.querySelector('.product-ref-remove').addEventListener('click', () => removeAttachedProduct(prod.handle));
+        productRefBar.appendChild(chip);
+      }
+    }
+    function getAndClearAttachedProducts() {
+      const prods = [...attachedProducts];
+      attachedProducts = [];
+      renderRefBar();
+      return prods;
+    }
 
-    row.appendChild(avatar);
-    row.appendChild(content);
-    chatBox.appendChild(row);
-    saveChatState();
-    return content;
-  }
+    // ── Feedback ──
+    function addFeedbackButtons(botContent, queryText, fullResponseText, messageIndex, responseLatencyMs) {
+      const row = document.createElement('div');
+      row.className = 'feedback-row';
+      row.innerHTML =
+        '<button class="feedback-btn" data-vote="up" title="Godt svar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></button>' +
+        '<button class="feedback-btn" data-vote="down" title="Dårligt svar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 15v4a3 3 0 0 0 3 3l4-9V2H5.72a2 2 0 0 0-2 1.7l-1.38 9a2 2 0 0 0 2 2.3zm7-13h2.67A2.31 2.31 0 0 1 22 4v7a2.31 2.31 0 0 1-2.33 2H17"/></svg></button>' +
+        '<button class="feedback-btn" data-vote="regen" title="Regenerér svar">Regenerér</button>';
+      const details = document.createElement('div');
+      details.className = 'feedback-details';
+      details.style.display = 'none';
 
-  // ── Send ──
-  let isSending = false;
-
-  async function sendMessage(opts = {}) {
-    const query = (opts.queryOverride || chatInput.value).trim();
-    if (!query || isSending) return;
-    isSending = true;
-    const startedAt = performance.now();
-
-    // Collect attached products before clearing
-    const refProducts = opts.skipUserBubble ? [] : getAndClearAttachedProducts();
-
-    removeWelcome();
-    if (!opts.skipUserBubble) addUserMsg(query);
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    chatInput.value = '';
-    chatInput.style.height = 'auto';
-    updateSendBtn();
-    setStreamingState(true);
-    const controller = new AbortController();
-    activeController = controller;
-
-    const botContent = addBotRow();
-
-    // Thinking dots
-    const think = document.createElement('div');
-    think.className = 'thinking-row';
-    think.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
-    botContent.appendChild(think);
-    chatBox.scrollTop = chatBox.scrollHeight;
-
-    const savedQuery = query;
-
-    try {
-      // Build the actual query, prepending product references if any
-      let actualQuery = query;
-      if (refProducts.length > 0) {
-        const refs = refProducts.map(p => `[VEDHÆFTET KURSUS: "${p.title}" (handle: ${p.handle})]`).join(' ');
-        actualQuery = refs + '\n' + query;
+      function sendFeedback(rating, reason, comment) {
+        fetch("{{ url_for('app1.feedback') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ rating, message_index: messageIndex, query_text: queryText, assistant_response: fullResponseText.substring(0, 300), reason: reason || '', comment: comment || '', latency_ms: responseLatencyMs || 0 })
+        }).catch(() => {});
       }
 
-      const resp = await fetch("{{ url_for('app1.ask') }}", {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: actualQuery }),
-        signal: controller.signal
+      function renderDownvoteDetails() {
+        details.style.display = 'flex';
+        details.innerHTML = '';
+        const reasonWrap = document.createElement('div');
+        reasonWrap.className = 'feedback-reasons';
+        const reasons = ['Ikke relevant', 'Manglende detaljer', 'Forkert svar', 'For langt'];
+        let selectedReason = '';
+        for (const reason of reasons) {
+          const chip = document.createElement('button');
+          chip.type = 'button';
+          chip.className = 'feedback-reason-chip';
+          chip.textContent = reason;
+          chip.addEventListener('click', function() {
+            selectedReason = reason;
+            reasonWrap.querySelectorAll('.feedback-reason-chip').forEach(c => c.classList.remove('selected'));
+            chip.classList.add('selected');
+          });
+          reasonWrap.appendChild(chip);
+        }
+        const comment = document.createElement('textarea');
+        comment.className = 'feedback-comment';
+        comment.placeholder = 'Valgfri kommentar (hjælper os med at forbedre svarene)';
+        const saveBtn = document.createElement('button');
+        saveBtn.type = 'button';
+        saveBtn.className = 'feedback-save';
+        saveBtn.textContent = 'Send feedback';
+        saveBtn.addEventListener('click', function() {
+          sendFeedback(-1, selectedReason, comment.value.trim());
+          saveBtn.disabled = true;
+          saveBtn.textContent = 'Tak for feedback';
+        });
+        details.appendChild(reasonWrap);
+        details.appendChild(comment);
+        details.appendChild(saveBtn);
+      }
+
+      function regenerateAnswer() {
+        const botRow = botContent.closest('.msg-row.bot-row');
+        if (botRow) botRow.remove();
+        sendMessage({ queryOverride: queryText, skipUserBubble: true });
+      }
+
+      row.querySelectorAll('.feedback-btn').forEach(btn => {
+        btn.addEventListener('click', function() {
+          const vote = this.dataset.vote;
+          if (vote === 'regen') { regenerateAnswer(); return; }
+          const rating = vote === 'up' ? 1 : -1;
+          row.querySelectorAll('.feedback-btn[data-vote="up"], .feedback-btn[data-vote="down"]').forEach(b => b.classList.add('voted'));
+          this.classList.add(vote === 'up' ? 'voted-up' : 'voted-down');
+          if (vote === 'down') renderDownvoteDetails();
+          else sendFeedback(rating, '', '');
+        });
       });
-      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      botContent.appendChild(row);
+      botContent.appendChild(details);
+    }
 
-      const reader = resp.body.getReader();
-      const decoder = new TextDecoder('utf-8');
-      let buffer = '', isFirst = true, fullText = '', textEl = null, cardsEl = null;
-      let msgIndex = 0;
+    function scrollToBottom() { chatBox.scrollTo({ top: chatBox.scrollHeight, behavior: 'smooth' }); }
+    window.scrollToBottom = scrollToBottom;
 
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        buffer += decoder.decode(value, { stream: true });
-        const parts = buffer.split('\n\n');
-        buffer = parts.pop();
+    function removeWelcome() {
+      const ws = document.getElementById('welcomeScreen');
+      if (!ws) return;
+      ws.style.opacity = '0';
+      ws.style.transition = 'opacity 0.2s ease';
+      setTimeout(() => ws.remove(), 200);
+    }
 
-        for (const part of parts) {
-          if (!part.startsWith('data: ')) continue;
-          const raw = part.slice(6).trim();
-          if (raw === '[DONE]') break;
-          try {
-            const data = JSON.parse(raw);
-            if (data.type === 'ping') continue;
+    window.sendFromChip = function(text) {
+      chatInput.value = text;
+      updateSendBtn();
+      sendMessage();
+    };
 
-            if (data.type === 'meta') {
-              msgIndex = data.message_index || 0;
-              continue;
-            }
+    function autoResize() {
+      chatInput.style.height = 'auto';
+      chatInput.style.height = Math.min(chatInput.scrollHeight, 140) + 'px';
+    }
+    function updateSendBtn() { sendBtn.classList.toggle('active', chatInput.value.trim().length > 0); }
 
-            if (isFirst) {
-              think.remove();
-              isFirst = false;
-            }
+    chatInput.addEventListener('input', () => { autoResize(); updateSendBtn(); });
+    chatInput.addEventListener('keydown', (e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } });
+    chatBox.addEventListener('scroll', () => {
+      const dist = chatBox.scrollHeight - chatBox.scrollTop - chatBox.clientHeight;
+      scrollFab.style.display = dist > 120 ? 'flex' : 'none';
+    });
 
-            if (data.type === 'chunk') {
-              if (!textEl) {
-                textEl = document.createElement('div');
-                textEl.className = 'markdown-body bot-text';
-                botContent.appendChild(textEl);
-              }
-              fullText += data.content;
-              textEl.innerHTML = marked.parse(fullText);
-              saveChatState();
-            } else if (data.type === 'product') {
-              if (!cardsEl) {
-                cardsEl = document.createElement('div');
-                cardsEl.className = 'bot-cards';
-                botContent.appendChild(cardsEl);
-              }
-              const wrap = document.createElement('div');
-              wrap.className = 'animate-slide-in';
-              wrap.innerHTML = data.html;
-              cardsEl.appendChild(wrap);
-              saveChatState();
-            } else if (data.type === 'profile_confirm_request') {
-              // Pre-confirmation card: user must click Gem before it saves
-              const card = document.createElement('div');
-              card.className = 'profile-confirm-card animate-slide-in';
-              const safeMsg = (data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-              const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
-              const confirmPayload = JSON.stringify({action: (data.confirm||{}).action, data: (data.confirm||{}).data, section: data.section}).replace(/"/g, '&quot;');
-              card.innerHTML =
-                `<div class="profile-confirm-icon">${sectionIcon}</div>` +
-                `<div class="profile-confirm-body">` +
-                  `<span class="profile-confirm-msg">? ${safeMsg}</span>` +
-                `</div>` +
-                `<div class="profile-confirm-actions">` +
-                  `<button class="profile-gem-btn" onclick="confirmProfileUpdate(this, ${confirmPayload})">Gem</button>` +
-                  `<button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button>` +
-                `</div>`;
-              botContent.appendChild(card);
-              saveChatState();
-            } else if (data.type === 'profile_update') {
-              // Immediate update confirmation (remove/update actions)
-              const card = document.createElement('div');
-              card.className = 'profile-confirm-card animate-slide-in';
-              const safeMsg = (data.message || 'Profil opdateret').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-              const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
-              const anchor = data.section ? `#section-${data.section}` : '';
-              card.innerHTML =
-                `<div class="profile-confirm-icon">${sectionIcon}</div>` +
-                `<div class="profile-confirm-body">` +
-                  `<span class="profile-confirm-msg">✓ ${safeMsg}</span>` +
-                  `<a class="profile-confirm-link" href="/profile${anchor}" target="_blank">Vis i profil</a>` +
-                `</div>`;
-              botContent.appendChild(card);
-              saveChatState();
-            } else if (data.type === 'ui_card') {
-              // AI-driven UI card: form, confirm, or choice
-              const card = document.createElement('div');
-              card.className = 'profile-confirm-card ui-card animate-slide-in';
-              const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
-              const safeMsg = (data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-              let cardBody = '';
+    function addUserMsg(text) {
+      const row = document.createElement('div');
+      row.className = 'msg-row user-row';
+      const bubble = document.createElement('div');
+      bubble.className = 'user-bubble';
+      bubble.textContent = text;
+      row.appendChild(bubble);
+      chatBox.appendChild(row);
+      saveChatState();
+    }
 
-              if (data.ui_type === 'form' || data.ui_type === 'confirm') {
-                // Show prefilled data as readonly labels
-                const prefilled = data.prefilled || {};
-                const prefilledLabels = Object.entries(prefilled)
-                  .filter(([k,v]) => v && k !== 'is_current')
-                  .map(([k,v]) => `<span class="ui-card-tag">${String(v).replace(/</g,'&lt;')}</span>`)
-                  .join(' ');
+    function addBotRow() {
+      const row = document.createElement('div');
+      row.className = 'msg-row bot-row';
+      const avatar = document.createElement('div');
+      avatar.className = 'bot-avatar';
+      avatar.innerHTML = BOT_SVG;
+      const content = document.createElement('div');
+      content.className = 'bot-content';
+      row.appendChild(avatar);
+      row.appendChild(content);
+      chatBox.appendChild(row);
+      saveChatState();
+      return content;
+    }
 
-                // Build form fields with labels
-                let fieldsHtml = '';
-                if (data.fields && data.fields.length > 0) {
-                  fieldsHtml = '<div class="ui-card-fields">';
-                  for (const f of data.fields) {
-                    const safeLabel = (f.label || '').replace(/</g, '&lt;');
-                    const safePlaceholder = (f.placeholder || '').replace(/"/g, '&quot;');
-                    // Detect "end year" type fields to add hint
-                    const isEndField = f.name && (f.name.includes('end') || f.name.includes('slut'));
-                    const hint = isEndField ? '<span class="ui-field-hint">Tom = stadig ansat</span>' : '';
+    // ── Send ──
+    let isSending = false;
 
-                    if (f.type === 'select' && f.options) {
-                      fieldsHtml += `<div class="ui-field-group">` +
-                        `<span class="ui-field-label">${safeLabel}</span>` +
-                        `<select class="pf-input ui-field" data-name="${f.name}" style="width:auto;">` +
-                        `<option value="">${safeLabel}</option>` +
-                        f.options.map(o => `<option value="${o}">${o}</option>`).join('') +
-                        `</select>${hint}</div>`;
-                    } else {
-                      fieldsHtml += `<div class="ui-field-group">` +
-                        `<span class="ui-field-label">${safeLabel}</span>` +
-                        `<input class="pf-input ui-field" data-name="${f.name}" ` +
-                        `type="${f.type === 'number' ? 'number' : 'text'}" ` +
-                        `placeholder="${safePlaceholder || safeLabel}" ` +
-                        `${f.required ? 'required' : ''} ` +
-                        `${f.type === 'number' ? 'min="1950" max="2035" style="width:100px;"' : ''}>${hint}</div>`;
-                    }
-                  }
-                  fieldsHtml += '</div>';
-                }
+    async function sendMessage(opts = {}) {
+      const query = (opts.queryOverride || chatInput.value).trim();
+      if (!query || isSending) return;
+      isSending = true;
+      const startedAt = performance.now();
+      const refProducts = opts.skipUserBubble ? [] : getAndClearAttachedProducts();
+      removeWelcome();
+      if (!opts.skipUserBubble) addUserMsg(query);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      chatInput.value = '';
+      chatInput.style.height = 'auto';
+      updateSendBtn();
+      setStreamingState(true);
+      const controller = new AbortController();
+      activeController = controller;
+      const botContent = addBotRow();
+      const think = document.createElement('div');
+      think.className = 'thinking-row';
+      think.innerHTML = '<span class="dot"></span><span class="dot"></span><span class="dot"></span>';
+      botContent.appendChild(think);
+      chatBox.scrollTop = chatBox.scrollHeight;
+      const savedQuery = query;
 
-                // Choice buttons
-                let choicesHtml = '';
-                if (data.ui_type === 'choice' && data.choices) {
-                  choicesHtml = '<div class="ui-card-choices">';
-                  for (const c of data.choices) {
-                    choicesHtml += `<button class="suggestion-chip ui-choice" data-value="${(c.value||'').replace(/"/g,'&quot;')}">${(c.label||'').replace(/</g,'&lt;')}</button>`;
-                  }
-                  choicesHtml += '</div>';
-                }
+      try {
+        let actualQuery = query;
+        if (refProducts.length > 0) {
+          const refs = refProducts.map(p => `[VEDHÆFTET KURSUS: "${p.title}" (handle: ${p.handle})]`).join(' ');
+          actualQuery = refs + '\n' + query;
+        }
+        const resp = await fetch("{{ url_for('app1.ask') }}", {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ query: actualQuery }),
+          signal: controller.signal
+        });
+        if (!resp.ok) throw new Error('HTTP ' + resp.status);
+        const reader = resp.body.getReader();
+        const decoder = new TextDecoder('utf-8');
+        let buffer = '', isFirst = true, fullText = '', textEl = null, cardsEl = null;
+        let msgIndex = 0;
 
-                cardBody =
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          buffer += decoder.decode(value, { stream: true });
+          const parts = buffer.split('\n\n');
+          buffer = parts.pop();
+          for (const part of parts) {
+            if (!part.startsWith('data: ')) continue;
+            const raw = part.slice(6).trim();
+            if (raw === '[DONE]') break;
+            try {
+              const data = JSON.parse(raw);
+              if (data.type === 'ping') continue;
+              if (data.type === 'meta') { msgIndex = data.message_index || 0; continue; }
+              if (isFirst) { think.remove(); isFirst = false; }
+
+              if (data.type === 'chunk') {
+                if (!textEl) { textEl = document.createElement('div'); textEl.className = 'markdown-body bot-text'; botContent.appendChild(textEl); }
+                fullText += data.content;
+                textEl.innerHTML = marked.parse(fullText);
+                saveChatState();
+              } else if (data.type === 'product') {
+                if (!cardsEl) { cardsEl = document.createElement('div'); cardsEl.className = 'bot-cards'; botContent.appendChild(cardsEl); }
+                const wrap = document.createElement('div');
+                wrap.className = 'animate-slide-in';
+                wrap.innerHTML = data.html;
+                cardsEl.appendChild(wrap);
+                saveChatState();
+              } else if (data.type === 'profile_confirm_request') {
+                const card = document.createElement('div');
+                card.className = 'profile-confirm-card animate-slide-in';
+                const safeMsg = (data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
+                const confirmPayload = JSON.stringify({action: (data.confirm||{}).action, data: (data.confirm||{}).data, section: data.section}).replace(/"/g, '&quot;');
+                card.innerHTML =
                   `<div class="profile-confirm-icon">${sectionIcon}</div>` +
-                  `<div class="profile-confirm-body" style="flex:1;min-width:0;">` +
-                    `<span class="profile-confirm-msg">${safeMsg}</span>` +
-                    (prefilledLabels ? `<div style="margin-top:4px;">${prefilledLabels}</div>` : '') +
-                    fieldsHtml + choicesHtml +
-                  `</div>` +
-                  `<div class="profile-confirm-actions" style="align-self:flex-end;">` +
-                    `<button class="profile-gem-btn ui-card-submit">Gem</button>` +
+                  `<div class="profile-confirm-body"><span class="profile-confirm-msg">? ${safeMsg}</span></div>` +
+                  `<div class="profile-confirm-actions">` +
+                    `<button class="profile-gem-btn" onclick="confirmProfileUpdate(this, ${confirmPayload})">Gem</button>` +
                     `<button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button>` +
                   `</div>`;
+                botContent.appendChild(card);
+                saveChatState();
+              } else if (data.type === 'profile_update') {
+                const card = document.createElement('div');
+                card.className = 'profile-confirm-card animate-slide-in';
+                const safeMsg = (data.message || 'Profil opdateret').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
+                const anchor = data.section ? `#section-${data.section}` : '';
+                card.innerHTML =
+                  `<div class="profile-confirm-icon">${sectionIcon}</div>` +
+                  `<div class="profile-confirm-body"><span class="profile-confirm-msg">\u2713 ${safeMsg}</span><a class="profile-confirm-link" href="/profile${anchor}" target="_blank">Vis i profil</a></div>`;
+                botContent.appendChild(card);
+                saveChatState();
+              } else if (data.type === 'ui_card') {
+                const card = document.createElement('div');
+                card.className = 'profile-confirm-card ui-card animate-slide-in';
+                const sectionIcon = _sectionIcons[data.section] || _sectionIcons.summary;
+                const safeMsg = (data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+                let cardBody = '';
+                if (data.ui_type === 'form' || data.ui_type === 'confirm') {
+                  const prefilled = data.prefilled || {};
+                  const prefilledLabels = Object.entries(prefilled)
+                    .filter(([k,v]) => v && k !== 'is_current')
+                    .map(([k,v]) => `<span class="ui-card-tag">${String(v).replace(/</g,'&lt;')}</span>`)
+                    .join(' ');
+                  let fieldsHtml = '';
+                  if (data.fields && data.fields.length > 0) {
+                    fieldsHtml = '<div class="ui-card-fields">';
+                    for (const f of data.fields) {
+                      const safeLabel = (f.label || '').replace(/</g, '&lt;');
+                      const safePlaceholder = (f.placeholder || '').replace(/"/g, '&quot;');
+                      const isEndField = f.name && (f.name.includes('end') || f.name.includes('slut'));
+                      const hint = isEndField ? '<span class="ui-field-hint">Tom = stadig ansat</span>' : '';
+                      if (f.type === 'select' && f.options) {
+                        fieldsHtml += `<div class="ui-field-group"><span class="ui-field-label">${safeLabel}</span><select class="pf-input ui-field" data-name="${f.name}" style="width:auto;"><option value="">${safeLabel}</option>${f.options.map(o => `<option value="${o}">${o}</option>`).join('')}</select>${hint}</div>`;
+                      } else {
+                        fieldsHtml += `<div class="ui-field-group"><span class="ui-field-label">${safeLabel}</span><input class="pf-input ui-field" data-name="${f.name}" type="${f.type === 'number' ? 'number' : 'text'}" placeholder="${safePlaceholder || safeLabel}" ${f.required ? 'required' : ''} ${f.type === 'number' ? 'min="1950" max="2035" style="width:100px;"' : ''}>${hint}</div>`;
+                      }
+                    }
+                    fieldsHtml += '</div>';
+                  }
+                  let choicesHtml = '';
+                  if (data.ui_type === 'choice' && data.choices) {
+                    choicesHtml = '<div class="ui-card-choices">';
+                    for (const c of data.choices) {
+                      choicesHtml += `<button class="suggestion-chip ui-choice" data-value="${(c.value||'').replace(/"/g,'&quot;')}">${(c.label||'').replace(/</g,'&lt;')}</button>`;
+                    }
+                    choicesHtml += '</div>';
+                  }
+                  cardBody =
+                    `<div class="profile-confirm-icon">${sectionIcon}</div>` +
+                    `<div class="profile-confirm-body" style="flex:1;min-width:0;"><span class="profile-confirm-msg">${safeMsg}</span>` +
+                    (prefilledLabels ? `<div style="margin-top:4px;">${prefilledLabels}</div>` : '') +
+                    fieldsHtml + choicesHtml + `</div>` +
+                    `<div class="profile-confirm-actions" style="align-self:flex-end;"><button class="profile-gem-btn ui-card-submit">Gem</button><button class="profile-nejtak-btn" onclick="dismissProfileUpdate(this)">Nej tak</button></div>`;
+                }
+                card.innerHTML = cardBody;
+                const submitBtn = card.querySelector('.ui-card-submit');
+                if (submitBtn) {
+                  const cardData = { save_action: data.save_action, prefilled: data.prefilled || {}, section: data.section };
+                  submitBtn.addEventListener('click', () => _submitUiCard(submitBtn, card, cardData));
+                }
+                botContent.appendChild(card);
+                saveChatState();
+              } else if (data.type === 'suggestions') {
+                const chips = document.createElement('div');
+                chips.className = 'suggestion-chips';
+                for (const item of (data.items || [])) {
+                  const chip = document.createElement('button');
+                  chip.className = 'suggestion-chip';
+                  chip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg><span>' + item.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
+                  chip.addEventListener('click', function() { chatInput.value = item; updateSendBtn(); sendMessage(); });
+                  chips.appendChild(chip);
+                }
+                botContent.appendChild(chips);
+                saveChatState();
               }
-
-              card.innerHTML = cardBody;
-
-              // Wire up submit button
-              const submitBtn = card.querySelector('.ui-card-submit');
-              if (submitBtn) {
-                const cardData = {
-                  save_action: data.save_action,
-                  prefilled: data.prefilled || {},
-                  section: data.section
-                };
-                submitBtn.addEventListener('click', () => _submitUiCard(submitBtn, card, cardData));
-              }
-
-              botContent.appendChild(card);
-              saveChatState();
-            } else if (data.type === 'suggestions') {
-              const chips = document.createElement('div');
-              chips.className = 'suggestion-chips';
-              for (const item of (data.items || [])) {
-                const chip = document.createElement('button');
-                chip.className = 'suggestion-chip';
-                chip.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>' +
-                  '<span>' + item.replace(/</g, '&lt;').replace(/>/g, '&gt;') + '</span>';
-                chip.addEventListener('click', function() {
-                  chatInput.value = item;
-                  updateSendBtn();
-                  sendMessage();
-                });
-                chips.appendChild(chip);
-              }
-              botContent.appendChild(chips);
-              saveChatState();
-            }
-            chatBox.scrollTop = chatBox.scrollHeight;
-          } catch (e) { console.error('Parse error:', e); }
-        }
-      }
-
-      // Add feedback buttons after response completes
-      if (fullText) {
-        addFeedbackButtons(botContent, savedQuery, fullText, msgIndex, Math.round(performance.now() - startedAt));
-        saveChatState();
-      }
-    } catch (err) {
-      console.error('Fetch error:', err);
-      think.remove();
-      const errEl = document.createElement('div');
-      errEl.className = 'error-msg';
-      const errText = err.name === 'AbortError'
-        ? 'Genereringen blev stoppet.'
-        : (err.message && err.message.includes('HTTP 5')
-          ? 'Serveren havde et problem. Prøv igen om et øjeblik.'
-          : 'Der opstod en netværksfejl. Tjek forbindelsen og prøv igen.');
-      errEl.innerHTML =
-        '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
-        '<span>' + errText + '</span>' +
-        '<button class="retry-btn" onclick="retryMsg(this)">Prøv igen</button>';
-      botContent.appendChild(errEl);
-      window._lastFailed = { query: savedQuery, botContent: botContent };
-      saveChatState();
-    } finally {
-      isSending = false;
-      activeController = null;
-      setStreamingState(false);
-      updateSendBtn();
-      chatInput.focus();
-    }
-  }
-  window.sendMessage = sendMessage;
-
-  window.retryMsg = function(btn) {
-    if (!window._lastFailed || !window._lastFailed.query) return;
-    const row = btn ? btn.closest('.msg-row.bot-row') : null;
-    if (row) row.remove();
-    sendMessage({ queryOverride: window._lastFailed.query, skipUserBubble: true });
-  };
-
-  window.toggleDetails = function(id, btn) {
-    var el = document.getElementById(id);
-    if (!el) return;
-    if (el.style.display === 'none' || el.style.display === '') {
-      el.style.display = 'block'; btn.innerText = 'Skjul detaljer';
-    } else {
-      el.style.display = 'none'; btn.innerText = 'Se detaljer';
-    }
-  };
-
-  // ── Initialize: restore chat state ──
-  const hasLocal = restoreChatState();
-
-  // For logged-in users: if no local state, try loading from server
-  if (IS_LOGGED_IN && !hasLocal) {
-    fetch("{{ url_for('app1.load_conversation_endpoint') }}")
-      .then(r => r.json())
-      .then(data => {
-        if (data.messages && data.messages.length > 0) {
-          // Rebuild chat UI from saved messages
-          const welcome = document.getElementById('welcomeScreen');
-          if (welcome) welcome.style.display = 'none';
-          for (const msg of data.messages) {
-            if (msg.role === 'user' && msg.content) {
-              addUserMsg(msg.content);
-            } else if (msg.role === 'assistant' && msg.content) {
-              const bc = addBotRow();
-              const textDiv = document.createElement('div');
-              textDiv.className = 'markdown-body bot-text';
-              textDiv.innerHTML = marked.parse(msg.content);
-              bc.appendChild(textDiv);
-            }
+              chatBox.scrollTop = chatBox.scrollHeight;
+            } catch (e) { console.error('Parse error:', e); }
           }
-          chatBox.scrollTop = chatBox.scrollHeight;
+        }
+        if (fullText) {
+          addFeedbackButtons(botContent, savedQuery, fullText, msgIndex, Math.round(performance.now() - startedAt));
           saveChatState();
         }
-      })
-      .catch(() => {});
-  }
+      } catch (err) {
+        console.error('Fetch error:', err);
+        think.remove();
+        const errEl = document.createElement('div');
+        errEl.className = 'error-msg';
+        const errText = err.name === 'AbortError'
+          ? 'Genereringen blev stoppet.'
+          : (err.message && err.message.includes('HTTP 5')
+            ? 'Serveren havde et problem. Prøv igen om et øjeblik.'
+            : 'Der opstod en netværksfejl. Tjek forbindelsen og prøv igen.');
+        errEl.innerHTML =
+          '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>' +
+          '<span>' + errText + '</span>' +
+          '<button class="retry-btn" onclick="retryMsg(this)">Prøv igen</button>';
+        botContent.appendChild(errEl);
+        window._lastFailed = { query: savedQuery, botContent: botContent };
+        saveChatState();
+      } finally {
+        isSending = false;
+        activeController = null;
+        setStreamingState(false);
+        updateSendBtn();
+        chatInput.focus();
+      }
+    }
+    window.sendMessage = sendMessage;
 
-  // For non-logged-in: clear backend session on tab close
-  if (!IS_LOGGED_IN) {
-    window.addEventListener('beforeunload', () => {
-      navigator.sendBeacon("{{ url_for('app1.new_session') }}");
-    });
-  }
+    window.retryMsg = function(btn) {
+      if (!window._lastFailed || !window._lastFailed.query) return;
+      const row = btn ? btn.closest('.msg-row.bot-row') : null;
+      if (row) row.remove();
+      sendMessage({ queryOverride: window._lastFailed.query, skipUserBubble: true });
+    };
 
-  chatInput.focus();
-})();
-</script>
-{% endblock %}
+    window.toggleDetails = function(id, btn) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      if (el.style.display === 'none' || el.style.display === '') { el.style.display = 'block'; btn.innerText = 'Skjul detaljer'; }
+      else { el.style.display = 'none'; btn.innerText = 'Se detaljer'; }
+    };
+
+    // ── Init ──
+    const hasLocal = restoreChatState();
+    if (IS_LOGGED_IN && !hasLocal) {
+      fetch("{{ url_for('app1.load_conversation_endpoint') }}")
+        .then(r => r.json())
+        .then(data => {
+          if (data.messages && data.messages.length > 0) {
+            const welcome = document.getElementById('welcomeScreen');
+            if (welcome) welcome.style.display = 'none';
+            for (const msg of data.messages) {
+              if (msg.role === 'user' && msg.content) addUserMsg(msg.content);
+              else if (msg.role === 'assistant' && msg.content) {
+                const bc = addBotRow();
+                const textDiv = document.createElement('div');
+                textDiv.className = 'markdown-body bot-text';
+                textDiv.innerHTML = marked.parse(msg.content);
+                bc.appendChild(textDiv);
+              }
+            }
+            chatBox.scrollTop = chatBox.scrollHeight;
+            saveChatState();
+          }
+        })
+        .catch(() => {});
+    }
+    if (!IS_LOGGED_IN) {
+      window.addEventListener('beforeunload', () => {
+        navigator.sendBeacon("{{ url_for('app1.new_session') }}");
+      });
+    }
+    chatInput.focus();
+  })();
+  </script>
+</body>
+</html>

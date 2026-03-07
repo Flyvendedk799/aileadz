@@ -165,12 +165,22 @@ FORETRUKKEN METODE — request_user_input (samler alt i ét kort):
   ui_type="confirm", section="skills", save_action="add_skill",
   message="Tilføj kompetence: Python", prefilled={"skill_name":"Python","skill_level":"mellem"}
   (og ét mere for Excel)
+- "Jeg har et certifikat i planlægning" → request_user_input med:
+  ui_type="form", section="courses", save_action="add_course",
+  message="Tilføj kursus/certifikat: Effektiv planlægning",
+  prefilled={"course_title":"Effektiv planlægning"},
+  fields=[{"name":"vendor","label":"Udbyder","type":"text","placeholder":"f.eks. Teknologisk Institut"},
+          {"name":"year_completed","label":"Afsluttet år","type":"number"}]
+- "Jeg har taget et Excel-kursus hos Microsoft" → request_user_input med:
+  ui_type="confirm", section="courses", save_action="add_course",
+  message="Tilføj kursus: Excel-kursus (Microsoft)",
+  prefilled={"course_title":"Excel-kursus","vendor":"Microsoft"}
 - "Mit mål er at blive IT-chef" → update_user_profile (simpelt, behøver ikke UI)
 
 HVORNÅR BRUGE HVAD:
 - request_user_input: Når info mangler detaljer (erfaring → spørg om årstal, uddannelse → spørg om institution). Viser kort med forudfyldt + tomme felter.
 - update_user_profile: Til simple opdateringer (mål, præferencer, fjern/ændr). Til ting der ikke behøver ekstra detaljer.
-HUSK: Jobtitel/stilling = erfaring. Uddannelse = education. Kompetencer = skills.
+HUSK: Jobtitel/stilling = erfaring. Uddannelse = education. Kompetencer = skills. Certifikat/gennemført kursus = courses (add_course).
 
 Regler:
 - Når du bruger request_user_input, sig noget som: "Jeg har lavet et kort hvor du kan tilføje detaljerne — udfyld det herunder."

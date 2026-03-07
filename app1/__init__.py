@@ -789,7 +789,16 @@ def confirm_profile_update():
             return _success("Uddannelse tilføjet")
 
         elif action == "add_course":
-            add_skill(logged_in_user, payload.get("course_title", "") or payload.get("course_name", ""), "kursus")
+            from app1.user_profile_db import add_completed_course
+            title = (payload.get("course_title") or payload.get("course_name") or "").strip()
+            if not title:
+                return jsonify({"status": "error", "message": "Kursusnavn mangler"}), 400
+            add_completed_course(
+                logged_in_user,
+                course_title=title,
+                vendor=payload.get("vendor", ""),
+                certificate_note=payload.get("certificate_note", "")
+            )
             return _success("Kursus tilføjet")
 
         elif action == "update_summary":

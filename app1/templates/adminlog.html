@@ -199,6 +199,9 @@
     .log-step.ai_response { background: rgba(168,85,247,0.12); color: #c084fc; }
     .log-step.suggestions { background: rgba(244,114,182,0.12); color: #f472b6; }
     .log-step.matching_summary { background: rgba(56,189,248,0.12); color: #38bdf8; }
+    .log-step.profile_event { background: rgba(16,185,129,0.12); color: #34d399; }
+    .log-step.ui_card { background: rgba(245,158,11,0.12); color: #fbbf24; }
+    .log-step.latency { background: rgba(113,113,122,0.12); color: #a1a1aa; }
 
     .log-data {
       flex: 1;
@@ -227,6 +230,22 @@
     .empty-state h2 { font-size: 18px; color: #71717a; margin-bottom: 6px; }
     .empty-state p { font-size: 13.5px; }
 
+    .filter-btn.active { background: rgba(168,85,247,0.15); color: #c084fc; border-color: rgba(168,85,247,0.3); }
+    .log-badge {
+      display: inline-block;
+      font-size: 10px;
+      font-weight: 600;
+      padding: 1px 6px;
+      border-radius: 4px;
+      margin-left: 6px;
+      vertical-align: middle;
+    }
+    .log-badge.confidence-high { background: rgba(34,197,94,0.15); color: #4ade80; }
+    .log-badge.confidence-medium { background: rgba(234,179,8,0.15); color: #facc15; }
+    .log-badge.confidence-low { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .log-badge.fuzzy { background: rgba(56,189,248,0.15); color: #38bdf8; }
+    .log-badge.error { background: rgba(239,68,68,0.15); color: #fca5a5; }
+    .log-badge.filtered { background: rgba(245,158,11,0.15); color: #fbbf24; }
     .toast {
       position: fixed;
       bottom: 24px;
@@ -275,16 +294,27 @@
             <span class="session-preview">{{ s.first_query or 'Ingen query' }}</span>
           </div>
           <div class="session-stats">
+            {% if s.logged_in %}<span class="stat-pill" style="color:#4ade80;border:1px solid rgba(34,197,94,0.2);">logget ind</span>{% else %}<span class="stat-pill">anon</span>{% endif %}
             <span class="stat-pill">{{ s.entry_count }} trin</span>
             <span class="stat-pill">{{ s.tool_calls }} tools</span>
-            {% if s.no_results > 0 %}<span class="stat-pill" style="color:#fca5a5; border:1px solid rgba(239,68,68,0.25);">{{ s.no_results }} no-results</span>{% endif %}
+            {% if s.profile_events > 0 %}<span class="stat-pill" style="color:#34d399;border:1px solid rgba(16,185,129,0.2);">{{ s.profile_events }} profil</span>{% endif %}
+            {% if s.errors > 0 %}<span class="stat-pill" style="color:#fca5a5;border:1px solid rgba(239,68,68,0.25);">{{ s.errors }} fejl</span>{% endif %}
+            {% if s.no_results > 0 %}<span class="stat-pill" style="color:#fbbf24;border:1px solid rgba(245,158,11,0.2);">{{ s.no_results }} no-results</span>{% endif %}
+            {% if s.low_confidence > 0 %}<span class="stat-pill" style="color:#fca5a5;border:1px solid rgba(239,68,68,0.2);">{{ s.low_confidence }} low-conf</span>{% endif %}
           </div>
           <svg class="session-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
         </div>
         <div class="session-body">
-          <div class="session-toolbar">
+          <div class="session-toolbar" style="flex-wrap:wrap;">
             <button class="btn" onclick="copySession('{{ s.session_id }}')">Kopier session log</button>
             <button class="btn" onclick="copySessionJSON('{{ s.session_id }}')">Kopier som JSON</button>
+            <span style="border-left:1px solid rgba(255,255,255,0.06);height:20px;margin:0 4px;"></span>
+            <button class="btn filter-btn active" data-filter="all" onclick="filterLogs('{{ s.session_id }}', 'all', this)">Alle</button>
+            <button class="btn filter-btn" data-filter="user_query" onclick="filterLogs('{{ s.session_id }}', 'user_query', this)">Queries</button>
+            <button class="btn filter-btn" data-filter="tool_call" onclick="filterLogs('{{ s.session_id }}', 'tool_call', this)">Tools</button>
+            <button class="btn filter-btn" data-filter="ai_response" onclick="filterLogs('{{ s.session_id }}', 'ai_response', this)">AI svar</button>
+            <button class="btn filter-btn" data-filter="profile_event,ui_card" onclick="filterLogs('{{ s.session_id }}', 'profile_event,ui_card', this)">Profil</button>
+            <button class="btn filter-btn" data-filter="matching_summary" onclick="filterLogs('{{ s.session_id }}', 'matching_summary', this)">Search</button>
           </div>
           <div class="log-entries" id="logs-{{ s.session_id }}">
             <div style="padding: 20px; text-align: center; color: #52525b; font-size: 13px;">Indlæser...</div>
@@ -329,27 +359,70 @@
       });
   }
 
-  function renderLogs(sid, logs) {
+  function renderLogs(sid, logs, filter) {
     const container = document.getElementById('logs-' + sid);
     if (!logs || logs.length === 0) {
       container.innerHTML = '<div style="padding:20px;text-align:center;color:#52525b;">Ingen log entries</div>';
       return;
     }
 
+    const filterSteps = filter && filter !== 'all' ? filter.split(',') : null;
     let html = '';
     for (const entry of logs) {
+      if (filterSteps && !filterSteps.includes(entry.step)) continue;
+
       const ts = new Date(entry.timestamp * 1000);
       const timeStr = ts.toLocaleTimeString('da-DK', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
       const stepClass = entry.step.replace(/[^a-z_]/g, '');
       const formatted = formatData(entry.data);
 
-      html += `<div class="log-entry">
+      // Inline badges for quick scanning
+      let badges = '';
+      const d = entry.data || {};
+      if (d.confidence) {
+        badges += `<span class="log-badge confidence-${d.confidence}">${d.confidence}</span>`;
+      }
+      if (d.matching_debug) {
+        const md = d.matching_debug;
+        if (md.confidence) badges += `<span class="log-badge confidence-${md.confidence}">${md.confidence}</span>`;
+        if (md.fuzzy_corrections && md.fuzzy_corrections.length > 0) {
+          const corr = md.fuzzy_corrections.map(c => c.original + '→' + c.corrected).join(', ');
+          badges += `<span class="log-badge fuzzy">typo: ${esc(corr)}</span>`;
+        }
+        if (md.filtered_below_threshold > 0) {
+          badges += `<span class="log-badge filtered">${md.filtered_below_threshold} filtreret</span>`;
+        }
+        if (md.cross_encoder_applied) {
+          badges += `<span class="log-badge confidence-high">cross-encoder</span>`;
+        }
+      }
+      if (d.status === 'error') {
+        badges += `<span class="log-badge error">ERROR</span>`;
+      }
+      if (d.quality_ok === false) {
+        badges += `<span class="log-badge error">quality ✗</span>`;
+      }
+
+      html += `<div class="log-entry" data-step="${entry.step}">
         <span class="log-timestamp">${timeStr}</span>
-        <span class="log-step ${stepClass}">${entry.step}</span>
+        <span class="log-step ${stepClass}">${entry.step}${badges}</span>
         <div class="log-data"><pre>${formatted}</pre></div>
       </div>`;
     }
+    if (!html) {
+      html = '<div style="padding:20px;text-align:center;color:#52525b;">Ingen entries for dette filter</div>';
+    }
     container.innerHTML = html;
+  }
+
+  function filterLogs(sid, filter, btn) {
+    // Update active state
+    const toolbar = btn.closest('.session-toolbar');
+    toolbar.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    // Re-render with filter
+    const logs = loadedSessions[sid];
+    if (logs) renderLogs(sid, logs, filter);
   }
 
   function formatData(data) {

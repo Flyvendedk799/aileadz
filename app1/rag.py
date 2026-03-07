@@ -156,8 +156,10 @@ def _fuzzy_synonym_match(token, threshold=0.85):
 
 
 def _expand_query_tokens(tokens):
-    """Expand query tokens with synonyms for better BM25 recall. Handles typos via fuzzy matching."""
+    """Expand query tokens with synonyms for better BM25 recall. Handles typos via fuzzy matching.
+    Returns (expanded_tokens, fuzzy_corrections) where fuzzy_corrections is a list of {original, corrected}."""
     expanded = list(tokens)
+    fuzzy_corrections = []
     for token in tokens:
         # Direct match first
         synonyms = _QUERY_SYNONYMS.get(token, [])
@@ -168,10 +170,11 @@ def _expand_query_tokens(tokens):
                 synonyms = _QUERY_SYNONYMS[fuzzy_key]
                 # Also add the corrected key itself as an expansion
                 expanded.extend(_tokenize(fuzzy_key))
+                fuzzy_corrections.append({"original": token, "corrected": fuzzy_key})
         for syn in synonyms:
             syn_tokens = _tokenize(syn)
             expanded.extend(syn_tokens)
-    return expanded
+    return expanded, fuzzy_corrections
 
 
 def _core_query_tokens(tokens):
@@ -598,7 +601,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     # ── 2. BM25 keyword search (with synonym expansion) ──
     query_tokens = _tokenize(query)
     core_query_tokens = _core_query_tokens(query_tokens)
-    expanded_tokens = _expand_query_tokens(query_tokens)
+    expanded_tokens, fuzzy_corrections = _expand_query_tokens(query_tokens)
     bm25_ranked = _bm25_search(expanded_tokens, limit=20)
 
     # ── 3. Weighted Reciprocal Rank Fusion ──
@@ -740,9 +743,15 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         confidence = "low"
 
     # ── 10. Apply minimum relevance threshold + return top N ──
-    # Filter out garbage results (e.g. typo queries returning irrelevant vector matches)
-    _MIN_COMBINED_SCORE = 0.12  # Below this, results are essentially random
+    _MIN_COMBINED_SCORE = 0.12
+    pre_filter_count = len(reranked)
     reranked = [(idx, score, explain) for idx, score, explain in reranked if score >= _MIN_COMBINED_SCORE]
+    filtered_below_threshold = pre_filter_count - len(reranked)
+
+    # Track if cross-encoder was applied
+    cross_encoder_applied = len(reranked) >= 2 and core_query_tokens and any(
+        "cross_encoder_score" in explain for _, _, explain in reranked[:3]
+    )
 
     result_indices = [doc_idx for doc_idx, _, _ in reranked[:limit]]
     selected_products = [products[idx] for idx in result_indices if idx < len(products)]
@@ -752,10 +761,13 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         "query_tokens": query_tokens,
         "core_query_tokens": core_query_tokens,
         "expanded_query_tokens": expanded_tokens[:30],
+        "fuzzy_corrections": fuzzy_corrections,
         "preferences": preferences,
         "vector_candidates": len(vector_ranked),
         "bm25_candidates": len(bm25_ranked),
         "fused_candidates": len(fused),
+        "filtered_below_threshold": filtered_below_threshold,
+        "cross_encoder_applied": cross_encoder_applied,
         "top_vector_score": round(top_vector_score, 4),
         "confidence": confidence,
         "effective_limit": limit,
@@ -809,7 +821,7 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
 
     # BM25 scoring (on filtered set only) — proper BM25 with IDF from global index
     query_tokens = _tokenize(query)
-    expanded_query_tokens = _expand_query_tokens(query_tokens)
+    expanded_query_tokens, _ = _expand_query_tokens(query_tokens)
     k1 = 1.5
     b = 0.75
     bm25_scored = []

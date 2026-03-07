@@ -1054,7 +1054,13 @@ def handle_agentic_ask(user_query, session):
 
     # Debug: log user query + intent classification
     try:
-        log_debug(sid, "user_query", {"query": user_query, "intent": intent, "hint": "", "rewritten_query": rewritten_query})
+        log_debug(sid, "user_query", {
+            "query": user_query,
+            "intent": intent,
+            "logged_in": logged_in_user or False,
+            "hint": "",
+            "rewritten_query": rewritten_query,
+        })
     except Exception:
         pass
 
@@ -1396,6 +1402,10 @@ def handle_agentic_ask(user_query, session):
                                 "bm25_candidates": search_debug.get("bm25_candidates", 0),
                                 "fused_candidates": search_debug.get("fused_candidates", 0),
                                 "top_vector_score": search_debug.get("top_vector_score", 0),
+                                "confidence": search_debug.get("confidence", "unknown"),
+                                "fuzzy_corrections": search_debug.get("fuzzy_corrections", []),
+                                "filtered_below_threshold": search_debug.get("filtered_below_threshold", 0),
+                                "cross_encoder_applied": search_debug.get("cross_encoder_applied", False),
                                 "selected": search_debug.get("selected", []),
                             }
                         log_debug(sid, "tool_call", debug_payload)
@@ -1432,7 +1442,6 @@ def handle_agentic_ask(user_query, session):
                     elif fn == "update_user_profile":
                         tool_status = tool_result_dict.get("status", "")
                         if tool_status == "proposed":
-                            # Buffer — will be sent AFTER text for natural top-to-bottom flow
                             buffered_profile_events.append(json.dumps({
                                 'type': 'profile_confirm_request',
                                 'message': tool_result_dict.get('message', ''),
@@ -1445,6 +1454,17 @@ def handle_agentic_ask(user_query, session):
                                 'message': tool_result_dict.get('message', 'Profil opdateret'),
                                 'section': tool_result_dict.get('section', '')
                             }))
+                        # Log profile event
+                        try:
+                            log_debug(sid, "profile_event", {
+                                "action": tool_args.get("action", ""),
+                                "status": tool_status,
+                                "section": tool_result_dict.get("section", ""),
+                                "message": tool_result_dict.get("message", "")[:200],
+                                "data": tool_args.get("data", {}),
+                            })
+                        except Exception:
+                            pass
 
                     elif fn == "request_user_input":
                         if tool_result_dict.get("status") == "ui_card":
@@ -1458,6 +1478,18 @@ def handle_agentic_ask(user_query, session):
                                 'fields': tool_result_dict.get('fields', []),
                                 'choices': tool_result_dict.get('choices', []),
                             }))
+                            # Log UI card event
+                            try:
+                                log_debug(sid, "ui_card", {
+                                    "ui_type": tool_result_dict.get("ui_type", ""),
+                                    "section": tool_result_dict.get("section", ""),
+                                    "save_action": tool_result_dict.get("save_action", ""),
+                                    "message": tool_result_dict.get("message", "")[:200],
+                                    "fields_count": len(tool_result_dict.get("fields", [])),
+                                    "prefilled_keys": list(tool_result_dict.get("prefilled", {}).keys()),
+                                })
+                            except Exception:
+                                pass
 
                     elif fn == "compare_courses" and "raw_products" in tool_result_dict:
                         raw_products = tool_result_dict["raw_products"]

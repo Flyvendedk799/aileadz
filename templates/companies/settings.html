@@ -1,26 +1,142 @@
 {% extends "base.html" %}
+
 {% block title %}Indstillinger - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+  .settings-section { background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; }
+  .settings-section h5 { color: #374151; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #eef2ff; }
+  .color-preview { width: 36px; height: 36px; border-radius: 8px; border: 2px solid #e5e7eb; display: inline-block; vertical-align: middle; }
+  .plan-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 0.8em; font-weight: 600; }
+  .plan-badge.trial { background: #fef3c7; color: #92400e; }
+  .plan-badge.pro { background: #eef2ff; color: #4338ca; }
+  .plan-badge.enterprise { background: #ecfdf5; color: #065f46; }
+</style>
+{% endblock %}
+
 {% block content %}
-<div class="container" style="max-width:700px; margin:40px auto; padding:20px;">
-  <h2>Virksomhedsindstillinger</h2>
-  <form method="POST" style="margin-top:30px;">
-    <div style="margin-bottom:15px;">
-      <label>Virksomhedsnavn</label>
-      <input type="text" name="company_name" value="{{ company.company_name or '' }}" class="form-control">
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div>
+      <h2><i class="fa-solid fa-gear text-primary"></i> Virksomhedsindstillinger</h2>
+      <p class="text-muted mb-0">{{ company.company_name }}
+        <span class="plan-badge {{ company.subscription_plan or 'trial' }}">{{ (company.subscription_plan or 'trial') | upper }}</span>
+      </p>
     </div>
-    <div style="margin-bottom:15px;">
-      <label>Kontakt-email</label>
-      <input type="email" name="contact_email" value="{{ company.contact_email or '' }}" class="form-control">
+    <a href="{{ url_for('companies.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+      <i class="fa-solid fa-arrow-left"></i> Dashboard
+    </a>
+  </div>
+
+  <form method="POST">
+    <!-- Company Info -->
+    <div class="settings-section">
+      <h5><i class="fa-solid fa-building"></i> Virksomhedsoplysninger</h5>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Virksomhedsnavn *</label>
+          <input type="text" class="form-control" name="company_name" value="{{ company.company_name or '' }}" required>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Branche</label>
+          <input type="text" class="form-control" name="industry" value="{{ company.industry or '' }}" placeholder="f.eks. IT, Finans, Sundhed">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Kontakt-email</label>
+          <input type="email" class="form-control" name="contact_email" value="{{ company.contact_email or '' }}">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Hjemmeside</label>
+          <input type="url" class="form-control" name="website" value="{{ company.website or '' }}" placeholder="https://...">
+        </div>
+      </div>
     </div>
-    <div style="margin-bottom:15px;">
-      <label>Hjemmeside</label>
-      <input type="url" name="website" value="{{ company.website or '' }}" class="form-control">
+
+    <!-- Branding -->
+    <div class="settings-section">
+      <h5><i class="fa-solid fa-palette"></i> Branding</h5>
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Primaer farve</label>
+          <div class="d-flex align-items-center gap-2">
+            <input type="color" class="form-control form-control-color" name="primary_color" value="{{ settings.primary_color or '#7c3aed' }}">
+            <input type="text" class="form-control" name="primary_color_text" value="{{ settings.primary_color or '#7c3aed' }}" style="max-width:120px;" readonly>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Sekundaer farve</label>
+          <div class="d-flex align-items-center gap-2">
+            <input type="color" class="form-control form-control-color" name="secondary_color" value="{{ settings.secondary_color or '#2575fc' }}">
+            <input type="text" class="form-control" name="secondary_color_text" value="{{ settings.secondary_color or '#2575fc' }}" style="max-width:120px;" readonly>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Logo URL</label>
+          <input type="url" class="form-control" name="logo_url" value="{{ settings.logo_url or '' }}" placeholder="https://...">
+        </div>
+      </div>
     </div>
-    <div style="margin-bottom:15px;">
-      <label>Branche</label>
-      <input type="text" name="industry" value="{{ company.industry or '' }}" class="form-control">
+
+    <!-- Notifications & Preferences -->
+    <div class="settings-section">
+      <h5><i class="fa-solid fa-bell"></i> Notifikationer</h5>
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label">Sprog</label>
+          <select class="form-control" name="language">
+            <option value="da" {% if (settings.language or 'da') == 'da' %}selected{% endif %}>Dansk</option>
+            <option value="en" {% if settings.language == 'en' %}selected{% endif %}>English</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Tidszone</label>
+          <select class="form-control" name="timezone">
+            <option value="Europe/Copenhagen" {% if (settings.timezone or 'Europe/Copenhagen') == 'Europe/Copenhagen' %}selected{% endif %}>Europe/Copenhagen</option>
+            <option value="Europe/London" {% if settings.timezone == 'Europe/London' %}selected{% endif %}>Europe/London</option>
+            <option value="Europe/Berlin" {% if settings.timezone == 'Europe/Berlin' %}selected{% endif %}>Europe/Berlin</option>
+          </select>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Support-email</label>
+          <input type="email" class="form-control" name="support_email" value="{{ settings.support_email or '' }}" placeholder="support@virksomhed.dk">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Support-telefon</label>
+          <input type="tel" class="form-control" name="support_phone" value="{{ settings.support_phone or '' }}" placeholder="+45 XX XX XX XX">
+        </div>
+      </div>
     </div>
-    <button type="submit" class="btn btn-primary">Gem indstillinger</button>
+
+    <!-- Danger zone -->
+    <div class="settings-section" style="border: 1px solid #fecaca;">
+      <h5 style="color: #dc2626; border-bottom-color: #fecaca;"><i class="fa-solid fa-triangle-exclamation"></i> Farezone</h5>
+      <div class="d-flex justify-content-between align-items-center">
+        <div>
+          <strong>Deaktiver virksomhedskonto</strong>
+          <p class="text-muted mb-0 small">Alle medarbejdere mister adgang. Data bevares i 90 dage.</p>
+        </div>
+        <button type="button" class="btn btn-outline-danger btn-sm" disabled>Deaktiver</button>
+      </div>
+    </div>
+
+    <div class="d-flex justify-content-end gap-2 mb-5">
+      <a href="{{ url_for('companies.dashboard') }}" class="btn btn-secondary">Annuller</a>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save"></i> Gem indstillinger</button>
+    </div>
   </form>
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+// Sync color pickers with text inputs
+document.querySelectorAll('input[type="color"]').forEach(picker => {
+  const textInput = picker.parentElement.querySelector('input[type="text"]');
+  if (textInput) {
+    picker.addEventListener('input', () => textInput.value = picker.value);
+  }
+});
+</script>
 {% endblock %}

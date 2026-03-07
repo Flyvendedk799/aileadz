@@ -679,13 +679,20 @@ def load_conversation_history_endpoint(conv_id):
         ensure_tables()
         conv = load_conversation_by_id(logged_in_user, conv_id)
         if not conv:
+            print(f"[Load Conv] Not found: id={conv_id}, user={logged_in_user}")
             return jsonify({"status": "not_found"}), 404
         return jsonify({"status": "ok", "conversation": {
             "id": conv["id"], "session_id": conv["session_id"],
             "title": conv["title"], "messages": conv["messages"]
         }})
     except Exception as e:
+        import traceback
         print(f"[Load Conversation History Error] {e}")
+        traceback.print_exc()
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
         return jsonify({"status": "error"}), 500
 
 

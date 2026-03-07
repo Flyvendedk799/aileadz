@@ -468,6 +468,10 @@ def save_conversation_history(username, session_id, messages):
     if not saved:
         return
     title = _extract_title(saved)
+    try:
+        current_app.mysql.connection.ping(True)
+    except Exception:
+        pass
     cur = current_app.mysql.connection.cursor()
     # Check if this session already exists
     cur.execute("SELECT id FROM conversation_history WHERE username = %s AND session_id = %s", (username, session_id))
@@ -488,6 +492,10 @@ def save_conversation_history(username, session_id, messages):
 
 def list_conversations(username, limit=30):
     """List conversation history for a user, newest first."""
+    try:
+        current_app.mysql.connection.ping(True)
+    except Exception:
+        pass
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute(
         "SELECT id, session_id, title, created_at, updated_at FROM conversation_history "
@@ -502,6 +510,11 @@ def list_conversations(username, limit=30):
 def load_conversation_by_id(username, conv_id):
     """Load a specific conversation by its ID."""
     import json as _json
+    # Ensure connection is alive
+    try:
+        current_app.mysql.connection.ping(True)
+    except Exception:
+        pass
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute(
         "SELECT id, session_id, title, messages, updated_at FROM conversation_history "
@@ -510,12 +523,19 @@ def load_conversation_by_id(username, conv_id):
     )
     row = cur.fetchone()
     cur.close()
-    if not row or not row.get("messages"):
+    if not row:
+        print(f"[load_conversation_by_id] No row found for id={conv_id}, user={username}")
         return None
+    if not row.get("messages"):
+        print(f"[load_conversation_by_id] Empty messages for id={conv_id}")
+        # Return with empty messages instead of None so it doesn't 404
+        row["messages"] = []
+        return row
     try:
         row["messages"] = _json.loads(row["messages"])
-    except Exception:
-        return None
+    except Exception as e:
+        print(f"[load_conversation_by_id] JSON parse error for id={conv_id}: {e}")
+        row["messages"] = []
     return row
 
 

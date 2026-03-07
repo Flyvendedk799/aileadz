@@ -22,8 +22,27 @@ def login():
         cur.close()
         if user and user['password'] == password:
             session['user'] = user['username']
+            session['user_id'] = user['id']
             session['credits'] = user['credits']
             session['role'] = user.get('role', 'user')  # Set role here
+            # Load company context if user belongs to a company
+            try:
+                cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                cur2.execute("""
+                    SELECT cu.company_id, cu.role AS company_role, c.company_name
+                    FROM company_users cu
+                    JOIN companies c ON c.id = cu.company_id
+                    WHERE cu.user_id = %s AND cu.status = 'active'
+                    ORDER BY cu.added_at DESC LIMIT 1
+                """, (user['id'],))
+                comp = cur2.fetchone()
+                cur2.close()
+                if comp:
+                    session['company_id'] = comp['company_id']
+                    session['company_role'] = comp['company_role']
+                    session['company_name'] = comp['company_name']
+            except Exception:
+                pass  # company tables may not exist yet
             flash('Login successful!', 'success')
             return redirect(url_for('auth.profile'))
         else:
@@ -57,8 +76,7 @@ def register():
 
 @auth_bp.route('/logout')
 def logout():
-    session.pop('user', None)
-    session.pop('credits', None)
+    session.clear()
     flash('Logged out successfully.', 'success')
     return redirect(url_for('auth.login'))
 

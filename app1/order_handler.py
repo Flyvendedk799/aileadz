@@ -157,7 +157,7 @@ class OrderHandler:
                 order['user'].get('email', ''),
                 order['user'].get('name', ''),
                 order['user'].get('phone', ''),
-                session.get('sid', ''),
+                session.get('session_id', ''),
                 session.get('_chatbot_query_count', 0),
                 session.get('_last_recommending_tool', ''),
                 session.get('company_department', ''),

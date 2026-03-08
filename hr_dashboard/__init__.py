@@ -352,6 +352,46 @@ def create_hr_dashboard_blueprint():
             roi_courses_completed = roi_row['completed'] or 0
             roi_spend_per_employee = round(roi_total_spend / roi_employees_trained) if roi_employees_trained > 0 else 0
 
+            # Phase 3.5: Conversion funnel data
+            cur.execute("""
+                SELECT COUNT(DISTINCT ci.session_id) AS total_sessions
+                FROM chatbot_interactions ci
+                JOIN users u ON ci.username = u.username
+                JOIN company_users cu ON u.id = cu.user_id
+                WHERE cu.company_id = %s
+            """, (company['id'],))
+            funnel_total_sessions = cur.fetchone()['total_sessions'] or 0
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT ci.session_id) AS cnt
+                FROM chatbot_interactions ci
+                JOIN users u ON ci.username = u.username
+                JOIN company_users cu ON u.id = cu.user_id
+                WHERE cu.company_id = %s AND ci.products_shown IS NOT NULL
+            """, (company['id'],))
+            funnel_sessions_products = cur.fetchone()['cnt'] or 0
+
+            cur.execute("""
+                SELECT COUNT(DISTINCT co.chatbot_session_id) AS cnt
+                FROM course_orders co
+                WHERE co.company_id = %s AND co.chatbot_session_id IS NOT NULL AND co.chatbot_session_id != ''
+            """, (company['id'],))
+            funnel_sessions_orders = cur.fetchone()['cnt'] or 0
+
+            cur.execute("""
+                SELECT COUNT(*) AS cnt
+                FROM course_orders
+                WHERE company_id = %s AND completion_status = 'completed'
+            """, (company['id'],))
+            funnel_completed_orders = cur.fetchone()['cnt'] or 0
+
+            funnel = {
+                'total_sessions': funnel_total_sessions,
+                'sessions_with_products': funnel_sessions_products,
+                'sessions_with_orders': funnel_sessions_orders,
+                'completed_orders': funnel_completed_orders,
+            }
+
             cur.close()
 
             # Calculate additional metrics
@@ -405,7 +445,8 @@ def create_hr_dashboard_blueprint():
                                  roi_total_spend=roi_total_spend,
                                  roi_employees_trained=roi_employees_trained,
                                  roi_courses_completed=roi_courses_completed,
-                                 roi_spend_per_employee=roi_spend_per_employee)
+                                 roi_spend_per_employee=roi_spend_per_employee,
+                                 funnel=funnel)
             
         except Exception as e:
             current_app.logger.error(f"Error loading HR dashboard: {e}")
@@ -1784,6 +1825,306 @@ def create_hr_dashboard_blueprint():
             except Exception:
                 pass
         return jsonify({"success": True})
+
+    # ── Phase 3.4: Department Head View ──
+
+    @hr_dashboard_bp.route('/my-department')
+    def my_department():
+        """Department head view — see own department's employees, training, budget, approvals."""
+        if 'user' not in session:
+            flash("Please log in.", "danger")
+            return redirect(url_for('auth.login'))
+
+        if not session.get('company_id') or session.get('company_role') not in ('department_head', 'hr_manager', 'company_admin'):
+            flash("Du har ikke adgang til denne side.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        company = get_company_context()
+        if not company:
+            flash("Company information not found.", "danger")
+            return redirect(url_for('auth.login'))
+
+        user_department = company.get('department', '')
+        if not user_department:
+            flash("Din afdeling er ikke sat op.", "warning")
+            return redirect(url_for('hr_dashboard.dashboard'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Department employees
+            cur.execute("""
+                SELECT cu.user_id, u.username, u.email, cu.job_title, cu.role, cu.status,
+                       cu.hire_date, cu.last_login, cu.total_chatbot_queries,
+                       cu.total_courses_completed
+                FROM company_users cu
+                JOIN users u ON cu.user_id = u.id
+                WHERE cu.company_id = %s AND cu.department = %s
+                ORDER BY u.username
+            """, (company['id'], user_department))
+            employees = cur.fetchall()
+
+            # Department orders
+            cur.execute("""
+                SELECT co.order_id, co.product_title, co.price, co.status,
+                       co.completion_status, co.created_at, u.username
+                FROM course_orders co
+                JOIN users u ON co.user_id = u.id
+                WHERE co.company_id = %s AND co.department = %s
+                ORDER BY co.created_at DESC
+                LIMIT 20
+            """, (company['id'], user_department))
+            orders = cur.fetchall()
+
+            # Department budget
+            import datetime as _dt
+            fiscal_year = _dt.datetime.now().year
+            cur.execute("""
+                SELECT annual_budget, spent
+                FROM department_budgets
+                WHERE company_id = %s AND department = %s AND fiscal_year = %s
+            """, (company['id'], user_department, fiscal_year))
+            budget_row = cur.fetchone()
+            budget = {
+                'annual_budget': float(budget_row['annual_budget']) if budget_row else 0,
+                'spent': float(budget_row['spent']) if budget_row else 0,
+            }
+            budget['remaining'] = budget['annual_budget'] - budget['spent']
+            budget['utilization'] = round(budget['spent'] / budget['annual_budget'] * 100, 1) if budget['annual_budget'] > 0 else 0
+
+            # Pending approvals for this department
+            cur.execute("""
+                SELECT COUNT(*) AS cnt FROM order_approvals oa
+                JOIN course_orders co ON oa.order_id = co.order_id
+                WHERE oa.company_id = %s AND co.department = %s AND oa.status = 'pending'
+            """, (company['id'], user_department))
+            pending_count = cur.fetchone()['cnt'] or 0
+
+            cur.close()
+
+            return render_template('hr_dashboard/my_department.html',
+                                   company=company,
+                                   department=user_department,
+                                   employees=employees,
+                                   orders=orders,
+                                   budget=budget,
+                                   pending_count=pending_count,
+                                   fiscal_year=fiscal_year)
+        except Exception as e:
+            current_app.logger.error(f"My department error: {e}")
+            flash("Error loading department data.", "danger")
+            return redirect(url_for('hr_dashboard.dashboard'))
+
+    # ── Learning Paths Management ──
+    @hr_dashboard_bp.route('/learning-paths')
+    def learning_paths():
+        if 'company_id' not in session:
+            flash("Virksomhedsadgang kraevet.", "danger")
+            return redirect(url_for('auth.login'))
+        company_id = session['company_id']
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # All learning paths for this company
+            cur.execute("""
+                SELECT lp.*,
+                    COUNT(DISTINCT elp.user_id) as enrolled_count,
+                    COUNT(DISTINCT CASE WHEN elp.completed_at IS NOT NULL THEN elp.user_id END) as completed_count,
+                    COALESCE(AVG(elp.progress_percentage), 0) as avg_progress
+                FROM learning_paths lp
+                LEFT JOIN employee_learning_progress elp ON lp.id = elp.learning_path_id
+                WHERE lp.company_id = %s
+                GROUP BY lp.id
+                ORDER BY lp.created_at DESC
+            """, (company_id,))
+            paths = cur.fetchall()
+
+            # Employees for assignment dropdown
+            cur.execute("""
+                SELECT cu.user_id, cu.username, cu.full_name, cu.department
+                FROM company_users cu
+                WHERE cu.company_id = %s AND cu.status = 'active'
+                ORDER BY cu.department, cu.username
+            """, (company_id,))
+            employees = cur.fetchall()
+
+            # Departments for bulk assignment
+            cur.execute("""
+                SELECT DISTINCT department FROM company_users
+                WHERE company_id = %s AND department IS NOT NULL AND department != ''
+                ORDER BY department
+            """, (company_id,))
+            departments = [r['department'] for r in cur.fetchall()]
+
+            # Detailed enrollment per path
+            cur.execute("""
+                SELECT elp.learning_path_id, elp.user_id,
+                    cu.username, cu.full_name, cu.department,
+                    elp.progress_percentage, elp.status, elp.started_at, elp.completed_at
+                FROM employee_learning_progress elp
+                JOIN company_users cu ON elp.user_id = cu.user_id AND elp.company_id = cu.company_id
+                WHERE elp.company_id = %s AND elp.learning_path_id IS NOT NULL
+                ORDER BY elp.learning_path_id, cu.username
+            """, (company_id,))
+            enrollments_raw = cur.fetchall()
+
+            # Group enrollments by path id
+            enrollments = defaultdict(list)
+            for e in enrollments_raw:
+                enrollments[e['learning_path_id']].append(e)
+
+            cur.close()
+            return render_template('hr_dashboard/learning_paths.html',
+                                   paths=paths,
+                                   employees=employees,
+                                   departments=departments,
+                                   enrollments=enrollments,
+                                   active_hr_page='learning_paths')
+        except Exception as e:
+            current_app.logger.error(f"Learning paths error: {e}")
+            flash("Fejl ved indlaesning af laeringsforloeb.", "danger")
+            return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/learning-paths/create', methods=['POST'])
+    def create_learning_path():
+        if 'company_id' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        company_id = session['company_id']
+        role = session.get('company_role', '')
+        if role not in ('company_admin', 'hr_manager', 'department_head'):
+            flash("Du har ikke rettigheder til at oprette laeringsforloeb.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+
+        path_name = request.form.get('path_name', '').strip()
+        path_category = request.form.get('path_category', '').strip()
+        difficulty_level = request.form.get('difficulty_level', 'beginner')
+
+        if not path_name:
+            flash("Navn paa laeringsforloeb er paakraevet.", "warning")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                INSERT INTO learning_paths (company_id, path_name, path_category, difficulty_level)
+                VALUES (%s, %s, %s, %s)
+            """, (company_id, path_name, path_category, difficulty_level))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"Laeringsforloeb '{path_name}' oprettet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Create learning path error: {e}")
+            flash("Fejl ved oprettelse af laeringsforloeb.", "danger")
+        return redirect(url_for('hr_dashboard.learning_paths'))
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/assign', methods=['POST'])
+    def assign_learning_path(path_id):
+        if 'company_id' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        company_id = session['company_id']
+        role = session.get('company_role', '')
+        if role not in ('company_admin', 'hr_manager', 'department_head'):
+            flash("Du har ikke rettigheder til at tildele laeringsforloeb.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+
+        assign_type = request.form.get('assign_type', 'individual')
+        due_date = request.form.get('due_date') or None
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Collect user IDs to assign
+            user_ids = []
+            if assign_type == 'department':
+                dept = request.form.get('department', '')
+                cur.execute("""
+                    SELECT user_id FROM company_users
+                    WHERE company_id = %s AND department = %s AND status = 'active'
+                """, (company_id, dept))
+                user_ids = [r['user_id'] for r in cur.fetchall()]
+            else:
+                uid = request.form.get('user_id')
+                if uid:
+                    user_ids = [int(uid)]
+
+            if not user_ids:
+                flash("Ingen medarbejdere valgt.", "warning")
+                return redirect(url_for('hr_dashboard.learning_paths'))
+
+            assigned = 0
+            for uid in user_ids:
+                # Check if already enrolled
+                cur.execute("""
+                    SELECT id FROM employee_learning_progress
+                    WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
+                """, (uid, company_id, path_id))
+                if cur.fetchone():
+                    continue
+                cur.execute("""
+                    INSERT INTO employee_learning_progress
+                    (user_id, company_id, learning_path_id, status, progress_percentage, due_date, started_at)
+                    VALUES (%s, %s, %s, 'not_started', 0, %s, NOW())
+                """, (uid, company_id, path_id, due_date))
+                assigned += 1
+
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"{assigned} medarbejder(e) tildelt laeringsforloeb.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Assign learning path error: {e}")
+            flash("Fejl ved tildeling af laeringsforloeb.", "danger")
+        return redirect(url_for('hr_dashboard.learning_paths'))
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/toggle', methods=['POST'])
+    def toggle_learning_path(path_id):
+        if 'company_id' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        company_id = session['company_id']
+        role = session.get('company_role', '')
+        if role not in ('company_admin', 'hr_manager'):
+            flash("Du har ikke rettigheder.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                UPDATE learning_paths SET is_active = NOT is_active
+                WHERE id = %s AND company_id = %s
+            """, (path_id, company_id))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Laeringsforloeb status opdateret.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Toggle learning path error: {e}")
+            flash("Fejl ved opdatering.", "danger")
+        return redirect(url_for('hr_dashboard.learning_paths'))
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/delete', methods=['POST'])
+    def delete_learning_path(path_id):
+        if 'company_id' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        company_id = session['company_id']
+        role = session.get('company_role', '')
+        if role not in ('company_admin', 'hr_manager'):
+            flash("Du har ikke rettigheder.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        try:
+            cur = current_app.mysql.connection.cursor()
+            # Remove enrollments first
+            cur.execute("""
+                DELETE FROM employee_learning_progress
+                WHERE learning_path_id = %s AND company_id = %s
+            """, (path_id, company_id))
+            cur.execute("""
+                DELETE FROM learning_paths
+                WHERE id = %s AND company_id = %s
+            """, (path_id, company_id))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Laeringsforloeb slettet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Delete learning path error: {e}")
+            flash("Fejl ved sletning.", "danger")
+        return redirect(url_for('hr_dashboard.learning_paths'))
 
     return hr_dashboard_bp
 

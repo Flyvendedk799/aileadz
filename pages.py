@@ -140,17 +140,24 @@ def settings():
             confirm_password = request.form.get('confirm_password')
             
             if not current_password:
-                flash("Angiv venligst dit nuværende kodeord.", "danger")
+                flash("Angiv venligst dit nuvaerende kodeord.", "danger")
                 return redirect(url_for('pages.settings'))
             if new_password != confirm_password:
-                flash("Det nye kodeord og bekræftelse stemmer ikke overens.", "danger")
+                flash("Det nye kodeord og bekraeftelse stemmer ikke overens.", "danger")
                 return redirect(url_for('pages.settings'))
-            if user_data.get('password') != current_password:
-                flash("Nuværende kodeord er forkert.", "danger")
+            from werkzeug.security import check_password_hash, generate_password_hash
+            stored_pw = user_data.get('password', '')
+            if stored_pw.startswith(('pbkdf2:', 'scrypt:')):
+                pw_ok = check_password_hash(stored_pw, current_password)
+            else:
+                pw_ok = (stored_pw == current_password)
+            if not pw_ok:
+                flash("Nuvaerende kodeord er forkert.", "danger")
                 return redirect(url_for('pages.settings'))
+            hashed_new = generate_password_hash(new_password)
             try:
                 cur = current_app.mysql.connection.cursor()
-                cur.execute("UPDATE users SET password = %s WHERE username = %s", (new_password, username))
+                cur.execute("UPDATE users SET password = %s WHERE username = %s", (hashed_new, username))
                 current_app.mysql.connection.commit()
                 cur.close()
                 flash("Kodeord opdateret!", "success")

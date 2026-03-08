@@ -1,0 +1,177 @@
+{% extends "base.html" %}
+
+{% block title %}Min Afdeling - {{ department }} - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-0"><i class="fas fa-building text-primary me-2"></i>Min Afdeling: {{ department }}</h1>
+            <p class="text-muted mb-0">{{ company.company_name }}</p>
+        </div>
+        <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+            <i class="fas fa-arrow-left"></i> Tilbage
+        </a>
+    </div>
+
+    <!-- KPI row -->
+    <div class="row mb-4">
+        <div class="col-md-3 mb-3">
+            <div class="card shadow h-100 py-2" style="border-left:0.25rem solid #4e73df;">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Medarbejdere</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ employees|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow h-100 py-2" style="border-left:0.25rem solid #1cc88a;">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Ordrer i alt</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ orders|length }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow h-100 py-2" style="border-left:0.25rem solid #f6c23e;">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Afventer godkendelse</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ pending_count }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 mb-3">
+            <div class="card shadow h-100 py-2" style="border-left:0.25rem solid #36b9cc;">
+                <div class="card-body">
+                    <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Budget {{ fiscal_year }}</div>
+                    <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(budget.annual_budget).replace(",", ".") }} kr</div>
+                    <div class="small text-muted">{{ budget.utilization }}% brugt &mdash; {{ "{:,.0f}".format(budget.remaining).replace(",", ".") }} kr resterende</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Budget progress -->
+    {% if budget.annual_budget > 0 %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="progress" style="height:12px;">
+                <div class="progress-bar {{ 'bg-danger' if budget.utilization > 90 else ('bg-warning' if budget.utilization > 80 else 'bg-success') }}"
+                     style="width: {{ [budget.utilization, 100]|min }}%"></div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Employees table -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-users me-2"></i>Medarbejdere i {{ department }}</h6>
+        </div>
+        <div class="card-body">
+            {% if employees %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Navn</th>
+                            <th>Stilling</th>
+                            <th>Rolle</th>
+                            <th>Status</th>
+                            <th>Kurser gennemf.</th>
+                            <th>AI-samtaler</th>
+                            <th>Sidst aktiv</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for emp in employees %}
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(45deg,#4e73df,#224abe);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:14px;margin-right:10px;">
+                                        {{ emp.username[0].upper() if emp.username else 'U' }}
+                                    </div>
+                                    <div>
+                                        <div class="fw-bold">{{ emp.username }}</div>
+                                        <div class="text-muted small">{{ emp.email or '' }}</div>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>{{ emp.job_title or '-' }}</td>
+                            <td><span class="badge bg-secondary">{{ emp.role or 'employee' }}</span></td>
+                            <td>
+                                {% if emp.status == 'active' %}
+                                <span class="badge bg-success">Aktiv</span>
+                                {% else %}
+                                <span class="badge bg-warning">{{ emp.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>{{ emp.total_courses_completed or 0 }}</td>
+                            <td>{{ emp.total_chatbot_queries or 0 }}</td>
+                            <td class="small">{{ emp.last_login.strftime('%d/%m/%Y') if emp.last_login else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">Ingen medarbejdere fundet i denne afdeling.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <!-- Recent orders -->
+    <div class="card shadow mb-4">
+        <div class="card-header py-3">
+            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-shopping-cart me-2"></i>Seneste kursusordrer</h6>
+        </div>
+        <div class="card-body">
+            {% if orders %}
+            <div class="table-responsive">
+                <table class="table table-hover">
+                    <thead class="table-light">
+                        <tr>
+                            <th>Medarbejder</th>
+                            <th>Kursus</th>
+                            <th>Pris</th>
+                            <th>Status</th>
+                            <th>Fremgang</th>
+                            <th>Dato</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for o in orders %}
+                        <tr>
+                            <td>{{ o.username }}</td>
+                            <td>{{ o.product_title }}</td>
+                            <td>{{ o.price or 0 }} kr</td>
+                            <td>
+                                {% if o.status == 'completed' %}<span class="badge bg-success">Gennemfoert</span>
+                                {% elif o.status == 'pending' %}<span class="badge bg-warning">Afventer</span>
+                                {% elif o.status == 'pending_approval' %}<span class="badge bg-warning text-dark">Afventer godkendelse</span>
+                                {% elif o.status == 'approved' %}<span class="badge bg-primary">Godkendt</span>
+                                {% elif o.status == 'rejected' %}<span class="badge bg-danger">Afvist</span>
+                                {% else %}<span class="badge bg-secondary">{{ o.status }}</span>
+                                {% endif %}
+                            </td>
+                            <td>
+                                {% if o.completion_status == 'completed' %}<span class="badge bg-success"><i class="fas fa-check"></i></span>
+                                {% elif o.completion_status == 'in_progress' %}<span class="badge bg-info">I gang</span>
+                                {% else %}<span class="badge bg-light text-dark">Ikke startet</span>
+                                {% endif %}
+                            </td>
+                            <td class="small">{{ o.created_at.strftime('%d/%m/%Y') if o.created_at else '-' }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <p class="text-muted text-center py-3">Ingen ordrer endnu.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

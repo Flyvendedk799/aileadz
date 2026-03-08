@@ -159,6 +159,63 @@
         {% endif %}
     </div>
 
+    <!-- Conversion Funnel (Phase 3.5) -->
+    {% if funnel and funnel.total_sessions > 0 %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-filter me-2"></i>Konverteringstragt
+                    </h6>
+                </div>
+                <div class="card-body">
+                    {% set max_val = funnel.total_sessions %}
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="fw-bold">Chatbot-sessioner</span>
+                            <span>{{ funnel.total_sessions }}</span>
+                        </div>
+                        <div class="progress" style="height:24px;">
+                            <div class="progress-bar bg-primary" style="width:100%">{{ funnel.total_sessions }}</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="fw-bold">Sessioner med produktvisning</span>
+                            <span>{{ funnel.sessions_with_products }}</span>
+                        </div>
+                        <div class="progress" style="height:24px;">
+                            <div class="progress-bar bg-info" style="width:{{ (funnel.sessions_with_products / max_val * 100) if max_val else 0 }}%">{{ funnel.sessions_with_products }}</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="fw-bold">Sessioner med ordrer</span>
+                            <span>{{ funnel.sessions_with_orders }}</span>
+                        </div>
+                        <div class="progress" style="height:24px;">
+                            <div class="progress-bar bg-warning" style="width:{{ (funnel.sessions_with_orders / max_val * 100) if max_val else 0 }}%">{{ funnel.sessions_with_orders }}</div>
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="d-flex justify-content-between small mb-1">
+                            <span class="fw-bold">Gennemfoerte ordrer</span>
+                            <span>{{ funnel.completed_orders }}</span>
+                        </div>
+                        <div class="progress" style="height:24px;">
+                            <div class="progress-bar bg-success" style="width:{{ (funnel.completed_orders / max_val * 100) if max_val else 0 }}%">{{ funnel.completed_orders }}</div>
+                        </div>
+                    </div>
+                    <div class="text-muted small text-end">
+                        Samlet konvertering: <strong>{{ "%.1f"|format(funnel.completed_orders / funnel.total_sessions * 100) if funnel.total_sessions else 0 }}%</strong>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Company Orders Section -->
     <div class="row mb-4">
         <div class="col-12">
@@ -674,11 +731,29 @@
                 <div class="card-body" id="insightsContainer">
                     {% if recent_insights %}
                     {% for ins in recent_insights %}
-                    <div class="alert alert-{{ 'warning' if ins.severity == 'warning' else ('danger' if ins.severity == 'critical' else 'info') }} py-2 mb-2">
+                    {% set ins_text = (ins.title ~ ' ' ~ ins.body)|lower %}
+                    {% if 'inaktiv' in ins_text or 'inactive' in ins_text %}
+                        {% set ins_link = url_for('hr_dashboard.employee_progress') %}
+                    {% elif 'budget' in ins_text %}
+                        {% set ins_link = url_for('hr_dashboard.department_budgets') %}
+                    {% elif 'kompetence' in ins_text or 'skill' in ins_text %}
+                        {% set ins_link = url_for('hr_dashboard.skill_gaps_view') %}
+                    {% elif 'godkendelse' in ins_text or 'approval' in ins_text %}
+                        {% set ins_link = url_for('hr_dashboard.pending_approvals') %}
+                    {% else %}
+                        {% set ins_link = '' %}
+                    {% endif %}
+                    {% if ins_link %}
+                    <a href="{{ ins_link }}" class="text-decoration-none d-block">
+                    {% endif %}
+                    <div class="alert alert-{{ 'warning' if ins.severity == 'warning' else ('danger' if ins.severity == 'critical' else 'info') }} py-2 mb-2{{ ' alert-clickable' if ins_link else '' }}" style="{{ 'cursor:pointer;' if ins_link else '' }}">
                         <strong>{{ ins.title }}</strong>
                         <p class="mb-0 small">{{ ins.body }}</p>
                         <small class="text-muted">{{ ins.generated_at.strftime('%d/%m %H:%M') if ins.generated_at else '' }}</small>
                     </div>
+                    {% if ins_link %}
+                    </a>
+                    {% endif %}
                     {% endfor %}
                     {% else %}
                     <div class="text-center py-3 text-muted">
@@ -879,6 +954,12 @@
     box-shadow: 0 2px 4px rgba(0,0,0,0.1);
 }
 
+.alert-clickable:hover {
+    filter: brightness(0.95);
+    box-shadow: 0 3px 8px rgba(0,0,0,0.15);
+    transition: all 0.15s;
+}
+
 /* Responsive adjustments */
 @media (max-width: 768px) {
     .btn-group-sm .btn {
@@ -953,7 +1034,20 @@ function generateInsights() {
             container.innerHTML = '';
             data.insights.forEach(ins => {
                 const cls = ins.severity === 'warning' ? 'warning' : (ins.severity === 'critical' ? 'danger' : 'info');
-                container.innerHTML += `<div class="alert alert-${cls} py-2 mb-2"><strong>${ins.title}</strong><p class="mb-0 small">${ins.body}</p></div>`;
+                const combined = ((ins.title || '') + ' ' + (ins.body || '')).toLowerCase();
+                let link = '';
+                if (combined.includes('inaktiv') || combined.includes('inactive')) {
+                    link = "{{ url_for('hr_dashboard.employee_progress') }}";
+                } else if (combined.includes('budget')) {
+                    link = "{{ url_for('hr_dashboard.department_budgets') }}";
+                } else if (combined.includes('kompetence') || combined.includes('skill')) {
+                    link = "{{ url_for('hr_dashboard.skill_gaps_view') }}";
+                } else if (combined.includes('godkendelse') || combined.includes('approval')) {
+                    link = "{{ url_for('hr_dashboard.pending_approvals') }}";
+                }
+                let html = `<div class="alert alert-${cls} py-2 mb-2${link ? ' alert-clickable' : ''}" style="${link ? 'cursor:pointer;' : ''}"><strong>${ins.title}</strong><p class="mb-0 small">${ins.body}</p></div>`;
+                if (link) html = `<a href="${link}" class="text-decoration-none d-block">${html}</a>`;
+                container.innerHTML += html;
             });
         } else if (data.success) {
             document.getElementById('insightsContainer').innerHTML = '<div class="text-center py-3 text-muted"><p class="small">Ikke nok data til at generere insights endnu.</p></div>';

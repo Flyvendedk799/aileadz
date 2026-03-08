@@ -1,0 +1,272 @@
+{% extends "base.html" %}
+
+{% block title %}Laeringsforloeb - HR Dashboard{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h3 class="mb-0"><i class="fas fa-road text-primary me-2"></i>Laeringsforloeb</h3>
+        {% if session.get('company_role') in ['company_admin', 'hr_manager', 'department_head'] %}
+        <button class="btn btn-success btn-sm" data-bs-toggle="modal" data-bs-target="#createPathModal">
+            <i class="fas fa-plus me-1"></i> Opret laeringsforloeb
+        </button>
+        {% endif %}
+    </div>
+
+    <!-- Summary Cards -->
+    <div class="row g-3 mb-4">
+        <div class="col-sm-6 col-xl-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted text-uppercase small fw-bold mb-1">Forloeb i alt</div>
+                    <h3 class="mb-0 fw-bold">{{ paths|length }}</h3>
+                    <small class="text-success">{{ paths|selectattr('is_active')|list|length }} aktive</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted text-uppercase small fw-bold mb-1">Tilmeldte</div>
+                    <h3 class="mb-0 fw-bold">{{ paths|sum(attribute='enrolled_count') }}</h3>
+                    <small class="text-muted">medarbejdere i forloeb</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted text-uppercase small fw-bold mb-1">Gennemfoert</div>
+                    <h3 class="mb-0 fw-bold">{{ paths|sum(attribute='completed_count') }}</h3>
+                    <small class="text-success"><i class="fas fa-check me-1"></i>faerdige</small>
+                </div>
+            </div>
+        </div>
+        <div class="col-sm-6 col-xl-3">
+            <div class="card shadow-sm border-0 h-100">
+                <div class="card-body">
+                    <div class="text-muted text-uppercase small fw-bold mb-1">Gns. fremskridt</div>
+                    {% set total_avg = paths|sum(attribute='avg_progress') %}
+                    {% set active_count = paths|selectattr('enrolled_count', 'gt', 0)|list|length %}
+                    <h3 class="mb-0 fw-bold">{{ (total_avg / active_count)|round(0)|int if active_count > 0 else 0 }}%</h3>
+                    <small class="text-muted">blandt tilmeldte</small>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Learning Paths List -->
+    {% if paths %}
+    <div class="row g-4">
+        {% for path in paths %}
+        <div class="col-lg-6">
+            <div class="card shadow-sm border-0 h-100 {{ 'opacity-50' if not path.is_active }}">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <div>
+                        <h6 class="mb-0 fw-bold">
+                            {{ path.path_name }}
+                            {% if not path.is_active %}
+                            <span class="badge bg-secondary ms-1">Inaktiv</span>
+                            {% endif %}
+                        </h6>
+                        <small class="text-muted">
+                            {% if path.path_category %}{{ path.path_category }} &middot; {% endif %}
+                            {{ path.difficulty_level|default('beginner')|title }}
+                        </small>
+                    </div>
+                    <div class="d-flex gap-1">
+                        {% if session.get('company_role') in ['company_admin', 'hr_manager', 'department_head'] %}
+                        <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#assignModal{{ path.id }}">
+                            <i class="fas fa-user-plus"></i>
+                        </button>
+                        {% endif %}
+                        {% if session.get('company_role') in ['company_admin', 'hr_manager'] %}
+                        <form method="POST" action="{{ url_for('hr_dashboard.toggle_learning_path', path_id=path.id) }}" class="d-inline">
+                            <button type="submit" class="btn btn-outline-{{ 'warning' if path.is_active else 'success' }} btn-sm" title="{{ 'Deaktiver' if path.is_active else 'Aktiver' }}">
+                                <i class="fas fa-{{ 'pause' if path.is_active else 'play' }}"></i>
+                            </button>
+                        </form>
+                        <form method="POST" action="{{ url_for('hr_dashboard.delete_learning_path', path_id=path.id) }}" class="d-inline" onsubmit="return confirm('Slet dette laeringsforloeb og alle tilmeldinger?')">
+                            <button type="submit" class="btn btn-outline-danger btn-sm">
+                                <i class="fas fa-trash"></i>
+                            </button>
+                        </form>
+                        {% endif %}
+                    </div>
+                </div>
+                <div class="card-body">
+                    <!-- Progress overview -->
+                    <div class="d-flex justify-content-between mb-2">
+                        <small class="text-muted">{{ path.enrolled_count }} tilmeldt &middot; {{ path.completed_count }} gennemfoert</small>
+                        <small class="fw-bold">{{ path.avg_progress|round(0)|int }}%</small>
+                    </div>
+                    <div class="progress mb-3" style="height: 8px;">
+                        <div class="progress-bar {{ 'bg-success' if path.avg_progress >= 70 else ('bg-warning' if path.avg_progress >= 40 else 'bg-primary') }}"
+                             style="width: {{ path.avg_progress|round(0)|int }}%"></div>
+                    </div>
+
+                    <!-- Enrolled employees -->
+                    {% set path_enrollments = enrollments.get(path.id, []) %}
+                    {% if path_enrollments %}
+                    <div class="table-responsive" style="max-height: 250px; overflow-y: auto;">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Medarbejder</th>
+                                    <th>Afdeling</th>
+                                    <th>Status</th>
+                                    <th>Fremskridt</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for e in path_enrollments %}
+                                <tr>
+                                    <td>{{ e.full_name or e.username }}</td>
+                                    <td><small class="text-muted">{{ e.department or '-' }}</small></td>
+                                    <td>
+                                        {% if e.completed_at %}
+                                        <span class="badge bg-success">Gennemfoert</span>
+                                        {% elif e.status == 'in_progress' %}
+                                        <span class="badge bg-primary">I gang</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Ikke startet</span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-1">
+                                            <div class="progress flex-grow-1" style="height: 6px; min-width: 50px;">
+                                                <div class="progress-bar bg-success" style="width: {{ e.progress_percentage|round(0)|int }}%"></div>
+                                            </div>
+                                            <small>{{ e.progress_percentage|round(0)|int }}%</small>
+                                        </div>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center text-muted py-2">
+                        <small>Ingen tilmeldte endnu</small>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+        <!-- Assign Modal for this path -->
+        <div class="modal fade" id="assignModal{{ path.id }}" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <form method="POST" action="{{ url_for('hr_dashboard.assign_learning_path', path_id=path.id) }}">
+                        <div class="modal-header">
+                            <h5 class="modal-title">Tildel: {{ path.path_name }}</h5>
+                            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                        </div>
+                        <div class="modal-body">
+                            <div class="mb-3">
+                                <label class="form-label fw-bold">Tildelingstype</label>
+                                <select name="assign_type" class="form-select" id="assignType{{ path.id }}" onchange="toggleAssignFields({{ path.id }})">
+                                    <option value="individual">Enkelt medarbejder</option>
+                                    <option value="department">Hel afdeling</option>
+                                </select>
+                            </div>
+                            <div id="individualField{{ path.id }}">
+                                <div class="mb-3">
+                                    <label class="form-label">Medarbejder</label>
+                                    <select name="user_id" class="form-select">
+                                        <option value="">Vaelg medarbejder...</option>
+                                        {% for emp in employees %}
+                                        <option value="{{ emp.user_id }}">{{ emp.full_name or emp.username }} ({{ emp.department or 'Ingen afd.' }})</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div id="departmentField{{ path.id }}" style="display: none;">
+                                <div class="mb-3">
+                                    <label class="form-label">Afdeling</label>
+                                    <select name="department" class="form-select">
+                                        <option value="">Vaelg afdeling...</option>
+                                        {% for dept in departments %}
+                                        <option value="{{ dept }}">{{ dept }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Deadline (valgfri)</label>
+                                <input type="date" name="due_date" class="form-control">
+                            </div>
+                        </div>
+                        <div class="modal-footer">
+                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                            <button type="submit" class="btn btn-primary"><i class="fas fa-user-plus me-1"></i> Tildel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card shadow-sm border-0">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-road fa-3x text-muted mb-3 d-block"></i>
+            <h5 class="text-muted">Ingen laeringsforloeb oprettet endnu</h5>
+            <p class="text-muted">Opret dit foerste laeringsforloeb for at komme i gang med at spore medarbejdernes udvikling.</p>
+            {% if session.get('company_role') in ['company_admin', 'hr_manager', 'department_head'] %}
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#createPathModal">
+                <i class="fas fa-plus me-1"></i> Opret laeringsforloeb
+            </button>
+            {% endif %}
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Create Learning Path Modal -->
+<div class="modal fade" id="createPathModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('hr_dashboard.create_learning_path') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title"><i class="fas fa-plus-circle text-success me-2"></i>Opret laeringsforloeb</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Navn <span class="text-danger">*</span></label>
+                        <input type="text" name="path_name" class="form-control" required placeholder="F.eks. Onboarding for nye medarbejdere">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Kategori</label>
+                        <input type="text" name="path_category" class="form-control" placeholder="F.eks. Compliance, Ledelse, Teknisk">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Svaerhedsgrad</label>
+                        <select name="difficulty_level" class="form-select">
+                            <option value="beginner">Begynder</option>
+                            <option value="intermediate">Oevet</option>
+                            <option value="advanced">Avanceret</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                    <button type="submit" class="btn btn-success"><i class="fas fa-plus me-1"></i> Opret</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<script>
+function toggleAssignFields(pathId) {
+    const type = document.getElementById('assignType' + pathId).value;
+    document.getElementById('individualField' + pathId).style.display = type === 'individual' ? '' : 'none';
+    document.getElementById('departmentField' + pathId).style.display = type === 'department' ? '' : 'none';
+}
+</script>
+{% endblock %}

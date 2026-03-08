@@ -5,7 +5,7 @@ Phase 3: Conversation state machine
 Phase 4: Persistent memory (SQLite)
 Phase 6: Response quality guardrails & feedback loop
 """
-from flask import Response, stream_with_context
+from flask import Response, stream_with_context, current_app
 import json
 import openai
 import time

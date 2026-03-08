@@ -297,6 +297,7 @@ _STAGE_HINTS = {
     "browsing": "Research-mode — pres IKKE. Inspirer med karriereværdi og læringsudbytte.",
     "correcting": "ANERKEND fejlen. Spørg hvad der ikke passede (emne/niveau/pris/format). Søg ANDERLEDES.",
     "team_buying": "Tænk i gruppe: antal, fælles datoer, grupperabat, in-house muligheder. Spørg hvad de mangler.",
+    "profile_update": "Brugeren nævner egen erfaring/kompetence/uddannelse. Brug request_user_input til at vise et UI-kort der samler info. Kald ALTID værktøjet — svar IKKE kun med tekst.",
 }
 
 
@@ -324,6 +325,15 @@ _HIGH_INTENT_PATTERNS = _re.compile(
 _LOW_INTENT_PATTERNS = _re.compile(
     r'\b(bare undersøger|bare kigger|til næste år|måske senere|på sigt|overveje|'
     r'ved ikke endnu|ikke sikker|bare nysgerrig)\b', _re.IGNORECASE
+)
+
+# Profile update: user mentions their own experience, skills, education, etc.
+_PROFILE_UPDATE_PATTERNS = _re.compile(
+    r'\b(jeg har\b.*?\b(?:været|arbejdet|erfaring|en |et )|jeg er |jeg kan |jeg arbejder |'
+    r'min (?:baggrund|uddannelse|erfaring|rolle)|'
+    r'jeg (?:læste|studerede|tog)|jeg har\b.*?\b(?:taget|gennemført)|'
+    r'jeg (?:ved noget om|kender til|har kompetence)|'
+    r'min stilling|mit job|min titel|mit mål)\b', _re.IGNORECASE
 )
 
 # 3.3: Conversation repair / rejection detection
@@ -433,6 +443,10 @@ def _classify_intent_local(user_query, messages, shown_count):
     # 3.4: Team/group buying
     if _TEAM_PATTERNS.search(user_query):
         return "team_buying"
+
+    # Profile update: user mentions their own background/experience/skills
+    if _PROFILE_UPDATE_PATTERNS.search(user_query):
+        return "profile_update"
 
     # Very short with no topic keywords — needs clarification
     # UNLESS the AI just asked a question (user is answering it)
@@ -1117,6 +1131,10 @@ def handle_agentic_ask(user_query, session):
         _track_rejection(sid, user_query, messages)
     elif intent == "team_buying":
         stage = "team_buying"
+        CONVERSATION_STAGES[sid] = stage
+        stage_hint = _STAGE_HINTS.get(stage, "")
+    elif intent == "profile_update":
+        stage = "profile_update"
         CONVERSATION_STAGES[sid] = stage
         stage_hint = _STAGE_HINTS.get(stage, "")
 

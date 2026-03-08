@@ -673,12 +673,11 @@
 
     /* Card animations */
     @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-    @keyframes cardCollapse {
-      0% { opacity: 1; max-height: var(--card-h); transform: scale(1); margin-top: 8px; margin-bottom: 0; }
-      40% { opacity: 0.6; transform: scale(0.98); }
-      100% { opacity: 0; max-height: 0; transform: scale(0.95); margin-top: 0; margin-bottom: 0; padding: 0; border-width: 0; overflow: hidden; }
+    .card-collapse {
+      overflow: hidden; pointer-events: none;
+      transition: height 0.35s ease-in-out, opacity 0.3s ease-in-out, margin 0.35s ease-in-out, padding 0.35s ease-in-out;
     }
-    .card-collapse { animation: cardCollapse 0.45s ease-in-out forwards; pointer-events: none; }
+    .card-collapse.collapsed { height: 0 !important; opacity: 0; margin: 0; padding: 0; border-width: 0; }
     .animate-slide-in { animation: cardIn 0.35s ease-out forwards; }
     .animate-slide-in:nth-child(2) { animation-delay: 0.06s; }
     .animate-slide-in:nth-child(3) { animation-delay: 0.12s; }
@@ -1113,7 +1112,9 @@
     // ── Profile completeness ring ──
     function refreshProfileRing() {
       if (!IS_LOGGED_IN) return;
-      fetch('/api/profile/full').then(r => r.json()).then(data => {
+      fetch('/api/profile/full').then(r => r.json()).then(resp => {
+        if (!resp.success) return;
+        const data = resp.profile;
         const checks = [
           !!data.headline,
           !!data.bio,
@@ -1140,9 +1141,13 @@
     function collapseCard(card, delay = 1200) {
       if (!card) return;
       setTimeout(() => {
-        card.style.setProperty('--card-h', card.scrollHeight + 'px');
+        const h = card.offsetHeight;
+        card.style.height = h + 'px';
         card.classList.add('card-collapse');
-        card.addEventListener('animationend', () => { card.style.display = 'none'; saveChatState(); }, { once: true });
+        // Force reflow then trigger collapse
+        card.offsetHeight; // eslint-disable-line no-unused-expressions
+        card.classList.add('collapsed');
+        card.addEventListener('transitionend', () => { card.style.display = 'none'; saveChatState(); }, { once: true });
       }, delay);
     }
 

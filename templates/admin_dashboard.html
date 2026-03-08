@@ -10,6 +10,7 @@
     .stat-card .stat-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
     .stat-card .stat-value { font-size: 1.8rem; font-weight: 700; }
     .stat-card .stat-label { font-size: 0.85rem; color: #6b7280; }
+    .stat-card .stat-sub { font-size: 0.75rem; }
     .table-admin th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
     .table-admin td { vertical-align: middle; font-size: 0.9rem; }
     .badge-role { font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; }
@@ -22,6 +23,9 @@
     .admin-nav .nav-link { color: #374151; font-weight: 500; font-size: 0.9rem; padding: 12px 20px; border-bottom: 2px solid transparent; }
     .admin-nav .nav-link.active { color: #7c3aed; border-bottom-color: #7c3aed; }
     .admin-nav .nav-link:hover { color: #7c3aed; }
+    .mini-stat { background: #f9fafb; border-radius: 8px; padding: 12px 16px; }
+    .mini-stat .mini-val { font-size: 1.1rem; font-weight: 700; }
+    .mini-stat .mini-lbl { font-size: 0.75rem; color: #6b7280; }
 </style>
 {% endblock %}
 
@@ -51,8 +55,8 @@
         </div>
     </nav>
 
-    <!-- KPI Cards -->
-    <div class="row g-3 mb-4">
+    <!-- Primary KPI Cards -->
+    <div class="row g-3 mb-3">
         <div class="col-sm-6 col-xl-3">
             <div class="card stat-card shadow-sm h-100">
                 <div class="card-body d-flex align-items-center gap-3">
@@ -62,6 +66,7 @@
                     <div>
                         <div class="stat-value">{{ total_users }}</div>
                         <div class="stat-label">Brugere i alt</div>
+                        <div class="stat-sub text-success"><i class="fas fa-arrow-up"></i> {{ new_users_month }} denne maaned</div>
                     </div>
                 </div>
             </div>
@@ -75,6 +80,7 @@
                     <div>
                         <div class="stat-value">{{ total_companies }}</div>
                         <div class="stat-label">Virksomheder</div>
+                        <div class="stat-sub text-muted">{{ total_admins }} admins</div>
                     </div>
                 </div>
             </div>
@@ -88,6 +94,7 @@
                     <div>
                         <div class="stat-value">{{ total_orders }}</div>
                         <div class="stat-label">Ordrer i alt</div>
+                        <div class="stat-sub text-success"><i class="fas fa-arrow-up"></i> {{ orders_this_month }} denne maaned</div>
                     </div>
                 </div>
             </div>
@@ -99,90 +106,154 @@
                         <i class="fas fa-coins"></i>
                     </div>
                     <div>
-                        <div class="stat-value">{{ "{:,.0f}".format(total_revenue) }} kr</div>
+                        <div class="stat-value">{{ "{:,.0f}".format(total_revenue).replace(",", ".") }} kr</div>
                         <div class="stat-label">Samlet omsaetning</div>
+                        <div class="stat-sub text-success"><i class="fas fa-arrow-up"></i> {{ "{:,.0f}".format(revenue_this_month).replace(",", ".") }} kr denne maaned</div>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 
+    <!-- Secondary metrics row -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="mini-stat d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="mini-lbl">Aktive brugere (7 dage)</div>
+                    <div class="mini-val text-primary">{{ active_users_7d }}</div>
+                </div>
+                <i class="fas fa-signal text-primary opacity-25 fa-lg"></i>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="mini-stat d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="mini-lbl">Chatbot-samtaler i alt</div>
+                    <div class="mini-val text-info">{{ total_chatbot_queries }}</div>
+                </div>
+                <i class="fas fa-robot text-info opacity-25 fa-lg"></i>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="mini-stat d-flex justify-content-between align-items-center">
+                <div>
+                    <div class="mini-lbl">Chatbot denne uge</div>
+                    <div class="mini-val text-success">{{ queries_this_week }}</div>
+                </div>
+                <i class="fas fa-comments text-success opacity-25 fa-lg"></i>
+            </div>
+        </div>
+    </div>
+
     <div class="row g-4">
-        <!-- Recent Users -->
+        <!-- Companies with revenue -->
         <div class="col-lg-7">
             <div class="card shadow-sm">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-user-clock text-primary me-2"></i>Seneste brugere</h6>
-                    <a href="{{ url_for('admin_dashboard.user_list') }}" class="btn btn-outline-primary btn-sm">Se alle</a>
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-building text-success me-2"></i>Virksomheder</h6>
                 </div>
                 <div class="card-body p-0">
+                    {% if companies %}
                     <div class="table-responsive">
                         <table class="table table-admin table-hover mb-0">
                             <thead>
                                 <tr>
-                                    <th class="ps-3">Bruger</th>
-                                    <th>Email</th>
-                                    <th>Rolle</th>
-                                    <th>Kreditter</th>
-                                    <th>Oprettet</th>
+                                    <th class="ps-3">Virksomhed</th>
+                                    <th>Branche</th>
+                                    <th class="text-center">Brugere</th>
+                                    <th class="text-center">Ordrer</th>
+                                    <th class="text-end">Omsaetning</th>
+                                    <th class="text-center">Status</th>
                                 </tr>
                             </thead>
                             <tbody>
-                                {% for u in recent_users %}
+                                {% for c in companies %}
                                 <tr>
-                                    <td class="ps-3 fw-medium">{{ u.username }}</td>
-                                    <td class="text-muted">{{ u.email or '-' }}</td>
-                                    <td>
-                                        <span class="badge badge-role {{ 'badge-admin' if u.role == 'admin' else 'badge-user' }}">
-                                            {{ u.role or 'user' }}
+                                    <td class="ps-3">
+                                        <div class="fw-bold">{{ c.company_name }}</div>
+                                        <small class="text-muted">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else '' }}</small>
+                                    </td>
+                                    <td class="text-muted">{{ c.industry or '-' }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary bg-opacity-10 text-primary">{{ c.employee_count or 0 }}</span>
+                                    </td>
+                                    <td class="text-center">{{ c.order_count or 0 }}</td>
+                                    <td class="text-end fw-bold">{{ "{:,.0f}".format(c.revenue or 0).replace(",", ".") }} kr</td>
+                                    <td class="text-center">
+                                        <span class="badge {{ 'sub-active' if c.subscription_status == 'active' else 'sub-trial' if c.subscription_status == 'trial' else 'sub-expired' }}">
+                                            {{ c.subscription_status or 'trial' }}
                                         </span>
                                     </td>
-                                    <td>{{ u.credits or 0 }}</td>
-                                    <td class="text-muted">{{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '-' }}</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
+                    {% else %}
+                    <div class="text-center py-4 text-muted">
+                        <i class="fas fa-building fa-2x mb-2 d-block"></i>
+                        <p>Ingen virksomheder endnu</p>
+                    </div>
+                    {% endif %}
                 </div>
             </div>
         </div>
 
-        <!-- Companies -->
+        <!-- Right column: Recent orders + Recent users -->
         <div class="col-lg-5">
-            <div class="card shadow-sm">
+            <!-- Recent Orders -->
+            <div class="card shadow-sm mb-4">
                 <div class="card-header bg-white py-3">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-building text-success me-2"></i>Virksomheder</h6>
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-receipt text-info me-2"></i>Seneste ordrer</h6>
                 </div>
                 <div class="card-body p-0">
-                    {% if companies %}
+                    {% if recent_orders %}
                     <div class="list-group list-group-flush">
-                        {% for c in companies %}
-                        <div class="list-group-item px-3 py-3">
+                        {% for o in recent_orders %}
+                        <div class="list-group-item px-3 py-2">
                             <div class="d-flex justify-content-between align-items-start">
-                                <div>
-                                    <h6 class="mb-1 fw-bold">{{ c.company_name }}</h6>
-                                    <small class="text-muted">
-                                        {{ c.industry or '' }}
-                                        {% if c.company_size %} &middot; {{ c.company_size }} medarbejdere{% endif %}
-                                    </small>
+                                <div style="min-width: 0;">
+                                    <div class="fw-bold text-truncate">{{ o.product_title }}</div>
+                                    <small class="text-muted">{{ o.username }} &middot; {{ o.company_name or 'Privat' }}</small>
                                 </div>
-                                <div class="text-end">
-                                    <span class="badge {{ 'sub-active' if c.subscription_status == 'active' else 'sub-trial' if c.subscription_status == 'trial' else 'sub-expired' }}">
-                                        {{ c.subscription_status or 'trial' }}
+                                <div class="text-end text-nowrap ms-2">
+                                    <div class="fw-bold">{{ o.price }} kr</div>
+                                    <span class="badge {{ 'bg-success' if o.status == 'completed' else ('bg-warning text-dark' if o.status in ('pending', 'pending_approval') else 'bg-secondary') }}" style="font-size: 0.7rem;">
+                                        {{ o.status }}
                                     </span>
-                                    <div class="text-muted" style="font-size: 0.75rem;">{{ c.employee_count or 0 }} brugere</div>
                                 </div>
                             </div>
                         </div>
                         {% endfor %}
                     </div>
                     {% else %}
-                    <div class="text-center py-4 text-muted">
-                        <i class="fas fa-building fa-2x mb-2"></i>
-                        <p>Ingen virksomheder endnu</p>
+                    <div class="text-center py-3 text-muted">
+                        <small>Ingen ordrer endnu</small>
                     </div>
                     {% endif %}
+                </div>
+            </div>
+
+            <!-- Recent Users -->
+            <div class="card shadow-sm">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-user-clock text-primary me-2"></i>Seneste brugere</h6>
+                    <a href="{{ url_for('admin_dashboard.user_list') }}" class="btn btn-outline-primary btn-sm">Se alle</a>
+                </div>
+                <div class="card-body p-0">
+                    <div class="list-group list-group-flush">
+                        {% for u in recent_users[:8] %}
+                        <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-center">
+                            <div>
+                                <span class="fw-medium">{{ u.username }}</span>
+                                <span class="badge badge-role {{ 'badge-admin' if u.role == 'admin' else 'badge-user' }} ms-1">{{ u.role or 'user' }}</span>
+                                {% if u.email %}<br><small class="text-muted">{{ u.email }}</small>{% endif %}
+                            </div>
+                            <small class="text-muted">{{ u.created_at.strftime('%d/%m') if u.created_at else '' }}</small>
+                        </div>
+                        {% endfor %}
+                    </div>
                 </div>
             </div>
         </div>

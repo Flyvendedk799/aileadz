@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 import MySQLdb.cursors
 import logging
+from datetime import datetime, timedelta
 
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__, template_folder='templates')
 
@@ -27,6 +28,25 @@ def admin_home():
     cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'")
     total_admins = cur.fetchone()['cnt']
 
+    # Active users (logged in last 7 days) — use last_login if available, else fallback
+    active_users_7d = 0
+    try:
+        cur.execute("""
+            SELECT COUNT(DISTINCT user_id) AS cnt FROM chatbot_interactions
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        """)
+        active_users_7d = cur.fetchone()['cnt']
+    except Exception:
+        pass
+
+    # New users this month
+    new_users_month = 0
+    try:
+        cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_FORMAT(NOW(), '%%Y-%%m-01')")
+        new_users_month = cur.fetchone()['cnt']
+    except Exception:
+        pass
+
     total_companies = 0
     try:
         cur.execute("SELECT COUNT(*) AS cnt FROM companies")
@@ -44,23 +64,67 @@ def admin_home():
     except Exception:
         pass
 
+    # Orders this month
+    orders_this_month = 0
+    revenue_this_month = 0
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS rev
+            FROM course_orders WHERE created_at >= DATE_FORMAT(NOW(), '%%Y-%%m-01')
+        """)
+        row = cur.fetchone()
+        orders_this_month = row['cnt']
+        revenue_this_month = float(row['rev'])
+    except Exception:
+        pass
+
+    # Total chatbot interactions
+    total_chatbot_queries = 0
+    queries_this_week = 0
+    try:
+        cur.execute("SELECT COUNT(*) AS cnt FROM chatbot_interactions")
+        total_chatbot_queries = cur.fetchone()['cnt']
+        cur.execute("""
+            SELECT COUNT(*) AS cnt FROM chatbot_interactions
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
+        """)
+        queries_this_week = cur.fetchone()['cnt']
+    except Exception:
+        pass
+
     # Recent users
     cur.execute("""
         SELECT id, username, email, role, credits, created_at
-        FROM users ORDER BY id DESC LIMIT 20
+        FROM users ORDER BY id DESC LIMIT 15
     """)
     recent_users = cur.fetchall()
 
-    # Companies list
+    # Companies list with more details
     companies = []
     try:
         cur.execute("""
             SELECT c.id, c.company_name, c.industry, c.company_size, c.subscription_status,
                    c.trial_end_date, c.created_at,
-                   (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id) AS employee_count
+                   (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id) AS employee_count,
+                   (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id) AS order_count,
+                   (SELECT COALESCE(SUM(price), 0) FROM course_orders co WHERE co.company_id = c.id) AS revenue
             FROM companies c ORDER BY c.created_at DESC LIMIT 20
         """)
         companies = cur.fetchall()
+    except Exception:
+        pass
+
+    # Recent orders (platform-wide)
+    recent_orders = []
+    try:
+        cur.execute("""
+            SELECT co.order_id, co.username, co.product_title, co.price, co.status,
+                   co.created_at, c.company_name
+            FROM course_orders co
+            LEFT JOIN companies c ON co.company_id = c.id
+            ORDER BY co.created_at DESC LIMIT 10
+        """)
+        recent_orders = cur.fetchall()
     except Exception:
         pass
 
@@ -69,11 +133,18 @@ def admin_home():
     return render_template('admin_dashboard.html',
                            total_users=total_users,
                            total_admins=total_admins,
+                           active_users_7d=active_users_7d,
+                           new_users_month=new_users_month,
                            total_companies=total_companies,
                            total_orders=total_orders,
                            total_revenue=total_revenue,
+                           orders_this_month=orders_this_month,
+                           revenue_this_month=revenue_this_month,
+                           total_chatbot_queries=total_chatbot_queries,
+                           queries_this_week=queries_this_week,
                            recent_users=recent_users,
-                           companies=companies)
+                           companies=companies,
+                           recent_orders=recent_orders)
 
 
 @admin_dashboard_bp.route('/credits', methods=['GET', 'POST'])

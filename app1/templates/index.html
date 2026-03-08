@@ -48,7 +48,8 @@
       background: var(--bg);
       color: var(--text);
       overflow: hidden;
-      height: 100vh;
+      height: 100dvh;
+      height: 100vh; /* fallback for older browsers */
       -webkit-font-smoothing: antialiased;
     }
     a { text-decoration: none; color: inherit; }
@@ -56,8 +57,9 @@
     /* ── Layout: sidebar + chat ── */
     .app-layout {
       display: flex;
-      height: 100vh;
-      width: 100vw;
+      height: 100dvh;
+      height: 100vh; /* fallback */
+      width: 100%;
     }
 
     /* ── Sidebar ── */
@@ -294,7 +296,8 @@
       display: flex;
       flex-direction: column;
       min-width: 0;
-      height: 100vh;
+      height: 100dvh;
+      height: 100vh; /* fallback */
       background: var(--chat-bg);
     }
 
@@ -776,7 +779,7 @@
 
     /* ── Responsive ── */
     @media (max-width: 768px) {
-      .sidebar { position: fixed; left: 0; top: 0; height: 100vh; z-index: 200; transform: translateX(-100%); transition: transform 0.25s ease; }
+      .sidebar { position: fixed; left: 0; top: 0; height: 100dvh; height: 100vh; z-index: 200; transform: translateX(-100%); transition: transform 0.25s ease; }
       .sidebar.mobile-open { transform: translateX(0); }
       .sidebar.collapsed { transform: translateX(-100%); }
       .mobile-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 199; }

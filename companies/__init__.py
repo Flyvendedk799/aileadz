@@ -10,6 +10,7 @@ import json
 import secrets
 import string
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash
 import os
 
 def create_companies_blueprint():
@@ -118,22 +119,26 @@ def create_companies_blueprint():
                 
                 company_id = cur.lastrowid
                 
-                # Create admin user
+                # Create admin user (password hashed)
+                hashed_password = generate_password_hash(admin_password)
                 cur.execute("""
                     INSERT INTO users (username, email, password, credits, role)
                     VALUES (%s, %s, %s, 1000, 'company_admin')
-                """, (admin_name, admin_email, admin_password))
-                
+                """, (admin_name, admin_email, hashed_password))
+
                 user_id = cur.lastrowid
-                
+
+                # Collect optional admin fields
+                admin_job_title = request.form.get('job_title', '').strip() or 'Company Administrator'
+
                 # Add admin to company
                 cur.execute("""
                     INSERT INTO company_users (
-                        company_id, user_id, role, department, job_title, 
-                        status, permissions, added_by
-                    ) VALUES (%s, %s, 'company_admin', 'Administration', 'Company Administrator', 'active', %s, %s)
+                        company_id, user_id, role, department, job_title,
+                        status, phone, permissions, added_by
+                    ) VALUES (%s, %s, 'company_admin', 'Administration', %s, 'active', %s, %s, %s)
                 """, (
-                    company_id, user_id,
+                    company_id, user_id, admin_job_title, admin_phone,
                     json.dumps({
                         "manage_users": True,
                         "view_analytics": True,

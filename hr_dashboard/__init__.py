@@ -1715,7 +1715,7 @@ def create_hr_dashboard_blueprint():
                     "color": "info",
                     "title": f"{inactive} inaktive medarbejdere",
                     "message": "Medarbejdere der ikke har brugt platformen i 30+ dage.",
-                    "action_url": url_for('hr_dashboard.employees'),
+                    "action_url": url_for('companies.employees'),
                     "priority": 3
                 })
 

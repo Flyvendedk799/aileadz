@@ -1,0 +1,66 @@
+<!-- HR Dashboard Sub-Navigation - include in all HR dashboard templates -->
+<nav class="navbar navbar-expand-lg bg-white shadow-sm rounded mb-4 px-3 py-2">
+    <div class="container-fluid p-0">
+        <a class="navbar-brand fw-bold text-primary d-flex align-items-center" href="{{ url_for('hr_dashboard.dashboard') }}">
+            <i class="fas fa-chart-line me-2"></i> HR Dashboard
+        </a>
+        <button class="navbar-toggler border-0 p-1" type="button" data-bs-toggle="collapse" data-bs-target="#hrNavCollapse">
+            <i class="fas fa-bars"></i>
+        </button>
+        <div class="collapse navbar-collapse" id="hrNavCollapse">
+            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'dashboard' else '' }}" href="{{ url_for('hr_dashboard.dashboard') }}">
+                        <i class="fas fa-tachometer-alt me-1"></i> Oversigt
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'employees' else '' }}" href="{{ url_for('companies.employees') }}">
+                        <i class="fas fa-users me-1"></i> Medarbejdere
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'approvals' else '' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}">
+                        <i class="fas fa-check-circle me-1"></i> Godkendelser
+                        {% if pending_approval_count is defined and pending_approval_count > 0 %}
+                        <span class="badge bg-warning text-dark ms-1">{{ pending_approval_count }}</span>
+                        {% endif %}
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'budgets' else '' }}" href="{{ url_for('hr_dashboard.department_budgets') }}">
+                        <i class="fas fa-wallet me-1"></i> Budgetter
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'skill_gaps' else '' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}">
+                        <i class="fas fa-brain me-1"></i> Kompetencer
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'billing' else '' }}" href="{{ url_for('hr_dashboard.billing_overview') }}">
+                        <i class="fas fa-file-invoice-dollar me-1"></i> Fakturering
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'roi' else '' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}">
+                        <i class="fas fa-chart-pie me-1"></i> ROI
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'reports' else '' }}" href="{{ url_for('hr_dashboard.reports') }}">
+                        <i class="fas fa-file-download me-1"></i> Rapporter
+                    </a>
+                </li>
+            </ul>
+            <div class="d-flex gap-2 align-items-center">
+                <a href="{{ url_for('companies.add_employee') }}" class="btn btn-outline-success btn-sm">
+                    <i class="fas fa-user-plus me-1"></i> Tilfoej medarbejder
+                </a>
+                <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-robot me-1"></i> HR AI
+                </a>
+            </div>
+        </div>
+    </div>
+</nav>

@@ -1110,6 +1110,32 @@
       while (stack.children.length > 3) stack.firstChild.remove();
     }
 
+    // ── Profile completeness ring ──
+    function refreshProfileRing() {
+      if (!IS_LOGGED_IN) return;
+      fetch('/api/profile/full').then(r => r.json()).then(data => {
+        const checks = [
+          !!data.headline,
+          !!data.bio,
+          !!data.goals,
+          (data.skills || []).length > 0,
+          (data.experience || []).length > 0,
+          (data.education || []).length > 0,
+          (data.completed_courses || []).length > 0,
+          !!data.preferred_location,
+        ];
+        const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
+        const circumference = 2 * Math.PI * 15.5;
+        const widget = document.getElementById('profileCompletenessWidget');
+        if (score >= 100) { if (widget) widget.style.display = 'none'; return; }
+        const ringFg = document.getElementById('profileRingFg');
+        const pctText = document.getElementById('profilePctText');
+        if (ringFg) ringFg.setAttribute('stroke-dasharray', (circumference * score / 100) + ' ' + circumference);
+        if (pctText) pctText.textContent = score + '%';
+        if (widget) widget.style.display = '';
+      }).catch(() => {});
+    }
+
     // ── Card collapse helper ──
     function collapseCard(card, delay = 1200) {
       if (!card) return;
@@ -1140,11 +1166,7 @@
             card.querySelector('.profile-confirm-msg').innerHTML = '\u2713 ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[\u2713?]\s*/, '');
             const nejBtn = card.querySelector('.profile-nejtak-btn');
             if (nejBtn) nejBtn.remove();
-            if (confirmData.action === 'add_experience') {
-              _showExperienceFollowUp(card, confirmData);
-            } else {
-              collapseCard(card);
-            }
+            collapseCard(card);
           }
           showProfileToast(data.message || 'Profil opdateret', confirmData.section || 'summary');
           refreshProfileRing();
@@ -1159,55 +1181,6 @@
         setTimeout(() => { btn.textContent = 'Gem'; btn.disabled = false; }, 2000);
       }
     };
-
-    function _showExperienceFollowUp(card, confirmData) {
-      const followUp = document.createElement('div');
-      followUp.className = 'profile-followup';
-      followUp.innerHTML =
-        `<div style="font-size:12px;color:var(--text-secondary);margin-bottom:6px;">Vil du tilføje flere detaljer?</div>` +
-        `<div style="display:flex;gap:6px;flex-wrap:wrap;">` +
-          `<input type="number" placeholder="Start\u00e5r" min="1970" max="2030" class="pf-input" id="pf-start-${Date.now()}">` +
-          `<input type="number" placeholder="Slut\u00e5r" min="1970" max="2030" class="pf-input" id="pf-end-${Date.now()}">` +
-        `</div>` +
-        `<div style="display:flex;gap:6px;margin-top:6px;">` +
-          `<button class="profile-gem-btn pf-save-btn" style="font-size:11px;padding:4px 10px;">Gem detaljer</button>` +
-          `<button class="profile-nejtak-btn pf-skip-btn" style="font-size:11px;padding:4px 10px;">Spring over</button>` +
-        `</div>`;
-      card.appendChild(followUp);
-      followUp.querySelector('.pf-skip-btn').onclick = () => {
-        followUp.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Sprunget over</span>';
-        collapseCard(card, 800);
-      };
-      followUp.querySelector('.pf-save-btn').onclick = async () => {
-        const inputs = followUp.querySelectorAll('.pf-input');
-        const startYear = inputs[0].value ? parseInt(inputs[0].value) : null;
-        const endYear = inputs[1].value ? parseInt(inputs[1].value) : null;
-        if (!startYear && !endYear) {
-          followUp.innerHTML = '<span style="font-size:11px;color:var(--text-muted);">Sprunget over</span>';
-          return;
-        }
-        try {
-          const updateData = { ...confirmData.data };
-          if (startYear) updateData.start_year = startYear;
-          if (endYear) updateData.end_year = endYear;
-          const r = await fetch('/app1/confirm_profile_update', {
-            method: 'POST',
-            headers: {'Content-Type':'application/json'},
-            body: JSON.stringify({action: 'add_experience', data: updateData})
-          });
-          const d = await r.json();
-          if (d.status === 'success') {
-            followUp.innerHTML = '<span style="font-size:11px;color:#4ade80;">\u2713 Detaljer gemt</span>';
-            collapseCard(card, 800);
-          } else {
-            followUp.innerHTML = '<span style="font-size:11px;color:#f87171;">Fejl ved gem</span>';
-          }
-        } catch(e) {
-          followUp.innerHTML = '<span style="font-size:11px;color:#f87171;">Fejl</span>';
-        }
-      };
-      saveChatState();
-    }
 
     async function _submitUiCard(btn, card, cardData) {
       if (btn.disabled) return;
@@ -1858,30 +1831,6 @@
           }
         })
         .catch(() => {});
-    }
-    // ── Profile completeness ring ──
-    function refreshProfileRing() {
-      fetch('/api/profile/full').then(r => r.json()).then(data => {
-        const checks = [
-          !!data.headline,
-          !!data.bio,
-          !!data.goals,
-          (data.skills || []).length > 0,
-          (data.experience || []).length > 0,
-          (data.education || []).length > 0,
-          (data.completed_courses || []).length > 0,
-          !!data.preferred_location,
-        ];
-        const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
-        const circumference = 2 * Math.PI * 15.5; // ~97.4
-        const widget = document.getElementById('profileCompletenessWidget');
-        if (score >= 100) { if (widget) widget.style.display = 'none'; return; }
-        const ringFg = document.getElementById('profileRingFg');
-        const pctText = document.getElementById('profilePctText');
-        if (ringFg) ringFg.setAttribute('stroke-dasharray', (circumference * score / 100) + ' ' + circumference);
-        if (pctText) pctText.textContent = score + '%';
-        if (widget) widget.style.display = '';
-      }).catch(() => {});
     }
     if (IS_LOGGED_IN) refreshProfileRing();
 

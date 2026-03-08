@@ -1147,6 +1147,7 @@
             }
           }
           showProfileToast(data.message || 'Profil opdateret', confirmData.section || 'summary');
+          refreshProfileRing();
         } else {
           btn.textContent = 'Fejl';
           btn.disabled = false;
@@ -1235,6 +1236,7 @@
           card.querySelectorAll('.ui-field').forEach(inp => { inp.disabled = true; inp.style.opacity = '0.5'; });
           card.querySelector('.profile-confirm-msg').innerHTML = '\u2713 ' + card.querySelector('.profile-confirm-msg').textContent.replace(/^[\u2713?]\s*/, '');
           showProfileToast(result.message || 'Profil opdateret', cardData.section || 'summary');
+          refreshProfileRing();
           collapseCard(card);
         } else {
           btn.textContent = 'Fejl';
@@ -1858,25 +1860,30 @@
         .catch(() => {});
     }
     // ── Profile completeness ring ──
-    if (IS_LOGGED_IN) {
+    function refreshProfileRing() {
       fetch('/api/profile/full').then(r => r.json()).then(data => {
-        let score = 0;
-        if (data.skills && data.skills.length) score += 20;
-        if (data.experience && data.experience.length) score += 20;
-        if (data.education && data.education.length) score += 20;
-        if (data.courses && data.courses.length) score += 20;
-        if (data.summary && (data.summary.headline || data.summary.bio)) score += 20;
-        if (score >= 100) return; // hide when complete
+        const checks = [
+          !!data.headline,
+          !!data.bio,
+          !!data.goals,
+          (data.skills || []).length > 0,
+          (data.experience || []).length > 0,
+          (data.education || []).length > 0,
+          (data.completed_courses || []).length > 0,
+          !!data.preferred_location,
+        ];
+        const score = Math.round((checks.filter(Boolean).length / checks.length) * 100);
         const circumference = 2 * Math.PI * 15.5; // ~97.4
-        const filled = circumference * score / 100;
+        const widget = document.getElementById('profileCompletenessWidget');
+        if (score >= 100) { if (widget) widget.style.display = 'none'; return; }
         const ringFg = document.getElementById('profileRingFg');
         const pctText = document.getElementById('profilePctText');
-        const widget = document.getElementById('profileCompletenessWidget');
-        if (ringFg) ringFg.setAttribute('stroke-dasharray', filled + ' ' + circumference);
+        if (ringFg) ringFg.setAttribute('stroke-dasharray', (circumference * score / 100) + ' ' + circumference);
         if (pctText) pctText.textContent = score + '%';
         if (widget) widget.style.display = '';
       }).catch(() => {});
     }
+    if (IS_LOGGED_IN) refreshProfileRing();
 
     // ── Proactive nudges ──
     if (IS_LOGGED_IN) {

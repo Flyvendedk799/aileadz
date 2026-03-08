@@ -1,0 +1,416 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-chart-bar text-primary me-2"></i>
+                        Chatbot &amp; Kursusrapporter
+                    </h1>
+                    <p class="text-muted mb-0">{{ company.company_name }} — Indsigt i chatbot-brug, kurser og ordrer</p>
+                </div>
+                <a href="/" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Tilbage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Chatbot-forespørgsler</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ total_chatbot_queries }}</div>
+                            <div class="text-xs text-muted">Gns. {{ avg_conversation_length }} beskeder/samtale</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-comments fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Konverteringsrate</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ conversion_rate }}%</div>
+                            <div class="text-xs text-muted">{{ completed_orders_count }} gennemført / {{ pending_orders_count }} afventer</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-shopping-cart fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Medarbejderengagement</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ employee_engagement_rate }}%</div>
+                            <div class="text-xs text-muted">{{ company_stats.active_users_30d }} aktive (30 dage)</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-users fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Omsætning</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_revenue) }} kr</div>
+                            <div class="text-xs text-muted">Fra {{ completed_orders_count }} gennemførte ordrer</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-coins fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Charts Row -->
+    <div class="row mb-4">
+        <!-- Daily Usage Chart -->
+        <div class="col-xl-8 col-lg-7 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-chart-area me-2"></i>Daglig chatbot-brug
+                    </h6>
+                    <span class="text-muted small">{{ total_conversations }} samtaler i alt</span>
+                </div>
+                <div class="card-body">
+                    <canvas id="dailyUsageChart" height="280"></canvas>
+                </div>
+            </div>
+        </div>
+        <!-- Query Type Distribution -->
+        <div class="col-xl-4 col-lg-5 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-chart-pie me-2"></i>Forespørgselstyper
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="queryTypeChart" height="280"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Hourly Pattern + Category Distribution -->
+    <div class="row mb-4">
+        <div class="col-xl-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-clock me-2"></i>Brug pr. time
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="hourlyChart" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-tags me-2"></i>Kategorier søgt
+                    </h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="categoryChart" height="220"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Popular Courses + Frequent Questions -->
+    <div class="row mb-4">
+        <div class="col-xl-7 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-fire me-2"></i>Populære kurser
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    {% if popular_courses %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Kursus</th>
+                                    <th class="text-center">Visninger</th>
+                                    <th class="text-center">Konv. %</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in popular_courses %}
+                                <tr>
+                                    <td>
+                                        <span class="fw-bold">{{ c.handle }}</span>
+                                    </td>
+                                    <td class="text-center">{{ c.views }}</td>
+                                    <td class="text-center">
+                                        <span class="badge {{ 'bg-success' if c.conversion_rate > 5 else 'bg-secondary' }}">
+                                            {{ c.conversion_rate }}%
+                                        </span>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-graduation-cap fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">Ingen kursusdata endnu</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-5 mb-4">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-question-circle me-2"></i>Hyppige spørgsmål
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    {% if frequent_questions %}
+                    <div class="list-group list-group-flush">
+                        {% for q in frequent_questions %}
+                        <div class="list-group-item px-3 py-2">
+                            <div class="d-flex justify-content-between align-items-start">
+                                <div class="me-2" style="min-width:0;">
+                                    <div class="fw-bold text-truncate">{{ q.text }}</div>
+                                    {% if q.top_response %}
+                                    <small class="text-muted text-truncate d-block">{{ q.top_response[:80] }}</small>
+                                    {% endif %}
+                                </div>
+                                <span class="badge bg-primary rounded-pill flex-shrink-0">{{ q.count }}</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">Ingen samtaler endnu</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Orders -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-receipt me-2"></i>Seneste ordrer
+                    </h6>
+                    <div class="d-flex gap-3">
+                        <span class="text-muted small">Afventer: <strong class="text-warning">{{ pending_orders_count }}</strong></span>
+                        <span class="text-muted small">Gennemført: <strong class="text-success">{{ completed_orders_count }}</strong></span>
+                    </div>
+                </div>
+                <div class="card-body p-0">
+                    {% if recent_orders %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Ordre</th>
+                                    <th>Kursus</th>
+                                    <th>Medarbejder</th>
+                                    <th>Afdeling</th>
+                                    <th class="text-end">Pris</th>
+                                    <th class="text-center">Status</th>
+                                    <th>Dato</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for o in recent_orders %}
+                                <tr>
+                                    <td><code class="small">{{ o.order_id_short }}</code></td>
+                                    <td>
+                                        <span class="fw-bold">{{ o.product_title or o.product_handle }}</span>
+                                        {% if o.variant_location %}
+                                        <br><small class="text-muted"><i class="fas fa-map-marker-alt me-1"></i>{{ o.variant_location }}</small>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        <div>{{ o.user_name or '—' }}</div>
+                                        <small class="text-muted">{{ o.user_email or '' }}</small>
+                                    </td>
+                                    <td>{{ o.department or '—' }}</td>
+                                    <td class="text-end fw-bold">{{ o.price }} kr</td>
+                                    <td class="text-center">
+                                        {% if o.status == 'completed' or o.completion_status == 'completed' %}
+                                        <span class="badge bg-success">Gennemført</span>
+                                        {% elif o.status == 'confirmed' %}
+                                        <span class="badge bg-info">Bekræftet</span>
+                                        {% elif o.status == 'cancelled' %}
+                                        <span class="badge bg-danger">Annulleret</span>
+                                        {% elif o.status == 'processing' %}
+                                        <span class="badge bg-info">Behandles</span>
+                                        {% else %}
+                                        <span class="badge bg-warning text-dark">Afventer</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="small text-muted">{{ o.created_at }}</td>
+                                    <td>
+                                        <a href="{{ url_for('multitenant_reports.order_detail', order_id=o.order_id) }}" class="btn btn-sm btn-outline-primary">
+                                            <i class="fas fa-eye"></i>
+                                        </a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-receipt fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">Ingen ordrer endnu</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Recent Conversations -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-comments me-2"></i>Seneste samtaler
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    {% if recent_conversations %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Session</th>
+                                    <th>Tidspunkt</th>
+                                    <th class="text-center">Beskeder</th>
+                                    <th>Emner</th>
+                                    <th>Afdeling</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for c in recent_conversations %}
+                                <tr>
+                                    <td><code class="small">{{ c.session_id[:8] }}</code></td>
+                                    <td class="small text-muted">{{ c.start_time }}</td>
+                                    <td class="text-center">{{ c.query_count }}</td>
+                                    <td>
+                                        {% for t in (c.topics or '')[:60].split(',') %}
+                                        {% if t.strip() %}
+                                        <span class="badge bg-light text-dark me-1">{{ t.strip() }}</span>
+                                        {% endif %}
+                                        {% endfor %}
+                                    </td>
+                                    <td>{{ c.department or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-comments fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">Ingen samtaler endnu</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  const purple = '#a855f7', green = '#10b981', blue = '#3b82f6', amber = '#f59e0b', pink = '#ec4899', cyan = '#06b6d4';
+  Chart.defaults.color = '#aaa';
+  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+
+  // Daily Usage
+  new Chart(document.getElementById('dailyUsageChart'), {
+    type: 'line',
+    data: {
+      labels: {{ daily_chatbot_query_labels | tojson }},
+      datasets: [{
+        label: 'Forespørgsler',
+        data: {{ daily_chatbot_query_data | tojson }},
+        borderColor: purple, backgroundColor: 'rgba(168,85,247,0.1)',
+        fill: true, tension: 0.3, pointRadius: 3
+      }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Query Types
+  const qtData = {{ query_type_distribution | tojson }};
+  const qtLabels = { price_inquiry: 'Pris', date_inquiry: 'Dato', location_inquiry: 'Lokation', recommendation: 'Anbefaling', order_intent: 'Bestilling', general: 'Generelt' };
+  new Chart(document.getElementById('queryTypeChart'), {
+    type: 'doughnut',
+    data: {
+      labels: Object.keys(qtData).map(k => qtLabels[k] || k),
+      datasets: [{ data: Object.values(qtData), backgroundColor: [purple, green, blue, amber, pink, cyan] }]
+    },
+    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } } }
+  });
+
+  // Hourly Pattern
+  const hourlyData = {{ hourly_usage_pattern | tojson }};
+  const hours = Array.from({length:24}, (_,i) => i);
+  new Chart(document.getElementById('hourlyChart'), {
+    type: 'bar',
+    data: {
+      labels: hours.map(h => h + ':00'),
+      datasets: [{ label: 'Forespørgsler', data: hours.map(h => hourlyData[h] || 0), backgroundColor: 'rgba(168,85,247,0.5)', borderRadius: 4 }]
+    },
+    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+  });
+
+  // Category Distribution
+  const catData = {{ category_distribution | tojson }};
+  new Chart(document.getElementById('categoryChart'), {
+    type: 'bar',
+    data: {
+      labels: Object.keys(catData),
+      datasets: [{ label: 'Søgninger', data: Object.values(catData), backgroundColor: 'rgba(16,185,129,0.5)', borderRadius: 4 }]
+    },
+    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+  });
+</script>
+{% endblock %}

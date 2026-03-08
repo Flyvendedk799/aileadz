@@ -674,10 +674,26 @@
     /* Card animations */
     @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .card-collapse {
-      overflow: hidden; pointer-events: none;
+      overflow: hidden;
       transition: height 0.35s ease-in-out, opacity 0.3s ease-in-out, margin 0.35s ease-in-out, padding 0.35s ease-in-out;
     }
-    .card-collapse.collapsed { height: 0 !important; opacity: 0; margin: 0; padding: 0; border-width: 0; }
+    .card-collapse.collapsed { height: 0 !important; opacity: 0; margin: 0; padding: 0; border-width: 0; pointer-events: none; }
+    .card-done-pill {
+      display: inline-flex; align-items: center; gap: 6px;
+      background: var(--purple-glow); border: 1px solid rgba(168,85,247,0.1);
+      border-radius: 8px; padding: 5px 12px; margin: 4px 0;
+      font-size: 12px; color: var(--text-muted); cursor: pointer;
+      transition: all 0.2s ease; opacity: 0; transform: translateY(-4px);
+    }
+    .card-done-pill.visible { opacity: 1; transform: translateY(0); }
+    .card-done-pill:hover { background: rgba(168,85,247,0.1); color: #c4b5fd; border-color: rgba(168,85,247,0.25); }
+    .card-done-pill .pill-icon { display: flex; flex-shrink: 0; }
+    .card-done-pill .pill-icon svg { width: 13px; height: 13px; }
+    .card-done-pill.pill-success .pill-check { color: #4ade80; }
+    .card-done-pill.pill-dismissed { opacity: 0.6; }
+    .card-done-pill.pill-dismissed:hover { opacity: 1; }
+    .light-mode .card-done-pill { background: rgba(168,85,247,0.04); border-color: rgba(168,85,247,0.1); }
+    .light-mode .card-done-pill:hover { background: rgba(168,85,247,0.08); }
     .animate-slide-in { animation: cardIn 0.35s ease-out forwards; }
     .animate-slide-in:nth-child(2) { animation-delay: 0.06s; }
     .animate-slide-in:nth-child(3) { animation-delay: 0.12s; }
@@ -1137,17 +1153,50 @@
       }).catch(() => {});
     }
 
-    // ── Card collapse helper ──
-    function collapseCard(card, delay = 1200) {
+    // ── Card collapse → pill helper ──
+    function collapseCard(card, delay = 1200, isDismiss = false) {
       if (!card) return;
+      // Extract info for the pill before collapsing
+      const msgEl = card.querySelector('.profile-confirm-msg');
+      const iconEl = card.querySelector('.profile-confirm-icon');
+      const label = msgEl ? msgEl.textContent.replace(/^[✓?]\s*/, '').substring(0, 50) : 'Opdatering';
+      const iconHtml = iconEl ? iconEl.innerHTML : '';
+
       setTimeout(() => {
+        // Create the pill
+        const pill = document.createElement('div');
+        pill.className = 'card-done-pill' + (isDismiss ? ' pill-dismissed' : ' pill-success');
+        pill.innerHTML =
+          `<span class="pill-icon">${iconHtml}</span>` +
+          `<span class="pill-check">${isDismiss ? '✕' : '✓'}</span>` +
+          `<span class="pill-label">${label.replace(/</g,'&lt;')}</span>`;
+        card.parentNode.insertBefore(pill, card.nextSibling);
+
+        // Collapse the card
         const h = card.offsetHeight;
         card.style.height = h + 'px';
         card.classList.add('card-collapse');
-        // Force reflow then trigger collapse
-        card.offsetHeight; // eslint-disable-line no-unused-expressions
+        card.offsetHeight;
         card.classList.add('collapsed');
-        card.addEventListener('transitionend', () => { card.style.display = 'none'; saveChatState(); }, { once: true });
+
+        const onDone = () => {
+          card.style.display = 'none';
+          // Animate pill in
+          requestAnimationFrame(() => pill.classList.add('visible'));
+          saveChatState();
+        };
+        card.addEventListener('transitionend', onDone, { once: true });
+        // Fallback if transitionend doesn't fire
+        setTimeout(onDone, 400);
+
+        // Click pill to expand card again
+        pill.addEventListener('click', () => {
+          pill.remove();
+          card.style.display = '';
+          card.classList.remove('card-collapse', 'collapsed');
+          card.style.height = '';
+          saveChatState();
+        });
       }, delay);
     }
 
@@ -1236,7 +1285,7 @@
         card.querySelector('.profile-confirm-msg').style.opacity = '0.5';
         const actions = card.querySelector('.profile-confirm-actions');
         if (actions) actions.innerHTML = '<span style="font-size:12px;color:var(--text-muted);">Afvist</span>';
-        collapseCard(card, 800);
+        collapseCard(card, 800, true);
       }
     };
 

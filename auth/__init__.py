@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 import MySQLdb
 from werkzeug.utils import secure_filename
+from werkzeug.security import generate_password_hash, check_password_hash
 import os
 import uuid
 import time
@@ -20,7 +21,25 @@ def login():
         cur.execute("SELECT * FROM users WHERE username = %s", (username,))
         user = cur.fetchone()
         cur.close()
-        if user and user['password'] == password:
+        # Support both hashed passwords (new) and legacy plaintext (old)
+        password_valid = False
+        if user:
+            stored = user['password']
+            if stored.startswith(('pbkdf2:', 'scrypt:')):
+                password_valid = check_password_hash(stored, password)
+            else:
+                password_valid = (stored == password)
+                # Auto-upgrade plaintext password to hashed on successful login
+                if password_valid:
+                    try:
+                        hashed = generate_password_hash(password)
+                        cur_up = current_app.mysql.connection.cursor()
+                        cur_up.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user['id']))
+                        current_app.mysql.connection.commit()
+                        cur_up.close()
+                    except Exception:
+                        pass
+        if user and password_valid:
             session['user'] = user['username']
             session['user_id'] = user['id']
             session['credits'] = user['credits']
@@ -67,7 +86,8 @@ def register():
             flash('Username or email already exists', 'danger')
             cur.close()
             return redirect(url_for('auth.register'))
-        cur.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)", (username, password, email))
+        hashed_password = generate_password_hash(password)
+        cur.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)", (username, hashed_password, email))
         current_app.mysql.connection.commit()
         cur.close()
         flash('Registration successful! Please log in.', 'success')

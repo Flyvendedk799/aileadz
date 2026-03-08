@@ -1,0 +1,142 @@
+{% extends "base.html" %}
+{% block title %}Brugeradministration - AiLeadZ{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+    .admin-wrap { max-width: 1400px; margin: 0 auto; }
+    .table-admin th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
+    .table-admin td { vertical-align: middle; font-size: 0.9rem; }
+    .badge-role { font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; }
+    .badge-admin { background: #ede9fe; color: #7c3aed; }
+    .badge-user { background: #e0f2fe; color: #0284c7; }
+    .admin-nav { background: #fff; border-bottom: 1px solid #e5e7eb; }
+    .admin-nav .nav-link { color: #374151; font-weight: 500; font-size: 0.9rem; padding: 12px 20px; border-bottom: 2px solid transparent; }
+    .admin-nav .nav-link.active { color: #7c3aed; border-bottom-color: #7c3aed; }
+    .admin-nav .nav-link:hover { color: #7c3aed; }
+    .search-box { max-width: 300px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-wrap mt-3">
+    <!-- Admin Navigation -->
+    <nav class="admin-nav rounded shadow-sm mb-4">
+        <div class="d-flex align-items-center px-3">
+            <span class="fw-bold text-primary me-4 py-2"><i class="fas fa-shield-alt me-1"></i> Admin</span>
+            <ul class="nav mb-0">
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('admin_dashboard.admin_home') }}">
+                        <i class="fas fa-tachometer-alt me-1"></i> Oversigt
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link active" href="{{ url_for('admin_dashboard.user_list') }}">
+                        <i class="fas fa-users me-1"></i> Brugere
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a class="nav-link" href="{{ url_for('admin_dashboard.credits') }}">
+                        <i class="fas fa-coins me-1"></i> Kreditter
+                    </a>
+                </li>
+            </ul>
+        </div>
+    </nav>
+
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h4 class="fw-bold mb-0"><i class="fas fa-users text-primary me-2"></i>Alle brugere ({{ users|length }})</h4>
+        <input type="text" class="form-control form-control-sm search-box" id="userSearch" placeholder="Soeg bruger...">
+    </div>
+
+    <div class="card shadow-sm">
+        <div class="card-body p-0">
+            <div class="table-responsive">
+                <table class="table table-admin table-hover mb-0" id="usersTable">
+                    <thead>
+                        <tr>
+                            <th class="ps-3">ID</th>
+                            <th>Bruger</th>
+                            <th>Email</th>
+                            <th>Rolle</th>
+                            <th>Virksomhed</th>
+                            <th>Virksomhedsrolle</th>
+                            <th>Kreditter</th>
+                            <th>Oprettet</th>
+                            <th class="text-end pe-3">Handlinger</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for u in users %}
+                        <tr>
+                            <td class="ps-3 text-muted">{{ u.id }}</td>
+                            <td class="fw-medium">{{ u.username }}</td>
+                            <td class="text-muted">{{ u.email or '-' }}</td>
+                            <td>
+                                <span class="badge badge-role {{ 'badge-admin' if u.role == 'admin' else 'badge-user' }}">
+                                    {{ u.role or 'user' }}
+                                </span>
+                            </td>
+                            <td>{{ u.company_name or '-' }}</td>
+                            <td>{{ u.company_role or '-' }}</td>
+                            <td>{{ u.credits or 0 }}</td>
+                            <td class="text-muted">{{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '-' }}</td>
+                            <td class="text-end pe-3">
+                                <div class="btn-group btn-group-sm">
+                                    {% if u.role != 'admin' %}
+                                    <button class="btn btn-outline-primary" onclick="setRole({{ u.id }}, 'admin')" title="Goer til admin">
+                                        <i class="fas fa-crown"></i>
+                                    </button>
+                                    {% else %}
+                                    <button class="btn btn-outline-secondary" onclick="setRole({{ u.id }}, 'user')" title="Fjern admin">
+                                        <i class="fas fa-user"></i>
+                                    </button>
+                                    {% endif %}
+                                    <button class="btn btn-outline-success" onclick="addCredits({{ u.id }})" title="Tilfoej kreditter">
+                                        <i class="fas fa-coins"></i>
+                                    </button>
+                                </div>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+document.getElementById('userSearch').addEventListener('input', function() {
+    const q = this.value.toLowerCase();
+    document.querySelectorAll('#usersTable tbody tr').forEach(tr => {
+        tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+    });
+});
+
+function setRole(userId, role) {
+    if (!confirm(`Skift rolle til "${role}"?`)) return;
+    fetch(`/admin/users/${userId}/role`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({role})
+    }).then(r => r.json()).then(d => {
+        if (d.success) location.reload();
+        else alert('Fejl: ' + d.message);
+    });
+}
+
+function addCredits(userId) {
+    const amount = prompt('Antal kreditter at tilfoeje:');
+    if (!amount) return;
+    fetch(`/admin/users/${userId}/credits`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({amount: parseInt(amount)})
+    }).then(r => r.json()).then(d => {
+        if (d.success) location.reload();
+        else alert('Fejl: ' + d.message);
+    });
+}
+</script>
+{% endblock %}

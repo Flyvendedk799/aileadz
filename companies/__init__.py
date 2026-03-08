@@ -50,7 +50,10 @@ def create_companies_blueprint():
 
     @companies_bp.route('/register', methods=['GET', 'POST'])
     def register_company():
-        """Company registration for new enterprise clients"""
+        """Company registration — super admin only"""
+        if 'user' not in session or session.get('role') != 'admin':
+            flash("Kun administratorer kan oprette virksomheder.", "danger")
+            return redirect(url_for('auth.login'))
         if request.method == 'POST':
             # Company details
             company_name = request.form.get('company_name', '').strip()
@@ -134,11 +137,11 @@ def create_companies_blueprint():
                 # Add admin to company
                 cur.execute("""
                     INSERT INTO company_users (
-                        company_id, user_id, role, department, job_title,
+                        company_id, user_id, username, email, role, department, job_title,
                         status, phone, permissions, added_by
-                    ) VALUES (%s, %s, 'company_admin', 'Administration', %s, 'active', %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, 'company_admin', 'Administration', %s, 'active', %s, %s, %s)
                 """, (
-                    company_id, user_id, admin_job_title, admin_phone,
+                    company_id, user_id, admin_name, admin_email, admin_job_title, admin_phone,
                     json.dumps({
                         "manage_users": True,
                         "view_analytics": True,
@@ -178,15 +181,8 @@ def create_companies_blueprint():
                 current_app.mysql.connection.commit()
                 cur.close()
 
-                # Auto-login the admin user
-                session['user'] = admin_name
-                session['user_id'] = user_id
-                session['company_id'] = company_id
-                session['company_role'] = 'company_admin'
-                session['company_name'] = company_name
-                
-                flash(f"Welcome to AiLead Enterprise! Your company '{company_name}' has been registered successfully. You have a 30-day free trial.", "success")
-                return redirect(url_for('companies.dashboard'))
+                flash(f"Virksomheden '{company_name}' er oprettet. Admin-bruger: {admin_name}", "success")
+                return redirect(url_for('companies.register'))
                 
             except Exception as e:
                 current_app.logger.error(f"Error registering company: {e}")
@@ -434,10 +430,11 @@ def create_companies_blueprint():
                         return render_template('companies/add_employee.html', company=company)
                 else:
                     # Create new user
+                    hashed_password = generate_password_hash(password)
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
                         VALUES (%s, %s, %s, 100, 'employee')
-                    """, (username, email, password))
+                    """, (username, email, hashed_password))
                     user_id = cur.lastrowid
                 
                 # Set permissions based on role
@@ -467,11 +464,11 @@ def create_companies_blueprint():
                 # Add to company
                 cur.execute("""
                     INSERT INTO company_users (
-                        company_id, user_id, role, department, job_title, employee_id,
+                        company_id, user_id, username, email, role, department, job_title, employee_id,
                         hire_date, employment_type, status, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
                 """, (
-                    company['id'], user_id, role, department, job_title, employee_id,
+                    company['id'], user_id, username, email, role, department, job_title, employee_id,
                     hire_date if hire_date else None, employment_type,
                     json.dumps(permissions.get(role, permissions['employee'])),
                     session.get('user_id')

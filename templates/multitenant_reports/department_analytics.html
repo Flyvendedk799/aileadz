@@ -1,0 +1,199 @@
+{% extends "base.html" %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+
+    <!-- Breadcrumb -->
+    <nav aria-label="breadcrumb" class="mb-3">
+        <ol class="breadcrumb">
+            <li class="breadcrumb-item"><a href="{{ url_for('multitenant_reports.reports') }}">Rapporter</a></li>
+            <li class="breadcrumb-item active">{{ department_name }}</li>
+        </ol>
+    </nav>
+
+    <!-- Header -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <h1 class="h3 mb-0">
+                        <i class="fas fa-building text-primary me-2"></i>
+                        {{ department_name }}
+                    </h1>
+                    <p class="text-muted mb-0">{{ company.company_name }} — Afdelingsanalyse</p>
+                </div>
+                <a href="{{ url_for('multitenant_reports.reports') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Tilbage
+                </a>
+            </div>
+        </div>
+    </div>
+
+    <!-- KPI Cards -->
+    <div class="row mb-4">
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-primary shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Medarbejdere</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ dept_stats.total_employees or 0 }}</div>
+                            <div class="text-xs text-muted">{{ dept_stats.active_employees or 0 }} aktive</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-users fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-success shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Kurser gennemført</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ dept_stats.completed_courses or 0 }}</div>
+                            <div class="text-xs text-muted">{{ dept_stats.total_course_orders or 0 }} bestilt i alt</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-graduation-cap fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-warning shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Investering</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(dept_stats.total_investment or 0) }} kr</div>
+                            <div class="text-xs text-muted">Gennemførte kurser</div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-coins fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-3 col-md-6 mb-3">
+            <div class="card border-left-info shadow h-100 py-2">
+                <div class="card-body">
+                    <div class="row no-gutters align-items-center">
+                        <div class="col mr-2">
+                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Chatbot-brug</div>
+                            <div class="h5 mb-0 font-weight-bold">{{ dept_stats.total_chatbot_interactions or 0 }}</div>
+                            <div class="text-xs text-muted">
+                                {% if dept_stats.avg_interaction_quality %}
+                                Kvalitet: {{ "%.1f"|format(dept_stats.avg_interaction_quality) }}/10
+                                {% else %}
+                                Ingen data
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-auto"><i class="fas fa-robot fa-2x text-gray-300"></i></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Completion Rate Bar -->
+    {% if dept_stats.total_course_orders and dept_stats.total_course_orders > 0 %}
+    {% set comp_rate = ((dept_stats.completed_courses or 0) / dept_stats.total_course_orders * 100) | round(0) | int %}
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <span class="fw-bold">Gennemførelsesrate</span>
+                        <span class="fw-bold">{{ comp_rate }}%</span>
+                    </div>
+                    <div class="progress" style="height: 12px;">
+                        <div class="progress-bar {{ 'bg-success' if comp_rate >= 70 else ('bg-warning' if comp_rate >= 40 else 'bg-danger') }}"
+                             style="width: {{ comp_rate }}%; border-radius: 6px;"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Employee Table -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3">
+                    <h6 class="m-0 font-weight-bold text-primary">
+                        <i class="fas fa-user-friends me-2"></i>Medarbejdere i {{ department_name }}
+                    </h6>
+                </div>
+                <div class="card-body p-0">
+                    {% if dept_employees %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="table-light">
+                                <tr>
+                                    <th>Medarbejder</th>
+                                    <th>Stilling</th>
+                                    <th>Rolle</th>
+                                    <th class="text-center">Tilmeldt</th>
+                                    <th class="text-center">Gennemført</th>
+                                    <th class="text-center">Chatbot-brug</th>
+                                    <th>Sidst aktiv</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for emp in dept_employees %}
+                                <tr>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="rounded-circle bg-primary bg-opacity-10 d-flex align-items-center justify-content-center" style="width:32px;height:32px;">
+                                                <span class="text-primary fw-bold small">{{ emp.username[:1] | upper }}</span>
+                                            </div>
+                                            <span class="fw-bold">{{ emp.username }}</span>
+                                        </div>
+                                    </td>
+                                    <td>{{ emp.job_title or '—' }}</td>
+                                    <td>
+                                        {% if emp.role == 'company_admin' %}
+                                        <span class="badge bg-primary">Admin</span>
+                                        {% elif emp.role == 'hr_manager' %}
+                                        <span class="badge bg-info">HR</span>
+                                        {% elif emp.role == 'department_head' %}
+                                        <span class="badge bg-warning text-dark">Afdelingsleder</span>
+                                        {% else %}
+                                        <span class="badge bg-secondary">Medarbejder</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ emp.courses_enrolled or 0 }}</td>
+                                    <td class="text-center">
+                                        {% if emp.courses_completed %}
+                                        <span class="text-success fw-bold">{{ emp.courses_completed }}</span>
+                                        {% else %}
+                                        <span class="text-muted">0</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ emp.total_chatbot_queries or 0 }}</td>
+                                    <td class="small text-muted">
+                                        {% if emp.last_chatbot_interaction %}
+                                        {{ emp.last_chatbot_interaction }}
+                                        {% else %}
+                                        —
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-users fa-3x text-gray-300 mb-3"></i>
+                        <p class="text-muted">Ingen medarbejdere fundet i denne afdeling</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+</div>
+{% endblock %}

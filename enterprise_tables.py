@@ -561,6 +561,9 @@ def ensure_enterprise_tables(app):
                 "ALTER TABLE chatbot_interactions ADD COLUMN conversation_depth INT DEFAULT 1 AFTER products_shown",
                 "ALTER TABLE chatbot_interactions ADD COLUMN is_logged_in TINYINT DEFAULT 0 AFTER conversation_depth",
                 "ALTER TABLE chatbot_interactions ADD COLUMN feedback_rating TINYINT DEFAULT 0 AFTER is_logged_in",
+                # Ensure user_id column exists (may be missing on older tables)
+                "ALTER TABLE course_orders ADD COLUMN user_id INT AFTER company_id",
+                "ALTER TABLE course_orders ADD INDEX idx_user (user_id)",
                 # Phase 2: session linkage on orders
                 "ALTER TABLE course_orders ADD COLUMN chatbot_session_id VARCHAR(255) AFTER user_phone",
                 "ALTER TABLE course_orders ADD COLUMN chatbot_queries_before_order INT DEFAULT 0 AFTER chatbot_session_id",

@@ -38,6 +38,11 @@
                     </a>
                 </li>
                 <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'learning_paths' else '' }}" href="{{ url_for('hr_dashboard.learning_paths') }}">
+                        <i class="fas fa-road me-1"></i> Laeringsforloeb
+                    </a>
+                </li>
+                <li class="nav-item">
                     <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'billing' else '' }}" href="{{ url_for('hr_dashboard.billing_overview') }}">
                         <i class="fas fa-file-invoice-dollar me-1"></i> Fakturering
                     </a>
@@ -52,6 +57,13 @@
                         <i class="fas fa-file-download me-1"></i> Rapporter
                     </a>
                 </li>
+                {% if session.get('company_role') in ['department_head', 'hr_manager', 'company_admin'] %}
+                <li class="nav-item">
+                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'my_department' else '' }}" href="{{ url_for('hr_dashboard.my_department') }}">
+                        <i class="fas fa-building me-1"></i> Min Afdeling
+                    </a>
+                </li>
+                {% endif %}
             </ul>
             <div class="d-flex gap-2 align-items-center">
                 <a href="{{ url_for('companies.add_employee') }}" class="btn btn-outline-success btn-sm">

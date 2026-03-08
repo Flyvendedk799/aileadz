@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app
 from markupsafe import escape
 import json
 import logging
@@ -959,6 +959,94 @@ def adminlog_clear():
     from app1.memory_store import clear_debug_logs
     clear_debug_logs()
     return jsonify({"status": "ok"})
+
+
+@app1_bp.route("/nudges")
+def nudges():
+    """Proactive chatbot nudges for the current user."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"nudges": []})
+
+    nudge_list = []
+
+    try:
+        # 1. Check pending/approved order updates
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                SELECT status, product_title FROM course_orders
+                WHERE user_id = (SELECT id FROM users WHERE username = %s LIMIT 1)
+                  AND status IN ('approved', 'pending_approval')
+                ORDER BY updated_at DESC LIMIT 1
+            """, (logged_in_user,))
+            row = cur.fetchone()
+            cur.close()
+            if row:
+                status, title = row[0], row[1]
+                if status == 'approved':
+                    nudge_list.append({
+                        "type": "order_update",
+                        "text": f"Din kursusordre \"{title}\" er blevet godkendt!",
+                        "action_url": "/profile"
+                    })
+                elif status == 'pending_approval':
+                    nudge_list.append({
+                        "type": "order_update",
+                        "text": f"Din kursusordre \"{title}\" afventer godkendelse.",
+                        "action_url": "/profile"
+                    })
+        except Exception as e:
+            logging.debug("Nudge order check: %s", e)
+
+        # 2. Profile incomplete check
+        if len(nudge_list) < 3:
+            try:
+                from app1.user_profile_db import get_skills, get_experience, ensure_tables
+                ensure_tables()
+                skills = get_skills(logged_in_user)
+                experience = get_experience(logged_in_user)
+                if not skills and not experience:
+                    nudge_list.append({
+                        "type": "profile_incomplete",
+                        "text": "Din profil mangler kompetencer og erfaring. Opdater den for bedre anbefalinger!",
+                        "action_url": "/profile"
+                    })
+            except Exception as e:
+                logging.debug("Nudge profile check: %s", e)
+
+        # 3. Skill gaps (company users only)
+        if len(nudge_list) < 3 and session.get('company_id'):
+            try:
+                cur = current_app.mysql.connection.cursor()
+                company_id = session['company_id']
+                cur.execute("""
+                    SELECT cst.skill_name
+                    FROM company_skill_targets cst
+                    WHERE cst.company_id = %s
+                      AND cst.skill_name NOT IN (
+                          SELECT esm.skill_name FROM employee_skills_matrix esm
+                          WHERE esm.company_id = %s
+                            AND esm.user_id = (SELECT id FROM users WHERE username = %s LIMIT 1)
+                            AND esm.current_level >= cst.target_level
+                      )
+                    LIMIT 1
+                """, (company_id, company_id, logged_in_user))
+                gap = cur.fetchone()
+                cur.close()
+                if gap:
+                    nudge_list.append({
+                        "type": "skill_gap",
+                        "text": f"Du mangler kompetencen \"{gap[0]}\" — find et relevant kursus!",
+                        "action_url": "/app1/"
+                    })
+            except Exception as e:
+                logging.debug("Nudge skill gap check: %s", e)
+
+    except Exception as e:
+        logging.warning("Nudge endpoint error: %s", e)
+
+    return jsonify({"nudges": nudge_list[:3]})
 
 
 app.register_blueprint(app1_bp, url_prefix='/app1')

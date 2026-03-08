@@ -278,15 +278,44 @@ def create_companies_blueprint():
                 LIMIT 10
             """, (company['id'],))
             top_performers = cur.fetchall()
-            
+
+            # Onboarding checklist status
+            has_employees = (stats.get('total_employees', 0) or 0) > 1  # more than just the admin
+
+            try:
+                cur.execute("SELECT COUNT(*) as cnt FROM company_departments WHERE company_id = %s", (company['id'],))
+                has_departments = (cur.fetchone()['cnt'] or 0) > 0
+            except Exception:
+                has_departments = False
+
+            try:
+                cur.execute("SELECT COUNT(*) as cnt FROM department_budgets WHERE company_id = %s", (company['id'],))
+                has_budgets = (cur.fetchone()['cnt'] or 0) > 0
+            except Exception:
+                has_budgets = False
+
+            has_orders = (stats.get('total_course_orders', 0) or 0) > 0
+            has_used_chatbot = (stats.get('total_chatbot_interactions', 0) or 0) > 0
+
+            onboarding_checks = [has_employees, has_departments, has_budgets, has_orders, has_used_chatbot]
+            onboarding = {
+                'has_employees': has_employees,
+                'has_departments': has_departments,
+                'has_budgets': has_budgets,
+                'has_orders': has_orders,
+                'has_used_chatbot': has_used_chatbot,
+                'completed_count': sum(1 for c in onboarding_checks if c),
+            }
+
             cur.close()
-            
+
             return render_template('companies/dashboard.html',
                                  company=company,
                                  stats=stats,
                                  recent_activity=recent_activity,
                                  department_stats=department_stats,
-                                 top_performers=top_performers)
+                                 top_performers=top_performers,
+                                 onboarding=onboarding)
             
         except Exception as e:
             current_app.logger.error(f"Error loading company dashboard: {e}")

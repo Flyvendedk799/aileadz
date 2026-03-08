@@ -811,6 +811,38 @@
     }
     .mobile-hamburger:hover { background: var(--purple-glow); }
     .mobile-hamburger svg { width: 18px; height: 18px; }
+
+    /* ── Profile Completeness Ring ── */
+    .profile-completeness {
+      margin: 12px 0 4px;
+      padding: 10px 12px;
+      border-radius: 10px;
+      background: var(--purple-glow);
+      border: 1px solid var(--purple-border);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+      transition: all 0.15s;
+    }
+    .profile-completeness:hover { border-color: var(--purple); background: rgba(168,85,247,0.12); }
+    .profile-completeness-ring {
+      width: 36px; height: 36px; flex-shrink: 0;
+      transform: rotate(-90deg);
+    }
+    .profile-completeness-ring circle {
+      fill: none; stroke-width: 3.5;
+    }
+    .profile-completeness-ring .ring-bg { stroke: var(--border); }
+    .profile-completeness-ring .ring-fg {
+      stroke: var(--purple);
+      stroke-linecap: round;
+      transition: stroke-dasharray 0.6s ease;
+    }
+    .profile-completeness-info { display: flex; flex-direction: column; min-width: 0; }
+    .profile-completeness-pct { font-size: 13px; font-weight: 600; color: var(--text); }
+    .profile-completeness-label { font-size: 11px; color: var(--text-secondary); }
+    .sidebar.collapsed .profile-completeness { display: none; }
   </style>
 </head>
 <body>
@@ -845,6 +877,19 @@
         <div id="convList" class="sb-conv-list">
           <div class="sb-conv-empty sb-text" style="font-size:11px;color:var(--text-muted);padding:6px 10px;">Indlæser...</div>
         </div>
+        {% endif %}
+
+        {% if session.get('user') %}
+        <a href="/profile" class="profile-completeness sb-text" id="profileCompletenessWidget" style="display:none;">
+          <svg class="profile-completeness-ring" viewBox="0 0 36 36">
+            <circle class="ring-bg" cx="18" cy="18" r="15.5"/>
+            <circle class="ring-fg" id="profileRingFg" cx="18" cy="18" r="15.5" stroke-dasharray="0 97.4"/>
+          </svg>
+          <div class="profile-completeness-info">
+            <span class="profile-completeness-pct" id="profilePctText">0%</span>
+            <span class="profile-completeness-label">Udfyld profil</span>
+          </div>
+        </a>
         {% endif %}
 
         <div class="sb-section-label" style="margin-top:20px;">Navigation</div>
@@ -912,6 +957,9 @@
           {% endif %}
         </div>
       </div>
+
+      <!-- Nudge bar (proactive chatbot nudges) -->
+      <div id="nudgeBar" style="display:none; padding:0 16px;"></div>
 
       <div class="chat-box" id="chatBox" role="log" aria-live="polite">
         <div class="welcome-screen" id="welcomeScreen">
@@ -1783,6 +1831,44 @@
         })
         .catch(() => {});
     }
+    // ── Profile completeness ring ──
+    if (IS_LOGGED_IN) {
+      fetch('/api/profile/full').then(r => r.json()).then(data => {
+        let score = 0;
+        if (data.skills && data.skills.length) score += 20;
+        if (data.experience && data.experience.length) score += 20;
+        if (data.education && data.education.length) score += 20;
+        if (data.courses && data.courses.length) score += 20;
+        if (data.summary && (data.summary.headline || data.summary.bio)) score += 20;
+        if (score >= 100) return; // hide when complete
+        const circumference = 2 * Math.PI * 15.5; // ~97.4
+        const filled = circumference * score / 100;
+        const ringFg = document.getElementById('profileRingFg');
+        const pctText = document.getElementById('profilePctText');
+        const widget = document.getElementById('profileCompletenessWidget');
+        if (ringFg) ringFg.setAttribute('stroke-dasharray', filled + ' ' + circumference);
+        if (pctText) pctText.textContent = score + '%';
+        if (widget) widget.style.display = '';
+      }).catch(() => {});
+    }
+
+    // ── Proactive nudges ──
+    if (IS_LOGGED_IN) {
+      fetch("{{ url_for('app1.nudges') }}")
+        .then(r => r.json())
+        .then(data => {
+          const bar = document.getElementById('nudgeBar');
+          if (data.nudges && data.nudges.length > 0 && bar) {
+            const n = data.nudges[0];
+            bar.innerHTML = `<div style="display:flex;align-items:center;justify-content:space-between;background:var(--purple-glow);border:1px solid var(--purple-border);border-radius:8px;padding:8px 14px;margin-top:4px;">
+              <a href="${n.action_url || '#'}" style="color:var(--purple);font-size:13px;font-weight:500;text-decoration:none;flex:1;">${n.text}</a>
+              <button onclick="this.parentElement.parentElement.style.display='none'" style="background:none;border:none;color:var(--text-muted);cursor:pointer;padding:4px;font-size:16px;line-height:1;">&times;</button>
+            </div>`;
+            bar.style.display = 'block';
+          }
+        }).catch(() => {});
+    }
+
     if (IS_LOGGED_IN) loadConversationList();
     if (!IS_LOGGED_IN) {
       window.addEventListener('beforeunload', () => {

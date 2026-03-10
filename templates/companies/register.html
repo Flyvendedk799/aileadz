@@ -152,22 +152,39 @@
                                            placeholder="F.eks. Mette Hansen">
                                 </div>
                                 <div class="col-md-6 mb-3">
+                                    <label class="form-label">Brugernavn <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" name="hr_username" id="hr_username"
+                                           placeholder="F.eks. mette.hansen">
+                                    <small class="text-muted">Bruges til login</small>
+                                </div>
+                            </div>
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">E-mail <span class="text-danger">*</span></label>
+                                    <input type="email" class="form-control" name="hr_email" id="hr_email"
+                                           placeholder="mette@firma.dk">
+                                    <div class="validation-hint" id="email_hint"></div>
+                                </div>
+                                <div class="col-md-6 mb-3">
                                     <label class="form-label">Jobtitel</label>
                                     <input type="text" class="form-control" name="job_title" id="job_title" placeholder="F.eks. HR-chef">
                                 </div>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label">E-mail <span class="text-danger">*</span></label>
-                                <input type="email" class="form-control" name="hr_email" id="hr_email"
-                                       placeholder="mette@firma.dk">
-                                <div class="validation-hint" id="email_hint"></div>
-                            </div>
-                            <div class="mb-3">
-                                <label class="form-label">Telefon</label>
-                                <input type="tel" class="form-control" name="hr_phone" placeholder="+45 12 34 56 78">
-                            </div>
-                            <div class="validation-hint">
-                                <i class="fas fa-info-circle"></i> Adgangskoden genereres automatisk og vises efter oprettelse.
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Password <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" name="hr_password" id="hr_password_field">
+                                        <button type="button" class="btn btn-outline-secondary" onclick="generateHRPassword()">
+                                            <i class="fas fa-dice"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">Klik terningen for at generere. Del det med HR-manageren.</small>
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Telefon</label>
+                                    <input type="tel" class="form-control" name="hr_phone" placeholder="+45 12 34 56 78">
+                                </div>
                             </div>
                         </div>
 
@@ -292,10 +309,14 @@ function goStep(step) {
         if (currentStep === 2) {
             if (selectedMode === 'new') {
                 const name = document.getElementById('hr_name').value.trim();
+                const uname = document.getElementById('hr_username').value.trim();
                 const email = document.getElementById('hr_email').value.trim();
-                if (!name || !email) {
+                const pw = document.getElementById('hr_password_field').value.trim();
+                if (!name || !uname || !email || !pw) {
                     if (!name) document.getElementById('hr_name').classList.add('is-invalid');
+                    if (!uname) document.getElementById('hr_username').classList.add('is-invalid');
                     if (!email) document.getElementById('hr_email').classList.add('is-invalid');
+                    if (!pw) document.getElementById('hr_password_field').classList.add('is-invalid');
                     return;
                 }
                 if (!email.includes('@')) {
@@ -323,7 +344,7 @@ function goStep(step) {
         if (selectedMode === 'new') {
             document.getElementById('confirm-name').textContent = document.getElementById('hr_name').value;
             document.getElementById('confirm-email').textContent = document.getElementById('hr_email').value;
-            document.getElementById('confirm-mode').textContent = '(Ny bruger - login vises efter oprettelse)';
+            document.getElementById('confirm-mode').textContent = '(Ny bruger: ' + document.getElementById('hr_username').value + ')';
         } else if (selectedUserData) {
             document.getElementById('confirm-name').textContent = selectedUserData.username;
             document.getElementById('confirm-email').textContent = selectedUserData.email;
@@ -403,6 +424,28 @@ document.addEventListener('click', function(e) {
     if (!e.target.closest('#user_search') && !e.target.closest('#searchResults')) {
         document.getElementById('searchResults').style.display = 'none';
     }
+});
+
+// Generate password for HR manager
+function generateHRPassword() {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pw = '';
+    for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('hr_password_field').value = pw;
+}
+// Auto-generate on page load
+generateHRPassword();
+
+// Auto-suggest username from full name
+document.getElementById('hr_name').addEventListener('input', function() {
+    const ufield = document.getElementById('hr_username');
+    if (!ufield.dataset.manual) {
+        const parts = this.value.trim().toLowerCase().split(/\s+/);
+        ufield.value = parts.join('.');
+    }
+});
+document.getElementById('hr_username').addEventListener('input', function() {
+    this.dataset.manual = '1';
 });
 
 // Prevent double-submit

@@ -92,7 +92,9 @@ def create_companies_blueprint():
 
             # New HR manager details
             hr_name = request.form.get('hr_name', '').strip()
+            hr_username = request.form.get('hr_username', '').strip()
             hr_email = request.form.get('hr_email', '').strip()
+            hr_password = request.form.get('hr_password', '').strip()
             hr_phone = request.form.get('hr_phone', '').strip()
             hr_job_title = request.form.get('job_title', '').strip() or 'HR Manager'
 
@@ -101,8 +103,8 @@ def create_companies_blueprint():
                 flash("Virksomhedsnavn er påkrævet.", "danger")
                 return render_template('companies/register.html')
 
-            if hr_mode == 'new' and not all([hr_name, hr_email]):
-                flash("Udfyld venligst navn og e-mail for HR-manageren.", "danger")
+            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email, hr_password]):
+                flash("Udfyld venligst alle felter for HR-manageren (navn, brugernavn, e-mail, password).", "danger")
                 return render_template('companies/register.html')
 
             if hr_mode == 'existing' and not existing_user_id:
@@ -163,22 +165,20 @@ def create_companies_blueprint():
                     hr_email = user_row['email']
                 else:
                     # Create new user as HR manager
-                    cur.execute("SELECT id FROM users WHERE email = %s", (hr_email,))
+                    cur.execute("SELECT id FROM users WHERE email = %s OR username = %s", (hr_email, hr_username))
                     if cur.fetchone():
-                        flash("En bruger med denne e-mail eksisterer allerede. Brug 'Eksisterende bruger' i stedet.", "danger")
+                        flash("En bruger med dette brugernavn eller e-mail eksisterer allerede. Brug 'Eksisterende bruger' i stedet.", "danger")
                         cur.close()
                         return render_template('companies/register.html')
 
-                    # Generate a random password
-                    generated_password = ''.join(secrets.choice(
-                        string.ascii_letters + string.digits + '!@#$%'
-                    ) for _ in range(12))
-                    hashed_password = generate_password_hash(generated_password)
+                    # Use the password provided by admin
+                    generated_password = hr_password
+                    hashed_password = generate_password_hash(hr_password)
 
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
                         VALUES (%s, %s, %s, 1000, 'user')
-                    """, (hr_name, hr_email, hashed_password))
+                    """, (hr_username, hr_email, hashed_password))
                     user_id = cur.lastrowid
 
                 # Add user to company as hr_manager
@@ -191,12 +191,12 @@ def create_companies_blueprint():
                 })
                 cur.execute("""
                     INSERT INTO company_users (
-                        company_id, user_id, username, email, role, department, job_title,
+                        company_id, user_id, username, full_name, email, role, department, job_title,
                         status, phone, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, 'hr_manager', 'Human Resources', %s, 'active', %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, 'hr_manager', 'Human Resources', %s, 'active', %s, %s, %s)
                 """, (
-                    company_id, user_id, hr_name, hr_email, hr_job_title, hr_phone,
-                    hr_permissions, session.get('user_id')
+                    company_id, user_id, hr_username or hr_name, hr_name, hr_email,
+                    hr_job_title, hr_phone, hr_permissions, session.get('user_id')
                 ))
 
                 # Create default departments (IGNORE handles duplicates from previous attempts)
@@ -340,6 +340,7 @@ def create_companies_blueprint():
         
         if request.method == 'POST':
             # Employee details
+            full_name = request.form.get('full_name', '').strip()
             username = request.form.get('username', '').strip()
             email = request.form.get('email', '').strip()
             password = request.form.get('password', '').strip()
@@ -349,11 +350,11 @@ def create_companies_blueprint():
             employee_id = request.form.get('employee_id', '').strip()
             hire_date = request.form.get('hire_date', '')
             employment_type = request.form.get('employment_type', 'full_time')
-            
+
             # Validation
-            if not all([username, email, password, department, job_title]):
-                flash("Please fill in all required fields.", "danger")
-                return render_template('companies/add_employee.html', company=company)
+            if not all([full_name, username, email, password, department, job_title]):
+                flash("Udfyld venligst alle paakraevede felter.", "danger")
+                return render_template('companies/add_employee.html', company=company, departments=[])
             
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -409,11 +410,11 @@ def create_companies_blueprint():
                 # Add to company
                 cur.execute("""
                     INSERT INTO company_users (
-                        company_id, user_id, username, email, role, department, job_title, employee_id,
+                        company_id, user_id, username, full_name, email, role, department, job_title, employee_id,
                         hire_date, employment_type, status, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
                 """, (
-                    company['id'], user_id, username, email, role, department, job_title, employee_id,
+                    company['id'], user_id, username, full_name, email, role, department, job_title, employee_id,
                     hire_date if hire_date else None, employment_type,
                     json.dumps(permissions.get(role, permissions['employee'])),
                     session.get('user_id')

@@ -35,8 +35,14 @@
                                 <h6 class="fw-bold text-muted text-uppercase small mb-3">Personoplysninger</h6>
 
                                 <div class="mb-3">
+                                    <label class="form-label fw-bold">Fulde navn <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" name="full_name" id="full_name_field" required placeholder="f.eks. Jens Hansen">
+                                </div>
+
+                                <div class="mb-3">
                                     <label class="form-label fw-bold">Brugernavn <span class="text-danger">*</span></label>
-                                    <input type="text" class="form-control" name="username" required placeholder="f.eks. jens.hansen">
+                                    <input type="text" class="form-control" name="username" id="username_field" required placeholder="f.eks. jens.hansen">
+                                    <small class="text-muted">Bruges til login — foreslaaes automatisk fra navnet</small>
                                 </div>
 
                                 <div class="mb-3">
@@ -151,7 +157,21 @@ function generatePassword() {
     for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
     document.getElementById('passwordField').value = pw;
 }
-// Auto-generate on page load
+// Auto-generate password on page load
 generatePassword();
+
+// Auto-suggest username from full name
+document.getElementById('full_name_field').addEventListener('input', function() {
+    const ufield = document.getElementById('username_field');
+    if (!ufield.dataset.manual) {
+        const parts = this.value.trim().toLowerCase()
+            .replace(/[æ]/g, 'ae').replace(/[ø]/g, 'oe').replace(/[å]/g, 'aa')
+            .replace(/[^a-z0-9\s.-]/g, '').split(/\s+/);
+        ufield.value = parts.filter(p => p).join('.');
+    }
+});
+document.getElementById('username_field').addEventListener('input', function() {
+    this.dataset.manual = '1';
+});
 </script>
 {% endblock %}

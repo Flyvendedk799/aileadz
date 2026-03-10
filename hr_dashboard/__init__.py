@@ -2267,14 +2267,19 @@ def create_hr_dashboard_blueprint():
 
         try:
             cur = current_app.mysql.connection.cursor()
+            # Check if this department already exists for THIS company
             cur.execute("""
-                INSERT IGNORE INTO company_departments
-                    (company_id, department_name, department_code, description, learning_budget_per_employee)
-                VALUES (%s, %s, %s, %s, %s)
-            """, (company['id'], name, code or None, description or None, budget_val))
-            if cur.rowcount == 0:
-                flash(f"Afdelingen '{name}' eksisterer allerede.", "warning")
+                SELECT id FROM company_departments
+                WHERE company_id = %s AND department_name = %s
+            """, (company['id'], name))
+            if cur.fetchone():
+                flash(f"Afdelingen '{name}' eksisterer allerede i denne virksomhed.", "warning")
             else:
+                cur.execute("""
+                    INSERT INTO company_departments
+                        (company_id, department_name, department_code, description, learning_budget_per_employee)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (company['id'], name, code or None, description or None, budget_val))
                 current_app.mysql.connection.commit()
                 flash(f"Afdelingen '{name}' er oprettet.", "success")
             cur.close()

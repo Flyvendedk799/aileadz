@@ -43,9 +43,10 @@ def _parse_table_name(sql):
     return match.group(1) if match else None
 
 
-def _auto_sync_columns(cur, conn, create_stmts):
+def _auto_sync_columns(conn, create_stmts):
     """For each CREATE TABLE statement, check which columns actually exist
-    in the database and ADD any that are missing. No manual ALTER list needed."""
+    in the database and ADD any that are missing. No manual ALTER list needed.
+    Uses a fresh cursor to avoid state issues."""
     synced = 0
     for sql in create_stmts:
         table_name = _parse_table_name(sql)
@@ -56,33 +57,51 @@ def _auto_sync_columns(cur, conn, create_stmts):
         if not expected_cols:
             continue
 
-        # Get existing columns from the database
+        # Get existing columns from the database (fresh cursor each time)
         try:
-            cur.execute(
+            sync_cur = conn.cursor()
+            sync_cur.execute(
                 "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
                 "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s",
                 (table_name,)
             )
-            existing = {row[0].lower() for row in cur.fetchall()}
-        except Exception:
+            rows = sync_cur.fetchall()
+            existing = set()
+            for row in rows:
+                # Handle both tuple and dict cursors
+                if isinstance(row, dict):
+                    existing.add(row.get('COLUMN_NAME', '').lower())
+                else:
+                    existing.add(row[0].lower())
+            sync_cur.close()
+        except Exception as e:
+            logging.warning("Auto-sync: failed to read columns for %s: %s", table_name, e)
             continue
 
         if not existing:
             continue  # table doesn't exist yet (will be created by CREATE TABLE)
 
-        for col_name, col_def in expected_cols:
-            if col_name not in existing:
-                try:
-                    alter = f"ALTER TABLE {table_name} ADD COLUMN {col_def}"
-                    cur.execute(alter)
-                    synced += 1
-                    logging.info("Auto-sync: added %s.%s", table_name, col_name)
-                except Exception as e:
-                    logging.warning("Auto-sync skip %s.%s: %s", table_name, col_name, e)
+        missing = [(name, defn) for name, defn in expected_cols if name not in existing]
+        if missing:
+            logging.info("Auto-sync: %s has %d missing columns: %s",
+                         table_name, len(missing), [m[0] for m in missing])
+
+        for col_name, col_def in missing:
+            try:
+                alter_cur = conn.cursor()
+                alter = f"ALTER TABLE {table_name} ADD COLUMN {col_def}"
+                alter_cur.execute(alter)
+                alter_cur.close()
+                synced += 1
+                logging.info("Auto-sync: added %s.%s", table_name, col_name)
+            except Exception as e:
+                logging.warning("Auto-sync skip %s.%s: %s", table_name, col_name, e)
 
     if synced:
         conn.commit()
         logging.info("Auto-sync complete: %d columns added", synced)
+    else:
+        logging.info("Auto-sync: all tables up to date")
 
 
 def ensure_enterprise_tables(app):
@@ -627,8 +646,8 @@ def ensure_enterprise_tables(app):
             conn.commit()
 
             # Auto-sync: detect missing columns on existing tables and add them
-            _auto_sync_columns(cur, conn, tables)
             cur.close()
+            _auto_sync_columns(conn, tables)
             logging.info("Enterprise tables ensured (%d tables)", len(tables))
 
     except Exception as e:

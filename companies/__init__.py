@@ -48,9 +48,32 @@ def create_companies_blueprint():
             current_app.logger.error(f"Error getting company context: {e}")
             return None
 
+    @companies_bp.route('/search-users')
+    def search_users():
+        """AJAX endpoint for admin to search existing users (not already in a company)"""
+        if 'user' not in session or session.get('role') != 'admin':
+            return jsonify([])
+        q = request.args.get('q', '').strip()
+        if len(q) < 2:
+            return jsonify([])
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT u.id, u.username, u.email
+                FROM users u
+                WHERE (u.username LIKE %s OR u.email LIKE %s)
+                  AND u.id NOT IN (SELECT user_id FROM company_users WHERE status = 'active')
+                LIMIT 10
+            """, (f'%{q}%', f'%{q}%'))
+            results = cur.fetchall()
+            cur.close()
+            return jsonify([{'id': r['id'], 'username': r['username'], 'email': r['email']} for r in results])
+        except Exception:
+            return jsonify([])
+
     @companies_bp.route('/register', methods=['GET', 'POST'])
     def register_company():
-        """Company registration — super admin only"""
+        """Company registration — super admin only. Creates company + assigns HR manager."""
         if 'user' not in session or session.get('role') != 'admin':
             flash("Kun administratorer kan oprette virksomheder.", "danger")
             return redirect(url_for('auth.login'))
@@ -62,51 +85,56 @@ def create_companies_blueprint():
             company_size = request.form.get('company_size', '11-50')
             country = request.form.get('country', 'Denmark')
             city = request.form.get('city', '').strip()
-            
-            # Admin user details
-            admin_name = request.form.get('admin_name', '').strip()
-            admin_email = request.form.get('admin_email', '').strip()
-            admin_phone = request.form.get('admin_phone', '').strip()
-            admin_password = request.form.get('admin_password', '').strip()
-            
+
+            # HR manager mode: 'new' or 'existing'
+            hr_mode = request.form.get('hr_mode', 'new')
+            existing_user_id = request.form.get('existing_user_id', '').strip()
+
+            # New HR manager details
+            hr_name = request.form.get('hr_name', '').strip()
+            hr_email = request.form.get('hr_email', '').strip()
+            hr_phone = request.form.get('hr_phone', '').strip()
+            hr_job_title = request.form.get('job_title', '').strip() or 'HR Manager'
+
             # Validation
-            if not all([company_name, admin_name, admin_email, admin_password]):
-                flash("Please fill in all required fields.", "danger")
+            if not company_name:
+                flash("Virksomhedsnavn er påkrævet.", "danger")
                 return render_template('companies/register.html')
-            
+
+            if hr_mode == 'new' and not all([hr_name, hr_email]):
+                flash("Udfyld venligst navn og e-mail for HR-manageren.", "danger")
+                return render_template('companies/register.html')
+
+            if hr_mode == 'existing' and not existing_user_id:
+                flash("Vælg venligst en eksisterende bruger.", "danger")
+                return render_template('companies/register.html')
+
             # Generate company slug
             company_slug = ''.join(c.lower() if c.isalnum() else '-' for c in company_name)
             company_slug = company_slug.strip('-')
-            
+
+            generated_password = None
+
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-                
+
                 # Check if company slug already exists
                 cur.execute("SELECT id FROM companies WHERE company_slug = %s", (company_slug,))
                 if cur.fetchone():
                     company_slug += f"-{secrets.token_hex(4)}"
-                
-                # Check if admin email already exists
-                cur.execute("SELECT id FROM users WHERE email = %s", (admin_email,))
-                existing_user = cur.fetchone()
-                
-                if existing_user:
-                    flash("A user with this email already exists. Please use a different email or log in.", "danger")
-                    cur.close()
-                    return render_template('companies/register.html')
-                
+
                 # Create company
                 cur.execute("""
                     INSERT INTO companies (
-                        company_name, company_slug, company_domain, industry, 
-                        company_size, country, city, subscription_plan, 
+                        company_name, company_slug, company_domain, industry,
+                        company_size, country, city, subscription_plan,
                         trial_ends_at, max_employees, features, settings
                     ) VALUES (%s, %s, %s, %s, %s, %s, %s, 'trial', %s, %s, %s, %s)
                 """, (
                     company_name, company_slug, company_domain, industry,
                     company_size, country, city,
-                    datetime.now() + timedelta(days=30),  # 30-day trial
-                    50,  # Default max employees for trial
+                    datetime.now() + timedelta(days=30),
+                    50,
                     json.dumps({
                         "advanced_analytics": True,
                         "custom_branding": False,
@@ -119,78 +147,111 @@ def create_companies_blueprint():
                         "currency": "DKK"
                     })
                 ))
-                
+
                 company_id = cur.lastrowid
-                
-                # Create admin user (password hashed)
-                hashed_password = generate_password_hash(admin_password)
-                cur.execute("""
-                    INSERT INTO users (username, email, password, credits, role)
-                    VALUES (%s, %s, %s, 1000, 'company_admin')
-                """, (admin_name, admin_email, hashed_password))
 
-                user_id = cur.lastrowid
+                if hr_mode == 'existing':
+                    # Assign existing user as HR manager
+                    cur.execute("SELECT id, username, email FROM users WHERE id = %s", (existing_user_id,))
+                    user_row = cur.fetchone()
+                    if not user_row:
+                        flash("Brugeren blev ikke fundet.", "danger")
+                        cur.close()
+                        return render_template('companies/register.html')
+                    user_id = user_row['id']
+                    hr_name = user_row['username']
+                    hr_email = user_row['email']
+                else:
+                    # Create new user as HR manager
+                    cur.execute("SELECT id FROM users WHERE email = %s", (hr_email,))
+                    if cur.fetchone():
+                        flash("En bruger med denne e-mail eksisterer allerede. Brug 'Eksisterende bruger' i stedet.", "danger")
+                        cur.close()
+                        return render_template('companies/register.html')
 
-                # Collect optional admin fields
-                admin_job_title = request.form.get('job_title', '').strip() or 'Company Administrator'
+                    # Generate a random password
+                    generated_password = ''.join(secrets.choice(
+                        string.ascii_letters + string.digits + '!@#$%'
+                    ) for _ in range(12))
+                    hashed_password = generate_password_hash(generated_password)
 
-                # Add admin to company
+                    cur.execute("""
+                        INSERT INTO users (username, email, password, credits, role)
+                        VALUES (%s, %s, %s, 1000, 'user')
+                    """, (hr_name, hr_email, hashed_password))
+                    user_id = cur.lastrowid
+
+                # Add user to company as hr_manager
+                hr_permissions = json.dumps({
+                    "manage_users": True,
+                    "view_analytics": True,
+                    "export_data": True,
+                    "manage_billing": False,
+                    "manage_integrations": False
+                })
                 cur.execute("""
                     INSERT INTO company_users (
                         company_id, user_id, username, email, role, department, job_title,
                         status, phone, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, 'company_admin', 'Administration', %s, 'active', %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, 'hr_manager', 'Human Resources', %s, 'active', %s, %s, %s)
                 """, (
-                    company_id, user_id, admin_name, admin_email, admin_job_title, admin_phone,
-                    json.dumps({
-                        "manage_users": True,
-                        "view_analytics": True,
-                        "export_data": True,
-                        "manage_billing": True,
-                        "manage_integrations": True
-                    }),
-                    user_id
+                    company_id, user_id, hr_name, hr_email, hr_job_title, hr_phone,
+                    hr_permissions, session.get('user_id')
                 ))
-                
+
                 # Create default departments
                 default_departments = [
                     ('Human Resources', 'HR', 'Employee management and development'),
                     ('Administration', 'ADMIN', 'Company administration and operations'),
                     ('General', 'GEN', 'General employees and contractors')
                 ]
-                
                 for dept_name, dept_code, dept_desc in default_departments:
                     cur.execute("""
                         INSERT INTO company_departments (company_id, department_name, department_code, description)
                         VALUES (%s, %s, %s, %s)
                     """, (company_id, dept_name, dept_code, dept_desc))
-                
-                # Log the company creation
+
+                # Audit log
                 cur.execute("""
                     INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
                     VALUES (%s, %s, 'company_created', 'company', %s, %s)
                 """, (
-                    company_id, user_id, str(company_id),
+                    company_id, session.get('user_id'), str(company_id),
                     json.dumps({
                         "company_name": company_name,
-                        "admin_email": admin_email,
+                        "hr_manager_email": hr_email,
+                        "hr_mode": hr_mode,
                         "subscription_plan": "trial"
                     })
                 ))
-                
+
                 current_app.mysql.connection.commit()
                 cur.close()
 
-                flash(f"Virksomheden '{company_name}' er oprettet. Admin-bruger: {admin_name}", "success")
-                return redirect(url_for('companies.register'))
-                
+                # Show success with credentials if new user was created
+                if generated_password:
+                    return render_template('companies/register_success.html',
+                        company_name=company_name,
+                        hr_name=hr_name,
+                        hr_email=hr_email,
+                        hr_password=generated_password,
+                        is_new_user=True
+                    )
+                else:
+                    return render_template('companies/register_success.html',
+                        company_name=company_name,
+                        hr_name=hr_name,
+                        hr_email=hr_email,
+                        is_new_user=False
+                    )
+
             except Exception as e:
                 current_app.logger.error(f"Error registering company: {e}")
-                flash("An error occurred during registration. Please try again.", "danger")
+                flash("Der opstod en fejl under oprettelsen. Prøv venligst igen.", "danger")
                 if 'cur' in locals():
                     cur.close()
                 return render_template('companies/register.html')
-        
+
         return render_template('companies/register.html')
 
     @companies_bp.route('/dashboard')

@@ -1047,23 +1047,23 @@
   </a>
   {% endif %}
 
-  {% if not session.get('company_id') and session.get('user') %}
-  <!-- Company Registration CTA -->
+  {% if session.get('role') == 'admin' %}
+  <!-- Company Registration (Admin only) -->
   <a href="/companies/register" class="app-card">
     <div class="card-icon" style="background: linear-gradient(135deg, #8b5cf6, #ec4899);">
       <i class="fa-solid fa-building-circle-arrow-right"></i>
     </div>
     <div class="card-content">
-      <h3>Enterprise</h3>
-      <p>Registrer din virksomhed og få adgang til HR dashboard, medarbejderstyring og rapporter. 30 dages gratis prøveperiode.</p>
+      <h3>Opret Virksomhed</h3>
+      <p>Opret en ny virksomhed med HR-manager, medarbejderstyring, dashboards og rapporter.</p>
     </div>
     <div class="card-footer">
       <div class="card-stats">
         <div class="stat">
-          <i class="fa-solid fa-gift"></i> 30 dage gratis
+          <i class="fa-solid fa-building"></i> Enterprise
         </div>
       </div>
-      <button class="card-btn">Kom i gang</button>
+      <button class="card-btn">Opret</button>
     </div>
   </a>
   {% endif %}

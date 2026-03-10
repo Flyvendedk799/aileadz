@@ -18,9 +18,29 @@
 .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
 .feature-item { display: flex; align-items: center; gap: 0.5rem; font-size: 0.85rem; color: #5a5c69; }
 .feature-item i { color: #1cc88a; }
-.password-strength { height: 4px; border-radius: 2px; margin-top: 4px; transition: all 0.3s; }
 .validation-hint { font-size: 0.78rem; color: #858796; margin-top: 2px; }
 .validation-hint.error { color: #e74a3b; }
+.hr-mode-card {
+    border: 2px solid #e3e6f0; border-radius: 0.5rem; padding: 1.25rem;
+    cursor: pointer; transition: all 0.2s; margin-bottom: 1rem;
+}
+.hr-mode-card:hover { border-color: #4e73df; }
+.hr-mode-card.selected { border-color: #4e73df; background: #f8f9ff; }
+.hr-mode-card .mode-header { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.5rem; }
+.hr-mode-card .mode-header i { font-size: 1.25rem; color: #4e73df; }
+.hr-mode-card .mode-header h6 { margin: 0; font-weight: 600; }
+.hr-mode-card p { margin: 0; font-size: 0.85rem; color: #858796; }
+.hr-fields { display: none; margin-top: 1rem; }
+.hr-fields.active { display: block; }
+.search-results { position: absolute; z-index: 10; background: #fff; border: 1px solid #dee2e6;
+    border-radius: 0.375rem; width: 100%; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }
+.search-results .search-item { padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid #f0f0f0; }
+.search-results .search-item:hover { background: #f8f9ff; }
+.search-results .search-item .name { font-weight: 600; font-size: 0.9rem; }
+.search-results .search-item .email { font-size: 0.8rem; color: #858796; }
+.selected-user-badge { display: flex; align-items: center; gap: 0.5rem; padding: 0.5rem 0.75rem;
+    background: #e8f5e9; border-radius: 0.375rem; margin-top: 0.5rem; }
+.selected-user-badge .remove { cursor: pointer; color: #e74a3b; margin-left: auto; }
 </style>
 {% endblock %}
 
@@ -28,14 +48,13 @@
 <div class="container mt-4 mb-5">
     <div class="register-container">
         <div class="text-center mb-4">
-            <h2 class="fw-bold">Opret din virksomhed</h2>
-            <p class="text-muted">Kom i gang med AiLeadZ - 30 dages gratis proeveperiode</p>
+            <h2 class="fw-bold">Opret ny virksomhed</h2>
+            <p class="text-muted">Opret virksomhed og tildel en HR-manager</p>
         </div>
 
-        <!-- Step indicator -->
         <div class="step-indicator">
             <div class="step-item active" id="step-ind-1">1. Virksomhed</div>
-            <div class="step-item" id="step-ind-2">2. Admin-bruger</div>
+            <div class="step-item" id="step-ind-2">2. HR-manager</div>
             <div class="step-item" id="step-ind-3">3. Bekraeft</div>
         </div>
 
@@ -108,41 +127,69 @@
                         </div>
                     </div>
 
-                    <!-- STEP 2: Admin user -->
+                    <!-- STEP 2: HR Manager -->
                     <div class="step-section" id="step-2">
-                        <h5 class="fw-bold mb-3">Din admin-konto</h5>
-                        <p class="text-muted small mb-3">Du bliver administrator for virksomheden og kan tilfoeje medarbejdere efterfoelgende.</p>
+                        <h5 class="fw-bold mb-3">Tildel HR-manager</h5>
+                        <p class="text-muted small mb-3">HR-manageren styrer virksomheden, tilfojer medarbejdere og har adgang til dashboards og rapporter.</p>
 
-                        <div class="row">
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Fulde navn <span class="text-danger">*</span></label>
-                                <input type="text" class="form-control" name="admin_name" id="admin_name" required
-                                       placeholder="F.eks. Mette Hansen">
+                        <input type="hidden" name="hr_mode" id="hr_mode" value="new">
+
+                        <!-- Option A: New user -->
+                        <div class="hr-mode-card selected" id="mode-new" onclick="selectMode('new')">
+                            <div class="mode-header">
+                                <i class="fas fa-user-plus"></i>
+                                <h6>Opret ny bruger</h6>
                             </div>
-                            <div class="col-md-6 mb-3">
-                                <label class="form-label">Jobtitel</label>
-                                <input type="text" class="form-control" name="job_title" placeholder="F.eks. HR-chef, CEO">
+                            <p>Opret en ny brugerkonto som HR-manager. Login-oplysninger vises efter oprettelse.</p>
+                        </div>
+
+                        <!-- Option A fields -->
+                        <div class="hr-fields active" id="fields-new">
+                            <div class="row">
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Fulde navn <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" name="hr_name" id="hr_name"
+                                           placeholder="F.eks. Mette Hansen">
+                                </div>
+                                <div class="col-md-6 mb-3">
+                                    <label class="form-label">Jobtitel</label>
+                                    <input type="text" class="form-control" name="job_title" id="job_title" placeholder="F.eks. HR-chef">
+                                </div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">E-mail <span class="text-danger">*</span></label>
+                                <input type="email" class="form-control" name="hr_email" id="hr_email"
+                                       placeholder="mette@firma.dk">
+                                <div class="validation-hint" id="email_hint"></div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Telefon</label>
+                                <input type="tel" class="form-control" name="hr_phone" placeholder="+45 12 34 56 78">
+                            </div>
+                            <div class="validation-hint">
+                                <i class="fas fa-info-circle"></i> Adgangskoden genereres automatisk og vises efter oprettelse.
                             </div>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">E-mail <span class="text-danger">*</span></label>
-                            <input type="email" class="form-control" name="admin_email" id="admin_email" required
-                                   placeholder="mette@firma.dk">
-                            <div class="validation-hint" id="email_hint"></div>
+                        <!-- Option B: Existing user -->
+                        <div class="hr-mode-card" id="mode-existing" onclick="selectMode('existing')">
+                            <div class="mode-header">
+                                <i class="fas fa-user-check"></i>
+                                <h6>Tildel eksisterende bruger</h6>
+                            </div>
+                            <p>Soeg efter en eksisterende bruger og tildel dem som HR-manager.</p>
                         </div>
 
-                        <div class="mb-3">
-                            <label class="form-label">Telefon</label>
-                            <input type="tel" class="form-control" name="admin_phone" placeholder="+45 12 34 56 78">
-                        </div>
-
-                        <div class="mb-3">
-                            <label class="form-label">Adgangskode <span class="text-danger">*</span></label>
-                            <input type="password" class="form-control" name="admin_password" id="admin_password" required
-                                   minlength="8" placeholder="Min. 8 tegn">
-                            <div class="password-strength" id="pwStrength"></div>
-                            <div class="validation-hint" id="pw_hint">Min. 8 tegn</div>
+                        <!-- Option B fields -->
+                        <div class="hr-fields" id="fields-existing">
+                            <div class="mb-3 position-relative">
+                                <label class="form-label">Soeg bruger <span class="text-danger">*</span></label>
+                                <input type="text" class="form-control" id="user_search" placeholder="Skriv navn eller e-mail..."
+                                       autocomplete="off">
+                                <input type="hidden" name="existing_user_id" id="existing_user_id">
+                                <div class="search-results" id="searchResults" style="display:none;"></div>
+                                <div id="selectedUser" style="display:none;"></div>
+                            </div>
                         </div>
 
                         <div class="d-flex justify-content-between mt-3">
@@ -169,9 +216,10 @@
                                         <p class="mb-0 text-muted small" id="confirm-size"></p>
                                     </div>
                                     <div class="col-md-6">
-                                        <h6 class="fw-bold text-primary">Administrator</h6>
+                                        <h6 class="fw-bold text-primary">HR-manager</h6>
                                         <p class="mb-1" id="confirm-name"></p>
                                         <p class="mb-0 text-muted small" id="confirm-email"></p>
+                                        <p class="mb-0 text-muted small" id="confirm-mode"></p>
                                     </div>
                                 </div>
                             </div>
@@ -212,10 +260,6 @@
                 </form>
             </div>
         </div>
-
-        <div class="text-center mt-3">
-            <p class="text-muted small">Har du allerede en konto? <a href="{{ url_for('auth.login') }}">Log ind her</a></p>
-        </div>
     </div>
 </div>
 {% endblock %}
@@ -224,9 +268,19 @@
 {{ super() }}
 <script>
 let currentStep = 1;
+let selectedMode = 'new';
+let selectedUserData = null;
+
+function selectMode(mode) {
+    selectedMode = mode;
+    document.getElementById('hr_mode').value = mode;
+    document.querySelectorAll('.hr-mode-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('mode-' + mode).classList.add('selected');
+    document.querySelectorAll('.hr-fields').forEach(f => f.classList.remove('active'));
+    document.getElementById('fields-' + mode).classList.add('active');
+}
 
 function goStep(step) {
-    // Validate before moving forward
     if (step > currentStep) {
         if (currentStep === 1 && !document.getElementById('company_name').value.trim()) {
             document.getElementById('company_name').classList.add('is-invalid');
@@ -236,51 +290,54 @@ function goStep(step) {
             return;
         }
         if (currentStep === 2) {
-            const name = document.getElementById('admin_name').value.trim();
-            const email = document.getElementById('admin_email').value.trim();
-            const pw = document.getElementById('admin_password').value;
-            if (!name || !email || !pw) {
-                if (!name) document.getElementById('admin_name').classList.add('is-invalid');
-                if (!email) document.getElementById('admin_email').classList.add('is-invalid');
-                if (!pw) document.getElementById('admin_password').classList.add('is-invalid');
-                return;
-            }
-            if (pw.length < 8) {
-                document.getElementById('pw_hint').textContent = 'Adgangskoden skal vaere mindst 8 tegn';
-                document.getElementById('pw_hint').classList.add('error');
-                document.getElementById('admin_password').focus();
-                return;
-            }
-            if (!email.includes('@')) {
-                document.getElementById('email_hint').textContent = 'Indtast en gyldig e-mail';
-                document.getElementById('email_hint').classList.add('error');
-                document.getElementById('admin_email').focus();
-                return;
+            if (selectedMode === 'new') {
+                const name = document.getElementById('hr_name').value.trim();
+                const email = document.getElementById('hr_email').value.trim();
+                if (!name || !email) {
+                    if (!name) document.getElementById('hr_name').classList.add('is-invalid');
+                    if (!email) document.getElementById('hr_email').classList.add('is-invalid');
+                    return;
+                }
+                if (!email.includes('@')) {
+                    document.getElementById('email_hint').textContent = 'Indtast en gyldig e-mail';
+                    document.getElementById('email_hint').classList.add('error');
+                    document.getElementById('hr_email').focus();
+                    return;
+                }
+            } else {
+                if (!document.getElementById('existing_user_id').value) {
+                    alert('Vaelg venligst en bruger fra soegeresultaterne.');
+                    return;
+                }
             }
         }
     }
 
-    // Update confirmation step
     if (step === 3) {
         document.getElementById('confirm-company').textContent = document.getElementById('company_name').value;
         const ind = document.getElementById('industry');
         document.getElementById('confirm-industry').textContent = ind.options[ind.selectedIndex].text !== 'Vaelg branche' ? ind.options[ind.selectedIndex].text : '';
         const sz = document.getElementById('company_size');
         document.getElementById('confirm-size').textContent = sz.value + ' medarbejdere';
-        document.getElementById('confirm-name').textContent = document.getElementById('admin_name').value;
-        document.getElementById('confirm-email').textContent = document.getElementById('admin_email').value;
+
+        if (selectedMode === 'new') {
+            document.getElementById('confirm-name').textContent = document.getElementById('hr_name').value;
+            document.getElementById('confirm-email').textContent = document.getElementById('hr_email').value;
+            document.getElementById('confirm-mode').textContent = '(Ny bruger - login vises efter oprettelse)';
+        } else if (selectedUserData) {
+            document.getElementById('confirm-name').textContent = selectedUserData.username;
+            document.getElementById('confirm-email').textContent = selectedUserData.email;
+            document.getElementById('confirm-mode').textContent = '(Eksisterende bruger)';
+        }
     }
 
-    // Switch steps
     document.querySelectorAll('.step-section').forEach(s => s.classList.remove('active'));
     document.getElementById('step-' + step).classList.add('active');
-
     document.querySelectorAll('.step-item').forEach((el, i) => {
         el.classList.remove('active', 'done');
         if (i + 1 < step) el.classList.add('done');
         if (i + 1 === step) el.classList.add('active');
     });
-
     currentStep = step;
     window.scrollTo({top: 0, behavior: 'smooth'});
 }
@@ -290,29 +347,62 @@ document.querySelectorAll('input, select').forEach(el => {
     el.addEventListener('input', () => {
         el.classList.remove('is-invalid');
         const hint = el.parentElement.querySelector('.validation-hint');
-        if (hint) { hint.textContent = ''; hint.classList.remove('error'); }
+        if (hint && hint.classList.contains('error')) { hint.textContent = ''; hint.classList.remove('error'); }
     });
 });
 
-// Password strength indicator
-document.getElementById('admin_password').addEventListener('input', function() {
-    const pw = this.value;
-    const bar = document.getElementById('pwStrength');
-    const hint = document.getElementById('pw_hint');
-    if (pw.length === 0) { bar.style.width = '0'; hint.textContent = 'Min. 8 tegn'; hint.classList.remove('error'); return; }
-    let score = 0;
-    if (pw.length >= 8) score++;
-    if (pw.length >= 12) score++;
-    if (/[A-Z]/.test(pw) && /[a-z]/.test(pw)) score++;
-    if (/\d/.test(pw)) score++;
-    if (/[^a-zA-Z0-9]/.test(pw)) score++;
-    const pct = Math.min(score * 20, 100);
-    const colors = ['#e74a3b', '#e74a3b', '#f6c23e', '#f6c23e', '#1cc88a', '#1cc88a'];
-    bar.style.width = pct + '%';
-    bar.style.background = colors[score];
-    const labels = ['Meget svag', 'Svag', 'OK', 'God', 'Staerk', 'Staerk'];
-    hint.textContent = labels[score];
-    hint.classList.remove('error');
+// User search for existing user mode
+let searchTimeout;
+document.getElementById('user_search').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    const q = this.value.trim();
+    const resultsDiv = document.getElementById('searchResults');
+    if (q.length < 2) { resultsDiv.style.display = 'none'; return; }
+    searchTimeout = setTimeout(() => {
+        fetch('/companies/search-users?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(users => {
+                if (!users.length) {
+                    resultsDiv.innerHTML = '<div class="search-item"><span class="text-muted">Ingen brugere fundet</span></div>';
+                } else {
+                    resultsDiv.innerHTML = users.map(u =>
+                        `<div class="search-item" onclick="pickUser(${u.id}, '${u.username.replace(/'/g, "\\'")}', '${u.email.replace(/'/g, "\\'")}')">
+                            <div class="name">${u.username}</div>
+                            <div class="email">${u.email}</div>
+                        </div>`
+                    ).join('');
+                }
+                resultsDiv.style.display = 'block';
+            });
+    }, 300);
+});
+
+function pickUser(id, name, email) {
+    selectedUserData = {id, username: name, email};
+    document.getElementById('existing_user_id').value = id;
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('user_search').value = '';
+    document.getElementById('selectedUser').style.display = 'block';
+    document.getElementById('selectedUser').innerHTML =
+        `<div class="selected-user-badge">
+            <i class="fas fa-user-check text-success"></i>
+            <div><strong>${name}</strong><br><small class="text-muted">${email}</small></div>
+            <span class="remove" onclick="clearUser()"><i class="fas fa-times"></i></span>
+        </div>`;
+}
+
+function clearUser() {
+    selectedUserData = null;
+    document.getElementById('existing_user_id').value = '';
+    document.getElementById('selectedUser').style.display = 'none';
+    document.getElementById('selectedUser').innerHTML = '';
+}
+
+// Close search results on click outside
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#user_search') && !e.target.closest('#searchResults')) {
+        document.getElementById('searchResults').style.display = 'none';
+    }
 });
 
 // Prevent double-submit

@@ -154,6 +154,43 @@
             </div>
             {% endif %}
 
+            <!-- Skills Radar -->
+            <div class="card mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-brain text-primary me-2"></i>Kompetencer</h6>
+                    {% if employee_skills %}
+                    <span class="badge bg-primary rounded-pill">{{ employee_skills|length }} skills</span>
+                    {% endif %}
+                </div>
+                <div class="card-body">
+                    {% if employee_skills %}
+                    <div class="row">
+                        <div class="col-md-6">
+                            <canvas id="skillRadar" height="260"></canvas>
+                        </div>
+                        <div class="col-md-6">
+                            {% for s in employee_skills %}
+                            <div class="d-flex align-items-center gap-2 py-2 border-bottom">
+                                <span class="fw-bold small flex-grow-1">{{ s.skill_name }}</span>
+                                <div class="d-flex gap-1">
+                                    {% for i in range(1, 6) %}
+                                    <span style="width:10px;height:10px;border-radius:50%;display:inline-block;{{ 'background:#3b82f6;' if i <= s.current_level else 'background:#e2e8f0;' }}"></span>
+                                    {% endfor %}
+                                </div>
+                                <small class="text-muted" style="min-width:30px;">{{ s.current_level }}/5</small>
+                            </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-3">
+                        <i class="fas fa-brain fa-2x text-muted mb-2" style="opacity:0.3;"></i>
+                        <p class="text-muted small mb-0">Ingen kompetencer registreret endnu</p>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+
             <!-- Course History -->
             <div class="card mb-4">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
@@ -302,4 +339,50 @@
 .card-header { border-bottom: 1px solid #f1f5f9; }
 .chat-day-bar { width: 20px; background: linear-gradient(180deg, #a855f7, #6366f1); border-radius: 4px 4px 0 0; min-height: 4px; }
 </style>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if employee_skills %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+new Chart(document.getElementById('skillRadar'), {
+    type: 'radar',
+    data: {
+        labels: {{ employee_skills|map(attribute='skill_name')|list|tojson }},
+        datasets: [{
+            label: 'Nuvaerende niveau',
+            data: {{ employee_skills|map(attribute='current_level')|list|tojson }},
+            backgroundColor: 'rgba(78,115,223,0.15)',
+            borderColor: '#4e73df',
+            borderWidth: 2,
+            pointBackgroundColor: '#4e73df',
+            pointRadius: 4
+        }{% if employee_skills|selectattr('target_level', 'greaterthan', 0)|list %},{
+            label: 'Maal',
+            data: {{ employee_skills|map(attribute='target_level')|list|tojson }},
+            backgroundColor: 'rgba(16,185,129,0.08)',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            borderDash: [4,4],
+            pointRadius: 3,
+            pointBackgroundColor: '#10b981'
+        }{% endif %}]
+    },
+    options: {
+        responsive: true,
+        scales: {
+            r: {
+                min: 0, max: 5,
+                ticks: { stepSize: 1, font: { size: 10 } },
+                pointLabels: { font: { size: 11, weight: '600' } },
+                grid: { color: 'rgba(0,0,0,0.05)' }
+            }
+        },
+        plugins: {
+            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } }
+        }
+    }
+});
+</script>
+{% endif %}
 {% endblock %}

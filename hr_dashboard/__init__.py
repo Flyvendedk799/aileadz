@@ -883,12 +883,65 @@ def create_hr_dashboard_blueprint():
             departments = [r['department'] for r in cur.fetchall()]
             cur.close()
 
+            # Get all employee skills for search/browse
+            cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur2.execute("""
+                SELECT esm.skill_name, esm.current_level, esm.target_level,
+                       u.username, cu.department, cu.job_title, cu.user_id
+                FROM employee_skills_matrix esm
+                JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
+                JOIN users u ON cu.user_id = u.id
+                WHERE esm.company_id = %s AND cu.status = 'active'
+                ORDER BY esm.skill_name, u.username
+            """, (company['id'],))
+            all_employee_skills = cur2.fetchall()
+
+            # Build summary: unique skills with avg level and employee count
+            skill_summary = {}
+            for row in all_employee_skills:
+                sn = row['skill_name']
+                if sn not in skill_summary:
+                    skill_summary[sn] = {'skill_name': sn, 'total_level': 0, 'count': 0, 'employees': []}
+                skill_summary[sn]['total_level'] += (row['current_level'] or 0)
+                skill_summary[sn]['count'] += 1
+                skill_summary[sn]['employees'].append({
+                    'username': row['username'],
+                    'department': row['department'],
+                    'job_title': row['job_title'],
+                    'current_level': row['current_level'],
+                    'user_id': row['user_id']
+                })
+            for s in skill_summary.values():
+                s['avg_level'] = round(s['total_level'] / s['count'], 1) if s['count'] else 0
+            skill_list = sorted(skill_summary.values(), key=lambda x: x['skill_name'])
+
+            # Gap summary stats
+            total_gaps = 0
+            critical_gaps = 0
+            met_targets = 0
+            if heatmap:
+                for dept_skills in heatmap.values():
+                    for data in dept_skills.values():
+                        total_gaps += 1
+                        if data.get('status') == 'red':
+                            critical_gaps += 1
+                        elif data.get('status') == 'green':
+                            met_targets += 1
+
+            cur2.close()
+
             return render_template('hr_dashboard/skill_gaps.html',
                                    company=company, heatmap=heatmap or {},
-                                   targets=targets, departments=departments)
+                                   targets=targets, departments=departments,
+                                   skill_list=skill_list,
+                                   all_employee_skills=all_employee_skills,
+                                   total_gaps=total_gaps,
+                                   critical_gaps=critical_gaps,
+                                   met_targets=met_targets,
+                                   active_hr_page='skill_gaps')
         except Exception as e:
             current_app.logger.error(f"Skill gaps error: {e}")
-            flash("Error loading skill gap data.", "danger")
+            flash("Fejl ved indlaesning af kompetencedata.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/skill-targets/save', methods=['POST'])
@@ -919,6 +972,28 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': True, 'message': f'Kompetencemaal for "{skill}" gemt.'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
+
+    @hr_dashboard_bp.route('/skill-targets/<int:target_id>/delete', methods=['POST'])
+    def delete_skill_target(target_id):
+        """Delete a skill target"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('hr_dashboard.skill_gaps_view'))
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("DELETE FROM company_skill_targets WHERE id = %s AND company_id = %s",
+                        (target_id, company['id']))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Kompetencemaal slettet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error deleting skill target: {e}")
+            flash("Fejl ved sletning.", "danger")
+        return redirect(url_for('hr_dashboard.skill_gaps_view'))
 
     @hr_dashboard_bp.route('/roi')
     def roi_dashboard():
@@ -1423,6 +1498,15 @@ def create_hr_dashboard_blueprint():
 
             interaction_history = cur.fetchall()
 
+            # Get employee skills
+            cur.execute("""
+                SELECT skill_name, current_level, target_level, recommended_courses
+                FROM employee_skills_matrix
+                WHERE employee_id = %s AND company_id = %s
+                ORDER BY skill_name
+            """, (user_id, company['id']))
+            employee_skills = cur.fetchall()
+
             cur.close()
 
             return render_template('hr_dashboard/employee_details.html',
@@ -1430,6 +1514,7 @@ def create_hr_dashboard_blueprint():
                                  employee=employee,
                                  course_history=course_history,
                                  interaction_history=interaction_history,
+                                 employee_skills=employee_skills,
                                  active_hr_page='employees')
 
         except Exception as e:

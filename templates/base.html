@@ -439,44 +439,47 @@
     .content {
       flex-grow: 1;
       padding: 40px;
-      background: #f4f6f9;
-      color: #212529;
-      /* Override theme CSS variables for content area so all inherited
-         styles (links, text, etc.) resolve to readable dark colors */
-      --text-color: #212529;
-      --muted-text: #6c757d;
-      --background-color: #f4f6f9;
-      --card-bg: #ffffff;
-      --hover-shadow: rgba(0, 0, 0, 0.08);
-      --box-shadow: 0 2px 6px rgba(0, 0, 0, 0.08);
+      background: var(--background-color);
       animation: fadeInUp 0.5s ease-out;
     }
 
-    /* ---- Content area: ensure Bootstrap components have dark readable text ---- */
+    /* ------------------------------------------------------------
+       BOOTSTRAP COMPONENT TEXT FIX
+       Bootstrap cards, tables, forms, modals, dropdowns all ship
+       with white backgrounds. In dark mode the inherited white
+       text is invisible. Scope fixes to .content so the sidebar
+       and header (which ARE dark-themed) stay untouched.
+       ------------------------------------------------------------ */
     .content .card,
     .content .card-body,
     .content .card-header,
     .content .card-footer,
     .content .list-group-item,
+    .content .list-group-item a { color: #212529; }
+
     .content .table,
+    .content .table th,
+    .content .table td { color: #212529; }
+
     .content .dropdown-menu,
-    .content .dropdown-item,
+    .content .dropdown-item { color: #212529; }
+    .content .dropdown-item:hover { color: #16181b; background-color: #f8f9fa; }
+    .content .dropdown-item.text-danger { color: #dc3545 !important; }
+
     .content .form-control,
     .content .form-select,
     .content .form-label,
     .content .input-group-text { color: #212529; }
 
-    .content .modal-content { color: #212529; }
-    .modal-content { color: #212529; }
+    .content .alert { color: #212529; }
 
-    .content .dropdown-item:hover { color: #16181b; background-color: #f8f9fa; }
-    .content .dropdown-item.text-danger { color: #dc3545 !important; }
+    .modal-content { color: #212529; }
 
     .section-title {
       margin: 35px 0 25px;
       font-size: 1.8rem;
       font-weight: 700;
-      border-bottom: 2px solid rgba(0, 0, 0, 0.1);
+      border-bottom: 2px solid rgba(255, 255, 255, 0.2);
       padding-bottom: 10px;
       letter-spacing: 0.8px;
     }

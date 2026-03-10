@@ -191,7 +191,91 @@
                 </div>
             </div>
 
-            <!-- Course History -->
+            <!-- Education (from chatbot profile) -->
+            {% if employee_education %}
+            <div class="card mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-university text-primary me-2"></i>Uddannelse</h6>
+                    <span class="badge bg-primary rounded-pill">{{ employee_education|length }}</span>
+                </div>
+                <div class="card-body">
+                    {% for edu in employee_education %}
+                    <div class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width:40px;height:40px;min-width:40px;">
+                            <i class="fas fa-graduation-cap text-primary"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold">{{ edu.degree }}</div>
+                            {% if edu.institution %}<div class="text-muted small">{{ edu.institution }}</div>{% endif %}
+                            {% if edu.year_completed %}<small class="text-muted">Afsluttet {{ edu.year_completed }}</small>{% endif %}
+                            {% if edu.description %}<p class="small text-muted mb-0 mt-1">{{ edu.description }}</p>{% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Work Experience (from chatbot profile) -->
+            {% if employee_experience %}
+            <div class="card mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-briefcase text-primary me-2"></i>Erfaring</h6>
+                    <span class="badge bg-primary rounded-pill">{{ employee_experience|length }}</span>
+                </div>
+                <div class="card-body">
+                    {% for exp in employee_experience %}
+                    <div class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width:40px;height:40px;min-width:40px;">
+                            <i class="fas fa-briefcase text-success"></i>
+                        </div>
+                        <div>
+                            <div class="fw-bold">{{ exp.title }}</div>
+                            {% if exp.company %}<div class="text-muted small">{{ exp.company }}</div>{% endif %}
+                            <small class="text-muted">
+                                {{ exp.start_year or '?' }} — {{ 'nu' if exp.is_current else (exp.end_year or '?') }}
+                            </small>
+                            {% if exp.description %}<p class="small text-muted mb-0 mt-1">{{ exp.description }}</p>{% endif %}
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Completed Courses from chatbot profile -->
+            {% if employee_completed_courses %}
+            <div class="card mb-4">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-certificate text-warning me-2"></i>Gennemfoerte kurser & certifikater</h6>
+                    <span class="badge bg-warning text-dark rounded-pill">{{ employee_completed_courses|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-3 small fw-bold text-muted border-0">Kursus/Certifikat</th>
+                                    <th class="small fw-bold text-muted border-0">Udbyder</th>
+                                    <th class="small fw-bold text-muted border-0">Dato</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for cc in employee_completed_courses %}
+                                <tr>
+                                    <td class="ps-3"><strong>{{ cc.course_title }}</strong></td>
+                                    <td class="text-muted small">{{ cc.vendor or '—' }}</td>
+                                    <td class="text-muted small">{{ cc.completed_date or '—' }}</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Course History (orders) -->
             <div class="card mb-4">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-graduation-cap text-primary me-2"></i>Kursushistorik</h6>

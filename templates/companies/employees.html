@@ -1,310 +1,270 @@
 {% extends "base.html" %}
 
-{% block title %}Employee Management - {{ company_name }}{% endblock %}
+{% block title %}Medarbejdere - {{ company.company_name }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2><i class="fas fa-users text-primary"></i> Employee Management</h2>
-                    <p class="text-muted mb-0">{{ company_name }} - {{ employees|length }} employees</p>
-                </div>
-                <div>
-                    <a href="{{ url_for('companies.dashboard') }}" class="btn btn-outline-secondary me-2">
-                        <i class="fas fa-arrow-left"></i> Back to Dashboard
-                    </a>
-                    <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary">
-                        <i class="fas fa-user-plus"></i> Add Employee
-                    </a>
-                </div>
-            </div>
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+        <div>
+            <h1 class="h3 mb-1 fw-bold">
+                <i class="fas fa-users text-primary me-2"></i>Medarbejdere
+            </h1>
+            <p class="text-muted mb-0">{{ company.company_name }} — {{ employees|length }} medarbejdere</p>
         </div>
+        <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary btn-sm">
+            <i class="fas fa-user-plus me-1"></i> Tilfoej medarbejder
+        </a>
     </div>
 
-    <!-- Filters and Search -->
-    <div class="row mb-4">
-        <div class="col-md-8">
-            <div class="card">
-                <div class="card-body">
-                    <form method="GET" class="row g-3">
-                        <div class="col-md-4">
-                            <label for="search" class="form-label">Search Employees</label>
-                            <input type="text" class="form-control" id="search" name="search" 
-                                   value="{{ request.args.get('search', '') }}" placeholder="Name or email...">
-                        </div>
-                        <div class="col-md-3">
-                            <label for="department" class="form-label">Department</label>
-                            <select class="form-control" id="department" name="department">
-                                <option value="">All Departments</option>
-                                {% for dept in departments %}
-                                <option value="{{ dept.name }}" 
-                                        {% if request.args.get('department') == dept.name %}selected{% endif %}>
-                                    {{ dept.name }}
-                                </option>
-                                {% endfor %}
-                            </select>
-                        </div>
-                        <div class="col-md-3">
-                            <label for="role" class="form-label">Role</label>
-                            <select class="form-control" id="role" name="role">
-                                <option value="">All Roles</option>
-                                <option value="employee" {% if request.args.get('role') == 'employee' %}selected{% endif %}>Employee</option>
-                                <option value="department_head" {% if request.args.get('role') == 'department_head' %}selected{% endif %}>Department Head</option>
-                                <option value="hr_manager" {% if request.args.get('role') == 'hr_manager' %}selected{% endif %}>HR Manager</option>
-                                <option value="company_admin" {% if request.args.get('role') == 'company_admin' %}selected{% endif %}>Company Admin</option>
-                            </select>
-                        </div>
-                        <div class="col-md-2">
-                            <label class="form-label">&nbsp;</label>
-                            <div class="d-grid">
-                                <button type="submit" class="btn btn-primary">
-                                    <i class="fas fa-search"></i> Filter
-                                </button>
-                            </div>
-                        </div>
-                    </form>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card bg-light">
-                <div class="card-body">
-                    <h6 class="text-primary mb-2">Quick Stats</h6>
-                    <div class="row text-center">
-                        <div class="col-4">
-                            <strong>{{ stats.total_employees }}</strong>
-                            <br><small>Total</small>
-                        </div>
-                        <div class="col-4">
-                            <strong>{{ stats.active_employees }}</strong>
-                            <br><small>Active</small>
-                        </div>
-                        <div class="col-4">
-                            <strong>{{ stats.new_this_month }}</strong>
-                            <br><small>New</small>
-                        </div>
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Search & Filter Bar -->
+    <div class="card mb-4 border-0 shadow-sm" style="border-radius:12px;">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label small fw-bold text-muted mb-1">Soeg</label>
+                    <div class="input-group input-group-sm">
+                        <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                        <input type="text" class="form-control" id="employeeSearch" placeholder="Navn eller email..." onkeyup="filterTable()">
                     </div>
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label small fw-bold text-muted mb-1">Afdeling</label>
+                    <select class="form-select form-select-sm" id="deptFilter" onchange="filterTable()">
+                        <option value="">Alle afdelinger</option>
+                        {% for dept in departments %}
+                        <option value="{{ dept }}">{{ dept }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold text-muted mb-1">Rolle</label>
+                    <select class="form-select form-select-sm" id="roleFilter" onchange="filterTable()">
+                        <option value="">Alle roller</option>
+                        <option value="employee">Medarbejder</option>
+                        <option value="department_head">Afdelingsleder</option>
+                        <option value="hr_manager">HR Manager</option>
+                        <option value="company_admin">Admin</option>
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <label class="form-label small fw-bold text-muted mb-1">Status</label>
+                    <select class="form-select form-select-sm" id="statusFilter" onchange="filterTable()">
+                        <option value="">Alle</option>
+                        <option value="active">Aktiv</option>
+                        <option value="inactive">Inaktiv</option>
+                    </select>
+                </div>
+                <div class="col-md-1">
+                    <button class="btn btn-outline-secondary btn-sm w-100" onclick="clearFilters()" title="Nulstil">
+                        <i class="fas fa-times"></i>
+                    </button>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Employee List -->
-    <div class="row">
-        <div class="col-12">
-            <div class="card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0">Employees</h5>
-                    <div>
-                        <button class="btn btn-sm btn-outline-primary" onclick="exportEmployees()">
-                            <i class="fas fa-download"></i> Export CSV
-                        </button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    {% if employees %}
-                        <div class="table-responsive">
-                            <table class="table table-hover">
-                                <thead>
-                                    <tr>
-                                        <th>Employee</th>
-                                        <th>Department</th>
-                                        <th>Role</th>
-                                        <th>Status</th>
-                                        <th>Learning Progress</th>
-                                        <th>Last Active</th>
-                                        <th>Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {% for employee in employees %}
-                                    <tr>
-                                        <td>
-                                            <div class="d-flex align-items-center">
-                                                <div class="avatar-circle me-3">
-                                                    {{ employee.full_name[0].upper() }}
-                                                </div>
-                                                <div>
-                                                    <strong>{{ employee.full_name }}</strong>
-                                                    <br>
-                                                    <small class="text-muted">{{ employee.email }}</small>
-                                                </div>
-                                            </div>
-                                        </td>
-                                        <td>
-                                            <span class="badge bg-secondary">{{ employee.department or 'Unassigned' }}</span>
-                                        </td>
-                                        <td>
-                                            {% if employee.role == 'company_admin' %}
-                                                <span class="badge bg-danger">Admin</span>
-                                            {% elif employee.role == 'hr_manager' %}
-                                                <span class="badge bg-warning">HR Manager</span>
-                                            {% elif employee.role == 'department_head' %}
-                                                <span class="badge bg-info">Dept. Head</span>
-                                            {% else %}
-                                                <span class="badge bg-primary">Employee</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            {% if employee.status == 'active' %}
-                                                <span class="badge bg-success">Active</span>
-                                            {% elif employee.status == 'inactive' %}
-                                                <span class="badge bg-secondary">Inactive</span>
-                                            {% else %}
-                                                <span class="badge bg-warning">Pending</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <div class="progress" style="height: 20px;">
-                                                <div class="progress-bar" role="progressbar" 
-                                                     style="width: {{ employee.progress_percentage or 0 }}%"
-                                                     aria-valuenow="{{ employee.progress_percentage or 0 }}" 
-                                                     aria-valuemin="0" aria-valuemax="100">
-                                                    {{ employee.progress_percentage or 0 }}%
-                                                </div>
-                                            </div>
-                                            <small class="text-muted">{{ employee.completed_courses or 0 }} courses completed</small>
-                                        </td>
-                                        <td>
-                                            {% if employee.last_active %}
-                                                {{ employee.last_active.strftime('%Y-%m-%d') }}
-                                            {% else %}
-                                                <span class="text-muted">Never</span>
-                                            {% endif %}
-                                        </td>
-                                        <td>
-                                            <div class="btn-group" role="group">
-                                                <a href="{{ url_for('hr_dashboard.employee_details', user_id=employee.user_id) }}" 
-                                                   class="btn btn-sm btn-outline-primary" title="View Details">
-                                                    <i class="fas fa-eye"></i>
-                                                </a>
-                                                <a href="{{ url_for('companies.employee_edit', user_id=employee.user_id) }}" 
-                                                   class="btn btn-sm btn-outline-secondary" title="Edit">
-                                                    <i class="fas fa-edit"></i>
-                                                </a>
-                                                {% if employee.role != 'company_admin' %}
-                                                <button class="btn btn-sm btn-outline-danger" 
-                                                        onclick="confirmDeactivate({{ employee.user_id }}, '{{ employee.full_name }}')" 
-                                                        title="Deactivate">
-                                                    <i class="fas fa-user-times"></i>
-                                                </button>
-                                                {% endif %}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                    {% endfor %}
-                                </tbody>
-                            </table>
-                        </div>
-
-                        <!-- Pagination -->
-                        {% if pagination %}
-                        <nav aria-label="Employee pagination">
-                            <ul class="pagination justify-content-center">
-                                {% if pagination.has_prev %}
-                                <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('companies.employees', page=pagination.prev_num, **request.args) }}">Previous</a>
-                                </li>
-                                {% endif %}
-                                
-                                {% for page_num in pagination.iter_pages() %}
-                                    {% if page_num %}
-                                        {% if page_num != pagination.page %}
-                                        <li class="page-item">
-                                            <a class="page-link" href="{{ url_for('companies.employees', page=page_num, **request.args) }}">{{ page_num }}</a>
-                                        </li>
-                                        {% else %}
-                                        <li class="page-item active">
-                                            <span class="page-link">{{ page_num }}</span>
-                                        </li>
-                                        {% endif %}
-                                    {% else %}
-                                    <li class="page-item disabled">
-                                        <span class="page-link">...</span>
-                                    </li>
+    {% if employees %}
+    <div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle mb-0" id="employeeTable">
+                <thead>
+                    <tr class="bg-light">
+                        <th class="ps-3 border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Medarbejder</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Afdeling</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Rolle</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Status</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Laering</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Chatbot</th>
+                        <th class="border-0 text-end pe-3" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;"></th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for emp in employees %}
+                    <tr class="emp-row"
+                        data-name="{{ emp.username|lower }}" data-email="{{ emp.email|lower }}"
+                        data-dept="{{ emp.department or '' }}" data-role="{{ emp.role }}" data-status="{{ emp.status }}"
+                        style="cursor:pointer;" onclick="window.location='{{ url_for('hr_dashboard.employee_details', user_id=emp.user_id) }}'">
+                        <td class="ps-3 py-3">
+                            <div class="d-flex align-items-center">
+                                <div class="emp-avatar me-3">
+                                    {{ emp.username[0].upper() if emp.username else 'U' }}
+                                </div>
+                                <div>
+                                    <div class="fw-bold">{{ emp.username }}</div>
+                                    <small class="text-muted">{{ emp.email }}</small>
+                                </div>
+                            </div>
+                        </td>
+                        <td>
+                            {% if emp.department %}
+                            <span class="badge bg-primary bg-opacity-10 text-primary">{{ emp.department }}</span>
+                            {% else %}
+                            <span class="text-muted">—</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if emp.role == 'company_admin' %}
+                            <span class="badge bg-danger bg-opacity-15 text-danger">Admin</span>
+                            {% elif emp.role == 'hr_manager' %}
+                            <span class="badge bg-warning bg-opacity-15 text-warning">HR Manager</span>
+                            {% elif emp.role == 'department_head' %}
+                            <span class="badge bg-info bg-opacity-15 text-info">Afd.leder</span>
+                            {% else %}
+                            <span class="badge bg-secondary bg-opacity-10 text-secondary">Medarbejder</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            {% if emp.status == 'active' %}
+                            <span class="d-flex align-items-center gap-1"><span class="status-dot bg-success"></span> Aktiv</span>
+                            {% elif emp.status == 'inactive' %}
+                            <span class="d-flex align-items-center gap-1"><span class="status-dot bg-secondary"></span> Inaktiv</span>
+                            {% elif emp.status == 'on_leave' %}
+                            <span class="d-flex align-items-center gap-1"><span class="status-dot bg-warning"></span> Orlov</span>
+                            {% else %}
+                            <span class="d-flex align-items-center gap-1"><span class="status-dot bg-warning"></span> Afventer</span>
+                            {% endif %}
+                        </td>
+                        <td>
+                            <div class="d-flex align-items-center gap-2">
+                                <div class="progress flex-grow-1" style="height:6px; min-width:60px; max-width:100px;">
+                                    <div class="progress-bar bg-success" style="width:{{ emp.avg_progress|round|int }}%;"></div>
+                                </div>
+                                <small class="text-muted" style="min-width:30px;">{{ emp.avg_progress|round|int }}%</small>
+                            </div>
+                            <small class="text-muted">{{ emp.courses_completed or 0 }} kurser</small>
+                        </td>
+                        <td>
+                            <span class="fw-bold">{{ emp.total_chatbot_queries or 0 }}</span>
+                            <small class="text-muted d-block">samtaler</small>
+                        </td>
+                        <td class="text-end pe-3" onclick="event.stopPropagation();">
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary border-0" data-bs-toggle="dropdown">
+                                    <i class="fas fa-ellipsis-v"></i>
+                                </button>
+                                <ul class="dropdown-menu dropdown-menu-end">
+                                    <li><a class="dropdown-item" href="{{ url_for('hr_dashboard.employee_details', user_id=emp.user_id) }}">
+                                        <i class="fas fa-user me-2 text-primary"></i>Se profil
+                                    </a></li>
+                                    <li><a class="dropdown-item" href="{{ url_for('companies.edit_employee', user_id=emp.user_id) }}">
+                                        <i class="fas fa-edit me-2 text-secondary"></i>Rediger
+                                    </a></li>
+                                    {% if emp.role != 'company_admin' %}
+                                    <li><hr class="dropdown-divider"></li>
+                                    <li><a class="dropdown-item text-danger" href="#" onclick="confirmDeactivate({{ emp.user_id }}, '{{ emp.username }}')">
+                                        <i class="fas fa-user-times me-2"></i>Deaktiver
+                                    </a></li>
                                     {% endif %}
-                                {% endfor %}
-                                
-                                {% if pagination.has_next %}
-                                <li class="page-item">
-                                    <a class="page-link" href="{{ url_for('companies.employees', page=pagination.next_num, **request.args) }}">Next</a>
-                                </li>
-                                {% endif %}
-                            </ul>
-                        </nav>
-                        {% endif %}
-                    {% else %}
-                        <div class="text-center py-5">
-                            <i class="fas fa-users fa-3x text-muted mb-3"></i>
-                            <h5 class="text-muted">No employees found</h5>
-                            <p class="text-muted">Start by adding your first employee to the company.</p>
-                            <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary">
-                                <i class="fas fa-user-plus"></i> Add First Employee
-                            </a>
-                        </div>
-                    {% endif %}
-                </div>
-            </div>
+                                </ul>
+                            </div>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        <div class="card-footer bg-white text-muted small border-0 px-3 py-2" id="tableFooter">
+            Viser {{ employees|length }} medarbejdere
         </div>
     </div>
+    {% else %}
+    <div class="card border-0 shadow-sm" style="border-radius:12px;">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-users fa-3x text-muted mb-3" style="opacity:0.3;"></i>
+            <h5 class="fw-bold text-muted">Ingen medarbejdere endnu</h5>
+            <p class="text-muted mb-3">Tilfoej din foerste medarbejder for at komme i gang</p>
+            <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary">
+                <i class="fas fa-user-plus me-1"></i> Tilfoej medarbejder
+            </a>
+        </div>
+    </div>
+    {% endif %}
 </div>
 
-<!-- Deactivate Confirmation Modal -->
+<!-- Deactivate Modal -->
 <div class="modal fade" id="deactivateModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Confirm Deactivation</h5>
+        <div class="modal-content" style="border-radius:12px;">
+            <div class="modal-header border-0">
+                <h5 class="modal-title fw-bold">Bekraeft deaktivering</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
-                <p>Are you sure you want to deactivate <strong id="employeeName"></strong>?</p>
-                <p class="text-muted">They will lose access to the system but their data will be preserved.</p>
+                <p>Er du sikker paa du vil deaktivere <strong id="employeeName"></strong>?</p>
+                <p class="text-muted small">Medarbejderen mister adgang til systemet, men data bevares.</p>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                <button type="button" class="btn btn-danger" id="confirmDeactivateBtn">Deactivate</button>
+            <div class="modal-footer border-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-danger" id="confirmDeactivateBtn">Deaktiver</button>
             </div>
         </div>
     </div>
 </div>
-
 {% endblock %}
 
-{% block extra_css %}
+{% block extra_styles %}
 <style>
-.avatar-circle {
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background-color: #007bff;
-    color: white;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: bold;
+.emp-avatar {
+    width: 38px; height: 38px; border-radius: 10px;
+    background: linear-gradient(135deg, #4e73df, #6366f1);
+    color: #fff; display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 14px; flex-shrink: 0;
 }
+.status-dot {
+    width: 8px; height: 8px; border-radius: 50%; display: inline-block;
+}
+.table-hover tbody tr:hover { background-color: rgba(78,115,223,0.04); }
+.card { border: none; }
 </style>
 {% endblock %}
 
-{% block extra_js %}
+{% block extra_scripts %}
 <script>
-function confirmDeactivate(userId, employeeName) {
-    document.getElementById('employeeName').textContent = employeeName;
+function filterTable() {
+    const search = document.getElementById('employeeSearch').value.toLowerCase();
+    const dept = document.getElementById('deptFilter').value;
+    const role = document.getElementById('roleFilter').value;
+    const status = document.getElementById('statusFilter').value;
+    let visible = 0;
+    document.querySelectorAll('.emp-row').forEach(row => {
+        const matchSearch = !search || row.dataset.name.includes(search) || row.dataset.email.includes(search);
+        const matchDept = !dept || row.dataset.dept === dept;
+        const matchRole = !role || row.dataset.role === role;
+        const matchStatus = !status || row.dataset.status === status;
+        const show = matchSearch && matchDept && matchRole && matchStatus;
+        row.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    document.getElementById('tableFooter').textContent = 'Viser ' + visible + ' medarbejdere';
+}
+function clearFilters() {
+    document.getElementById('employeeSearch').value = '';
+    document.getElementById('deptFilter').value = '';
+    document.getElementById('roleFilter').value = '';
+    document.getElementById('statusFilter').value = '';
+    filterTable();
+}
+function confirmDeactivate(userId, name) {
+    document.getElementById('employeeName').textContent = name;
     document.getElementById('confirmDeactivateBtn').onclick = function() {
         window.location.href = '/companies/employees/' + userId + '/deactivate';
     };
     new bootstrap.Modal(document.getElementById('deactivateModal')).show();
-}
-
-function exportEmployees() {
-    const params = new URLSearchParams(window.location.search);
-    params.set('export', 'csv');
-    const baseUrl = '{{ url_for("companies.employees") }}';
-    window.location.href = baseUrl + '?' + params.toString();
 }
 </script>
 {% endblock %}

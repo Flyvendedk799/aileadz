@@ -1,159 +1,138 @@
 {% extends "base.html" %}
 
-{% block title %}Add Employee - {{ company_name }}{% endblock %}
+{% block title %}Tilfoej medarbejder - {{ company.company_name }}{% endblock %}
 
 {% block content %}
 <div class="container mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
     <div class="row justify-content-center">
-        <div class="col-md-8">
-            <div class="card shadow">
-                <div class="card-header bg-primary text-white">
-                    <h4 class="mb-0"><i class="fas fa-user-plus"></i> Add New Employee</h4>
-                    <p class="mb-0">{{ company_name }}</p>
+        <div class="col-lg-8">
+            <div class="card border-0 shadow-sm" style="border-radius:12px; overflow:hidden;">
+                <div class="card-header bg-white py-3 border-bottom">
+                    <h5 class="mb-0 fw-bold"><i class="fas fa-user-plus text-primary me-2"></i>Tilfoej ny medarbejder</h5>
+                    <small class="text-muted">{{ company.company_name }}</small>
                 </div>
-                <div class="card-body">
+
+                {% with messages = get_flashed_messages(with_categories=true) %}
+                {% if messages %}
+                <div class="px-4 pt-3">
+                    {% for category, message in messages %}
+                    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+                {% endwith %}
+
+                <div class="card-body p-4">
                     <form method="POST">
-                        <div class="row">
+                        <div class="row g-4">
+                            <!-- Left: Personal info -->
                             <div class="col-md-6">
-                                <h5 class="text-primary mb-3">Personal Information</h5>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="full_name" class="form-label">Full Name *</label>
-                                    <input type="text" class="form-control" id="full_name" name="full_name" required>
+                                <h6 class="fw-bold text-muted text-uppercase small mb-3">Personoplysninger</h6>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Brugernavn <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" name="username" required placeholder="f.eks. jens.hansen">
                                 </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="email" class="form-label">Email Address *</label>
-                                    <input type="email" class="form-control" id="email" name="email" required>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Email <span class="text-danger">*</span></label>
+                                    <input type="email" class="form-control" name="email" required placeholder="jens@firma.dk">
                                 </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="phone" class="form-label">Phone Number</label>
-                                    <input type="tel" class="form-control" id="phone" name="phone">
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Password <span class="text-danger">*</span></label>
+                                    <div class="input-group">
+                                        <input type="text" class="form-control" name="password" id="passwordField" required>
+                                        <button type="button" class="btn btn-outline-secondary" onclick="generatePassword()">
+                                            <i class="fas fa-dice"></i>
+                                        </button>
+                                    </div>
+                                    <small class="text-muted">Klik terningen for at generere et password. Del det med medarbejderen.</small>
                                 </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="employee_id" class="form-label">Employee ID</label>
-                                    <input type="text" class="form-control" id="employee_id" name="employee_id" 
-                                           placeholder="Auto-generated if empty">
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Medarbejder-ID</label>
+                                    <input type="text" class="form-control" name="employee_id" placeholder="Auto-genereres hvis tom">
                                 </div>
                             </div>
-                            
+
+                            <!-- Right: Work info -->
                             <div class="col-md-6">
-                                <h5 class="text-primary mb-3">Work Information</h5>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="department" class="form-label">Department *</label>
-                                    <select class="form-control" id="department" name="department" required>
-                                        <option value="">Select Department</option>
+                                <h6 class="fw-bold text-muted text-uppercase small mb-3">Arbejdsinformation</h6>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Afdeling <span class="text-danger">*</span></label>
+                                    <select class="form-select" name="department" required>
+                                        <option value="">Vaelg afdeling</option>
                                         {% for dept in departments %}
-                                        <option value="{{ dept.name }}">{{ dept.name }}</option>
+                                        <option value="{{ dept }}">{{ dept }}</option>
                                         {% endfor %}
                                     </select>
+                                    <small class="text-muted">
+                                        <a href="{{ url_for('hr_dashboard.departments') }}">Opret ny afdeling</a>
+                                    </small>
                                 </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="job_title" class="form-label">Job Title</label>
-                                    <input type="text" class="form-control" id="job_title" name="job_title">
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Jobtitel <span class="text-danger">*</span></label>
+                                    <input type="text" class="form-control" name="job_title" required placeholder="f.eks. Saelger, Udvikler">
                                 </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="role" class="form-label">System Role *</label>
-                                    <select class="form-control" id="role" name="role" required>
-                                        <option value="employee">Employee</option>
-                                        <option value="department_head">Department Head</option>
+
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold">Systemrolle</label>
+                                    <select class="form-select" name="role">
+                                        <option value="employee">Medarbejder</option>
+                                        <option value="department_head">Afdelingsleder</option>
                                         <option value="hr_manager">HR Manager</option>
-                                        {% if session.company_role == 'company_admin' %}
-                                        <option value="company_admin">Company Admin</option>
+                                        {% if session.get('company_role') == 'company_admin' %}
+                                        <option value="company_admin">Admin</option>
                                         {% endif %}
                                     </select>
                                 </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="hire_date" class="form-label">Hire Date</label>
-                                    <input type="date" class="form-control" id="hire_date" name="hire_date">
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-3">
-                            <div class="col-12">
-                                <h5 class="text-primary mb-3">Learning & Development</h5>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="learning_goals" class="form-label">Learning Goals</label>
-                                    <textarea class="form-control" id="learning_goals" name="learning_goals" rows="3" 
-                                              placeholder="What skills or knowledge should this employee develop?"></textarea>
-                                </div>
-                                
-                                <div class="form-group mb-3">
-                                    <label for="manager_notes" class="form-label">Manager Notes</label>
-                                    <textarea class="form-control" id="manager_notes" name="manager_notes" rows="2" 
-                                              placeholder="Internal notes about this employee"></textarea>
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="row mt-3">
-                            <div class="col-12">
-                                <h5 class="text-primary mb-3">Permissions & Access</h5>
-                                
-                                <div class="row">
-                                    <div class="col-md-6">
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="can_view_reports" name="permissions" value="view_reports">
-                                            <label class="form-check-label" for="can_view_reports">
-                                                View Company Reports
-                                            </label>
-                                        </div>
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="can_export_data" name="permissions" value="export_data">
-                                            <label class="form-check-label" for="can_export_data">
-                                                Export Data
-                                            </label>
-                                        </div>
+
+                                <div class="row g-3">
+                                    <div class="col-6">
+                                        <label class="form-label fw-bold">Ansaettelsesdato</label>
+                                        <input type="date" class="form-control" name="hire_date">
                                     </div>
-                                    <div class="col-md-6">
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="can_manage_team" name="permissions" value="manage_team">
-                                            <label class="form-check-label" for="can_manage_team">
-                                                Manage Team Members
-                                            </label>
-                                        </div>
-                                        <div class="form-check mb-2">
-                                            <input class="form-check-input" type="checkbox" id="receive_notifications" name="permissions" value="notifications" checked>
-                                            <label class="form-check-label" for="receive_notifications">
-                                                Receive Email Notifications
-                                            </label>
-                                        </div>
+                                    <div class="col-6">
+                                        <label class="form-label fw-bold">Ansaettelsestype</label>
+                                        <select class="form-select" name="employment_type">
+                                            <option value="full_time">Fuldtid</option>
+                                            <option value="part_time">Deltid</option>
+                                            <option value="contract">Kontrakt</option>
+                                            <option value="intern">Praktikant</option>
+                                        </select>
                                     </div>
                                 </div>
                             </div>
                         </div>
-                        
-                        <div class="row mt-4">
-                            <div class="col-12">
-                                <div class="card bg-light">
-                                    <div class="card-body">
-                                        <h6 class="text-info mb-2">📧 Account Setup</h6>
-                                        <p class="mb-2">The employee will receive an email invitation to:</p>
-                                        <ul class="mb-0">
-                                            <li>Set up their password</li>
-                                            <li>Access the learning platform</li>
-                                            <li>Complete their profile</li>
-                                            <li>Start their learning journey</li>
-                                        </ul>
-                                    </div>
+
+                        <div class="alert alert-light border mt-4 mb-0">
+                            <div class="d-flex align-items-start gap-2">
+                                <i class="fas fa-info-circle text-primary mt-1"></i>
+                                <div>
+                                    <strong>Hvad sker der?</strong>
+                                    <p class="mb-0 small text-muted">
+                                        En brugerkonto oprettes med det angivne brugernavn og password.
+                                        Medarbejderen kan logge ind med det samme — ingen email-bekraeftelse kraeves.
+                                        Du kan altid nulstille password senere fra medarbejderens profil.
+                                    </p>
                                 </div>
                             </div>
                         </div>
-                        
+
                         <div class="d-flex justify-content-between mt-4">
-                            <a href="{{ url_for('companies.employees') }}" class="btn btn-secondary">
-                                <i class="fas fa-arrow-left"></i> Cancel
+                            <a href="{{ url_for('companies.employees') }}" class="btn btn-outline-secondary">
+                                <i class="fas fa-arrow-left me-1"></i> Annuller
                             </a>
                             <button type="submit" class="btn btn-primary">
-                                <i class="fas fa-user-plus"></i> Add Employee
+                                <i class="fas fa-user-plus me-1"></i> Opret medarbejder
                             </button>
                         </div>
                     </form>
@@ -164,62 +143,15 @@
 </div>
 {% endblock %}
 
-{% block extra_js %}
+{% block extra_scripts %}
 <script>
-// Auto-generate employee ID based on name and department
-document.getElementById('full_name').addEventListener('blur', function() {
-    const employeeIdField = document.getElementById('employee_id');
-    if (!employeeIdField.value) {
-        const name = this.value.trim();
-        const department = document.getElementById('department').value;
-        
-        if (name && department) {
-            const initials = name.split(' ').map(n => n[0]).join('').toUpperCase();
-            const deptCode = department.substring(0, 3).toUpperCase();
-            const randomNum = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
-            employeeIdField.value = `${deptCode}-${initials}-${randomNum}`;
-        }
-    }
-});
-
-// Update employee ID when department changes
-document.getElementById('department').addEventListener('change', function() {
-    const employeeIdField = document.getElementById('employee_id');
-    const nameField = document.getElementById('full_name');
-    
-    if (!employeeIdField.value && nameField.value) {
-        nameField.dispatchEvent(new Event('blur'));
-    }
-});
-
-// Role-based permission suggestions
-document.getElementById('role').addEventListener('change', function() {
-    const role = this.value;
-    const checkboxes = document.querySelectorAll('input[name="permissions"]');
-    
-    // Reset all checkboxes
-    checkboxes.forEach(cb => cb.checked = false);
-    
-    // Set default permissions based on role
-    switch(role) {
-        case 'company_admin':
-            checkboxes.forEach(cb => cb.checked = true);
-            break;
-        case 'hr_manager':
-            document.getElementById('can_view_reports').checked = true;
-            document.getElementById('can_export_data').checked = true;
-            document.getElementById('can_manage_team').checked = true;
-            document.getElementById('receive_notifications').checked = true;
-            break;
-        case 'department_head':
-            document.getElementById('can_view_reports').checked = true;
-            document.getElementById('can_manage_team').checked = true;
-            document.getElementById('receive_notifications').checked = true;
-            break;
-        case 'employee':
-            document.getElementById('receive_notifications').checked = true;
-            break;
-    }
-});
+function generatePassword() {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pw = '';
+    for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('passwordField').value = pw;
+}
+// Auto-generate on page load
+generatePassword();
 </script>
 {% endblock %}

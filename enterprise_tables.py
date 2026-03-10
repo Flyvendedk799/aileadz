@@ -138,6 +138,36 @@ def _auto_sync_columns(conn, create_stmts):
               AND CONSTRAINT_TYPE = 'UNIQUE'
         """)
         if idx_cur.fetchone():
+            # First drop any foreign keys that reference this index
+            idx_cur.execute("""
+                SELECT CONSTRAINT_NAME FROM information_schema.TABLE_CONSTRAINTS
+                WHERE TABLE_NAME = 'company_departments'
+                  AND CONSTRAINT_TYPE = 'FOREIGN KEY'
+            """)
+            fk_rows = idx_cur.fetchall()
+            for fk_row in fk_rows:
+                fk_name = fk_row[0]
+                try:
+                    idx_cur.execute(f"ALTER TABLE company_departments DROP FOREIGN KEY {fk_name}")
+                    logging.info("Auto-sync: dropped FK %s from company_departments", fk_name)
+                except Exception as fke:
+                    logging.warning("Auto-sync: drop FK %s warning: %s", fk_name, fke)
+            # Also check other tables that might reference this index
+            idx_cur.execute("""
+                SELECT TABLE_NAME, CONSTRAINT_NAME
+                FROM information_schema.KEY_COLUMN_USAGE
+                WHERE REFERENCED_TABLE_NAME = 'company_departments'
+                  AND REFERENCED_COLUMN_NAME IN ('company_id', 'department_code')
+            """)
+            ref_rows = idx_cur.fetchall()
+            for ref_row in ref_rows:
+                ref_table, ref_fk = ref_row[0], ref_row[1]
+                try:
+                    idx_cur.execute(f"ALTER TABLE {ref_table} DROP FOREIGN KEY {ref_fk}")
+                    logging.info("Auto-sync: dropped FK %s from %s", ref_fk, ref_table)
+                except Exception as fke:
+                    logging.warning("Auto-sync: drop FK %s from %s warning: %s", ref_fk, ref_table, fke)
+            # Now drop the unique index
             idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
             logging.info("Auto-sync: dropped unique_company_dept constraint")
             synced += 1

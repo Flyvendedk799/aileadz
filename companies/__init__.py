@@ -199,17 +199,20 @@ def create_companies_blueprint():
                     hr_permissions, session.get('user_id')
                 ))
 
-                # Create default departments
+                # Create default departments (IGNORE handles duplicates from previous attempts)
                 default_departments = [
                     ('Human Resources', 'HR', 'Employee management and development'),
                     ('Administration', 'ADMIN', 'Company administration and operations'),
                     ('General', 'GEN', 'General employees and contractors')
                 ]
                 for dept_name, dept_code, dept_desc in default_departments:
-                    cur.execute("""
-                        INSERT INTO company_departments (company_id, department_name, department_code, description)
-                        VALUES (%s, %s, %s, %s)
-                    """, (company_id, dept_name, dept_code, dept_desc))
+                    try:
+                        cur.execute("""
+                            INSERT IGNORE INTO company_departments (company_id, department_name, department_code, description)
+                            VALUES (%s, %s, %s, %s)
+                        """, (company_id, dept_name, dept_code, dept_desc))
+                    except Exception:
+                        pass  # skip if duplicate
 
                 # Audit log
                 cur.execute("""

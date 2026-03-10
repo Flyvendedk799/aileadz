@@ -512,6 +512,9 @@
         transform: translateX(0);
       }
     }
+    /* Fix Bootstrap modals rendering behind header (z-index: 10000) */
+    .modal-backdrop { z-index: 10001 !important; }
+    .modal { z-index: 10002 !important; }
   </style>
   {% block extra_styles %}{% endblock %}
 </head>

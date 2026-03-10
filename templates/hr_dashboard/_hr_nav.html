@@ -1,78 +1,264 @@
-<!-- HR Dashboard Sub-Navigation - include in all HR dashboard templates -->
-<nav class="navbar navbar-expand-lg bg-white shadow-sm rounded mb-4 px-3 py-2">
-    <div class="container-fluid p-0">
-        <a class="navbar-brand fw-bold text-primary d-flex align-items-center" href="{{ url_for('hr_dashboard.dashboard') }}">
-            <i class="fas fa-chart-line me-2"></i> HR Dashboard
-        </a>
-        <button class="navbar-toggler border-0 p-1" type="button" data-bs-toggle="collapse" data-bs-target="#hrNavCollapse">
+<!-- HR Dashboard Sub-Navigation -->
+<nav class="hr-nav mb-4">
+    <div class="hr-nav-inner">
+        <div class="hr-nav-brand">
+            <a href="{{ url_for('hr_dashboard.dashboard') }}">
+                <i class="fas fa-chart-line"></i>
+                <span>HR Dashboard</span>
+            </a>
+        </div>
+        <button class="hr-nav-toggle" type="button" data-bs-toggle="collapse" data-bs-target="#hrNavCollapse" aria-expanded="false">
             <i class="fas fa-bars"></i>
         </button>
-        <div class="collapse navbar-collapse" id="hrNavCollapse">
-            <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'dashboard' else '' }}" href="{{ url_for('hr_dashboard.dashboard') }}">
-                        <i class="fas fa-tachometer-alt me-1"></i> Oversigt
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'employees' else '' }}" href="{{ url_for('companies.employees') }}">
-                        <i class="fas fa-users me-1"></i> Medarbejdere
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'approvals' else '' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}">
-                        <i class="fas fa-check-circle me-1"></i> Godkendelser
-                        {% if pending_approval_count is defined and pending_approval_count > 0 %}
-                        <span class="badge bg-warning text-dark ms-1">{{ pending_approval_count }}</span>
-                        {% endif %}
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'budgets' else '' }}" href="{{ url_for('hr_dashboard.department_budgets') }}">
-                        <i class="fas fa-wallet me-1"></i> Budgetter
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'skill_gaps' else '' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}">
-                        <i class="fas fa-brain me-1"></i> Kompetencer
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'learning_paths' else '' }}" href="{{ url_for('hr_dashboard.learning_paths') }}">
-                        <i class="fas fa-road me-1"></i> Laeringsforloeb
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'billing' else '' }}" href="{{ url_for('hr_dashboard.billing_overview') }}">
-                        <i class="fas fa-file-invoice-dollar me-1"></i> Fakturering
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'roi' else '' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}">
-                        <i class="fas fa-chart-pie me-1"></i> ROI
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'reports' else '' }}" href="{{ url_for('hr_dashboard.reports') }}">
-                        <i class="fas fa-file-download me-1"></i> Rapporter
-                    </a>
-                </li>
-                {% if session.get('company_role') in ['department_head', 'hr_manager', 'company_admin'] %}
-                <li class="nav-item">
-                    <a class="nav-link {{ 'active fw-bold' if active_hr_page == 'my_department' else '' }}" href="{{ url_for('hr_dashboard.my_department') }}">
-                        <i class="fas fa-building me-1"></i> Min Afdeling
-                    </a>
-                </li>
-                {% endif %}
-            </ul>
-            <div class="d-flex gap-2 align-items-center">
-                <a href="{{ url_for('companies.add_employee') }}" class="btn btn-outline-success btn-sm">
-                    <i class="fas fa-user-plus me-1"></i> Tilfoej medarbejder
+        <div class="collapse hr-nav-links" id="hrNavCollapse">
+            <!-- Core -->
+            <div class="hr-nav-group">
+                <span class="hr-nav-group-label">Overblik</span>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'dashboard' else '' }}" href="{{ url_for('hr_dashboard.dashboard') }}">
+                    <i class="fas fa-tachometer-alt"></i> Oversigt
                 </a>
-                <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="btn btn-primary btn-sm">
-                    <i class="fas fa-robot me-1"></i> HR AI
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'employees' else '' }}" href="{{ url_for('companies.employees') }}">
+                    <i class="fas fa-users"></i> Medarbejdere
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'approvals' else '' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}">
+                    <i class="fas fa-check-circle"></i> Godkendelser
+                    {% if pending_approval_count is defined and pending_approval_count > 0 %}
+                    <span class="hr-nav-badge">{{ pending_approval_count }}</span>
+                    {% endif %}
                 </a>
             </div>
+            <!-- Finans -->
+            <div class="hr-nav-group">
+                <span class="hr-nav-group-label">Finans</span>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'budgets' else '' }}" href="{{ url_for('hr_dashboard.department_budgets') }}">
+                    <i class="fas fa-wallet"></i> Budgetter
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'billing' else '' }}" href="{{ url_for('hr_dashboard.billing_overview') }}">
+                    <i class="fas fa-file-invoice-dollar"></i> Fakturering
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'roi' else '' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}">
+                    <i class="fas fa-chart-pie"></i> ROI
+                </a>
+            </div>
+            <!-- Laering -->
+            <div class="hr-nav-group">
+                <span class="hr-nav-group-label">Laering</span>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'skill_gaps' else '' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}">
+                    <i class="fas fa-brain"></i> Kompetencer
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'learning_paths' else '' }}" href="{{ url_for('hr_dashboard.learning_paths') }}">
+                    <i class="fas fa-road"></i> Laeringsforloeb
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'reports' else '' }}" href="{{ url_for('hr_dashboard.reports') }}">
+                    <i class="fas fa-file-download"></i> Rapporter
+                </a>
+            </div>
+            {% if session.get('company_role') in ['department_head', 'hr_manager', 'company_admin'] %}
+            <div class="hr-nav-group">
+                <span class="hr-nav-group-label">Min</span>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'my_department' else '' }}" href="{{ url_for('hr_dashboard.my_department') }}">
+                    <i class="fas fa-building"></i> Min Afdeling
+                </a>
+            </div>
+            {% endif %}
+        </div>
+        <div class="hr-nav-actions">
+            <a href="{{ url_for('companies.add_employee') }}" class="hr-nav-action-btn add">
+                <i class="fas fa-user-plus"></i><span>Tilfoej</span>
+            </a>
+            <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="hr-nav-action-btn ai">
+                <i class="fas fa-robot"></i><span>HR AI</span>
+            </a>
         </div>
     </div>
 </nav>
+
+<style>
+.hr-nav {
+    background: #fff;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
+    padding: 0;
+    overflow: hidden;
+}
+.hr-nav-inner {
+    display: flex;
+    align-items: stretch;
+    flex-wrap: wrap;
+    gap: 0;
+}
+.hr-nav-brand a {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 14px 20px;
+    font-weight: 700;
+    font-size: 0.95rem;
+    color: #4e73df;
+    text-decoration: none;
+    white-space: nowrap;
+}
+.hr-nav-brand a i { font-size: 1.1rem; }
+.hr-nav-toggle {
+    display: none;
+    background: none;
+    border: none;
+    padding: 14px 16px;
+    font-size: 1.2rem;
+    color: #6c757d;
+    cursor: pointer;
+    margin-left: auto;
+}
+.hr-nav-links {
+    display: flex;
+    align-items: center;
+    flex: 1;
+    gap: 2px;
+    padding: 6px 8px;
+    overflow-x: auto;
+    scrollbar-width: thin;
+}
+.hr-nav-group {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    position: relative;
+    padding-left: 10px;
+}
+.hr-nav-group:not(:first-child)::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 25%;
+    height: 50%;
+    width: 1px;
+    background: #e2e8f0;
+}
+.hr-nav-group-label {
+    display: none;
+}
+.hr-nav-link {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 12px;
+    border-radius: 8px;
+    font-size: 0.82rem;
+    font-weight: 500;
+    color: #64748b;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+    position: relative;
+}
+.hr-nav-link:hover {
+    background: #f1f5f9;
+    color: #334155;
+}
+.hr-nav-link.active {
+    background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(78,115,223,0.3);
+}
+.hr-nav-link.active:hover {
+    background: linear-gradient(135deg, #5a7fe6 0%, #2a56c8 100%);
+    color: #fff;
+}
+.hr-nav-link i { font-size: 0.8rem; opacity: 0.85; }
+.hr-nav-link.active i { opacity: 1; }
+.hr-nav-badge {
+    background: #ef4444;
+    color: #fff;
+    font-size: 0.65rem;
+    font-weight: 700;
+    padding: 2px 6px;
+    border-radius: 10px;
+    line-height: 1;
+    min-width: 16px;
+    text-align: center;
+}
+.hr-nav-link.active .hr-nav-badge {
+    background: rgba(255,255,255,0.3);
+    color: #fff;
+}
+.hr-nav-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    margin-left: auto;
+}
+.hr-nav-action-btn {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 7px 14px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+    transition: all 0.15s ease;
+}
+.hr-nav-action-btn.add {
+    background: #dcfce7;
+    color: #16a34a;
+}
+.hr-nav-action-btn.add:hover {
+    background: #16a34a;
+    color: #fff;
+}
+.hr-nav-action-btn.ai {
+    background: linear-gradient(135deg, #4e73df, #6366f1);
+    color: #fff;
+}
+.hr-nav-action-btn.ai:hover {
+    background: linear-gradient(135deg, #5a7fe6, #7578f5);
+    color: #fff;
+    box-shadow: 0 2px 8px rgba(99,102,241,0.3);
+}
+
+/* Responsive */
+@media (max-width: 1200px) {
+    .hr-nav-action-btn span { display: none; }
+    .hr-nav-action-btn { padding: 7px 10px; }
+}
+@media (max-width: 992px) {
+    .hr-nav-toggle { display: block; }
+    .hr-nav-links {
+        flex-direction: column;
+        align-items: stretch;
+        padding: 8px 12px;
+        width: 100%;
+    }
+    .hr-nav-links:not(.show) { display: none; }
+    .hr-nav-group {
+        flex-direction: column;
+        padding-left: 0;
+        gap: 0;
+        border-bottom: 1px solid #f1f5f9;
+        padding-bottom: 8px;
+        margin-bottom: 4px;
+    }
+    .hr-nav-group::before { display: none !important; }
+    .hr-nav-group-label {
+        display: block;
+        font-size: 0.65rem;
+        font-weight: 700;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        padding: 8px 12px 2px;
+    }
+    .hr-nav-link {
+        padding: 10px 12px;
+        border-radius: 8px;
+    }
+    .hr-nav-actions {
+        padding: 8px 12px 12px;
+        width: 100%;
+    }
+    .hr-nav-action-btn { flex: 1; justify-content: center; }
+    .hr-nav-action-btn span { display: inline; }
+}
+</style>

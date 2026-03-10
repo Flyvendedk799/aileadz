@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Virksomhed oprettet - AiLeadZ{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+.success-container { max-width: 600px; margin: 0 auto; }
+.credentials-box {
+    background: #1a1a2e; color: #e0e0e0; border-radius: 0.5rem;
+    padding: 1.25rem; font-family: monospace; position: relative;
+}
+.credentials-box .label { color: #858796; font-size: 0.8rem; margin-bottom: 2px; }
+.credentials-box .value { color: #fff; font-size: 1rem; font-weight: 600; margin-bottom: 0.75rem; }
+.copy-btn {
+    position: absolute; top: 0.75rem; right: 0.75rem;
+    background: #4e73df; color: #fff; border: none; border-radius: 0.25rem;
+    padding: 0.35rem 0.75rem; font-size: 0.8rem; cursor: pointer;
+}
+.copy-btn:hover { background: #2e59d9; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container mt-4 mb-5">
+    <div class="success-container">
+        <div class="text-center mb-4">
+            <div style="font-size: 3rem; color: #1cc88a;"><i class="fas fa-check-circle"></i></div>
+            <h2 class="fw-bold mt-2">Virksomhed oprettet!</h2>
+            <p class="text-muted">
+                <strong>{{ company_name }}</strong> er nu oprettet med
+                <strong>{{ hr_name }}</strong> som HR-manager.
+            </p>
+        </div>
+
+        {% if is_new_user %}
+        <div class="card shadow mb-4">
+            <div class="card-header bg-warning text-dark">
+                <i class="fas fa-exclamation-triangle me-1"></i>
+                <strong>Vigtig: Gem disse login-oplysninger</strong>
+            </div>
+            <div class="card-body">
+                <p class="small text-muted mb-3">
+                    Disse oplysninger vises kun denne ene gang. Del dem sikkert med HR-manageren.
+                    HR-manageren kan aendre adgangskoden efter foerste login.
+                </p>
+                <div class="credentials-box" id="credentialsBox">
+                    <button class="copy-btn" onclick="copyCredentials()">
+                        <i class="fas fa-copy me-1"></i> Kopier
+                    </button>
+                    <div class="label">E-mail</div>
+                    <div class="value" id="cred-email">{{ hr_email }}</div>
+                    <div class="label">Adgangskode</div>
+                    <div class="value" id="cred-password">{{ hr_password }}</div>
+                    <div class="label">Login-side</div>
+                    <div class="value">{{ request.host_url }}login</div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <div class="d-flex align-items-center gap-3">
+                    <i class="fas fa-user-check text-success" style="font-size: 1.5rem;"></i>
+                    <div>
+                        <h6 class="mb-1">{{ hr_name }} er nu HR-manager</h6>
+                        <p class="text-muted small mb-0">
+                            {{ hr_email }} kan logge ind med sin eksisterende konto og faar automatisk adgang til virksomhedens dashboards og medarbejderstyring.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <div class="card shadow mb-4">
+            <div class="card-body">
+                <h6 class="fw-bold mb-3">Hvad sker der nu?</h6>
+                <div class="d-flex align-items-start gap-2 mb-2">
+                    <span class="badge bg-primary rounded-pill">1</span>
+                    <span class="small">HR-manageren logger ind og faar adgang til virksomhedens dashboard</span>
+                </div>
+                <div class="d-flex align-items-start gap-2 mb-2">
+                    <span class="badge bg-primary rounded-pill">2</span>
+                    <span class="small">HR-manageren tilfojer medarbejdere og opretter afdelinger</span>
+                </div>
+                <div class="d-flex align-items-start gap-2 mb-2">
+                    <span class="badge bg-primary rounded-pill">3</span>
+                    <span class="small">Medarbejdere faar adgang til kurser, chatbot og laeringsvaerktoejer</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="text-center">
+            <a href="{{ url_for('companies.register') }}" class="btn btn-primary me-2">
+                <i class="fas fa-plus me-1"></i> Opret endnu en virksomhed
+            </a>
+            <a href="{{ url_for('dashboard.dashboard') }}" class="btn btn-outline-secondary">
+                <i class="fas fa-home me-1"></i> Tilbage til dashboard
+            </a>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+function copyCredentials() {
+    const email = document.getElementById('cred-email').textContent;
+    const pw = document.getElementById('cred-password').textContent;
+    const loginUrl = '{{ request.host_url }}login';
+    const text = `E-mail: ${email}\nAdgangskode: ${pw}\nLogin: ${loginUrl}`;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.innerHTML = '<i class="fas fa-check me-1"></i> Kopieret!';
+        setTimeout(() => { btn.innerHTML = '<i class="fas fa-copy me-1"></i> Kopier'; }, 2000);
+    });
+}
+</script>
+{% endblock %}

@@ -3236,6 +3236,116 @@ def create_hr_dashboard_blueprint():
                                internal_course_count=internal_course_count,
                                active_hr_page='chatbot_settings')
 
+    @hr_dashboard_bp.route('/widget')
+    def widget_creator():
+        """Widget embed code generator with live preview"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('hr_dashboard.dashboard'))
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT * FROM company_widget_settings WHERE company_id = %s", (company['id'],))
+        widget = cur.fetchone()
+        cur.close()
+
+        return render_template('hr_dashboard/widget_creator.html',
+                              company=company, widget=widget,
+                              active_hr_page='widget')
+
+    @hr_dashboard_bp.route('/widget/save', methods=['POST'])
+    def widget_save():
+        """Save widget customization settings"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False, "message": "Virksomhed ikke fundet"}), 400
+
+        import secrets
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, widget_token FROM company_widget_settings WHERE company_id = %s", (company['id'],))
+        existing = cur.fetchone()
+
+        theme_primary = request.form.get('theme_primary_color', '#4F46E5').strip()
+        theme_text = request.form.get('theme_text_color', '#FFFFFF').strip()
+        theme_bg = request.form.get('theme_bg_color', '#FFFFFF').strip()
+        position = request.form.get('position', 'bottom-right').strip()
+        widget_title = request.form.get('widget_title', 'Kursusrådgiver').strip()
+        welcome_msg = request.form.get('welcome_message', '').strip()
+        widget_size = request.form.get('widget_size', 'medium').strip()
+        show_branding = 1 if request.form.get('show_branding') else 0
+        is_active = 1 if request.form.get('is_active') else 0
+        custom_css = request.form.get('custom_css', '').strip()
+        allowed_domains = request.form.get('allowed_domains', '').strip()
+
+        try:
+            if existing:
+                cur.execute("""
+                    UPDATE company_widget_settings SET
+                        is_active=%s, theme_primary_color=%s, theme_text_color=%s, theme_bg_color=%s,
+                        position=%s, widget_title=%s, welcome_message=%s, widget_size=%s,
+                        show_branding=%s, custom_css=%s, allowed_domains=%s
+                    WHERE company_id=%s
+                """, (is_active, theme_primary, theme_text, theme_bg,
+                      position, widget_title, welcome_msg, widget_size,
+                      show_branding, custom_css or None, allowed_domains or None, company['id']))
+                widget_token = existing['widget_token']
+            else:
+                widget_token = 'wt_' + secrets.token_hex(30)
+                cur.execute("""
+                    INSERT INTO company_widget_settings
+                        (company_id, widget_token, is_active, theme_primary_color, theme_text_color,
+                         theme_bg_color, position, widget_title, welcome_message, widget_size,
+                         show_branding, custom_css, allowed_domains)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """, (company['id'], widget_token, is_active, theme_primary, theme_text, theme_bg,
+                      position, widget_title, welcome_msg, widget_size,
+                      show_branding, custom_css or None, allowed_domains or None))
+
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Widget-indstillinger gemt.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error saving widget settings: {e}")
+            flash("Fejl ved gem af widget-indstillinger.", "danger")
+
+        return redirect(url_for('hr_dashboard.widget_creator'))
+
+    @hr_dashboard_bp.route('/widget/regenerate-token', methods=['POST'])
+    def widget_regenerate_token():
+        """Regenerate the widget authentication token"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False}), 400
+
+        import secrets
+        new_token = 'wt_' + secrets.token_hex(30)
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("UPDATE company_widget_settings SET widget_token = %s WHERE company_id = %s",
+                       (new_token, company['id']))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Widget-token er fornyet. Opdater embed-koden på din hjemmeside.", "warning")
+        except Exception as e:
+            current_app.logger.error(f"Error regenerating widget token: {e}")
+            flash("Fejl ved fornyelse af token.", "danger")
+
+        return redirect(url_for('hr_dashboard.widget_creator'))
+
     return hr_dashboard_bp
 
 # Create the blueprint instance

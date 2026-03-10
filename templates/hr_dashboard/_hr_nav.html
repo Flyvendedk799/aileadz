@@ -68,6 +68,9 @@
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'chatbot_settings' else '' }}" href="{{ url_for('hr_dashboard.chatbot_settings') }}">
                     <i class="fas fa-robot"></i> Chatbot
                 </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'widget' else '' }}" href="{{ url_for('hr_dashboard.widget_creator') }}">
+                    <i class="fas fa-code"></i> Widget Embed
+                </a>
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'settings' else '' }}" href="{{ url_for('companies.settings') }}">
                     <i class="fas fa-cog"></i> Indstillinger
                 </a>

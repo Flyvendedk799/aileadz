@@ -9,18 +9,37 @@ def _parse_columns_from_create(sql):
     """Extract column definitions from a CREATE TABLE statement.
     Returns list of (column_name, full_definition) tuples.
     Skips PRIMARY KEY, INDEX, UNIQUE KEY, KEY, and CONSTRAINT lines.
+    Handles commas inside type definitions like DECIMAL(10,2).
     """
     # Find the content between the outer parentheses
     match = re.search(r'\((.+)\)[^)]*$', sql, re.DOTALL)
     if not match:
         return []
 
+    # Split on commas that are NOT inside parentheses
     body = match.group(1)
+    parts = []
+    current = []
+    depth = 0
+    for char in body:
+        if char == '(':
+            depth += 1
+            current.append(char)
+        elif char == ')':
+            depth -= 1
+            current.append(char)
+        elif char == ',' and depth == 0:
+            parts.append(''.join(current).strip())
+            current = []
+        else:
+            current.append(char)
+    if current:
+        parts.append(''.join(current).strip())
+
     columns = []
     skip_prefixes = ('primary key', 'index ', 'idx_', 'unique key', 'key ', 'constraint', 'foreign key')
 
-    for line in body.split(','):
-        line = line.strip()
+    for line in parts:
         if not line:
             continue
         lower = line.lower().lstrip()
@@ -97,9 +116,21 @@ def _auto_sync_columns(conn, create_stmts):
             except Exception as e:
                 logging.warning("Auto-sync skip %s.%s: %s", table_name, col_name, e)
 
+    # Clean up orphan rows with NULL/empty department_name (from pre-migration inserts)
+    try:
+        cleanup_cur = conn.cursor()
+        cleanup_cur.execute("DELETE FROM company_departments WHERE department_name IS NULL OR department_name = ''")
+        deleted = cleanup_cur.rowcount
+        cleanup_cur.close()
+        if deleted:
+            logging.info("Auto-sync: cleaned %d orphan department rows", deleted)
+            synced += deleted
+    except Exception as e:
+        logging.warning("Auto-sync: cleanup warning: %s", e)
+
     if synced:
         conn.commit()
-        logging.info("Auto-sync complete: %d columns added", synced)
+        logging.info("Auto-sync complete: %d changes made", synced)
     else:
         logging.info("Auto-sync: all tables up to date")
 

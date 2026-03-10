@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}{{ 'Rediger' if course else 'Opret' }} Kursus - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+  .form-section { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
+  .form-section h5 { color: #374151; margin-bottom: 16px; padding-bottom: 10px; border-bottom: 2px solid #eef2ff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h2>
+                    <i class="fas fa-{{ 'edit' if course else 'plus-circle' }} text-primary"></i>
+                    {{ 'Rediger kursus' if course else 'Opret nyt internt kursus' }}
+                </h2>
+                <a href="{{ url_for('hr_dashboard.internal_courses') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Tilbage
+                </a>
+            </div>
+
+            <form method="POST">
+                <!-- Basic Info -->
+                <div class="form-section">
+                    <h5><i class="fas fa-info-circle"></i> Grundlaeggende information</h5>
+                    <div class="row g-3">
+                        <div class="col-12">
+                            <label class="form-label">Kursusnavn *</label>
+                            <input type="text" class="form-control" name="title" value="{{ course.title if course else '' }}" required>
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Beskrivelse</label>
+                            <textarea class="form-control" name="description" rows="3">{{ course.description if course else '' }}</textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Kategori</label>
+                            <input type="text" class="form-control" name="category" value="{{ course.category if course else '' }}" placeholder="f.eks. Ledelse, IT, Sikkerhed">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Tags (komma-separeret)</label>
+                            <input type="text" class="form-control" name="tags" value="{{ course.tags if course else '' }}" placeholder="f.eks. onboarding, compliance, softskills">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Format & Details -->
+                <div class="form-section">
+                    <h5><i class="fas fa-cog"></i> Format og detaljer</h5>
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <label class="form-label">Kursustype</label>
+                            <select class="form-control" name="course_type">
+                                <option value="internal" {% if not course or course.course_type == 'internal' %}selected{% endif %}>Internt</option>
+                                <option value="external_linked" {% if course and course.course_type == 'external_linked' %}selected{% endif %}>Eksternt (linket)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Format</label>
+                            <select class="form-control" name="format">
+                                <option value="classroom" {% if not course or course.format == 'classroom' %}selected{% endif %}>Klassevaerelse</option>
+                                <option value="e-learning" {% if course and course.format == 'e-learning' %}selected{% endif %}>E-learning</option>
+                                <option value="blended" {% if course and course.format == 'blended' %}selected{% endif %}>Blended</option>
+                                <option value="webinar" {% if course and course.format == 'webinar' %}selected{% endif %}>Webinar</option>
+                                <option value="workshop" {% if course and course.format == 'workshop' %}selected{% endif %}>Workshop</option>
+                                <option value="self-paced" {% if course and course.format == 'self-paced' %}selected{% endif %}>Selvstudium</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Svaerhedsgrad</label>
+                            <select class="form-control" name="difficulty_level">
+                                <option value="beginner" {% if not course or course.difficulty_level == 'beginner' %}selected{% endif %}>Begynder</option>
+                                <option value="intermediate" {% if course and course.difficulty_level == 'intermediate' %}selected{% endif %}>Mellem</option>
+                                <option value="advanced" {% if course and course.difficulty_level == 'advanced' %}selected{% endif %}>Avanceret</option>
+                            </select>
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Varighed (timer)</label>
+                            <input type="number" class="form-control" name="duration_hours" step="0.5" min="0" value="{{ course.duration_hours if course else '' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Pris (DKK)</label>
+                            <input type="number" class="form-control" name="price" step="0.01" min="0" value="{{ course.price if course else '0' }}">
+                        </div>
+                        <div class="col-md-4">
+                            <label class="form-label">Maks. deltagere</label>
+                            <input type="number" class="form-control" name="max_participants" min="0" value="{{ course.max_participants if course else '' }}" placeholder="Tomt = ubegrsenset">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Instructor & Location -->
+                <div class="form-section">
+                    <h5><i class="fas fa-chalkboard-teacher"></i> Underviser og lokation</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <label class="form-label">Underviser</label>
+                            <input type="text" class="form-control" name="instructor" value="{{ course.instructor if course else '' }}">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Lokation</label>
+                            <input type="text" class="form-control" name="location" value="{{ course.location if course else '' }}" placeholder="f.eks. Kontor, Online, Adresse">
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Afdeling (valgfrit)</label>
+                            <select class="form-control" name="department">
+                                <option value="">Alle afdelinger</option>
+                                {% for dept in departments %}
+                                <option value="{{ dept }}" {% if course and course.department == dept %}selected{% endif %}>{{ dept }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-6">
+                            <label class="form-label">Kompetence-tags</label>
+                            <input type="text" class="form-control" name="skill_tags" value="{{ course.skill_tags if course else '' }}" placeholder="f.eks. ledelse, kommunikation, excel">
+                        </div>
+                        <div class="col-12">
+                            <label class="form-label">Eksternt link (valgfrit)</label>
+                            <input type="url" class="form-control" name="external_url" value="{{ course.external_url if course else '' }}" placeholder="https://...">
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Options -->
+                <div class="form-section">
+                    <h5><i class="fas fa-sliders-h"></i> Indstillinger</h5>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="is_mandatory" id="is_mandatory"
+                                       {% if course and course.is_mandatory %}checked{% endif %}>
+                                <label class="form-check-label" for="is_mandatory">Obligatorisk kursus</label>
+                            </div>
+                            <small class="text-muted">Obligatoriske kurser vises som krav for medarbejdere</small>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="is_active" id="is_active" value="1"
+                                       {% if not course or course.is_active %}checked{% endif %}>
+                                <label class="form-check-label" for="is_active">Aktiv</label>
+                            </div>
+                            <small class="text-muted">Inaktive kurser er skjulte for medarbejdere</small>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-between mb-5">
+                    <a href="{{ url_for('hr_dashboard.internal_courses') }}" class="btn btn-secondary">
+                        <i class="fas fa-arrow-left"></i> Annuller
+                    </a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-save"></i> {{ 'Gem aendringer' if course else 'Opret kursus' }}
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

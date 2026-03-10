@@ -522,12 +522,31 @@ def create_hr_dashboard_blueprint():
                 cur.close()
                 return jsonify({'success': False, 'message': 'Order not found or access denied'}), 404
             
-            # Update the order status
-            cur.execute("""
-                UPDATE course_orders
-                SET status = %s, updated_at = NOW()
-                WHERE order_id = %s AND company_id = %s
-            """, (new_status, order_id, company['id']))
+            # Update the order status + payment tracking
+            if new_status == 'paid':
+                cur.execute("""
+                    UPDATE course_orders
+                    SET status = %s, payment_status = 'paid', payment_date = NOW(), updated_at = NOW()
+                    WHERE order_id = %s AND company_id = %s
+                """, (new_status, order_id, company['id']))
+            elif new_status == 'invoiced':
+                cur.execute("""
+                    UPDATE course_orders
+                    SET status = %s, payment_status = 'invoiced', updated_at = NOW()
+                    WHERE order_id = %s AND company_id = %s
+                """, (new_status, order_id, company['id']))
+            elif new_status == 'approved':
+                cur.execute("""
+                    UPDATE course_orders
+                    SET status = %s, payment_status = 'awaiting_payment', updated_at = NOW()
+                    WHERE order_id = %s AND company_id = %s
+                """, (new_status, order_id, company['id']))
+            else:
+                cur.execute("""
+                    UPDATE course_orders
+                    SET status = %s, updated_at = NOW()
+                    WHERE order_id = %s AND company_id = %s
+                """, (new_status, order_id, company['id']))
             
             if cur.rowcount == 0:
                 cur.close()
@@ -2527,6 +2546,543 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Delete learning path error: {e}")
             flash("Fejl ved sletning.", "danger")
         return redirect(url_for('hr_dashboard.learning_paths'))
+
+    # ══════════════════════════════════════════════════════════
+    # ── Internal Courses Management ──
+    # ══════════════════════════════════════════════════════════
+
+    @hr_dashboard_bp.route('/courses')
+    def internal_courses():
+        """Manage internal company courses"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        # Filters
+        category_filter = request.args.get('category', '')
+        status_filter = request.args.get('status', '')
+        search_q = request.args.get('q', '').strip()
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            where = ["cc.company_id = %s"]
+            params = [company['id']]
+
+            if category_filter:
+                where.append("cc.category = %s")
+                params.append(category_filter)
+            if status_filter == 'active':
+                where.append("cc.is_active = 1")
+            elif status_filter == 'inactive':
+                where.append("cc.is_active = 0")
+            if search_q:
+                where.append("(cc.title LIKE %s OR cc.description LIKE %s OR cc.tags LIKE %s)")
+                params.extend([f'%{search_q}%'] * 3)
+
+            cur.execute(f"""
+                SELECT cc.*,
+                       (SELECT COUNT(*) FROM course_orders co
+                        WHERE co.internal_course_id = cc.id AND co.company_id = cc.company_id) as enrollment_count
+                FROM company_courses cc
+                WHERE {' AND '.join(where)}
+                ORDER BY cc.created_at DESC
+            """, tuple(params))
+            courses = cur.fetchall()
+
+            # Get unique categories for filter
+            cur.execute("""
+                SELECT DISTINCT category FROM company_courses
+                WHERE company_id = %s AND category IS NOT NULL AND category != ''
+                ORDER BY category
+            """, (company['id'],))
+            categories = [r['category'] for r in cur.fetchall()]
+
+            # Stats
+            cur.execute("""
+                SELECT
+                    COUNT(*) as total,
+                    SUM(is_active) as active,
+                    SUM(is_mandatory) as mandatory,
+                    COUNT(DISTINCT category) as categories
+                FROM company_courses WHERE company_id = %s
+            """, (company['id'],))
+            stats = cur.fetchone()
+
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error loading internal courses: {e}")
+            courses, categories, stats = [], [], {'total': 0, 'active': 0, 'mandatory': 0, 'categories': 0}
+
+        return render_template('hr_dashboard/internal_courses.html',
+                               company=company,
+                               courses=courses,
+                               categories=categories,
+                               stats=stats,
+                               active_hr_page='courses')
+
+    @hr_dashboard_bp.route('/courses/add', methods=['GET', 'POST'])
+    def add_internal_course():
+        """Add a new internal course"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        if request.method == 'POST':
+            try:
+                cur = current_app.mysql.connection.cursor()
+                cur.execute("""
+                    INSERT INTO company_courses
+                        (company_id, title, description, category, tags, course_type, format,
+                         duration_hours, price, instructor, location, max_participants,
+                         department, skill_tags, difficulty_level, is_mandatory, is_active,
+                         external_url, created_by)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    company['id'],
+                    request.form.get('title', '').strip(),
+                    request.form.get('description', '').strip(),
+                    request.form.get('category', '').strip(),
+                    request.form.get('tags', '').strip(),
+                    request.form.get('course_type', 'internal'),
+                    request.form.get('format', 'classroom'),
+                    float(request.form.get('duration_hours', 0) or 0),
+                    float(request.form.get('price', 0) or 0),
+                    request.form.get('instructor', '').strip(),
+                    request.form.get('location', '').strip(),
+                    int(request.form.get('max_participants', 0) or 0) or None,
+                    request.form.get('department', '').strip() or None,
+                    request.form.get('skill_tags', '').strip(),
+                    request.form.get('difficulty_level', 'beginner'),
+                    1 if request.form.get('is_mandatory') else 0,
+                    1 if request.form.get('is_active', '1') != '0' else 0,
+                    request.form.get('external_url', '').strip() or None,
+                    session.get('user_id')
+                ))
+                current_app.mysql.connection.commit()
+                cur.close()
+                flash("Internt kursus oprettet.", "success")
+                return redirect(url_for('hr_dashboard.internal_courses'))
+            except Exception as e:
+                current_app.logger.error(f"Error adding internal course: {e}")
+                flash("Fejl ved oprettelse af kursus.", "danger")
+
+        # GET: load departments for dropdown
+        departments = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("SELECT department_name FROM company_departments WHERE company_id = %s ORDER BY department_name",
+                        (company['id'],))
+            departments = [r['department_name'] for r in cur.fetchall()]
+            cur.close()
+        except Exception:
+            pass
+
+        return render_template('hr_dashboard/course_form.html',
+                               company=company, course=None, departments=departments,
+                               active_hr_page='courses')
+
+    @hr_dashboard_bp.route('/courses/<int:course_id>/edit', methods=['GET', 'POST'])
+    def edit_internal_course(course_id):
+        """Edit an internal course"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("SELECT * FROM company_courses WHERE id = %s AND company_id = %s",
+                        (course_id, company['id']))
+            course = cur.fetchone()
+            cur.close()
+            if not course:
+                flash("Kursus ikke fundet.", "danger")
+                return redirect(url_for('hr_dashboard.internal_courses'))
+        except Exception as e:
+            current_app.logger.error(f"Error loading course: {e}")
+            flash("Fejl ved indlaesning af kursus.", "danger")
+            return redirect(url_for('hr_dashboard.internal_courses'))
+
+        if request.method == 'POST':
+            try:
+                cur = current_app.mysql.connection.cursor()
+                cur.execute("""
+                    UPDATE company_courses SET
+                        title=%s, description=%s, category=%s, tags=%s, course_type=%s, format=%s,
+                        duration_hours=%s, price=%s, instructor=%s, location=%s, max_participants=%s,
+                        department=%s, skill_tags=%s, difficulty_level=%s, is_mandatory=%s, is_active=%s,
+                        external_url=%s
+                    WHERE id=%s AND company_id=%s
+                """, (
+                    request.form.get('title', '').strip(),
+                    request.form.get('description', '').strip(),
+                    request.form.get('category', '').strip(),
+                    request.form.get('tags', '').strip(),
+                    request.form.get('course_type', 'internal'),
+                    request.form.get('format', 'classroom'),
+                    float(request.form.get('duration_hours', 0) or 0),
+                    float(request.form.get('price', 0) or 0),
+                    request.form.get('instructor', '').strip(),
+                    request.form.get('location', '').strip(),
+                    int(request.form.get('max_participants', 0) or 0) or None,
+                    request.form.get('department', '').strip() or None,
+                    request.form.get('skill_tags', '').strip(),
+                    request.form.get('difficulty_level', 'beginner'),
+                    1 if request.form.get('is_mandatory') else 0,
+                    1 if request.form.get('is_active', '1') != '0' else 0,
+                    request.form.get('external_url', '').strip() or None,
+                    course_id, company['id']
+                ))
+                current_app.mysql.connection.commit()
+                cur.close()
+                flash("Kursus opdateret.", "success")
+                return redirect(url_for('hr_dashboard.internal_courses'))
+            except Exception as e:
+                current_app.logger.error(f"Error updating course: {e}")
+                flash("Fejl ved opdatering.", "danger")
+
+        departments = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("SELECT department_name FROM company_departments WHERE company_id = %s ORDER BY department_name",
+                        (company['id'],))
+            departments = [r['department_name'] for r in cur.fetchall()]
+            cur.close()
+        except Exception:
+            pass
+
+        return render_template('hr_dashboard/course_form.html',
+                               company=company, course=course, departments=departments,
+                               active_hr_page='courses')
+
+    @hr_dashboard_bp.route('/courses/<int:course_id>/delete', methods=['POST'])
+    def delete_internal_course(course_id):
+        """Delete an internal course"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False}), 400
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            # Check enrollments
+            cur.execute("""
+                SELECT COUNT(*) as cnt FROM course_orders
+                WHERE internal_course_id = %s AND company_id = %s AND status NOT IN ('cancelled', 'completed')
+            """, (course_id, company['id']))
+            active_enrollments = cur.fetchone()['cnt']
+            if active_enrollments > 0:
+                flash(f"Kan ikke slette — {active_enrollments} aktive tilmeldinger.", "danger")
+            else:
+                cur.execute("DELETE FROM company_courses WHERE id = %s AND company_id = %s",
+                            (course_id, company['id']))
+                current_app.mysql.connection.commit()
+                flash("Kursus slettet.", "success")
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error deleting course: {e}")
+            flash("Fejl ved sletning.", "danger")
+
+        return redirect(url_for('hr_dashboard.internal_courses'))
+
+    @hr_dashboard_bp.route('/courses/<int:course_id>/toggle', methods=['POST'])
+    def toggle_internal_course(course_id):
+        """Toggle course active/inactive"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"success": False}), 401
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False}), 400
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                UPDATE company_courses SET is_active = NOT is_active
+                WHERE id = %s AND company_id = %s
+            """, (course_id, company['id']))
+            current_app.mysql.connection.commit()
+            cur.close()
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
+
+    @hr_dashboard_bp.route('/courses/import', methods=['POST'])
+    def import_courses_csv():
+        """Import internal courses from CSV"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('hr_dashboard.internal_courses'))
+
+        csv_file = request.files.get('csv_file')
+        if not csv_file or not csv_file.filename.endswith('.csv'):
+            flash("Upload venligst en CSV-fil.", "danger")
+            return redirect(url_for('hr_dashboard.internal_courses'))
+
+        try:
+            stream = io.StringIO(csv_file.stream.read().decode('utf-8-sig'))
+            reader = csv.DictReader(stream, delimiter=';')
+
+            cur = current_app.mysql.connection.cursor()
+            imported = 0
+            errors = 0
+
+            for row in reader:
+                title = (row.get('title') or row.get('titel') or row.get('Titel') or '').strip()
+                if not title:
+                    errors += 1
+                    continue
+                try:
+                    cur.execute("""
+                        INSERT INTO company_courses
+                            (company_id, title, description, category, tags, format,
+                             duration_hours, price, instructor, location, department,
+                             difficulty_level, is_mandatory, is_active, created_by)
+                        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,1,%s)
+                    """, (
+                        company['id'],
+                        title,
+                        (row.get('description') or row.get('beskrivelse') or '').strip(),
+                        (row.get('category') or row.get('kategori') or '').strip(),
+                        (row.get('tags') or '').strip(),
+                        (row.get('format') or 'classroom').strip(),
+                        float(row.get('duration_hours') or row.get('varighed') or 0),
+                        float(row.get('price') or row.get('pris') or 0),
+                        (row.get('instructor') or row.get('underviser') or '').strip(),
+                        (row.get('location') or row.get('lokation') or '').strip(),
+                        (row.get('department') or row.get('afdeling') or '').strip() or None,
+                        (row.get('difficulty_level') or row.get('niveau') or 'beginner').strip(),
+                        1 if (row.get('is_mandatory') or row.get('obligatorisk') or '').strip().lower() in ('1', 'ja', 'yes', 'true') else 0,
+                        session.get('user_id')
+                    ))
+                    imported += 1
+                except Exception as e:
+                    current_app.logger.warning(f"CSV import row error: {e}")
+                    errors += 1
+
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"{imported} kurser importeret. {errors} fejl." if errors else f"{imported} kurser importeret.", "success" if imported else "warning")
+        except Exception as e:
+            current_app.logger.error(f"CSV import error: {e}")
+            flash(f"Fejl ved import: {e}", "danger")
+
+        return redirect(url_for('hr_dashboard.internal_courses'))
+
+    # ══════════════════════════════════════════════════════════
+    # ── Supplier & Course Activation Control ──
+    # ══════════════════════════════════════════════════════════
+
+    @hr_dashboard_bp.route('/suppliers')
+    def supplier_management():
+        """Manage supplier/vendor preferences and course activations"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Load all unique vendors from product catalog
+            import json as _json
+            import os
+            catalog_path = os.path.join(current_app.root_path, 'shopify_products_all_pages.json')
+            vendors = {}
+            if os.path.exists(catalog_path):
+                with open(catalog_path, 'r', encoding='utf-8') as f:
+                    products = _json.load(f)
+                for p in products:
+                    v = p.get('vendor', 'Unknown')
+                    if v not in vendors:
+                        vendors[v] = {'name': v, 'course_count': 0}
+                    vendors[v]['course_count'] += 1
+
+            # Load company preferences
+            cur.execute("SELECT * FROM company_supplier_preferences WHERE company_id = %s", (company['id'],))
+            prefs = {r['vendor_name']: r for r in cur.fetchall()}
+
+            # Merge: all vendors with their preference status
+            vendor_list = []
+            for vname, vdata in sorted(vendors.items()):
+                pref = prefs.get(vname, {})
+                vendor_list.append({
+                    'name': vname,
+                    'course_count': vdata['course_count'],
+                    'is_active': pref.get('is_active', 1),
+                    'priority': pref.get('priority', 5),
+                    'notes': pref.get('notes', ''),
+                    'has_preference': bool(pref)
+                })
+
+            # Count active/deactivated
+            active_vendors = sum(1 for v in vendor_list if v['is_active'])
+            deactivated_vendors = len(vendor_list) - active_vendors
+
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error loading suppliers: {e}")
+            vendor_list = []
+            active_vendors = 0
+            deactivated_vendors = 0
+
+        return render_template('hr_dashboard/suppliers.html',
+                               company=company,
+                               vendors=vendor_list,
+                               active_vendors=active_vendors,
+                               deactivated_vendors=deactivated_vendors,
+                               active_hr_page='suppliers')
+
+    @hr_dashboard_bp.route('/suppliers/toggle', methods=['POST'])
+    def toggle_supplier():
+        """Toggle a supplier active/inactive"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"success": False}), 401
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False}), 400
+
+        data = request.json or request.form
+        vendor_name = data.get('vendor_name', '').strip()
+        is_active = int(data.get('is_active', 1))
+
+        if not vendor_name:
+            return jsonify({"success": False, "message": "Vendor name required"}), 400
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                INSERT INTO company_supplier_preferences (company_id, vendor_name, is_active, updated_by)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE is_active = VALUES(is_active), updated_by = VALUES(updated_by)
+            """, (company['id'], vendor_name, is_active, session.get('user_id')))
+            current_app.mysql.connection.commit()
+            cur.close()
+            return jsonify({"success": True})
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
+
+    @hr_dashboard_bp.route('/suppliers/bulk-toggle', methods=['POST'])
+    def bulk_toggle_suppliers():
+        """Bulk toggle suppliers"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"success": False}), 401
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False}), 400
+
+        data = request.json or {}
+        vendor_names = data.get('vendor_names', [])
+        is_active = int(data.get('is_active', 1))
+
+        if not vendor_names:
+            return jsonify({"success": False, "message": "No vendors selected"}), 400
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            for vn in vendor_names:
+                cur.execute("""
+                    INSERT INTO company_supplier_preferences (company_id, vendor_name, is_active, updated_by)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE is_active = VALUES(is_active), updated_by = VALUES(updated_by)
+                """, (company['id'], vn, is_active, session.get('user_id')))
+            current_app.mysql.connection.commit()
+            cur.close()
+            return jsonify({"success": True, "updated": len(vendor_names)})
+        except Exception as e:
+            return jsonify({"success": False, "message": str(e)}), 500
+
+    # ══════════════════════════════════════════════════════════
+    # ── Chatbot Configuration ──
+    # ══════════════════════════════════════════════════════════
+
+    @hr_dashboard_bp.route('/chatbot-settings', methods=['GET', 'POST'])
+    def chatbot_settings():
+        """Configure chatbot behavior for company employees"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        if request.method == 'POST':
+            try:
+                cur = current_app.mysql.connection.cursor()
+                course_mode = request.form.get('chatbot_course_mode', 'both')
+                internal_weight = int(request.form.get('chatbot_internal_weight', 50))
+                custom_instructions = request.form.get('chatbot_custom_instructions', '').strip()
+                show_external = 1 if request.form.get('chatbot_show_external') else 0
+                show_internal = 1 if request.form.get('chatbot_show_internal') else 0
+
+                # Validate
+                if course_mode not in ('internal_only', 'external_only', 'both'):
+                    course_mode = 'both'
+                internal_weight = max(0, min(100, internal_weight))
+
+                cur.execute("""
+                    INSERT INTO company_settings (company_id, chatbot_course_mode, chatbot_internal_weight,
+                        chatbot_custom_instructions, chatbot_show_external, chatbot_show_internal)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        chatbot_course_mode = VALUES(chatbot_course_mode),
+                        chatbot_internal_weight = VALUES(chatbot_internal_weight),
+                        chatbot_custom_instructions = VALUES(chatbot_custom_instructions),
+                        chatbot_show_external = VALUES(chatbot_show_external),
+                        chatbot_show_internal = VALUES(chatbot_show_internal)
+                """, (company['id'], course_mode, internal_weight, custom_instructions,
+                      show_external, show_internal))
+                current_app.mysql.connection.commit()
+                cur.close()
+                flash("Chatbot-indstillinger gemt.", "success")
+            except Exception as e:
+                current_app.logger.error(f"Error saving chatbot settings: {e}")
+                flash("Fejl ved gemning af indstillinger.", "danger")
+            return redirect(url_for('hr_dashboard.chatbot_settings'))
+
+        # GET: load current settings
+        settings = {}
+        internal_course_count = 0
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("SELECT * FROM company_settings WHERE company_id = %s", (company['id'],))
+            settings = cur.fetchone() or {}
+            cur.execute("SELECT COUNT(*) as cnt FROM company_courses WHERE company_id = %s AND is_active = 1",
+                        (company['id'],))
+            internal_course_count = cur.fetchone()['cnt']
+            cur.close()
+        except Exception:
+            pass
+
+        return render_template('hr_dashboard/chatbot_settings.html',
+                               company=company,
+                               settings=settings,
+                               internal_course_count=internal_course_count,
+                               active_hr_page='chatbot_settings')
 
     return hr_dashboard_bp
 

@@ -238,6 +238,12 @@ def ensure_enterprise_tables(app):
                     started_at DATETIME,
                     department VARCHAR(100),
                     approved_by INT,
+                    payment_status VARCHAR(30) DEFAULT 'not_paid',
+                    payment_date DATETIME,
+                    invoice_number VARCHAR(100),
+                    billing_notes TEXT,
+                    course_source VARCHAR(30) DEFAULT 'external',
+                    internal_course_id INT,
                     user_email VARCHAR(255),
                     user_name VARCHAR(255),
                     user_phone VARCHAR(50),
@@ -531,6 +537,11 @@ def ensure_enterprise_tables(app):
                     custom_js TEXT,
                     custom_domain VARCHAR(255),
                     analytics_tracking_id VARCHAR(100),
+                    chatbot_course_mode VARCHAR(30) DEFAULT 'both',
+                    chatbot_internal_weight INT DEFAULT 50,
+                    chatbot_custom_instructions TEXT,
+                    chatbot_show_external TINYINT DEFAULT 1,
+                    chatbot_show_internal TINYINT DEFAULT 1,
                     enable_white_label TINYINT DEFAULT 0,
                     hide_platform_branding TINYINT DEFAULT 0,
                     language VARCHAR(10) DEFAULT 'da',
@@ -651,6 +662,65 @@ def ensure_enterprise_tables(app):
                     expires_at DATETIME,
                     INDEX idx_company (company_id),
                     INDEX idx_recipient (company_id, recipient_user_id, is_dismissed)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Company Internal Courses ──
+                """CREATE TABLE IF NOT EXISTS company_courses (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    title VARCHAR(500) NOT NULL,
+                    description TEXT,
+                    category VARCHAR(100),
+                    tags VARCHAR(500),
+                    course_type VARCHAR(50) DEFAULT 'internal',
+                    format VARCHAR(50) DEFAULT 'classroom',
+                    duration_hours DECIMAL(6,2),
+                    price DECIMAL(10,2) DEFAULT 0,
+                    currency VARCHAR(10) DEFAULT 'DKK',
+                    instructor VARCHAR(255),
+                    location VARCHAR(255),
+                    max_participants INT,
+                    department VARCHAR(100),
+                    skill_tags VARCHAR(500),
+                    difficulty_level VARCHAR(30) DEFAULT 'beginner',
+                    is_mandatory TINYINT DEFAULT 0,
+                    is_active TINYINT DEFAULT 1,
+                    external_url VARCHAR(500),
+                    created_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_company (company_id),
+                    INDEX idx_company_active (company_id, is_active),
+                    INDEX idx_category (company_id, category)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Company Supplier Preferences ──
+                """CREATE TABLE IF NOT EXISTS company_supplier_preferences (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    vendor_name VARCHAR(255) NOT NULL,
+                    is_active TINYINT DEFAULT 1,
+                    priority INT DEFAULT 5,
+                    notes TEXT,
+                    updated_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_company_vendor (company_id, vendor_name),
+                    INDEX idx_company (company_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Company Course Activations (toggle external courses on/off) ──
+                """CREATE TABLE IF NOT EXISTS company_course_activations (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    product_handle VARCHAR(255) NOT NULL,
+                    product_title VARCHAR(500),
+                    is_active TINYINT DEFAULT 1,
+                    updated_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_company_course (company_id, product_handle),
+                    INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
                 # ── HR Chatbot Interactions (separate log for HR chatbot) ──

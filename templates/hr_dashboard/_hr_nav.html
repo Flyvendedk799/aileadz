@@ -46,6 +46,12 @@
             <!-- Laering -->
             <div class="hr-nav-group">
                 <span class="hr-nav-group-label">Laering</span>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'courses' else '' }}" href="{{ url_for('hr_dashboard.internal_courses') }}">
+                    <i class="fas fa-book-open"></i> Kurser
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'suppliers' else '' }}" href="{{ url_for('hr_dashboard.supplier_management') }}">
+                    <i class="fas fa-store"></i> Leverandoerer
+                </a>
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'skill_gaps' else '' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}">
                     <i class="fas fa-brain"></i> Kompetencer
                 </a>
@@ -54,6 +60,16 @@
                 </a>
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'reports' else '' }}" href="{{ url_for('hr_dashboard.reports') }}">
                     <i class="fas fa-file-download"></i> Rapporter
+                </a>
+            </div>
+            <!-- Indstillinger -->
+            <div class="hr-nav-group">
+                <span class="hr-nav-group-label">Indstillinger</span>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'chatbot_settings' else '' }}" href="{{ url_for('hr_dashboard.chatbot_settings') }}">
+                    <i class="fas fa-robot"></i> Chatbot
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'settings' else '' }}" href="{{ url_for('companies.settings') }}">
+                    <i class="fas fa-cog"></i> Indstillinger
                 </a>
             </div>
             {% if session.get('company_role') in ['department_head', 'hr_manager', 'company_admin'] %}

@@ -409,14 +409,23 @@ OPENAI_TOOLS = [
 # Module-level state for contextual search (set by agent before tool execution)
 _current_shown_handles = set()
 _current_user_prefs = {}
+_current_blocked_vendors = set()  # Vendors deactivated by the company
 
 
-def set_search_context(shown_handles=None, user_prefs=None):
+def set_search_context(shown_handles=None, user_prefs=None, blocked_vendors=None):
     """Set contextual search state for the current request.
     Called by agent.py before tool execution to pass session context."""
-    global _current_shown_handles, _current_user_prefs
+    global _current_shown_handles, _current_user_prefs, _current_blocked_vendors
     _current_shown_handles = shown_handles or set()
     _current_user_prefs = user_prefs or {}
+    _current_blocked_vendors = blocked_vendors or set()
+
+
+def _filter_blocked_vendors(products):
+    """Remove products from deactivated vendors."""
+    if not _current_blocked_vendors:
+        return products
+    return [p for p in products if p.get('vendor', '') not in _current_blocked_vendors]
 
 
 def _execute_search_courses(args):
@@ -433,7 +442,7 @@ def _execute_search_courses(args):
     if isinstance(detailed, dict) and "error" in detailed:
         return json.dumps({"status": "error", "message": detailed["message"]})
 
-    results = detailed.get("products", [])
+    results = _filter_blocked_vendors(detailed.get("products", []))
     confidence = detailed.get("confidence", "medium")
 
     if not results:
@@ -479,7 +488,7 @@ def _execute_filter_courses(args):
     except ValueError:
         pass  # Ignore invalid date formats
 
-    products = load_augmented_products()
+    products = _filter_blocked_vendors(load_augmented_products())
     if not products:
         return json.dumps({"status": "error", "message": "Produktindekset er ikke indlæst."})
 

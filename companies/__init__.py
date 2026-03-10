@@ -650,6 +650,29 @@ def create_companies_blueprint():
                     request.form.get('industry', ''),
                     company['id']
                 ))
+                # Also upsert company_settings for branding/preferences
+                cur.execute("""
+                    INSERT INTO company_settings (company_id, primary_color, secondary_color,
+                        logo_url, language, timezone, support_email, support_phone)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        primary_color = VALUES(primary_color),
+                        secondary_color = VALUES(secondary_color),
+                        logo_url = VALUES(logo_url),
+                        language = VALUES(language),
+                        timezone = VALUES(timezone),
+                        support_email = VALUES(support_email),
+                        support_phone = VALUES(support_phone)
+                """, (
+                    company['id'],
+                    request.form.get('primary_color', '#7c3aed'),
+                    request.form.get('secondary_color', '#2575fc'),
+                    request.form.get('logo_url', ''),
+                    request.form.get('language', 'da'),
+                    request.form.get('timezone', 'Europe/Copenhagen'),
+                    request.form.get('support_email', ''),
+                    request.form.get('support_phone', ''),
+                ))
                 current_app.mysql.connection.commit()
                 cur.close()
                 # Update session

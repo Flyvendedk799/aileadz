@@ -965,63 +965,47 @@
   </a>
 
   {% if session.get('company_id') %}
-  <!-- Company Dashboard -->
-  <a href="/companies/dashboard" class="app-card">
+  <!-- Company / HR Dashboard (merged) -->
+  <a href="/hr" class="app-card">
     <div class="card-icon" style="background: linear-gradient(135deg, #0ea5e9, #6366f1);">
       <i class="fa-solid fa-building"></i>
     </div>
     <div class="card-content">
       <h3>Virksomhed</h3>
-      <p>Administrer din virksomhed, medarbejdere, afdelinger og abonnement.</p>
+      <p>Medarbejdere, HR analytics, budgetter, godkendelser, kompetencer og rapporter.</p>
     </div>
     <div class="card-footer">
       <div class="card-stats">
         <div class="stat">
           <i class="fa-solid fa-users"></i> {{ session.get('company_name', 'Virksomhed') }}
         </div>
+        <div class="stat">
+          <i class="fa-solid fa-chart-bar"></i> HR Analytics
+        </div>
       </div>
-      <button class="card-btn">Åbn</button>
+      <button class="card-btn">Abn</button>
     </div>
   </a>
 
-  <!-- HR Dashboard -->
-  <a href="/hr" class="app-card">
-    <div class="card-icon" style="background: linear-gradient(135deg, #f59e0b, #ef4444);">
-      <i class="fa-solid fa-users-gear"></i>
-    </div>
-    <div class="card-content">
-      <h3>HR Dashboard</h3>
-      <p>Medarbejderprogression, læringsanalyse, ordrehåndtering og rapporter.</p>
-    </div>
-    <div class="card-footer">
-      <div class="card-stats">
-        <div class="stat">
-          <i class="fa-solid fa-chart-bar"></i> Analytics
-        </div>
-        <div class="stat">
-          <i class="fa-solid fa-star"></i> Enterprise
-        </div>
-      </div>
-      <button class="card-btn">Åbn</button>
-    </div>
-  </a>
-
-  <!-- Multitenant Reports -->
+  <!-- Chatbot & Engagement Reports -->
   <a href="/multitenant-reports" class="app-card">
     <div class="card-icon" style="background: linear-gradient(135deg, #10b981, #0ea5e9);">
       <i class="fa-solid fa-file-chart-line"></i>
     </div>
     <div class="card-content">
       <h3>Virksomhedsrapporter</h3>
-      <p>Detaljerede rapporter, ordredetaljer og eksport af virksomhedsdata.</p>
+      <p>Chatbot-analyse, konverteringstragt, populaere kurser og engagement-data.</p>
     </div>
     <div class="card-footer">
       <div class="card-stats">
         <div class="stat">
+          <i class="fa-solid fa-robot"></i> Chatbot BI
+        </div>
+        <div class="stat">
           <i class="fa-solid fa-download"></i> Eksport
         </div>
       </div>
-      <button class="card-btn">Åbn</button>
+      <button class="card-btn">Abn</button>
     </div>
   </a>
   {% endif %}

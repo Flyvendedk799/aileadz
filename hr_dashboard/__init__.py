@@ -392,6 +392,37 @@ def create_hr_dashboard_blueprint():
                 'completed_orders': funnel_completed_orders,
             }
 
+            # Onboarding checklist
+            has_employees = (hr_metrics.get('total_employees', 0) or 0) > 1
+            try:
+                cur.execute("SELECT COUNT(*) as cnt FROM company_departments WHERE company_id = %s", (company['id'],))
+                has_departments = (cur.fetchone()['cnt'] or 0) > 0
+            except Exception:
+                has_departments = False
+            has_budgets = total_training_budget > 0
+            has_orders = len(recent_orders) > 0
+            has_used_chatbot = (engagement_metrics.get('total_chatbot_interactions', 0) or 0) > 0
+            onboarding_checks = [has_employees, has_departments, has_budgets, has_orders, has_used_chatbot]
+            onboarding = {
+                'has_employees': has_employees,
+                'has_departments': has_departments,
+                'has_budgets': has_budgets,
+                'has_orders': has_orders,
+                'has_used_chatbot': has_used_chatbot,
+                'completed_count': sum(1 for c in onboarding_checks if c),
+            }
+
+            # Recent audit activity
+            cur.execute("""
+                SELECT al.action_type, al.details, al.created_at,
+                       u.username as user_name
+                FROM audit_log al
+                LEFT JOIN users u ON al.user_id = u.id
+                WHERE al.company_id = %s
+                ORDER BY al.created_at DESC LIMIT 10
+            """, (company['id'],))
+            recent_activity = cur.fetchall()
+
             cur.close()
 
             # Calculate additional metrics
@@ -446,12 +477,14 @@ def create_hr_dashboard_blueprint():
                                  roi_employees_trained=roi_employees_trained,
                                  roi_courses_completed=roi_courses_completed,
                                  roi_spend_per_employee=roi_spend_per_employee,
-                                 funnel=funnel)
+                                 funnel=funnel,
+                                 onboarding=onboarding,
+                                 recent_activity=recent_activity)
             
         except Exception as e:
             current_app.logger.error(f"Error loading HR dashboard: {e}")
             flash("Error loading HR dashboard data.", "danger")
-            return redirect(url_for('companies.dashboard'))
+            return redirect(url_for('dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/order/<order_id>/update', methods=['POST'])
     def update_company_order_status(order_id):

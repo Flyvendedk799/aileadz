@@ -82,6 +82,8 @@ def create_companies_blueprint():
             company_name = request.form.get('company_name', '').strip()
             company_domain = request.form.get('company_domain', '').strip()
             industry = request.form.get('industry', '').strip()
+            if industry == 'other':
+                industry = request.form.get('industry_custom', '').strip() or 'Andet'
             company_size = request.form.get('company_size', '11-50')
             country = request.form.get('country', 'Denmark')
             city = request.form.get('city', '').strip()

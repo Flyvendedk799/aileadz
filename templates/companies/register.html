@@ -76,7 +76,7 @@
                         <div class="row">
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Branche</label>
-                                <select class="form-select" name="industry" id="industry">
+                                <select class="form-select" name="industry" id="industry" onchange="toggleCustomIndustry(this)">
                                     <option value="">Vaelg branche</option>
                                     <option value="technology">IT & Teknologi</option>
                                     <option value="finance">Finans & Forsikring</option>
@@ -92,6 +92,8 @@
                                     <option value="media">Medier & Kommunikation</option>
                                     <option value="other">Andet</option>
                                 </select>
+                                <input type="text" class="form-control mt-2" name="industry_custom" id="industry_custom"
+                                       placeholder="Skriv jeres branche..." style="display:none;">
                             </div>
                             <div class="col-md-6 mb-3">
                                 <label class="form-label">Antal medarbejdere</label>
@@ -433,20 +435,41 @@ function generateHRPassword() {
     for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
     document.getElementById('hr_password_field').value = pw;
 }
-// Auto-generate on page load
 generateHRPassword();
 
-// Auto-suggest username from full name
-document.getElementById('hr_name').addEventListener('input', function() {
-    const ufield = document.getElementById('hr_username');
-    if (!ufield.dataset.manual) {
-        const parts = this.value.trim().toLowerCase().split(/\s+/);
-        ufield.value = parts.join('.');
+// Toggle custom industry field
+function toggleCustomIndustry(sel) {
+    const customField = document.getElementById('industry_custom');
+    if (sel.value === 'other') {
+        customField.style.display = 'block';
+        customField.focus();
+    } else {
+        customField.style.display = 'none';
+        customField.value = '';
     }
-});
-document.getElementById('hr_username').addEventListener('input', function() {
-    this.dataset.manual = '1';
-});
+}
+
+// Auto-suggest username from full name (stops if user edits manually)
+(function() {
+    const nameField = document.getElementById('hr_name');
+    const ufield = document.getElementById('hr_username');
+    let userEdited = false;
+
+    ufield.addEventListener('input', function() { userEdited = true; });
+    ufield.addEventListener('focus', function() {
+        if (this.value && this.value !== autoSuggest(nameField.value)) userEdited = true;
+    });
+
+    function autoSuggest(name) {
+        return name.trim().toLowerCase()
+            .replace(/[æ]/g, 'ae').replace(/[ø]/g, 'oe').replace(/[å]/g, 'aa')
+            .replace(/[^a-z0-9\s.-]/g, '').split(/\s+/).filter(p => p).join('.');
+    }
+
+    nameField.addEventListener('input', function() {
+        if (!userEdited) ufield.value = autoSuggest(this.value);
+    });
+})();
 
 // Prevent double-submit
 document.getElementById('registerForm').addEventListener('submit', function(e) {

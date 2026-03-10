@@ -160,18 +160,26 @@ function generatePassword() {
 // Auto-generate password on page load
 generatePassword();
 
-// Auto-suggest username from full name
-document.getElementById('full_name_field').addEventListener('input', function() {
+// Auto-suggest username from full name (stops if user edits username manually)
+(function() {
+    const nameField = document.getElementById('full_name_field');
     const ufield = document.getElementById('username_field');
-    if (!ufield.dataset.manual) {
-        const parts = this.value.trim().toLowerCase()
+    let userEditedUsername = false;
+
+    ufield.addEventListener('input', function() { userEditedUsername = true; });
+    ufield.addEventListener('focus', function() {
+        if (this.value && this.value !== autoSuggest(nameField.value)) userEditedUsername = true;
+    });
+
+    function autoSuggest(name) {
+        return name.trim().toLowerCase()
             .replace(/[æ]/g, 'ae').replace(/[ø]/g, 'oe').replace(/[å]/g, 'aa')
-            .replace(/[^a-z0-9\s.-]/g, '').split(/\s+/);
-        ufield.value = parts.filter(p => p).join('.');
+            .replace(/[^a-z0-9\s.-]/g, '').split(/\s+/).filter(p => p).join('.');
     }
-});
-document.getElementById('username_field').addEventListener('input', function() {
-    this.dataset.manual = '1';
-});
+
+    nameField.addEventListener('input', function() {
+        if (!userEditedUsername) ufield.value = autoSuggest(this.value);
+    });
+})();
 </script>
 {% endblock %}

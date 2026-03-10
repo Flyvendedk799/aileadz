@@ -1021,23 +1021,30 @@ def handle_agentic_ask(user_query, session):
             except Exception as e:
                 print(f"[Cross-Session Load Error] {e}")
 
-            # 7.0: Company-specific chatbot context — inject custom instructions
+            # 7.0: Company-specific chatbot context — inject custom instructions + employee info
             company_id = session.get("company_id")
             if company_id:
                 try:
                     from flask import current_app
                     cur = current_app.mysql.connection.cursor()
+                    company_context_parts = []
+
+                    # Load chatbot settings (may not exist yet)
                     cur.execute(
                         "SELECT chatbot_course_mode, chatbot_internal_weight, chatbot_custom_instructions, "
                         "chatbot_show_external, chatbot_show_internal FROM company_settings WHERE company_id = %s",
                         (company_id,)
                     )
                     row = cur.fetchone()
+                    co_mode = 'both'
+                    co_show_int = 1
                     if row:
-                        co_mode, co_weight, co_instructions, co_show_ext, co_show_int = row
-                        company_context_parts = []
+                        co_mode = row[0] or 'both'
+                        co_weight = row[1] or 50
+                        co_instructions = row[2]
+                        co_show_ext = row[3]
+                        co_show_int = row[4] if row[4] is not None else 1
 
-                        # Course mode context
                         if co_mode == 'internal_only':
                             company_context_parts.append(
                                 "VIRKSOMHEDSREGEL: Vis KUN virksomhedens interne kurser. Anbefal IKKE eksterne kurser."
@@ -1046,51 +1053,77 @@ def handle_agentic_ask(user_query, session):
                             company_context_parts.append(
                                 "VIRKSOMHEDSREGEL: Vis KUN eksterne kurser fra kataloget. Spring interne kurser over."
                             )
-                        elif co_mode == 'both' and co_weight is not None:
+                        elif co_mode == 'both':
                             company_context_parts.append(
                                 f"VIRKSOMHEDSREGEL: Vis bade interne og eksterne kurser. "
                                 f"Prioriter interne kurser med {co_weight}% vaegt."
                             )
 
-                        # Custom instructions
                         if co_instructions and co_instructions.strip():
                             company_context_parts.append(
                                 f"VIRKSOMHEDSSPECIFIKKE INSTRUKTIONER:\n{co_instructions.strip()}"
                             )
 
-                        # Load internal courses for context
-                        if co_show_int and co_mode != 'external_only':
-                            cur.execute(
-                                "SELECT title, category, description, format, duration_hours, difficulty_level "
-                                "FROM company_courses WHERE company_id = %s AND is_active = 1 LIMIT 30",
-                                (company_id,)
+                    # Load internal courses for context (even without settings row)
+                    if co_show_int and co_mode != 'external_only':
+                        cur.execute(
+                            "SELECT title, category, description, format, duration_hours, difficulty_level "
+                            "FROM company_courses WHERE company_id = %s AND is_active = 1 LIMIT 30",
+                            (company_id,)
+                        )
+                        internal_courses = cur.fetchall()
+                        if internal_courses:
+                            course_list = []
+                            for ic in internal_courses:
+                                title, cat, desc, fmt, dur, diff = ic
+                                parts = [title]
+                                if cat:
+                                    parts.append(f"({cat})")
+                                if fmt:
+                                    parts.append(f"[{fmt}]")
+                                if dur:
+                                    parts.append(f"{dur}t")
+                                course_list.append(" ".join(parts))
+                            company_context_parts.append(
+                                f"INTERNE KURSER TILGAENGELIGE ({len(internal_courses)}):\n"
+                                + "\n".join(f"- {c}" for c in course_list)
+                                + "\nNaar brugeren spoerger om emner der matcher disse kurser, anbefal dem."
                             )
-                            internal_courses = cur.fetchall()
-                            if internal_courses:
-                                course_list = []
-                                for ic in internal_courses:
-                                    title, cat, desc, fmt, dur, diff = ic
-                                    parts = [title]
-                                    if cat:
-                                        parts.append(f"({cat})")
-                                    if fmt:
-                                        parts.append(f"[{fmt}]")
-                                    if dur:
-                                        parts.append(f"{dur}t")
-                                    course_list.append(" ".join(parts))
-                                company_context_parts.append(
-                                    f"INTERNE KURSER TILGAENGELIGE ({len(internal_courses)}):\n"
-                                    + "\n".join(f"- {c}" for c in course_list)
-                                    + "\nNaar brugeren spoerger om emner der matcher disse kurser, anbefal dem."
-                                )
 
-                        if company_context_parts:
-                            company_name = session.get('company_name', 'Virksomheden')
-                            CHAT_MEMORY[sid].append({
-                                "role": "system",
-                                "content": f"VIRKSOMHEDSKONTEKST ({company_name}):\n\n"
-                                           + "\n\n".join(company_context_parts)
-                            })
+                    # Inject logged-in employee's info so chatbot can auto-fill order data
+                    cur.execute(
+                        "SELECT cu.full_name, cu.email, cu.phone, cu.department, cu.job_title "
+                        "FROM company_users cu JOIN users u ON cu.user_id = u.id "
+                        "WHERE u.username = %s AND cu.company_id = %s AND cu.status = 'active'",
+                        (logged_in_user, company_id)
+                    )
+                    emp_row = cur.fetchone()
+                    if emp_row:
+                        emp_name, emp_email, emp_phone, emp_dept, emp_title = emp_row
+                        emp_parts = []
+                        if emp_name:
+                            emp_parts.append(f"Navn: {emp_name}")
+                        if emp_email:
+                            emp_parts.append(f"Email: {emp_email}")
+                        if emp_phone:
+                            emp_parts.append(f"Telefon: {emp_phone}")
+                        if emp_dept:
+                            emp_parts.append(f"Afdeling: {emp_dept}")
+                        if emp_title:
+                            emp_parts.append(f"Stilling: {emp_title}")
+                        if emp_parts:
+                            company_context_parts.append(
+                                "MEDARBEJDEROPLYSNINGER (brug ved bestilling — spørg IKKE om navn/email/telefon hvis allerede kendt):\n"
+                                + "\n".join(emp_parts)
+                            )
+
+                    if company_context_parts:
+                        company_name = session.get('company_name', 'Virksomheden')
+                        CHAT_MEMORY[sid].append({
+                            "role": "system",
+                            "content": f"VIRKSOMHEDSKONTEKST ({company_name}):\n\n"
+                                       + "\n\n".join(company_context_parts)
+                        })
                     cur.close()
                 except Exception as e:
                     print(f"[Company Context Error] {e}")

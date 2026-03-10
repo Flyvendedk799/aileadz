@@ -423,6 +423,52 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             recent_activity = cur.fetchall()
 
+            # ── Skills / Kompetence summary for dashboard ──
+            skills_summary = {'total_skills': 0, 'employees_with_skills': 0, 'critical_gaps': 0, 'top_skills': []}
+            try:
+                # Count unique skills and employees with skills
+                cur.execute("""
+                    SELECT COUNT(DISTINCT skill_name) as total_skills,
+                           COUNT(DISTINCT employee_id) as employees_with_skills
+                    FROM employee_skills_matrix
+                    WHERE company_id = %s
+                """, (company['id'],))
+                sk = cur.fetchone()
+                skills_summary['total_skills'] = sk['total_skills'] or 0
+                skills_summary['employees_with_skills'] = sk['employees_with_skills'] or 0
+
+                # Critical gaps: skills where avg current_level is 2+ below target
+                cur.execute("""
+                    SELECT cst.skill_name, cst.target_level,
+                           ROUND(AVG(esm.current_level), 1) as avg_level,
+                           cst.target_level - ROUND(AVG(esm.current_level), 1) as gap
+                    FROM company_skill_targets cst
+                    LEFT JOIN employee_skills_matrix esm
+                        ON esm.company_id = cst.company_id AND esm.skill_name = cst.skill_name
+                    WHERE cst.company_id = %s
+                    GROUP BY cst.skill_name, cst.target_level
+                    HAVING gap >= 2 OR avg_level IS NULL
+                    ORDER BY gap DESC
+                    LIMIT 5
+                """, (company['id'],))
+                critical_gaps = cur.fetchall()
+                skills_summary['critical_gaps'] = len(critical_gaps)
+                skills_summary['critical_gap_list'] = critical_gaps
+
+                # Top skills across company (most common)
+                cur.execute("""
+                    SELECT skill_name, ROUND(AVG(current_level), 1) as avg_level,
+                           COUNT(DISTINCT employee_id) as employee_count
+                    FROM employee_skills_matrix
+                    WHERE company_id = %s
+                    GROUP BY skill_name
+                    ORDER BY employee_count DESC, avg_level DESC
+                    LIMIT 6
+                """, (company['id'],))
+                skills_summary['top_skills'] = cur.fetchall()
+            except Exception as sk_err:
+                current_app.logger.warning(f"Skills summary error: {sk_err}")
+
             cur.close()
 
             # Calculate additional metrics
@@ -479,7 +525,9 @@ def create_hr_dashboard_blueprint():
                                  roi_spend_per_employee=roi_spend_per_employee,
                                  funnel=funnel,
                                  onboarding=onboarding,
-                                 recent_activity=recent_activity)
+                                 recent_activity=recent_activity,
+                                 skills_summary=skills_summary,
+                                 active_hr_page='dashboard')
             
         except Exception as e:
             current_app.logger.error(f"Error loading HR dashboard: {e}")

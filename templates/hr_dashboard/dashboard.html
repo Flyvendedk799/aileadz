@@ -589,6 +589,91 @@
         </div>
     </div>
 
+    <!-- Skills / Kompetence Overview -->
+    <div class="row mb-4">
+        <div class="col-12">
+            <div class="card shadow">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="m-0 fw-bold text-primary">
+                        <i class="fas fa-brain me-2"></i>Kompetenceoversigt
+                    </h6>
+                    <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-arrow-right me-1"></i>Se alle kompetencer
+                    </a>
+                </div>
+                <div class="card-body">
+                    {% if skills_summary and skills_summary.total_skills > 0 %}
+                    <div class="row mb-3">
+                        <div class="col-md-3 text-center">
+                            <h3 class="fw-bold text-primary mb-0">{{ skills_summary.total_skills }}</h3>
+                            <small class="text-muted">Unikke kompetencer</small>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <h3 class="fw-bold text-success mb-0">{{ skills_summary.employees_with_skills }}</h3>
+                            <small class="text-muted">Medarbejdere med kompetencer</small>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <h3 class="fw-bold text-{{ 'danger' if skills_summary.critical_gaps > 0 else 'success' }} mb-0">{{ skills_summary.critical_gaps }}</h3>
+                            <small class="text-muted">Kritiske gab</small>
+                        </div>
+                        <div class="col-md-3 text-center">
+                            <h3 class="fw-bold text-info mb-0">{{ skills_summary.top_skills|length }}</h3>
+                            <small class="text-muted">Top kompetencer</small>
+                        </div>
+                    </div>
+
+                    {% if skills_summary.top_skills %}
+                    <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Top kompetencer i virksomheden</h6>
+                    <div class="row">
+                        {% for skill in skills_summary.top_skills %}
+                        <div class="col-md-4 col-lg-2 mb-2">
+                            <div class="border rounded p-2 text-center h-100" style="background: #f8fafc;">
+                                <strong class="d-block small">{{ skill.skill_name }}</strong>
+                                <div class="d-flex justify-content-center gap-1 my-1">
+                                    {% for i in range(5) %}
+                                    <span style="color: {{ '#f59e0b' if i < (skill.avg_level|int) else '#e5e7eb' }};">&#9679;</span>
+                                    {% endfor %}
+                                </div>
+                                <small class="text-muted">{{ skill.employee_count }} medarbejder{{ 'e' if skill.employee_count != 1 }}</small>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% endif %}
+
+                    {% if skills_summary.critical_gap_list %}
+                    <h6 class="text-muted mt-3 mb-2"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Kritiske kompetencegab</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover mb-0">
+                            <thead><tr><th>Kompetence</th><th>Maalsat niveau</th><th>Gns. niveau</th><th>Gab</th></tr></thead>
+                            <tbody>
+                            {% for gap in skills_summary.critical_gap_list %}
+                            <tr>
+                                <td><strong>{{ gap.skill_name }}</strong></td>
+                                <td><span class="badge bg-primary">{{ gap.target_level }}</span></td>
+                                <td><span class="badge bg-{{ 'danger' if (gap.avg_level or 0) < 2 else 'warning' }}">{{ gap.avg_level or 'Ingen data' }}</span></td>
+                                <td><span class="badge bg-danger">-{{ gap.gap or gap.target_level }}</span></td>
+                            </tr>
+                            {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% endif %}
+
+                    {% else %}
+                    <div class="text-center py-4">
+                        <i class="fas fa-brain fa-3x text-muted mb-3 d-block"></i>
+                        <p class="text-muted mb-2">Ingen kompetencedata registreret endnu</p>
+                        <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-primary">
+                            <i class="fas fa-plus me-1"></i>Tilfoej kompetencemaal
+                        </a>
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- Learning Paths & Analytics -->
     {% if learning_paths_progress %}
     <div class="row">

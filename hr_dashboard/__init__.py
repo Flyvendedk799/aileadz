@@ -1859,6 +1859,191 @@ def create_hr_dashboard_blueprint():
                 pass
         return jsonify({"success": True})
 
+    # ── Department Management ──
+
+    @hr_dashboard_bp.route('/departments')
+    def departments():
+        """Department management page"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT cd.*,
+                       COUNT(DISTINCT cu.id) as employee_count,
+                       cd.learning_budget_per_employee
+                FROM company_departments cd
+                LEFT JOIN company_users cu ON cu.company_id = cd.company_id
+                    AND cu.department = cd.department_name AND cu.status = 'active'
+                WHERE cd.company_id = %s AND cd.department_name IS NOT NULL AND cd.department_name != ''
+                GROUP BY cd.id
+                ORDER BY cd.department_name
+            """, (company['id'],))
+            departments_list = cur.fetchall()
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error loading departments: {e}")
+            departments_list = []
+
+        return render_template('hr_dashboard/departments.html',
+                               company=company,
+                               departments=departments_list,
+                               active_hr_page='departments')
+
+    @hr_dashboard_bp.route('/departments/add', methods=['POST'])
+    def add_department():
+        """Add a new department"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False, "message": "Virksomhed ikke fundet"}), 400
+
+        name = request.form.get('department_name', '').strip()
+        code = request.form.get('department_code', '').strip()
+        description = request.form.get('description', '').strip()
+        budget = request.form.get('learning_budget_per_employee', '0').strip()
+
+        if not name:
+            flash("Afdelingsnavn er paakraevet.", "danger")
+            return redirect(url_for('hr_dashboard.departments'))
+
+        try:
+            budget_val = float(budget) if budget else 0
+        except ValueError:
+            budget_val = 0
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                INSERT IGNORE INTO company_departments
+                    (company_id, department_name, department_code, description, learning_budget_per_employee)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (company['id'], name, code or None, description or None, budget_val))
+            if cur.rowcount == 0:
+                flash(f"Afdelingen '{name}' eksisterer allerede.", "warning")
+            else:
+                current_app.mysql.connection.commit()
+                flash(f"Afdelingen '{name}' er oprettet.", "success")
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error adding department: {e}")
+            flash("Fejl ved oprettelse af afdeling.", "danger")
+
+        return redirect(url_for('hr_dashboard.departments'))
+
+    @hr_dashboard_bp.route('/departments/<int:dept_id>/edit', methods=['POST'])
+    def edit_department(dept_id):
+        """Edit an existing department"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False, "message": "Virksomhed ikke fundet"}), 400
+
+        name = request.form.get('department_name', '').strip()
+        code = request.form.get('department_code', '').strip()
+        description = request.form.get('description', '').strip()
+        budget = request.form.get('learning_budget_per_employee', '0').strip()
+
+        if not name:
+            flash("Afdelingsnavn er paakraevet.", "danger")
+            return redirect(url_for('hr_dashboard.departments'))
+
+        try:
+            budget_val = float(budget) if budget else 0
+        except ValueError:
+            budget_val = 0
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            # Get old name for updating employees
+            cur.execute("SELECT department_name FROM company_departments WHERE id = %s AND company_id = %s",
+                        (dept_id, company['id']))
+            old = cur.fetchone()
+            if not old:
+                flash("Afdeling ikke fundet.", "danger")
+                cur.close()
+                return redirect(url_for('hr_dashboard.departments'))
+
+            old_name = old['department_name']
+
+            cur.execute("""
+                UPDATE company_departments
+                SET department_name = %s, department_code = %s, description = %s, learning_budget_per_employee = %s
+                WHERE id = %s AND company_id = %s
+            """, (name, code or None, description or None, budget_val, dept_id, company['id']))
+
+            # Update employees if name changed
+            if old_name != name:
+                cur.execute("""
+                    UPDATE company_users SET department = %s
+                    WHERE company_id = %s AND department = %s
+                """, (name, company['id'], old_name))
+
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"Afdelingen '{name}' er opdateret.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error editing department: {e}")
+            flash("Fejl ved opdatering af afdeling.", "danger")
+
+        return redirect(url_for('hr_dashboard.departments'))
+
+    @hr_dashboard_bp.route('/departments/<int:dept_id>/delete', methods=['POST'])
+    def delete_department(dept_id):
+        """Delete a department"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            return jsonify({"success": False, "message": "Virksomhed ikke fundet"}), 400
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            # Check employee count
+            cur.execute("""
+                SELECT cd.department_name, COUNT(cu.id) as emp_count
+                FROM company_departments cd
+                LEFT JOIN company_users cu ON cu.company_id = cd.company_id AND cu.department = cd.department_name AND cu.status = 'active'
+                WHERE cd.id = %s AND cd.company_id = %s
+                GROUP BY cd.id
+            """, (dept_id, company['id']))
+            dept = cur.fetchone()
+
+            if not dept:
+                flash("Afdeling ikke fundet.", "danger")
+                cur.close()
+                return redirect(url_for('hr_dashboard.departments'))
+
+            if dept['emp_count'] > 0:
+                flash(f"Kan ikke slette '{dept['department_name']}' — der er {dept['emp_count']} medarbejdere tilknyttet. Flyt dem foerst.", "warning")
+                cur.close()
+                return redirect(url_for('hr_dashboard.departments'))
+
+            cur.execute("DELETE FROM company_departments WHERE id = %s AND company_id = %s", (dept_id, company['id']))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"Afdelingen '{dept['department_name']}' er slettet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error deleting department: {e}")
+            flash("Fejl ved sletning af afdeling.", "danger")
+
+        return redirect(url_for('hr_dashboard.departments'))
+
     # ── Phase 3.4: Department Head View ──
 
     @hr_dashboard_bp.route('/my-department')

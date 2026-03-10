@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+
+{% block title %}Afdelinger - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1 fw-bold">
+                <i class="fas fa-sitemap text-primary me-2"></i>Afdelinger
+            </h1>
+            <p class="text-muted mb-0">Opret og administrer virksomhedens afdelinger</p>
+        </div>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addDeptModal">
+            <i class="fas fa-plus me-1"></i> Ny afdeling
+        </button>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    {% if departments %}
+    <div class="row g-3">
+        {% for dept in departments %}
+        <div class="col-xl-4 col-md-6">
+            <div class="card dept-card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-3">
+                        <div>
+                            <h6 class="fw-bold mb-1">{{ dept.department_name }}</h6>
+                            {% if dept.department_code %}
+                            <span class="badge bg-primary bg-opacity-10 text-primary">{{ dept.department_code }}</span>
+                            {% endif %}
+                        </div>
+                        <div class="dropdown">
+                            <button class="btn btn-sm btn-outline-secondary border-0" data-bs-toggle="dropdown">
+                                <i class="fas fa-ellipsis-v"></i>
+                            </button>
+                            <ul class="dropdown-menu dropdown-menu-end">
+                                <li>
+                                    <button class="dropdown-item" onclick="openEditModal({{ dept.id }}, '{{ dept.department_name }}', '{{ dept.department_code or '' }}', '{{ dept.description or '' }}', {{ dept.learning_budget_per_employee or 0 }})">
+                                        <i class="fas fa-edit me-2 text-primary"></i>Rediger
+                                    </button>
+                                </li>
+                                <li><hr class="dropdown-divider"></li>
+                                <li>
+                                    <form method="POST" action="{{ url_for('hr_dashboard.delete_department', dept_id=dept.id) }}" onsubmit="return confirm('Er du sikker paa du vil slette denne afdeling?')">
+                                        <button type="submit" class="dropdown-item text-danger">
+                                            <i class="fas fa-trash me-2"></i>Slet
+                                        </button>
+                                    </form>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+                    {% if dept.description %}
+                    <p class="text-muted small mb-3">{{ dept.description }}</p>
+                    {% endif %}
+                    <div class="d-flex gap-3">
+                        <div>
+                            <div class="fw-bold text-primary">{{ dept.employee_count }}</div>
+                            <small class="text-muted">Medarbejdere</small>
+                        </div>
+                        {% if dept.learning_budget_per_employee %}
+                        <div>
+                            <div class="fw-bold text-success">{{ "{:,.0f}".format(dept.learning_budget_per_employee) }} kr</div>
+                            <small class="text-muted">Budget/person</small>
+                        </div>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="card">
+        <div class="card-body text-center py-5">
+            <i class="fas fa-sitemap fa-3x text-muted mb-3" style="opacity:0.3;"></i>
+            <h5 class="fw-bold text-muted">Ingen afdelinger oprettet endnu</h5>
+            <p class="text-muted mb-3">Opret afdelinger for at organisere medarbejdere og budgetter</p>
+            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addDeptModal">
+                <i class="fas fa-plus me-1"></i> Opret foerste afdeling
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add Department Modal -->
+<div class="modal fade" id="addDeptModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" action="{{ url_for('hr_dashboard.add_department') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle text-primary me-2"></i>Ny afdeling</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Afdelingsnavn <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="department_name" required placeholder="f.eks. Salg, IT, Marketing">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Afdelingskode</label>
+                        <input type="text" class="form-control" name="department_code" placeholder="f.eks. SAL, IT, MKT" maxlength="20">
+                        <small class="text-muted">Valgfrit kort kodeord</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Beskrivelse</label>
+                        <textarea class="form-control" name="description" rows="2" placeholder="Hvad laver afdelingen?"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Laeringsbudget pr. medarbejder (kr)</label>
+                        <input type="number" class="form-control" name="learning_budget_per_employee" value="0" min="0" step="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i>Opret afdeling</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Department Modal -->
+<div class="modal fade" id="editDeptModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <form method="POST" id="editDeptForm">
+                <div class="modal-header">
+                    <h5 class="modal-title fw-bold"><i class="fas fa-edit text-primary me-2"></i>Rediger afdeling</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Afdelingsnavn <span class="text-danger">*</span></label>
+                        <input type="text" class="form-control" name="department_name" id="edit_dept_name" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Afdelingskode</label>
+                        <input type="text" class="form-control" name="department_code" id="edit_dept_code" maxlength="20">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Beskrivelse</label>
+                        <textarea class="form-control" name="description" id="edit_dept_desc" rows="2"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Laeringsbudget pr. medarbejder (kr)</label>
+                        <input type="number" class="form-control" name="learning_budget_per_employee" id="edit_dept_budget" min="0" step="100">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Gem aendringer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_css %}
+<style>
+.dept-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.dept-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
+}
+.card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+</style>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+function openEditModal(id, name, code, desc, budget) {
+    document.getElementById('editDeptForm').action = '/hr/departments/' + id + '/edit';
+    document.getElementById('edit_dept_name').value = name;
+    document.getElementById('edit_dept_code').value = code;
+    document.getElementById('edit_dept_desc').value = desc;
+    document.getElementById('edit_dept_budget').value = budget;
+    new bootstrap.Modal(document.getElementById('editDeptModal')).show();
+}
+</script>
+{% endblock %}

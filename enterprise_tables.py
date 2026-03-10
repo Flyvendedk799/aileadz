@@ -128,6 +128,23 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: cleanup warning: %s", e)
 
+    # Drop the unique_company_dept constraint if it exists — it blocks multi-tenant dept creation
+    try:
+        idx_cur = conn.cursor()
+        idx_cur.execute("""
+            SELECT 1 FROM information_schema.TABLE_CONSTRAINTS
+            WHERE TABLE_NAME = 'company_departments'
+              AND CONSTRAINT_NAME = 'unique_company_dept'
+              AND CONSTRAINT_TYPE = 'UNIQUE'
+        """)
+        if idx_cur.fetchone():
+            idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
+            logging.info("Auto-sync: dropped unique_company_dept constraint")
+            synced += 1
+        idx_cur.close()
+    except Exception as e:
+        logging.warning("Auto-sync: drop unique_company_dept warning: %s", e)
+
     if synced:
         conn.commit()
         logging.info("Auto-sync complete: %d changes made", synced)

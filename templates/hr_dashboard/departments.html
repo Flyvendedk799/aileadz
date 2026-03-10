@@ -49,7 +49,12 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li>
-                                    <button class="dropdown-item" onclick="openEditModal({{ dept.id }}, '{{ dept.department_name }}', '{{ dept.department_code or '' }}', '{{ dept.description or '' }}', {{ dept.learning_budget_per_employee or 0 }})">
+                                    <button class="dropdown-item edit-dept-btn"
+                                            data-id="{{ dept.id }}"
+                                            data-name="{{ dept.department_name }}"
+                                            data-code="{{ dept.department_code or '' }}"
+                                            data-desc="{{ dept.description or '' }}"
+                                            data-budget="{{ dept.learning_budget_per_employee or 0 }}">
                                         <i class="fas fa-edit me-2 text-primary"></i>Rediger
                                     </button>
                                 </li>
@@ -101,9 +106,9 @@
 <!-- Add Department Modal -->
 <div class="modal fade" id="addDeptModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content" style="border-radius:12px;">
             <form method="POST" action="{{ url_for('hr_dashboard.add_department') }}">
-                <div class="modal-header">
+                <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle text-primary me-2"></i>Ny afdeling</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
@@ -126,7 +131,7 @@
                         <input type="number" class="form-control" name="learning_budget_per_employee" value="0" min="0" step="100">
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i>Opret afdeling</button>
                 </div>
@@ -138,9 +143,9 @@
 <!-- Edit Department Modal -->
 <div class="modal fade" id="editDeptModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
+        <div class="modal-content" style="border-radius:12px;">
             <form method="POST" id="editDeptForm">
-                <div class="modal-header">
+                <div class="modal-header border-0 pb-0">
                     <h5 class="modal-title fw-bold"><i class="fas fa-edit text-primary me-2"></i>Rediger afdeling</h5>
                     <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                 </div>
@@ -162,7 +167,7 @@
                         <input type="number" class="form-control" name="learning_budget_per_employee" id="edit_dept_budget" min="0" step="100">
                     </div>
                 </div>
-                <div class="modal-footer">
+                <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
                     <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Gem aendringer</button>
                 </div>
@@ -172,7 +177,7 @@
 </div>
 {% endblock %}
 
-{% block extra_css %}
+{% block extra_styles %}
 <style>
 .dept-card {
     border: none;
@@ -188,15 +193,22 @@
 </style>
 {% endblock %}
 
-{% block extra_js %}
+{% block extra_scripts %}
 <script>
-function openEditModal(id, name, code, desc, budget) {
-    document.getElementById('editDeptForm').action = '/hr/departments/' + id + '/edit';
-    document.getElementById('edit_dept_name').value = name;
-    document.getElementById('edit_dept_code').value = code;
-    document.getElementById('edit_dept_desc').value = desc;
-    document.getElementById('edit_dept_budget').value = budget;
-    new bootstrap.Modal(document.getElementById('editDeptModal')).show();
-}
+document.querySelectorAll('.edit-dept-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        var id = this.dataset.id;
+        var name = this.dataset.name;
+        var code = this.dataset.code;
+        var desc = this.dataset.desc;
+        var budget = this.dataset.budget;
+        document.getElementById('editDeptForm').action = '/hr/departments/' + id + '/edit';
+        document.getElementById('edit_dept_name').value = name;
+        document.getElementById('edit_dept_code').value = code;
+        document.getElementById('edit_dept_desc').value = desc;
+        document.getElementById('edit_dept_budget').value = budget;
+        new bootstrap.Modal(document.getElementById('editDeptModal')).show();
+    });
+});
 </script>
 {% endblock %}

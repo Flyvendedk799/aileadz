@@ -1356,18 +1356,18 @@ def create_hr_dashboard_blueprint():
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
-        
+
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhed ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
-        
+
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
             # Get employee details
             cur.execute("""
-                SELECT 
+                SELECT
                     cu.*, u.username, u.email,
                     manager.username as manager_name,
                     COUNT(DISTINCT co.id) as total_enrollments,
@@ -1382,15 +1382,15 @@ def create_hr_dashboard_blueprint():
                 WHERE cu.company_id = %s AND cu.user_id = %s
                 GROUP BY cu.id, u.username, u.email, manager.username
             """, (company['id'], user_id))
-            
+
             employee = cur.fetchone()
             if not employee:
-                flash("Employee not found.", "danger")
-                return redirect(url_for('hr_dashboard.employee_progress'))
-            
+                flash("Medarbejder ikke fundet.", "danger")
+                return redirect(url_for('companies.employees'))
+
             # Get course history
             cur.execute("""
-                SELECT 
+                SELECT
                     co.product_title, co.product_handle, co.price,
                     co.created_at as enrollment_date,
                     co.completion_status, co.completion_date,
@@ -1398,17 +1398,17 @@ def create_hr_dashboard_blueprint():
                     elp.progress_percentage, elp.time_spent_minutes,
                     elp.last_accessed
                 FROM course_orders co
-                LEFT JOIN employee_learning_progress elp ON co.user_id = elp.user_id 
+                LEFT JOIN employee_learning_progress elp ON co.user_id = elp.user_id
                     AND co.product_handle = elp.course_handle AND co.company_id = elp.company_id
                 WHERE co.company_id = %s AND co.user_id = %s
                 ORDER BY co.created_at DESC
             """, (company['id'], user_id))
-            
+
             course_history = cur.fetchall()
-            
+
             # Get chatbot interaction summary
             cur.execute("""
-                SELECT 
+                SELECT
                     DATE(ci.created_at) as interaction_date,
                     COUNT(*) as daily_interactions,
                     COALESCE(AVG(ci.interaction_quality_score), 0) as avg_quality
@@ -1420,21 +1420,120 @@ def create_hr_dashboard_blueprint():
                 ORDER BY interaction_date DESC
                 LIMIT 30
             """, (user_id,))
-            
+
             interaction_history = cur.fetchall()
-            
+
             cur.close()
-            
+
             return render_template('hr_dashboard/employee_details.html',
                                  company=company,
                                  employee=employee,
                                  course_history=course_history,
-                                 interaction_history=interaction_history)
-            
+                                 interaction_history=interaction_history,
+                                 active_hr_page='employees')
+
         except Exception as e:
             current_app.logger.error(f"Error loading employee details: {e}")
-            flash("Error loading employee details.", "danger")
-            return redirect(url_for('hr_dashboard.employee_progress'))
+            flash("Fejl ved indlaesning af medarbejderdetaljer.", "danger")
+            return redirect(url_for('companies.employees'))
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/reset-password', methods=['POST'])
+    def reset_employee_password(user_id):
+        """HR manager can reset an employee's password without email confirmation"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        import secrets
+        import string
+        from werkzeug.security import generate_password_hash
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Verify employee belongs to this company
+            cur.execute("""
+                SELECT cu.user_id, u.username, u.email
+                FROM company_users cu
+                JOIN users u ON cu.user_id = u.id
+                WHERE cu.company_id = %s AND cu.user_id = %s
+            """, (company['id'], user_id))
+            emp = cur.fetchone()
+
+            if not emp:
+                flash("Medarbejder ikke fundet.", "danger")
+                cur.close()
+                return redirect(url_for('companies.employees'))
+
+            # Generate a random password
+            alphabet = string.ascii_letters + string.digits
+            new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
+            hashed = generate_password_hash(new_password)
+
+            cur.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user_id))
+
+            # Audit log
+            cur.execute("""
+                INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
+                VALUES (%s, %s, 'password_reset', 'user', %s, %s)
+            """, (company['id'], session.get('user_id'), str(user_id),
+                  json.dumps({"target_username": emp['username'], "reset_by": session.get('user')})))
+
+            current_app.mysql.connection.commit()
+            cur.close()
+
+            flash(f"Nyt password for {emp['username']}: {new_password}", "success")
+            return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
+
+        except Exception as e:
+            current_app.logger.error(f"Error resetting password: {e}")
+            flash("Fejl ved nulstilling af password.", "danger")
+            return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/toggle-status', methods=['POST'])
+    def toggle_employee_status(user_id):
+        """Activate or deactivate an employee"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        new_status = request.form.get('new_status', 'inactive')
+        if new_status not in ('active', 'inactive'):
+            new_status = 'inactive'
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                UPDATE company_users SET status = %s, updated_at = NOW()
+                WHERE company_id = %s AND user_id = %s
+            """, (new_status, company['id'], user_id))
+
+            cur.execute("""
+                INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
+                VALUES (%s, %s, 'status_changed', 'user', %s, %s)
+            """, (company['id'], session.get('user_id'), str(user_id),
+                  json.dumps({"new_status": new_status, "changed_by": session.get('user')})))
+
+            current_app.mysql.connection.commit()
+            cur.close()
+
+            label = 'aktiveret' if new_status == 'active' else 'deaktiveret'
+            flash(f"Medarbejder er {label}.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error toggling status: {e}")
+            flash("Fejl ved statusaendring.", "danger")
+
+        return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
     @hr_dashboard_bp.route('/notifications')
     def notifications():

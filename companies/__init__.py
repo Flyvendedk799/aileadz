@@ -318,12 +318,13 @@ def create_companies_blueprint():
             return render_template('companies/employees.html',
                                  company=company,
                                  employees=employees,
-                                 departments=departments)
-            
+                                 departments=departments,
+                                 active_hr_page='employees')
+
         except Exception as e:
             current_app.logger.error(f"Error loading employees: {e}")
-            flash("Error loading employee data.", "danger")
-            return redirect(url_for('companies.dashboard'))
+            flash("Fejl ved indlaesning af medarbejdere.", "danger")
+            return redirect(url_for('hr_dashboard.dashboard'))
 
     @companies_bp.route('/employees/add', methods=['GET', 'POST'])
     def add_employee():
@@ -452,7 +453,7 @@ def create_companies_blueprint():
         except Exception as e:
             current_app.logger.error(f"Error loading departments: {e}")
         
-        return render_template('companies/add_employee.html', company=company, departments=departments)
+        return render_template('companies/add_employee.html', company=company, departments=departments, active_hr_page='employees')
 
     @companies_bp.route('/employees/<int:user_id>/edit', methods=['GET', 'POST'])
     def edit_employee(user_id):
@@ -522,8 +523,9 @@ def create_companies_blueprint():
             
             cur.close()
             
-            return render_template('companies/edit_employee.html', 
-                                 company=company, employee=employee, departments=departments)
+            return render_template('companies/edit_employee.html',
+                                 company=company, employee=employee, departments=departments,
+                                 active_hr_page='employees')
             
         except Exception as e:
             current_app.logger.error(f"Error editing employee: {e}")
@@ -620,7 +622,7 @@ def create_companies_blueprint():
         except Exception as e:
             current_app.logger.error(f"Error loading analytics: {e}")
             flash("Error loading analytics data.", "danger")
-            return redirect(url_for('companies.dashboard'))
+            return redirect(url_for('hr_dashboard.dashboard'))
 
     @companies_bp.route('/settings', methods=['GET', 'POST'])
     def settings():

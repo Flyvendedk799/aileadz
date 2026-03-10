@@ -424,20 +424,30 @@ def create_hr_dashboard_blueprint():
             recent_activity = cur.fetchall()
 
             # ── Skills / Kompetence summary for dashboard ──
-            skills_summary = {'total_skills': 0, 'employees_with_skills': 0, 'critical_gaps': 0, 'top_skills': []}
+            # Merge from both enterprise (employee_skills_matrix) and chatbot (user_skills) tables
+            skills_summary = {'total_skills': 0, 'employees_with_skills': 0, 'critical_gaps': 0, 'top_skills': [], 'critical_gap_list': []}
             try:
-                # Count unique skills and employees with skills
-                cur.execute("""
+                level_map_sql = "CASE skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 3 WHEN 'ekspert' THEN 4 ELSE 2 END"
+
+                # Unified skill count: enterprise + chatbot
+                cur.execute(f"""
                     SELECT COUNT(DISTINCT skill_name) as total_skills,
-                           COUNT(DISTINCT employee_id) as employees_with_skills
-                    FROM employee_skills_matrix
-                    WHERE company_id = %s
-                """, (company['id'],))
+                           COUNT(DISTINCT source_user) as employees_with_skills
+                    FROM (
+                        SELECT skill_name, employee_id as source_user
+                        FROM employee_skills_matrix WHERE company_id = %s
+                        UNION ALL
+                        SELECT us.skill_name, cu.user_id as source_user
+                        FROM user_skills us
+                        JOIN users u ON us.username = u.username
+                        JOIN company_users cu ON cu.user_id = u.id AND cu.company_id = %s
+                    ) combined
+                """, (company['id'], company['id']))
                 sk = cur.fetchone()
                 skills_summary['total_skills'] = sk['total_skills'] or 0
                 skills_summary['employees_with_skills'] = sk['employees_with_skills'] or 0
 
-                # Critical gaps: skills where avg current_level is 2+ below target
+                # Critical gaps (from skill targets vs actual)
                 cur.execute("""
                     SELECT cst.skill_name, cst.target_level,
                            ROUND(AVG(esm.current_level), 1) as avg_level,
@@ -455,16 +465,23 @@ def create_hr_dashboard_blueprint():
                 skills_summary['critical_gaps'] = len(critical_gaps)
                 skills_summary['critical_gap_list'] = critical_gaps
 
-                # Top skills across company (most common)
-                cur.execute("""
-                    SELECT skill_name, ROUND(AVG(current_level), 1) as avg_level,
-                           COUNT(DISTINCT employee_id) as employee_count
-                    FROM employee_skills_matrix
-                    WHERE company_id = %s
+                # Top skills across company (merged from both sources)
+                cur.execute(f"""
+                    SELECT skill_name, ROUND(AVG(level), 1) as avg_level,
+                           COUNT(DISTINCT source_user) as employee_count
+                    FROM (
+                        SELECT skill_name, current_level as level, employee_id as source_user
+                        FROM employee_skills_matrix WHERE company_id = %s
+                        UNION ALL
+                        SELECT us.skill_name, {level_map_sql} as level, cu.user_id as source_user
+                        FROM user_skills us
+                        JOIN users u ON us.username = u.username
+                        JOIN company_users cu ON cu.user_id = u.id AND cu.company_id = %s
+                    ) combined
                     GROUP BY skill_name
                     ORDER BY employee_count DESC, avg_level DESC
                     LIMIT 6
-                """, (company['id'],))
+                """, (company['id'], company['id']))
                 skills_summary['top_skills'] = cur.fetchall()
             except Exception as sk_err:
                 current_app.logger.warning(f"Skills summary error: {sk_err}")
@@ -1565,14 +1582,86 @@ def create_hr_dashboard_blueprint():
 
             interaction_history = cur.fetchall()
 
-            # Get employee skills
+            # Get employee skills — merge from both enterprise and chatbot profile tables
+            employee_skills = []
+            seen_skills = set()
+
+            # 1) Enterprise skills matrix (HR-managed)
             cur.execute("""
                 SELECT skill_name, current_level, target_level, recommended_courses
                 FROM employee_skills_matrix
                 WHERE employee_id = %s AND company_id = %s
                 ORDER BY skill_name
             """, (user_id, company['id']))
-            employee_skills = cur.fetchall()
+            for sk in cur.fetchall():
+                employee_skills.append(sk)
+                seen_skills.add(sk['skill_name'].lower())
+
+            # 2) Chatbot profile skills (user_skills table, keyed by username)
+            emp_username = employee.get('username', '')
+            if emp_username:
+                try:
+                    cur.execute("""
+                        SELECT skill_name, skill_level, source
+                        FROM user_skills
+                        WHERE username = %s
+                        ORDER BY skill_name
+                    """, (emp_username,))
+                    level_map = {'begynder': 1, 'mellem': 2, 'avanceret': 3, 'ekspert': 4}
+                    for chatbot_sk in cur.fetchall():
+                        if chatbot_sk['skill_name'].lower() not in seen_skills:
+                            employee_skills.append({
+                                'skill_name': chatbot_sk['skill_name'],
+                                'current_level': level_map.get(chatbot_sk['skill_level'], 2),
+                                'target_level': 0,
+                                'recommended_courses': None,
+                                'source': chatbot_sk.get('source', 'chatbot')
+                            })
+                            seen_skills.add(chatbot_sk['skill_name'].lower())
+                except Exception:
+                    pass  # user_skills table may not exist yet
+
+            # 3) Chatbot profile: education
+            employee_education = []
+            if emp_username:
+                try:
+                    cur.execute("""
+                        SELECT degree, institution, year_completed, description
+                        FROM user_education
+                        WHERE username = %s
+                        ORDER BY year_completed DESC
+                    """, (emp_username,))
+                    employee_education = cur.fetchall()
+                except Exception:
+                    pass
+
+            # 4) Chatbot profile: experience
+            employee_experience = []
+            if emp_username:
+                try:
+                    cur.execute("""
+                        SELECT title, company, start_year, end_year, is_current, description
+                        FROM user_experience
+                        WHERE username = %s
+                        ORDER BY COALESCE(end_year, 9999) DESC, start_year DESC
+                    """, (emp_username,))
+                    employee_experience = cur.fetchall()
+                except Exception:
+                    pass
+
+            # 5) Chatbot profile: completed courses
+            employee_completed_courses = []
+            if emp_username:
+                try:
+                    cur.execute("""
+                        SELECT course_title, vendor, completed_date
+                        FROM user_completed_courses
+                        WHERE username = %s
+                        ORDER BY added_at DESC
+                    """, (emp_username,))
+                    employee_completed_courses = cur.fetchall()
+                except Exception:
+                    pass
 
             cur.close()
 
@@ -1582,6 +1671,9 @@ def create_hr_dashboard_blueprint():
                                  course_history=course_history,
                                  interaction_history=interaction_history,
                                  employee_skills=employee_skills,
+                                 employee_education=employee_education,
+                                 employee_experience=employee_experience,
+                                 employee_completed_courses=employee_completed_courses,
                                  active_hr_page='employees')
 
         except Exception as e:

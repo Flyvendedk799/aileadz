@@ -2275,11 +2275,18 @@ def create_hr_dashboard_blueprint():
             if cur.fetchone():
                 flash(f"Afdelingen '{name}' eksisterer allerede i denne virksomhed.", "warning")
             else:
-                cur.execute("""
-                    INSERT INTO company_departments
-                        (company_id, department_name, department_code, description, learning_budget_per_employee)
-                    VALUES (%s, %s, %s, %s, %s)
-                """, (company['id'], name, code or None, description or None, budget_val))
+                if code:
+                    cur.execute("""
+                        INSERT INTO company_departments
+                            (company_id, department_name, department_code, description, learning_budget_per_employee)
+                        VALUES (%s, %s, %s, %s, %s)
+                    """, (company['id'], name, code, description or None, budget_val))
+                else:
+                    cur.execute("""
+                        INSERT INTO company_departments
+                            (company_id, department_name, description, learning_budget_per_employee)
+                        VALUES (%s, %s, %s, %s)
+                    """, (company['id'], name, description or None, budget_val))
                 current_app.mysql.connection.commit()
                 flash(f"Afdelingen '{name}' er oprettet.", "success")
             cur.close()

@@ -6,119 +6,106 @@
     <!-- Header -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
+            <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
-                    <h1 class="h3 mb-0">
+                    <h1 class="h3 mb-1 fw-bold">
                         <i class="fas fa-chart-bar text-primary me-2"></i>
                         Chatbot &amp; Kursusrapporter
                     </h1>
                     <p class="text-muted mb-0">{{ company.company_name }} — Indsigt i chatbot-brug, kurser og ordrer</p>
                 </div>
-                <a href="/" class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-arrow-left"></i> Tilbage
-                </a>
+                <div class="d-flex gap-2">
+                    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-primary btn-sm">
+                        <i class="fas fa-tachometer-alt me-1"></i> HR Dashboard
+                    </a>
+                    <a href="/" class="btn btn-outline-secondary btn-sm">
+                        <i class="fas fa-arrow-left me-1"></i> Tilbage
+                    </a>
+                </div>
             </div>
         </div>
     </div>
 
     <!-- KPI Cards -->
-    <div class="row mb-4">
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-primary shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Chatbot-forespørgsler</div>
-                            <div class="h5 mb-0 font-weight-bold">{{ total_chatbot_queries }}</div>
-                            <div class="text-xs text-muted">Gns. {{ avg_conversation_length }} beskeder/samtale</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-comments fa-2x text-gray-300"></i></div>
-                    </div>
+    <div class="row mb-4 g-3">
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card kpi-purple">
+                <div class="kpi-icon"><i class="fas fa-comments"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Chatbot-forespørgsler</div>
+                    <div class="kpi-value">{{ total_chatbot_queries }}</div>
+                    <div class="kpi-detail">Gns. {{ avg_conversation_length }} beskeder/samtale</div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-success shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Konverteringsrate</div>
-                            <div class="h5 mb-0 font-weight-bold">{{ conversion_rate }}%</div>
-                            <div class="text-xs text-muted">{{ completed_orders_count }} gennemført / {{ pending_orders_count }} afventer</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-shopping-cart fa-2x text-gray-300"></i></div>
-                    </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card kpi-green">
+                <div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Konverteringsrate</div>
+                    <div class="kpi-value">{{ conversion_rate }}%</div>
+                    <div class="kpi-detail">{{ completed_orders_count }} gennemført / {{ pending_orders_count }} afventer</div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-info shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Medarbejderengagement</div>
-                            <div class="h5 mb-0 font-weight-bold">{{ employee_engagement_rate }}%</div>
-                            <div class="text-xs text-muted">{{ company_stats.active_users_30d }} aktive (30 dage)</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-users fa-2x text-gray-300"></i></div>
-                    </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-icon"><i class="fas fa-users"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Medarbejderengagement</div>
+                    <div class="kpi-value">{{ employee_engagement_rate }}%</div>
+                    <div class="kpi-detail">{{ company_stats.active_users_30d }} aktive (30 dage)</div>
                 </div>
             </div>
         </div>
-        <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-warning shadow h-100 py-2">
-                <div class="card-body">
-                    <div class="row no-gutters align-items-center">
-                        <div class="col mr-2">
-                            <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Omsætning</div>
-                            <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_revenue) }} kr</div>
-                            <div class="text-xs text-muted">Fra {{ completed_orders_count }} gennemførte ordrer</div>
-                        </div>
-                        <div class="col-auto"><i class="fas fa-coins fa-2x text-gray-300"></i></div>
-                    </div>
+        <div class="col-xl-3 col-md-6">
+            <div class="kpi-card kpi-amber">
+                <div class="kpi-icon"><i class="fas fa-coins"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Omsætning</div>
+                    <div class="kpi-value">{{ "{:,.0f}".format(total_revenue) }} kr</div>
+                    <div class="kpi-detail">Fra {{ completed_orders_count }} gennemførte ordrer</div>
                 </div>
             </div>
         </div>
     </div>
 
     <!-- Charts Row -->
-    <div class="row mb-4">
-        <!-- Daily Usage Chart -->
-        <div class="col-xl-8 col-lg-7 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-chart-area me-2"></i>Daglig chatbot-brug
+    <div class="row mb-4 g-3">
+        <div class="col-xl-8">
+            <div class="card report-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-chart-area text-primary me-2"></i>Daglig chatbot-brug
                     </h6>
-                    <span class="text-muted small">{{ total_conversations }} samtaler i alt</span>
+                    <span class="badge bg-primary bg-opacity-10 text-primary">{{ total_conversations }} samtaler</span>
                 </div>
                 <div class="card-body">
                     <canvas id="dailyUsageChart" height="280"></canvas>
                 </div>
             </div>
         </div>
-        <!-- Query Type Distribution -->
-        <div class="col-xl-4 col-lg-5 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-chart-pie me-2"></i>Forespørgselstyper
+        <div class="col-xl-4">
+            <div class="card report-card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-chart-pie text-primary me-2"></i>Forespørgselstyper
                     </h6>
                 </div>
-                <div class="card-body">
+                <div class="card-body d-flex align-items-center justify-content-center">
                     <canvas id="queryTypeChart" height="280"></canvas>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Hourly Pattern + Category Distribution -->
-    <div class="row mb-4">
-        <div class="col-xl-6 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-clock me-2"></i>Brug pr. time
+    <!-- Hourly + Category -->
+    <div class="row mb-4 g-3">
+        <div class="col-xl-6">
+            <div class="card report-card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-clock text-primary me-2"></i>Brug pr. time
                     </h6>
                 </div>
                 <div class="card-body">
@@ -126,11 +113,11 @@
                 </div>
             </div>
         </div>
-        <div class="col-xl-6 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-tags me-2"></i>Kategorier søgt
+        <div class="col-xl-6">
+            <div class="card report-card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-tags text-primary me-2"></i>Kategorier søgt
                     </h6>
                 </div>
                 <div class="card-body">
@@ -141,13 +128,16 @@
     </div>
 
     <!-- Popular Courses + Frequent Questions -->
-    <div class="row mb-4">
-        <div class="col-xl-7 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-fire me-2"></i>Populære kurser
+    <div class="row mb-4 g-3">
+        <div class="col-xl-7">
+            <div class="card report-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-fire text-primary me-2"></i>Populære kurser
                     </h6>
+                    {% if popular_courses %}
+                    <span class="badge bg-primary bg-opacity-10 text-primary">{{ popular_courses|length }} kurser</span>
+                    {% endif %}
                 </div>
                 <div class="card-body p-0">
                     {% if popular_courses %}
@@ -155,7 +145,7 @@
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Kursus</th>
+                                    <th class="ps-3">Kursus</th>
                                     <th class="text-center">Visninger</th>
                                     <th class="text-center">Konv. %</th>
                                 </tr>
@@ -163,12 +153,19 @@
                             <tbody>
                                 {% for c in popular_courses %}
                                 <tr>
-                                    <td>
-                                        <span class="fw-bold">{{ c.handle }}</span>
+                                    <td class="ps-3">
+                                        <div class="d-flex align-items-center">
+                                            <div class="course-icon me-2">
+                                                <i class="fas fa-graduation-cap"></i>
+                                            </div>
+                                            <span class="fw-bold">{{ c.handle }}</span>
+                                        </div>
                                     </td>
-                                    <td class="text-center">{{ c.views }}</td>
                                     <td class="text-center">
-                                        <span class="badge {{ 'bg-success' if c.conversion_rate > 5 else 'bg-secondary' }}">
+                                        <span class="fw-bold">{{ c.views }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="badge {{ 'bg-success' if c.conversion_rate > 5 else 'bg-secondary' }} rounded-pill">
                                             {{ c.conversion_rate }}%
                                         </span>
                                     </td>
@@ -178,29 +175,30 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-center py-4">
-                        <i class="fas fa-graduation-cap fa-3x text-gray-300 mb-3"></i>
-                        <p class="text-muted">Ingen kursusdata endnu</p>
+                    <div class="empty-state">
+                        <i class="fas fa-graduation-cap"></i>
+                        <p>Ingen kursusdata endnu</p>
+                        <small>Data vises naar medarbejdere interagerer med kurser</small>
                     </div>
                     {% endif %}
                 </div>
             </div>
         </div>
-        <div class="col-xl-5 mb-4">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-question-circle me-2"></i>Hyppige spørgsmål
+        <div class="col-xl-5">
+            <div class="card report-card h-100">
+                <div class="card-header">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-question-circle text-primary me-2"></i>Hyppige spørgsmål
                     </h6>
                 </div>
                 <div class="card-body p-0">
                     {% if frequent_questions %}
                     <div class="list-group list-group-flush">
                         {% for q in frequent_questions %}
-                        <div class="list-group-item px-3 py-2">
+                        <div class="list-group-item px-3 py-3 border-0 border-bottom">
                             <div class="d-flex justify-content-between align-items-start">
                                 <div class="me-2" style="min-width:0;">
-                                    <div class="fw-bold text-truncate">{{ q.text }}</div>
+                                    <div class="fw-bold text-truncate mb-1">{{ q.text }}</div>
                                     {% if q.top_response %}
                                     <small class="text-muted text-truncate d-block">{{ q.top_response[:80] }}</small>
                                     {% endif %}
@@ -211,9 +209,10 @@
                         {% endfor %}
                     </div>
                     {% else %}
-                    <div class="text-center py-4">
-                        <i class="fas fa-comments fa-3x text-gray-300 mb-3"></i>
-                        <p class="text-muted">Ingen samtaler endnu</p>
+                    <div class="empty-state">
+                        <i class="fas fa-comments"></i>
+                        <p>Ingen samtaler endnu</p>
+                        <small>Spørgsmål vises naar medarbejdere bruger chatbotten</small>
                     </div>
                     {% endif %}
                 </div>
@@ -224,14 +223,18 @@
     <!-- Recent Orders -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-receipt me-2"></i>Seneste ordrer
+            <div class="card report-card">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-receipt text-primary me-2"></i>Seneste ordrer
                     </h6>
                     <div class="d-flex gap-3">
-                        <span class="text-muted small">Afventer: <strong class="text-warning">{{ pending_orders_count }}</strong></span>
-                        <span class="text-muted small">Gennemført: <strong class="text-success">{{ completed_orders_count }}</strong></span>
+                        <span class="badge bg-warning bg-opacity-15 text-warning px-3 py-2">
+                            <i class="fas fa-clock me-1"></i>{{ pending_orders_count }} afventer
+                        </span>
+                        <span class="badge bg-success bg-opacity-15 text-success px-3 py-2">
+                            <i class="fas fa-check me-1"></i>{{ completed_orders_count }} gennemført
+                        </span>
                     </div>
                 </div>
                 <div class="card-body p-0">
@@ -240,7 +243,7 @@
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Ordre</th>
+                                    <th class="ps-3">Ordre</th>
                                     <th>Kursus</th>
                                     <th>Medarbejder</th>
                                     <th>Afdeling</th>
@@ -253,7 +256,7 @@
                             <tbody>
                                 {% for o in recent_orders %}
                                 <tr>
-                                    <td><code class="small">{{ o.order_id_short }}</code></td>
+                                    <td class="ps-3"><code class="small text-muted">{{ o.order_id_short }}</code></td>
                                     <td>
                                         <span class="fw-bold">{{ o.product_title or o.product_handle }}</span>
                                         {% if o.variant_location %}
@@ -264,7 +267,7 @@
                                         <div>{{ o.user_name or '—' }}</div>
                                         <small class="text-muted">{{ o.user_email or '' }}</small>
                                     </td>
-                                    <td>{{ o.department or '—' }}</td>
+                                    <td><span class="badge bg-light text-dark">{{ o.department or '—' }}</span></td>
                                     <td class="text-end fw-bold">{{ o.price }} kr</td>
                                     <td class="text-center">
                                         {% if o.status == 'completed' or o.completion_status == 'completed' %}
@@ -281,7 +284,7 @@
                                     </td>
                                     <td class="small text-muted">{{ o.created_at }}</td>
                                     <td>
-                                        <a href="{{ url_for('multitenant_reports.order_detail', order_id=o.order_id) }}" class="btn btn-sm btn-outline-primary">
+                                        <a href="{{ url_for('multitenant_reports.order_detail', order_id=o.order_id) }}" class="btn btn-sm btn-outline-primary rounded-pill">
                                             <i class="fas fa-eye"></i>
                                         </a>
                                     </td>
@@ -291,9 +294,10 @@
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-center py-4">
-                        <i class="fas fa-receipt fa-3x text-gray-300 mb-3"></i>
-                        <p class="text-muted">Ingen ordrer endnu</p>
+                    <div class="empty-state">
+                        <i class="fas fa-receipt"></i>
+                        <p>Ingen ordrer endnu</p>
+                        <small>Ordrer vises naar medarbejdere tilmelder sig kurser</small>
                     </div>
                     {% endif %}
                 </div>
@@ -304,10 +308,10 @@
     <!-- Recent Conversations -->
     <div class="row mb-4">
         <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 font-weight-bold text-primary">
-                        <i class="fas fa-comments me-2"></i>Seneste samtaler
+            <div class="card report-card">
+                <div class="card-header">
+                    <h6 class="mb-0 fw-bold">
+                        <i class="fas fa-comments text-primary me-2"></i>Seneste samtaler
                     </h6>
                 </div>
                 <div class="card-body p-0">
@@ -316,7 +320,7 @@
                         <table class="table table-hover align-middle mb-0">
                             <thead class="table-light">
                                 <tr>
-                                    <th>Session</th>
+                                    <th class="ps-3">Session</th>
                                     <th>Tidspunkt</th>
                                     <th class="text-center">Beskeder</th>
                                     <th>Emner</th>
@@ -326,26 +330,29 @@
                             <tbody>
                                 {% for c in recent_conversations %}
                                 <tr>
-                                    <td><code class="small">{{ c.session_id[:8] }}</code></td>
+                                    <td class="ps-3"><code class="small text-muted">{{ c.session_id[:8] }}</code></td>
                                     <td class="small text-muted">{{ c.start_time }}</td>
-                                    <td class="text-center">{{ c.query_count }}</td>
+                                    <td class="text-center">
+                                        <span class="badge bg-primary rounded-pill">{{ c.query_count }}</span>
+                                    </td>
                                     <td>
                                         {% for t in (c.topics or '')[:60].split(',') %}
                                         {% if t.strip() %}
-                                        <span class="badge bg-light text-dark me-1">{{ t.strip() }}</span>
+                                        <span class="badge bg-light text-dark border me-1">{{ t.strip() }}</span>
                                         {% endif %}
                                         {% endfor %}
                                     </td>
-                                    <td>{{ c.department or '—' }}</td>
+                                    <td><span class="text-muted">{{ c.department or '—' }}</span></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
                         </table>
                     </div>
                     {% else %}
-                    <div class="text-center py-4">
-                        <i class="fas fa-comments fa-3x text-gray-300 mb-3"></i>
-                        <p class="text-muted">Ingen samtaler endnu</p>
+                    <div class="empty-state">
+                        <i class="fas fa-comments"></i>
+                        <p>Ingen samtaler endnu</p>
+                        <small>Samtaler vises naar medarbejdere bruger chatbotten</small>
                     </div>
                     {% endif %}
                 </div>
@@ -356,12 +363,143 @@
 </div>
 {% endblock %}
 
+{% block extra_css %}
+<style>
+/* KPI Cards */
+.kpi-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 20px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+    height: 100%;
+}
+.kpi-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+.kpi-icon {
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.2rem;
+    flex-shrink: 0;
+}
+.kpi-purple .kpi-icon { background: rgba(168,85,247,0.1); color: #a855f7; }
+.kpi-green .kpi-icon { background: rgba(16,185,129,0.1); color: #10b981; }
+.kpi-blue .kpi-icon { background: rgba(59,130,246,0.1); color: #3b82f6; }
+.kpi-amber .kpi-icon { background: rgba(245,158,11,0.1); color: #f59e0b; }
+.kpi-purple { border-left: 3px solid #a855f7; }
+.kpi-green { border-left: 3px solid #10b981; }
+.kpi-blue { border-left: 3px solid #3b82f6; }
+.kpi-amber { border-left: 3px solid #f59e0b; }
+.kpi-label {
+    font-size: 0.7rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #94a3b8;
+    margin-bottom: 2px;
+}
+.kpi-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+    color: #1e293b;
+    line-height: 1.2;
+}
+.kpi-detail {
+    font-size: 0.75rem;
+    color: #94a3b8;
+    margin-top: 2px;
+}
+
+/* Report Cards */
+.report-card {
+    border: none;
+    border-radius: 12px;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
+    overflow: hidden;
+}
+.report-card .card-header {
+    background: #fff;
+    border-bottom: 1px solid #f1f5f9;
+    padding: 16px 20px;
+}
+.report-card .card-body { padding: 20px; }
+
+/* Course icon */
+.course-icon {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: rgba(78,115,223,0.1);
+    color: #4e73df;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.8rem;
+}
+
+/* Empty states */
+.empty-state {
+    text-align: center;
+    padding: 40px 20px;
+    color: #94a3b8;
+}
+.empty-state i {
+    font-size: 2.5rem;
+    margin-bottom: 12px;
+    opacity: 0.4;
+}
+.empty-state p {
+    font-weight: 600;
+    font-size: 0.95rem;
+    margin-bottom: 4px;
+    color: #64748b;
+}
+.empty-state small {
+    color: #94a3b8;
+}
+
+/* Table polish */
+.table thead th {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.03em;
+    color: #64748b;
+    border-bottom-width: 1px;
+    padding: 12px 16px;
+}
+.table tbody td {
+    padding: 12px 16px;
+    vertical-align: middle;
+}
+.table-hover tbody tr:hover {
+    background-color: rgba(78,115,223,0.03);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .kpi-card { padding: 14px; }
+    .kpi-value { font-size: 1.2rem; }
+}
+</style>
+{% endblock %}
+
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
   const purple = '#a855f7', green = '#10b981', blue = '#3b82f6', amber = '#f59e0b', pink = '#ec4899', cyan = '#06b6d4';
-  Chart.defaults.color = '#aaa';
-  Chart.defaults.borderColor = 'rgba(255,255,255,0.06)';
+  Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+  Chart.defaults.color = '#94a3b8';
+  Chart.defaults.borderColor = 'rgba(0,0,0,0.04)';
 
   // Daily Usage
   new Chart(document.getElementById('dailyUsageChart'), {
@@ -371,11 +509,20 @@
       datasets: [{
         label: 'Forespørgsler',
         data: {{ daily_chatbot_query_data | tojson }},
-        borderColor: purple, backgroundColor: 'rgba(168,85,247,0.1)',
-        fill: true, tension: 0.3, pointRadius: 3
+        borderColor: purple,
+        backgroundColor: 'rgba(168,85,247,0.08)',
+        fill: true, tension: 0.4, pointRadius: 3, pointHoverRadius: 6,
+        pointBackgroundColor: purple, borderWidth: 2
       }]
     },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.03)' } },
+        x: { grid: { display: false } }
+      }
+    }
   });
 
   // Query Types
@@ -385,9 +532,13 @@
     type: 'doughnut',
     data: {
       labels: Object.keys(qtData).map(k => qtLabels[k] || k),
-      datasets: [{ data: Object.values(qtData), backgroundColor: [purple, green, blue, amber, pink, cyan] }]
+      datasets: [{ data: Object.values(qtData), backgroundColor: [purple, green, blue, amber, pink, cyan], borderWidth: 0, hoverOffset: 8 }]
     },
-    options: { responsive: true, plugins: { legend: { position: 'bottom', labels: { boxWidth: 12 } } } }
+    options: {
+      responsive: true,
+      cutout: '65%',
+      plugins: { legend: { position: 'bottom', labels: { boxWidth: 10, padding: 12, font: { size: 11 } } } }
+    }
   });
 
   // Hourly Pattern
@@ -397,9 +548,16 @@
     type: 'bar',
     data: {
       labels: hours.map(h => h + ':00'),
-      datasets: [{ label: 'Forespørgsler', data: hours.map(h => hourlyData[h] || 0), backgroundColor: 'rgba(168,85,247,0.5)', borderRadius: 4 }]
+      datasets: [{ label: 'Forespørgsler', data: hours.map(h => hourlyData[h] || 0), backgroundColor: 'rgba(168,85,247,0.4)', hoverBackgroundColor: purple, borderRadius: 6 }]
     },
-    options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true } } }
+    options: {
+      responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        y: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.03)' } },
+        x: { grid: { display: false }, ticks: { maxTicksLimit: 12 } }
+      }
+    }
   });
 
   // Category Distribution
@@ -408,9 +566,16 @@
     type: 'bar',
     data: {
       labels: Object.keys(catData),
-      datasets: [{ label: 'Søgninger', data: Object.values(catData), backgroundColor: 'rgba(16,185,129,0.5)', borderRadius: 4 }]
+      datasets: [{ label: 'Søgninger', data: Object.values(catData), backgroundColor: 'rgba(16,185,129,0.4)', hoverBackgroundColor: green, borderRadius: 6 }]
     },
-    options: { indexAxis: 'y', responsive: true, plugins: { legend: { display: false } }, scales: { x: { beginAtZero: true } } }
+    options: {
+      indexAxis: 'y', responsive: true,
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.03)' } },
+        y: { grid: { display: false } }
+      }
+    }
   });
 </script>
 {% endblock %}

@@ -576,9 +576,26 @@ def ensure_enterprise_tables(app):
                 "ALTER TABLE course_orders ADD COLUMN payment_method VARCHAR(50) AFTER payment_date",
                 "ALTER TABLE course_orders ADD COLUMN payment_reference VARCHAR(255) AFTER payment_method",
                 "ALTER TABLE course_orders ADD COLUMN billing_note TEXT AFTER payment_reference",
-                # Ensure company_users has chatbot tracking columns
+                # Ensure company_users has all expected columns (table may predate schema additions)
+                "ALTER TABLE company_users ADD COLUMN username VARCHAR(255) AFTER user_id",
+                "ALTER TABLE company_users ADD COLUMN full_name VARCHAR(255) AFTER username",
+                "ALTER TABLE company_users ADD COLUMN email VARCHAR(255) AFTER full_name",
+                "ALTER TABLE company_users ADD COLUMN phone VARCHAR(50) AFTER email",
+                "ALTER TABLE company_users ADD COLUMN job_title VARCHAR(150) AFTER department",
+                "ALTER TABLE company_users ADD COLUMN employee_id VARCHAR(50) AFTER job_title",
+                "ALTER TABLE company_users ADD COLUMN hire_date DATE AFTER employee_id",
+                "ALTER TABLE company_users ADD COLUMN employment_type VARCHAR(50) DEFAULT 'full_time' AFTER hire_date",
+                "ALTER TABLE company_users ADD COLUMN permissions JSON AFTER status",
+                "ALTER TABLE company_users ADD COLUMN added_by INT AFTER permissions",
+                "ALTER TABLE company_users ADD COLUMN manager_user_id INT AFTER added_by",
                 "ALTER TABLE company_users ADD COLUMN total_chatbot_queries INT DEFAULT 0",
                 "ALTER TABLE company_users ADD COLUMN last_chatbot_interaction DATETIME",
+                "ALTER TABLE company_users ADD COLUMN total_courses_completed INT DEFAULT 0",
+                "ALTER TABLE company_users ADD COLUMN total_learning_hours DECIMAL(10,2) DEFAULT 0",
+                "ALTER TABLE company_users ADD COLUMN courses_completed INT DEFAULT 0",
+                "ALTER TABLE company_users ADD COLUMN performance_rating DECIMAL(3,2)",
+                "ALTER TABLE company_users ADD COLUMN last_login DATETIME",
+                "ALTER TABLE company_users ADD COLUMN last_active_at DATETIME",
             ]
             for stmt in alter_stmts:
                 try:

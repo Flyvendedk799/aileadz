@@ -1,8 +1,89 @@
 """
 Create all enterprise/B2B database tables if they don't exist.
-Called once on app startup.
+Called once on app startup.  Auto-syncs missing columns on existing tables.
 """
 import logging
+import re
+
+def _parse_columns_from_create(sql):
+    """Extract column definitions from a CREATE TABLE statement.
+    Returns list of (column_name, full_definition) tuples.
+    Skips PRIMARY KEY, INDEX, UNIQUE KEY, KEY, and CONSTRAINT lines.
+    """
+    # Find the content between the outer parentheses
+    match = re.search(r'\((.+)\)[^)]*$', sql, re.DOTALL)
+    if not match:
+        return []
+
+    body = match.group(1)
+    columns = []
+    skip_prefixes = ('primary key', 'index ', 'idx_', 'unique key', 'key ', 'constraint', 'foreign key')
+
+    for line in body.split(','):
+        line = line.strip()
+        if not line:
+            continue
+        lower = line.lower().lstrip()
+        if any(lower.startswith(p) for p in skip_prefixes):
+            continue
+        # Extract column name (first word)
+        col_match = re.match(r'`?(\w+)`?\s+(.+)', line, re.IGNORECASE)
+        if col_match:
+            col_name = col_match.group(1).lower()
+            col_def = line
+            if col_name not in ('id',):  # skip auto-increment PKs
+                columns.append((col_name, col_def))
+
+    return columns
+
+
+def _parse_table_name(sql):
+    """Extract table name from CREATE TABLE statement."""
+    match = re.search(r'CREATE TABLE IF NOT EXISTS\s+`?(\w+)`?', sql, re.IGNORECASE)
+    return match.group(1) if match else None
+
+
+def _auto_sync_columns(cur, conn, create_stmts):
+    """For each CREATE TABLE statement, check which columns actually exist
+    in the database and ADD any that are missing. No manual ALTER list needed."""
+    synced = 0
+    for sql in create_stmts:
+        table_name = _parse_table_name(sql)
+        if not table_name:
+            continue
+
+        expected_cols = _parse_columns_from_create(sql)
+        if not expected_cols:
+            continue
+
+        # Get existing columns from the database
+        try:
+            cur.execute(
+                "SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS "
+                "WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = %s",
+                (table_name,)
+            )
+            existing = {row[0].lower() for row in cur.fetchall()}
+        except Exception:
+            continue
+
+        if not existing:
+            continue  # table doesn't exist yet (will be created by CREATE TABLE)
+
+        for col_name, col_def in expected_cols:
+            if col_name not in existing:
+                try:
+                    alter = f"ALTER TABLE {table_name} ADD COLUMN {col_def}"
+                    cur.execute(alter)
+                    synced += 1
+                    logging.info("Auto-sync: added %s.%s", table_name, col_name)
+                except Exception as e:
+                    logging.warning("Auto-sync skip %s.%s: %s", table_name, col_name, e)
+
+    if synced:
+        conn.commit()
+        logging.info("Auto-sync complete: %d columns added", synced)
+
 
 def ensure_enterprise_tables(app):
     """Create enterprise tables using the app's MySQL connection."""
@@ -545,96 +626,8 @@ def ensure_enterprise_tables(app):
 
             conn.commit()
 
-            # Migrate chatbot_interactions if it was created with old schema
-            alter_stmts = [
-                "ALTER TABLE chatbot_interactions ADD COLUMN session_id VARCHAR(255) AFTER company_id",
-                "ALTER TABLE chatbot_interactions ADD COLUMN query_text TEXT AFTER username",
-                "ALTER TABLE chatbot_interactions ADD COLUMN response_text TEXT AFTER query_text",
-                "ALTER TABLE chatbot_interactions ADD COLUMN query_type VARCHAR(100) AFTER response_text",
-                "ALTER TABLE chatbot_interactions ADD COLUMN category VARCHAR(100) AFTER query_type",
-                "ALTER TABLE chatbot_interactions ADD COLUMN user_location VARCHAR(255) AFTER category",
-                "ALTER TABLE chatbot_interactions ADD COLUMN response_time_ms INT AFTER user_location",
-                "ALTER TABLE chatbot_interactions ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-                "ALTER TABLE chatbot_interactions ADD COLUMN tools_used VARCHAR(500) AFTER interaction_quality_score",
-                "ALTER TABLE chatbot_interactions ADD COLUMN tool_results_count INT DEFAULT 0 AFTER tools_used",
-                "ALTER TABLE chatbot_interactions ADD COLUMN products_shown TEXT AFTER tool_results_count",
-                "ALTER TABLE chatbot_interactions ADD COLUMN conversation_depth INT DEFAULT 1 AFTER products_shown",
-                "ALTER TABLE chatbot_interactions ADD COLUMN is_logged_in TINYINT DEFAULT 0 AFTER conversation_depth",
-                "ALTER TABLE chatbot_interactions ADD COLUMN feedback_rating TINYINT DEFAULT 0 AFTER is_logged_in",
-                # Ensure user_id column exists (may be missing on older tables)
-                "ALTER TABLE course_orders ADD COLUMN user_id INT AFTER company_id",
-                "ALTER TABLE course_orders ADD INDEX idx_user (user_id)",
-                # Phase 2: session linkage on orders
-                "ALTER TABLE course_orders ADD COLUMN chatbot_session_id VARCHAR(255) AFTER user_phone",
-                "ALTER TABLE course_orders ADD COLUMN chatbot_queries_before_order INT DEFAULT 0 AFTER chatbot_session_id",
-                "ALTER TABLE course_orders ADD COLUMN recommended_by_tool VARCHAR(100) AFTER chatbot_queries_before_order",
-                # Phase 6-lite: billing fields for manual off-platform billing
-                "ALTER TABLE course_orders ADD COLUMN billing_status VARCHAR(30) DEFAULT 'not_invoiced' AFTER recommended_by_tool",
-                "ALTER TABLE course_orders ADD COLUMN invoice_number VARCHAR(100) AFTER billing_status",
-                "ALTER TABLE course_orders ADD COLUMN invoice_date DATE AFTER invoice_number",
-                "ALTER TABLE course_orders ADD COLUMN payment_date DATE AFTER invoice_date",
-                "ALTER TABLE course_orders ADD COLUMN payment_method VARCHAR(50) AFTER payment_date",
-                "ALTER TABLE course_orders ADD COLUMN payment_reference VARCHAR(255) AFTER payment_method",
-                "ALTER TABLE course_orders ADD COLUMN billing_note TEXT AFTER payment_reference",
-                # ── company_users: ensure all columns exist (table may predate schema) ──
-                "ALTER TABLE company_users ADD COLUMN username VARCHAR(255) AFTER user_id",
-                "ALTER TABLE company_users ADD COLUMN full_name VARCHAR(255) AFTER username",
-                "ALTER TABLE company_users ADD COLUMN email VARCHAR(255) AFTER full_name",
-                "ALTER TABLE company_users ADD COLUMN phone VARCHAR(50) AFTER email",
-                "ALTER TABLE company_users ADD COLUMN role VARCHAR(50) DEFAULT 'employee'",
-                "ALTER TABLE company_users ADD COLUMN department VARCHAR(100)",
-                "ALTER TABLE company_users ADD COLUMN job_title VARCHAR(150)",
-                "ALTER TABLE company_users ADD COLUMN employee_id VARCHAR(50)",
-                "ALTER TABLE company_users ADD COLUMN hire_date DATE",
-                "ALTER TABLE company_users ADD COLUMN employment_type VARCHAR(50) DEFAULT 'full_time'",
-                "ALTER TABLE company_users ADD COLUMN status VARCHAR(20) DEFAULT 'active'",
-                "ALTER TABLE company_users ADD COLUMN permissions JSON",
-                "ALTER TABLE company_users ADD COLUMN added_by INT",
-                "ALTER TABLE company_users ADD COLUMN manager_user_id INT",
-                "ALTER TABLE company_users ADD COLUMN total_chatbot_queries INT DEFAULT 0",
-                "ALTER TABLE company_users ADD COLUMN last_chatbot_interaction DATETIME",
-                "ALTER TABLE company_users ADD COLUMN total_courses_completed INT DEFAULT 0",
-                "ALTER TABLE company_users ADD COLUMN total_learning_hours DECIMAL(10,2) DEFAULT 0",
-                "ALTER TABLE company_users ADD COLUMN courses_completed INT DEFAULT 0",
-                "ALTER TABLE company_users ADD COLUMN performance_rating DECIMAL(3,2)",
-                "ALTER TABLE company_users ADD COLUMN last_login DATETIME",
-                "ALTER TABLE company_users ADD COLUMN last_active_at DATETIME",
-                "ALTER TABLE company_users ADD COLUMN added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-                "ALTER TABLE company_users ADD COLUMN updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP",
-                # ── company_departments: ensure all columns exist ──
-                "ALTER TABLE company_departments ADD COLUMN department_name VARCHAR(100)",
-                "ALTER TABLE company_departments ADD COLUMN department_code VARCHAR(20)",
-                "ALTER TABLE company_departments ADD COLUMN description TEXT",
-                "ALTER TABLE company_departments ADD COLUMN learning_budget_per_employee DECIMAL(10,2)",
-                "ALTER TABLE company_departments ADD COLUMN created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP",
-                # ── companies: ensure all columns exist ──
-                "ALTER TABLE companies ADD COLUMN company_name VARCHAR(255)",
-                "ALTER TABLE companies ADD COLUMN company_slug VARCHAR(255)",
-                "ALTER TABLE companies ADD COLUMN company_domain VARCHAR(255)",
-                "ALTER TABLE companies ADD COLUMN industry VARCHAR(100)",
-                "ALTER TABLE companies ADD COLUMN company_size VARCHAR(20)",
-                "ALTER TABLE companies ADD COLUMN country VARCHAR(100)",
-                "ALTER TABLE companies ADD COLUMN city VARCHAR(100)",
-                "ALTER TABLE companies ADD COLUMN subscription_plan VARCHAR(50) DEFAULT 'trial'",
-                "ALTER TABLE companies ADD COLUMN trial_ends_at DATETIME",
-                "ALTER TABLE companies ADD COLUMN max_employees INT DEFAULT 50",
-                "ALTER TABLE companies ADD COLUMN features JSON",
-                "ALTER TABLE companies ADD COLUMN settings JSON",
-                # ── audit_log: ensure all columns exist ──
-                "ALTER TABLE audit_log ADD COLUMN action_type VARCHAR(100)",
-                "ALTER TABLE audit_log ADD COLUMN resource_type VARCHAR(100)",
-                "ALTER TABLE audit_log ADD COLUMN resource_id VARCHAR(100)",
-                "ALTER TABLE audit_log ADD COLUMN details TEXT",
-                "ALTER TABLE audit_log ADD COLUMN description TEXT",
-                "ALTER TABLE audit_log ADD COLUMN ip_address VARCHAR(50)",
-                "ALTER TABLE audit_log ADD COLUMN user_agent TEXT",
-            ]
-            for stmt in alter_stmts:
-                try:
-                    cur.execute(stmt)
-                except Exception:
-                    pass  # column already exists
-            conn.commit()
+            # Auto-sync: detect missing columns on existing tables and add them
+            _auto_sync_columns(cur, conn, tables)
             cur.close()
             logging.info("Enterprise tables ensured (%d tables)", len(tables))
 

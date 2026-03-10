@@ -935,16 +935,28 @@ def _execute_update_user_profile(args, username):
 
         elif action == "update_summary":
             # Fallback: if AI put fields at top level instead of in data
+            summary_fields = {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range", "summary", "goal", "location", "format"}
             if not data:
-                summary_fields = {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range", "summary"}
                 data = {k: v for k, v in args.items() if k in summary_fields and v}
-                # Map "summary" → "bio" if AI used generic key
-                if "summary" in data and "bio" not in data:
-                    data["bio"] = data.pop("summary")
+            # Also check top-level args as additional fallback
+            for k, v in args.items():
+                if k in summary_fields and v and k not in data:
+                    data[k] = v
+            # Map common AI aliases to actual field names
+            if "summary" in data and "bio" not in data:
+                data["bio"] = data.pop("summary")
+            if "goal" in data and "goals" not in data:
+                data["goals"] = data.pop("goal")
+            if "location" in data and "preferred_location" not in data:
+                data["preferred_location"] = data.pop("location")
+            if "format" in data and "preferred_format" not in data:
+                data["preferred_format"] = data.pop("format")
             # Filter out empty strings so we only update actual changes
-            clean_data = {k: v for k, v in data.items() if v is not None and str(v).strip()}
+            clean_data = {k: v for k, v in data.items() if v is not None and str(v).strip() and k in {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range"}}
             if not clean_data:
-                return json.dumps({"status": "error", "message": "Ingen data at opdatere."})
+                # Instead of error, return success with no-op — don't confuse the AI
+                return json.dumps({"status": "success", "section": "summary",
+                    "message": "Profilen er allerede opdateret."})
             db.update_profile_summary(username, **clean_data)
             fields_updated = ", ".join(clean_data.keys())
             return json.dumps({"status": "success", "section": "summary",

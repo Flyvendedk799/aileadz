@@ -28,24 +28,38 @@ _TOPIC_KEYWORDS = {
     "it", "itil", "devops", "cloud", "azure", "aws", "cybersecurity", "sikkerhed",
     "netværk", "server", "linux", "windows", "programmering", "python", "java",
     "software", "database", "sql", "ai", "kunstig", "machine", "data",
+    "javascript", "react", "docker", "kubernetes", "api", "web", "frontend",
+    "backend", "fullstack", "git", "cicd", "terraform", "ansible",
     # Business & management
     "ledelse", "leder", "projekt", "projektledelse", "strategi", "økonomi",
     "regnskab", "finans", "salg", "marketing", "markedsføring", "forhandling",
     "innovation", "forretning", "business", "lean", "six", "sigma", "kvalitet",
+    "forandringsledelse", "forandring", "change", "management", "drift",
     # Soft skills
     "kommunikation", "præsentation", "coaching", "mentor", "facilitering",
     "konflikthåndtering", "samarbejde", "teamledelse", "personlig", "udvikling",
+    "feedback", "motivation", "stresshåndtering", "stress", "trivsel",
+    "tidsstyring", "prioritering", "beslutningstagning",
     # Compliance & legal
     "jura", "gdpr", "persondataforordningen", "compliance", "lovgivning", "arbejdsmiljø",
+    "miljø", "bæredygtighed", "esg", "sustainability",
     # Analytics & tools
     "excel", "power", "bi", "powerbi", "analytics", "analyse", "tableau", "dashboard",
+    "sharepoint", "teams", "office", "microsoft", "google",
     # HR & org
     "hr", "rekruttering", "onboarding", "medarbejder", "organisation",
+    "løn", "ansættelse", "opsigelse", "personalejura", "mub",
     # Project methods
     "agil", "agile", "scrum", "kanban", "prince", "prince2", "pmp",
-    "certificering", "certifikat",
+    "certificering", "certifikat", "safe", "devops",
+    # Health & safety
+    "førstehjælp", "brand", "brandslukker", "hjertestart", "aed",
+    "arbejdsmiljø", "ergonomi", "sikkerhedskultur",
+    # Languages
+    "engelsk", "tysk", "fransk", "spansk", "dansk",
     # Misc
-    "kursus", "uddannelse", "workshop", "planlægning",
+    "kursus", "uddannelse", "workshop", "planlægning", "logistik", "indkøb",
+    "supply", "chain", "lager", "produktion", "vedligeholdelse",
 }
 
 def _has_content_tokens(text, min_tokens=4):
@@ -247,8 +261,8 @@ def _detect_conversation_stage(sid, messages):
     if shown_count > 0 and _HIGH_INTENT_PATTERNS.search(latest_user):
         return "ready_to_buy"
 
-    # 3.3: Rejection/frustration detection on latest message
-    if _REJECTION_PATTERNS.search(latest_user):
+    # 3.3: Rejection/frustration detection on latest message (only if results were shown)
+    if shown_count > 0 and _REJECTION_PATTERNS.search(latest_user):
         return "correcting"
 
     # 3.4: Team buying detection
@@ -273,6 +287,8 @@ def _detect_conversation_stage(sid, messages):
 
     if user_msg_count <= 1 and not has_actionable_info:
         return "greeting"
+    elif user_msg_count <= 1 and has_actionable_info:
+        return "searching"  # First message already has a topic — search immediately
     elif user_msg_count >= 2 and has_actionable_info and shown_count == 0:
         return "searching"
     elif user_msg_count <= 2 and not has_actionable_info and shown_count == 0:
@@ -281,8 +297,8 @@ def _detect_conversation_stage(sid, messages):
         return "searching"
     elif shown_count >= 2 and user_msg_count >= 4:
         return "comparing"
-    elif shown_count >= 1 and user_msg_count >= 6:
-        return "deciding"
+    elif shown_count >= 1 and user_msg_count >= 4:
+        return "deciding"  # Relaxed from 6 to 4 — don't make users wait so long
     else:
         return "searching"
 
@@ -290,7 +306,7 @@ def _detect_conversation_stage(sid, messages):
 _STAGE_HINTS = {
     "greeting": "Kort, varm velkomst. Spørg hvad de leder efter — ét spørgsmål.",
     "needs_discovery": "Stil ét præcist spørgsmål der ville gøre din næste søgning markant bedre.",
-    "searching": "SØG NU. Brug search_courses til brede forespørgsler, filter_courses når der er pris/lokation/format-krav. Kombiner begge parametre intelligent: 'billigt i Aarhus om ledelse' = filter_courses(price_max=5000, location='Aarhus', query='ledelse'). IKKE flere spørgsmål.",
+    "searching": "SØG NU med search_courses eller filter_courses. Brug search_courses til brede forespørgsler, filter_courses når der er pris/lokation/format-krav. Kombiner parametre intelligent: 'billigt i Aarhus om ledelse' = filter_courses(price_max=5000, location='Aarhus', query='ledelse'). Stil IKKE flere spørgsmål — søg med det du har. Hvis brugeren også nævner sin baggrund, gem den med request_user_input SAMTIDIG med søgningen.",
     "comparing": "Brug compare_courses. Fremhæv den vigtigste forskel for denne bruger. Giv en klar anbefaling.",
     "deciding": "Giv en tydelig anbefaling med begrundelse. Hjælp dem med at tage skridtet.",
     "ready_to_buy": "HANDLINGS-mode. Hent detaljer med get_course_details: startdato, lokation, pris, hvad er inkluderet. Gør tilmelding let.",
@@ -305,27 +321,42 @@ _STAGE_HINTS = {
 # ── Rule-based intent classification (replaces GPT-4o-mini API call) ──
 
 _COMPARISON_PATTERNS = _re.compile(
-    r'\b(sammenlign|forskellen?|hvilken er bedst|hvad er bedre|versus|vs\.?|forskel mellem)\b', _re.IGNORECASE
+    r'\b(sammenlign|forskellen?|hvilken er bedst|hvad er bedre|versus|vs\.?|forskel mellem|'
+    r'hvad adskiller|hvilken passer|bedst til|som ligner|minder om|alternativ til)\b', _re.IGNORECASE
 )
 _DETAIL_PATTERNS = _re.compile(
-    r'\b(fortæl mere|mere om|detaljer|hvad koster|hvornår starter|tilmeld|pladser|faktura)\b', _re.IGNORECASE
+    r'\b(fortæl mere|mere om|detaljer|hvad koster|hvornår starter|tilmeld|pladser|faktura|'
+    r'hvad indeholder|hvad lærer|hvad inkluderer|hvor lang|varighed|'
+    r'hvor (?:ligger|er det|holder|afholdes)|har [iI] det|kan (?:du|I) fortælle|'
+    r'pris\??|dato\??|hvem udbyder|hvem er udbyder|mere info)\b', _re.IGNORECASE
 )
 _FOLLOWUP_PATTERNS = _re.compile(
-    r'\b(den billigste|den dyreste|den første|den sidste|den med|nummer \d|nr\.?\s*\d|den i |den til \d)\b', _re.IGNORECASE
+    r'\b(den billigste|den dyreste|den første|den sidste|den anden|den tredje|'
+    r'den med|nummer \d|nr\.?\s*\d|den i |den til \d|'
+    r'det første|det andet|det tredje|det billigste|det dyreste|'
+    r'hvad med (?:den|det) (?:første|anden?|tredje|fjerde|sidste)|'
+    r'den (?:næste|forrige|øverste|nederste))\b', _re.IGNORECASE
 )
 _CHITCHAT_PATTERNS = _re.compile(
-    r'^\s*(hej|hello|hi|tak|mange tak|hvem er du|hvad kan du|godmorgen|goddag|farvel|bye)\s*[!?.]*\s*$', _re.IGNORECASE
+    r'^\s*(hej|hello|hi|hejsa|halløj|hey|yo|tak|mange tak|tusind tak|tak skal du have|'
+    r'hvem er du|hvad kan du|godmorgen|goddag|godaften|god aften|farvel|bye|ha det|'
+    r'hej hej|vi ses|ses|cool|okay|ok)\s*[!?.]*\s*$', _re.IGNORECASE
 )
 
 # 3.1: Buying signal detection
 _HIGH_INTENT_PATTERNS = _re.compile(
-    r'\b(tilmeld|tilmelding|book|bestil|køb|signup|sign up|registrer|faktura|betaling|'
+    r'\b(tilmeld|tilmelding|tilmeld mig|meld mig til|book|bestil|køb|signup|sign up|'
+    r'registrer|registrering|faktura|betaling|betale|'
     r'hvornår starter|næste hold|er der pladser|ledig[e]? plads|startdato|'
-    r'rabat|rabatkode|grupperabat|firmapris|vi vil gerne bestille)\b', _re.IGNORECASE
+    r'rabat|rabatkode|grupperabat|firmapris|vi vil gerne bestille|'
+    r'jeg vil gerne (?:tilmelde|bestille|booke|købe)|'
+    r'kan jeg (?:tilmelde|bestille|booke)|få adgang|enroll)\b', _re.IGNORECASE
 )
 _LOW_INTENT_PATTERNS = _re.compile(
     r'\b(bare undersøger|bare kigger|til næste år|måske senere|på sigt|overveje|'
-    r'ved ikke endnu|ikke sikker|bare nysgerrig)\b', _re.IGNORECASE
+    r'ved ikke endnu|ikke sikker|bare nysgerrig|'
+    r'tænke over det|vil tænke|lige nu søger jeg bare|intet behov endnu|'
+    r'ikke noget der haster|måske en anden gang|ikke aktuelt)\b', _re.IGNORECASE
 )
 
 # Profile update: user mentions their own experience, skills, education, etc.
@@ -334,14 +365,24 @@ _PROFILE_UPDATE_PATTERNS = _re.compile(
     r'min (?:baggrund|uddannelse|erfaring|rolle)|'
     r'jeg (?:læste|studerede|tog)|jeg har\b.*?\b(?:taget|gennemført)|'
     r'jeg (?:ved noget om|kender til|har kompetence)|'
-    r'min stilling|mit job|min titel)\b', _re.IGNORECASE
+    r'min stilling|mit job|min titel|'
+    r'jeg er (?:uddannet|certificeret|specialist|ekspert)|'
+    r'mit speciale|mine (?:kompetencer|evner|styrker)|'
+    r'jeg er efteruddannet|jeg har en (?:bachelor|master|kandidat|hd|ph\.?d))\b', _re.IGNORECASE
 )
-# Learning/improvement intent — should NOT trigger profile_update
+# Learning/improvement intent — triggers course search (alone or combined with profile)
 _LEARNING_GOAL_PATTERNS = _re.compile(
     r'\b(vil gerne (?:lære|blive|være)|vil (?:lære|blive|være)|blive bedre|være bedre|'
     r'lære (?:mere|om|at)|udvikle mig|opkvalificere|dygtigere|forbedre|'
     r'har brug for (?:kursus|uddannelse|træning|kompetence)|'
-    r'mangler (?:viden|kompetence|erfaring)|søger (?:kursus|uddannelse))\b', _re.IGNORECASE
+    r'mangler (?:viden|kompetence|erfaring)|søger (?:kursus|uddannelse)|'
+    r'jeg (?:ønsker|drømmer om) at (?:lære|blive)|'
+    r'blive (?:mere )?dygtig|faglig(?:e)? udvikling|'
+    r'skal (?:lære|blive bedre|opkvalificeres|udvikle)|'
+    r'behov for (?:at lære|udvikling|opkvalificering)|'
+    r'gerne (?:vide mere|blive klogere|styrke|forbedre)|'
+    r'op på (?:et )?(?:højere |nyt )?niveau|'
+    r'(?:find|vis|søg|har I) (?:et |noget |nogle )?(?:kursus|kurser|uddannelse))\b', _re.IGNORECASE
 )
 
 # 3.3: Conversation repair / rejection detection
@@ -349,14 +390,19 @@ _REJECTION_PATTERNS = _re.compile(
     r'\b(nej|ikke det|forkert|det var ikke|jeg mente|misforstå|helt forkert|'
     r'det passer ikke|ikke relevant|noget helt andet|prøv igen|det er ikke rigtigt|'
     r'det er forkert|dårligt|ubrugelig|giver ikke mening|det hjælper ikke|'
-    r'ikke godt nok|ikke brugbar|helt ved siden af|nope)\b', _re.IGNORECASE
+    r'ikke godt nok|ikke brugbar|helt ved siden af|nope|'
+    r'det virker ikke|ikke hvad jeg søgte|ikke interesseret|for dyrt|'
+    r'for avanceret|for simpelt|for lang|for kort|alt for dyrt|'
+    r'ikke det rigtige|noget helt tredje|prøv noget andet)\b', _re.IGNORECASE
 )
 
 # 3.4: Team/group buying detection
 _TEAM_PATTERNS = _re.compile(
-    r'\b(vi er \d|vi skal|hele? teamet?|hele? afdelingen|grupp[en]|hold[et]?|'
-    r'\d+ (personer|medarbejdere|kollegaer|deltagere)|firmaaftale|in-?house|'
-    r'virksomhedskursus|firmakursus|flere deltagere|samlet pris)\b', _re.IGNORECASE
+    r'\b(vi er \d|vi skal|hele? teamet?|hele? afdelingen|grupp[en]?|hold[et]?|'
+    r'\d+ (?:personer|medarbejdere|kollegaer|deltagere|stykker|mand)|'
+    r'firmaaftale|in-?house|virksomhedskursus|firmakursus|flere deltagere|samlet pris|'
+    r'til (?:vores|hele|mit) (?:team|afdeling|virksomhed|firma|hold)|'
+    r'corporate|firma-?løsning|gruppe(?:rabat|pris|tilmelding)?|team-?building)\b', _re.IGNORECASE
 )
 
 # ── Per-session negative context tracking (3.3) ──
@@ -452,23 +498,48 @@ def _classify_intent_local(user_query, messages, shown_count):
     if _TEAM_PATTERNS.search(user_query):
         return "team_buying"
 
+    # Learning goal without profile info — user wants courses
+    if _LEARNING_GOAL_PATTERNS.search(user_query):
+        if _PROFILE_UPDATE_PATTERNS.search(user_query):
+            return "profile_and_search"  # Both profile + course search
+        return "discovery"  # Pure learning goal → search for courses
+
     # Profile update: user mentions their own background/experience/skills
-    # If they also express a learning goal, do BOTH (profile + course search)
     if _PROFILE_UPDATE_PATTERNS.search(user_query):
-        if _LEARNING_GOAL_PATTERNS.search(user_query):
-            return "profile_and_search"
         return "profile_update"
 
-    # Very short with no topic keywords — needs clarification
-    # UNLESS the AI just asked a question (user is answering it)
+    # Short answers (yes/no/single word) — check if answering a question
     q_tokens = set(_re.findall(r'[a-zæøå0-9]+', q))
-    if len(q_tokens) <= 1 and not (q_tokens & _TOPIC_KEYWORDS):
+    _is_short = len(q_tokens) <= 2
+
+    # "ja" / "nej" / affirmative/negative handling
+    if _is_short:
+        is_affirmative = q in ("ja", "yes", "jo", "jep", "ok", "okay", "gerne", "ja tak", "selvfølgelig")
+        is_negative = q in ("nej", "nope", "nah", "nej tak", "ikke rigtig")
+
         # Check if the last assistant message ended with a question
+        last_assistant_asked = False
         for m in reversed(messages):
             if m.get("role") == "assistant" and m.get("content"):
-                if m["content"].rstrip().endswith("?"):
-                    return "discovery"  # User is answering a question — let the model decide
+                last_assistant_asked = m["content"].rstrip().endswith("?")
                 break
+
+        if last_assistant_asked:
+            if is_negative and shown_count > 0:
+                return "correction"
+            return "discovery"  # User is answering a question — let the model decide
+
+        if is_affirmative and shown_count > 0:
+            return "follow_up"  # Probably confirming interest in shown course
+        if is_negative and shown_count > 0:
+            return "correction"
+
+    # Single topic keyword — enough for discovery
+    if _is_short and (q_tokens & _TOPIC_KEYWORDS):
+        return "discovery"
+
+    # Very short with no topic keywords and no context — needs clarification
+    if len(q_tokens) <= 1 and not (q_tokens & _TOPIC_KEYWORDS):
         return "needs_clarification"
 
     # Default: discovery (the main model will decide what tool to call)
@@ -583,17 +654,24 @@ def _build_shown_products_message(sid):
 
 _FRUSTRATION_SIGNALS = _re.compile(
     r'\b(frustrerende|irriterende|umuligt|gider ikke|forstår ikke|virker ikke|'
-    r'det hjælper ikke|meningsløst|spild af tid|for svært)\b', _re.IGNORECASE
+    r'det hjælper ikke|meningsløst|spild af tid|for svært|'
+    r'jeg er frustreret|dette virker ikke|ubrugelig[t]?|håbløst|'
+    r'det giver ikke mening|jeg giver op|helt umuligt|slet ikke)\b', _re.IGNORECASE
 )
 _ENTHUSIASM_SIGNALS = _re.compile(
     r'\b(spændende|fedt|perfekt|præcis|yes|fantastisk|genialt|super|'
-    r'det lyder godt|det er det|bingo)\b', _re.IGNORECASE
+    r'det lyder godt|det er det|bingo|'
+    r'det lyder interessant|det virker godt|det passer mig|'
+    r'ja tak|det vil jeg gerne|det ser godt ud|dejligt|lækkert|nice|'
+    r'kanon|vildt godt|mega fedt|helt perfekt)\b', _re.IGNORECASE
 )
 _BUDGET_PATTERN = _re.compile(
-    r'(?:under|maks(?:imalt)?|budget|max)\s*(\d[\d.]*)\s*(?:kr)?', _re.IGNORECASE
+    r'(?:under|maks(?:imalt)?|budget|max|op til|højst|omkring)\s*(\d[\d.]*)\s*(?:kr)?', _re.IGNORECASE
 )
 _PRICE_COMPLAINT = _re.compile(
-    r'\b(for dyrt|for dyr|billigere|lavere pris|budget|ikke råd|prisen er for)\b', _re.IGNORECASE
+    r'\b(for dyrt|for dyr|billigere|lavere pris|budget|ikke råd|prisen er for|'
+    r'koster for meget|kan ikke betale|for høj pris|prisnedgang|'
+    r'har ikke råd|over budget|uden for budget)\b', _re.IGNORECASE
 )
 
 
@@ -1228,7 +1306,7 @@ def handle_agentic_ask(user_query, session):
 
     # Reconcile stage vs intent conflicts
     _original_stage = stage
-    if intent in ("discovery", "comparison", "detail", "follow_up") and stage == "needs_discovery":
+    if intent in ("discovery", "comparison", "detail", "follow_up") and stage in ("needs_discovery", "greeting"):
         stage = "searching"
         CONVERSATION_STAGES[sid] = stage
         stage_hint = _STAGE_HINTS.get(stage, "")
@@ -1498,12 +1576,31 @@ def handle_agentic_ask(user_query, session):
             while iteration < max_iterations:
                 iteration += 1
                 api_start = time.time()
-                response = openai.chat.completions.create(
-                    model="gpt-4o",
-                    messages=ephemeral_messages,
-                    tools=all_tools,
-                    stream=False
-                )
+                try:
+                    response = openai.chat.completions.create(
+                        model="gpt-4o",
+                        messages=ephemeral_messages,
+                        tools=all_tools,
+                        stream=False
+                    )
+                except Exception as llm_err:
+                    print(f"[LLM API Error] iteration={iteration}: {llm_err}")
+                    # Retry once after a brief pause
+                    if iteration <= 1:
+                        import time as _t
+                        _t.sleep(1)
+                        try:
+                            response = openai.chat.completions.create(
+                                model="gpt-4o",
+                                messages=ephemeral_messages,
+                                tools=all_tools,
+                                stream=False
+                            )
+                        except Exception as retry_err:
+                            print(f"[LLM API Retry Failed] {retry_err}")
+                            raise
+                    else:
+                        raise
                 _log_latency(sid, "llm_tool_call", api_start)
 
                 message = response.choices[0].message
@@ -1717,11 +1814,17 @@ def handle_agentic_ask(user_query, session):
             def _stream_final_response(msgs):
                 """Stream GPT-4o response, yielding text chunks and returning full text.
                 Uses a state machine to cleanly handle <suggestions> tag detection across chunk boundaries."""
-                resp = openai.chat.completions.create(
-                    model="gpt-4o",
-                    messages=msgs,
-                    stream=True
-                )
+                try:
+                    resp = openai.chat.completions.create(
+                        model="gpt-4o",
+                        messages=msgs,
+                        stream=True
+                    )
+                except Exception as stream_err:
+                    print(f"[LLM Stream Error] {stream_err}")
+                    fallback = "Beklager, jeg havde et teknisk problem. Prøv at stille dit spørgsmål igen."
+                    yield f"data: {json.dumps({'type': 'chunk', 'content': fallback})}\n\n"
+                    return
                 full = ""
                 _TAG = "<suggestions>"
                 _TAG_LEN = len(_TAG)

@@ -298,6 +298,7 @@ _STAGE_HINTS = {
     "correcting": "ANERKEND fejlen. Spørg hvad der ikke passede (emne/niveau/pris/format). Søg ANDERLEDES.",
     "team_buying": "Tænk i gruppe: antal, fælles datoer, grupperabat, in-house muligheder. Spørg hvad de mangler.",
     "profile_update": "Brugeren nævner egen erfaring/kompetence/uddannelse. Brug request_user_input til at vise et UI-kort der samler info. Kald ALTID værktøjet — svar IKKE kun med tekst.",
+    "profile_and_search": "Brugeren nævner BÅDE sin baggrund OG et læringsbehov. Gør BEGGE dele i samme svar: 1) Brug request_user_input til at gemme profil-info (erfaring/stilling/kompetence). 2) Søg OGSÅ kurser med search_courses/filter_courses baseret på deres læringsbehov. Kald BEGGE værktøjer.",
 }
 
 
@@ -329,7 +330,7 @@ _LOW_INTENT_PATTERNS = _re.compile(
 
 # Profile update: user mentions their own experience, skills, education, etc.
 _PROFILE_UPDATE_PATTERNS = _re.compile(
-    r'\b(jeg har\b.*?\b(?:været|arbejdet|erfaring)|jeg arbejder |'
+    r'\b(jeg har\b.*?\b(?:været|arbejdet|erfaring|en |et )|jeg er |jeg kan |jeg arbejder |'
     r'min (?:baggrund|uddannelse|erfaring|rolle)|'
     r'jeg (?:læste|studerede|tog)|jeg har\b.*?\b(?:taget|gennemført)|'
     r'jeg (?:ved noget om|kender til|har kompetence)|'
@@ -452,10 +453,10 @@ def _classify_intent_local(user_query, messages, shown_count):
         return "team_buying"
 
     # Profile update: user mentions their own background/experience/skills
-    # BUT if they also express a learning goal, treat as discovery (course search)
+    # If they also express a learning goal, do BOTH (profile + course search)
     if _PROFILE_UPDATE_PATTERNS.search(user_query):
         if _LEARNING_GOAL_PATTERNS.search(user_query):
-            return "discovery"  # They want courses, not just updating profile
+            return "profile_and_search"
         return "profile_update"
 
     # Very short with no topic keywords — needs clarification
@@ -1252,6 +1253,10 @@ def handle_agentic_ask(user_query, session):
         stage_hint = _STAGE_HINTS.get(stage, "")
     elif intent == "profile_update":
         stage = "profile_update"
+        CONVERSATION_STAGES[sid] = stage
+        stage_hint = _STAGE_HINTS.get(stage, "")
+    elif intent == "profile_and_search":
+        stage = "profile_and_search"
         CONVERSATION_STAGES[sid] = stage
         stage_hint = _STAGE_HINTS.get(stage, "")
 

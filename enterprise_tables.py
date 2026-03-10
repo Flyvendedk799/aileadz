@@ -576,6 +576,9 @@ def ensure_enterprise_tables(app):
                 "ALTER TABLE course_orders ADD COLUMN payment_method VARCHAR(50) AFTER payment_date",
                 "ALTER TABLE course_orders ADD COLUMN payment_reference VARCHAR(255) AFTER payment_method",
                 "ALTER TABLE course_orders ADD COLUMN billing_note TEXT AFTER payment_reference",
+                # Ensure company_users has chatbot tracking columns
+                "ALTER TABLE company_users ADD COLUMN total_chatbot_queries INT DEFAULT 0",
+                "ALTER TABLE company_users ADD COLUMN last_chatbot_interaction DATETIME",
             ]
             for stmt in alter_stmts:
                 try:

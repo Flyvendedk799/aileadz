@@ -1,158 +1,377 @@
 {% extends "base.html" %}
-{% block title %}Kompetencegab - {{ company.company_name }}{% endblock %}
+{% block title %}Kompetencer - {{ company.company_name }}{% endblock %}
 
 {% block content %}
 <div class="container-fluid mt-4">
     {% include 'hr_dashboard/_hr_nav.html' %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
         <div>
-            <h2><i class="fas fa-th text-primary me-2"></i>Kompetencegab Heatmap</h2>
-            <p class="text-muted mb-0">{{ company.company_name }} - Analyse af medarbejderkompetencer vs. maal</p>
+            <h1 class="h3 mb-1 fw-bold"><i class="fas fa-brain text-primary me-2"></i>Kompetencer &amp; Skill Gaps</h1>
+            <p class="text-muted mb-0">{{ company.company_name }} — Analyse af kompetencer, maal og gab</p>
         </div>
-        <div class="d-flex gap-2">
-            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTargetModal">
-                <i class="fas fa-plus"></i> Tilfoej kompetencemaal
-            </button>
-            <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-arrow-left"></i> Dashboard
-            </a>
-        </div>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTargetModal">
+            <i class="fas fa-plus me-1"></i> Tilfoej kompetencemaal
+        </button>
     </div>
 
-    {% if heatmap %}
-    {% for dept, skills in heatmap.items() %}
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary">
-                <i class="fas fa-sitemap me-2"></i>{{ dept }}
-            </h6>
+    <!-- KPI Summary -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-3 col-6">
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-icon"><i class="fas fa-bullseye"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Kompetencemaal</div>
+                    <div class="kpi-value">{{ total_gaps }}</div>
+                </div>
+            </div>
         </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
-                    <thead class="table-light">
-                        <tr>
-                            <th>Kompetence</th>
-                            <th>Prioritet</th>
-                            <th>Maal</th>
-                            <th>Gennemsnit</th>
-                            <th>Gab</th>
-                            <th>Medarbejdere</th>
-                            <th>Status</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {% for skill_name, data in skills.items() %}
-                        <tr>
-                            <td><strong>{{ skill_name }}</strong></td>
-                            <td>
-                                {% if data.priority == 'high' %}
-                                <span class="badge bg-danger">Hoej</span>
-                                {% elif data.priority == 'medium' %}
-                                <span class="badge bg-warning text-dark">Medium</span>
-                                {% else %}
-                                <span class="badge bg-info">Lav</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ data.target_level }}/5</td>
-                            <td>{{ data.avg_current }}/5</td>
-                            <td>
-                                {% if data.gap > 0 %}
-                                <span class="text-danger fw-bold">-{{ data.gap }}</span>
-                                {% else %}
-                                <span class="text-success">OK</span>
-                                {% endif %}
-                            </td>
-                            <td>{{ data.employees }}</td>
-                            <td>
-                                {% if data.status == 'green' %}
-                                <span class="badge bg-success"><i class="fas fa-check"></i> Opfyldt</span>
-                                {% elif data.status == 'yellow' %}
-                                <span class="badge bg-warning text-dark"><i class="fas fa-exclamation"></i> Naer maal</span>
-                                {% else %}
-                                <span class="badge bg-danger"><i class="fas fa-times"></i> Kritisk gab</span>
-                                {% endif %}
-                            </td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+        <div class="col-md-3 col-6">
+            <div class="kpi-card kpi-red">
+                <div class="kpi-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Kritiske gab</div>
+                    <div class="kpi-value">{{ critical_gaps }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="kpi-card kpi-green">
+                <div class="kpi-icon"><i class="fas fa-check-circle"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Maal opfyldt</div>
+                    <div class="kpi-value">{{ met_targets }}</div>
+                </div>
+            </div>
+        </div>
+        <div class="col-md-3 col-6">
+            <div class="kpi-card kpi-purple">
+                <div class="kpi-icon"><i class="fas fa-layer-group"></i></div>
+                <div class="kpi-content">
+                    <div class="kpi-label">Unikke kompetencer</div>
+                    <div class="kpi-value">{{ skill_list|length }}</div>
+                </div>
             </div>
         </div>
     </div>
-    {% endfor %}
-    {% else %}
-    <div class="card shadow">
-        <div class="card-body text-center py-5">
-            <i class="fas fa-th fa-3x text-gray-300 mb-3"></i>
-            <h5>Ingen kompetencedata endnu</h5>
-            <p class="text-muted">Start med at tilfoeje kompetencemaal for dine afdelinger, og sikr at medarbejdere har registreret skills.</p>
-            <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTargetModal">
-                <i class="fas fa-plus"></i> Tilfoej foerste kompetencemaal
-            </button>
-        </div>
-    </div>
-    {% endif %}
 
-    {% if targets %}
-    <div class="card shadow mb-4">
-        <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-primary"><i class="fas fa-bullseye me-2"></i>Alle kompetencemaal</h6>
-        </div>
-        <div class="card-body">
-            <div class="table-responsive">
-                <table class="table table-sm">
-                    <thead class="table-light">
-                        <tr><th>Afdeling</th><th>Kompetence</th><th>Maal-niveau</th><th>Prioritet</th></tr>
-                    </thead>
-                    <tbody>
-                        {% for t in targets %}
-                        <tr>
-                            <td>{{ t.department or 'Alle' }}</td>
-                            <td>{{ t.skill_name }}</td>
-                            <td>{{ t.target_level }}/5</td>
-                            <td>{{ t.priority }}</td>
-                        </tr>
-                        {% endfor %}
-                    </tbody>
-                </table>
+    <!-- Tabs: Heatmap / Skill Browse / Targets -->
+    <ul class="nav nav-pills mb-4 gap-1" id="skillTabs">
+        <li class="nav-item">
+            <button class="nav-link active" data-bs-toggle="pill" data-bs-target="#tabHeatmap">
+                <i class="fas fa-th me-1"></i>Gap Heatmap
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabBrowse">
+                <i class="fas fa-search me-1"></i>Soeg kompetencer
+            </button>
+        </li>
+        <li class="nav-item">
+            <button class="nav-link" data-bs-toggle="pill" data-bs-target="#tabTargets">
+                <i class="fas fa-bullseye me-1"></i>Maal ({{ targets|length }})
+            </button>
+        </li>
+    </ul>
+
+    <div class="tab-content">
+        <!-- TAB 1: Heatmap -->
+        <div class="tab-pane fade show active" id="tabHeatmap">
+            {% if heatmap %}
+            <!-- Gap Chart -->
+            <div class="card mb-4">
+                <div class="card-header bg-white">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-chart-bar text-primary me-2"></i>Gap-oversigt pr. afdeling</h6>
+                </div>
+                <div class="card-body">
+                    <canvas id="gapChart" height="200"></canvas>
+                </div>
             </div>
+
+            {% for dept, skills in heatmap.items() %}
+            <div class="card mb-3">
+                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-sitemap text-primary me-2"></i>{{ dept }}</h6>
+                    <span class="badge bg-primary rounded-pill">{{ skills|length }} kompetencer</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-3 tbl-th">Kompetence</th>
+                                    <th class="tbl-th">Prioritet</th>
+                                    <th class="tbl-th text-center">Maal</th>
+                                    <th class="tbl-th">Nuvaerende</th>
+                                    <th class="tbl-th">Gab</th>
+                                    <th class="tbl-th text-center">Medarbejdere</th>
+                                    <th class="tbl-th text-center">Status</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for skill_name, data in skills.items() %}
+                                <tr>
+                                    <td class="ps-3 fw-bold">{{ skill_name }}</td>
+                                    <td>
+                                        {% if data.priority == 'high' %}
+                                        <span class="badge bg-danger bg-opacity-15 text-danger">Hoej</span>
+                                        {% elif data.priority == 'medium' %}
+                                        <span class="badge bg-warning bg-opacity-15 text-warning">Medium</span>
+                                        {% else %}
+                                        <span class="badge bg-info bg-opacity-15 text-info">Lav</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">
+                                        <span class="fw-bold">{{ data.target_level }}</span><small class="text-muted">/5</small>
+                                    </td>
+                                    <td>
+                                        <div class="d-flex align-items-center gap-2">
+                                            <div class="progress flex-grow-1" style="height:8px; max-width:80px;">
+                                                <div class="progress-bar {{ 'bg-success' if data.avg_current >= data.target_level else ('bg-warning' if data.avg_current >= data.target_level - 1 else 'bg-danger') }}"
+                                                     style="width:{{ (data.avg_current / 5 * 100)|int }}%"></div>
+                                            </div>
+                                            <small class="fw-bold">{{ data.avg_current }}</small>
+                                        </div>
+                                    </td>
+                                    <td>
+                                        {% if data.gap > 0 %}
+                                        <span class="text-danger fw-bold">-{{ data.gap }}</span>
+                                        {% else %}
+                                        <span class="text-success fw-bold"><i class="fas fa-check"></i></span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-center">{{ data.employees }}</td>
+                                    <td class="text-center">
+                                        {% if data.status == 'green' %}
+                                        <span class="badge bg-success"><i class="fas fa-check"></i></span>
+                                        {% elif data.status == 'yellow' %}
+                                        <span class="badge bg-warning text-dark"><i class="fas fa-minus"></i></span>
+                                        {% else %}
+                                        <span class="badge bg-danger"><i class="fas fa-arrow-down"></i></span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% endfor %}
+            {% else %}
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-brain fa-3x text-muted mb-3" style="opacity:0.3;"></i>
+                    <h5 class="fw-bold text-muted">Ingen kompetencedata endnu</h5>
+                    <p class="text-muted mb-3">Tilfoej kompetencemaal og registrer medarbejdernes skills for at se gap-analyse</p>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTargetModal">
+                        <i class="fas fa-plus me-1"></i> Tilfoej foerste kompetencemaal
+                    </button>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- TAB 2: Skill Browse & Search -->
+        <div class="tab-pane fade" id="tabBrowse">
+            <!-- Search bar -->
+            <div class="card mb-4">
+                <div class="card-body py-3">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-5">
+                            <label class="form-label small fw-bold text-muted mb-1">Soeg kompetence</label>
+                            <div class="input-group input-group-sm">
+                                <span class="input-group-text bg-white"><i class="fas fa-search text-muted"></i></span>
+                                <input type="text" class="form-control" id="skillSearch" placeholder="f.eks. Python, Ledelse, ITIL..." onkeyup="filterSkills()">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold text-muted mb-1">Afdeling</label>
+                            <select class="form-select form-select-sm" id="skillDeptFilter" onchange="filterSkills()">
+                                <option value="">Alle afdelinger</option>
+                                {% for d in departments %}
+                                <option value="{{ d }}">{{ d }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <label class="form-label small fw-bold text-muted mb-1">Min. niveau</label>
+                            <select class="form-select form-select-sm" id="skillLevelFilter" onchange="filterSkills()">
+                                <option value="0">Alle niveauer</option>
+                                <option value="1">1+</option>
+                                <option value="2">2+</option>
+                                <option value="3">3+</option>
+                                <option value="4">4+</option>
+                                <option value="5">5 (Ekspert)</option>
+                            </select>
+                        </div>
+                        <div class="col-md-2">
+                            <button class="btn btn-outline-secondary btn-sm w-100" onclick="clearSkillFilters()">
+                                <i class="fas fa-times me-1"></i>Nulstil
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            {% if skill_list %}
+            <!-- Skill Cards -->
+            <div class="row g-3" id="skillGrid">
+                {% for skill in skill_list %}
+                <div class="col-xl-4 col-md-6 skill-card-wrap"
+                     data-skill="{{ skill.skill_name|lower }}"
+                     data-depts="{{ skill.employees|map(attribute='department')|join(',') | lower }}"
+                     data-avg="{{ skill.avg_level }}">
+                    <div class="card h-100">
+                        <div class="card-body">
+                            <div class="d-flex justify-content-between align-items-start mb-2">
+                                <h6 class="fw-bold mb-0">{{ skill.skill_name }}</h6>
+                                <span class="badge bg-primary rounded-pill">{{ skill.count }} pers.</span>
+                            </div>
+                            <div class="d-flex align-items-center gap-2 mb-3">
+                                <div class="progress flex-grow-1" style="height:8px;">
+                                    <div class="progress-bar bg-primary" style="width:{{ (skill.avg_level / 5 * 100)|int }}%"></div>
+                                </div>
+                                <small class="fw-bold text-primary">{{ skill.avg_level }}/5</small>
+                            </div>
+                            <div class="skill-emp-list">
+                                {% for emp in skill.employees[:5] %}
+                                <a href="{{ url_for('hr_dashboard.employee_details', user_id=emp.user_id) }}" class="d-flex align-items-center gap-2 py-1 text-decoration-none text-dark skill-emp-row" data-dept="{{ emp.department|lower }}">
+                                    <div class="emp-dot" style="width:8px;height:8px;border-radius:50%;background:{{ ['#3b82f6','#10b981','#a855f7','#f59e0b','#ec4899'][loop.index0 % 5] }};"></div>
+                                    <small class="fw-bold">{{ emp.username }}</small>
+                                    <small class="text-muted ms-auto">Lvl {{ emp.current_level }}</small>
+                                    <div class="level-dots d-flex gap-1">
+                                        {% for i in range(1, 6) %}
+                                        <span class="level-dot {{ 'active' if i <= emp.current_level else '' }}"></span>
+                                        {% endfor %}
+                                    </div>
+                                </a>
+                                {% endfor %}
+                                {% if skill.count > 5 %}
+                                <small class="text-muted d-block mt-1">+ {{ skill.count - 5 }} flere</small>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+            <div class="text-center text-muted small mt-3" id="skillCount">Viser {{ skill_list|length }} kompetencer</div>
+            {% else %}
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-search fa-3x text-muted mb-3" style="opacity:0.3;"></i>
+                    <h5 class="fw-bold text-muted">Ingen kompetencer registreret</h5>
+                    <p class="text-muted">Medarbejderkompetencer vises naar de registreres via skills-matricen</p>
+                </div>
+            </div>
+            {% endif %}
+        </div>
+
+        <!-- TAB 3: Targets -->
+        <div class="tab-pane fade" id="tabTargets">
+            {% if targets %}
+            <div class="card">
+                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-bullseye text-primary me-2"></i>Alle kompetencemaal</h6>
+                    <span class="badge bg-primary rounded-pill">{{ targets|length }}</span>
+                </div>
+                <div class="card-body p-0">
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0">
+                            <thead class="bg-light">
+                                <tr>
+                                    <th class="ps-3 tbl-th">Kompetence</th>
+                                    <th class="tbl-th">Afdeling</th>
+                                    <th class="tbl-th text-center">Maal-niveau</th>
+                                    <th class="tbl-th text-center">Prioritet</th>
+                                    <th class="tbl-th"></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for t in targets %}
+                                <tr>
+                                    <td class="ps-3 fw-bold">{{ t.skill_name }}</td>
+                                    <td>{{ t.department or 'Alle afdelinger' }}</td>
+                                    <td class="text-center">
+                                        <div class="d-flex justify-content-center gap-1">
+                                            {% for i in range(1, 6) %}
+                                            <span class="level-dot {{ 'active' if i <= t.target_level else '' }}"></span>
+                                            {% endfor %}
+                                        </div>
+                                        <small class="text-muted">{{ t.target_level }}/5</small>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if t.priority == 'high' %}
+                                        <span class="badge bg-danger bg-opacity-15 text-danger">Hoej</span>
+                                        {% elif t.priority == 'medium' %}
+                                        <span class="badge bg-warning bg-opacity-15 text-warning">Medium</span>
+                                        {% else %}
+                                        <span class="badge bg-info bg-opacity-15 text-info">Lav</span>
+                                        {% endif %}
+                                    </td>
+                                    <td class="text-end pe-3">
+                                        <form method="POST" action="{{ url_for('hr_dashboard.delete_skill_target', target_id=t.id) }}" class="d-inline" onsubmit="return confirm('Slet dette maal?')">
+                                            <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="fas fa-trash"></i></button>
+                                        </form>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div class="card">
+                <div class="card-body text-center py-5">
+                    <i class="fas fa-bullseye fa-3x text-muted mb-3" style="opacity:0.3;"></i>
+                    <h5 class="fw-bold text-muted">Ingen kompetencemaal sat</h5>
+                    <p class="text-muted mb-3">Definer maal for at se gap-analyse</p>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTargetModal">
+                        <i class="fas fa-plus me-1"></i> Tilfoej kompetencemaal
+                    </button>
+                </div>
+            </div>
+            {% endif %}
         </div>
     </div>
-    {% endif %}
 </div>
 
 <!-- Add Target Modal -->
 <div class="modal fade" id="addTargetModal" tabindex="-1">
     <div class="modal-dialog">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h5 class="modal-title">Tilfoej kompetencemaal</h5>
+        <div class="modal-content" style="border-radius:12px;">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle text-primary me-2"></i>Tilfoej kompetencemaal</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
                 <div class="mb-3">
-                    <label class="form-label">Afdeling (tom = alle)</label>
+                    <label class="form-label fw-bold">Afdeling</label>
                     <select class="form-select" id="targetDept">
                         <option value="">Alle afdelinger</option>
                         {% for d in departments %}
                         <option value="{{ d }}">{{ d }}</option>
                         {% endfor %}
                     </select>
+                    <small class="text-muted">Tom = gaelder for alle</small>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Kompetence *</label>
+                    <label class="form-label fw-bold">Kompetence <span class="text-danger">*</span></label>
                     <input type="text" class="form-control" id="targetSkill" placeholder="f.eks. Python, ITIL, Projektledelse">
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Maal-niveau (1-5)</label>
-                    <input type="range" class="form-range" id="targetLevel" min="1" max="5" value="3">
+                    <label class="form-label fw-bold">Maal-niveau: <span id="levelDisplay">3</span>/5</label>
+                    <input type="range" class="form-range" id="targetLevel" min="1" max="5" value="3"
+                           oninput="document.getElementById('levelDisplay').textContent=this.value">
                     <div class="d-flex justify-content-between small text-muted">
                         <span>1 Begynder</span><span>3 Kompetent</span><span>5 Ekspert</span>
                     </div>
                 </div>
                 <div class="mb-3">
-                    <label class="form-label">Prioritet</label>
+                    <label class="form-label fw-bold">Prioritet</label>
                     <select class="form-select" id="targetPriority">
                         <option value="low">Lav</option>
                         <option value="medium" selected>Medium</option>
@@ -160,33 +379,137 @@
                     </select>
                 </div>
             </div>
-            <div class="modal-footer">
-                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
-                <button type="button" class="btn btn-primary" onclick="saveTarget()"><i class="fas fa-save"></i> Gem</button>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-primary" onclick="saveTarget()"><i class="fas fa-save me-1"></i>Gem</button>
             </div>
         </div>
     </div>
 </div>
 {% endblock %}
 
+{% block extra_styles %}
+<style>
+/* KPI */
+.kpi-card { display:flex; align-items:center; gap:14px; padding:18px; border-radius:12px; background:#fff; box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.03); height:100%; }
+.kpi-card:hover { transform:translateY(-1px); box-shadow:0 4px 12px rgba(0,0,0,0.1); transition:all .15s; }
+.kpi-icon { width:44px; height:44px; border-radius:10px; display:flex; align-items:center; justify-content:center; font-size:1.1rem; flex-shrink:0; }
+.kpi-blue .kpi-icon { background:rgba(59,130,246,0.1); color:#3b82f6; }
+.kpi-red .kpi-icon { background:rgba(239,68,68,0.1); color:#ef4444; }
+.kpi-green .kpi-icon { background:rgba(16,185,129,0.1); color:#10b981; }
+.kpi-purple .kpi-icon { background:rgba(168,85,247,0.1); color:#a855f7; }
+.kpi-blue { border-left:3px solid #3b82f6; }
+.kpi-red { border-left:3px solid #ef4444; }
+.kpi-green { border-left:3px solid #10b981; }
+.kpi-purple { border-left:3px solid #a855f7; }
+.kpi-label { font-size:0.68rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#94a3b8; }
+.kpi-value { font-size:1.4rem; font-weight:800; color:#1e293b; }
+
+/* Cards */
+.card { border:none; border-radius:12px; box-shadow:0 1px 3px rgba(0,0,0,0.06),0 4px 12px rgba(0,0,0,0.03); }
+.card-header { border-bottom:1px solid #f1f5f9; }
+.tbl-th { font-size:0.72rem; font-weight:700; text-transform:uppercase; letter-spacing:0.03em; color:#64748b; border-bottom-width:1px !important; }
+
+/* Level dots */
+.level-dot { width:8px; height:8px; border-radius:50%; background:#e2e8f0; display:inline-block; }
+.level-dot.active { background:#3b82f6; }
+
+/* Nav pills */
+.nav-pills .nav-link { color:#64748b; font-weight:600; font-size:0.85rem; border-radius:8px; padding:8px 16px; }
+.nav-pills .nav-link.active { background:linear-gradient(135deg,#4e73df,#6366f1); color:#fff; box-shadow:0 2px 8px rgba(78,115,223,0.3); }
+
+/* Skill cards */
+.skill-emp-row:hover { background:#f8fafc; border-radius:6px; }
+
+@media (max-width:768px) {
+    .kpi-card { padding:12px; }
+    .kpi-value { font-size:1.1rem; }
+}
+</style>
+{% endblock %}
+
 {% block extra_scripts %}
-{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+// Save target
 function saveTarget() {
-    const data = {
+    var data = {
         department: document.getElementById('targetDept').value,
         skill_name: document.getElementById('targetSkill').value,
         target_level: parseInt(document.getElementById('targetLevel').value),
-        priority: document.getElementById('targetPriority').value,
+        priority: document.getElementById('targetPriority').value
     };
     if (!data.skill_name) { alert('Angiv kompetencenavn.'); return; }
     fetch('{{ url_for("hr_dashboard.save_skill_target") }}', {
-        method: 'POST', headers: {'Content-Type': 'application/json'},
+        method:'POST', headers:{'Content-Type':'application/json'},
         body: JSON.stringify(data)
-    }).then(r => r.json()).then(d => {
-        if (d.success) location.reload();
+    }).then(function(r){return r.json();}).then(function(d){
+        if(d.success) location.reload();
         else alert('Fejl: ' + d.message);
     });
 }
+
+// Skill search/filter
+function filterSkills() {
+    var search = document.getElementById('skillSearch').value.toLowerCase();
+    var dept = document.getElementById('skillDeptFilter').value.toLowerCase();
+    var minLevel = parseInt(document.getElementById('skillLevelFilter').value) || 0;
+    var visible = 0;
+    document.querySelectorAll('.skill-card-wrap').forEach(function(el) {
+        var matchSearch = !search || el.dataset.skill.includes(search);
+        var matchDept = !dept || el.dataset.depts.includes(dept);
+        var matchLevel = parseFloat(el.dataset.avg) >= minLevel;
+        var show = matchSearch && matchDept && matchLevel;
+        el.style.display = show ? '' : 'none';
+        if (show) visible++;
+    });
+    document.getElementById('skillCount').textContent = 'Viser ' + visible + ' kompetencer';
+}
+function clearSkillFilters() {
+    document.getElementById('skillSearch').value = '';
+    document.getElementById('skillDeptFilter').value = '';
+    document.getElementById('skillLevelFilter').value = '0';
+    filterSkills();
+}
+
+// Gap Chart
+{% if heatmap %}
+(function() {
+    var labels = [];
+    var gapData = [];
+    var colors = [];
+    {% for dept, skills in heatmap.items() %}
+    {% for skill_name, data in skills.items() %}
+    labels.push('{{ skill_name }} ({{ dept[:15] }})');
+    gapData.push({{ data.gap }});
+    colors.push({{ data.gap }} > 1 ? '#ef4444' : ({{ data.gap }} > 0 ? '#f59e0b' : '#10b981'));
+    {% endfor %}
+    {% endfor %}
+    var ctx = document.getElementById('gapChart');
+    if (ctx) {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Gap (maal - nuvaerende)',
+                    data: gapData,
+                    backgroundColor: colors,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                indexAxis: 'y',
+                responsive: true,
+                plugins: { legend: { display: false } },
+                scales: {
+                    x: { beginAtZero: true, grid: { color: 'rgba(0,0,0,0.03)' } },
+                    y: { grid: { display: false } }
+                }
+            }
+        });
+    }
+})();
+{% endif %}
 </script>
 {% endblock %}

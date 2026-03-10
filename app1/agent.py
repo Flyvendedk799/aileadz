@@ -329,11 +329,18 @@ _LOW_INTENT_PATTERNS = _re.compile(
 
 # Profile update: user mentions their own experience, skills, education, etc.
 _PROFILE_UPDATE_PATTERNS = _re.compile(
-    r'\b(jeg har\b.*?\b(?:været|arbejdet|erfaring|en |et )|jeg er |jeg kan |jeg arbejder |'
+    r'\b(jeg har\b.*?\b(?:været|arbejdet|erfaring)|jeg arbejder |'
     r'min (?:baggrund|uddannelse|erfaring|rolle)|'
     r'jeg (?:læste|studerede|tog)|jeg har\b.*?\b(?:taget|gennemført)|'
     r'jeg (?:ved noget om|kender til|har kompetence)|'
-    r'min stilling|mit job|min titel|mit mål)\b', _re.IGNORECASE
+    r'min stilling|mit job|min titel)\b', _re.IGNORECASE
+)
+# Learning/improvement intent — should NOT trigger profile_update
+_LEARNING_GOAL_PATTERNS = _re.compile(
+    r'\b(vil gerne (?:lære|blive|være)|vil (?:lære|blive|være)|blive bedre|være bedre|'
+    r'lære (?:mere|om|at)|udvikle mig|opkvalificere|dygtigere|forbedre|'
+    r'har brug for (?:kursus|uddannelse|træning|kompetence)|'
+    r'mangler (?:viden|kompetence|erfaring)|søger (?:kursus|uddannelse))\b', _re.IGNORECASE
 )
 
 # 3.3: Conversation repair / rejection detection
@@ -445,7 +452,10 @@ def _classify_intent_local(user_query, messages, shown_count):
         return "team_buying"
 
     # Profile update: user mentions their own background/experience/skills
+    # BUT if they also express a learning goal, treat as discovery (course search)
     if _PROFILE_UPDATE_PATTERNS.search(user_query):
+        if _LEARNING_GOAL_PATTERNS.search(user_query):
+            return "discovery"  # They want courses, not just updating profile
         return "profile_update"
 
     # Very short with no topic keywords — needs clarification

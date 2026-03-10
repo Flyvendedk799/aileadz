@@ -20,6 +20,9 @@
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'employees' else '' }}" href="{{ url_for('companies.employees') }}">
                     <i class="fas fa-users"></i> Medarbejdere
                 </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'departments' else '' }}" href="{{ url_for('hr_dashboard.departments') }}">
+                    <i class="fas fa-sitemap"></i> Afdelinger
+                </a>
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'approvals' else '' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}">
                     <i class="fas fa-check-circle"></i> Godkendelser
                     {% if pending_approval_count is defined and pending_approval_count > 0 %}

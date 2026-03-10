@@ -31,7 +31,7 @@
                             {% if onboarding.has_employees %}<i class="fas fa-check-circle text-success me-3"></i>{% else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Tilfoej medarbejdere</span>
                         </a>
-                        <a href="{{ url_for('companies.settings') }}" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                        <a href="{{ url_for('hr_dashboard.departments') }}" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
                             {% if onboarding.has_departments %}<i class="fas fa-check-circle text-success me-3"></i>{% else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Opret afdelinger</span>
                         </a>
@@ -532,9 +532,9 @@
                     <div class="empty-state py-3">
                         <i class="fas fa-sitemap"></i>
                         <p>Ingen afdelinger oprettet</p>
-                        <small>Opret afdelinger under Indstillinger</small>
+                        <small>Opret afdelinger for at organisere medarbejdere</small>
                         <div class="mt-2">
-                            <a href="{{ url_for('companies.settings') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-cog me-1"></i>Indstillinger</a>
+                            <a href="{{ url_for('hr_dashboard.departments') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-plus me-1"></i>Opret afdeling</a>
                         </div>
                     </div>
                     {% endif %}

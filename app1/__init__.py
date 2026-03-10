@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context
 from markupsafe import escape
 import json
 import logging
@@ -1047,6 +1047,171 @@ def nudges():
         logging.warning("Nudge endpoint error: %s", e)
 
     return jsonify({"nudges": nudge_list[:3]})
+
+
+@app1_bp.route("/widget/<token>")
+def widget_embed(token):
+    """Serve embeddable chat widget for external websites"""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("""
+        SELECT ws.*, c.company_name, c.id as cid
+        FROM company_widget_settings ws
+        JOIN companies c ON ws.company_id = c.id
+        WHERE ws.widget_token = %s AND ws.is_active = 1
+    """, (token,))
+    widget = cur.fetchone()
+    cur.close()
+
+    if not widget:
+        return "Widget not found or inactive", 404
+
+    # Check allowed domains via Referer header
+    referer = request.headers.get('Referer', '')
+    allowed = widget.get('allowed_domains') if isinstance(widget, dict) else None
+    if allowed:
+        from urllib.parse import urlparse
+        ref_domain = urlparse(referer).netloc
+        allowed_list = [d.strip().lower() for d in allowed.split(',') if d.strip()]
+        if allowed_list and ref_domain and ref_domain.lower() not in allowed_list:
+            return "Domain not allowed", 403
+
+    return render_template('app1/widget_chat.html', widget=widget)
+
+
+@app1_bp.route("/widget/<token>/ask", methods=["POST"])
+def widget_ask(token):
+    """Handle chat messages from embedded widget — no login required"""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("""
+        SELECT ws.*, c.company_name, c.id as cid
+        FROM company_widget_settings ws
+        JOIN companies c ON ws.company_id = c.id
+        WHERE ws.widget_token = %s AND ws.is_active = 1
+    """, (token,))
+    widget = cur.fetchone()
+    cur.close()
+
+    if not widget:
+        return jsonify({"error": "Widget not found"}), 404
+
+    data = request.get_json(silent=True) or {}
+    user_query = (data.get("query") or "").strip()
+    if not user_query:
+        return jsonify({"error": "No query"}), 400
+
+    # Use a widget-specific session ID
+    widget_session_id = session.get('widget_session_id')
+    if not widget_session_id:
+        widget_session_id = f"widget_{uuid.uuid4().hex}"
+        session['widget_session_id'] = widget_session_id
+
+    session['session_id'] = widget_session_id
+
+    from app1.agent import handle_agentic_ask
+    response = Response(
+        stream_with_context(handle_agentic_ask(user_query, session)),
+        mimetype="text/event-stream"
+    )
+    response.headers['X-Accel-Buffering'] = 'no'
+    response.headers['Cache-Control'] = 'no-cache'
+    return response
+
+
+@app1_bp.route("/widget/<token>/loader.js")
+def widget_loader_js(token):
+    """Serve the loader script that creates the chat widget on external sites"""
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("""
+        SELECT ws.*, c.company_name
+        FROM company_widget_settings ws
+        JOIN companies c ON ws.company_id = c.id
+        WHERE ws.widget_token = %s AND ws.is_active = 1
+    """, (token,))
+    widget = cur.fetchone()
+    cur.close()
+
+    if not widget:
+        return "/* Widget not found */", 404, {'Content-Type': 'application/javascript'}
+
+    # Extract settings
+    if isinstance(widget, dict):
+        primary = widget.get('theme_primary_color', '#4F46E5')
+        text_color = widget.get('theme_text_color', '#FFFFFF')
+        position = widget.get('position', 'bottom-right')
+        size = widget.get('widget_size', 'medium')
+        title = widget.get('widget_title', 'Kursusrådgiver')
+    else:
+        primary, text_color, position, size, title = '#4F46E5', '#FFFFFF', 'bottom-right', 'medium', 'Kursusrådgiver'
+
+    size_map = {'small': 350, 'medium': 400, 'large': 450}
+    width = size_map.get(size, 400)
+    height = int(width * 1.4)
+
+    # Position CSS
+    pos_parts = position.split('-')
+    vert = pos_parts[0] if pos_parts else 'bottom'
+    horiz = pos_parts[1] if len(pos_parts) > 1 else 'right'
+    pos_css = f"{vert}:20px;{horiz}:20px;"
+    frame_pos = f"{vert}:{80}px;{horiz}:20px;"
+
+    iframe_url = request.url_root.rstrip('/') + url_for('app1.widget_embed', token=token)
+
+    js = f"""(function(){{
+  if(window.__ailead_widget)return;
+  window.__ailead_widget=true;
+  var s=document.createElement('style');
+  s.textContent=`
+    #ailead-widget-btn{{
+      position:fixed;{pos_css}z-index:99998;
+      width:56px;height:56px;border-radius:50%;border:none;
+      background:{primary};color:{text_color};cursor:pointer;
+      box-shadow:0 4px 16px rgba(0,0,0,0.2);
+      display:flex;align-items:center;justify-content:center;
+      transition:transform 0.2s,box-shadow 0.2s;
+    }}
+    #ailead-widget-btn:hover{{transform:scale(1.08);box-shadow:0 6px 24px rgba(0,0,0,0.25);}}
+    #ailead-widget-btn svg{{width:26px;height:26px;fill:currentColor;}}
+    #ailead-widget-frame{{
+      position:fixed;{frame_pos}z-index:99999;
+      width:{width}px;height:{height}px;max-height:calc(100vh - 100px);
+      border:none;border-radius:16px;
+      box-shadow:0 8px 40px rgba(0,0,0,0.18);
+      display:none;overflow:hidden;
+      transition:opacity 0.2s,transform 0.2s;
+    }}
+    #ailead-widget-frame.open{{display:block;}}
+    @media(max-width:500px){{
+      #ailead-widget-frame{{width:calc(100vw - 20px);height:calc(100vh - 80px);
+        left:10px!important;right:10px!important;bottom:70px!important;top:auto!important;border-radius:12px;}}
+    }}
+  `;
+  document.head.appendChild(s);
+  var btn=document.createElement('button');
+  btn.id='ailead-widget-btn';
+  btn.title='{title}';
+  btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+  document.body.appendChild(btn);
+  var frame=document.createElement('iframe');
+  frame.id='ailead-widget-frame';
+  frame.src='{iframe_url}';
+  frame.allow='clipboard-write';
+  document.body.appendChild(frame);
+  var open=false;
+  btn.addEventListener('click',function(){{
+    open=!open;
+    frame.classList.toggle('open',open);
+    btn.innerHTML=open?'<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>':'<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+  }});
+  window.addEventListener('message',function(e){{
+    if(e.data==='ailead-close'){{open=false;frame.classList.remove('open');
+      btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+    }}
+  }});
+}})();"""
+
+    resp = Response(js, mimetype='application/javascript')
+    resp.headers['Cache-Control'] = 'public, max-age=300'
+    return resp
 
 
 app.register_blueprint(app1_bp, url_prefix='/app1')

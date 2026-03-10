@@ -748,6 +748,28 @@ def ensure_enterprise_tables(app):
                     INDEX idx_company (company_id),
                     INDEX idx_session (session_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Company Widget Settings (embeddable chatbot widget) ──
+                """CREATE TABLE IF NOT EXISTS company_widget_settings (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    widget_token VARCHAR(64) UNIQUE NOT NULL,
+                    is_active TINYINT(1) DEFAULT 1,
+                    theme_primary_color VARCHAR(7) DEFAULT '#4F46E5',
+                    theme_text_color VARCHAR(7) DEFAULT '#FFFFFF',
+                    theme_bg_color VARCHAR(7) DEFAULT '#FFFFFF',
+                    position ENUM('bottom-right', 'bottom-left', 'top-right', 'top-left') DEFAULT 'bottom-right',
+                    widget_title VARCHAR(100) DEFAULT 'Kursusrådgiver',
+                    welcome_message TEXT,
+                    widget_size ENUM('small', 'medium', 'large') DEFAULT 'medium',
+                    show_branding TINYINT(1) DEFAULT 1,
+                    custom_css TEXT,
+                    allowed_domains TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_company (company_id),
+                    INDEX idx_token (widget_token)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
             ]
 
             for sql in tables:

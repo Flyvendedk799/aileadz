@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}Chatbot-indstillinger - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+  .settings-section { background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; }
+  .settings-section h5 { color: #374151; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #eef2ff; }
+  .mode-card { border: 2px solid #e5e7eb; border-radius: 12px; padding: 20px; cursor: pointer; transition: all 0.2s; text-align: center; }
+  .mode-card:hover { border-color: #818cf8; }
+  .mode-card.active { border-color: #6366f1; background: #eef2ff; }
+  .mode-card i { font-size: 2em; margin-bottom: 8px; }
+  .slider-container { padding: 20px 0; }
+  .slider-labels { display: flex; justify-content: space-between; margin-top: 8px; }
+  .preview-box { background: #f8fafc; border-radius: 8px; padding: 16px; border-left: 4px solid #6366f1; }
+  .char-count { font-size: 0.8em; color: #9ca3af; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <div class="row justify-content-center">
+        <div class="col-lg-8">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <div>
+                    <h2><i class="fas fa-robot text-primary"></i> Chatbot-indstillinger</h2>
+                    <p class="text-muted mb-0">Konfigurer hvordan AI-chatbotten opfoerer sig for jeres medarbejdere</p>
+                </div>
+            </div>
+
+            <form method="POST">
+                <!-- Course Mode -->
+                <div class="settings-section">
+                    <h5><i class="fas fa-graduation-cap"></i> Kursuskilder</h5>
+                    <p class="text-muted">Vaelg hvilke kurser chatbotten skal anbefale til jeres medarbejdere.</p>
+
+                    <div class="row g-3 mb-4">
+                        <div class="col-md-4">
+                            <div class="mode-card {% if (settings.chatbot_course_mode or 'both') == 'internal_only' %}active{% endif %}"
+                                 onclick="selectMode('internal_only')">
+                                <i class="fas fa-building text-primary"></i>
+                                <h6>Kun interne</h6>
+                                <small class="text-muted">Vis kun virksomhedens egne kurser</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mode-card {% if (settings.chatbot_course_mode or 'both') == 'both' %}active{% endif %}"
+                                 onclick="selectMode('both')">
+                                <i class="fas fa-exchange-alt text-success"></i>
+                                <h6>Begge</h6>
+                                <small class="text-muted">Mix af interne og eksterne kurser</small>
+                            </div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="mode-card {% if (settings.chatbot_course_mode or 'both') == 'external_only' %}active{% endif %}"
+                                 onclick="selectMode('external_only')">
+                                <i class="fas fa-globe text-info"></i>
+                                <h6>Kun eksterne</h6>
+                                <small class="text-muted">Vis kun kurser fra eksterne udbydere</small>
+                            </div>
+                        </div>
+                    </div>
+                    <input type="hidden" name="chatbot_course_mode" id="chatbot_course_mode"
+                           value="{{ settings.chatbot_course_mode or 'both' }}">
+
+                    <!-- Priority Slider (only visible for "both" mode) -->
+                    <div id="sliderSection" class="slider-container" style="display: {{ 'block' if (settings.chatbot_course_mode or 'both') == 'both' else 'none' }};">
+                        <label class="form-label fw-bold">Prioritering: Interne vs. eksterne kurser</label>
+                        <input type="range" class="form-range" name="chatbot_internal_weight" id="chatbot_internal_weight"
+                               min="0" max="100" value="{{ settings.chatbot_internal_weight or 50 }}"
+                               oninput="updateSliderLabel(this.value)">
+                        <div class="slider-labels">
+                            <span><i class="fas fa-globe"></i> 100% Eksterne</span>
+                            <span id="sliderValue" class="fw-bold text-primary">{{ settings.chatbot_internal_weight or 50 }}% interne</span>
+                            <span><i class="fas fa-building"></i> 100% Interne</span>
+                        </div>
+                    </div>
+
+                    <div class="row mt-3">
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="chatbot_show_internal" id="chatbot_show_internal"
+                                       {% if settings.chatbot_show_internal is not defined or settings.chatbot_show_internal %}checked{% endif %}>
+                                <label class="form-check-label" for="chatbot_show_internal">Vis interne kurser ({{ internal_course_count }} tilgaengelige)</label>
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <div class="form-check form-switch">
+                                <input class="form-check-input" type="checkbox" name="chatbot_show_external" id="chatbot_show_external"
+                                       {% if settings.chatbot_show_external is not defined or settings.chatbot_show_external %}checked{% endif %}>
+                                <label class="form-check-label" for="chatbot_show_external">Vis eksterne kurser fra katalog</label>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Custom Instructions -->
+                <div class="settings-section">
+                    <h5><i class="fas fa-pen-fancy"></i> Tilpassede chatbot-instruktioner</h5>
+                    <p class="text-muted">Skriv virksomhedsspecifikke retningslinjer som chatbotten skal foelge naar den hjaelper jeres medarbejdere. Disse injiceres i chatbottens systemprompt.</p>
+
+                    <textarea class="form-control" name="chatbot_custom_instructions" id="chatbot_custom_instructions"
+                              rows="6" maxlength="2000"
+                              placeholder="f.eks.&#10;- Anbefal altid compliance-kurser foerst for nye medarbejdere&#10;- Prioriter e-learning over klassevaerelse&#10;- Naevn altid vores interne onboarding-program&#10;- Brug venlig og uformel tone">{{ settings.chatbot_custom_instructions or '' }}</textarea>
+                    <div class="d-flex justify-content-between mt-1">
+                        <small class="text-muted">Disse instruktioner paavirker kun chatbotten for {{ company.company_name }}s medarbejdere.</small>
+                        <span class="char-count"><span id="charCount">{{ (settings.chatbot_custom_instructions or '')|length }}</span>/2000</span>
+                    </div>
+
+                    <!-- Preview -->
+                    <div class="preview-box mt-3">
+                        <strong><i class="fas fa-eye"></i> Forhoendsvisning af chatbot-kontekst:</strong>
+                        <p class="mb-0 mt-2 small" id="previewText">
+                            {% if settings.chatbot_custom_instructions %}
+                            "Virksomhedsspecifikke retningslinjer for {{ company.company_name }}: {{ settings.chatbot_custom_instructions[:200] }}..."
+                            {% else %}
+                            <span class="text-muted">Ingen tilpassede instruktioner — chatbotten bruger standardadfaerd.</span>
+                            {% endif %}
+                        </p>
+                    </div>
+                </div>
+
+                <div class="d-flex justify-content-end gap-2 mb-5">
+                    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-secondary">Annuller</a>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save"></i> Gem indstillinger</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+function selectMode(mode) {
+    document.getElementById('chatbot_course_mode').value = mode;
+    document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+    event.currentTarget.classList.add('active');
+    document.getElementById('sliderSection').style.display = mode === 'both' ? 'block' : 'none';
+}
+
+function updateSliderLabel(val) {
+    document.getElementById('sliderValue').textContent = val + '% interne';
+}
+
+// Character count
+const ta = document.getElementById('chatbot_custom_instructions');
+const cc = document.getElementById('charCount');
+ta.addEventListener('input', () => { cc.textContent = ta.value.length; });
+</script>
+{% endblock %}

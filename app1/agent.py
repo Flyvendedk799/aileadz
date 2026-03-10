@@ -1021,6 +1021,80 @@ def handle_agentic_ask(user_query, session):
             except Exception as e:
                 print(f"[Cross-Session Load Error] {e}")
 
+            # 7.0: Company-specific chatbot context — inject custom instructions
+            company_id = session.get("company_id")
+            if company_id:
+                try:
+                    from flask import current_app
+                    cur = current_app.mysql.connection.cursor()
+                    cur.execute(
+                        "SELECT chatbot_course_mode, chatbot_internal_weight, chatbot_custom_instructions, "
+                        "chatbot_show_external, chatbot_show_internal FROM company_settings WHERE company_id = %s",
+                        (company_id,)
+                    )
+                    row = cur.fetchone()
+                    if row:
+                        co_mode, co_weight, co_instructions, co_show_ext, co_show_int = row
+                        company_context_parts = []
+
+                        # Course mode context
+                        if co_mode == 'internal_only':
+                            company_context_parts.append(
+                                "VIRKSOMHEDSREGEL: Vis KUN virksomhedens interne kurser. Anbefal IKKE eksterne kurser."
+                            )
+                        elif co_mode == 'external_only':
+                            company_context_parts.append(
+                                "VIRKSOMHEDSREGEL: Vis KUN eksterne kurser fra kataloget. Spring interne kurser over."
+                            )
+                        elif co_mode == 'both' and co_weight is not None:
+                            company_context_parts.append(
+                                f"VIRKSOMHEDSREGEL: Vis bade interne og eksterne kurser. "
+                                f"Prioriter interne kurser med {co_weight}% vaegt."
+                            )
+
+                        # Custom instructions
+                        if co_instructions and co_instructions.strip():
+                            company_context_parts.append(
+                                f"VIRKSOMHEDSSPECIFIKKE INSTRUKTIONER:\n{co_instructions.strip()}"
+                            )
+
+                        # Load internal courses for context
+                        if co_show_int and co_mode != 'external_only':
+                            cur.execute(
+                                "SELECT title, category, description, format, duration_hours, difficulty_level "
+                                "FROM company_courses WHERE company_id = %s AND is_active = 1 LIMIT 30",
+                                (company_id,)
+                            )
+                            internal_courses = cur.fetchall()
+                            if internal_courses:
+                                course_list = []
+                                for ic in internal_courses:
+                                    title, cat, desc, fmt, dur, diff = ic
+                                    parts = [title]
+                                    if cat:
+                                        parts.append(f"({cat})")
+                                    if fmt:
+                                        parts.append(f"[{fmt}]")
+                                    if dur:
+                                        parts.append(f"{dur}t")
+                                    course_list.append(" ".join(parts))
+                                company_context_parts.append(
+                                    f"INTERNE KURSER TILGAENGELIGE ({len(internal_courses)}):\n"
+                                    + "\n".join(f"- {c}" for c in course_list)
+                                    + "\nNaar brugeren spoerger om emner der matcher disse kurser, anbefal dem."
+                                )
+
+                        if company_context_parts:
+                            company_name = session.get('company_name', 'Virksomheden')
+                            CHAT_MEMORY[sid].append({
+                                "role": "system",
+                                "content": f"VIRKSOMHEDSKONTEKST ({company_name}):\n\n"
+                                           + "\n\n".join(company_context_parts)
+                            })
+                    cur.close()
+                except Exception as e:
+                    print(f"[Company Context Error] {e}")
+
             # Restore saved conversation messages for logged-in users
             try:
                 from app1.user_profile_db import load_conversation
@@ -1352,7 +1426,24 @@ def handle_agentic_ask(user_query, session):
                     }
             except (NameError, Exception):
                 pass
-            set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs)
+            # Load blocked vendors for company employees
+            blocked_vendors = set()
+            company_id = session.get("company_id")
+            if company_id:
+                try:
+                    from flask import current_app as _ca
+                    _vc = _ca.mysql.connection.cursor()
+                    _vc.execute(
+                        "SELECT vendor_name FROM company_supplier_preferences "
+                        "WHERE company_id = %s AND is_active = 0", (company_id,)
+                    )
+                    blocked_vendors = {r[0] for r in _vc.fetchall()}
+                    _vc.close()
+                except Exception:
+                    pass
+
+            set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
+                               blocked_vendors=blocked_vendors)
 
             # Tool-calling loop (non-streaming for tool iterations)
             last_message_is_final = False

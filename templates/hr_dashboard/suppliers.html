@@ -1,0 +1,165 @@
+{% extends "base.html" %}
+
+{% block title %}Leverandoerer & Kurser - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+  .vendor-card { border-radius: 12px; border: 1px solid #e5e7eb; padding: 16px; transition: all 0.2s; }
+  .vendor-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+  .vendor-card.deactivated { opacity: 0.6; background: #f9fafb; }
+  .stat-pill { background: #f8fafc; border-radius: 12px; padding: 16px 20px; text-align: center; }
+  .stat-pill h3 { margin: 0; font-weight: 700; }
+  .stat-pill small { color: #6b7280; }
+  .filter-bar { background: #f8fafc; border-radius: 12px; padding: 16px; }
+  .vendor-toggle { cursor: pointer; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-store text-primary"></i> Leverandoer- & Kursusstyring</h2>
+            <p class="text-muted mb-0">Aktiver/deaktiver kursusleverandoerer for jeres medarbejdere</p>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="row mb-4">
+        <div class="col-md-4">
+            <div class="stat-pill">
+                <h3 class="text-primary">{{ vendors|length }}</h3>
+                <small>Leverandoerer i alt</small>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-pill">
+                <h3 class="text-success">{{ active_vendors }}</h3>
+                <small>Aktive leverandoerer</small>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-pill">
+                <h3 class="text-danger">{{ deactivated_vendors }}</h3>
+                <small>Deaktiverede</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filter -->
+    <div class="filter-bar mb-4">
+        <div class="row align-items-center">
+            <div class="col-md-6">
+                <input type="text" class="form-control" id="vendorSearch" placeholder="Soeg leverandoer...">
+            </div>
+            <div class="col-md-3">
+                <select class="form-control" id="vendorFilter">
+                    <option value="all">Alle</option>
+                    <option value="active">Kun aktive</option>
+                    <option value="inactive">Kun deaktiverede</option>
+                </select>
+            </div>
+            <div class="col-md-3 text-end">
+                <button class="btn btn-outline-success btn-sm me-1" onclick="bulkToggle(1)">
+                    <i class="fas fa-check-double"></i> Aktiver alle
+                </button>
+                <button class="btn btn-outline-danger btn-sm" onclick="bulkToggle(0)">
+                    <i class="fas fa-ban"></i> Deaktiver alle
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Vendor List -->
+    <div class="row" id="vendorList">
+        {% for vendor in vendors %}
+        <div class="col-md-6 col-lg-4 mb-3 vendor-item" data-name="{{ vendor.name|lower }}" data-active="{{ vendor.is_active }}">
+            <div class="vendor-card {{ 'deactivated' if not vendor.is_active }}">
+                <div class="d-flex justify-content-between align-items-start">
+                    <div>
+                        <h6 class="mb-1">{{ vendor.name }}</h6>
+                        <small class="text-muted">{{ vendor.course_count }} kurser tilgaengelige</small>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input vendor-toggle" type="checkbox" role="switch"
+                               data-vendor="{{ vendor.name }}"
+                               {% if vendor.is_active %}checked{% endif %}
+                               onchange="toggleVendor(this)">
+                    </div>
+                </div>
+                {% if vendor.notes %}
+                <small class="text-muted mt-2 d-block"><i class="fas fa-sticky-note"></i> {{ vendor.notes }}</small>
+                {% endif %}
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if not vendors %}
+    <div class="text-center py-5">
+        <i class="fas fa-store fa-4x text-muted mb-3"></i>
+        <h5 class="text-muted">Ingen leverandoerer fundet</h5>
+        <p class="text-muted">Kursuskataloget indeholder ingen leverandoerer endnu.</p>
+    </div>
+    {% endif %}
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+function toggleVendor(checkbox) {
+    const vendorName = checkbox.dataset.vendor;
+    const isActive = checkbox.checked ? 1 : 0;
+    const card = checkbox.closest('.vendor-card');
+
+    fetch('{{ url_for("hr_dashboard.toggle_supplier") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({vendor_name: vendorName, is_active: isActive})
+    }).then(r => r.json()).then(data => {
+        if (data.success) {
+            card.classList.toggle('deactivated', !isActive);
+            card.closest('.vendor-item').dataset.active = isActive;
+        } else {
+            checkbox.checked = !checkbox.checked;
+            alert('Fejl: ' + (data.message || 'Ukendt fejl'));
+        }
+    }).catch(() => { checkbox.checked = !checkbox.checked; });
+}
+
+function bulkToggle(isActive) {
+    const allNames = Array.from(document.querySelectorAll('.vendor-toggle')).map(cb => cb.dataset.vendor);
+    if (!confirm(`Er du sikker paa du vil ${isActive ? 'aktivere' : 'deaktivere'} alle ${allNames.length} leverandoerer?`)) return;
+
+    fetch('{{ url_for("hr_dashboard.bulk_toggle_suppliers") }}', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({vendor_names: allNames, is_active: isActive})
+    }).then(r => r.json()).then(data => {
+        if (data.success) location.reload();
+        else alert('Fejl: ' + (data.message || ''));
+    });
+}
+
+// Client-side search & filter
+document.getElementById('vendorSearch').addEventListener('input', filterVendors);
+document.getElementById('vendorFilter').addEventListener('change', filterVendors);
+
+function filterVendors() {
+    const q = document.getElementById('vendorSearch').value.toLowerCase();
+    const filter = document.getElementById('vendorFilter').value;
+    document.querySelectorAll('.vendor-item').forEach(el => {
+        const nameMatch = el.dataset.name.includes(q);
+        const statusMatch = filter === 'all' ||
+                           (filter === 'active' && el.dataset.active === '1') ||
+                           (filter === 'inactive' && el.dataset.active === '0');
+        el.style.display = nameMatch && statusMatch ? '' : 'none';
+    });
+}
+</script>
+{% endblock %}

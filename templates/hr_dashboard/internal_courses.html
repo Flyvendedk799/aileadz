@@ -1,0 +1,210 @@
+{% extends "base.html" %}
+
+{% block title %}Interne Kurser - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+  .course-card { border-radius: 12px; border: 1px solid #e5e7eb; transition: all 0.2s; }
+  .course-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); transform: translateY(-2px); }
+  .course-badge { font-size: 0.75em; padding: 3px 10px; border-radius: 12px; }
+  .stat-pill { background: #f8fafc; border-radius: 12px; padding: 16px 20px; text-align: center; }
+  .stat-pill h3 { margin: 0; font-weight: 700; }
+  .stat-pill small { color: #6b7280; }
+  .filter-bar { background: #f8fafc; border-radius: 12px; padding: 16px; }
+  .import-zone { border: 2px dashed #d1d5db; border-radius: 12px; padding: 24px; text-align: center; cursor: pointer; transition: all 0.2s; }
+  .import-zone:hover { border-color: #6366f1; background: #eef2ff; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <!-- Header -->
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-book-open text-primary"></i> Interne Kurser</h2>
+            <p class="text-muted mb-0">Opret og administrer virksomhedens egne kurser</p>
+        </div>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="fas fa-file-csv"></i> Importer CSV
+            </button>
+            <a href="{{ url_for('hr_dashboard.add_internal_course') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Nyt Kursus
+            </a>
+        </div>
+    </div>
+
+    <!-- Stats -->
+    <div class="row mb-4">
+        <div class="col-md-3">
+            <div class="stat-pill">
+                <h3 class="text-primary">{{ stats.total or 0 }}</h3>
+                <small>Kurser i alt</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-pill">
+                <h3 class="text-success">{{ stats.active or 0 }}</h3>
+                <small>Aktive kurser</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-pill">
+                <h3 class="text-warning">{{ stats.mandatory or 0 }}</h3>
+                <small>Obligatoriske</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-pill">
+                <h3 class="text-info">{{ stats.categories or 0 }}</h3>
+                <small>Kategorier</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Filters -->
+    <div class="filter-bar mb-4">
+        <form method="GET" class="row g-2 align-items-end">
+            <div class="col-md-4">
+                <input type="text" class="form-control" name="q" placeholder="Soeg kurser..." value="{{ request.args.get('q', '') }}">
+            </div>
+            <div class="col-md-3">
+                <select class="form-control" name="category">
+                    <option value="">Alle kategorier</option>
+                    {% for cat in categories %}
+                    <option value="{{ cat }}" {% if request.args.get('category') == cat %}selected{% endif %}>{{ cat }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-3">
+                <select class="form-control" name="status">
+                    <option value="">Alle statusser</option>
+                    <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Aktive</option>
+                    <option value="inactive" {% if request.args.get('status') == 'inactive' %}selected{% endif %}>Inaktive</option>
+                </select>
+            </div>
+            <div class="col-md-2">
+                <button type="submit" class="btn btn-primary w-100"><i class="fas fa-search"></i> Filtrer</button>
+            </div>
+        </form>
+    </div>
+
+    <!-- Course List -->
+    {% if courses %}
+    <div class="row">
+        {% for course in courses %}
+        <div class="col-md-6 col-lg-4 mb-4">
+            <div class="card course-card h-100">
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-start mb-2">
+                        <h6 class="mb-0">{{ course.title }}</h6>
+                        <div>
+                            {% if course.is_mandatory %}
+                            <span class="badge bg-warning course-badge">Obligatorisk</span>
+                            {% endif %}
+                            {% if course.is_active %}
+                            <span class="badge bg-success course-badge">Aktiv</span>
+                            {% else %}
+                            <span class="badge bg-secondary course-badge">Inaktiv</span>
+                            {% endif %}
+                        </div>
+                    </div>
+
+                    {% if course.description %}
+                    <p class="text-muted small mb-2">{{ course.description[:120] }}{% if course.description|length > 120 %}...{% endif %}</p>
+                    {% endif %}
+
+                    <div class="d-flex flex-wrap gap-1 mb-2">
+                        {% if course.category %}
+                        <span class="badge bg-light text-dark"><i class="fas fa-folder"></i> {{ course.category }}</span>
+                        {% endif %}
+                        {% if course.format %}
+                        <span class="badge bg-light text-dark"><i class="fas fa-desktop"></i> {{ course.format }}</span>
+                        {% endif %}
+                        {% if course.difficulty_level %}
+                        <span class="badge bg-light text-dark"><i class="fas fa-signal"></i> {{ course.difficulty_level }}</span>
+                        {% endif %}
+                    </div>
+
+                    <div class="d-flex justify-content-between text-muted small mb-3">
+                        <span><i class="fas fa-clock"></i> {{ course.duration_hours or 0 }} timer</span>
+                        <span><i class="fas fa-users"></i> {{ course.enrollment_count or 0 }} tilmeldt</span>
+                        {% if course.price and course.price > 0 %}
+                        <span><i class="fas fa-tag"></i> {{ course.price }} DKK</span>
+                        {% else %}
+                        <span class="text-success"><i class="fas fa-tag"></i> Gratis</span>
+                        {% endif %}
+                    </div>
+
+                    {% if course.instructor %}
+                    <small class="text-muted"><i class="fas fa-chalkboard-teacher"></i> {{ course.instructor }}</small>
+                    {% endif %}
+                </div>
+                <div class="card-footer bg-white border-top-0 d-flex gap-2">
+                    <a href="{{ url_for('hr_dashboard.edit_internal_course', course_id=course.id) }}" class="btn btn-sm btn-outline-primary flex-fill">
+                        <i class="fas fa-edit"></i> Rediger
+                    </a>
+                    <form method="POST" action="{{ url_for('hr_dashboard.delete_internal_course', course_id=course.id) }}"
+                          onsubmit="return confirm('Er du sikker paa du vil slette dette kursus?')">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">
+                            <i class="fas fa-trash"></i>
+                        </button>
+                    </form>
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-book-open fa-4x text-muted mb-3"></i>
+        <h5 class="text-muted">Ingen interne kurser endnu</h5>
+        <p class="text-muted">Opret jeres foerste interne kursus eller importer fra CSV.</p>
+        <div class="d-flex gap-2 justify-content-center">
+            <a href="{{ url_for('hr_dashboard.add_internal_course') }}" class="btn btn-primary">
+                <i class="fas fa-plus"></i> Opret kursus
+            </a>
+            <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#importModal">
+                <i class="fas fa-file-csv"></i> Importer CSV
+            </button>
+        </div>
+    </div>
+    {% endif %}
+</div>
+
+<!-- CSV Import Modal -->
+<div class="modal fade" id="importModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title"><i class="fas fa-file-csv text-primary"></i> Importer kurser fra CSV</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <form method="POST" action="{{ url_for('hr_dashboard.import_courses_csv') }}" enctype="multipart/form-data">
+                <div class="modal-body">
+                    <div class="import-zone mb-3" onclick="document.getElementById('csv_file').click()">
+                        <i class="fas fa-cloud-upload-alt fa-2x text-muted mb-2"></i>
+                        <p class="mb-1">Klik for at vaelge CSV-fil</p>
+                        <small class="text-muted">Semikolon-separeret (;) med UTF-8 encoding</small>
+                        <input type="file" id="csv_file" name="csv_file" accept=".csv" class="d-none" onchange="document.getElementById('file-name').textContent = this.files[0]?.name || ''">
+                    </div>
+                    <p id="file-name" class="text-primary fw-bold"></p>
+
+                    <div class="alert alert-info small mb-0">
+                        <strong>Forventede kolonner:</strong><br>
+                        <code>title;description;category;tags;format;duration_hours;price;instructor;location;department;difficulty_level;is_mandatory</code><br>
+                        <small>Kun <code>title</code>/<code>titel</code> er paakraevet. Danske navne understoeettes (titel, beskrivelse, kategori, pris, underviser, lokation, afdeling, niveau, obligatorisk).</small>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Annuller</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-upload"></i> Importer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

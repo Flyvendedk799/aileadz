@@ -131,6 +131,7 @@ def _auto_sync_columns(conn, create_stmts):
     # Fix empty department_code values — the unique_company_dept index on
     # (company_id, department_code) blocks inserts with duplicate empty codes.
     # Generate unique codes from the department name for any rows with empty/NULL codes.
+    import hashlib
     try:
         fix_cur = conn.cursor()
         fix_cur.execute("""
@@ -138,18 +139,24 @@ def _auto_sync_columns(conn, create_stmts):
             WHERE department_code IS NULL OR department_code = ''
         """)
         empty_rows = fix_cur.fetchall()
+        fixed_count = 0
         for row in empty_rows:
-            dept_id, dept_name = row[0], row[1] or ''
-            import hashlib
+            # Handle both DictCursor and plain cursor
+            if isinstance(row, dict):
+                dept_id = row['id']
+                dept_name = row.get('department_name') or ''
+            else:
+                dept_id, dept_name = row[0], row[1] or ''
             auto_code = 'D-' + hashlib.md5(dept_name.encode()).hexdigest()[:6].upper()
             fix_cur.execute(
                 "UPDATE company_departments SET department_code = %s WHERE id = %s",
                 (auto_code, dept_id)
             )
-        if empty_rows:
+            fixed_count += 1
+        if fixed_count:
             conn.commit()
-            logging.info("Auto-sync: fixed %d empty department_code values", len(empty_rows))
-            synced += len(empty_rows)
+            logging.info("Auto-sync: fixed %d empty department_code values", fixed_count)
+            synced += fixed_count
         fix_cur.close()
     except Exception as e:
         logging.warning("Auto-sync: fix department_code warning: %s", e)

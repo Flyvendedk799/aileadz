@@ -141,60 +141,53 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: nullify department_code warning: %s", e)
 
-    # Drop the unique_company_dept key if it exists — it was manually added and
+    # Drop the unique_company_dept key — it was manually added and
     # blocks inserts when department_code is NULL/empty for multiple departments.
     try:
         idx_cur = conn.cursor()
-        idx_cur.execute("""
-            SELECT COUNT(1) FROM information_schema.STATISTICS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'company_departments'
-              AND INDEX_NAME = 'unique_company_dept'
-        """)
-        if idx_cur.fetchone()[0] > 0:
-            idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
-            conn.commit()
-            logging.info("Auto-sync: dropped problematic unique_company_dept index")
-            synced += 1
+        idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
+        conn.commit()
         idx_cur.close()
+        logging.info("Auto-sync: dropped problematic unique_company_dept index")
+        synced += 1
     except Exception as e:
-        logging.warning("Auto-sync: drop unique_company_dept: %s", e)
+        # (1091, "Can't DROP ... check that it exists") is fine — means it's already gone
+        if hasattr(e, 'args') and e.args and e.args[0] == 1091:
+            logging.debug("Auto-sync: unique_company_dept already absent")
+        else:
+            logging.warning("Auto-sync: drop unique_company_dept: %s", e)
 
     # Add unique key to employee_skills_matrix if missing
     try:
         uk_cur = conn.cursor()
-        uk_cur.execute("""
-            SELECT COUNT(1) FROM information_schema.STATISTICS
-            WHERE TABLE_SCHEMA = DATABASE()
-              AND TABLE_NAME = 'employee_skills_matrix'
-              AND INDEX_NAME = 'uk_emp_company_skill'
-        """)
-        has_key = uk_cur.fetchone()[0]
-        if has_key == 0:
-            # Remove duplicates first so the unique key can be created
-            try:
-                uk_cur.execute("""
-                    DELETE t1 FROM employee_skills_matrix t1
-                    INNER JOIN employee_skills_matrix t2
-                    WHERE t1.id > t2.id
-                      AND t1.employee_id = t2.employee_id
-                      AND t1.company_id = t2.company_id
-                      AND t1.skill_name = t2.skill_name
-                """)
-                dupes = uk_cur.rowcount
-                if dupes:
-                    logging.info("Auto-sync: removed %d duplicate employee_skills_matrix rows", dupes)
-            except Exception:
-                pass
+        # Remove duplicates first so the unique key can be created
+        try:
             uk_cur.execute("""
-                ALTER TABLE employee_skills_matrix
-                ADD UNIQUE KEY uk_emp_company_skill (employee_id, company_id, skill_name)
+                DELETE t1 FROM employee_skills_matrix t1
+                INNER JOIN employee_skills_matrix t2
+                WHERE t1.id > t2.id
+                  AND t1.employee_id = t2.employee_id
+                  AND t1.company_id = t2.company_id
+                  AND t1.skill_name = t2.skill_name
             """)
-            logging.info("Auto-sync: added unique key uk_emp_company_skill")
-            synced += 1
+            dupes = uk_cur.rowcount
+            if dupes:
+                conn.commit()
+                logging.info("Auto-sync: removed %d duplicate employee_skills_matrix rows", dupes)
+        except Exception:
+            pass
+        uk_cur.execute("""
+            ALTER TABLE employee_skills_matrix
+            ADD UNIQUE KEY uk_emp_company_skill (employee_id, company_id, skill_name)
+        """)
+        conn.commit()
+        logging.info("Auto-sync: added unique key uk_emp_company_skill")
+        synced += 1
         uk_cur.close()
     except Exception as e:
-        logging.debug("Auto-sync: employee_skills_matrix unique key: %s", e)
+        # 1061 = Duplicate key name (already exists) — that's fine
+        if not (hasattr(e, 'args') and e.args and e.args[0] == 1061):
+            logging.debug("Auto-sync: employee_skills_matrix unique key: %s", e)
 
     if synced:
         conn.commit()

@@ -2341,6 +2341,13 @@ def create_hr_dashboard_blueprint():
 
         try:
             cur = current_app.mysql.connection.cursor()
+            # Drop legacy unique_company_dept index if it still exists
+            try:
+                cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
+                current_app.mysql.connection.commit()
+                current_app.logger.info("Dropped legacy unique_company_dept index")
+            except Exception:
+                pass  # already gone
             # Check if this department already exists for THIS company
             cur.execute("""
                 SELECT id FROM company_departments

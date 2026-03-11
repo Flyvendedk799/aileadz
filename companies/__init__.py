@@ -210,9 +210,9 @@ def create_companies_blueprint():
                 for dept_name, dept_code, dept_desc in default_departments:
                     try:
                         cur.execute("""
-                            INSERT IGNORE INTO company_departments (company_id, department_name, name, department_code, description)
-                            VALUES (%s, %s, %s, %s, %s)
-                        """, (company_id, dept_name, dept_name, dept_code, dept_desc))
+                            INSERT IGNORE INTO company_departments (company_id, department_name, department_code, description)
+                            VALUES (%s, %s, %s, %s)
+                        """, (company_id, dept_name, dept_code, dept_desc))
                     except Exception:
                         pass  # skip if duplicate
 

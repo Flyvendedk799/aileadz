@@ -128,35 +128,21 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: cleanup warning: %s", e)
 
-    # The unique_company_dept constraint is on (company_id, name) — a legacy column.
-    # Our schema uses department_name. Sync `name` = `department_name` so the
-    # constraint is satisfied, then drop the legacy `name` column if possible.
-    try:
-        fix_cur = conn.cursor()
-        # First, sync name = department_name for all rows
-        fix_cur.execute("UPDATE company_departments SET name = department_name WHERE name IS NULL OR name = '' OR name != department_name")
-        fixed = fix_cur.rowcount
-        if fixed:
-            conn.commit()
-            logging.info("Auto-sync: synced %d company_departments.name values from department_name", fixed)
-            synced += fixed
-        # Try to drop the legacy `name` column and the constraint
-        # (may fail if FK references it — that's OK, the sync above keeps it working)
+    # Clean up legacy `name` column / unique_company_dept index if they still exist.
+    # These were already dropped on first run; this block is a no-op once cleaned up.
+    for legacy_op in [
+        "ALTER TABLE company_departments DROP INDEX unique_company_dept",
+        "ALTER TABLE company_departments DROP COLUMN name",
+    ]:
         try:
-            fix_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
+            lc = conn.cursor()
+            lc.execute(legacy_op)
             conn.commit()
-            logging.info("Auto-sync: dropped unique_company_dept index")
+            lc.close()
+            logging.info("Auto-sync: %s", legacy_op)
+            synced += 1
         except Exception:
-            pass  # can't drop — that's fine, we keep `name` synced
-        try:
-            fix_cur.execute("ALTER TABLE company_departments DROP COLUMN name")
-            conn.commit()
-            logging.info("Auto-sync: dropped legacy `name` column")
-        except Exception:
-            pass  # column may be needed by FK — keep it synced instead
-        fix_cur.close()
-    except Exception as e:
-        logging.warning("Auto-sync: fix company_departments.name: %s", e)
+            pass  # already gone — expected
 
     # Add unique key to employee_skills_matrix if missing
     try:

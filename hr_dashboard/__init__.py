@@ -2345,9 +2345,12 @@ def create_hr_dashboard_blueprint():
             try:
                 cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
                 current_app.mysql.connection.commit()
-                current_app.logger.info("Dropped legacy unique_company_dept index")
-            except Exception:
-                pass  # already gone
+                current_app.logger.info("Auto-sync: Dropped legacy unique_company_dept index in add_department")
+            except Exception as ex:
+                # 1091 = index doesn't exist, which is fine
+                if not (hasattr(ex, 'args') and ex.args and ex.args[0] == 1091):
+                    current_app.logger.debug(f"Note: Could not drop legacy index: {ex}")
+            
             # Check if this department already exists for THIS company
             cur.execute("""
                 SELECT id FROM company_departments
@@ -2366,6 +2369,9 @@ def create_hr_dashboard_blueprint():
             cur.close()
         except Exception as e:
             current_app.logger.error(f"Error adding department: {e}")
+            # If it's a duplicate entry error even after our check, log it specifically
+            if hasattr(e, 'args') and e.args and e.args[0] == 1062:
+                current_app.logger.error(f"Duplicate entry error details: {e}")
             flash("Fejl ved oprettelse af afdeling.", "danger")
 
         return redirect(url_for('hr_dashboard.departments'))

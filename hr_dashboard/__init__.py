@@ -2321,9 +2321,15 @@ def create_hr_dashboard_blueprint():
             return jsonify({"success": False, "message": "Virksomhed ikke fundet"}), 400
 
         name = request.form.get('department_name', '').strip()
-        code = request.form.get('department_code', '').strip() or None  # NULL not '' to avoid unique constraint clash
+        code = request.form.get('department_code', '').strip()
         description = request.form.get('description', '').strip()
         budget = request.form.get('learning_budget_per_employee', '0').strip()
+
+        # Auto-generate a unique department_code if none provided,
+        # because a unique constraint on (company_id, department_code) exists in the DB
+        if not code:
+            import hashlib
+            code = 'D-' + hashlib.md5(name.encode()).hexdigest()[:6].upper()
 
         if not name:
             flash("Afdelingsnavn er paakraevet.", "danger")
@@ -2378,6 +2384,11 @@ def create_hr_dashboard_blueprint():
             flash("Afdelingsnavn er paakraevet.", "danger")
             return redirect(url_for('hr_dashboard.departments'))
 
+        # Auto-generate code if empty (unique constraint requires non-empty)
+        if not code:
+            import hashlib
+            code = 'D-' + hashlib.md5(name.encode()).hexdigest()[:6].upper()
+
         try:
             budget_val = float(budget) if budget else 0
         except ValueError:
@@ -2400,7 +2411,7 @@ def create_hr_dashboard_blueprint():
                 UPDATE company_departments
                 SET department_name = %s, department_code = %s, description = %s, learning_budget_per_employee = %s
                 WHERE id = %s AND company_id = %s
-            """, (name, code or None, description or None, budget_val, dept_id, company['id']))
+            """, (name, code, description or None, budget_val, dept_id, company['id']))
 
             # Update employees if name changed
             if old_name != name:

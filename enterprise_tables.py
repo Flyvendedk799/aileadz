@@ -128,53 +128,31 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: cleanup warning: %s", e)
 
-    # Nullify empty department_code values so the unique constraint allows them
+    # Fix empty department_code values — the unique_company_dept index on
+    # (company_id, department_code) blocks inserts with duplicate empty codes.
+    # Generate unique codes from the department name for any rows with empty/NULL codes.
     try:
         fix_cur = conn.cursor()
-        fix_cur.execute("UPDATE company_departments SET department_code = NULL WHERE department_code = ''")
-        fixed = fix_cur.rowcount
-        if fixed:
-            logging.info("Auto-sync: nullified %d empty department_code values", fixed)
-            synced += fixed
+        fix_cur.execute("""
+            SELECT id, department_name FROM company_departments
+            WHERE department_code IS NULL OR department_code = ''
+        """)
+        empty_rows = fix_cur.fetchall()
+        for row in empty_rows:
+            dept_id, dept_name = row[0], row[1] or ''
+            import hashlib
+            auto_code = 'D-' + hashlib.md5(dept_name.encode()).hexdigest()[:6].upper()
+            fix_cur.execute(
+                "UPDATE company_departments SET department_code = %s WHERE id = %s",
+                (auto_code, dept_id)
+            )
+        if empty_rows:
+            conn.commit()
+            logging.info("Auto-sync: fixed %d empty department_code values", len(empty_rows))
+            synced += len(empty_rows)
         fix_cur.close()
-        conn.commit()  # always commit — the UPDATE is safe even if 0 rows changed
     except Exception as e:
-        logging.warning("Auto-sync: nullify department_code warning: %s", e)
-
-    # Drop the unique_company_dept key — it was manually added and
-    # blocks inserts when department_code is NULL/empty for multiple departments.
-    # Use SHOW CREATE TABLE to find FK names (information_schema is restricted),
-    # then disable FK checks to allow dropping the index.
-    try:
-        idx_cur = conn.cursor()
-        # Parse foreign key names from SHOW CREATE TABLE
-        idx_cur.execute("SHOW CREATE TABLE company_departments")
-        create_sql = idx_cur.fetchone()[1]
-        fk_names = re.findall(r'CONSTRAINT `(\w+)` FOREIGN KEY', create_sql)
-        for fk_name in fk_names:
-            try:
-                idx_cur.execute(f"ALTER TABLE company_departments DROP FOREIGN KEY `{fk_name}`")
-                conn.commit()
-                logging.info("Auto-sync: dropped foreign key %s on company_departments", fk_name)
-            except Exception as fk_e:
-                logging.debug("Auto-sync: skip FK %s: %s", fk_name, fk_e)
-        # Disable FK checks and drop the index
-        idx_cur.execute("SET FOREIGN_KEY_CHECKS = 0")
-        idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
-        idx_cur.execute("SET FOREIGN_KEY_CHECKS = 1")
-        conn.commit()
-        idx_cur.close()
-        logging.info("Auto-sync: dropped problematic unique_company_dept index")
-        synced += 1
-    except Exception as e:
-        try:
-            conn.cursor().execute("SET FOREIGN_KEY_CHECKS = 1")
-        except Exception:
-            pass
-        if hasattr(e, 'args') and e.args and e.args[0] == 1091:
-            pass  # already gone
-        else:
-            logging.warning("Auto-sync: drop unique_company_dept: %s", e)
+        logging.warning("Auto-sync: fix department_code warning: %s", e)
 
     # Add unique key to employee_skills_matrix if missing
     try:

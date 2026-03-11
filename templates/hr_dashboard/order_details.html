@@ -5,18 +5,46 @@
 
 {% block extra_styles %}
 <style>
-.border-left-primary { border-left: 0.25rem solid #4e73df !important; }
-.card { border-radius: 0.5rem; border: none; }
-.card-header { background: linear-gradient(45deg, #f8f9fc, #eaecf4); }
-.badge.bg-success { background-color: #1cc88a !important; }
-.badge.bg-warning { background-color: #f6c23e !important; }
-.badge.bg-info { background-color: #36b9cc !important; }
-.badge.bg-secondary { background-color: #858796 !important; }
+    .border-left-primary {
+        border-left: 0.25rem solid #4e73df !important;
+    }
 
-@media print {
-    .btn, .card-header { display: none !important; }
-    .card { border: 1px solid #ddd !important; }
-}
+    .card {
+        border-radius: 0.5rem;
+        border: none;
+    }
+
+    .card-header {
+        background: var(--header-bg);
+    }
+
+    .badge.bg-success {
+        background-color: #1cc88a !important;
+    }
+
+    .badge.bg-warning {
+        background-color: #f6c23e !important;
+    }
+
+    .badge.bg-info {
+        background-color: #36b9cc !important;
+    }
+
+    .badge.bg-secondary {
+        background-color: #858796 !important;
+    }
+
+    @media print {
+
+        .btn,
+        .card-header {
+            display: none !important;
+        }
+
+        .card {
+            border: 1px solid #ddd !important;
+        }
+    }
 </style>
 {% endblock %}
 
@@ -28,7 +56,7 @@
             <!-- Header -->
             <div class="d-flex justify-content-between align-items-center mb-4">
                 <div>
-                    <h1 class="h3 mb-0 text-gray-800">Order Details</h1>
+                    <h1 class="h3 mb-0 text-white">Order Details</h1>
                     <p class="text-muted mb-0">{{ company.company_name }} - Training Order Management</p>
                 </div>
                 <div class="d-flex gap-2">
@@ -62,23 +90,25 @@
                                         <td class="font-weight-bold">Status:</td>
                                         <td>
                                             {% if order.status == 'completed' %}
-                                                <span class="badge bg-success">Completed</span>
+                                            <span class="badge bg-success">Completed</span>
                                             {% elif order.status == 'pending' %}
-                                                <span class="badge bg-warning">Pending</span>
+                                            <span class="badge bg-warning">Pending</span>
                                             {% elif order.status == 'processing' %}
-                                                <span class="badge bg-info">Processing</span>
+                                            <span class="badge bg-info">Processing</span>
                                             {% else %}
-                                                <span class="badge bg-secondary">{{ order.status|title }}</span>
+                                            <span class="badge bg-secondary">{{ order.status|title }}</span>
                                             {% endif %}
                                         </td>
                                     </tr>
                                     <tr>
                                         <td class="font-weight-bold">Created Date:</td>
-                                        <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') if order.created_at else 'N/A' }}</td>
+                                        <td>{{ order.created_at.strftime('%Y-%m-%d %H:%M') if order.created_at else
+                                            'N/A' }}</td>
                                     </tr>
                                     <tr>
                                         <td class="font-weight-bold">Updated Date:</td>
-                                        <td>{{ order.updated_at.strftime('%Y-%m-%d %H:%M') if order.updated_at else 'N/A' }}</td>
+                                        <td>{{ order.updated_at.strftime('%Y-%m-%d %H:%M') if order.updated_at else
+                                            'N/A' }}</td>
                                     </tr>
                                     <tr>
                                         <td class="font-weight-bold">Price:</td>
@@ -132,7 +162,7 @@
                             {% if order.product_handle %}
                             <p class="text-muted">Course Handle: {{ order.product_handle }}</p>
                             {% endif %}
-                            
+
                             {% if order.variant_location or order.variant_date %}
                             <div class="mt-3">
                                 <h6 class="text-primary">Session Details</h6>
@@ -152,7 +182,7 @@
                             {% endif %}
                         </div>
                         <div class="col-md-4 text-end">
-                            <div class="border rounded p-3">
+                            <div class="border rounded p-3" style="border-color: var(--border-color) !important;">
                                 <h4 class="text-primary mb-0">{{ order.price }} kr</h4>
                                 <small class="text-muted">Course Price</small>
                             </div>
@@ -171,16 +201,17 @@
                 <div class="card-body">
                     <div class="row">
                         <div class="col-md-4">
-                            <div class="text-center border rounded p-3">
+                            <div class="text-center border rounded p-3"
+                                style="border-color: var(--border-color) !important;">
                                 {% if order.completion_status == 'completed' %}
-                                    <i class="fas fa-check-circle fa-3x text-success mb-2"></i>
-                                    <h5 class="text-success">Completed</h5>
+                                <i class="fas fa-check-circle fa-3x text-success mb-2"></i>
+                                <h5 class="text-success">Completed</h5>
                                 {% elif order.completion_status == 'in_progress' %}
-                                    <i class="fas fa-play-circle fa-3x text-info mb-2"></i>
-                                    <h5 class="text-info">In Progress</h5>
+                                <i class="fas fa-play-circle fa-3x text-info mb-2"></i>
+                                <h5 class="text-info">In Progress</h5>
                                 {% else %}
-                                    <i class="fas fa-clock fa-3x text-warning mb-2"></i>
-                                    <h5 class="text-warning">Not Started</h5>
+                                <i class="fas fa-clock fa-3x text-warning mb-2"></i>
+                                <h5 class="text-warning">Not Started</h5>
                                 {% endif %}
                                 <small class="text-muted">Current Status</small>
                             </div>
@@ -230,7 +261,7 @@
                             <i class="fas fa-file-invoice fa-3x text-warning mb-2"></i>
                             <h5 class="text-warning">Faktureret</h5>
                             {% elif bs == 'credited' %}
-                            <i class="fas fa-undo fa-3x text-dark mb-2"></i>
+                            <i class="fas fa-undo fa-3x text-light mb-2"></i>
                             <h5>Krediteret</h5>
                             {% else %}
                             <i class="fas fa-times-circle fa-3x text-danger mb-2"></i>
@@ -239,12 +270,32 @@
                         </div>
                         <div class="col-md-8">
                             <table class="table table-borderless table-sm">
-                                <tr><td class="fw-bold">Fakturanr.:</td><td>{{ order.invoice_number or '-' }}</td></tr>
-                                <tr><td class="fw-bold">Fakturdato:</td><td>{{ order.invoice_date.strftime('%Y-%m-%d') if order.invoice_date else '-' }}</td></tr>
-                                <tr><td class="fw-bold">Betalingsdato:</td><td>{{ order.payment_date.strftime('%Y-%m-%d') if order.payment_date else '-' }}</td></tr>
-                                <tr><td class="fw-bold">Metode:</td><td>{{ order.payment_method or '-' }}</td></tr>
-                                <tr><td class="fw-bold">Reference:</td><td>{{ order.payment_reference or '-' }}</td></tr>
-                                {% if order.billing_note %}<tr><td class="fw-bold">Note:</td><td>{{ order.billing_note }}</td></tr>{% endif %}
+                                <tr>
+                                    <td class="fw-bold">Fakturanr.:</td>
+                                    <td>{{ order.invoice_number or '-' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Fakturdato:</td>
+                                    <td>{{ order.invoice_date.strftime('%Y-%m-%d') if order.invoice_date else '-' }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Betalingsdato:</td>
+                                    <td>{{ order.payment_date.strftime('%Y-%m-%d') if order.payment_date else '-' }}
+                                    </td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Metode:</td>
+                                    <td>{{ order.payment_method or '-' }}</td>
+                                </tr>
+                                <tr>
+                                    <td class="fw-bold">Reference:</td>
+                                    <td>{{ order.payment_reference or '-' }}</td>
+                                </tr>
+                                {% if order.billing_note %}<tr>
+                                    <td class="fw-bold">Note:</td>
+                                    <td>{{ order.billing_note }}</td>
+                                </tr>{% endif %}
                             </table>
                         </div>
                     </div>
@@ -266,7 +317,8 @@
                             <i class="fas fa-undo"></i> Krediter
                         </button>
                         {% endif %}
-                        <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="btn btn-outline-primary btn-sm ms-auto">
+                        <a href="{{ url_for('hr_dashboard.billing_overview') }}"
+                            class="btn btn-outline-primary btn-sm ms-auto">
                             <i class="fas fa-list"></i> Alle faktureringer
                         </a>
                     </div>
@@ -287,13 +339,16 @@
                         <div class="col-md-12">
                             <h6 class="mb-3">Update Order Status</h6>
                             <div class="btn-group" role="group">
-                                <button type="button" class="btn btn-outline-info" onclick="updateOrderStatus('{{ order.order_id }}', 'processing')">
+                                <button type="button" class="btn btn-outline-info"
+                                    onclick="updateOrderStatus('{{ order.order_id }}', 'processing')">
                                     <i class="fas fa-cog"></i> Mark as Processing
                                 </button>
-                                <button type="button" class="btn btn-outline-success" onclick="updateOrderStatus('{{ order.order_id }}', 'completed')">
+                                <button type="button" class="btn btn-outline-success"
+                                    onclick="updateOrderStatus('{{ order.order_id }}', 'completed')">
                                     <i class="fas fa-check"></i> Mark as Completed
                                 </button>
-                                <button type="button" class="btn btn-outline-danger" onclick="updateOrderStatus('{{ order.order_id }}', 'cancelled')">
+                                <button type="button" class="btn btn-outline-danger"
+                                    onclick="updateOrderStatus('{{ order.order_id }}', 'cancelled')">
                                     <i class="fas fa-times"></i> Cancel Order
                                 </button>
                             </div>
@@ -307,66 +362,66 @@
 </div>
 
 <script>
-function updateOrderStatus(orderId, newStatus) {
-    if (confirm(`Are you sure you want to mark this order as ${newStatus}?`)) {
-        fetch(`{{ url_for('hr_dashboard.update_company_order_status', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({
-                status: newStatus
+    function updateOrderStatus(orderId, newStatus) {
+        if (confirm(`Are you sure you want to mark this order as ${newStatus}?`)) {
+            fetch(`{{ url_for('hr_dashboard.update_company_order_status', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    status: newStatus
+                })
             })
-        })
-        .then(response => response.json())
-        .then(data => {
-            if (data.success) {
-                showAlert('success', data.message);
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showAlert('danger', 'Error: ' + data.message);
-            }
-        })
-        .catch(error => {
-            console.error('Error:', error);
-            showAlert('danger', 'Error updating order status');
-        });
+                .then(response => response.json())
+                .then(data => {
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showAlert('danger', 'Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    showAlert('danger', 'Error updating order status');
+                });
+        }
     }
-}
 
-function updateBilling(newStatus) {
-    if (confirm(`Marker denne ordre som ${newStatus}?`)) {
-        const data = {billing_status: newStatus};
-        if (newStatus === 'paid') data.payment_date = new Date().toISOString().split('T')[0];
-        if (newStatus === 'invoiced') data.invoice_date = new Date().toISOString().split('T')[0];
-        fetch(`{{ url_for('hr_dashboard.update_billing', order_id=order.order_id) }}`, {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify(data)
-        }).then(r => r.json()).then(d => {
-            if (d.success) { showAlert('success', d.message); setTimeout(() => location.reload(), 1000); }
-            else { showAlert('danger', 'Fejl: ' + d.message); }
-        }).catch(() => showAlert('danger', 'Netvaerksfejl'));
+    function updateBilling(newStatus) {
+        if (confirm(`Marker denne ordre som ${newStatus}?`)) {
+            const data = { billing_status: newStatus };
+            if (newStatus === 'paid') data.payment_date = new Date().toISOString().split('T')[0];
+            if (newStatus === 'invoiced') data.invoice_date = new Date().toISOString().split('T')[0];
+            fetch(`{{ url_for('hr_dashboard.update_billing', order_id=order.order_id) }}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            }).then(r => r.json()).then(d => {
+                if (d.success) { showAlert('success', d.message); setTimeout(() => location.reload(), 1000); }
+                else { showAlert('danger', 'Fejl: ' + d.message); }
+            }).catch(() => showAlert('danger', 'Netvaerksfejl'));
+        }
     }
-}
 
-function showAlert(type, message) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    alertDiv.innerHTML = `
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
         <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    document.body.appendChild(alertDiv);
-    
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
-        }
-    }, 5000);
-}
+        document.body.appendChild(alertDiv);
+
+        setTimeout(() => {
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
 </script>
 {% endblock %}

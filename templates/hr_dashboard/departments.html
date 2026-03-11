@@ -49,18 +49,21 @@
                             </button>
                             <ul class="dropdown-menu dropdown-menu-end">
                                 <li>
-                                    <button class="dropdown-item edit-dept-btn"
-                                            data-id="{{ dept.id }}"
-                                            data-name="{{ dept.department_name }}"
-                                            data-code="{{ dept.department_code or '' }}"
-                                            data-desc="{{ dept.description or '' }}"
-                                            data-budget="{{ dept.learning_budget_per_employee or 0 }}">
+                                    <button class="dropdown-item edit-dept-btn" data-id="{{ dept.id }}"
+                                        data-name="{{ dept.department_name }}"
+                                        data-code="{{ dept.department_code or '' }}"
+                                        data-desc="{{ dept.description or '' }}"
+                                        data-budget="{{ dept.learning_budget_per_employee or 0 }}">
                                         <i class="fas fa-edit me-2 text-primary"></i>Rediger
                                     </button>
                                 </li>
-                                <li><hr class="dropdown-divider"></li>
                                 <li>
-                                    <form method="POST" action="{{ url_for('hr_dashboard.delete_department', dept_id=dept.id) }}" onsubmit="return confirm('Er du sikker paa du vil slette denne afdeling?')">
+                                    <hr class="dropdown-divider">
+                                </li>
+                                <li>
+                                    <form method="POST"
+                                        action="{{ url_for('hr_dashboard.delete_department', dept_id=dept.id) }}"
+                                        onsubmit="return confirm('Er du sikker paa du vil slette denne afdeling?')">
                                         <button type="submit" class="dropdown-item text-danger">
                                             <i class="fas fa-trash me-2"></i>Slet
                                         </button>
@@ -79,7 +82,8 @@
                         </div>
                         {% if dept.learning_budget_per_employee %}
                         <div>
-                            <div class="fw-bold text-success">{{ "{:,.0f}".format(dept.learning_budget_per_employee) }} kr</div>
+                            <div class="fw-bold text-success">{{ "{:,.0f}".format(dept.learning_budget_per_employee) }}
+                                kr</div>
                             <small class="text-muted">Budget/person</small>
                         </div>
                         {% endif %}
@@ -115,25 +119,30 @@
                 <div class="modal-body">
                     <div class="mb-3">
                         <label class="form-label fw-bold">Afdelingsnavn <span class="text-danger">*</span></label>
-                        <input type="text" class="form-control" name="department_name" required placeholder="f.eks. Salg, IT, Marketing">
+                        <input type="text" class="form-control" name="department_name" required
+                            placeholder="f.eks. Salg, IT, Marketing">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Afdelingskode</label>
-                        <input type="text" class="form-control" name="department_code" placeholder="f.eks. SAL, IT, MKT" maxlength="20">
+                        <input type="text" class="form-control" name="department_code" placeholder="f.eks. SAL, IT, MKT"
+                            maxlength="20">
                         <small class="text-muted">Valgfrit kort kodeord</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Beskrivelse</label>
-                        <textarea class="form-control" name="description" rows="2" placeholder="Hvad laver afdelingen?"></textarea>
+                        <textarea class="form-control" name="description" rows="2"
+                            placeholder="Hvad laver afdelingen?"></textarea>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Laeringsbudget pr. medarbejder (kr)</label>
-                        <input type="number" class="form-control" name="learning_budget_per_employee" value="0" min="0" step="100">
+                        <input type="number" class="form-control" name="learning_budget_per_employee" value="0" min="0"
+                            step="100">
                     </div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i>Opret afdeling</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i>Opret
+                        afdeling</button>
                 </div>
             </form>
         </div>
@@ -156,7 +165,8 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Afdelingskode</label>
-                        <input type="text" class="form-control" name="department_code" id="edit_dept_code" maxlength="20">
+                        <input type="text" class="form-control" name="department_code" id="edit_dept_code"
+                            maxlength="20">
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Beskrivelse</label>
@@ -164,12 +174,14 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Laeringsbudget pr. medarbejder (kr)</label>
-                        <input type="number" class="form-control" name="learning_budget_per_employee" id="edit_dept_budget" min="0" step="100">
+                        <input type="number" class="form-control" name="learning_budget_per_employee"
+                            id="edit_dept_budget" min="0" step="100">
                     </div>
                 </div>
                 <div class="modal-footer border-0 pt-0">
                     <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
-                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Gem aendringer</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Gem
+                        aendringer</button>
                 </div>
             </form>
         </div>
@@ -179,37 +191,44 @@
 
 {% block extra_styles %}
 <style>
-.dept-card {
-    border: none;
-    border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-.dept-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 4px 16px rgba(0,0,0,0.1);
-}
-.card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06); }
+    .dept-card {
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
+        border-radius: 12px;
+        box-shadow: var(--box-shadow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
 
+    .dept-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.1);
+    }
+
+    .card {
+        border: 1px solid var(--border-color);
+        border-radius: 12px;
+        box-shadow: var(--box-shadow);
+        background: var(--card-bg);
+    }
 </style>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-document.querySelectorAll('.edit-dept-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        var id = this.dataset.id;
-        var name = this.dataset.name;
-        var code = this.dataset.code;
-        var desc = this.dataset.desc;
-        var budget = this.dataset.budget;
-        document.getElementById('editDeptForm').action = '/hr/departments/' + id + '/edit';
-        document.getElementById('edit_dept_name').value = name;
-        document.getElementById('edit_dept_code').value = code;
-        document.getElementById('edit_dept_desc').value = desc;
-        document.getElementById('edit_dept_budget').value = budget;
-        new bootstrap.Modal(document.getElementById('editDeptModal')).show();
+    document.querySelectorAll('.edit-dept-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            var id = this.dataset.id;
+            var name = this.dataset.name;
+            var code = this.dataset.code;
+            var desc = this.dataset.desc;
+            var budget = this.dataset.budget;
+            document.getElementById('editDeptForm').action = '/hr/departments/' + id + '/edit';
+            document.getElementById('edit_dept_name').value = name;
+            document.getElementById('edit_dept_code').value = code;
+            document.getElementById('edit_dept_desc').value = desc;
+            document.getElementById('edit_dept_budget').value = budget;
+            new bootstrap.Modal(document.getElementById('editDeptModal')).show();
+        });
     });
-});
 </script>
 {% endblock %}

@@ -5,90 +5,111 @@
 {% block extra_styles %}
 <style>
     .widget-card {
-        background: #fff;
+        background: var(--card-bg);
         border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 4px 12px rgba(0,0,0,0.04);
-        border: none;
+        box-shadow: var(--box-shadow);
+        border: 1px solid var(--border-color);
         margin-bottom: 1.5rem;
     }
+
     .widget-card .card-header {
-        background: #fff;
-        border-bottom: 1px solid #f1f5f9;
+        background: transparent !important;
+        border-bottom: 1px solid var(--border-color);
         padding: 1rem 1.25rem;
         border-radius: 12px 12px 0 0;
     }
+
     .widget-card .card-header h6 {
         font-weight: 700;
         font-size: 0.95rem;
-        color: #1e293b;
+        color: var(--text-color);
         margin: 0;
     }
+
     .widget-card .card-body {
         padding: 1.25rem;
     }
+
     .form-section {
         margin-bottom: 1.5rem;
         padding-bottom: 1.25rem;
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid var(--border-color);
     }
+
     .form-section:last-child {
         border-bottom: none;
         margin-bottom: 0;
         padding-bottom: 0;
     }
+
     .form-section-title {
         font-size: 0.8rem;
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.04em;
-        color: #94a3b8;
+        color: var(--muted-text);
         margin-bottom: 0.75rem;
     }
+
     .form-label {
         font-size: 0.85rem;
         font-weight: 600;
-        color: #334155;
+        color: var(--text-color);
     }
-    .form-control, .form-select {
+
+    .form-control,
+    .form-select {
         border-radius: 8px;
-        border: 1px solid #e2e8f0;
+        background: rgba(255, 255, 255, 0.05);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
         font-size: 0.875rem;
         padding: 0.5rem 0.75rem;
     }
-    .form-control:focus, .form-select:focus {
-        border-color: #4e73df;
-        box-shadow: 0 0 0 3px rgba(78,115,223,0.12);
+
+    .form-control:focus,
+    .form-select:focus {
+        background: rgba(255, 255, 255, 0.08);
+        border-color: var(--primary-color);
+        color: var(--text-color);
+        box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.25);
     }
+
     .color-input-group {
         display: flex;
         align-items: center;
         gap: 0.5rem;
     }
+
     .color-input-group input[type="color"] {
         width: 40px;
         height: 36px;
-        border: 1px solid #e2e8f0;
+        border: 1px solid var(--border-color);
         border-radius: 8px;
         padding: 2px;
         cursor: pointer;
+        background: transparent;
     }
+
     .color-input-group input[type="text"] {
         width: 100px;
         font-family: monospace;
         font-size: 0.85rem;
     }
+
     .form-check-input:checked {
-        background-color: #4e73df;
-        border-color: #4e73df;
+        background-color: var(--primary-color);
+        border-color: var(--primary-color);
     }
+
     .form-text {
         font-size: 0.78rem;
-        color: #94a3b8;
+        color: var(--muted-text);
     }
 
     /* Preview styling */
     .preview-container {
-        background: #f8fafc;
+        background: var(--hover-shadow);
         border-radius: 12px;
         padding: 1.5rem;
         min-height: 400px;
@@ -98,6 +119,7 @@
         justify-content: flex-end;
         position: relative;
     }
+
     .preview-chat-bubble {
         width: 56px;
         height: 56px;
@@ -106,59 +128,74 @@
         align-items: center;
         justify-content: center;
         cursor: pointer;
-        box-shadow: 0 4px 16px rgba(0,0,0,0.15);
+        box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
         transition: transform 0.2s;
     }
-    .preview-chat-bubble:hover { transform: scale(1.05); }
-    .preview-chat-bubble svg { width: 26px; height: 26px; }
+
+    .preview-chat-bubble:hover {
+        transform: scale(1.05);
+    }
+
+    .preview-chat-bubble svg {
+        width: 26px;
+        height: 26px;
+    }
+
     .preview-chat-window {
         width: 100%;
         max-width: 320px;
         border-radius: 12px;
-        box-shadow: 0 8px 32px rgba(0,0,0,0.12);
+        box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
         overflow: hidden;
         margin-bottom: 0.75rem;
     }
+
     .preview-chat-header {
         padding: 0.75rem 1rem;
         display: flex;
         align-items: center;
         justify-content: space-between;
     }
+
     .preview-chat-header-title {
         font-size: 0.9rem;
         font-weight: 700;
     }
+
     .preview-chat-body {
         padding: 1rem;
         min-height: 180px;
         max-height: 220px;
         overflow-y: auto;
     }
+
     .preview-welcome-msg {
         display: inline-block;
         padding: 0.5rem 0.75rem;
         border-radius: 12px 12px 12px 2px;
         font-size: 0.82rem;
-        background: #f1f5f9;
-        color: #334155;
+        background: var(--hover-shadow);
+        color: var(--text-color);
         max-width: 90%;
     }
+
     .preview-chat-input {
         display: flex;
         align-items: center;
         gap: 0.5rem;
         padding: 0.65rem 0.75rem;
-        border-top: 1px solid #e2e8f0;
+        border-top: 1px solid var(--border-color);
     }
+
     .preview-chat-input input {
         flex: 1;
         border: none;
         outline: none;
         font-size: 0.82rem;
         background: transparent;
-        color: #64748b;
+        color: var(--text-color);
     }
+
     .preview-chat-input button {
         border: none;
         border-radius: 50%;
@@ -169,11 +206,16 @@
         justify-content: center;
         cursor: pointer;
     }
-    .preview-chat-input button svg { width: 16px; height: 16px; }
+
+    .preview-chat-input button svg {
+        width: 16px;
+        height: 16px;
+    }
+
     .preview-branding {
         text-align: center;
         font-size: 0.65rem;
-        color: #94a3b8;
+        color: var(--muted-text);
         padding: 4px 0 6px;
     }
 
@@ -185,6 +227,7 @@
         position: relative;
         overflow-x: auto;
     }
+
     .embed-code-block pre {
         margin: 0;
         font-size: 0.78rem;
@@ -192,14 +235,16 @@
         white-space: pre-wrap;
         word-break: break-all;
     }
+
     .embed-code-block code {
         color: #e2e8f0;
     }
+
     .copy-btn {
         position: absolute;
         top: 0.5rem;
         right: 0.5rem;
-        background: rgba(255,255,255,0.1);
+        background: rgba(255, 255, 255, 0.1);
         border: none;
         color: #e2e8f0;
         border-radius: 6px;
@@ -208,21 +253,30 @@
         cursor: pointer;
         transition: background 0.15s;
     }
-    .copy-btn:hover { background: rgba(255,255,255,0.2); }
-    .copy-btn.copied { background: #22c55e; color: #fff; }
+
+    .copy-btn:hover {
+        background: rgba(255, 255, 255, 0.2);
+    }
+
+    .copy-btn.copied {
+        background: #22c55e;
+        color: #fff;
+    }
 
     .token-display {
         font-family: monospace;
         font-size: 0.85rem;
-        background: #f1f5f9;
+        background: var(--hover-shadow);
         padding: 0.4rem 0.75rem;
         border-radius: 6px;
-        color: #475569;
+        color: var(--text-color);
     }
+
     .widget-toggle .form-check-input {
         width: 3rem;
         height: 1.5rem;
     }
+
     .widget-toggle .form-check-label {
         font-weight: 600;
         font-size: 0.95rem;
@@ -252,7 +306,8 @@
     <div class="d-flex align-items-center justify-content-between mb-4">
         <div>
             <h4 class="fw-bold mb-1"><i class="fas fa-code text-primary me-2"></i>Widget Embed</h4>
-            <p class="text-muted mb-0" style="font-size:0.85rem;">Opret og tilpas en chatbot-widget til jeres hjemmeside</p>
+            <p class="text-muted mb-0" style="font-size:0.85rem;">Opret og tilpas en chatbot-widget til jeres hjemmeside
+            </p>
         </div>
     </div>
 
@@ -268,8 +323,8 @@
                     </div>
                     <div class="card-body">
                         <div class="form-check form-switch widget-toggle">
-                            <input class="form-check-input" type="checkbox" id="is_active" name="is_active"
-                                   {% if widget and widget.is_active %}checked{% endif %}>
+                            <input class="form-check-input" type="checkbox" id="is_active" name="is_active" {% if widget
+                                and widget.is_active %}checked{% endif %}>
                             <label class="form-check-label" for="is_active">Widget aktiv</label>
                         </div>
                     </div>
@@ -287,25 +342,31 @@
                                 <div class="col-md-4">
                                     <label class="form-label">Primaer farve</label>
                                     <div class="color-input-group">
-                                        <input type="color" id="colorPickerPrimary" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#4F46E5' }}">
-                                        <input type="text" class="form-control" id="theme_primary_color" name="theme_primary_color"
-                                               value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#4F46E5' }}">
+                                        <input type="color" id="colorPickerPrimary"
+                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#4F46E5' }}">
+                                        <input type="text" class="form-control" id="theme_primary_color"
+                                            name="theme_primary_color"
+                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#4F46E5' }}">
                                     </div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Tekst paa primaer</label>
                                     <div class="color-input-group">
-                                        <input type="color" id="colorPickerText" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
-                                        <input type="text" class="form-control" id="theme_text_color" name="theme_text_color"
-                                               value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
+                                        <input type="color" id="colorPickerText"
+                                            value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
+                                        <input type="text" class="form-control" id="theme_text_color"
+                                            name="theme_text_color"
+                                            value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
                                     </div>
                                 </div>
                                 <div class="col-md-4">
                                     <label class="form-label">Baggrundsfarve</label>
                                     <div class="color-input-group">
-                                        <input type="color" id="colorPickerBg" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
-                                        <input type="text" class="form-control" id="theme_bg_color" name="theme_bg_color"
-                                               value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
+                                        <input type="color" id="colorPickerBg"
+                                            value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
+                                        <input type="text" class="form-control" id="theme_bg_color"
+                                            name="theme_bg_color"
+                                            value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
                                     </div>
                                 </div>
                             </div>
@@ -316,13 +377,13 @@
                             <div class="mb-3">
                                 <label class="form-label" for="widget_title">Widget titel</label>
                                 <input type="text" class="form-control" id="widget_title" name="widget_title"
-                                       value="{{ widget.widget_title if widget and widget.widget_title else '' }}"
-                                       placeholder="F.eks. Kursusraadgiver">
+                                    value="{{ widget.widget_title if widget and widget.widget_title else '' }}"
+                                    placeholder="F.eks. Kursusraadgiver">
                             </div>
                             <div class="mb-3">
                                 <label class="form-label" for="welcome_message">Velkomstbesked</label>
                                 <textarea class="form-control" id="welcome_message" name="welcome_message" rows="3"
-                                          placeholder="F.eks. Hej! Hvordan kan jeg hjaelpe dig i dag?">{{ widget.welcome_message if widget and widget.welcome_message else '' }}</textarea>
+                                    placeholder="F.eks. Hej! Hvordan kan jeg hjaelpe dig i dag?">{{ widget.welcome_message if widget and widget.welcome_message else '' }}</textarea>
                             </div>
                         </div>
 
@@ -332,18 +393,25 @@
                                 <div class="col-md-6">
                                     <label class="form-label" for="position">Position</label>
                                     <select class="form-select" id="position" name="position">
-                                        <option value="bottom-right" {% if widget and widget.position == 'bottom-right' %}selected{% endif %}>Nederst til hoejre</option>
-                                        <option value="bottom-left" {% if widget and widget.position == 'bottom-left' %}selected{% endif %}>Nederst til venstre</option>
-                                        <option value="top-right" {% if widget and widget.position == 'top-right' %}selected{% endif %}>Oeverst til hoejre</option>
-                                        <option value="top-left" {% if widget and widget.position == 'top-left' %}selected{% endif %}>Oeverst til venstre</option>
+                                        <option value="bottom-right" {% if widget and widget.position=='bottom-right'
+                                            %}selected{% endif %}>Nederst til hoejre</option>
+                                        <option value="bottom-left" {% if widget and widget.position=='bottom-left'
+                                            %}selected{% endif %}>Nederst til venstre</option>
+                                        <option value="top-right" {% if widget and widget.position=='top-right'
+                                            %}selected{% endif %}>Oeverst til hoejre</option>
+                                        <option value="top-left" {% if widget and widget.position=='top-left'
+                                            %}selected{% endif %}>Oeverst til venstre</option>
                                     </select>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label" for="size">Stoerrelse</label>
                                     <select class="form-select" id="size" name="size">
-                                        <option value="small" {% if widget and widget.size == 'small' %}selected{% endif %}>Lille (350px)</option>
-                                        <option value="medium" {% if widget and widget.size == 'medium' %}selected{% endif %}>Medium (400px)</option>
-                                        <option value="large" {% if widget and widget.size == 'large' %}selected{% endif %}>Stor (450px)</option>
+                                        <option value="small" {% if widget and widget.size=='small' %}selected{% endif
+                                            %}>Lille (350px)</option>
+                                        <option value="medium" {% if widget and widget.size=='medium' %}selected{% endif
+                                            %}>Medium (400px)</option>
+                                        <option value="large" {% if widget and widget.size=='large' %}selected{% endif
+                                            %}>Stor (450px)</option>
                                     </select>
                                 </div>
                             </div>
@@ -352,8 +420,9 @@
                         <div>
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="show_branding" name="show_branding"
-                                       {% if not widget or widget.show_branding != false %}checked{% endif %}>
-                                <label class="form-check-label" for="show_branding">Vis "Powered by AiLead" branding</label>
+                                    {% if not widget or widget.show_branding !=false %}checked{% endif %}>
+                                <label class="form-check-label" for="show_branding">Vis "Powered by AiLead"
+                                    branding</label>
                             </div>
                         </div>
                     </div>
@@ -368,8 +437,9 @@
                         <div class="mb-2">
                             <label class="form-label" for="allowed_domains">Tilladte domaener</label>
                             <textarea class="form-control" id="allowed_domains" name="allowed_domains" rows="2"
-                                      placeholder="example.com, mysite.dk">{{ widget.allowed_domains if widget and widget.allowed_domains else '' }}</textarea>
-                            <div class="form-text">Lad feltet staa tomt for at tillade alle domaener. Adskil med komma.</div>
+                                placeholder="example.com, mysite.dk">{{ widget.allowed_domains if widget and widget.allowed_domains else '' }}</textarea>
+                            <div class="form-text">Lad feltet staa tomt for at tillade alle domaener. Adskil med komma.
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -383,8 +453,8 @@
                         <div class="mb-2">
                             <label class="form-label" for="custom_css">Brugerdefineret CSS</label>
                             <textarea class="form-control" id="custom_css" name="custom_css" rows="4"
-                                      placeholder="/* Tilfoej brugerdefinerede CSS-regler her */"
-                                      style="font-family: monospace; font-size: 0.82rem;">{{ widget.custom_css if widget and widget.custom_css else '' }}</textarea>
+                                placeholder="/* Tilfoej brugerdefinerede CSS-regler her */"
+                                style="font-family: monospace; font-size: 0.82rem;">{{ widget.custom_css if widget and widget.custom_css else '' }}</textarea>
                         </div>
                     </div>
                 </div>
@@ -412,13 +482,15 @@
                             <div class="preview-chat-window" id="previewWindow">
                                 <div class="preview-chat-header" id="previewHeader">
                                     <span class="preview-chat-header-title" id="previewTitle">Chat</span>
-                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:0.6;">
+                                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                                        stroke-width="2" style="opacity:0.6;">
                                         <line x1="18" y1="6" x2="6" y2="18"></line>
                                         <line x1="6" y1="6" x2="18" y2="18"></line>
                                     </svg>
                                 </div>
                                 <div class="preview-chat-body" id="previewBody">
-                                    <div class="preview-welcome-msg" id="previewWelcome">Hej! Hvordan kan jeg hjaelpe dig?</div>
+                                    <div class="preview-welcome-msg" id="previewWelcome">Hej! Hvordan kan jeg hjaelpe
+                                        dig?</div>
                                 </div>
                                 <div id="previewBranding" class="preview-branding">Powered by AiLead</div>
                                 <div class="preview-chat-input">
@@ -448,7 +520,8 @@
                     </div>
                     <div class="card-body">
                         {% if widget and widget.widget_token %}
-                        <p style="font-size:0.85rem; color:#475569; margin-bottom:0.75rem;">Indsaet denne kode paa din hjemmeside, lige foer <code>&lt;/body&gt;</code>:</p>
+                        <p style="font-size:0.85rem; color:var(--muted-text); margin-bottom:0.75rem;">Indsaet denne kode
+                            paa din hjemmeside, lige foer <code>&lt;/body&gt;</code>:</p>
                         <div class="embed-code-block">
                             <button class="copy-btn" onclick="copyEmbed(this)" title="Kopier">
                                 <i class="fas fa-copy me-1"></i>Kopier
@@ -465,7 +538,8 @@
                         {% else %}
                         <div class="text-center py-4">
                             <i class="fas fa-info-circle text-muted mb-2" style="font-size:2rem;"></i>
-                            <p class="text-muted mb-0" style="font-size:0.85rem;">Gem indstillinger foerst for at generere embed-kode</p>
+                            <p class="text-muted mb-0" style="font-size:0.85rem;">Gem indstillinger foerst for at
+                                generere embed-kode</p>
                         </div>
                         {% endif %}
                     </div>
@@ -485,13 +559,15 @@
                             </div>
                         </div>
                         <div class="d-flex align-items-center gap-2">
-                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="regenerateToken()" style="border-radius:8px;">
+                            <button type="button" class="btn btn-outline-danger btn-sm" onclick="regenerateToken()"
+                                style="border-radius:8px;">
                                 <i class="fas fa-sync-alt me-1"></i>Regenerer token
                             </button>
                         </div>
                         <div class="form-text mt-2">
                             <i class="fas fa-exclamation-triangle text-warning me-1"></i>
-                            Advarsel: Regenerering af token ugyldiggoer den gamle embed-kode. Du skal opdatere koden paa din hjemmeside.
+                            Advarsel: Regenerering af token ugyldiggoer den gamle embed-kode. Du skal opdatere koden paa
+                            din hjemmeside.
                         </div>
                     </div>
                 </div>
@@ -505,108 +581,108 @@
 
 {% block extra_scripts %}
 <script>
-document.addEventListener('DOMContentLoaded', function() {
-    // Color picker sync
-    const colorPairs = [
-        { picker: 'colorPickerPrimary', text: 'theme_primary_color' },
-        { picker: 'colorPickerText', text: 'theme_text_color' },
-        { picker: 'colorPickerBg', text: 'theme_bg_color' }
-    ];
+    document.addEventListener('DOMContentLoaded', function () {
+        // Color picker sync
+        const colorPairs = [
+            { picker: 'colorPickerPrimary', text: 'theme_primary_color' },
+            { picker: 'colorPickerText', text: 'theme_text_color' },
+            { picker: 'colorPickerBg', text: 'theme_bg_color' }
+        ];
 
-    colorPairs.forEach(pair => {
-        const picker = document.getElementById(pair.picker);
-        const text = document.getElementById(pair.text);
-        if (!picker || !text) return;
+        colorPairs.forEach(pair => {
+            const picker = document.getElementById(pair.picker);
+            const text = document.getElementById(pair.text);
+            if (!picker || !text) return;
 
-        picker.addEventListener('input', () => {
-            text.value = picker.value.toUpperCase();
-            updatePreview();
+            picker.addEventListener('input', () => {
+                text.value = picker.value.toUpperCase();
+                updatePreview();
+            });
+            text.addEventListener('input', () => {
+                if (/^#[0-9A-Fa-f]{6}$/.test(text.value)) {
+                    picker.value = text.value;
+                }
+                updatePreview();
+            });
         });
-        text.addEventListener('input', () => {
-            if (/^#[0-9A-Fa-f]{6}$/.test(text.value)) {
-                picker.value = text.value;
-            }
-            updatePreview();
+
+        // Listen to all form inputs for live preview
+        const allInputs = document.querySelectorAll('#widgetForm input, #widgetForm textarea, #widgetForm select');
+        allInputs.forEach(input => {
+            input.addEventListener('input', updatePreview);
+            input.addEventListener('change', updatePreview);
         });
+
+        function updatePreview() {
+            const primaryColor = document.getElementById('theme_primary_color').value || '#4F46E5';
+            const textColor = document.getElementById('theme_text_color').value || '#FFFFFF';
+            const bgColor = document.getElementById('theme_bg_color').value || '#FFFFFF';
+            const title = document.getElementById('widget_title').value || 'Chat';
+            const welcome = document.getElementById('welcome_message').value || 'Hej! Hvordan kan jeg hjaelpe dig?';
+            const showBranding = document.getElementById('show_branding').checked;
+
+            // Update preview header
+            const header = document.getElementById('previewHeader');
+            header.style.backgroundColor = primaryColor;
+            header.style.color = textColor;
+            header.querySelector('svg').style.stroke = textColor;
+
+            // Update title
+            document.getElementById('previewTitle').textContent = title;
+            document.getElementById('previewTitle').style.color = textColor;
+
+            // Update window background
+            document.getElementById('previewBody').style.backgroundColor = bgColor;
+            document.getElementById('previewWindow').style.backgroundColor = bgColor;
+
+            // Update welcome message
+            document.getElementById('previewWelcome').textContent = welcome;
+
+            // Update bubble
+            const bubble = document.getElementById('previewBubble');
+            bubble.style.backgroundColor = primaryColor;
+            bubble.querySelector('svg').style.stroke = textColor;
+
+            // Update send button
+            const sendBtn = document.getElementById('previewSendBtn');
+            sendBtn.style.backgroundColor = primaryColor;
+            sendBtn.querySelector('svg').style.stroke = textColor;
+
+            // Branding
+            document.getElementById('previewBranding').style.display = showBranding ? 'block' : 'none';
+        }
+
+        // Initialize preview
+        updatePreview();
     });
 
-    // Listen to all form inputs for live preview
-    const allInputs = document.querySelectorAll('#widgetForm input, #widgetForm textarea, #widgetForm select');
-    allInputs.forEach(input => {
-        input.addEventListener('input', updatePreview);
-        input.addEventListener('change', updatePreview);
-    });
-
-    function updatePreview() {
-        const primaryColor = document.getElementById('theme_primary_color').value || '#4F46E5';
-        const textColor = document.getElementById('theme_text_color').value || '#FFFFFF';
-        const bgColor = document.getElementById('theme_bg_color').value || '#FFFFFF';
-        const title = document.getElementById('widget_title').value || 'Chat';
-        const welcome = document.getElementById('welcome_message').value || 'Hej! Hvordan kan jeg hjaelpe dig?';
-        const showBranding = document.getElementById('show_branding').checked;
-
-        // Update preview header
-        const header = document.getElementById('previewHeader');
-        header.style.backgroundColor = primaryColor;
-        header.style.color = textColor;
-        header.querySelector('svg').style.stroke = textColor;
-
-        // Update title
-        document.getElementById('previewTitle').textContent = title;
-        document.getElementById('previewTitle').style.color = textColor;
-
-        // Update window background
-        document.getElementById('previewBody').style.backgroundColor = bgColor;
-        document.getElementById('previewWindow').style.backgroundColor = bgColor;
-
-        // Update welcome message
-        document.getElementById('previewWelcome').textContent = welcome;
-
-        // Update bubble
-        const bubble = document.getElementById('previewBubble');
-        bubble.style.backgroundColor = primaryColor;
-        bubble.querySelector('svg').style.stroke = textColor;
-
-        // Update send button
-        const sendBtn = document.getElementById('previewSendBtn');
-        sendBtn.style.backgroundColor = primaryColor;
-        sendBtn.querySelector('svg').style.stroke = textColor;
-
-        // Branding
-        document.getElementById('previewBranding').style.display = showBranding ? 'block' : 'none';
+    // Copy embed code
+    function copyEmbed(btn) {
+        const code = document.getElementById('embedCode');
+        if (!code) return;
+        const text = code.textContent
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&amp;/g, '&');
+        navigator.clipboard.writeText(text).then(() => {
+            btn.classList.add('copied');
+            btn.innerHTML = '<i class="fas fa-check me-1"></i>Kopieret!';
+            setTimeout(() => {
+                btn.classList.remove('copied');
+                btn.innerHTML = '<i class="fas fa-copy me-1"></i>Kopier';
+            }, 2000);
+        });
     }
 
-    // Initialize preview
-    updatePreview();
-});
+    // Regenerate token
+    function regenerateToken() {
+        if (!confirm('Er du sikker? Den gamle embed-kode vil stoppe med at virke, og du skal opdatere koden paa din hjemmeside.')) return;
 
-// Copy embed code
-function copyEmbed(btn) {
-    const code = document.getElementById('embedCode');
-    if (!code) return;
-    const text = code.textContent
-        .replace(/&lt;/g, '<')
-        .replace(/&gt;/g, '>')
-        .replace(/&amp;/g, '&');
-    navigator.clipboard.writeText(text).then(() => {
-        btn.classList.add('copied');
-        btn.innerHTML = '<i class="fas fa-check me-1"></i>Kopieret!';
-        setTimeout(() => {
-            btn.classList.remove('copied');
-            btn.innerHTML = '<i class="fas fa-copy me-1"></i>Kopier';
-        }, 2000);
-    });
-}
-
-// Regenerate token
-function regenerateToken() {
-    if (!confirm('Er du sikker? Den gamle embed-kode vil stoppe med at virke, og du skal opdatere koden paa din hjemmeside.')) return;
-
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = "{{ url_for('hr_dashboard.widget_regenerate_token') }}";
-    document.body.appendChild(form);
-    form.submit();
-}
+        const form = document.createElement('form');
+        form.method = 'POST';
+        form.action = "{{ url_for('hr_dashboard.widget_regenerate_token') }}";
+        document.body.appendChild(form);
+        form.submit();
+    }
 </script>
 {% endblock %}

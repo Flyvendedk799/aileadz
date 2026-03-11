@@ -25,7 +25,8 @@
       --header-bg: linear-gradient(135deg, #1e1e1e, #0e0e0e);
       --card-bg: #1a1a1a;
       --text-color: #ffffff;
-      --muted-text: #aaaaaa;
+      --muted-text: #d1d5db;
+      --muted-text-light: #d1d5db;
       --hover-shadow: rgba(0, 0, 0, 0.8);
       --transition-speed: 0.3s;
       --border-radius: 10px;
@@ -42,6 +43,7 @@
       --card-bg: #f8f8fc;
       --text-color: #1a1a1a;
       --muted-text: #555555;
+      --muted-text-light: #64748b;
       --hover-shadow: rgba(0, 0, 0, 0.1);
       --box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
       --glass-bg: rgba(255, 255, 255, 0.7);
@@ -468,6 +470,14 @@
       background-color: var(--card-bg);
       border-color: var(--border-color);
       color: var(--text-color);
+    }
+
+    .text-muted {
+      color: var(--muted-text-light) !important;
+    }
+
+    .text-secondary {
+      color: var(--muted-text-light) !important;
     }
 
     .card-header,

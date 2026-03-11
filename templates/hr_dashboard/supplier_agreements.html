@@ -7,13 +7,20 @@
 <style>
     .agreement-card {
         border-radius: 12px;
-        border: 1px solid #e5e7eb;
-        background: #fff;
-        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
+        box-shadow: var(--box-shadow);
         transition: box-shadow 0.15s;
     }
-    .agreement-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
-    .agreement-card.inactive { opacity: 0.6; }
+
+    .agreement-card:hover {
+        box-shadow: var(--hover-shadow);
+    }
+
+    .agreement-card.inactive {
+        opacity: 0.6;
+    }
+
     .discount-badge {
         display: inline-flex;
         align-items: center;
@@ -23,12 +30,38 @@
         font-size: 0.8rem;
         font-weight: 700;
     }
-    .discount-badge.percentage { background: #dcfce7; color: #16a34a; }
-    .discount-badge.fixed_amount { background: #dbeafe; color: #2563eb; }
-    .discount-badge.fixed_price { background: #fef3c7; color: #d97706; }
-    .stat-pill { background: #f8fafc; border-radius: 12px; padding: 16px 20px; text-align: center; }
-    .stat-pill h3 { margin: 0; font-weight: 700; }
-    .stat-pill small { color: #6b7280; }
+
+    .discount-badge.percentage {
+        background: #dcfce7;
+        color: #16a34a;
+    }
+
+    .discount-badge.fixed_amount {
+        background: #dbeafe;
+        color: #2563eb;
+    }
+
+    .discount-badge.fixed_price {
+        background: #fef3c7;
+        color: #d97706;
+    }
+
+    .stat-pill {
+        background: var(--glass-bg);
+        border-radius: 12px;
+        padding: 16px 20px;
+        text-align: center;
+        border: 1px solid var(--border-color);
+    }
+
+    .stat-pill h3 {
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .stat-pill small {
+        color: var(--muted-text);
+    }
 </style>
 {% endblock %}
 
@@ -103,25 +136,22 @@
                         </button>
                         <ul class="dropdown-menu dropdown-menu-end">
                             <li>
-                                <button class="dropdown-item edit-agreement-btn"
-                                        data-id="{{ a.id }}"
-                                        data-vendor="{{ a.vendor_name }}"
-                                        data-type="{{ a.discount_type }}"
-                                        data-value="{{ a.discount_value }}"
-                                        data-name="{{ a.agreement_name or '' }}"
-                                        data-ref="{{ a.agreement_reference or '' }}"
-                                        data-from="{{ a.valid_from or '' }}"
-                                        data-until="{{ a.valid_until or '' }}"
-                                        data-min="{{ a.min_participants or 1 }}"
-                                        data-notes="{{ a.notes or '' }}"
-                                        data-active="{{ a.is_active }}">
+                                <button class="dropdown-item edit-agreement-btn" data-id="{{ a.id }}"
+                                    data-vendor="{{ a.vendor_name }}" data-type="{{ a.discount_type }}"
+                                    data-value="{{ a.discount_value }}" data-name="{{ a.agreement_name or '' }}"
+                                    data-ref="{{ a.agreement_reference or '' }}" data-from="{{ a.valid_from or '' }}"
+                                    data-until="{{ a.valid_until or '' }}" data-min="{{ a.min_participants or 1 }}"
+                                    data-notes="{{ a.notes or '' }}" data-active="{{ a.is_active }}">
                                     <i class="fas fa-edit me-2 text-primary"></i>Rediger
                                 </button>
                             </li>
-                            <li><hr class="dropdown-divider"></li>
                             <li>
-                                <form method="POST" action="{{ url_for('hr_dashboard.delete_supplier_agreement', agreement_id=a.id) }}"
-                                      onsubmit="return confirm('Slet aftale med {{ a.vendor_name }}?')">
+                                <hr class="dropdown-divider">
+                            </li>
+                            <li>
+                                <form method="POST"
+                                    action="{{ url_for('hr_dashboard.delete_supplier_agreement', agreement_id=a.id) }}"
+                                    onsubmit="return confirm('Slet aftale med {{ a.vendor_name }}?')">
                                     <button type="submit" class="dropdown-item text-danger">
                                         <i class="fas fa-trash me-2"></i>Slet
                                     </button>
@@ -133,11 +163,14 @@
 
                 <div class="mb-2">
                     {% if a.discount_type == 'percentage' %}
-                    <span class="discount-badge percentage"><i class="fas fa-percent"></i> {{ a.discount_value|int }}% rabat</span>
+                    <span class="discount-badge percentage"><i class="fas fa-percent"></i> {{ a.discount_value|int }}%
+                        rabat</span>
                     {% elif a.discount_type == 'fixed_amount' %}
-                    <span class="discount-badge fixed_amount"><i class="fas fa-minus-circle"></i> {{ a.discount_value|int }} kr rabat</span>
+                    <span class="discount-badge fixed_amount"><i class="fas fa-minus-circle"></i> {{
+                        a.discount_value|int }} kr rabat</span>
                     {% elif a.discount_type == 'fixed_price' %}
-                    <span class="discount-badge fixed_price"><i class="fas fa-tag"></i> Fastpris {{ a.discount_value|int }} kr</span>
+                    <span class="discount-badge fixed_price"><i class="fas fa-tag"></i> Fastpris {{ a.discount_value|int
+                        }} kr</span>
                     {% endif %}
                 </div>
 
@@ -195,7 +228,7 @@
                     <div class="mb-3">
                         <label class="form-label fw-bold">Aftalenavn</label>
                         <input type="text" class="form-control" name="agreement_name" id="agr_name"
-                               placeholder="f.eks. Rammeaftale 2026">
+                            placeholder="f.eks. Rammeaftale 2026">
                     </div>
                     <div class="row g-3 mb-3">
                         <div class="col-6">
@@ -208,14 +241,14 @@
                         </div>
                         <div class="col-6">
                             <label class="form-label fw-bold">Vaerdi <span class="text-danger">*</span></label>
-                            <input type="number" class="form-control" name="discount_value" id="agr_value"
-                                   required min="0" step="0.01" placeholder="f.eks. 15">
+                            <input type="number" class="form-control" name="discount_value" id="agr_value" required
+                                min="0" step="0.01" placeholder="f.eks. 15">
                         </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Aftale-reference</label>
                         <input type="text" class="form-control" name="agreement_reference" id="agr_ref"
-                               placeholder="f.eks. KTR-2026-001">
+                            placeholder="f.eks. KTR-2026-001">
                     </div>
                     <div class="row g-3 mb-3">
                         <div class="col-6">
@@ -229,14 +262,14 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Min. deltagere</label>
-                        <input type="number" class="form-control" name="min_participants" id="agr_min"
-                               value="1" min="1">
+                        <input type="number" class="form-control" name="min_participants" id="agr_min" value="1"
+                            min="1">
                         <small class="text-muted">Minimum antal deltagere for rabat</small>
                     </div>
                     <div class="mb-3">
                         <label class="form-label fw-bold">Noter</label>
                         <textarea class="form-control" name="notes" id="agr_notes" rows="2"
-                                  placeholder="Interne noter om aftalen"></textarea>
+                            placeholder="Interne noter om aftalen"></textarea>
                     </div>
                     <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" name="is_active" id="agr_active" checked>
@@ -255,33 +288,33 @@
 
 {% block extra_scripts %}
 <script>
-document.querySelectorAll('.edit-agreement-btn').forEach(function(btn) {
-    btn.addEventListener('click', function() {
-        document.getElementById('agreementModalTitle').innerHTML =
-            '<i class="fas fa-edit text-primary me-2"></i>Rediger aftale';
-        document.getElementById('agr_vendor').value = this.dataset.vendor;
-        document.getElementById('agr_type').value = this.dataset.type;
-        document.getElementById('agr_value').value = this.dataset.value;
-        document.getElementById('agr_name').value = this.dataset.name;
-        document.getElementById('agr_ref').value = this.dataset.ref;
-        document.getElementById('agr_from').value = this.dataset.from;
-        document.getElementById('agr_until').value = this.dataset.until;
-        document.getElementById('agr_min').value = this.dataset.min;
-        document.getElementById('agr_notes').value = this.dataset.notes;
-        document.getElementById('agr_active').checked = this.dataset.active === '1';
-        new bootstrap.Modal(document.getElementById('addAgreementModal')).show();
+    document.querySelectorAll('.edit-agreement-btn').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+            document.getElementById('agreementModalTitle').innerHTML =
+                '<i class="fas fa-edit text-primary me-2"></i>Rediger aftale';
+            document.getElementById('agr_vendor').value = this.dataset.vendor;
+            document.getElementById('agr_type').value = this.dataset.type;
+            document.getElementById('agr_value').value = this.dataset.value;
+            document.getElementById('agr_name').value = this.dataset.name;
+            document.getElementById('agr_ref').value = this.dataset.ref;
+            document.getElementById('agr_from').value = this.dataset.from;
+            document.getElementById('agr_until').value = this.dataset.until;
+            document.getElementById('agr_min').value = this.dataset.min;
+            document.getElementById('agr_notes').value = this.dataset.notes;
+            document.getElementById('agr_active').checked = this.dataset.active === '1';
+            new bootstrap.Modal(document.getElementById('addAgreementModal')).show();
+        });
     });
-});
 
-// Reset modal when opening for new agreement
-document.getElementById('addAgreementModal').addEventListener('show.bs.modal', function(e) {
-    if (e.relatedTarget && e.relatedTarget.dataset && !e.relatedTarget.classList.contains('edit-agreement-btn')) {
-        document.getElementById('agreementModalTitle').innerHTML =
-            '<i class="fas fa-handshake text-primary me-2"></i>Ny leverandoeraftale';
-        document.getElementById('agreementForm').reset();
-        document.getElementById('agr_active').checked = true;
-        document.getElementById('agr_min').value = '1';
-    }
-});
+    // Reset modal when opening for new agreement
+    document.getElementById('addAgreementModal').addEventListener('show.bs.modal', function (e) {
+        if (e.relatedTarget && e.relatedTarget.dataset && !e.relatedTarget.classList.contains('edit-agreement-btn')) {
+            document.getElementById('agreementModalTitle').innerHTML =
+                '<i class="fas fa-handshake text-primary me-2"></i>Ny leverandoeraftale';
+            document.getElementById('agreementForm').reset();
+            document.getElementById('agr_active').checked = true;
+            document.getElementById('agr_min').value = '1';
+        }
+    });
 </script>
 {% endblock %}

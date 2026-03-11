@@ -159,6 +159,26 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: trigger warning: %s", e)
 
+    # Add unique key to employee_skills_matrix if missing
+    try:
+        uk_cur = conn.cursor()
+        uk_cur.execute("""
+            SELECT COUNT(1) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'employee_skills_matrix'
+              AND INDEX_NAME = 'uk_emp_company_skill'
+        """)
+        if uk_cur.fetchone()[0] == 0:
+            uk_cur.execute("""
+                ALTER TABLE employee_skills_matrix
+                ADD UNIQUE KEY uk_emp_company_skill (employee_id, company_id, skill_name)
+            """)
+            logging.info("Auto-sync: added unique key uk_emp_company_skill")
+            synced += 1
+        uk_cur.close()
+    except Exception as e:
+        logging.warning("Auto-sync: employee_skills_matrix unique key: %s", e)
+
     if synced:
         conn.commit()
         logging.info("Auto-sync complete: %d changes made", synced)

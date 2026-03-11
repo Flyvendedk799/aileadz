@@ -222,13 +222,27 @@ def get_skill_gap_analysis(app, company_id, department=None):
             cur.close()
             return None
 
-        # Get current employee skills
-        cur.execute("""
-            SELECT esm.skill_name, esm.current_level, cu.department, cu.user_id
-            FROM employee_skills_matrix esm
-            JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
-            WHERE esm.company_id = %s AND cu.status = 'active'
-        """, (company_id,))
+        # Get current employee skills (merge enterprise + chatbot sources)
+        level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 3 WHEN 'ekspert' THEN 4 ELSE 2 END"
+        cur.execute(f"""
+            SELECT skill_name, current_level, department, user_id FROM (
+                SELECT esm.skill_name, esm.current_level, cu.department, cu.user_id
+                FROM employee_skills_matrix esm
+                JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
+                WHERE esm.company_id = %s AND cu.status = 'active'
+                UNION ALL
+                SELECT us.skill_name, {level_map} as current_level, cu2.department, cu2.user_id
+                FROM user_skills us
+                JOIN users u ON us.username = u.username
+                JOIN company_users cu2 ON cu2.user_id = u.id AND cu2.company_id = %s AND cu2.status = 'active'
+                WHERE NOT EXISTS (
+                    SELECT 1 FROM employee_skills_matrix esm2
+                    WHERE esm2.employee_id = cu2.user_id
+                      AND esm2.company_id = %s
+                      AND esm2.skill_name = us.skill_name
+                )
+            ) combined
+        """, (company_id, company_id, company_id))
         skills = cur.fetchall()
         cur.close()
 

@@ -11,9 +11,14 @@
             <h1 class="h3 mb-1 fw-bold"><i class="fas fa-brain text-primary me-2"></i>Kompetencer &amp; Skill Gaps</h1>
             <p class="text-muted mb-0">{{ company.company_name }} — Analyse af kompetencer, maal og gab</p>
         </div>
-        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTargetModal">
-            <i class="fas fa-plus me-1"></i> Tilfoej kompetencemaal
-        </button>
+        <div class="d-flex gap-2">
+            <button class="btn btn-outline-primary btn-sm" data-bs-toggle="modal" data-bs-target="#assignSkillModal">
+                <i class="fas fa-user-plus me-1"></i> Tildel kompetence
+            </button>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addTargetModal">
+                <i class="fas fa-plus me-1"></i> Tilfoej kompetencemaal
+            </button>
+        </div>
     </div>
 
     <!-- KPI Summary -->
@@ -312,6 +317,10 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-end pe-3">
+                                        <button class="btn btn-sm btn-outline-primary border-0 me-1"
+                                                onclick="editTarget('{{ t.skill_name }}', '{{ t.department or '' }}', {{ t.target_level }}, '{{ t.priority }}')">
+                                            <i class="fas fa-edit"></i>
+                                        </button>
                                         <form method="POST" action="{{ url_for('hr_dashboard.delete_skill_target', target_id=t.id) }}" class="d-inline" onsubmit="return confirm('Slet dette maal?')">
                                             <button type="submit" class="btn btn-sm btn-outline-danger border-0"><i class="fas fa-trash"></i></button>
                                         </form>
@@ -339,12 +348,12 @@
     </div>
 </div>
 
-<!-- Add Target Modal -->
+<!-- Add/Edit Target Modal -->
 <div class="modal fade" id="addTargetModal" tabindex="-1">
     <div class="modal-dialog">
         <div class="modal-content" style="border-radius:12px;">
             <div class="modal-header border-0 pb-0">
-                <h5 class="modal-title fw-bold"><i class="fas fa-plus-circle text-primary me-2"></i>Tilfoej kompetencemaal</h5>
+                <h5 class="modal-title fw-bold" id="targetModalTitle"><i class="fas fa-plus-circle text-primary me-2"></i>Tilfoej kompetencemaal</h5>
                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
             </div>
             <div class="modal-body">
@@ -358,9 +367,11 @@
                     </select>
                     <small class="text-muted">Tom = gaelder for alle</small>
                 </div>
-                <div class="mb-3">
+                <div class="mb-3 position-relative">
                     <label class="form-label fw-bold">Kompetence <span class="text-danger">*</span></label>
-                    <input type="text" class="form-control" id="targetSkill" placeholder="f.eks. Python, ITIL, Projektledelse">
+                    <input type="text" class="form-control" id="targetSkill" placeholder="Begynd at skrive..."
+                           autocomplete="off" oninput="showSkillSuggestions(this.value)" onfocus="showSkillSuggestions(this.value)">
+                    <div id="skillSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:10;max-height:160px;overflow-y:auto;display:none;"></div>
                 </div>
                 <div class="mb-3">
                     <label class="form-label fw-bold">Maal-niveau: <span id="levelDisplay">3</span>/5</label>
@@ -382,6 +393,48 @@
             <div class="modal-footer border-0 pt-0">
                 <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
                 <button type="button" class="btn btn-primary" onclick="saveTarget()"><i class="fas fa-save me-1"></i>Gem</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Assign Skill Modal -->
+<div class="modal fade" id="assignSkillModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:12px;">
+            <div class="modal-header border-0 pb-0">
+                <h5 class="modal-title fw-bold"><i class="fas fa-user-plus text-primary me-2"></i>Tildel kompetence til medarbejdere</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3 position-relative">
+                    <label class="form-label fw-bold">Kompetence <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="assignSkillName" placeholder="f.eks. Python, ITIL..."
+                           autocomplete="off" oninput="showAssignSuggestions(this.value)" onfocus="showAssignSuggestions(this.value)">
+                    <div id="assignSkillSuggestions" class="list-group position-absolute w-100 shadow-sm" style="z-index:10;max-height:160px;overflow-y:auto;display:none;"></div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Niveau: <span id="assignLevelDisplay">2</span>/5</label>
+                    <input type="range" class="form-range" id="assignLevel" min="1" max="5" value="2"
+                           oninput="document.getElementById('assignLevelDisplay').textContent=this.value">
+                    <div class="d-flex justify-content-between small text-muted">
+                        <span>1 Begynder</span><span>3 Kompetent</span><span>5 Ekspert</span>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <label class="form-label fw-bold">Tildel til</label>
+                    <select class="form-select" id="assignDept">
+                        <option value="">-- Vaelg afdeling (alle i afdelingen) --</option>
+                        {% for d in departments %}
+                        <option value="{{ d }}">{{ d }}</option>
+                        {% endfor %}
+                    </select>
+                    <small class="text-muted">Kompetencen tildeles alle aktive medarbejdere i den valgte afdeling</small>
+                </div>
+            </div>
+            <div class="modal-footer border-0 pt-0">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
+                <button type="button" class="btn btn-primary" onclick="assignSkill()"><i class="fas fa-check me-1"></i>Tildel</button>
             </div>
         </div>
     </div>
@@ -431,11 +484,61 @@
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+// Known skill names for autocomplete
+var knownSkills = {{ all_skill_names|default([])|tojson }};
+
+// Autocomplete helpers
+function showSkillSuggestions(val) { _showSuggestions(val, 'skillSuggestions', 'targetSkill'); }
+function showAssignSuggestions(val) { _showSuggestions(val, 'assignSkillSuggestions', 'assignSkillName'); }
+function _showSuggestions(val, listId, inputId) {
+    var box = document.getElementById(listId);
+    if (!val) { box.style.display = 'none'; return; }
+    var q = val.toLowerCase();
+    var matches = knownSkills.filter(function(s) { return s.toLowerCase().indexOf(q) >= 0; });
+    if (!matches.length) { box.style.display = 'none'; return; }
+    box.innerHTML = matches.slice(0, 8).map(function(m) {
+        return '<button type="button" class="list-group-item list-group-item-action py-1 small" onclick="pickSuggestion(\'' + inputId + '\',\'' + listId + '\',this.textContent)">' + m + '</button>';
+    }).join('');
+    box.style.display = 'block';
+}
+function pickSuggestion(inputId, listId, val) {
+    document.getElementById(inputId).value = val;
+    document.getElementById(listId).style.display = 'none';
+}
+document.addEventListener('click', function(e) {
+    document.querySelectorAll('#skillSuggestions,#assignSkillSuggestions').forEach(function(b) {
+        if (!b.contains(e.target)) b.style.display = 'none';
+    });
+});
+
+// Edit target — populate modal and open
+function editTarget(skill, dept, level, priority) {
+    document.getElementById('targetModalTitle').innerHTML = '<i class="fas fa-edit text-primary me-2"></i>Rediger kompetencemaal';
+    document.getElementById('targetSkill').value = skill;
+    document.getElementById('targetDept').value = dept;
+    document.getElementById('targetLevel').value = level;
+    document.getElementById('levelDisplay').textContent = level;
+    document.getElementById('targetPriority').value = priority;
+    new bootstrap.Modal(document.getElementById('addTargetModal')).show();
+}
+
+// Reset modal title on open for new target
+document.getElementById('addTargetModal').addEventListener('show.bs.modal', function(e) {
+    if (e.relatedTarget && !e.relatedTarget.classList.contains('edit-target-btn')) {
+        document.getElementById('targetModalTitle').innerHTML = '<i class="fas fa-plus-circle text-primary me-2"></i>Tilfoej kompetencemaal';
+        document.getElementById('targetSkill').value = '';
+        document.getElementById('targetDept').value = '';
+        document.getElementById('targetLevel').value = 3;
+        document.getElementById('levelDisplay').textContent = '3';
+        document.getElementById('targetPriority').value = 'medium';
+    }
+});
+
 // Save target
 function saveTarget() {
     var data = {
         department: document.getElementById('targetDept').value,
-        skill_name: document.getElementById('targetSkill').value,
+        skill_name: document.getElementById('targetSkill').value.trim(),
         target_level: parseInt(document.getElementById('targetLevel').value),
         priority: document.getElementById('targetPriority').value
     };
@@ -446,6 +549,22 @@ function saveTarget() {
     }).then(function(r){return r.json();}).then(function(d){
         if(d.success) location.reload();
         else alert('Fejl: ' + d.message);
+    });
+}
+
+// Assign skill to employees
+function assignSkill() {
+    var skill = document.getElementById('assignSkillName').value.trim();
+    var level = parseInt(document.getElementById('assignLevel').value);
+    var dept = document.getElementById('assignDept').value;
+    if (!skill) { alert('Angiv kompetencenavn.'); return; }
+    if (!dept) { alert('Vaelg en afdeling.'); return; }
+    fetch('{{ url_for("hr_dashboard.assign_employee_skill") }}', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({skill_name: skill, level: level, department: dept})
+    }).then(function(r){return r.json();}).then(function(d){
+        if(d.success) { alert(d.message); location.reload(); }
+        else alert('Fejl: ' + (d.message || 'Ukendt fejl'));
     });
 }
 

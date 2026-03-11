@@ -1002,13 +1002,19 @@ def create_hr_dashboard_blueprint():
                 sn = row['skill_name']
                 if sn not in skill_summary:
                     skill_summary[sn] = {'skill_name': sn, 'total_level': 0, 'count': 0, 'employees': []}
-                skill_summary[sn]['total_level'] += (row['current_level'] or 0)
+                try:
+                    lvl = int(row['current_level'] or 0)
+                except (ValueError, TypeError):
+                    lvl = 2 # fallback for non-numeric data
+                    current_app.logger.warning(f"Non-numeric skill level for {sn}: {row['current_level']}")
+
+                skill_summary[sn]['total_level'] += lvl
                 skill_summary[sn]['count'] += 1
                 skill_summary[sn]['employees'].append({
                     'username': row['username'],
                     'department': row['department'],
                     'job_title': row['job_title'],
-                    'current_level': row['current_level'],
+                    'current_level': lvl,
                     'user_id': row['user_id']
                 })
             for s in skill_summary.values():

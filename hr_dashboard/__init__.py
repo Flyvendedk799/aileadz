@@ -2330,6 +2330,7 @@ def create_hr_dashboard_blueprint():
         if not code:
             import hashlib
             code = 'D-' + hashlib.md5(name.encode()).hexdigest()[:6].upper()
+        current_app.logger.info(f"add_department: name={name!r}, code={code!r}")
 
         if not name:
             flash("Afdelingsnavn er paakraevet.", "danger")

@@ -2079,12 +2079,21 @@ def handle_agentic_ask(user_query, session):
             except Exception as e:
                 print(f"[Chatbot Interaction Log Error] {e}")
 
+        except (OSError, BrokenPipeError, ConnectionResetError) as pipe_err:
+            # Client disconnected (SIGPIPE / broken pipe) — log but don't try to send
+            print(f"[Agent] Client disconnected: {pipe_err}")
         except Exception as e:
             print(f"[Agent Error] {e}")
-            error_msg = "Beklager, der opstod en teknisk fejl. Prøv venligst igen."
-            yield f"data: {json.dumps({'type': 'chunk', 'content': error_msg})}\n\n"
+            try:
+                error_msg = "Beklager, der opstod en teknisk fejl. Prøv venligst igen."
+                yield f"data: {json.dumps({'type': 'chunk', 'content': error_msg})}\n\n"
+            except (OSError, BrokenPipeError, ConnectionResetError):
+                pass  # Client already gone
         finally:
-            yield "data: [DONE]\n\n"
+            try:
+                yield "data: [DONE]\n\n"
+            except (OSError, BrokenPipeError, ConnectionResetError):
+                pass  # Client already gone
 
     response = Response(stream_with_context(stream_generator()), mimetype="text/event-stream")
     response.headers['X-Accel-Buffering'] = 'no'

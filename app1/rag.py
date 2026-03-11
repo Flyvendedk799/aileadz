@@ -528,8 +528,15 @@ Eksempel svar: [9, 3, 7, 5]"""},
             max_tokens=50,
             timeout=5.0
         )
-        raw = response.choices[0].message.content.strip()
-        # Parse the scores
+        raw = (response.choices[0].message.content or "").strip()
+        # Parse the scores — handle GPT sometimes wrapping in markdown or adding text
+        if not raw:
+            return candidates
+        # Try to extract JSON array from response
+        import re as _json_re
+        json_match = _json_re.search(r'\[[\d\s,\.]+\]', raw)
+        if json_match:
+            raw = json_match.group(0)
         scores = json.loads(raw)
         if not isinstance(scores, list):
             return candidates

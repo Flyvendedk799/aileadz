@@ -143,17 +143,51 @@ def _auto_sync_columns(conn, create_stmts):
 
     # Drop the unique_company_dept key — it was manually added and
     # blocks inserts when department_code is NULL/empty for multiple departments.
+    # Must drop any foreign keys referencing it first.
     try:
         idx_cur = conn.cursor()
+        # Find and drop foreign keys that depend on this index
+        idx_cur.execute("""
+            SELECT CONSTRAINT_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'company_departments'
+              AND REFERENCED_TABLE_NAME IS NOT NULL
+        """)
+        fk_rows = idx_cur.fetchall()
+        for fk_row in fk_rows:
+            fk_name = fk_row[0]
+            try:
+                idx_cur.execute(f"ALTER TABLE company_departments DROP FOREIGN KEY {fk_name}")
+                conn.commit()
+                logging.info("Auto-sync: dropped foreign key %s", fk_name)
+            except Exception:
+                pass
+        # Also check other tables that might reference company_departments
+        idx_cur.execute("""
+            SELECT TABLE_NAME, CONSTRAINT_NAME
+            FROM information_schema.KEY_COLUMN_USAGE
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND REFERENCED_TABLE_NAME = 'company_departments'
+        """)
+        ref_rows = idx_cur.fetchall()
+        for ref_row in ref_rows:
+            ref_table, ref_fk = ref_row[0], ref_row[1]
+            try:
+                idx_cur.execute(f"ALTER TABLE {ref_table} DROP FOREIGN KEY {ref_fk}")
+                conn.commit()
+                logging.info("Auto-sync: dropped foreign key %s on %s", ref_fk, ref_table)
+            except Exception:
+                pass
+        # Now drop the index
         idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
         conn.commit()
         idx_cur.close()
         logging.info("Auto-sync: dropped problematic unique_company_dept index")
         synced += 1
     except Exception as e:
-        # (1091, "Can't DROP ... check that it exists") is fine — means it's already gone
         if hasattr(e, 'args') and e.args and e.args[0] == 1091:
-            logging.debug("Auto-sync: unique_company_dept already absent")
+            pass  # already gone
         else:
             logging.warning("Auto-sync: drop unique_company_dept: %s", e)
 

@@ -8,758 +8,855 @@
     {% include 'hr_dashboard/_hr_nav.html' %}
 
     <!-- Onboarding Checklist -->
-    {% if onboarding and onboarding.completed_count < 5 %}
-    <div class="row mb-4" id="onboarding-checklist">
+    {% if onboarding and onboarding.completed_count < 5 %} <div class="row mb-4" id="onboarding-checklist">
         <div class="col-12">
             <div class="card shadow-sm border-0">
                 <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-clipboard-list text-primary me-2"></i>Kom godt i gang ({{ onboarding.completed_count }}/5)</h6>
-                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('onboarding-checklist').style.display='none'">
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-clipboard-list text-primary me-2"></i>Kom godt i gang ({{
+                        onboarding.completed_count }}/5)</h6>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                        onclick="document.getElementById('onboarding-checklist').style.display='none'">
                         <i class="fas fa-times me-1"></i>Skjul
                     </button>
                 </div>
                 <div class="card-body">
                     <div class="progress mb-3" style="height: 8px;">
-                        <div class="progress-bar bg-success" style="width: {{ (onboarding.completed_count / 5 * 100)|int }}%"></div>
+                        <div class="progress-bar bg-success"
+                            style="width: {{ (onboarding.completed_count / 5 * 100)|int }}%"></div>
                     </div>
                     <div class="list-group list-group-flush">
                         <div class="list-group-item border-0 px-0 py-2 d-flex align-items-center">
                             <i class="fas fa-check-circle text-success me-3"></i>
                             <span>Opret virksomhed</span>
                         </div>
-                        <a href="{{ url_for('companies.add_employee') }}" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
-                            {% if onboarding.has_employees %}<i class="fas fa-check-circle text-success me-3"></i>{% else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
+                        <a href="{{ url_for('companies.add_employee') }}"
+                            class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                            {% if onboarding.has_employees %}<i class="fas fa-check-circle text-success me-3"></i>{%
+                            else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Tilfoej medarbejdere</span>
                         </a>
-                        <a href="{{ url_for('hr_dashboard.departments') }}" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
-                            {% if onboarding.has_departments %}<i class="fas fa-check-circle text-success me-3"></i>{% else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
+                        <a href="{{ url_for('hr_dashboard.departments') }}"
+                            class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                            {% if onboarding.has_departments %}<i class="fas fa-check-circle text-success me-3"></i>{%
+                            else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Opret afdelinger</span>
                         </a>
-                        <a href="{{ url_for('hr_dashboard.department_budgets') }}" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
-                            {% if onboarding.has_budgets %}<i class="fas fa-check-circle text-success me-3"></i>{% else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
+                        <a href="{{ url_for('hr_dashboard.department_budgets') }}"
+                            class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                            {% if onboarding.has_budgets %}<i class="fas fa-check-circle text-success me-3"></i>{% else
+                            %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Saet uddannelsesbudget</span>
                         </a>
-                        <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
-                            {% if onboarding.has_used_chatbot %}<i class="fas fa-check-circle text-success me-3"></i>{% else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
+                        <a href="{{ url_for('hr_dashboard.hr_chatbot') }}"
+                            class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                            {% if onboarding.has_used_chatbot %}<i class="fas fa-check-circle text-success me-3"></i>{%
+                            else %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Udforsk HR chatbot</span>
                         </a>
                     </div>
                 </div>
             </div>
         </div>
-    </div>
-    {% endif %}
+</div>
+{% endif %}
 
-    <!-- Header Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
+<!-- Header Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h3 mb-0 text-gray-800">
+                    <i class="fas fa-building text-primary me-2"></i>
+                    {{ company.company_name }}
+                </h1>
+                <p class="text-muted mb-0">Virksomhedsoversigt &mdash; HR Analytics, medarbejdere og uddannelse</p>
+            </div>
+            <div class="d-flex gap-2">
+                <button class="btn btn-outline-primary btn-sm" onclick="exportReport()">
+                    <i class="fas fa-download"></i> Eksporter
+                </button>
+                <a href="{{ url_for('companies.settings') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-cog"></i> Indstillinger
+                </a>
+                <a href="{{ url_for('companies.add_employee') }}" class="btn btn-success btn-sm">
+                    <i class="fas fa-user-plus"></i> Tilfoej medarbejder
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Key Performance Indicators -->
+<div class="row mb-4 g-3">
+    <div class="col-xl-3 col-md-6">
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-icon"><i class="fas fa-users"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-label">Medarbejdere</div>
+                <div class="kpi-value">{{ hr_metrics.total_employees or 0 }}</div>
+                <div class="kpi-detail">
+                    <span class="text-success"><i class="fas fa-circle"
+                            style="font-size:0.45rem;vertical-align:middle;"></i> {{ hr_metrics.active_employees or 0 }}
+                        aktive</span>
+                    <span class="text-muted ms-2">{{ hr_metrics.new_hires_30_days or 0 }} nye</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="kpi-card kpi-green">
+            <div class="kpi-icon"><i class="fas fa-graduation-cap"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-label">Laeringsfremdrift</div>
+                <div class="kpi-value">{{ completion_rate or 0 }}%</div>
+                <div class="kpi-detail">
+                    {{ learning_metrics.completed_courses or 0 }} gennemfoert · {{ learning_metrics.in_progress_courses
+                    or 0 }} i gang
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-label">Kursusordrer</div>
+                <div class="kpi-value">{{ recent_orders|length or 0 }}</div>
+                <div class="kpi-detail">
+                    {{ completed_orders_count or 0 }} gennemfoert · {{ pending_orders_count or 0 }} afventer
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3 col-md-6">
+        <div class="kpi-card kpi-amber">
+            <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
+            <div class="kpi-content">
+                <div class="kpi-label">Uddannelses-ROI</div>
+                <div class="kpi-value">{{ total_revenue|round(2) or 0 }} kr</div>
+                <div class="kpi-detail">
+                    {{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Pending Approvals Banner + Budget Overview -->
+<div class="row mb-4">
+    {% if pending_approvals_count > 0 %}
+    <div class="col-xl-6 mb-3">
+        <div class="card border-left-warning shadow h-100">
+            <div class="card-body d-flex align-items-center justify-content-between">
                 <div>
-                    <h1 class="h3 mb-0 text-gray-800">
-                        <i class="fas fa-building text-primary me-2"></i>
-                        {{ company.company_name }}
-                    </h1>
-                    <p class="text-muted mb-0">Virksomhedsoversigt &mdash; HR Analytics, medarbejdere og uddannelse</p>
+                    <div class="text-warning fw-bold mb-1">
+                        <i class="fas fa-clipboard-check me-1"></i>
+                        {{ pending_approvals_count }} ordre{{ 'r' if pending_approvals_count > 1 else '' }} afventer
+                        godkendelse
+                    </div>
+                    <small class="text-muted">Medarbejdere har bestilt kurser der kraever godkendelse.</small>
                 </div>
-                <div class="d-flex gap-2">
-                    <button class="btn btn-outline-primary btn-sm" onclick="exportReport()">
-                        <i class="fas fa-download"></i> Eksporter
-                    </button>
-                    <a href="{{ url_for('companies.settings') }}" class="btn btn-outline-secondary btn-sm">
-                        <i class="fas fa-cog"></i> Indstillinger
-                    </a>
-                    <a href="{{ url_for('companies.add_employee') }}" class="btn btn-success btn-sm">
-                        <i class="fas fa-user-plus"></i> Tilfoej medarbejder
-                    </a>
-                </div>
+                <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-warning btn-sm">
+                    <i class="fas fa-arrow-right"></i> Se godkendelser
+                </a>
             </div>
         </div>
     </div>
-
-    <!-- Key Performance Indicators -->
-    <div class="row mb-4 g-3">
-        <div class="col-xl-3 col-md-6">
-            <div class="kpi-card kpi-blue">
-                <div class="kpi-icon"><i class="fas fa-users"></i></div>
-                <div class="kpi-content">
-                    <div class="kpi-label">Medarbejdere</div>
-                    <div class="kpi-value">{{ hr_metrics.total_employees or 0 }}</div>
-                    <div class="kpi-detail">
-                        <span class="text-success"><i class="fas fa-circle" style="font-size:0.45rem;vertical-align:middle;"></i> {{ hr_metrics.active_employees or 0 }} aktive</span>
-                        <span class="text-muted ms-2">{{ hr_metrics.new_hires_30_days or 0 }} nye</span>
-                    </div>
+    {% endif %}
+    {% if total_training_budget > 0 %}
+    <div class="col-xl-{{ '6' if pending_approvals_count > 0 else '12' }} mb-3">
+        <div class="card shadow h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <div class="fw-bold text-primary"><i class="fas fa-wallet me-1"></i> Uddannelsesbudget {{
+                        current_year|default('') }}</div>
+                    <a href="{{ url_for('hr_dashboard.department_budgets') }}"
+                        class="btn btn-outline-primary btn-sm">Administrer</a>
                 </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6">
-            <div class="kpi-card kpi-green">
-                <div class="kpi-icon"><i class="fas fa-graduation-cap"></i></div>
-                <div class="kpi-content">
-                    <div class="kpi-label">Laeringsfremdrift</div>
-                    <div class="kpi-value">{{ completion_rate or 0 }}%</div>
-                    <div class="kpi-detail">
-                        {{ learning_metrics.completed_courses or 0 }} gennemfoert · {{ learning_metrics.in_progress_courses or 0 }} i gang
-                    </div>
+                <div class="d-flex justify-content-between small text-muted mb-1">
+                    <span>Brugt: {{ "{:,.0f}".format(total_budget_spent).replace(",", ".") }} kr</span>
+                    <span>Budget: {{ "{:,.0f}".format(total_training_budget).replace(",", ".") }} kr</span>
                 </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6">
-            <div class="kpi-card kpi-purple">
-                <div class="kpi-icon"><i class="fas fa-shopping-cart"></i></div>
-                <div class="kpi-content">
-                    <div class="kpi-label">Kursusordrer</div>
-                    <div class="kpi-value">{{ recent_orders|length or 0 }}</div>
-                    <div class="kpi-detail">
-                        {{ completed_orders_count or 0 }} gennemfoert · {{ pending_orders_count or 0 }} afventer
-                    </div>
+                <div class="progress" style="height:10px;">
+                    <div class="progress-bar {{ 'bg-danger' if budget_utilization > 90 else ('bg-warning' if budget_utilization > 80 else 'bg-success') }}"
+                        style="width: {{ [budget_utilization, 100]|min }}%"></div>
                 </div>
-            </div>
-        </div>
-        <div class="col-xl-3 col-md-6">
-            <div class="kpi-card kpi-amber">
-                <div class="kpi-icon"><i class="fas fa-chart-line"></i></div>
-                <div class="kpi-content">
-                    <div class="kpi-label">Uddannelses-ROI</div>
-                    <div class="kpi-value">{{ total_revenue|round(2) or 0 }} kr</div>
-                    <div class="kpi-detail">
-                        {{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Pending Approvals Banner + Budget Overview -->
-    <div class="row mb-4">
-        {% if pending_approvals_count > 0 %}
-        <div class="col-xl-6 mb-3">
-            <div class="card border-left-warning shadow h-100">
-                <div class="card-body d-flex align-items-center justify-content-between">
-                    <div>
-                        <div class="text-warning fw-bold mb-1">
-                            <i class="fas fa-clipboard-check me-1"></i>
-                            {{ pending_approvals_count }} ordre{{ 'r' if pending_approvals_count > 1 else '' }} afventer godkendelse
-                        </div>
-                        <small class="text-muted">Medarbejdere har bestilt kurser der kraever godkendelse.</small>
-                    </div>
-                    <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-warning btn-sm">
-                        <i class="fas fa-arrow-right"></i> Se godkendelser
-                    </a>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-        {% if total_training_budget > 0 %}
-        <div class="col-xl-{{ '6' if pending_approvals_count > 0 else '12' }} mb-3">
-            <div class="card shadow h-100">
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="fw-bold text-primary"><i class="fas fa-wallet me-1"></i> Uddannelsesbudget {{ current_year|default('') }}</div>
-                        <a href="{{ url_for('hr_dashboard.department_budgets') }}" class="btn btn-outline-primary btn-sm">Administrer</a>
-                    </div>
-                    <div class="d-flex justify-content-between small text-muted mb-1">
-                        <span>Brugt: {{ "{:,.0f}".format(total_budget_spent).replace(",", ".") }} kr</span>
-                        <span>Budget: {{ "{:,.0f}".format(total_training_budget).replace(",", ".") }} kr</span>
-                    </div>
-                    <div class="progress" style="height:10px;">
-                        <div class="progress-bar {{ 'bg-danger' if budget_utilization > 90 else ('bg-warning' if budget_utilization > 80 else 'bg-success') }}"
-                             style="width: {{ [budget_utilization, 100]|min }}%"></div>
-                    </div>
-                    <div class="d-flex justify-content-between small mt-1">
-                        <span class="{{ 'text-danger fw-bold' if budget_utilization > 80 else 'text-muted' }}">{{ budget_utilization }}% brugt</span>
-                        <span class="text-success">{{ "{:,.0f}".format(budget_remaining).replace(",", ".") }} kr resterende</span>
-                    </div>
-                </div>
-            </div>
-        </div>
-        {% endif %}
-    </div>
-
-    <!-- Conversion Funnel (Phase 3.5) -->
-    {% if funnel and funnel.total_sessions > 0 %}
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-filter me-2"></i>Konverteringstragt
-                    </h6>
-                </div>
-                <div class="card-body">
-                    {% set max_val = funnel.total_sessions %}
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small mb-1">
-                            <span class="fw-bold">Chatbot-sessioner</span>
-                            <span>{{ funnel.total_sessions }}</span>
-                        </div>
-                        <div class="progress" style="height:24px;">
-                            <div class="progress-bar bg-primary" style="width:100%">{{ funnel.total_sessions }}</div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small mb-1">
-                            <span class="fw-bold">Sessioner med produktvisning</span>
-                            <span>{{ funnel.sessions_with_products }}</span>
-                        </div>
-                        <div class="progress" style="height:24px;">
-                            <div class="progress-bar bg-info" style="width:{{ (funnel.sessions_with_products / max_val * 100) if max_val else 0 }}%">{{ funnel.sessions_with_products }}</div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small mb-1">
-                            <span class="fw-bold">Sessioner med ordrer</span>
-                            <span>{{ funnel.sessions_with_orders }}</span>
-                        </div>
-                        <div class="progress" style="height:24px;">
-                            <div class="progress-bar bg-warning" style="width:{{ (funnel.sessions_with_orders / max_val * 100) if max_val else 0 }}%">{{ funnel.sessions_with_orders }}</div>
-                        </div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small mb-1">
-                            <span class="fw-bold">Gennemfoerte ordrer</span>
-                            <span>{{ funnel.completed_orders }}</span>
-                        </div>
-                        <div class="progress" style="height:24px;">
-                            <div class="progress-bar bg-success" style="width:{{ (funnel.completed_orders / max_val * 100) if max_val else 0 }}%">{{ funnel.completed_orders }}</div>
-                        </div>
-                    </div>
-                    <div class="text-muted small text-end">
-                        Samlet konvertering: <strong>{{ "%.1f"|format(funnel.completed_orders / funnel.total_sessions * 100) if funnel.total_sessions else 0 }}%</strong>
-                    </div>
+                <div class="d-flex justify-content-between small mt-1">
+                    <span class="{{ 'text-danger fw-bold' if budget_utilization > 80 else 'text-muted' }}">{{
+                        budget_utilization }}% brugt</span>
+                    <span class="text-success">{{ "{:,.0f}".format(budget_remaining).replace(",", ".") }} kr
+                        resterende</span>
                 </div>
             </div>
         </div>
     </div>
     {% endif %}
+</div>
 
-    <!-- Company Orders Section -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-shopping-cart me-2"></i>Kursusordrer
-                    </h6>
-                    <div class="d-flex gap-3">
-                        <span class="text-muted small">Afventer: <strong>{{ pending_orders_count or 0 }}</strong></span>
-                        <span class="text-muted small">Gennemfoert: <strong>{{ completed_orders_count or 0 }}</strong></span>
-                        <span class="text-muted small">Omsaetning: <strong>{{ total_revenue|round(2) or 0 }} kr</strong></span>
+<!-- Conversion Funnel (Phase 3.5) -->
+{% if funnel and funnel.total_sessions > 0 %}
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-filter me-2"></i>Konverteringstragt
+                </h6>
+            </div>
+            <div class="card-body">
+                {% set max_val = funnel.total_sessions %}
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}"
+                            class="fw-bold text-decoration-none text-primary">Chatbot-sessioner</a>
+                        <span>{{ funnel.total_sessions }}</span>
+                    </div>
+                    <div class="progress" style="height:24px;">
+                        <div class="progress-bar bg-primary" style="width:100%">{{ funnel.total_sessions }}</div>
                     </div>
                 </div>
-                <div class="card-body">
-                    {% if recent_orders %}
-                    <div class="table-responsive">
-                        <table class="table table-hover" id="ordersTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Ordre-ID</th>
-                                    <th>Medarbejder</th>
-                                    <th>Afdeling</th>
-                                    <th>Kursus</th>
-                                    <th>Pris</th>
-                                    <th>Status</th>
-                                    <th>Fremgang</th>
-                                    <th>Dato</th>
-                                    <th>Handlinger</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for order in recent_orders %}
-                                <tr>
-                                    <td>
-                                        <div class="font-monospace small">{{ order.order_id_short }}</div>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <div class="avatar-circle me-3">
-                                                {{ order.username[0].upper() if order.username else 'U' }}
-                                            </div>
-                                            <div>
-                                                <div class="fw-bold">{{ order.username }}</div>
-                                                <div class="text-muted small">{{ order.user_email }}</div>
-                                            </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="fw-bold">Sessioner med produktvisning</span>
+                        <span>{{ funnel.sessions_with_products }}</span>
+                    </div>
+                    <div class="progress" style="height:24px;">
+                        <div class="progress-bar bg-info"
+                            style="width:{{ (funnel.sessions_with_products / max_val * 100) if max_val else 0 }}%">{{
+                            funnel.sessions_with_products }}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="fw-bold">Sessioner med ordrer</span>
+                        <span>{{ funnel.sessions_with_orders }}</span>
+                    </div>
+                    <div class="progress" style="height:24px;">
+                        <div class="progress-bar bg-warning"
+                            style="width:{{ (funnel.sessions_with_orders / max_val * 100) if max_val else 0 }}%">{{
+                            funnel.sessions_with_orders }}</div>
+                    </div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small mb-1">
+                        <span class="fw-bold">Gennemfoerte ordrer</span>
+                        <span>{{ funnel.completed_orders }}</span>
+                    </div>
+                    <div class="progress" style="height:24px;">
+                        <div class="progress-bar bg-success"
+                            style="width:{{ (funnel.completed_orders / max_val * 100) if max_val else 0 }}%">{{
+                            funnel.completed_orders }}</div>
+                    </div>
+                </div>
+                <div class="text-muted small text-end">
+                    Samlet konvertering: <strong>{{ "%.1f"|format(funnel.completed_orders / funnel.total_sessions * 100)
+                        if funnel.total_sessions else 0 }}%</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<!-- Company Orders Section -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-shopping-cart me-2"></i>Kursusordrer
+                </h6>
+                <div class="d-flex gap-3">
+                    <span class="text-muted small">Afventer: <strong>{{ pending_orders_count or 0 }}</strong></span>
+                    <span class="text-muted small">Gennemfoert: <strong>{{ completed_orders_count or 0
+                            }}</strong></span>
+                    <span class="text-muted small">Omsaetning: <strong>{{ total_revenue|round(2) or 0 }}
+                            kr</strong></span>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if recent_orders %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="ordersTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Ordre-ID</th>
+                                <th>Medarbejder</th>
+                                <th>Afdeling</th>
+                                <th>Kursus</th>
+                                <th>Pris</th>
+                                <th>Status</th>
+                                <th>Fremgang</th>
+                                <th>Dato</th>
+                                <th>Handlinger</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for order in recent_orders %}
+                            <tr>
+                                <td>
+                                    <div class="font-monospace small">{{ order.order_id_short }}</div>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-circle me-3">
+                                            {{ order.username[0].upper() if order.username else 'U' }}
                                         </div>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-department">{{ order.department }}</span>
-                                        {% if order.job_title and order.job_title != 'N/A' %}
-                                        <div class="text-muted small">{{ order.job_title }}</div>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="font-weight-medium">{{ order.product_title }}</div>
-                                        {% if order.variant_location %}
-                                        <div class="text-muted small">
-                                            <i class="fas fa-map-marker-alt"></i> {{ order.variant_location }}
-                                            {% if order.variant_date %}
-                                            • {{ order.variant_date }}
-                                            {% endif %}
+                                        <div>
+                                            <div class="fw-bold">{{ order.username }}</div>
+                                            <div class="text-muted small">{{ order.user_email }}</div>
                                         </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge badge-department">{{ order.department }}</span>
+                                    {% if order.job_title and order.job_title != 'N/A' %}
+                                    <div class="text-muted small">{{ order.job_title }}</div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="font-weight-medium">{{ order.product_title }}</div>
+                                    {% if order.variant_location %}
+                                    <div class="text-muted small">
+                                        <i class="fas fa-map-marker-alt"></i> {{ order.variant_location }}
+                                        {% if order.variant_date %}
+                                        • {{ order.variant_date }}
                                         {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="fw-bold">{{ order.price }} kr</div>
-                                    </td>
-                                    <td>
-                                        {% if order.status == 'completed' %}
-                                            <span class="badge bg-success">Gennemfoert</span>
-                                        {% elif order.status == 'pending' %}
-                                            <span class="badge bg-warning">Afventer</span>
-                                        {% elif order.status == 'pending_approval' %}
-                                            <span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Afventer godkendelse</span>
-                                        {% elif order.status == 'approved' %}
-                                            <span class="badge bg-primary">Godkendt</span>
-                                        {% elif order.status == 'rejected' %}
-                                            <span class="badge bg-danger">Afvist</span>
-                                        {% elif order.status == 'processing' %}
-                                            <span class="badge bg-info">Behandles</span>
-                                        {% else %}
-                                            <span class="badge bg-secondary">{{ order.status|title }}</span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        {% if order.completion_status == 'completed' %}
-                                        <span class="badge bg-success">
-                                            <i class="fas fa-check"></i> Gennemfoert
-                                        </span>
-                                        {% elif order.completion_status == 'in_progress' %}
-                                        <span class="badge bg-info">
-                                            <i class="fas fa-play"></i> I gang
-                                        </span>
-                                        {% else %}
-                                        <span class="badge bg-light text-dark">
-                                            <i class="fas fa-clock"></i> Ikke startet
-                                        </span>
-                                        {% endif %}
-                                    </td>
-                                    <td>
-                                        <div class="small">{{ order.created_at }}</div>
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-outline-primary btn-sm" onclick="viewOrderDetails('{{ order.order_id }}')" data-bs-toggle="tooltip" title="View Details">
-                                                <i class="fas fa-eye"></i>
+                                    </div>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="fw-bold">{{ order.price }} kr</div>
+                                </td>
+                                <td>
+                                    {% if order.status == 'completed' %}
+                                    <span class="badge bg-success">Gennemfoert</span>
+                                    {% elif order.status == 'pending' %}
+                                    <span class="badge bg-warning">Afventer</span>
+                                    {% elif order.status == 'pending_approval' %}
+                                    <span class="badge bg-warning text-dark"><i class="fas fa-clock"></i> Afventer
+                                        godkendelse</span>
+                                    {% elif order.status == 'approved' %}
+                                    <span class="badge bg-primary">Godkendt</span>
+                                    {% elif order.status == 'rejected' %}
+                                    <span class="badge bg-danger">Afvist</span>
+                                    {% elif order.status == 'processing' %}
+                                    <span class="badge bg-info">Behandles</span>
+                                    {% else %}
+                                    <span class="badge bg-secondary">{{ order.status|title }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if order.completion_status == 'completed' %}
+                                    <span class="badge bg-success">
+                                        <i class="fas fa-check"></i> Gennemfoert
+                                    </span>
+                                    {% elif order.completion_status == 'in_progress' %}
+                                    <span class="badge bg-info">
+                                        <i class="fas fa-play"></i> I gang
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-light text-dark">
+                                        <i class="fas fa-clock"></i> Ikke startet
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    <div class="small">{{ order.created_at }}</div>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm"
+                                            onclick="viewOrderDetails('{{ order.order_id }}')" data-bs-toggle="tooltip"
+                                            title="View Details">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        {% if session.company_role in ['company_admin', 'hr_manager'] %}
+                                        <div class="dropdown">
+                                            <button class="btn btn-outline-secondary btn-sm dropdown-toggle"
+                                                data-bs-toggle="dropdown">
+                                                <i class="fas fa-cog"></i>
                                             </button>
-                                            {% if session.company_role in ['company_admin', 'hr_manager'] %}
-                                            <div class="dropdown">
-                                                <button class="btn btn-outline-secondary btn-sm dropdown-toggle" data-bs-toggle="dropdown">
-                                                    <i class="fas fa-cog"></i>
-                                                </button>
-                                                <ul class="dropdown-menu">
-                                                    <li><a class="dropdown-item text-success" href="#" onclick="updateOrderStatus('{{ order.order_id }}', 'completed')">
+                                            <ul class="dropdown-menu">
+                                                <li><a class="dropdown-item text-success" href="#"
+                                                        onclick="updateOrderStatus('{{ order.order_id }}', 'completed')">
                                                         <i class="fas fa-check"></i> Marker gennemfoert
                                                     </a></li>
-                                                    <li><a class="dropdown-item text-info" href="#" onclick="updateOrderStatus('{{ order.order_id }}', 'processing')">
+                                                <li><a class="dropdown-item text-info" href="#"
+                                                        onclick="updateOrderStatus('{{ order.order_id }}', 'processing')">
                                                         <i class="fas fa-cog"></i> Marker behandles
                                                     </a></li>
-                                                    <li><a class="dropdown-item text-danger" href="#" onclick="updateOrderStatus('{{ order.order_id }}', 'cancelled')">
+                                                <li><a class="dropdown-item text-danger" href="#"
+                                                        onclick="updateOrderStatus('{{ order.order_id }}', 'cancelled')">
                                                         <i class="fas fa-times"></i> Annuller ordre
                                                     </a></li>
-                                                </ul>
-                                            </div>
-                                            {% endif %}
+                                            </ul>
                                         </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="empty-state">
-                        <i class="fas fa-shopping-cart"></i>
-                        <p>Ingen kursusordrer endnu</p>
-                        <small>Ordrer vises her naar medarbejdere tilmelder sig kurser</small>
-                        <div class="mt-3">
-                            <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="btn btn-primary btn-sm"><i class="fas fa-robot me-1"></i>Udforsk kurser via AI</a>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <!-- Main Analytics Row -->
-    <div class="row">
-        <!-- Employee Performance Analytics -->
-        <div class="col-xl-8 col-lg-7">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-star me-2"></i>Medarbejderpraestationer
-                    </h6>
-                    <div class="dropdown no-arrow">
-                        <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown">
-                            <i class="fas fa-ellipsis-v fa-sm fa-fw text-gray-400"></i>
-                        </a>
-                        <div class="dropdown-menu dropdown-menu-right shadow">
-                            <a class="dropdown-item" href="#" onclick="filterTopPerformers('all')">Alle medarbejdere</a>
-                            <a class="dropdown-item" href="#" onclick="filterTopPerformers('month')">Denne maaned</a>
-                            <a class="dropdown-item" href="#" onclick="filterTopPerformers('quarter')">Dette kvartal</a>
-                        </div>
-                    </div>
-                </div>
-                <div class="card-body">
-                    {% if top_performers %}
-                    <div class="table-responsive">
-                        <table class="table table-hover" id="performanceTable">
-                            <thead class="table-light">
-                                <tr>
-                                    <th>Medarbejder</th>
-                                    <th>Afdeling</th>
-                                    <th>Kurser</th>
-                                    <th>AI-samtaler</th>
-                                    <th>Fremgang</th>
-                                    <th>Score</th>
-                                    <th>Handlinger</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for employee in top_performers %}
-                                <tr>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <div class="avatar-circle me-3">
-                                                {{ employee.username[0].upper() }}
-                                            </div>
-                                            <div>
-                                                <div class="fw-bold">{{ employee.username }}</div>
-                                                <div class="text-muted small">{{ employee.job_title or 'Medarbejder' }}</div>
-                                            </div>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <span class="badge badge-department">{{ employee.department or 'General' }}</span>
-                                    </td>
-                                    <td>
-                                        <div class="d-flex align-items-center">
-                                            <span class="badge bg-success me-2">{{ employee.courses_completed or 0 }}</span>
-                                            <small class="text-muted">gennemfoert</small>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="text-center">
-                                            <div class="fw-bold">{{ employee.total_chatbot_queries or 0 }}</div>
-                                            <small class="text-muted">samtaler</small>
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="progress progress-sm">
-                                            <div class="progress-bar bg-gradient-success" 
-                                                 style="width: {{ employee.avg_progress or 0 }}%"
-                                                 data-bs-toggle="tooltip" 
-                                                 title="{{ "%.1f"|format(employee.avg_progress or 0) }}% Complete">
-                                            </div>
-                                        </div>
-                                        <small class="text-muted">{{ "%.1f"|format(employee.avg_progress or 0) }}%</small>
-                                    </td>
-                                    <td>
-                                        {% set score = ((employee.avg_progress or 0) + (employee.courses_completed or 0) * 10) / 2 %}
-                                        <div class="text-center">
-                                            {% if score >= 80 %}
-                                                <span class="badge bg-success">{{ "%.0f"|format(score) }}</span>
-                                            {% elif score >= 60 %}
-                                                <span class="badge bg-warning">{{ "%.0f"|format(score) }}</span>
-                                            {% else %}
-                                                <span class="badge bg-danger">{{ "%.0f"|format(score) }}</span>
-                                            {% endif %}
-                                        </div>
-                                    </td>
-                                    <td>
-                                        <div class="btn-group btn-group-sm">
-                                            <button class="btn btn-outline-primary btn-sm" onclick="viewEmployeeDetail('{{ employee.username }}')">
-                                                <i class="fas fa-eye"></i>
-                                            </button>
-                                            <button class="btn btn-outline-success btn-sm" onclick="assignCourse('{{ employee.username }}')">
-                                                <i class="fas fa-plus"></i>
-                                            </button>
-                                        </div>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="empty-state">
-                        <i class="fas fa-users"></i>
-                        <p>Ingen medarbejderdata endnu</p>
-                        <small>Tilfoej medarbejdere for at se praestationsdata</small>
-                        <div class="mt-3">
-                            <a href="{{ url_for('companies.add_employee') }}" class="btn btn-success btn-sm"><i class="fas fa-user-plus me-1"></i>Tilfoej medarbejder</a>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <!-- Department & Activity Sidebar -->
-        <div class="col-xl-4 col-lg-5">
-            <!-- Department Performance -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-sitemap me-2"></i>Afdelingsperfomance
-                    </h6>
-                </div>
-                <div class="card-body">
-                    {% if department_performance %}
-                        {% for dept in department_performance %}
-                        <div class="mb-4">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div>
-                                    <span class="fw-bold">{{ dept.department or 'Unknown' }}</span>
-                                    <small class="text-muted d-block">{{ dept.employee_count or 0 }} medarbejdere</small>
-                                </div>
-                                <div class="text-right">
-                                    <span class="fw-bold text-success">{{ "%.1f"|format(dept.completion_rate or 0) }}%</span>
-                                </div>
-                            </div>
-                            <div class="progress progress-sm mb-2">
-                                {% set rate = dept.completion_rate or 0 %}
-                                <div class="progress-bar {% if rate >= 90 %}bg-success{% elif rate >= 70 %}bg-info{% elif rate >= 50 %}bg-warning{% else %}bg-danger{% endif %}" 
-                                     style="width: {{ rate }}%"></div>
-                            </div>
-                            <div class="d-flex justify-content-between text-xs text-muted">
-                                <span>Gennemfoerelsesrate</span>
-                                <span>Maal: 85%</span>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    {% else %}
-                    <div class="empty-state py-3">
-                        <i class="fas fa-sitemap"></i>
-                        <p>Ingen afdelinger oprettet</p>
-                        <small>Opret afdelinger for at organisere medarbejdere</small>
-                        <div class="mt-2">
-                            <a href="{{ url_for('hr_dashboard.departments') }}" class="btn btn-outline-primary btn-sm"><i class="fas fa-plus me-1"></i>Opret afdeling</a>
-                        </div>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- Recent Activity Feed -->
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-bell me-2"></i>Seneste aktivitet
-                    </h6>
-                </div>
-                <div class="card-body">
-                    {% if recent_alerts %}
-                        <div class="activity-feed">
-                            {% for alert in recent_alerts[:8] %}
-                            <div class="activity-item d-flex align-items-start mb-3">
-                                <div class="activity-icon me-3">
-                                    {% if alert.alert_level == 'success' %}
-                                        <div class="icon-circle bg-success">
-                                            <i class="fas fa-check text-white"></i>
-                                        </div>
-                                    {% elif alert.alert_level == 'warning' %}
-                                        <div class="icon-circle bg-warning">
-                                            <i class="fas fa-exclamation text-white"></i>
-                                        </div>
-                                    {% else %}
-                                        <div class="icon-circle bg-info">
-                                            <i class="fas fa-info text-white"></i>
-                                        </div>
-                                    {% endif %}
-                                </div>
-                                <div class="activity-content">
-                                    <div class="activity-text">{{ alert.message }}</div>
-                                    <div class="activity-time text-muted small">
-                                        {{ alert.alert_time.strftime('%Y-%m-%d %H:%M') if alert.alert_time else 'Just now' }}
+                                        {% endif %}
                                     </div>
-                                </div>
-                            </div>
+                                </td>
+                            </tr>
                             {% endfor %}
-                        </div>
-                    {% else %}
-                    <div class="empty-state py-3">
-                        <i class="fas fa-bell-slash"></i>
-                        <p>Ingen seneste aktivitet</p>
-                        <small>Aktivitet vises naar medarbejdere bruger platformen</small>
-                    </div>
-                    {% endif %}
+                        </tbody>
+                    </table>
                 </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-shopping-cart"></i>
+                    <p>Ingen kursusordrer endnu</p>
+                    <small>Ordrer vises her naar medarbejdere tilmelder sig kurser</small>
+                    <div class="mt-3">
+                        <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" class="btn btn-primary btn-sm"><i
+                                class="fas fa-robot me-1"></i>Udforsk kurser via AI</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Main Analytics Row -->
+<div class="row">
+    <!-- Employee Performance Analytics -->
+    <div class="col-xl-8 col-lg-7">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex flex-row align-items-center justify-content-between">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-star me-2"></i>Medarbejderpraestationer
+                </h6>
+                <div class="dropdown no-arrow">
+                    <a class="dropdown-toggle" href="#" role="button" id="dropdownMenuLink" data-bs-toggle="dropdown">
+                        <i class="fas fa-ellipsis-v fa-sm fa-fw text-gray-400"></i>
+                    </a>
+                    <div class="dropdown-menu dropdown-menu-right shadow">
+                        <a class="dropdown-item" href="#" onclick="filterTopPerformers('all')">Alle medarbejdere</a>
+                        <a class="dropdown-item" href="#" onclick="filterTopPerformers('month')">Denne maaned</a>
+                        <a class="dropdown-item" href="#" onclick="filterTopPerformers('quarter')">Dette kvartal</a>
+                    </div>
+                </div>
+            </div>
+            <div class="card-body">
+                {% if top_performers %}
+                <div class="table-responsive">
+                    <table class="table table-hover" id="performanceTable">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Medarbejder</th>
+                                <th>Afdeling</th>
+                                <th>Kurser</th>
+                                <th>AI-samtaler</th>
+                                <th>Fremgang</th>
+                                <th>Score</th>
+                                <th>Handlinger</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for employee in top_performers %}
+                            <tr>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <div class="avatar-circle me-3">
+                                            {{ employee.username[0].upper() }}
+                                        </div>
+                                        <div>
+                                            <div class="fw-bold">{{ employee.username }}</div>
+                                            <div class="text-muted small">{{ employee.job_title or 'Medarbejder' }}
+                                            </div>
+                                        </div>
+                                    </div>
+                                </td>
+                                <td>
+                                    <span class="badge badge-department">{{ employee.department or 'General' }}</span>
+                                </td>
+                                <td>
+                                    <div class="d-flex align-items-center">
+                                        <span class="badge bg-success me-2">{{ employee.courses_completed or 0 }}</span>
+                                        <small class="text-muted">gennemfoert</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="text-center">
+                                        <div class="fw-bold">{{ employee.total_chatbot_queries or 0 }}</div>
+                                        <small class="text-muted">samtaler</small>
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="progress progress-sm">
+                                        <div class="progress-bar bg-gradient-success"
+                                            style="width: {{ employee.avg_progress or 0 }}%" data-bs-toggle="tooltip"
+                                            title="{{ " %.1f"|format(employee.avg_progress or 0) }}% Complete">
+                                        </div>
+                                    </div>
+                                    <small class="text-muted">{{ "%.1f"|format(employee.avg_progress or 0) }}%</small>
+                                </td>
+                                <td>
+                                    {% set score = ((employee.avg_progress or 0) + (employee.courses_completed or 0) *
+                                    10) / 2 %}
+                                    <div class="text-center">
+                                        {% if score >= 80 %}
+                                        <span class="badge bg-success">{{ "%.0f"|format(score) }}</span>
+                                        {% elif score >= 60 %}
+                                        <span class="badge bg-warning">{{ "%.0f"|format(score) }}</span>
+                                        {% else %}
+                                        <span class="badge bg-danger">{{ "%.0f"|format(score) }}</span>
+                                        {% endif %}
+                                    </div>
+                                </td>
+                                <td>
+                                    <div class="btn-group btn-group-sm">
+                                        <button class="btn btn-outline-primary btn-sm"
+                                            onclick="viewEmployeeDetail('{{ employee.username }}')">
+                                            <i class="fas fa-eye"></i>
+                                        </button>
+                                        <button class="btn btn-outline-success btn-sm"
+                                            onclick="assignCourse('{{ employee.username }}')">
+                                            <i class="fas fa-plus"></i>
+                                        </button>
+                                    </div>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="empty-state">
+                    <i class="fas fa-users"></i>
+                    <p>Ingen medarbejderdata endnu</p>
+                    <small>Tilfoej medarbejdere for at se praestationsdata</small>
+                    <div class="mt-3">
+                        <a href="{{ url_for('companies.add_employee') }}" class="btn btn-success btn-sm"><i
+                                class="fas fa-user-plus me-1"></i>Tilfoej medarbejder</a>
+                    </div>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
 
-    <!-- Skills / Kompetence Overview -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="card shadow">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-brain me-2"></i>Kompetenceoversigt
-                    </h6>
-                    <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-outline-primary">
-                        <i class="fas fa-arrow-right me-1"></i>Se alle kompetencer
-                    </a>
-                </div>
-                <div class="card-body">
-                    {% if skills_summary and skills_summary.total_skills > 0 %}
-                    <div class="row mb-3">
-                        <div class="col-md-3 text-center">
-                            <h3 class="fw-bold text-primary mb-0">{{ skills_summary.total_skills }}</h3>
-                            <small class="text-muted">Unikke kompetencer</small>
+    <!-- Department & Activity Sidebar -->
+    <div class="col-xl-4 col-lg-5">
+        <!-- Department Performance -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-sitemap me-2"></i>Afdelingsperfomance
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if department_performance %}
+                {% for dept in department_performance %}
+                <div class="mb-4">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div>
+                            <span class="fw-bold">{{ dept.department or 'Unknown' }}</span>
+                            <small class="text-muted d-block">{{ dept.employee_count or 0 }} medarbejdere</small>
                         </div>
-                        <div class="col-md-3 text-center">
-                            <h3 class="fw-bold text-success mb-0">{{ skills_summary.employees_with_skills }}</h3>
-                            <small class="text-muted">Medarbejdere med kompetencer</small>
-                        </div>
-                        <div class="col-md-3 text-center">
-                            <h3 class="fw-bold text-{{ 'danger' if skills_summary.critical_gaps > 0 else 'success' }} mb-0">{{ skills_summary.critical_gaps }}</h3>
-                            <small class="text-muted">Kritiske gab</small>
-                        </div>
-                        <div class="col-md-3 text-center">
-                            <h3 class="fw-bold text-info mb-0">{{ skills_summary.top_skills|length }}</h3>
-                            <small class="text-muted">Top kompetencer</small>
+                        <div class="text-right">
+                            <span class="fw-bold text-success">{{ "%.1f"|format(dept.completion_rate or 0) }}%</span>
                         </div>
                     </div>
+                    <div class="progress progress-sm mb-2">
+                        {% set rate = dept.completion_rate or 0 %}
+                        <div class="progress-bar {% if rate >= 90 %}bg-success{% elif rate >= 70 %}bg-info{% elif rate >= 50 %}bg-warning{% else %}bg-danger{% endif %}"
+                            style="width: {{ rate }}%"></div>
+                    </div>
+                    <div class="d-flex justify-content-between text-xs text-muted">
+                        <span>Gennemfoerelsesrate</span>
+                        <span>Maal: 85%</span>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state py-3">
+                    <i class="fas fa-sitemap"></i>
+                    <p>Ingen afdelinger oprettet</p>
+                    <small>Opret afdelinger for at organisere medarbejdere</small>
+                    <div class="mt-2">
+                        <a href="{{ url_for('hr_dashboard.departments') }}" class="btn btn-outline-primary btn-sm"><i
+                                class="fas fa-plus me-1"></i>Opret afdeling</a>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+        </div>
 
-                    {% if skills_summary.top_skills %}
-                    <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Top kompetencer i virksomheden</h6>
-                    <div class="row">
-                        {% for skill in skills_summary.top_skills %}
-                        <div class="col-md-4 col-lg-2 mb-2">
-                            <div class="border rounded p-2 text-center h-100" style="background: #f8fafc;">
-                                <strong class="d-block small">{{ skill.skill_name }}</strong>
-                                <div class="d-flex justify-content-center gap-1 my-1">
-                                    {% for i in range(5) %}
-                                    <span style="color: {{ '#f59e0b' if i < (skill.avg_level|int) else '#e5e7eb' }};">&#9679;</span>
-                                    {% endfor %}
-                                </div>
-                                <small class="text-muted">{{ skill.employee_count }} medarbejder{{ 'e' if skill.employee_count != 1 }}</small>
+        <!-- Recent AI Conversations -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-robot me-2"></i>Seneste AI-samtaler
+                </h6>
+                <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}"
+                    class="btn btn-sm btn-link p-0 text-decoration-none">Se alle</a>
+            </div>
+            <div class="card-body">
+                {% if recent_sessions %}
+                {% for session in recent_sessions %}
+                <div class="mb-3 border-bottom pb-2">
+                    <div class="d-flex justify-content-between align-items-center mb-1">
+                        <span class="fw-bold small text-dark"><i class="fas fa-user-circle me-1 text-muted"></i> {{
+                            session.username }}</span>
+                        <small class="text-muted">{{ session.last_activity.strftime('%H:%M') if session.last_activity
+                            else '' }}</small>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <span class="badge bg-light text-secondary small">{{ session.query_count }} beskeder</span>
+                        <a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=session.session_id) }}"
+                            class="btn btn-sm btn-outline-primary py-0 px-2" style="font-size: 0.75rem;">Se</a>
+                    </div>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="text-center py-3">
+                    <i class="fas fa-comments text-gray-300 fa-2x mb-2"></i>
+                    <p class="small text-muted mb-0">Ingen nylige samtaler</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <!-- Recent Activity Feed -->
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-bell me-2"></i>Seneste aktivitet
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if recent_alerts %}
+                <div class="activity-feed">
+                    {% for alert in recent_alerts[:8] %}
+                    <div class="activity-item d-flex align-items-start mb-3">
+                        <div class="activity-icon me-3">
+                            {% if alert.alert_level == 'success' %}
+                            <div class="icon-circle bg-success">
+                                <i class="fas fa-check text-white"></i>
+                            </div>
+                            {% elif alert.alert_level == 'warning' %}
+                            <div class="icon-circle bg-warning">
+                                <i class="fas fa-exclamation text-white"></i>
+                            </div>
+                            {% else %}
+                            <div class="icon-circle bg-info">
+                                <i class="fas fa-info text-white"></i>
+                            </div>
+                            {% endif %}
+                        </div>
+                        <div class="activity-content">
+                            <div class="activity-text">{{ alert.message }}</div>
+                            <div class="activity-time text-muted small">
+                                {{ alert.alert_time.strftime('%Y-%m-%d %H:%M') if alert.alert_time else 'Just now' }}
                             </div>
                         </div>
-                        {% endfor %}
                     </div>
-                    {% endif %}
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="empty-state py-3">
+                    <i class="fas fa-bell-slash"></i>
+                    <p>Ingen seneste aktivitet</p>
+                    <small>Aktivitet vises naar medarbejdere bruger platformen</small>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
 
-                    {% if skills_summary.critical_gap_list %}
-                    <h6 class="text-muted mt-3 mb-2"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Kritiske kompetencegab</h6>
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover mb-0">
-                            <thead><tr><th>Kompetence</th><th>Maalsat niveau</th><th>Gns. niveau</th><th>Gab</th></tr></thead>
-                            <tbody>
+<!-- Skills / Kompetence Overview -->
+<div class="row mb-4">
+    <div class="col-12">
+        <div class="card shadow">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-brain me-2"></i>Kompetenceoversigt
+                </h6>
+                <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-arrow-right me-1"></i>Se alle kompetencer
+                </a>
+            </div>
+            <div class="card-body">
+                {% if skills_summary and skills_summary.total_skills > 0 %}
+                <div class="row mb-3">
+                    <div class="col-md-3 text-center">
+                        <h3 class="fw-bold text-primary mb-0">{{ skills_summary.total_skills }}</h3>
+                        <small class="text-muted">Unikke kompetencer</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="fw-bold text-success mb-0">{{ skills_summary.employees_with_skills }}</h3>
+                        <small class="text-muted">Medarbejdere med kompetencer</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="fw-bold text-{{ 'danger' if skills_summary.critical_gaps > 0 else 'success' }} mb-0">
+                            {{ skills_summary.critical_gaps }}</h3>
+                        <small class="text-muted">Kritiske gab</small>
+                    </div>
+                    <div class="col-md-3 text-center">
+                        <h3 class="fw-bold text-info mb-0">{{ skills_summary.top_skills|length }}</h3>
+                        <small class="text-muted">Top kompetencer</small>
+                    </div>
+                </div>
+
+                {% if skills_summary.top_skills %}
+                <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Top kompetencer i virksomheden</h6>
+                <div class="row">
+                    {% for skill in skills_summary.top_skills %}
+                    <div class="col-md-4 col-lg-2 mb-2">
+                        <div class="border rounded p-2 text-center h-100" style="background: #f8fafc;">
+                            <strong class="d-block small">{{ skill.skill_name }}</strong>
+                            <div class="d-flex justify-content-center gap-1 my-1">
+                                {% for i in range(5) %}
+                                <span
+                                    style="color: {{ '#f59e0b' if i < (skill.avg_level|int) else '#e5e7eb' }};">&#9679;</span>
+                                {% endfor %}
+                            </div>
+                            <small class="text-muted">{{ skill.employee_count }} medarbejder{{ 'e' if
+                                skill.employee_count != 1 }}</small>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% endif %}
+
+                {% if skills_summary.critical_gap_list %}
+                <h6 class="text-muted mt-3 mb-2"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Kritiske
+                    kompetencegab</h6>
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Kompetence</th>
+                                <th>Maalsat niveau</th>
+                                <th>Gns. niveau</th>
+                                <th>Gab</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                             {% for gap in skills_summary.critical_gap_list %}
                             <tr>
                                 <td><strong>{{ gap.skill_name }}</strong></td>
                                 <td><span class="badge bg-primary">{{ gap.target_level }}</span></td>
-                                <td><span class="badge bg-{{ 'danger' if (gap.avg_level or 0) < 2 else 'warning' }}">{{ gap.avg_level or 'Ingen data' }}</span></td>
+                                <td><span class="badge bg-{{ 'danger' if (gap.avg_level or 0) < 2 else 'warning' }}">{{
+                                        gap.avg_level or 'Ingen data' }}</span></td>
                                 <td><span class="badge bg-danger">-{{ gap.gap or gap.target_level }}</span></td>
                             </tr>
                             {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% endif %}
-
-                    {% else %}
-                    <div class="text-center py-4">
-                        <i class="fas fa-brain fa-3x text-muted mb-3 d-block"></i>
-                        <p class="text-muted mb-2">Ingen kompetencedata registreret endnu</p>
-                        <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-primary">
-                            <i class="fas fa-plus me-1"></i>Tilfoej kompetencemaal
-                        </a>
-                    </div>
-                    {% endif %}
+                        </tbody>
+                    </table>
                 </div>
+                {% endif %}
+
+                {% else %}
+                <div class="text-center py-4">
+                    <i class="fas fa-brain fa-3x text-muted mb-3 d-block"></i>
+                    <p class="text-muted mb-2">Ingen kompetencedata registreret endnu</p>
+                    <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-primary">
+                        <i class="fas fa-plus me-1"></i>Tilfoej kompetencemaal
+                    </a>
+                </div>
+                {% endif %}
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Learning Paths & Analytics -->
-    {% if learning_paths_progress %}
-    <div class="row">
-        <div class="col-12">
-            <div class="card shadow mb-4">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-route me-2"></i>Laeringsforloeb & Udviklingsprogrammer
-                    </h6>
-                </div>
-                <div class="card-body">
-                    <div class="row">
-                        {% for path in learning_paths_progress %}
-                        <div class="col-xl-4 col-md-6 mb-4">
-                            <div class="card border-left-primary h-100">
-                                <div class="card-body">
-                                    <div class="d-flex justify-content-between align-items-start mb-3">
-                                        <div>
-                                            <h6 class="card-title fw-bold">{{ path.path_name }}</h6>
-                                            <span class="badge badge-category">{{ path.path_category }}</span>
-                                        </div>
-                                        <div class="dropdown">
-                                            <button class="btn btn-sm btn-outline-secondary dropdown-toggle" data-bs-toggle="dropdown">
-                                                <i class="fas fa-cog"></i>
-                                            </button>
-                                            <div class="dropdown-menu">
-                                                <a class="dropdown-item" href="#" onclick="editLearningPath('{{ path.path_name }}')">
-                                                    <i class="fas fa-edit me-2"></i>Rediger forloeb
-                                                </a>
-                                                <a class="dropdown-item" href="#" onclick="viewPathAnalytics('{{ path.path_name }}')">
-                                                    <i class="fas fa-chart-bar me-2"></i>Se analyse
-                                                </a>
-                                            </div>
-                                        </div>
+<!-- Learning Paths & Analytics -->
+{% if learning_paths_progress %}
+<div class="row">
+    <div class="col-12">
+        <div class="card shadow mb-4">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-route me-2"></i>Laeringsforloeb & Udviklingsprogrammer
+                </h6>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for path in learning_paths_progress %}
+                    <div class="col-xl-4 col-md-6 mb-4">
+                        <div class="card border-left-primary h-100">
+                            <div class="card-body">
+                                <div class="d-flex justify-content-between align-items-start mb-3">
+                                    <div>
+                                        <h6 class="card-title fw-bold">{{ path.path_name }}</h6>
+                                        <span class="badge badge-category">{{ path.path_category }}</span>
                                     </div>
-                                    
-                                    <div class="progress mb-3" style="height: 10px;">
-                                        <div class="progress-bar bg-gradient-primary" 
-                                             style="width: {{ path.avg_progress or 0 }}%"
-                                             data-bs-toggle="tooltip" 
-                                             title="Average Progress: {{ "%.1f"|format(path.avg_progress or 0) }}%">
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="row text-center">
-                                        <div class="col-6">
-                                            <div class="fw-bold text-primary">{{ path.enrolled_employees or 0 }}</div>
-                                            <small class="text-muted">Tilmeldt</small>
-                                        </div>
-                                        <div class="col-6">
-                                            <div class="fw-bold text-success">{{ path.completed_employees or 0 }}</div>
-                                            <small class="text-muted">Gennemfoert</small>
-                                        </div>
-                                    </div>
-                                    
-                                    <div class="mt-3">
-                                        <button class="btn btn-primary btn-sm btn-block" onclick="manageLearningPath('{{ path.path_name }}')">
-                                            <i class="fas fa-users me-1"></i>Administrer tilmeldinger
+                                    <div class="dropdown">
+                                        <button class="btn btn-sm btn-outline-secondary dropdown-toggle"
+                                            data-bs-toggle="dropdown">
+                                            <i class="fas fa-cog"></i>
                                         </button>
+                                        <div class="dropdown-menu">
+                                            <a class="dropdown-item" href="#"
+                                                onclick="editLearningPath('{{ path.path_name }}')">
+                                                <i class="fas fa-edit me-2"></i>Rediger forloeb
+                                            </a>
+                                            <a class="dropdown-item" href="#"
+                                                onclick="viewPathAnalytics('{{ path.path_name }}')">
+                                                <i class="fas fa-chart-bar me-2"></i>Se analyse
+                                            </a>
+                                        </div>
                                     </div>
+                                </div>
+
+                                <div class="progress mb-3" style="height: 10px;">
+                                    <div class="progress-bar bg-gradient-primary"
+                                        style="width: {{ path.avg_progress or 0 }}%" data-bs-toggle="tooltip"
+                                        title="Average Progress: {{ " %.1f"|format(path.avg_progress or 0) }}%">
+                                    </div>
+                                </div>
+
+                                <div class="row text-center">
+                                    <div class="col-6">
+                                        <div class="fw-bold text-primary">{{ path.enrolled_employees or 0 }}</div>
+                                        <small class="text-muted">Tilmeldt</small>
+                                    </div>
+                                    <div class="col-6">
+                                        <div class="fw-bold text-success">{{ path.completed_employees or 0 }}</div>
+                                        <small class="text-muted">Gennemfoert</small>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3">
+                                    <button class="btn btn-primary btn-sm btn-block"
+                                        onclick="manageLearningPath('{{ path.path_name }}')">
+                                        <i class="fas fa-users me-1"></i>Administrer tilmeldinger
+                                    </button>
                                 </div>
                             </div>
                         </div>
-                        {% endfor %}
                     </div>
+                    {% endfor %}
                 </div>
             </div>
         </div>
     </div>
-    {% endif %}
+</div>
+{% endif %}
 
-    <!-- Trending Topics & Chatbot Intelligence -->
-    <div class="row mb-4">
-        <div class="col-xl-6">
-            <div class="card shadow h-100">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-fire me-2"></i>Populaere emner (seneste 30 dage)
-                    </h6>
-                </div>
-                <div class="card-body">
-                    {% if trending_topics %}
-                    <div class="table-responsive">
-                        <table class="table table-sm table-hover">
-                            <thead><tr><th>Emne / Forespoegselstype</th><th>Samtaler</th><th>Andel</th></tr></thead>
-                            <tbody>
+<!-- Trending Topics & Chatbot Intelligence -->
+<div class="row mb-4">
+    <div class="col-xl-6">
+        <div class="card shadow h-100">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-fire me-2"></i>Populaere emner (seneste 30 dage)
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if trending_topics %}
+                <div class="table-responsive">
+                    <table class="table table-sm table-hover">
+                        <thead>
+                            <tr>
+                                <th>Emne / Forespoegselstype</th>
+                                <th>Samtaler</th>
+                                <th>Andel</th>
+                            </tr>
+                        </thead>
+                        <tbody>
                             {% set ns = namespace(total=0) %}
                             {% for t in trending_topics %}{% set ns.total = ns.total + t.cnt %}{% endfor %}
                             {% for t in trending_topics %}
@@ -768,159 +865,171 @@
                                 <td>{{ t.cnt }}</td>
                                 <td>
                                     <div class="progress" style="height:8px; min-width:80px;">
-                                        <div class="progress-bar bg-primary" style="width: {{ (t.cnt / ns.total * 100) if ns.total else 0 }}%"></div>
+                                        <div class="progress-bar bg-primary"
+                                            style="width: {{ (t.cnt / ns.total * 100) if ns.total else 0 }}%"></div>
                                     </div>
                                 </td>
                             </tr>
                             {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="empty-state py-3">
-                        <i class="fas fa-fire"></i>
-                        <p>Ingen emnedata endnu</p>
-                        <small>Emner vises naar medarbejdere bruger chatbotten</small>
-                    </div>
-                    {% endif %}
+                        </tbody>
+                    </table>
                 </div>
-            </div>
-        </div>
-        <div class="col-xl-3">
-            <div class="card shadow h-100">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-star me-2"></i>Medarbejder-feedback
-                    </h6>
+                {% else %}
+                <div class="empty-state py-3">
+                    <i class="fas fa-fire"></i>
+                    <p>Ingen emnedata endnu</p>
+                    <small>Emner vises naar medarbejdere bruger chatbotten</small>
                 </div>
-                <div class="card-body text-center">
-                    <div class="h1 fw-bold text-warning mb-1">{{ company_avg_feedback }}<small class="text-muted">/5</small></div>
-                    <p class="text-muted small mb-2">Baseret paa {{ company_feedback_count }} bedoemmelser</p>
-                    <div class="d-flex justify-content-center gap-1">
-                        {% for i in range(1, 6) %}
-                        <i class="fas fa-star {{ 'text-warning' if i <= (company_avg_feedback|round|int) else 'text-gray-300' }}"></i>
-                        {% endfor %}
-                    </div>
-                    <hr>
-                    <p class="text-muted small">Chatbot-tilfredshed baseret paa medarbejdersamtaler</p>
-                </div>
-            </div>
-        </div>
-        <div class="col-xl-3">
-            <div class="card shadow h-100">
-                <div class="card-header py-3">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-wrench me-2"></i>Populaere vaerktojer
-                    </h6>
-                </div>
-                <div class="card-body">
-                    {% if company_tool_usage %}
-                    {% for tool, cnt in company_tool_usage.items() %}
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <small class="text-truncate" style="max-width:140px;" title="{{ tool }}">{{ tool }}</small>
-                        <span class="badge bg-info bg-opacity-10 text-info">{{ cnt }}</span>
-                    </div>
-                    {% endfor %}
-                    {% else %}
-                    <div class="empty-state py-3">
-                        <i class="fas fa-wrench"></i>
-                        <p>Ingen vaerktoejsdata endnu</p>
-                    </div>
-                    {% endif %}
-                </div>
+                {% endif %}
             </div>
         </div>
     </div>
-
-    <!-- AI Insights & ROI Summary (Phase 3) -->
-    <div class="row mb-4">
-        <div class="col-xl-8">
-            <div class="card shadow h-100">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-brain me-2"></i>AI Insights
-                    </h6>
-                    <button class="btn btn-outline-primary btn-sm" onclick="generateInsights()" id="genInsightsBtn">
-                        <i class="fas fa-sync-alt"></i> Generer nye
-                    </button>
+    <div class="col-xl-3">
+        <div class="card shadow h-100">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-star me-2"></i>Medarbejder-feedback
+                </h6>
+            </div>
+            <div class="card-body text-center">
+                <div class="h1 fw-bold text-warning mb-1">{{ company_avg_feedback }}<small class="text-muted">/5</small>
                 </div>
-                <div class="card-body" id="insightsContainer">
-                    {% if recent_insights %}
-                    {% for ins in recent_insights %}
-                    {% set ins_text = (ins.title ~ ' ' ~ ins.body)|lower %}
-                    {% if 'inaktiv' in ins_text or 'inactive' in ins_text %}
-                        {% set ins_link = url_for('hr_dashboard.employee_progress') %}
-                    {% elif 'budget' in ins_text %}
-                        {% set ins_link = url_for('hr_dashboard.department_budgets') %}
-                    {% elif 'kompetence' in ins_text or 'skill' in ins_text %}
-                        {% set ins_link = url_for('hr_dashboard.skill_gaps_view') %}
-                    {% elif 'godkendelse' in ins_text or 'approval' in ins_text %}
-                        {% set ins_link = url_for('hr_dashboard.pending_approvals') %}
-                    {% else %}
-                        {% set ins_link = '' %}
+                <p class="text-muted small mb-2">Baseret paa {{ company_feedback_count }} bedoemmelser</p>
+                <div class="d-flex justify-content-center gap-1">
+                    {% for i in range(1, 6) %}
+                    <i
+                        class="fas fa-star {{ 'text-warning' if i <= (company_avg_feedback|round|int) else 'text-gray-300' }}"></i>
+                    {% endfor %}
+                </div>
+                <hr>
+                <p class="text-muted small">Chatbot-tilfredshed baseret paa medarbejdersamtaler</p>
+            </div>
+        </div>
+    </div>
+    <div class="col-xl-3">
+        <div class="card shadow h-100">
+            <div class="card-header py-3">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-wrench me-2"></i>Populaere vaerktojer
+                </h6>
+            </div>
+            <div class="card-body">
+                {% if company_tool_usage %}
+                {% for tool, cnt in company_tool_usage.items() %}
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-truncate" style="max-width:140px;" title="{{ tool }}">{{ tool }}</small>
+                    <span class="badge bg-info bg-opacity-10 text-info">{{ cnt }}</span>
+                </div>
+                {% endfor %}
+                {% else %}
+                <div class="empty-state py-3">
+                    <i class="fas fa-wrench"></i>
+                    <p>Ingen vaerktoejsdata endnu</p>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- AI Insights & ROI Summary (Phase 3) -->
+<div class="row mb-4">
+    <div class="col-xl-8">
+        <div class="card shadow h-100">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-brain me-2"></i>AI Insights
+                </h6>
+                <button class="btn btn-outline-primary btn-sm" onclick="generateInsights()" id="genInsightsBtn">
+                    <i class="fas fa-sync-alt"></i> Generer nye
+                </button>
+            </div>
+            <div class="card-body" id="insightsContainer">
+                {% if recent_insights %}
+                {% for ins in recent_insights %}
+                {% set ins_text = (ins.title ~ ' ' ~ ins.body)|lower %}
+                {% if 'inaktiv' in ins_text or 'inactive' in ins_text %}
+                {% set ins_link = url_for('hr_dashboard.employee_progress') %}
+                {% elif 'budget' in ins_text %}
+                {% set ins_link = url_for('hr_dashboard.department_budgets') %}
+                {% elif 'kompetence' in ins_text or 'skill' in ins_text %}
+                {% set ins_link = url_for('hr_dashboard.skill_gaps_view') %}
+                {% elif 'godkendelse' in ins_text or 'approval' in ins_text %}
+                {% set ins_link = url_for('hr_dashboard.pending_approvals') %}
+                {% else %}
+                {% set ins_link = '' %}
+                {% endif %}
+                {% if ins_link %}
+                <a href="{{ ins_link }}" class="text-decoration-none d-block">
                     {% endif %}
-                    {% if ins_link %}
-                    <a href="{{ ins_link }}" class="text-decoration-none d-block">
-                    {% endif %}
-                    <div class="alert alert-{{ 'warning' if ins.severity == 'warning' else ('danger' if ins.severity == 'critical' else 'info') }} py-2 mb-2{{ ' alert-clickable' if ins_link else '' }}" style="{{ 'cursor:pointer;' if ins_link else '' }}">
+                    <div class="alert alert-{{ 'warning' if ins.severity == 'warning' else ('danger' if ins.severity == 'critical' else 'info') }} py-2 mb-2{{ ' alert-clickable' if ins_link else '' }}"
+                        style="{{ 'cursor:pointer;' if ins_link else '' }}">
                         <strong>{{ ins.title }}</strong>
                         <p class="mb-0 small">{{ ins.body }}</p>
-                        <small class="text-muted">{{ ins.generated_at.strftime('%d/%m %H:%M') if ins.generated_at else '' }}</small>
+                        <small class="text-muted">{{ ins.generated_at.strftime('%d/%m %H:%M') if ins.generated_at else
+                            '' }}</small>
                     </div>
                     {% if ins_link %}
-                    </a>
-                    {% endif %}
-                    {% endfor %}
-                    {% else %}
-                    <div class="text-center py-3 text-muted">
-                        <i class="fas fa-brain fa-2x mb-2"></i>
-                        <p class="small">Ingen insights endnu. Klik "Generer nye" for at analysere data.</p>
-                    </div>
-                    {% endif %}
+                </a>
+                {% endif %}
+                {% endfor %}
+                {% else %}
+                <div class="text-center py-3 text-muted">
+                    <i class="fas fa-brain fa-2x mb-2"></i>
+                    <p class="small">Ingen insights endnu. Klik "Generer nye" for at analysere data.</p>
                 </div>
+                {% endif %}
             </div>
         </div>
-        <div class="col-xl-4">
-            <div class="card shadow h-100">
-                <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                    <h6 class="m-0 fw-bold text-primary">
-                        <i class="fas fa-chart-pie me-2"></i>Uddannelses-ROI
-                    </h6>
-                    <a href="{{ url_for('hr_dashboard.roi_dashboard') }}" class="btn btn-outline-primary btn-sm">
-                        <i class="fas fa-arrow-right"></i> Detaljer
-                    </a>
+    </div>
+    <div class="col-xl-4">
+        <div class="card shadow h-100">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center">
+                <h6 class="m-0 fw-bold text-primary">
+                    <i class="fas fa-chart-pie me-2"></i>Uddannelses-ROI
+                </h6>
+                <a href="{{ url_for('hr_dashboard.roi_dashboard') }}" class="btn btn-outline-primary btn-sm">
+                    <i class="fas fa-arrow-right"></i> Detaljer
+                </a>
+            </div>
+            <div class="card-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small text-muted"><span>Samlet udgift</span><span
+                            class="fw-bold">{{ "{:,.0f}".format(roi_total_spend).replace(",", ".") }} kr</span></div>
                 </div>
-                <div class="card-body">
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small text-muted"><span>Samlet udgift</span><span class="fw-bold">{{ "{:,.0f}".format(roi_total_spend).replace(",", ".") }} kr</span></div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small text-muted"><span>Medarbejdere traenet</span><span class="fw-bold">{{ roi_employees_trained }}</span></div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small text-muted"><span>Kurser gennemfoert</span><span class="fw-bold text-success">{{ roi_courses_completed }}</span></div>
-                    </div>
-                    <div class="mb-3">
-                        <div class="d-flex justify-content-between small text-muted"><span>Udgift pr. medarbejder</span><span class="fw-bold">{{ "{:,.0f}".format(roi_spend_per_employee).replace(",", ".") }} kr</span></div>
-                    </div>
-                    <hr>
-                    <div class="d-flex gap-2 flex-wrap">
-                        <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-outline-warning btn-sm flex-fill">
-                            <i class="fas fa-th"></i> Skill Gaps
-                        </a>
-                        <a href="{{ url_for('hr_dashboard.roi_dashboard') }}" class="btn btn-outline-info btn-sm flex-fill">
-                            <i class="fas fa-chart-line"></i> Predictions
-                        </a>
-                        <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="btn btn-outline-success btn-sm flex-fill">
-                            <i class="fas fa-file-invoice-dollar"></i> Fakturering
-                        </a>
-                    </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small text-muted"><span>Medarbejdere traenet</span><span
+                            class="fw-bold">{{ roi_employees_trained }}</span></div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small text-muted"><span>Kurser gennemfoert</span><span
+                            class="fw-bold text-success">{{ roi_courses_completed }}</span></div>
+                </div>
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between small text-muted"><span>Udgift pr.
+                            medarbejder</span><span class="fw-bold">{{
+                            "{:,.0f}".format(roi_spend_per_employee).replace(",", ".") }} kr</span></div>
+                </div>
+                <hr>
+                <div class="d-flex gap-2 flex-wrap">
+                    <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}"
+                        class="btn btn-outline-warning btn-sm flex-fill">
+                        <i class="fas fa-th"></i> Skill Gaps
+                    </a>
+                    <a href="{{ url_for('hr_dashboard.roi_dashboard') }}" class="btn btn-outline-info btn-sm flex-fill">
+                        <i class="fas fa-chart-line"></i> Predictions
+                    </a>
+                    <a href="{{ url_for('hr_dashboard.billing_overview') }}"
+                        class="btn btn-outline-success btn-sm flex-fill">
+                        <i class="fas fa-file-invoice-dollar"></i> Fakturering
+                    </a>
                 </div>
             </div>
         </div>
     </div>
+</div>
 
-    <!-- Quick Actions removed — now available in HR sub-navigation bar above -->
+<!-- Quick Actions removed — now available in HR sub-navigation bar above -->
 </div>
 
 <!-- Employee Detail Modal -->
@@ -956,220 +1065,389 @@
 
 {% block extra_styles %}
 <style>
-/* === KPI Cards === */
-.kpi-card {
-    display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 20px;
-    border-radius: 12px;
-    background: var(--card-bg);
-    box-shadow: var(--box-shadow);
-    transition: transform 0.15s ease, box-shadow 0.15s ease;
-    height: 100%;
-}
-.kpi-card:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
-}
-.kpi-icon {
-    width: 48px; height: 48px;
-    border-radius: 12px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 1.2rem; flex-shrink: 0;
-}
-.kpi-blue .kpi-icon   { background: rgba(59,130,246,0.1); color: #3b82f6; }
-.kpi-green .kpi-icon   { background: rgba(16,185,129,0.1); color: #10b981; }
-.kpi-purple .kpi-icon  { background: rgba(168,85,247,0.1); color: #a855f7; }
-.kpi-amber .kpi-icon   { background: rgba(245,158,11,0.1); color: #f59e0b; }
-.kpi-blue   { border-left: 3px solid #3b82f6; }
-.kpi-green  { border-left: 3px solid #10b981; }
-.kpi-purple { border-left: 3px solid #a855f7; }
-.kpi-amber  { border-left: 3px solid #f59e0b; }
-.kpi-label {
-    font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.03em; color: var(--muted-text); margin-bottom: 2px;
-}
-.kpi-value { font-size: 1.5rem; font-weight: 800; color: var(--text-color); line-height: 1.2; }
-.kpi-detail { font-size: 0.75rem; color: var(--muted-text); margin-top: 2px; }
+    /* === KPI Cards === */
+    .kpi-card {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        padding: 20px;
+        border-radius: 12px;
+        background: var(--card-bg);
+        box-shadow: var(--box-shadow);
+        transition: transform 0.15s ease, box-shadow 0.15s ease;
+        height: 100%;
+    }
 
-/* === Cards === */
-.card {
-    border: none;
-    border-radius: 12px;
-    background: var(--card-bg);
-    box-shadow: var(--box-shadow);
-    overflow: hidden;
-}
-.card-header {
-    background: var(--card-bg);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-    padding: 16px 20px;
-}
-.light-mode .card-header { border-bottom-color: #f1f5f9; }
-.card-body { padding: 20px; }
+    .kpi-card:hover {
+        transform: translateY(-2px);
+        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+    }
 
-/* === Empty States === */
-.empty-state {
-    text-align: center;
-    padding: 32px 20px;
-    color: var(--muted-text);
-}
-.empty-state i {
-    font-size: 2.2rem;
-    margin-bottom: 10px;
-    opacity: 0.35;
-    display: block;
-}
-.empty-state p {
-    font-weight: 600; font-size: 0.9rem;
-    margin-bottom: 4px; color: var(--muted-text);
-}
-.empty-state small { color: var(--muted-text); }
+    .kpi-icon {
+        width: 48px;
+        height: 48px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1.2rem;
+        flex-shrink: 0;
+    }
 
-/* === Avatar === */
-.avatar-circle {
-    width: 38px; height: 38px; border-radius: 10px;
-    background: linear-gradient(135deg, #4e73df, #6366f1);
-    color: white; display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 14px; flex-shrink: 0;
-}
+    .kpi-blue .kpi-icon {
+        background: rgba(59, 130, 246, 0.1);
+        color: #3b82f6;
+    }
 
-/* === Badges === */
-.badge-department {
-    background: rgba(54,185,204,0.12); color: #0e7490;
-    padding: 4px 10px; border-radius: 6px; font-weight: 600; font-size: 0.75rem;
-}
-.badge-category {
-    background: rgba(246,194,62,0.15); color: #b45309;
-    padding: 3px 8px; border-radius: 4px; font-size: 0.7rem; font-weight: 600;
-}
+    .kpi-green .kpi-icon {
+        background: rgba(16, 185, 129, 0.1);
+        color: #10b981;
+    }
 
-/* === Progress === */
-.progress-sm { height: 6px; border-radius: 3px; }
-.bg-gradient-primary { background: linear-gradient(135deg, #4e73df, #6366f1); }
-.bg-gradient-success { background: linear-gradient(135deg, #10b981, #059669); }
-.border-left-primary { border-left: 3px solid #4e73df !important; }
-.border-left-warning { border-left: 3px solid #f6c23e !important; }
+    .kpi-purple .kpi-icon {
+        background: rgba(168, 85, 247, 0.1);
+        color: #a855f7;
+    }
 
-/* === Activity Feed === */
-.icon-circle {
-    width: 30px; height: 30px; border-radius: 8px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.7rem;
-}
-.activity-feed { max-height: 400px; overflow-y: auto; }
-.activity-item { padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
-.light-mode .activity-item { border-bottom-color: #f1f5f9; }
-.activity-item:last-child { border-bottom: none; padding-bottom: 0; }
+    .kpi-amber .kpi-icon {
+        background: rgba(245, 158, 11, 0.1);
+        color: #f59e0b;
+    }
 
-/* === Tables === */
-.table thead th {
-    font-size: 0.73rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.03em; color: #64748b; border-bottom-width: 1px;
-}
-.table-hover tbody tr:hover { background-color: rgba(78,115,223,0.03); }
+    .kpi-blue {
+        border-left: 3px solid #3b82f6;
+    }
 
-/* === Alerts === */
-.alert { border-radius: 10px; border: none; }
-.alert-clickable:hover {
-    filter: brightness(0.96);
-    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
-    transition: all 0.15s;
-}
+    .kpi-green {
+        border-left: 3px solid #10b981;
+    }
 
-/* === Button block === */
-.btn-block {
-    display: block; width: 100%; text-align: center;
-    padding: 0.75rem; border-radius: 8px;
-    transition: all 0.2s ease; text-decoration: none;
-}
-.btn-block:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 3px 8px rgba(0,0,0,0.08);
-}
+    .kpi-purple {
+        border-left: 3px solid #a855f7;
+    }
 
-/* === Responsive === */
-@media (max-width: 768px) {
-    .kpi-card { padding: 14px; }
-    .kpi-value { font-size: 1.2rem; }
-    .avatar-circle { width: 32px; height: 32px; font-size: 12px; }
-    .table-responsive { font-size: 0.85rem; }
-    .btn-group-sm .btn { padding: 0.25rem 0.5rem; font-size: 0.75rem; }
-}
+    .kpi-amber {
+        border-left: 3px solid #f59e0b;
+    }
 
-/* === Animations === */
-.fade-in { animation: fadeIn 0.4s ease-out; }
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(8px); }
-    to { opacity: 1; transform: translateY(0); }
-}
+    .kpi-label {
+        font-size: 0.7rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: var(--muted-text);
+        margin-bottom: 2px;
+    }
 
-/* === Scrollbar === */
-.activity-feed::-webkit-scrollbar { width: 5px; }
-.activity-feed::-webkit-scrollbar-track { background: transparent; }
-.activity-feed::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
-.activity-feed::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+    .kpi-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        color: var(--text-color);
+        line-height: 1.2;
+    }
+
+    .kpi-detail {
+        font-size: 0.75rem;
+        color: var(--muted-text);
+        margin-top: 2px;
+    }
+
+    /* === Cards === */
+    .card {
+        border: none;
+        border-radius: 12px;
+        background: var(--card-bg);
+        box-shadow: var(--box-shadow);
+        overflow: hidden;
+    }
+
+    .card-header {
+        background: var(--card-bg);
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        padding: 16px 20px;
+    }
+
+    .light-mode .card-header {
+        border-bottom-color: #f1f5f9;
+    }
+
+    .card-body {
+        padding: 20px;
+    }
+
+    /* === Empty States === */
+    .empty-state {
+        text-align: center;
+        padding: 32px 20px;
+        color: var(--muted-text);
+    }
+
+    .empty-state i {
+        font-size: 2.2rem;
+        margin-bottom: 10px;
+        opacity: 0.35;
+        display: block;
+    }
+
+    .empty-state p {
+        font-weight: 600;
+        font-size: 0.9rem;
+        margin-bottom: 4px;
+        color: var(--muted-text);
+    }
+
+    .empty-state small {
+        color: var(--muted-text);
+    }
+
+    /* === Avatar === */
+    .avatar-circle {
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
+        background: linear-gradient(135deg, #4e73df, #6366f1);
+        color: white;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 14px;
+        flex-shrink: 0;
+    }
+
+    /* === Badges === */
+    .badge-department {
+        background: rgba(54, 185, 204, 0.12);
+        color: #0e7490;
+        padding: 4px 10px;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .badge-category {
+        background: rgba(246, 194, 62, 0.15);
+        color: #b45309;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 0.7rem;
+        font-weight: 600;
+    }
+
+    /* === Progress === */
+    .progress-sm {
+        height: 6px;
+        border-radius: 3px;
+    }
+
+    .bg-gradient-primary {
+        background: linear-gradient(135deg, #4e73df, #6366f1);
+    }
+
+    .bg-gradient-success {
+        background: linear-gradient(135deg, #10b981, #059669);
+    }
+
+    .border-left-primary {
+        border-left: 3px solid #4e73df !important;
+    }
+
+    .border-left-warning {
+        border-left: 3px solid #f6c23e !important;
+    }
+
+    /* === Activity Feed === */
+    .icon-circle {
+        width: 30px;
+        height: 30px;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.7rem;
+    }
+
+    .activity-feed {
+        max-height: 400px;
+        overflow-y: auto;
+    }
+
+    .activity-item {
+        padding-bottom: 0.75rem;
+        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+    }
+
+    .light-mode .activity-item {
+        border-bottom-color: #f1f5f9;
+    }
+
+    .activity-item:last-child {
+        border-bottom: none;
+        padding-bottom: 0;
+    }
+
+    /* === Tables === */
+    .table thead th {
+        font-size: 0.73rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        color: #64748b;
+        border-bottom-width: 1px;
+    }
+
+    .table-hover tbody tr:hover {
+        background-color: rgba(78, 115, 223, 0.03);
+    }
+
+    /* === Alerts === */
+    .alert {
+        border-radius: 10px;
+        border: none;
+    }
+
+    .alert-clickable:hover {
+        filter: brightness(0.96);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+        transition: all 0.15s;
+    }
+
+    /* === Button block === */
+    .btn-block {
+        display: block;
+        width: 100%;
+        text-align: center;
+        padding: 0.75rem;
+        border-radius: 8px;
+        transition: all 0.2s ease;
+        text-decoration: none;
+    }
+
+    .btn-block:hover {
+        transform: translateY(-1px);
+        box-shadow: 0 3px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    /* === Responsive === */
+    @media (max-width: 768px) {
+        .kpi-card {
+            padding: 14px;
+        }
+
+        .kpi-value {
+            font-size: 1.2rem;
+        }
+
+        .avatar-circle {
+            width: 32px;
+            height: 32px;
+            font-size: 12px;
+        }
+
+        .table-responsive {
+            font-size: 0.85rem;
+        }
+
+        .btn-group-sm .btn {
+            padding: 0.25rem 0.5rem;
+            font-size: 0.75rem;
+        }
+    }
+
+    /* === Animations === */
+    .fade-in {
+        animation: fadeIn 0.4s ease-out;
+    }
+
+    @keyframes fadeIn {
+        from {
+            opacity: 0;
+            transform: translateY(8px);
+        }
+
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+    /* === Scrollbar === */
+    .activity-feed::-webkit-scrollbar {
+        width: 5px;
+    }
+
+    .activity-feed::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .activity-feed::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 3px;
+    }
+
+    .activity-feed::-webkit-scrollbar-thumb:hover {
+        background: #94a3b8;
+    }
 </style>
 {% endblock %}
 
 {% block extra_scripts %}
 <script>
-// HR Dashboard JavaScript Functions
-function exportReport() {
-    window.location.href = "{{ url_for('hr_dashboard.export_report', report_type='employee_progress') }}";
-}
+    // HR Dashboard JavaScript Functions
+    function exportReport() {
+        window.location.href = "{{ url_for('hr_dashboard.export_report', report_type='employee_progress') }}";
+    }
 
-function generateInsights() {
-    const btn = document.getElementById('genInsightsBtn');
-    btn.disabled = true;
-    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyserer...';
-    fetch('{{ url_for("hr_dashboard.generate_insights") }}', {method: 'POST'})
-    .then(r => r.json())
-    .then(data => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sync-alt"></i> Generer nye';
-        if (data.success && data.insights && data.insights.length > 0) {
-            const container = document.getElementById('insightsContainer');
-            container.innerHTML = '';
-            data.insights.forEach(ins => {
-                const cls = ins.severity === 'warning' ? 'warning' : (ins.severity === 'critical' ? 'danger' : 'info');
-                const combined = ((ins.title || '') + ' ' + (ins.body || '')).toLowerCase();
-                let link = '';
-                if (combined.includes('inaktiv') || combined.includes('inactive')) {
-                    link = "{{ url_for('hr_dashboard.employee_progress') }}";
-                } else if (combined.includes('budget')) {
-                    link = "{{ url_for('hr_dashboard.department_budgets') }}";
-                } else if (combined.includes('kompetence') || combined.includes('skill')) {
-                    link = "{{ url_for('hr_dashboard.skill_gaps_view') }}";
-                } else if (combined.includes('godkendelse') || combined.includes('approval')) {
-                    link = "{{ url_for('hr_dashboard.pending_approvals') }}";
+    function generateInsights() {
+        const btn = document.getElementById('genInsightsBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Analyserer...';
+        fetch('{{ url_for("hr_dashboard.generate_insights") }}', { method: 'POST' })
+            .then(r => r.json())
+            .then(data => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sync-alt"></i> Generer nye';
+                if (data.success && data.insights && data.insights.length > 0) {
+                    const container = document.getElementById('insightsContainer');
+                    container.innerHTML = '';
+                    data.insights.forEach(ins => {
+                        const cls = ins.severity === 'warning' ? 'warning' : (ins.severity === 'critical' ? 'danger' : 'info');
+                        const combined = ((ins.title || '') + ' ' + (ins.body || '')).toLowerCase();
+                        let link = '';
+                        if (combined.includes('inaktiv') || combined.includes('inactive')) {
+                            link = "{{ url_for('hr_dashboard.employee_progress') }}";
+                        } else if (combined.includes('budget')) {
+                            link = "{{ url_for('hr_dashboard.department_budgets') }}";
+                        } else if (combined.includes('kompetence') || combined.includes('skill')) {
+                            link = "{{ url_for('hr_dashboard.skill_gaps_view') }}";
+                        } else if (combined.includes('godkendelse') || combined.includes('approval')) {
+                            link = "{{ url_for('hr_dashboard.pending_approvals') }}";
+                        }
+                        let html = `<div class="alert alert-${cls} py-2 mb-2${link ? ' alert-clickable' : ''}" style="${link ? 'cursor:pointer;' : ''}"><strong>${ins.title}</strong><p class="mb-0 small">${ins.body}</p></div>`;
+                        if (link) html = `<a href="${link}" class="text-decoration-none d-block">${html}</a>`;
+                        container.innerHTML += html;
+                    });
+                } else if (data.success) {
+                    document.getElementById('insightsContainer').innerHTML = '<div class="text-center py-3 text-muted"><p class="small">Ikke nok data til at generere insights endnu.</p></div>';
+                } else {
+                    alert('Fejl: ' + (data.message || 'Ukendt fejl'));
                 }
-                let html = `<div class="alert alert-${cls} py-2 mb-2${link ? ' alert-clickable' : ''}" style="${link ? 'cursor:pointer;' : ''}"><strong>${ins.title}</strong><p class="mb-0 small">${ins.body}</p></div>`;
-                if (link) html = `<a href="${link}" class="text-decoration-none d-block">${html}</a>`;
-                container.innerHTML += html;
+            })
+            .catch(err => {
+                btn.disabled = false;
+                btn.innerHTML = '<i class="fas fa-sync-alt"></i> Generer nye';
+                alert('Netvaerksfejl');
             });
-        } else if (data.success) {
-            document.getElementById('insightsContainer').innerHTML = '<div class="text-center py-3 text-muted"><p class="small">Ikke nok data til at generere insights endnu.</p></div>';
-        } else {
-            alert('Fejl: ' + (data.message || 'Ukendt fejl'));
-        }
-    })
-    .catch(err => {
-        btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-sync-alt"></i> Generer nye';
-        alert('Netvaerksfejl');
-    });
-}
+    }
 
-function filterTopPerformers(period) {
-    console.log('Filtering by period:', period);
-    // Add filtering logic here
-}
+    function filterTopPerformers(period) {
+        console.log('Filtering by period:', period);
+        // Add filtering logic here
+    }
 
-function viewEmployeeDetail(username) {
-    $('#employeeDetailModal').modal('show');
-    $('#employeeDetailContent').html(`
+    function viewEmployeeDetail(username) {
+        $('#employeeDetailModal').modal('show');
+        $('#employeeDetailContent').html(`
         <div class="text-center py-4">
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
@@ -1177,10 +1455,10 @@ function viewEmployeeDetail(username) {
             <p class="mt-2">Loading employee details for ${username}...</p>
         </div>
     `);
-    
-    // In a real implementation, you would fetch actual employee data
-    setTimeout(() => {
-        $('#employeeDetailContent').html(`
+
+        // In a real implementation, you would fetch actual employee data
+        setTimeout(() => {
+            $('#employeeDetailContent').html(`
             <div class="row">
                 <div class="col-md-4 text-center">
                     <div class="avatar-circle mx-auto mb-3" style="width: 80px; height: 80px; font-size: 24px;">
@@ -1215,12 +1493,12 @@ function viewEmployeeDetail(username) {
                 </div>
             </div>
         `);
-    }, 1000);
-}
+        }, 1000);
+    }
 
-function viewOrderDetails(orderId) {
-    $('#orderDetailModal').modal('show');
-    $('#orderDetailContent').html(`
+    function viewOrderDetails(orderId) {
+        $('#orderDetailModal').modal('show');
+        $('#orderDetailContent').html(`
         <div class="text-center py-4">
             <div class="spinner-border text-primary" role="status">
                 <span class="visually-hidden">Loading...</span>
@@ -1228,129 +1506,129 @@ function viewOrderDetails(orderId) {
             <p class="mt-2">Loading order details...</p>
         </div>
     `);
-    
-    // Load order details via AJAX
-    fetch(`{{ url_for('hr_dashboard.company_order_details', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId))
-        .then(response => response.text())
-        .then(html => {
-            $('#orderDetailContent').html(html);
-        })
-        .catch(error => {
-            $('#orderDetailContent').html(`
+
+        // Load order details via AJAX
+        fetch(`{{ url_for('hr_dashboard.company_order_details', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId))
+            .then(response => response.text())
+            .then(html => {
+                $('#orderDetailContent').html(html);
+            })
+            .catch(error => {
+                $('#orderDetailContent').html(`
                 <div class="alert alert-danger">
                     <i class="fas fa-exclamation-triangle me-2"></i>
                     Error loading order details. Please try again.
                 </div>
             `);
-        });
-}
-
-function updateOrderStatus(orderId, newStatus) {
-    if (confirm(`Er du sikker paa at du vil aendre status til ${newStatus}?`)) {
-        const button = event.target.closest('button') || event.target;
-        const originalHTML = button.innerHTML;
-        button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
-        button.disabled = true;
-
-        fetch(`{{ url_for('hr_dashboard.update_company_order_status', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId), {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-Requested-With': 'XMLHttpRequest'
-            },
-            body: JSON.stringify({
-                status: newStatus
-            })
-        })
-        .then(response => response.json())
-        .then(data => {
-            button.innerHTML = originalHTML;
-            button.disabled = false;
-            
-            if (data.success) {
-                showAlert('success', data.message);
-                setTimeout(() => location.reload(), 1500);
-            } else {
-                showAlert('danger', 'Error: ' + data.message);
-            }
-        })
-        .catch(error => {
-            button.innerHTML = originalHTML;
-            button.disabled = false;
-            console.error('Error:', error);
-            showAlert('danger', 'Error updating order status');
-        });
+            });
     }
-}
 
-function showAlert(type, message) {
-    const alertDiv = document.createElement('div');
-    alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
-    alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
-    alertDiv.innerHTML = `
+    function updateOrderStatus(orderId, newStatus) {
+        if (confirm(`Er du sikker paa at du vil aendre status til ${newStatus}?`)) {
+            const button = event.target.closest('button') || event.target;
+            const originalHTML = button.innerHTML;
+            button.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+            button.disabled = true;
+
+            fetch(`{{ url_for('hr_dashboard.update_company_order_status', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId), {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: JSON.stringify({
+                    status: newStatus
+                })
+            })
+                .then(response => response.json())
+                .then(data => {
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
+
+                    if (data.success) {
+                        showAlert('success', data.message);
+                        setTimeout(() => location.reload(), 1500);
+                    } else {
+                        showAlert('danger', 'Error: ' + data.message);
+                    }
+                })
+                .catch(error => {
+                    button.innerHTML = originalHTML;
+                    button.disabled = false;
+                    console.error('Error:', error);
+                    showAlert('danger', 'Error updating order status');
+                });
+        }
+    }
+
+    function showAlert(type, message) {
+        const alertDiv = document.createElement('div');
+        alertDiv.className = `alert alert-${type} alert-dismissible fade show position-fixed`;
+        alertDiv.style.cssText = 'top: 20px; right: 20px; z-index: 9999; min-width: 300px;';
+        alertDiv.innerHTML = `
         <i class="fas fa-${type === 'success' ? 'check-circle' : 'exclamation-triangle'} me-2"></i>
         ${message}
         <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
     `;
-    document.body.appendChild(alertDiv);
-    
-    setTimeout(() => {
-        if (alertDiv.parentNode) {
-            alertDiv.remove();
-        }
-    }, 5000);
-}
+        document.body.appendChild(alertDiv);
 
-function assignCourse(username) {
-    alert(`Assigning new course to ${username}...`);
-}
-
-function refreshData() {
-    location.reload();
-}
-
-function editLearningPath(pathName) {
-    alert(`Editing learning path: ${pathName}`);
-}
-
-function viewPathAnalytics(pathName) {
-    alert(`Viewing analytics for: ${pathName}`);
-}
-
-function manageLearningPath(pathName) {
-    alert(`Managing enrollments for: ${pathName}`);
-}
-
-// Initialize tooltips and other Bootstrap components
-document.addEventListener('DOMContentLoaded', function() {
-    // Enable Bootstrap tooltips
-    var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
-    var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
-        return new bootstrap.Tooltip(tooltipTriggerEl);
-    });
-
-    // Enable Bootstrap dropdowns
-    var dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
-    var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
-        return new bootstrap.Dropdown(dropdownToggleEl);
-    });
-
-    // Auto-refresh dashboard every 5 minutes
-    setInterval(function() {
-        console.log('Auto-refreshing HR dashboard data...');
-        // You can add automatic data refresh logic here
-    }, 300000);
-});
-
-// Add loading states to buttons
-document.querySelectorAll('button[onclick]').forEach(button => {
-    button.addEventListener('click', function(e) {
-        // Add a subtle loading state
-        this.style.opacity = '0.8';
         setTimeout(() => {
-            this.style.opacity = '1';
-        }, 500);
+            if (alertDiv.parentNode) {
+                alertDiv.remove();
+            }
+        }, 5000);
+    }
+
+    function assignCourse(username) {
+        alert(`Assigning new course to ${username}...`);
+    }
+
+    function refreshData() {
+        location.reload();
+    }
+
+    function editLearningPath(pathName) {
+        alert(`Editing learning path: ${pathName}`);
+    }
+
+    function viewPathAnalytics(pathName) {
+        alert(`Viewing analytics for: ${pathName}`);
+    }
+
+    function manageLearningPath(pathName) {
+        alert(`Managing enrollments for: ${pathName}`);
+    }
+
+    // Initialize tooltips and other Bootstrap components
+    document.addEventListener('DOMContentLoaded', function () {
+        // Enable Bootstrap tooltips
+        var tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        var tooltipList = tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+
+        // Enable Bootstrap dropdowns
+        var dropdownElementList = [].slice.call(document.querySelectorAll('.dropdown-toggle'));
+        var dropdownList = dropdownElementList.map(function (dropdownToggleEl) {
+            return new bootstrap.Dropdown(dropdownToggleEl);
+        });
+
+        // Auto-refresh dashboard every 5 minutes
+        setInterval(function () {
+            console.log('Auto-refreshing HR dashboard data...');
+            // You can add automatic data refresh logic here
+        }, 300000);
     });
-});
+
+    // Add loading states to buttons
+    document.querySelectorAll('button[onclick]').forEach(button => {
+        button.addEventListener('click', function (e) {
+            // Add a subtle loading state
+            this.style.opacity = '0.8';
+            setTimeout(() => {
+                this.style.opacity = '1';
+            }, 500);
+        });
+    });
 </script>
 {% endblock %}

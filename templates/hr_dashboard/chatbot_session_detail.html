@@ -1,0 +1,202 @@
+{% extends "base.html" %}
+{% block title %}Samtale-detaljer - {{ username }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+    :root {
+        --premium-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        --glass-bg: rgba(255, 255, 255, 0.7);
+    }
+
+    .chat-transcript-container {
+        max-width: 900px;
+        margin: 0 auto;
+    }
+
+    .transcript-header {
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        border: 1px solid rgba(255, 255, 255, 0.4);
+        border-radius: 20px;
+        padding: 1.5rem;
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
+        margin-bottom: 2rem;
+    }
+
+    .user-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        background: #f1f5f9;
+        padding: 0.4rem 1rem;
+        border-radius: 50px;
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.9rem;
+    }
+
+    .transcript-area {
+        display: flex;
+        flex-direction: column;
+        gap: 1.5rem;
+        padding-bottom: 4rem;
+    }
+
+    .message-row {
+        display: flex;
+        width: 100%;
+        gap: 1rem;
+    }
+
+    .message-row.user-msg {
+        flex-direction: row-reverse;
+    }
+
+    .avatar-sm {
+        width: 36px;
+        height: 36px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        flex-shrink: 0;
+        font-size: 0.9rem;
+    }
+
+    .user-msg .avatar-sm {
+        background: #e2e8f0;
+        color: #475569;
+    }
+
+    .ai-msg .avatar-sm {
+        background: var(--premium-gradient);
+        color: white;
+    }
+
+    .bubble {
+        max-width: 80%;
+        padding: 1rem 1.25rem;
+        border-radius: 18px;
+        font-size: 0.95rem;
+        line-height: 1.6;
+        position: relative;
+    }
+
+    .user-msg .bubble {
+        background: #6366f1;
+        color: white;
+        border-bottom-right-radius: 4px;
+        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+    }
+
+    .ai-msg .bubble {
+        background: white;
+        color: #1e293b;
+        border: 1px solid #e2e8f0;
+        border-bottom-left-radius: 4px;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
+    }
+
+    .msg-time {
+        font-size: 0.75rem;
+        color: #94a3b8;
+        margin-top: 0.5rem;
+        display: block;
+    }
+
+    .user-msg .msg-time {
+        text-align: right;
+    }
+
+    .premium-header-text {
+        background: var(--premium-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+    }
+
+    .tools-badge {
+        font-size: 0.7rem;
+        background: #f1f5f9;
+        color: #64748b;
+        padding: 2px 8px;
+        border-radius: 6px;
+        margin-top: 0.5rem;
+        display: inline-block;
+    }
+
+    .back-btn {
+        color: #64748b;
+        text-decoration: none;
+        font-weight: 500;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+
+    .back-btn:hover {
+        color: #6366f1;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    <div class="chat-transcript-container">
+        <div class="mb-4">
+            <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}" class="back-btn">
+                <i class="fas fa-arrow-left me-2"></i> Tilbage til overblik
+            </a>
+        </div>
+
+        <div class="transcript-header d-flex justify-content-between align-items-center">
+            <div>
+                <h1 class="h4 mb-1 premium-header-text">Samtale Transcript</h1>
+                <div class="d-flex align-items-center gap-3 mt-2">
+                    <div class="user-pill">
+                        <i class="fas fa-user-circle"></i>
+                        {{ username }}
+                    </div>
+                    <small class="text-muted"><i class="far fa-clock me-1"></i> Session ID: {{ session_id[:12]
+                        }}...</small>
+                </div>
+            </div>
+            <div class="text-end">
+                <a href="{{ url_for('hr_dashboard.employee_details', user_id=user_id) }}"
+                    class="btn btn-sm btn-outline-primary">
+                    <i class="fas fa-id-card me-1"></i> Se medarbejder-profil
+                </a>
+            </div>
+        </div>
+
+        <div class="transcript-area">
+            {% for interaction in interactions %}
+            <!-- User Question -->
+            <div class="message-row user-msg">
+                <div class="avatar-sm"><i class="fas fa-user"></i></div>
+                <div class="bubble">
+                    {{ interaction.query_text }}
+                    <span class="msg-time">{{ interaction.created_at.strftime('%H:%M:%S') }}</span>
+                </div>
+            </div>
+
+            <!-- AI Response -->
+            <div class="message-row ai-msg">
+                <div class="avatar-sm"><i class="fas fa-robot"></i></div>
+                <div class="bubble">
+                    {{ interaction.response_text | safe }}
+
+                    {% if interaction.tools_used %}
+                    <div class="tools-badge">
+                        <i class="fas fa-wrench me-1"></i> Koerte værktøjer: {{ interaction.tools_used }}
+                    </div>
+                    {% endif %}
+
+                    <span class="msg-time">{{ interaction.created_at.strftime('%H:%M:%S') }}</span>
+                </div>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+{% endblock %}

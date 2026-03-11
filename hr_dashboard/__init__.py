@@ -423,6 +423,20 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             recent_activity = cur.fetchall()
 
+            # Recent Chatbot Sessions for Dashboard
+            cur.execute("""
+                SELECT 
+                    ci.session_id, ci.username, 
+                    COUNT(*) as query_count, 
+                    MAX(ci.created_at) as last_activity
+                FROM chatbot_interactions ci
+                WHERE ci.company_id = %s
+                GROUP BY ci.session_id, ci.username
+                ORDER BY last_activity DESC
+                LIMIT 5
+            """, (company['id'],))
+            recent_sessions = cur.fetchall()
+
             # ── Skills / Kompetence summary for dashboard ──
             # Merge from both enterprise (employee_skills_matrix) and chatbot (user_skills) tables
             skills_summary = {'total_skills': 0, 'employees_with_skills': 0, 'critical_gaps': 0, 'top_skills': [], 'critical_gap_list': []}
@@ -540,8 +554,10 @@ def create_hr_dashboard_blueprint():
                                  roi_employees_trained=roi_employees_trained,
                                  roi_courses_completed=roi_courses_completed,
                                  roi_spend_per_employee=roi_spend_per_employee,
+                                 current_year=_fy,
                                  funnel=funnel,
                                  onboarding=onboarding,
+                                 recent_sessions=recent_sessions,
                                  recent_activity=recent_activity,
                                  skills_summary=skills_summary,
                                  active_hr_page='dashboard')
@@ -1738,6 +1754,21 @@ def create_hr_dashboard_blueprint():
                 except Exception:
                     pass
 
+            # 6) Chatbot sessions for this employee
+            cur.execute("""
+                SELECT 
+                    ci.session_id, 
+                    COUNT(*) as query_count, 
+                    MIN(ci.created_at) as started_at, 
+                    MAX(ci.created_at) as last_activity
+                FROM chatbot_interactions ci
+                JOIN users u ON ci.username = u.username
+                WHERE u.id = %s
+                GROUP BY ci.session_id
+                ORDER BY last_activity DESC
+            """, (user_id,))
+            chatbot_sessions = cur.fetchall()
+
             cur.close()
 
             return render_template('hr_dashboard/employee_details.html',
@@ -1745,6 +1776,7 @@ def create_hr_dashboard_blueprint():
                                  employee=employee,
                                  course_history=course_history,
                                  interaction_history=interaction_history,
+                                 chatbot_sessions=chatbot_sessions,
                                  employee_skills=employee_skills,
                                  employee_education=employee_education,
                                  employee_experience=employee_experience,
@@ -2135,12 +2167,90 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/chatbot/reset', methods=['POST'])
     def hr_chatbot_reset():
-        """Reset HR chatbot session"""
+        """Reset the HR chatbot session memory"""
         auth_check = require_hr_access()
         if auth_check:
             return jsonify({"error": "Unauthorized"}), 401
         session.pop('hr_chat_session_id', None)
         return jsonify({"success": True})
+
+    @hr_dashboard_bp.route('/chatbot/sessions')
+    def chatbot_sessions():
+        """List all chatbot sessions for the company"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT 
+                    ci.session_id, ci.username,
+                    cu.department,
+                    MIN(ci.created_at) as started_at,
+                    MAX(ci.created_at) as last_activity,
+                    COUNT(*) as message_count,
+                    COALESCE(AVG(ci.interaction_quality_score), 0) as avg_quality
+                FROM chatbot_interactions ci
+                LEFT JOIN users u ON ci.username = u.username
+                LEFT JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = ci.company_id
+                WHERE ci.company_id = %s
+                GROUP BY ci.session_id, ci.username, cu.department
+                ORDER BY last_activity DESC
+                LIMIT 100
+            """, (company['id'],))
+            sessions = cur.fetchall()
+            cur.close()
+            return render_template('hr_dashboard/chatbot_sessions.html', 
+                                 company=company, sessions=sessions,
+                                 active_hr_page='analytics')
+        except Exception as e:
+            current_app.logger.error(f"Error loading chatbot sessions: {e}")
+            flash("Fejl ved indlæsning af samtaler.", "danger")
+            return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/chatbot/session/<session_id>')
+    def chatbot_session_detail(session_id):
+        """View transcript for a specific chatbot session"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            # Verify session belongs to company
+            cur.execute("""
+                SELECT ci.*, u.id as user_id 
+                FROM chatbot_interactions ci
+                LEFT JOIN users u ON ci.username = u.username
+                WHERE ci.session_id = %s AND ci.company_id = %s
+                ORDER BY ci.created_at ASC
+            """, (session_id, company['id']))
+            interactions = cur.fetchall()
+            
+            if not interactions:
+                flash("Samtale ikke fundet eller ingen adgang.", "warning")
+                cur.close()
+                return redirect(url_for('hr_dashboard.chatbot_sessions'))
+            
+            username = interactions[0]['username']
+            user_id = interactions[0]['user_id']
+            
+            cur.close()
+            return render_template('hr_dashboard/chatbot_session_detail.html',
+                                 company=company, session_id=session_id,
+                                 interactions=interactions, username=username,
+                                 user_id=user_id, active_hr_page='analytics')
+        except Exception as e:
+            current_app.logger.error(f"Error loading session detail: {e}")
+            flash("Fejl ved indlæsning af samtale-detaljer.", "danger")
+            return redirect(url_for('hr_dashboard.chatbot_sessions'))
 
     # ── Phase 5.3: Proactive Notifications ──
 

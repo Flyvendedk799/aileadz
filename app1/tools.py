@@ -108,7 +108,21 @@ def extract_city_name(address):
 def _extract_compact_fields(product):
     """Extract enriched compact fields from a product."""
     variants = product.get("variants", [])
-    price = _normalize_price(variants[0].get("price") if variants else None)
+    raw_price = variants[0].get("price") if variants else None
+    price = _normalize_price(raw_price)
+
+    # Apply supplier agreement discount if available
+    vendor = product.get("vendor", "")
+    discounted, original, agreement_name = apply_discount(raw_price, vendor)
+    discount_info = None
+    if discounted is not None and original is not None:
+        discount_info = {
+            "original_price": _normalize_price(original),
+            "discounted_price": _normalize_price(discounted),
+            "agreement_name": agreement_name,
+            "savings": _normalize_price(original - discounted),
+        }
+        price = _normalize_price(discounted)  # Show discounted price as main price
 
     raw_locations = [v.get("option1") for v in variants if v.get("option1")]
     cities = list(dict.fromkeys(extract_city_name(loc) for loc in raw_locations if extract_city_name(loc)))[:3]
@@ -142,6 +156,8 @@ def _extract_compact_fields(product):
         "product_type": product_type,
         "tags": filtered_tags,
     }
+    if discount_info:
+        result["discount"] = discount_info
 
     # 4.2: Include structured metadata if available
     meta = product.get("structured_metadata", {})
@@ -410,15 +426,45 @@ OPENAI_TOOLS = [
 _current_shown_handles = set()
 _current_user_prefs = {}
 _current_blocked_vendors = set()  # Vendors deactivated by the company
+_current_supplier_agreements = {}  # {vendor_name: {discount_type, discount_value, agreement_name}}
 
 
-def set_search_context(shown_handles=None, user_prefs=None, blocked_vendors=None):
+def set_search_context(shown_handles=None, user_prefs=None, blocked_vendors=None, supplier_agreements=None):
     """Set contextual search state for the current request.
     Called by agent.py before tool execution to pass session context."""
-    global _current_shown_handles, _current_user_prefs, _current_blocked_vendors
+    global _current_shown_handles, _current_user_prefs, _current_blocked_vendors, _current_supplier_agreements
     _current_shown_handles = shown_handles or set()
     _current_user_prefs = user_prefs or {}
     _current_blocked_vendors = blocked_vendors or set()
+    _current_supplier_agreements = supplier_agreements or {}
+
+
+def apply_discount(price_raw, vendor_name):
+    """Apply company supplier agreement discount to a price. Returns (discounted_price, original_price, agreement_name) or (None, None, None)."""
+    if not _current_supplier_agreements or not vendor_name:
+        return None, None, None
+    agreement = _current_supplier_agreements.get(vendor_name)
+    if not agreement:
+        return None, None, None
+    try:
+        original = float(price_raw) if price_raw else 0
+        if original <= 0:
+            return None, None, None
+        dtype = agreement.get('discount_type', 'percentage')
+        dvalue = float(agreement.get('discount_value', 0))
+        if dvalue <= 0:
+            return None, None, None
+        if dtype == 'percentage':
+            discounted = original * (1 - dvalue / 100)
+        elif dtype == 'fixed_amount':
+            discounted = max(0, original - dvalue)
+        elif dtype == 'fixed_price':
+            discounted = dvalue
+        else:
+            return None, None, None
+        return round(discounted, 2), original, agreement.get('agreement_name', '')
+    except (ValueError, TypeError):
+        return None, None, None
 
 
 def _filter_blocked_vendors(products):

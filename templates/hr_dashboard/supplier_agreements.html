@@ -1,0 +1,287 @@
+{% extends "base.html" %}
+
+{% block title %}Leverandoeraftaler - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+    .agreement-card {
+        border-radius: 12px;
+        border: 1px solid #e5e7eb;
+        background: #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+        transition: box-shadow 0.15s;
+    }
+    .agreement-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.08); }
+    .agreement-card.inactive { opacity: 0.6; }
+    .discount-badge {
+        display: inline-flex;
+        align-items: center;
+        gap: 4px;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8rem;
+        font-weight: 700;
+    }
+    .discount-badge.percentage { background: #dcfce7; color: #16a34a; }
+    .discount-badge.fixed_amount { background: #dbeafe; color: #2563eb; }
+    .discount-badge.fixed_price { background: #fef3c7; color: #d97706; }
+    .stat-pill { background: #f8fafc; border-radius: 12px; padding: 16px 20px; text-align: center; }
+    .stat-pill h3 { margin: 0; font-weight: 700; }
+    .stat-pill small { color: #6b7280; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h2><i class="fas fa-handshake text-primary"></i> Leverandoeraftaler</h2>
+            <p class="text-muted mb-0">Administrer rabataftaler med kursusleverandoerer</p>
+        </div>
+        <div class="d-flex gap-2">
+            <a href="{{ url_for('hr_dashboard.supplier_management') }}" class="btn btn-outline-secondary btn-sm">
+                <i class="fas fa-arrow-left me-1"></i> Leverandoerer
+            </a>
+            <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addAgreementModal">
+                <i class="fas fa-plus me-1"></i> Ny aftale
+            </button>
+        </div>
+    </div>
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+    {% for category, message in messages %}
+    <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+        {{ message }}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    </div>
+    {% endfor %}
+    {% endif %}
+    {% endwith %}
+
+    <!-- Stats -->
+    <div class="row g-3 mb-4">
+        <div class="col-md-4">
+            <div class="stat-pill">
+                <h3 class="text-primary">{{ agreements|length }}</h3>
+                <small>Aftaler i alt</small>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-pill">
+                <h3 class="text-success">{{ agreements|selectattr('is_active')|list|length }}</h3>
+                <small>Aktive aftaler</small>
+            </div>
+        </div>
+        <div class="col-md-4">
+            <div class="stat-pill">
+                <h3 class="text-info">{{ vendor_names|length }}</h3>
+                <small>Tilgaengelige leverandoerer</small>
+            </div>
+        </div>
+    </div>
+
+    <!-- Agreements list -->
+    {% if agreements %}
+    <div class="row g-3">
+        {% for a in agreements %}
+        <div class="col-xl-4 col-md-6">
+            <div class="agreement-card p-3 {{ 'inactive' if not a.is_active }}">
+                <div class="d-flex justify-content-between align-items-start mb-2">
+                    <div>
+                        <h6 class="fw-bold mb-1">{{ a.vendor_name }}</h6>
+                        {% if a.agreement_name %}
+                        <small class="text-muted">{{ a.agreement_name }}</small>
+                        {% endif %}
+                    </div>
+                    <div class="dropdown">
+                        <button class="btn btn-sm btn-outline-secondary border-0" data-bs-toggle="dropdown">
+                            <i class="fas fa-ellipsis-v"></i>
+                        </button>
+                        <ul class="dropdown-menu dropdown-menu-end">
+                            <li>
+                                <button class="dropdown-item edit-agreement-btn"
+                                        data-id="{{ a.id }}"
+                                        data-vendor="{{ a.vendor_name }}"
+                                        data-type="{{ a.discount_type }}"
+                                        data-value="{{ a.discount_value }}"
+                                        data-name="{{ a.agreement_name or '' }}"
+                                        data-ref="{{ a.agreement_reference or '' }}"
+                                        data-from="{{ a.valid_from or '' }}"
+                                        data-until="{{ a.valid_until or '' }}"
+                                        data-min="{{ a.min_participants or 1 }}"
+                                        data-notes="{{ a.notes or '' }}"
+                                        data-active="{{ a.is_active }}">
+                                    <i class="fas fa-edit me-2 text-primary"></i>Rediger
+                                </button>
+                            </li>
+                            <li><hr class="dropdown-divider"></li>
+                            <li>
+                                <form method="POST" action="{{ url_for('hr_dashboard.delete_supplier_agreement', agreement_id=a.id) }}"
+                                      onsubmit="return confirm('Slet aftale med {{ a.vendor_name }}?')">
+                                    <button type="submit" class="dropdown-item text-danger">
+                                        <i class="fas fa-trash me-2"></i>Slet
+                                    </button>
+                                </form>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div class="mb-2">
+                    {% if a.discount_type == 'percentage' %}
+                    <span class="discount-badge percentage"><i class="fas fa-percent"></i> {{ a.discount_value|int }}% rabat</span>
+                    {% elif a.discount_type == 'fixed_amount' %}
+                    <span class="discount-badge fixed_amount"><i class="fas fa-minus-circle"></i> {{ a.discount_value|int }} kr rabat</span>
+                    {% elif a.discount_type == 'fixed_price' %}
+                    <span class="discount-badge fixed_price"><i class="fas fa-tag"></i> Fastpris {{ a.discount_value|int }} kr</span>
+                    {% endif %}
+                </div>
+
+                <div class="small text-muted">
+                    {% if a.agreement_reference %}
+                    <div><i class="fas fa-file-contract me-1"></i> Ref: {{ a.agreement_reference }}</div>
+                    {% endif %}
+                    {% if a.valid_from or a.valid_until %}
+                    <div><i class="fas fa-calendar me-1"></i>
+                        {% if a.valid_from %}Fra {{ a.valid_from }}{% endif %}
+                        {% if a.valid_until %} til {{ a.valid_until }}{% endif %}
+                    </div>
+                    {% endif %}
+                    {% if not a.is_active %}
+                    <div class="text-warning"><i class="fas fa-pause-circle me-1"></i> Inaktiv</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+    {% else %}
+    <div class="text-center py-5">
+        <i class="fas fa-handshake fa-3x text-muted mb-3" style="opacity:0.3;"></i>
+        <h5 class="fw-bold text-muted">Ingen leverandoeraftaler endnu</h5>
+        <p class="text-muted mb-3">Opret aftaler for at vise rabatterede priser i chatbotten</p>
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addAgreementModal">
+            <i class="fas fa-plus me-1"></i> Opret foerste aftale
+        </button>
+    </div>
+    {% endif %}
+</div>
+
+<!-- Add/Edit Agreement Modal -->
+<div class="modal fade" id="addAgreementModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content" style="border-radius:12px;">
+            <form method="POST" action="{{ url_for('hr_dashboard.save_supplier_agreement') }}" id="agreementForm">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold" id="agreementModalTitle">
+                        <i class="fas fa-handshake text-primary me-2"></i>Ny leverandoeraftale
+                    </h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Leverandoer <span class="text-danger">*</span></label>
+                        <select class="form-select" name="vendor_name" id="agr_vendor" required>
+                            <option value="">Vaelg leverandoer</option>
+                            {% for v in vendor_names %}
+                            <option value="{{ v }}">{{ v }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Aftalenavn</label>
+                        <input type="text" class="form-control" name="agreement_name" id="agr_name"
+                               placeholder="f.eks. Rammeaftale 2026">
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Rabattype <span class="text-danger">*</span></label>
+                            <select class="form-select" name="discount_type" id="agr_type">
+                                <option value="percentage">Procentrabat (%)</option>
+                                <option value="fixed_amount">Fast beloeb (kr fra)</option>
+                                <option value="fixed_price">Fastpris (kr)</option>
+                            </select>
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Vaerdi <span class="text-danger">*</span></label>
+                            <input type="number" class="form-control" name="discount_value" id="agr_value"
+                                   required min="0" step="0.01" placeholder="f.eks. 15">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Aftale-reference</label>
+                        <input type="text" class="form-control" name="agreement_reference" id="agr_ref"
+                               placeholder="f.eks. KTR-2026-001">
+                    </div>
+                    <div class="row g-3 mb-3">
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Gyldig fra</label>
+                            <input type="date" class="form-control" name="valid_from" id="agr_from">
+                        </div>
+                        <div class="col-6">
+                            <label class="form-label fw-bold">Gyldig til</label>
+                            <input type="date" class="form-control" name="valid_until" id="agr_until">
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Min. deltagere</label>
+                        <input type="number" class="form-control" name="min_participants" id="agr_min"
+                               value="1" min="1">
+                        <small class="text-muted">Minimum antal deltagere for rabat</small>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label fw-bold">Noter</label>
+                        <textarea class="form-control" name="notes" id="agr_notes" rows="2"
+                                  placeholder="Interne noter om aftalen"></textarea>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" name="is_active" id="agr_active" checked>
+                        <label class="form-check-label" for="agr_active">Aftale aktiv</label>
+                    </div>
+                </div>
+                <div class="modal-footer border-0 pt-0">
+                    <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Annuller</button>
+                    <button type="submit" class="btn btn-primary"><i class="fas fa-check me-1"></i>Gem aftale</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+document.querySelectorAll('.edit-agreement-btn').forEach(function(btn) {
+    btn.addEventListener('click', function() {
+        document.getElementById('agreementModalTitle').innerHTML =
+            '<i class="fas fa-edit text-primary me-2"></i>Rediger aftale';
+        document.getElementById('agr_vendor').value = this.dataset.vendor;
+        document.getElementById('agr_type').value = this.dataset.type;
+        document.getElementById('agr_value').value = this.dataset.value;
+        document.getElementById('agr_name').value = this.dataset.name;
+        document.getElementById('agr_ref').value = this.dataset.ref;
+        document.getElementById('agr_from').value = this.dataset.from;
+        document.getElementById('agr_until').value = this.dataset.until;
+        document.getElementById('agr_min').value = this.dataset.min;
+        document.getElementById('agr_notes').value = this.dataset.notes;
+        document.getElementById('agr_active').checked = this.dataset.active === '1';
+        new bootstrap.Modal(document.getElementById('addAgreementModal')).show();
+    });
+});
+
+// Reset modal when opening for new agreement
+document.getElementById('addAgreementModal').addEventListener('show.bs.modal', function(e) {
+    if (e.relatedTarget && e.relatedTarget.dataset && !e.relatedTarget.classList.contains('edit-agreement-btn')) {
+        document.getElementById('agreementModalTitle').innerHTML =
+            '<i class="fas fa-handshake text-primary me-2"></i>Ny leverandoeraftale';
+        document.getElementById('agreementForm').reset();
+        document.getElementById('agr_active').checked = true;
+        document.getElementById('agr_min').value = '1';
+    }
+});
+</script>
+{% endblock %}

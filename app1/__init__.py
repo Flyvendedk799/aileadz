@@ -372,10 +372,16 @@ PRODUCT_MEDIA_TEMPLATE = """
         </h3>
         <div style="font-size: 12px; color: #52525b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="{{ product.vendor | e }}">{{ product.vendor | e }}</div>
       </div>
-      <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0;">
+      <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0; text-align: right;">
         {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
         {% set price_val = price | float(-1) %}
+        {% if product._original_price %}
+        <div style="font-size: 11px; color: #71717a; text-decoration: line-through; font-weight: 400;">kr {{ product._original_price | dkprice }}</div>
+        {% endif %}
         {% if price in ["", "None", "N/A"] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
+        {% if product._agreement_name %}
+        <div style="font-size: 10px; color: #22c55e; font-weight: 500;">{{ product._agreement_name | e }}</div>
+        {% endif %}
       </div>
     </div>
     {% if product.ai_summary or product.body_html %}
@@ -424,10 +430,29 @@ def _extract_product_location(product):
         return ", ".join(unique)
     return f"{unique[0]}, {unique[1]} +{len(unique)-2} mere"
 
+def _apply_product_discount(product):
+    """Apply supplier agreement discount to a product's display price."""
+    from app1.tools import apply_discount
+    vendor = product.get("vendor", "")
+    variants = product.get("variants", [])
+    if variants:
+        raw_price = variants[0].get("price")
+        discounted, original, agreement_name = apply_discount(raw_price, vendor)
+        if discounted is not None:
+            product["_original_price"] = original
+            product["_agreement_name"] = agreement_name
+            # Modify first variant price for template rendering
+            product["variants"] = [dict(v) for v in variants]
+            product["variants"][0] = dict(product["variants"][0])
+            product["variants"][0]["price"] = str(discounted)
+    return product
+
+
 def render_product_media(product):
     p = dict(product)
     if not p.get("location"):
         p["location"] = _extract_product_location(p)
+    p = _apply_product_discount(p)
     return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=p, get_short_description=get_short_description)
 
 MULTIPLE_COURSES_TEMPLATE = """
@@ -447,10 +472,10 @@ MULTIPLE_COURSES_TEMPLATE = """
               <h4 style="margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%; color: #e4e4e7;">
                   <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#e4e4e7'">{{ course.title | e }}</a>
               </h4>
-              <div style="font-size: 12.5px; font-weight: 700; color: #a855f7; white-space: nowrap;">
+              <div style="font-size: 12.5px; font-weight: 700; color: #a855f7; white-space: nowrap; text-align: right;">
                   {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
                   {% set price_val = price | float(-1) %}
-                  {% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
+                  {% if course._original_price %}<span style="font-size:10px;color:#71717a;text-decoration:line-through;font-weight:400;">kr {{ course._original_price | dkprice }}</span> {% endif %}{% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
               </div>
           </div>
           <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #52525b;">
@@ -488,6 +513,7 @@ def render_multi_course_media(courses):
         c2 = dict(c)
         if not c2.get("location"):
             c2["location"] = _extract_product_location(c2)
+        c2 = _apply_product_discount(c2)
         enriched.append(c2)
     return render_template_string(MULTIPLE_COURSES_TEMPLATE, courses=enriched, get_short_description=get_short_description, unique_prefix=unique_prefix)
 

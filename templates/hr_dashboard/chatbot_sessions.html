@@ -5,15 +5,7 @@
 {{ super() }}
 <style>
     :root {
-        --glass-bg: rgba(255, 255, 255, 0.7);
-        --glass-border: rgba(255, 255, 255, 0.4);
         --premium-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-        --text-main: #1e293b;
-    }
-
-    body {
-        background: #f8fafc;
-        color: var(--text-main);
     }
 
     .glass-card {
@@ -46,35 +38,35 @@
         text-transform: uppercase;
         font-size: 0.75rem;
         letter-spacing: 0.05em;
-        color: #64748b;
+        color: var(--muted-text);
         padding: 1.25rem 1rem;
-        border-bottom: 2px solid #f1f5f9;
+        border-bottom: 2px solid var(--border-color);
     }
 
     .custom-table td {
         padding: 1rem;
         vertical-align: middle;
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid var(--border-color);
         font-size: 0.9rem;
     }
 
     .user-avatar {
         width: 32px;
         height: 32px;
-        background: #e2e8f0;
+        background: var(--hover-shadow);
         border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
         font-weight: 600;
-        color: #475569;
+        color: var(--text-color);
         font-size: 0.8rem;
     }
 
     .btn-view {
-        background: white;
-        border: 1px solid #e2e8f0;
-        color: #6366f1;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--primary-color);
         border-radius: 8px;
         padding: 0.4rem 0.8rem;
         font-size: 0.85rem;
@@ -110,8 +102,9 @@
     .search-box input {
         padding-left: 2.75rem;
         border-radius: 12px;
-        border: 1px solid #e2e8f0;
-        background: white;
+        background: var(--card-bg);
+        border: 1px solid var(--border-color);
+        color: var(--text-color);
         transition: all 0.2s;
     }
 
@@ -171,13 +164,14 @@
                                 {{ session.username[:2] | upper if session.username else '??' }}
                             </div>
                             <div>
-                                <div class="fw-bold text-dark">{{ session.username }}</div>
+                                <div class="fw-bold">{{ session.username }}</div>
                                 <small class="text-muted">ID: {{ session.session_id[:8] }}</small>
                             </div>
                         </div>
                     </td>
                     <td>
-                        <span class="badge bg-light text-secondary border">{{ session.department or 'Ingen afdeling'
+                        <span class="badge border" style="background: var(--hover-shadow); color: var(--text-color);">{{
+                            session.department or 'Ingen afdeling'
                             }}</span>
                     </td>
                     <td>{{ session.started_at.strftime('%d. %b %H:%M') if session.started_at else 'N/A' }}</td>

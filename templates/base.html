@@ -30,6 +30,9 @@
       --transition-speed: 0.3s;
       --border-radius: 10px;
       --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      --glass-bg: rgba(30, 30, 30, 0.6);
+      --glass-border: rgba(255, 255, 255, 0.1);
+      --border-color: rgba(255, 255, 255, 0.1);
     }
 
     .light-mode {
@@ -41,6 +44,9 @@
       --muted-text: #555555;
       --hover-shadow: rgba(0, 0, 0, 0.1);
       --box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+      --glass-bg: rgba(255, 255, 255, 0.7);
+      --glass-border: rgba(255, 255, 255, 0.4);
+      --border-color: rgba(0, 0, 0, 0.1);
     }
 
     /* ------------------------------------------------------------
@@ -434,10 +440,12 @@
        ------------------------------------------------------------ */
     .main-content {
       flex-grow: 1;
-      min-width: 0;          /* allow flex child to shrink below content width */
+      min-width: 0;
+      /* allow flex child to shrink below content width */
       display: flex;
       flex-direction: column;
-      overflow-x: hidden;    /* prevent horizontal bleed */
+      overflow-x: hidden;
+      /* prevent horizontal bleed */
     }
 
     .content {
@@ -448,38 +456,99 @@
     }
 
     @media (max-width: 768px) {
-      .content { padding: 16px; }
+      .content {
+        padding: 16px;
+      }
     }
 
     /* ------------------------------------------------------------
-       BOOTSTRAP COMPONENT TEXT FIX
-       In light mode, Bootstrap components need explicit dark text.
-       In dark mode, components inherit var(--text-color) from body.
+       BOOTSTRAP COMPONENT THEME MAPPING
        ------------------------------------------------------------ */
-    .light-mode .content .card,
-    .light-mode .content .card-body,
-    .light-mode .content .card-header,
-    .light-mode .content .card-footer,
-    .light-mode .content .list-group-item,
-    .light-mode .content .list-group-item a { color: #212529; }
+    .card {
+      background-color: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
 
-    .light-mode .content .table,
-    .light-mode .content .table th,
-    .light-mode .content .table td { color: #212529; }
+    .card-header,
+    .card-footer {
+      background-color: transparent;
+      border-bottom: 1px solid var(--border-color);
+      color: var(--text-color);
+    }
 
-    .light-mode .content .dropdown-menu,
-    .light-mode .content .dropdown-item { color: #212529; }
-    .light-mode .content .dropdown-item:hover { color: #16181b; background-color: #f8f9fa; }
-    .content .dropdown-item.text-danger { color: #dc3545 !important; }
+    .list-group-item {
+      background-color: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
 
-    .light-mode .content .form-control,
-    .light-mode .content .form-select,
-    .light-mode .content .form-label,
-    .light-mode .content .input-group-text { color: #212529; }
+    .list-group-item-action:hover {
+      background-color: var(--hover-shadow);
+      color: var(--primary-color);
+    }
 
-    .light-mode .content .alert { color: #212529; }
+    .table {
+      color: var(--text-color);
+      border-color: var(--border-color);
+    }
 
-    .modal-content { color: #212529; }
+    .table th,
+    .table td {
+      border-color: var(--border-color);
+    }
+
+    .modal-content {
+      background-color: var(--card-bg);
+      color: var(--text-color);
+      border: 1px solid var(--border-color);
+    }
+
+    .modal-header,
+    .modal-footer {
+      border-color: var(--border-color);
+    }
+
+    .dropdown-menu {
+      background-color: var(--card-bg);
+      border-color: var(--border-color);
+      color: var(--text-color);
+      box-shadow: var(--box-shadow);
+    }
+
+    .dropdown-item {
+      color: var(--text-color);
+    }
+
+    .dropdown-item:hover {
+      background-color: var(--hover-shadow);
+      color: var(--primary-color);
+    }
+
+    .form-control,
+    .form-select {
+      background-color: rgba(255, 255, 255, 0.05);
+      border-color: var(--border-color);
+      color: var(--text-color);
+    }
+
+    .light-mode .form-control,
+    .light-mode .form-select {
+      background-color: #ffffff;
+      color: #212529;
+    }
+
+    .form-control:focus,
+    .form-select:focus {
+      background-color: rgba(255, 255, 255, 0.08);
+      border-color: var(--primary-color);
+      color: var(--text-color);
+      box-shadow: 0 0 0 0.25rem rgba(168, 85, 247, 0.25);
+    }
+
+    .modal-content {
+      color: var(--text-color);
+    }
 
     .section-title {
       margin: 35px 0 25px;
@@ -550,9 +619,15 @@
         transform: translateX(0);
       }
     }
+
     /* Fix Bootstrap modals rendering behind header (z-index: 10000) */
-    .modal-backdrop { z-index: 10001 !important; }
-    .modal { z-index: 10002 !important; }
+    .modal-backdrop {
+      z-index: 10001 !important;
+    }
+
+    .modal {
+      z-index: 10002 !important;
+    }
   </style>
   {% block extra_styles %}{% endblock %}
 </head>

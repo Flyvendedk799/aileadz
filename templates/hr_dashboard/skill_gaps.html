@@ -113,7 +113,7 @@
                             style="width:32px; height:32px; background:rgba(99,102,241,0.1); color:#6366f1; border-radius:8px; display:flex; align-items:center; justify-content:center;">
                             <i class="fas fa-sitemap small"></i>
                         </div>
-                        <h6 class="mb-0 fw-bold text-dark">{{ dept }}</h6>
+                        <h6 class="mb-0 fw-bold">{{ dept }}</h6>
                     </div>
                     <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary fw-bold">{{ skills|length }}
                         kompetencer</span>
@@ -135,7 +135,7 @@
                                 {% for skill_name, data in skills.items() %}
                                 <tr>
                                     <td class="ps-4">
-                                        <div class="fw-bold text-dark">{{ skill_name }}</div>
+                                        <div class="fw-bold">{{ skill_name }}</div>
                                         <small class="text-muted">{{ data.employees }} medarbejdere</small>
                                     </td>
                                     <td>
@@ -148,7 +148,7 @@
                                         {% endif %}
                                     </td>
                                     <td class="text-center">
-                                        <span class="fw-bold text-dark">{{ data.target_level }}</span><small
+                                        <span class="fw-bold">{{ data.target_level }}</span><small
                                             class="text-muted">/5</small>
                                     </td>
                                     <td>
@@ -160,7 +160,7 @@
                                                 </div>
                                                 {% endfor %}
                                             </div>
-                                            <small class="fw-bold text-dark">{{ data.avg_current }}</small>
+                                            <small class="fw-bold">{{ data.avg_current }}</small>
                                         </div>
                                     </td>
                                     <td class="text-center">
@@ -260,7 +260,7 @@
                     <div class="card h-100 border-0 shadow-sm skill-mini-card">
                         <div class="card-body p-4">
                             <div class="d-flex justify-content-between align-items-start mb-3">
-                                <h6 class="fw-bold mb-0 text-dark">{{ skill.skill_name }}</h6>
+                                <h6 class="fw-bold mb-0">{{ skill.skill_name }}</h6>
                                 <span class="badge-soft badge-soft-blue px-2 py-1">{{ skill.count }} pers.</span>
                             </div>
 
@@ -278,7 +278,7 @@
                             <div class="skill-emp-list">
                                 {% for emp in skill.employees[:4] %}
                                 <a href="{{ url_for('hr_dashboard.employee_details', user_id=emp.user_id) }}"
-                                    class="d-flex align-items-center gap-3 py-2 text-decoration-none text-dark skill-emp-row rounded-3 px-2">
+                                    class="d-flex align-items-center gap-3 py-2 text-decoration-none skill-emp-row rounded-3 px-2">
                                     <div class="avatar-sm"
                                         style="width:28px; height:28px; border-radius:50%; background:{{ ['#4f46e5','#10b981','#8b5cf6','#f59e0b','#ec4899'][loop.index0 % 5] }}; display:flex; align-items:center; justify-content:center; color:white; font-size:10px; font-weight:bold;">
                                         {{ emp.username[:1].upper() }}
@@ -313,7 +313,7 @@
             <div class="card border-0 shadow-sm text-center py-5">
                 <div class="card-body">
                     <i class="fas fa-search fa-3x text-muted mb-3 opacity-25"></i>
-                    <h5 class="fw-bold text-dark">Ingen kompetencer fundet</h5>
+                    <h5 class="fw-bold">Ingen kompetencer fundet</h5>
                     <p class="text-muted">Proev at tildele skills til dine medarbejdere</p>
                 </div>
             </div>
@@ -324,7 +324,7 @@
         <div class="tab-pane fade" id="tabTargets">
             {% if targets %}
             <div class="card border-0 shadow-lg">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold text-primary"><i class="fas fa-bullseye me-2"></i>Alle kompetencemaal</h6>
                     <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary fw-bold">{{ targets|length }}
                         maal</span>
@@ -344,7 +344,7 @@
                             <tbody>
                                 {% for t in targets %}
                                 <tr>
-                                    <td class="ps-4 fw-bold text-dark">{{ t.skill_name }}</td>
+                                    <td class="ps-4 fw-bold">{{ t.skill_name }}</td>
                                     <td><span class="badge-soft badge-soft-blue">{{ t.department or 'Alle afdelinger'
                                             }}</span></td>
                                     <td class="text-center">
@@ -356,7 +356,7 @@
                                                 </div>
                                                 {% endfor %}
                                             </div>
-                                            <small class="fw-bold text-dark">{{ t.target_level }}/5</small>
+                                            <small class="fw-bold">{{ t.target_level }}/5</small>
                                         </div>
                                     </td>
                                     <td class="text-center">
@@ -394,7 +394,7 @@
             <div class="card border-0 shadow-sm text-center py-5">
                 <div class="card-body">
                     <i class="fas fa-bullseye fa-3x text-muted mb-3 opacity-25"></i>
-                    <h5 class="fw-bold text-dark">Ingen kompetencemaal sat</h5>
+                    <h5 class="fw-bold">Ingen kompetencemaal sat</h5>
                     <p class="text-muted mb-3">Definer strategiske maal for at se afdelingernes performance</p>
                     <button class="btn btn-primary rounded-pill px-4" data-bs-toggle="modal"
                         data-bs-target="#addTargetModal">
@@ -419,7 +419,7 @@
             </div>
             <div class="modal-body p-4">
                 <div class="mb-4">
-                    <label class="form-label fw-bold text-dark small text-uppercase">Afdeling</label>
+                    <label class="form-label fw-bold small text-uppercase">Afdeling</label>
                     <select class="form-select border-0 bg-light rounded-3" id="targetDept">
                         <option value="">Alle afdelinger</option>
                         {% for d in departments %}
@@ -429,7 +429,7 @@
                     <small class="text-muted">Tom = gaelder for hele virksomheden</small>
                 </div>
                 <div class="mb-4 position-relative">
-                    <label class="form-label fw-bold text-dark small text-uppercase">Kompetence <span
+                    <label class="form-label fw-bold small text-uppercase">Kompetence <span
                             class="text-danger">*</span></label>
                     <input type="text" class="form-control border-0 bg-light rounded-3" id="targetSkill"
                         placeholder="Indtast eller vaelg kompetence..." autocomplete="off"
@@ -440,7 +440,7 @@
                 </div>
                 <div class="mb-4">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label fw-bold text-dark small text-uppercase mb-0">Maal-niveau</label>
+                        <label class="form-label fw-bold small text-uppercase mb-0">Maal-niveau</label>
                         <span class="badge bg-primary rounded-pill px-3" id="levelDisplay">3</span>
                     </div>
                     <input type="range" class="form-range" id="targetLevel" min="1" max="5" value="3"
@@ -450,7 +450,7 @@
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label fw-bold text-dark small text-uppercase">Prioritet</label>
+                    <label class="form-label fw-bold small text-uppercase">Prioritet</label>
                     <div class="d-flex gap-3">
                         <div class="form-check custom-radio">
                             <input class="form-check-input" type="radio" name="targetPriority" id="prioLow" value="low">
@@ -489,7 +489,7 @@
             </div>
             <div class="modal-body p-4">
                 <div class="mb-4 position-relative">
-                    <label class="form-label fw-bold text-dark small text-uppercase">Vaelg Kompetence <span
+                    <label class="form-label fw-bold small text-uppercase">Vaelg Kompetence <span
                             class="text-danger">*</span></label>
                     <input type="text" class="form-control border-0 bg-light rounded-3" id="assignSkillName"
                         placeholder="f.eks. Python, ITIL..." autocomplete="off"
@@ -500,7 +500,7 @@
                 </div>
                 <div class="mb-4">
                     <div class="d-flex justify-content-between align-items-center mb-2">
-                        <label class="form-label fw-bold text-dark small text-uppercase mb-0">Niveau</label>
+                        <label class="form-label fw-bold small text-uppercase mb-0">Niveau</label>
                         <span class="badge bg-purple rounded-pill px-3" id="assignLevelDisplay">2</span>
                     </div>
                     <input type="range" class="form-range" id="assignLevel" min="1" max="5" value="2"
@@ -510,7 +510,7 @@
                     </div>
                 </div>
                 <div class="mb-2">
-                    <label class="form-label fw-bold text-dark small text-uppercase">Tildel til Afdeling</label>
+                    <label class="form-label fw-bold small text-uppercase">Tildel til Afdeling</label>
                     <select class="form-select border-0 bg-light rounded-3" id="assignDept">
                         <option value="">-- Vaelg --</option>
                         {% for d in departments %}
@@ -542,9 +542,6 @@
 <style>
     :root {
         --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
-        --glass-bg: rgba(255, 255, 255, 0.7);
-        --glass-border: rgba(255, 255, 255, 0.4);
-        --soft-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.07);
     }
 
     /* KPI Cards with Glassmorphism */
@@ -611,7 +608,6 @@
     .kpi-value {
         font-size: 1.75rem;
         font-weight: 800;
-        color: #1e293b;
         line-height: 1;
     }
 
@@ -732,7 +728,6 @@
 
     .skill-mini-card {
         transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        background: #fff;
     }
 
     .skill-mini-card:hover {

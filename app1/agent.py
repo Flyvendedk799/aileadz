@@ -1552,8 +1552,9 @@ def handle_agentic_ask(user_query, session):
                     }
             except (NameError, Exception):
                 pass
-            # Load blocked vendors for company employees
+            # Load blocked vendors and supplier agreements for company employees
             blocked_vendors = set()
+            supplier_agreements = {}
             company_id = session.get("company_id")
             if company_id:
                 try:
@@ -1567,9 +1568,29 @@ def handle_agentic_ask(user_query, session):
                     _vc.close()
                 except Exception:
                     pass
+                # Load active supplier agreements with discounts
+                try:
+                    _ac = _ca.mysql.connection.cursor()
+                    _ac.execute(
+                        "SELECT vendor_name, discount_type, discount_value, agreement_name "
+                        "FROM company_supplier_agreements "
+                        "WHERE company_id = %s AND is_active = 1 "
+                        "AND (valid_from IS NULL OR valid_from <= CURDATE()) "
+                        "AND (valid_until IS NULL OR valid_until >= CURDATE())",
+                        (company_id,)
+                    )
+                    for row in _ac.fetchall():
+                        supplier_agreements[row[0]] = {
+                            'discount_type': row[1],
+                            'discount_value': float(row[2]),
+                            'agreement_name': row[3] or '',
+                        }
+                    _ac.close()
+                except Exception:
+                    pass
 
             set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
-                               blocked_vendors=blocked_vendors)
+                               blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements)
 
             # Tool-calling loop (non-streaming for tool iterations)
             last_message_is_final = False

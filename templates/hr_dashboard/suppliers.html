@@ -26,26 +26,36 @@
             <h2><i class="fas fa-store text-primary"></i> Leverandoer- & Kursusstyring</h2>
             <p class="text-muted mb-0">Aktiver/deaktiver kursusleverandoerer for jeres medarbejdere</p>
         </div>
+        <a href="{{ url_for('hr_dashboard.supplier_agreements') }}" class="btn btn-outline-primary btn-sm">
+            <i class="fas fa-handshake me-1"></i> Rabataftaler
+            {% if agreements_count %}<span class="badge bg-primary ms-1">{{ agreements_count }}</span>{% endif %}
+        </a>
     </div>
 
     <!-- Stats -->
     <div class="row mb-4">
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="stat-pill">
                 <h3 class="text-primary">{{ vendors|length }}</h3>
                 <small>Leverandoerer i alt</small>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="stat-pill">
                 <h3 class="text-success">{{ active_vendors }}</h3>
                 <small>Aktive leverandoerer</small>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <div class="stat-pill">
                 <h3 class="text-danger">{{ deactivated_vendors }}</h3>
                 <small>Deaktiverede</small>
+            </div>
+        </div>
+        <div class="col-md-3">
+            <div class="stat-pill">
+                <h3 class="text-info">{{ agreements_count or 0 }}</h3>
+                <small>Rabataftaler</small>
             </div>
         </div>
     </div>

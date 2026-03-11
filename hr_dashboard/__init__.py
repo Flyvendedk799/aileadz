@@ -3092,18 +3092,28 @@ def create_hr_dashboard_blueprint():
             active_vendors = sum(1 for v in vendor_list if v['is_active'])
             deactivated_vendors = len(vendor_list) - active_vendors
 
+            # Load agreements count
+            try:
+                cur.execute("SELECT COUNT(*) as cnt FROM company_supplier_agreements WHERE company_id = %s AND is_active = 1", (company['id'],))
+                row = cur.fetchone()
+                agreements_count = row['cnt'] if row else 0
+            except Exception:
+                agreements_count = 0
+
             cur.close()
         except Exception as e:
             current_app.logger.error(f"Error loading suppliers: {e}")
             vendor_list = []
             active_vendors = 0
             deactivated_vendors = 0
+            agreements_count = 0
 
         return render_template('hr_dashboard/suppliers.html',
                                company=company,
                                vendors=vendor_list,
                                active_vendors=active_vendors,
                                deactivated_vendors=deactivated_vendors,
+                               agreements_count=agreements_count,
                                active_hr_page='suppliers')
 
     @hr_dashboard_bp.route('/suppliers/toggle', methods=['POST'])
@@ -3166,6 +3176,138 @@ def create_hr_dashboard_blueprint():
             return jsonify({"success": True, "updated": len(vendor_names)})
         except Exception as e:
             return jsonify({"success": False, "message": str(e)}), 500
+
+    # ── Supplier Agreement Management ──
+
+    @hr_dashboard_bp.route('/suppliers/agreements')
+    def supplier_agreements():
+        """View and manage supplier discount agreements"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT * FROM company_supplier_agreements
+                WHERE company_id = %s ORDER BY vendor_name
+            """, (company['id'],))
+            agreements = cur.fetchall()
+
+            # Load vendor list for the dropdown
+            import json as _json, os
+            catalog_path = os.path.join(current_app.root_path, 'shopify_products_all_pages.json')
+            vendor_names = set()
+            if os.path.exists(catalog_path):
+                with open(catalog_path, 'r', encoding='utf-8') as f:
+                    for p in _json.load(f):
+                        v = p.get('vendor', '')
+                        if v:
+                            vendor_names.add(v)
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error loading agreements: {e}")
+            agreements = []
+            vendor_names = set()
+
+        return render_template('hr_dashboard/supplier_agreements.html',
+                               company=company, agreements=agreements,
+                               vendor_names=sorted(vendor_names),
+                               active_hr_page='suppliers')
+
+    @hr_dashboard_bp.route('/suppliers/agreements/save', methods=['POST'])
+    def save_supplier_agreement():
+        """Create or update a supplier discount agreement"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('hr_dashboard.supplier_agreements'))
+
+        vendor_name = request.form.get('vendor_name', '').strip()
+        discount_type = request.form.get('discount_type', 'percentage').strip()
+        discount_value = request.form.get('discount_value', '0').strip()
+        agreement_name = request.form.get('agreement_name', '').strip()
+        agreement_ref = request.form.get('agreement_reference', '').strip()
+        valid_from = request.form.get('valid_from', '').strip() or None
+        valid_until = request.form.get('valid_until', '').strip() or None
+        min_participants = request.form.get('min_participants', '1').strip()
+        notes = request.form.get('notes', '').strip()
+        is_active = 1 if request.form.get('is_active') else 0
+
+        if not vendor_name:
+            flash("Leverandørnavn er påkrævet.", "danger")
+            return redirect(url_for('hr_dashboard.supplier_agreements'))
+
+        try:
+            dval = float(discount_value)
+        except ValueError:
+            dval = 0
+
+        try:
+            min_p = int(min_participants)
+        except ValueError:
+            min_p = 1
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                INSERT INTO company_supplier_agreements
+                    (company_id, vendor_name, discount_type, discount_value,
+                     agreement_name, agreement_reference, valid_from, valid_until,
+                     min_participants, notes, is_active, created_by)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE
+                    discount_type = VALUES(discount_type),
+                    discount_value = VALUES(discount_value),
+                    agreement_name = VALUES(agreement_name),
+                    agreement_reference = VALUES(agreement_reference),
+                    valid_from = VALUES(valid_from),
+                    valid_until = VALUES(valid_until),
+                    min_participants = VALUES(min_participants),
+                    notes = VALUES(notes),
+                    is_active = VALUES(is_active)
+            """, (company['id'], vendor_name, discount_type, dval,
+                  agreement_name or None, agreement_ref or None,
+                  valid_from, valid_until, min_p, notes or None,
+                  is_active, session.get('user_id')))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"Aftale med '{vendor_name}' gemt.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error saving agreement: {e}")
+            flash("Fejl ved gem af aftale.", "danger")
+
+        return redirect(url_for('hr_dashboard.supplier_agreements'))
+
+    @hr_dashboard_bp.route('/suppliers/agreements/<int:agreement_id>/delete', methods=['POST'])
+    def delete_supplier_agreement(agreement_id):
+        """Delete a supplier agreement"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('hr_dashboard.supplier_agreements'))
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("DELETE FROM company_supplier_agreements WHERE id = %s AND company_id = %s",
+                       (agreement_id, company['id']))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Aftale slettet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error deleting agreement: {e}")
+            flash("Fejl ved sletning.", "danger")
+
+        return redirect(url_for('hr_dashboard.supplier_agreements'))
 
     # ══════════════════════════════════════════════════════════
     # ── Chatbot Configuration ──

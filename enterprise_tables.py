@@ -740,6 +740,28 @@ def ensure_enterprise_tables(app):
                     INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Company Supplier Agreements (discount structures per vendor) ──
+                """CREATE TABLE IF NOT EXISTS company_supplier_agreements (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    vendor_name VARCHAR(255) NOT NULL,
+                    discount_type ENUM('percentage', 'fixed_price', 'fixed_amount') DEFAULT 'percentage',
+                    discount_value DECIMAL(10,2) NOT NULL DEFAULT 0,
+                    agreement_name VARCHAR(255),
+                    agreement_reference VARCHAR(100),
+                    valid_from DATE,
+                    valid_until DATE,
+                    min_participants INT DEFAULT 1,
+                    notes TEXT,
+                    is_active TINYINT(1) DEFAULT 1,
+                    created_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_company_vendor_agreement (company_id, vendor_name),
+                    INDEX idx_company (company_id),
+                    INDEX idx_vendor (vendor_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company Course Activations (toggle external courses on/off) ──
                 """CREATE TABLE IF NOT EXISTS company_course_activations (
                     id INT AUTO_INCREMENT PRIMARY KEY,

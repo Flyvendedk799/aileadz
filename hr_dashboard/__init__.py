@@ -2341,15 +2341,6 @@ def create_hr_dashboard_blueprint():
 
         try:
             cur = current_app.mysql.connection.cursor()
-            # Drop legacy unique_company_dept index if it still exists
-            try:
-                cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
-                current_app.mysql.connection.commit()
-                current_app.logger.info("Auto-sync: Dropped legacy unique_company_dept index in add_department")
-            except Exception as ex:
-                # 1091 = index doesn't exist, which is fine
-                if not (hasattr(ex, 'args') and ex.args and ex.args[0] == 1091):
-                    current_app.logger.debug(f"Note: Could not drop legacy index: {ex}")
             
             # Check if this department already exists for THIS company
             cur.execute("""

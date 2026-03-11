@@ -44,11 +44,11 @@
         </div>
         <div class="col-md-6">
           <label class="form-label">Kontakt-email</label>
-          <input type="email" class="form-control" name="contact_email" value="{{ company.contact_email or '' }}">
+          <input type="email" class="form-control" name="contact_email" value="{{ settings.support_email or '' }}">
         </div>
         <div class="col-md-6">
           <label class="form-label">Hjemmeside</label>
-          <input type="url" class="form-control" name="website" value="{{ company.website or '' }}" placeholder="https://...">
+          <input type="url" class="form-control" name="website" value="{{ settings.company_website or '' }}" placeholder="https://...">
         </div>
       </div>
     </div>

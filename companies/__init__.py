@@ -643,21 +643,19 @@ def create_companies_blueprint():
             try:
                 cur = current_app.mysql.connection.cursor()
                 cur.execute("""
-                    UPDATE companies SET company_name = %s, contact_email = %s,
-                        website = %s, industry = %s, updated_at = NOW()
+                    UPDATE companies SET company_name = %s, industry = %s, updated_at = NOW()
                     WHERE id = %s
                 """, (
                     request.form.get('company_name', company.get('company_name', '')),
-                    request.form.get('contact_email', ''),
-                    request.form.get('website', ''),
                     request.form.get('industry', ''),
                     company['id']
                 ))
                 # Also upsert company_settings for branding/preferences
                 cur.execute("""
                     INSERT INTO company_settings (company_id, primary_color, secondary_color,
-                        logo_url, language, timezone, support_email, support_phone)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+                        logo_url, language, timezone, support_email, support_phone,
+                        company_website)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE
                         primary_color = VALUES(primary_color),
                         secondary_color = VALUES(secondary_color),
@@ -665,7 +663,8 @@ def create_companies_blueprint():
                         language = VALUES(language),
                         timezone = VALUES(timezone),
                         support_email = VALUES(support_email),
-                        support_phone = VALUES(support_phone)
+                        support_phone = VALUES(support_phone),
+                        company_website = VALUES(company_website)
                 """, (
                     company['id'],
                     request.form.get('primary_color', '#7c3aed'),
@@ -673,8 +672,9 @@ def create_companies_blueprint():
                     request.form.get('logo_url', ''),
                     request.form.get('language', 'da'),
                     request.form.get('timezone', 'Europe/Copenhagen'),
-                    request.form.get('support_email', ''),
+                    request.form.get('contact_email', request.form.get('support_email', '')),
                     request.form.get('support_phone', ''),
+                    request.form.get('website', ''),
                 ))
                 current_app.mysql.connection.commit()
                 cur.close()

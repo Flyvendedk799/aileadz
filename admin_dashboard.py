@@ -32,7 +32,7 @@ def admin_home():
     active_users_7d = 0
     try:
         cur.execute("""
-            SELECT COUNT(DISTINCT user_id) AS cnt FROM chatbot_interactions
+            SELECT COUNT(DISTINCT username) AS cnt FROM chatbot_interactions
             WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)
         """)
         active_users_7d = cur.fetchone()['cnt']
@@ -103,8 +103,9 @@ def admin_home():
     companies = []
     try:
         cur.execute("""
-            SELECT c.id, c.company_name, c.industry, c.company_size, c.subscription_status,
-                   c.trial_end_date, c.created_at,
+            SELECT c.id, c.company_name, c.industry, c.company_size,
+                   c.subscription_plan AS subscription_status,
+                   c.trial_ends_at AS trial_end_date, c.created_at,
                    (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id) AS employee_count,
                    (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id) AS order_count,
                    (SELECT COALESCE(SUM(price), 0) FROM course_orders co WHERE co.company_id = c.id) AS revenue

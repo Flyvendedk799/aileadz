@@ -156,7 +156,7 @@ def create_hr_dashboard_blueprint():
                     COUNT(DISTINCT CASE WHEN ci.created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY) THEN ci.username END) as active_users_7_days
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
-                JOIN company_users cu ON u.id = cu.user_id
+                JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = ci.company_id
                 WHERE cu.company_id = %s
             """, (company['id'],))
             engagement_metrics = cur.fetchone()
@@ -2209,7 +2209,7 @@ def create_hr_dashboard_blueprint():
             cur.execute("""
                 SELECT COUNT(*) as cnt FROM course_orders
                 WHERE company_id = %s AND status IN ('confirmed', 'processing')
-                AND start_date IS NOT NULL AND start_date BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
+                AND started_at IS NOT NULL AND started_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
             """, (company['id'],))
             upcoming = cur.fetchone()['cnt']
             if upcoming > 0:

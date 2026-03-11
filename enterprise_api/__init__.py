@@ -540,7 +540,7 @@ def export_report():
                        elp.progress_percentage, elp.time_spent_minutes,
                        elp.completed_at, elp.final_score
                 FROM employee_learning_progress elp
-                JOIN company_users cu ON elp.user_id = cu.id
+                JOIN company_users cu ON elp.user_id = cu.user_id
                 WHERE elp.company_id = %s
                 ORDER BY cu.full_name, elp.started_at DESC
             """, (g.company_id,))

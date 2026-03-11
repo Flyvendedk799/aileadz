@@ -72,7 +72,7 @@ def chatbot_dashboard():
         cur.execute("SELECT COUNT(DISTINCT session_id) AS cnt FROM chatbot_interactions")
         row = cur.fetchone()
         total_convs = row['cnt'] if row else 0
-        cur.execute("SELECT COUNT(DISTINCT session_id) AS cnt FROM course_orders")
+        cur.execute("SELECT COUNT(DISTINCT chatbot_session_id) AS cnt FROM course_orders WHERE chatbot_session_id IS NOT NULL AND chatbot_session_id != ''")
         row = cur.fetchone()
         converting_convs = row['cnt'] if row else 0
         conversion_rate = round((converting_convs / total_convs * 100) if total_convs else 0, 1)

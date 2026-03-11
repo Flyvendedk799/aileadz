@@ -2321,7 +2321,7 @@ def create_hr_dashboard_blueprint():
             return jsonify({"success": False, "message": "Virksomhed ikke fundet"}), 400
 
         name = request.form.get('department_name', '').strip()
-        code = request.form.get('department_code', '').strip()
+        code = request.form.get('department_code', '').strip() or None  # NULL not '' to avoid unique constraint clash
         description = request.form.get('description', '').strip()
         budget = request.form.get('learning_budget_per_employee', '0').strip()
 
@@ -2344,18 +2344,11 @@ def create_hr_dashboard_blueprint():
             if cur.fetchone():
                 flash(f"Afdelingen '{name}' eksisterer allerede i denne virksomhed.", "warning")
             else:
-                if code:
-                    cur.execute("""
-                        INSERT INTO company_departments
-                            (company_id, department_name, department_code, description, learning_budget_per_employee)
-                        VALUES (%s, %s, %s, %s, %s)
-                    """, (company['id'], name, code, description or None, budget_val))
-                else:
-                    cur.execute("""
-                        INSERT INTO company_departments
-                            (company_id, department_name, description, learning_budget_per_employee)
-                        VALUES (%s, %s, %s, %s)
-                    """, (company['id'], name, description or None, budget_val))
+                cur.execute("""
+                    INSERT INTO company_departments
+                        (company_id, department_name, department_code, description, learning_budget_per_employee)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (company['id'], name, code, description or None, budget_val))
                 current_app.mysql.connection.commit()
                 flash(f"Afdelingen '{name}' er oprettet.", "success")
             cur.close()

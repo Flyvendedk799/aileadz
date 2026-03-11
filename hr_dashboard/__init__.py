@@ -967,17 +967,33 @@ def create_hr_dashboard_blueprint():
             departments = [r['department'] for r in cur.fetchall()]
             cur.close()
 
-            # Get all employee skills for search/browse
+            # Get all employee skills for search/browse (merge enterprise + chatbot)
+            level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 3 WHEN 'ekspert' THEN 4 ELSE 2 END"
             cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            cur2.execute("""
-                SELECT esm.skill_name, esm.current_level, esm.target_level,
-                       u.username, cu.department, cu.job_title, cu.user_id
-                FROM employee_skills_matrix esm
-                JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
-                JOIN users u ON cu.user_id = u.id
-                WHERE esm.company_id = %s AND cu.status = 'active'
-                ORDER BY esm.skill_name, u.username
-            """, (company['id'],))
+            cur2.execute(f"""
+                SELECT skill_name, current_level, username, department, job_title, user_id
+                FROM (
+                    SELECT esm.skill_name, esm.current_level,
+                           u.username, cu.department, cu.job_title, cu.user_id
+                    FROM employee_skills_matrix esm
+                    JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
+                    JOIN users u ON cu.user_id = u.id
+                    WHERE esm.company_id = %s AND cu.status = 'active'
+                    UNION ALL
+                    SELECT us.skill_name, {level_map} as current_level,
+                           u2.username, cu2.department, cu2.job_title, cu2.user_id
+                    FROM user_skills us
+                    JOIN users u2 ON us.username = u2.username
+                    JOIN company_users cu2 ON cu2.user_id = u2.id AND cu2.company_id = %s AND cu2.status = 'active'
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM employee_skills_matrix esm2
+                        WHERE esm2.employee_id = cu2.user_id
+                          AND esm2.company_id = %s
+                          AND esm2.skill_name = us.skill_name
+                    )
+                ) combined
+                ORDER BY skill_name, username
+            """, (company['id'], company['id'], company['id']))
             all_employee_skills = cur2.fetchall()
 
             # Build summary: unique skills with avg level and employee count
@@ -1014,11 +1030,18 @@ def create_hr_dashboard_blueprint():
 
             cur2.close()
 
+            # Collect all known skill names for autocomplete
+            all_skill_names = sorted(set(
+                [s['skill_name'] for s in skill_list] +
+                [t['skill_name'] for t in targets]
+            ))
+
             return render_template('hr_dashboard/skill_gaps.html',
                                    company=company, heatmap=heatmap or {},
                                    targets=targets, departments=departments,
                                    skill_list=skill_list,
                                    all_employee_skills=all_employee_skills,
+                                   all_skill_names=all_skill_names,
                                    total_gaps=total_gaps,
                                    critical_gaps=critical_gaps,
                                    met_targets=met_targets,
@@ -1078,6 +1101,52 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error deleting skill target: {e}")
             flash("Fejl ved sletning.", "danger")
         return redirect(url_for('hr_dashboard.skill_gaps_view'))
+
+    @hr_dashboard_bp.route('/skills/assign', methods=['POST'])
+    def assign_employee_skill():
+        """Assign or update a skill for one or more employees"""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({'success': False}), 401
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False}), 404
+        data = request.get_json() if request.is_json else {}
+        skill_name = data.get('skill_name', '').strip()
+        level = int(data.get('level', 2))
+        employee_ids = data.get('employee_ids', [])
+        department = data.get('department', '').strip()
+
+        if not skill_name:
+            return jsonify({'success': False, 'message': 'Kompetencenavn paakraevet'}), 400
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            # If department specified, assign to all active employees in that department
+            if department and not employee_ids:
+                cur.execute("""
+                    SELECT user_id FROM company_users
+                    WHERE company_id = %s AND department = %s AND status = 'active'
+                """, (company['id'], department))
+                employee_ids = [r[0] for r in cur.fetchall()]
+
+            if not employee_ids:
+                return jsonify({'success': False, 'message': 'Ingen medarbejdere valgt'}), 400
+
+            count = 0
+            for eid in employee_ids:
+                cur.execute("""
+                    INSERT INTO employee_skills_matrix (employee_id, company_id, skill_name, current_level)
+                    VALUES (%s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE current_level = %s
+                """, (eid, company['id'], skill_name, level, level))
+                count += 1
+
+            current_app.mysql.connection.commit()
+            cur.close()
+            return jsonify({'success': True, 'message': f'Kompetence tildelt {count} medarbejder(e).'})
+        except Exception as e:
+            return jsonify({'success': False, 'message': str(e)}), 500
 
     @hr_dashboard_bp.route('/roi')
     def roi_dashboard():

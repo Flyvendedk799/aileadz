@@ -130,6 +130,20 @@ def _auto_sync_columns(conn, create_stmts):
 
     # Clean up legacy `name` column / unique_company_dept index if they still exist.
     # These were already dropped on first run; this block is a no-op once cleaned up.
+    
+    # 1. First, ensure a non-unique index exists on company_id to satisfy the foreign key constraint
+    #    This is required before we can drop the unique index.
+    try:
+        ic = conn.cursor()
+        ic.execute("CREATE INDEX idx_company_migration ON company_departments (company_id)")
+        conn.commit()
+        ic.close()
+        logging.info("Auto-sync: Added idx_company_migration")
+    except Exception as e:
+        # 1061 = Duplicate key name (already exists) — that's fine
+        if not (hasattr(e, 'args') and e.args and e.args[0] == 1061):
+            logging.debug("Auto-sync: Could not add migration index: %s", e)
+
     for legacy_op in [
         "ALTER TABLE company_departments DROP INDEX unique_company_dept",
         "ALTER TABLE company_departments DROP COLUMN name",

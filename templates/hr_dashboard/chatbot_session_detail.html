@@ -6,7 +6,6 @@
 <style>
     :root {
         --premium-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
-        --glass-bg: rgba(255, 255, 255, 0.7);
     }
 
     .chat-transcript-container {
@@ -17,7 +16,7 @@
     .transcript-header {
         background: var(--glass-bg);
         backdrop-filter: blur(12px);
-        border: 1px solid rgba(255, 255, 255, 0.4);
+        border: 1px solid var(--glass-border);
         border-radius: 20px;
         padding: 1.5rem;
         box-shadow: 0 8px 32px rgba(31, 38, 135, 0.05);
@@ -28,11 +27,11 @@
         display: inline-flex;
         align-items: center;
         gap: 0.5rem;
-        background: #f1f5f9;
+        background: var(--hover-shadow);
         padding: 0.4rem 1rem;
         border-radius: 50px;
         font-weight: 600;
-        color: #475569;
+        color: var(--text-color);
         font-size: 0.9rem;
     }
 
@@ -65,8 +64,8 @@
     }
 
     .user-msg .avatar-sm {
-        background: #e2e8f0;
-        color: #475569;
+        background: var(--hover-shadow);
+        color: var(--text-color);
     }
 
     .ai-msg .avatar-sm {
@@ -91,9 +90,9 @@
     }
 
     .ai-msg .bubble {
-        background: white;
-        color: #1e293b;
-        border: 1px solid #e2e8f0;
+        background: var(--card-bg);
+        color: var(--text-color);
+        border: 1px solid var(--border-color);
         border-bottom-left-radius: 4px;
         box-shadow: 0 4px 12px rgba(0, 0, 0, 0.03);
     }
@@ -112,14 +111,15 @@
     .premium-header-text {
         background: var(--premium-gradient);
         -webkit-background-clip: text;
+        background-clip: text;
         -webkit-text-fill-color: transparent;
         font-weight: 800;
     }
 
     .tools-badge {
         font-size: 0.7rem;
-        background: #f1f5f9;
-        color: #64748b;
+        background: var(--hover-shadow);
+        color: var(--muted-text);
         padding: 2px 8px;
         border-radius: 6px;
         margin-top: 0.5rem;

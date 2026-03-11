@@ -434,46 +434,50 @@
        ------------------------------------------------------------ */
     .main-content {
       flex-grow: 1;
+      min-width: 0;          /* allow flex child to shrink below content width */
       display: flex;
       flex-direction: column;
+      overflow-x: hidden;    /* prevent horizontal bleed */
     }
 
     .content {
       flex-grow: 1;
-      padding: 40px;
+      padding: 30px;
       background: var(--background-color);
       animation: fadeInUp 0.5s ease-out;
     }
 
+    @media (max-width: 768px) {
+      .content { padding: 16px; }
+    }
+
     /* ------------------------------------------------------------
        BOOTSTRAP COMPONENT TEXT FIX
-       Bootstrap cards, tables, forms, modals, dropdowns all ship
-       with white backgrounds. In dark mode the inherited white
-       text is invisible. Scope fixes to .content so the sidebar
-       and header (which ARE dark-themed) stay untouched.
+       In light mode, Bootstrap components need explicit dark text.
+       In dark mode, components inherit var(--text-color) from body.
        ------------------------------------------------------------ */
-    .content .card,
-    .content .card-body,
-    .content .card-header,
-    .content .card-footer,
-    .content .list-group-item,
-    .content .list-group-item a { color: #212529; }
+    .light-mode .content .card,
+    .light-mode .content .card-body,
+    .light-mode .content .card-header,
+    .light-mode .content .card-footer,
+    .light-mode .content .list-group-item,
+    .light-mode .content .list-group-item a { color: #212529; }
 
-    .content .table,
-    .content .table th,
-    .content .table td { color: #212529; }
+    .light-mode .content .table,
+    .light-mode .content .table th,
+    .light-mode .content .table td { color: #212529; }
 
-    .content .dropdown-menu,
-    .content .dropdown-item { color: #212529; }
-    .content .dropdown-item:hover { color: #16181b; background-color: #f8f9fa; }
+    .light-mode .content .dropdown-menu,
+    .light-mode .content .dropdown-item { color: #212529; }
+    .light-mode .content .dropdown-item:hover { color: #16181b; background-color: #f8f9fa; }
     .content .dropdown-item.text-danger { color: #dc3545 !important; }
 
-    .content .form-control,
-    .content .form-select,
-    .content .form-label,
-    .content .input-group-text { color: #212529; }
+    .light-mode .content .form-control,
+    .light-mode .content .form-select,
+    .light-mode .content .form-label,
+    .light-mode .content .input-group-text { color: #212529; }
 
-    .content .alert { color: #212529; }
+    .light-mode .content .alert { color: #212529; }
 
     .modal-content { color: #212529; }
 

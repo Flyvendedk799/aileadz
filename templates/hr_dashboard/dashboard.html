@@ -12,7 +12,7 @@
     <div class="row mb-4" id="onboarding-checklist">
         <div class="col-12">
             <div class="card shadow-sm border-0">
-                <div class="card-header bg-white py-3 d-flex justify-content-between align-items-center">
+                <div class="card-header py-3 d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-clipboard-list text-primary me-2"></i>Kom godt i gang ({{ onboarding.completed_count }}/5)</h6>
                     <button type="button" class="btn btn-sm btn-outline-secondary" onclick="document.getElementById('onboarding-checklist').style.display='none'">
                         <i class="fas fa-times me-1"></i>Skjul
@@ -963,14 +963,14 @@
     gap: 16px;
     padding: 20px;
     border-radius: 12px;
-    background: #fff;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
+    background: var(--card-bg);
+    box-shadow: var(--box-shadow);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     height: 100%;
 }
 .kpi-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
 }
 .kpi-icon {
     width: 48px; height: 48px;
@@ -988,30 +988,32 @@
 .kpi-amber  { border-left: 3px solid #f59e0b; }
 .kpi-label {
     font-size: 0.7rem; font-weight: 700; text-transform: uppercase;
-    letter-spacing: 0.03em; color: #94a3b8; margin-bottom: 2px;
+    letter-spacing: 0.03em; color: var(--muted-text); margin-bottom: 2px;
 }
-.kpi-value { font-size: 1.5rem; font-weight: 800; color: #1e293b; line-height: 1.2; }
-.kpi-detail { font-size: 0.75rem; color: #94a3b8; margin-top: 2px; }
+.kpi-value { font-size: 1.5rem; font-weight: 800; color: var(--text-color); line-height: 1.2; }
+.kpi-detail { font-size: 0.75rem; color: var(--muted-text); margin-top: 2px; }
 
 /* === Cards === */
 .card {
     border: none;
     border-radius: 12px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03);
+    background: var(--card-bg);
+    box-shadow: var(--box-shadow);
     overflow: hidden;
 }
 .card-header {
-    background: #fff;
-    border-bottom: 1px solid #f1f5f9;
+    background: var(--card-bg);
+    border-bottom: 1px solid rgba(255,255,255,0.06);
     padding: 16px 20px;
 }
+.light-mode .card-header { border-bottom-color: #f1f5f9; }
 .card-body { padding: 20px; }
 
 /* === Empty States === */
 .empty-state {
     text-align: center;
     padding: 32px 20px;
-    color: #94a3b8;
+    color: var(--muted-text);
 }
 .empty-state i {
     font-size: 2.2rem;
@@ -1021,9 +1023,9 @@
 }
 .empty-state p {
     font-weight: 600; font-size: 0.9rem;
-    margin-bottom: 4px; color: #64748b;
+    margin-bottom: 4px; color: var(--muted-text);
 }
-.empty-state small { color: #94a3b8; }
+.empty-state small { color: var(--muted-text); }
 
 /* === Avatar === */
 .avatar-circle {
@@ -1057,7 +1059,8 @@
     font-size: 0.7rem;
 }
 .activity-feed { max-height: 400px; overflow-y: auto; }
-.activity-item { padding-bottom: 0.75rem; border-bottom: 1px solid #f1f5f9; }
+.activity-item { padding-bottom: 0.75rem; border-bottom: 1px solid rgba(255,255,255,0.06); }
+.light-mode .activity-item { border-bottom-color: #f1f5f9; }
 .activity-item:last-child { border-bottom: none; padding-bottom: 0; }
 
 /* === Tables === */

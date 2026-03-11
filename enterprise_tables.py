@@ -141,8 +141,12 @@ def _auto_sync_columns(conn, create_stmts):
             lc.close()
             logging.info("Auto-sync: %s", legacy_op)
             synced += 1
-        except Exception:
-            pass  # already gone — expected
+        except Exception as le:
+            # 1091 = Can't DROP '...'; check that column/key exists
+            if hasattr(le, 'args') and le.args and le.args[0] == 1091:
+                pass # already gone — expected
+            else:
+                logging.debug("Auto-sync: %s failed: %s", legacy_op, le)
 
     # Add unique key to employee_skills_matrix if missing
     try:

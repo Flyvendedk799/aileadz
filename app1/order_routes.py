@@ -16,8 +16,8 @@ order_routes_bp = Blueprint('order_routes', __name__)
 def store_user_info():
     """Store user information for order processing"""
     try:
-        user_info = request.json
-        
+        user_info = request.get_json(silent=True) or {}
+
         # Validate required fields
         required_fields = ['name', 'email', 'phone']
         missing_fields = [field for field in required_fields if not user_info.get(field)]
@@ -44,7 +44,7 @@ def store_user_info():
 def create_order():
     """Create a new order from chatbot"""
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         product_handle = data.get('product_handle')
         variant_info = data.get('variant')
         
@@ -108,7 +108,7 @@ def get_order_status(order_id):
 def validate_order_info():
     """Validate order information before processing"""
     try:
-        data = request.json
+        data = request.get_json(silent=True) or {}
         user_info = data.get('user_info', {})
         
         # Validate user information
@@ -130,8 +130,9 @@ def validate_order_info():
 def process_order_query():
     """Process order-related queries from the chatbot"""
     try:
-        query = request.json.get('query', '').lower()
-        context = request.json.get('context', {})
+        data = request.get_json(silent=True) or {}
+        query = data.get('query', '').lower()
+        context = data.get('context', {})
         
         # Detect order intent
         order_keywords = ['bestil', 'køb', 'ordre', 'tilmeld', 'book', 'jeg vil gerne have']

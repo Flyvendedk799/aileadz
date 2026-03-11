@@ -2077,13 +2077,13 @@ def handle_agentic_ask(user_query, session):
                 ))
 
                 # Update company_users engagement counters (if user belongs to a company)
-                if logged_in_user and session.get('company_id'):
+                if logged_in_user and session.get('company_id') and session.get('user_id'):
                     ci_cur.execute("""
                         UPDATE company_users
                         SET total_chatbot_queries = COALESCE(total_chatbot_queries, 0) + 1,
                             last_chatbot_interaction = NOW()
                         WHERE company_id = %s AND user_id = %s
-                    """, (session.get('company_id'), session.get('user_id')))
+                    """, (session['company_id'], session['user_id']))
 
                 current_app.mysql.connection.commit()
                 ci_cur.close()

@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for
 from markupsafe import escape
 import json
 import logging
@@ -1078,7 +1078,8 @@ def nudges():
 @app1_bp.route("/widget/<token>")
 def widget_embed(token):
     """Serve embeddable chat widget for external websites"""
-    cur = current_app.mysql.connection.cursor()
+    import MySQLdb.cursors
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute("""
         SELECT ws.*, c.company_name, c.id as cid
         FROM company_widget_settings ws
@@ -1093,8 +1094,8 @@ def widget_embed(token):
 
     # Check allowed domains via Referer header
     referer = request.headers.get('Referer', '')
-    allowed = widget.get('allowed_domains') if isinstance(widget, dict) else None
-    if allowed:
+    allowed = widget.get('allowed_domains')
+    if allowed and isinstance(allowed, str):
         from urllib.parse import urlparse
         ref_domain = urlparse(referer).netloc
         allowed_list = [d.strip().lower() for d in allowed.split(',') if d.strip()]
@@ -1107,7 +1108,8 @@ def widget_embed(token):
 @app1_bp.route("/widget/<token>/ask", methods=["POST"])
 def widget_ask(token):
     """Handle chat messages from embedded widget — no login required"""
-    cur = current_app.mysql.connection.cursor()
+    import MySQLdb.cursors
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute("""
         SELECT ws.*, c.company_name, c.id as cid
         FROM company_widget_settings ws
@@ -1146,7 +1148,8 @@ def widget_ask(token):
 @app1_bp.route("/widget/<token>/loader.js")
 def widget_loader_js(token):
     """Serve the loader script that creates the chat widget on external sites"""
-    cur = current_app.mysql.connection.cursor()
+    import MySQLdb.cursors
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute("""
         SELECT ws.*, c.company_name
         FROM company_widget_settings ws
@@ -1160,14 +1163,11 @@ def widget_loader_js(token):
         return "/* Widget not found */", 404, {'Content-Type': 'application/javascript'}
 
     # Extract settings
-    if isinstance(widget, dict):
-        primary = widget.get('theme_primary_color', '#4F46E5')
-        text_color = widget.get('theme_text_color', '#FFFFFF')
-        position = widget.get('position', 'bottom-right')
-        size = widget.get('widget_size', 'medium')
-        title = widget.get('widget_title', 'Kursusrådgiver')
-    else:
-        primary, text_color, position, size, title = '#4F46E5', '#FFFFFF', 'bottom-right', 'medium', 'Kursusrådgiver'
+    primary = widget.get('theme_primary_color', '#4F46E5')
+    text_color = widget.get('theme_text_color', '#FFFFFF')
+    position = widget.get('position', 'bottom-right') or 'bottom-right'
+    size = widget.get('widget_size', 'medium')
+    title = widget.get('widget_title', 'Kursusrådgiver')
 
     size_map = {'small': 350, 'medium': 400, 'large': 450}
     width = size_map.get(size, 400)

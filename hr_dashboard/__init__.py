@@ -2351,9 +2351,9 @@ def create_hr_dashboard_blueprint():
             else:
                 cur.execute("""
                     INSERT INTO company_departments
-                        (company_id, department_name, name, department_code, description, learning_budget_per_employee)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                """, (company['id'], name, name, code, description or None, budget_val))
+                        (company_id, department_name, department_code, description, learning_budget_per_employee)
+                    VALUES (%s, %s, %s, %s, %s)
+                """, (company['id'], name, code, description or None, budget_val))
                 current_app.mysql.connection.commit()
                 flash(f"Afdelingen '{name}' er oprettet.", "success")
             cur.close()
@@ -2408,9 +2408,9 @@ def create_hr_dashboard_blueprint():
 
             cur.execute("""
                 UPDATE company_departments
-                SET department_name = %s, name = %s, department_code = %s, description = %s, learning_budget_per_employee = %s
+                SET department_name = %s, department_code = %s, description = %s, learning_budget_per_employee = %s
                 WHERE id = %s AND company_id = %s
-            """, (name, name, code, description or None, budget_val, dept_id, company['id']))
+            """, (name, code, description or None, budget_val, dept_id, company['id']))
 
             # Update employees if name changed
             if old_name != name:

@@ -7,7 +7,8 @@
     {% include 'hr_dashboard/_hr_nav.html' %}
 
     <!-- Back link -->
-    <a href="{{ url_for('companies.employees') }}" class="text-decoration-none text-muted small d-inline-flex align-items-center mb-3">
+    <a href="{{ url_for('companies.employees') }}"
+        class="text-decoration-none text-muted small d-inline-flex align-items-center mb-3">
         <i class="fas fa-arrow-left me-1"></i> Tilbage til medarbejdere
     </a>
 
@@ -43,7 +44,8 @@
                         <span class="badge bg-primary">Medarbejder</span>
                         {% endif %}
                         <span class="badge {{ 'bg-success' if employee.status == 'active' else 'bg-secondary' }}">
-                            {{ 'Aktiv' if employee.status == 'active' else ('Inaktiv' if employee.status == 'inactive' else 'Orlov') }}
+                            {{ 'Aktiv' if employee.status == 'active' else ('Inaktiv' if employee.status == 'inactive'
+                            else 'Orlov') }}
                         </span>
                     </div>
                 </div>
@@ -64,7 +66,9 @@
                     {% endif %}
                     <div class="profile-info-row">
                         <i class="fas fa-briefcase text-muted"></i>
-                        <span>{{ {'full_time':'Fuldtid','part_time':'Deltid','contract':'Kontrakt','intern':'Praktikant'}.get(employee.employment_type, 'Fuldtid') }}</span>
+                        <span>{{
+                            {'full_time':'Fuldtid','part_time':'Deltid','contract':'Kontrakt','intern':'Praktikant'}.get(employee.employment_type,
+                            'Fuldtid') }}</span>
                     </div>
                     {% if employee.hire_date %}
                     <div class="profile-info-row">
@@ -81,23 +85,29 @@
                 </div>
                 <div class="card-body border-top pt-3">
                     <div class="d-flex flex-column gap-2">
-                        <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}" class="btn btn-outline-primary btn-sm">
+                        <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}"
+                            class="btn btn-outline-primary btn-sm">
                             <i class="fas fa-edit me-1"></i> Rediger medarbejder
                         </a>
-                        <form method="POST" action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}" onsubmit="return confirm('Nyt password genereres og vises paa skaermen. Fortsaet?')">
+                        <form method="POST"
+                            action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}"
+                            onsubmit="return confirm('Nyt password genereres og vises paa skaermen. Fortsaet?')">
                             <button type="submit" class="btn btn-outline-warning btn-sm w-100">
                                 <i class="fas fa-key me-1"></i> Nulstil password
                             </button>
                         </form>
                         {% if employee.status == 'active' and employee.role != 'company_admin' %}
-                        <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}" onsubmit="return confirm('Deaktiver denne medarbejder?')">
+                        <form method="POST"
+                            action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}"
+                            onsubmit="return confirm('Deaktiver denne medarbejder?')">
                             <input type="hidden" name="new_status" value="inactive">
                             <button type="submit" class="btn btn-outline-danger btn-sm w-100">
                                 <i class="fas fa-user-times me-1"></i> Deaktiver
                             </button>
                         </form>
                         {% elif employee.status == 'inactive' %}
-                        <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}">
+                        <form method="POST"
+                            action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}">
                             <input type="hidden" name="new_status" value="active">
                             <button type="submit" class="btn btn-outline-success btn-sm w-100">
                                 <i class="fas fa-user-check me-1"></i> Aktiver igen
@@ -174,7 +184,8 @@
                                 <span class="fw-bold small flex-grow-1">{{ s.skill_name }}</span>
                                 <div class="d-flex gap-1">
                                     {% for i in range(1, 6) %}
-                                    <span style="width:10px;height:10px;border-radius:50%;display:inline-block;{{ 'background:#3b82f6;' if i <= s.current_level else 'background:#e2e8f0;' }}"></span>
+                                    <span
+                                        style="width:10px;height:10px;border-radius:50%;display:inline-block;{{ 'background:#3b82f6;' if i <= s.current_level else 'background:#e2e8f0;' }}"></span>
                                     {% endfor %}
                                 </div>
                                 <small class="text-muted" style="min-width:30px;">{{ s.current_level }}/5</small>
@@ -200,15 +211,19 @@
                 </div>
                 <div class="card-body">
                     {% for edu in employee_education %}
-                    <div class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
-                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width:40px;height:40px;min-width:40px;">
+                    <div
+                        class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center"
+                            style="width:40px;height:40px;min-width:40px;">
                             <i class="fas fa-graduation-cap text-primary"></i>
                         </div>
                         <div>
                             <div class="fw-bold">{{ edu.degree }}</div>
                             {% if edu.institution %}<div class="text-muted small">{{ edu.institution }}</div>{% endif %}
-                            {% if edu.year_completed %}<small class="text-muted">Afsluttet {{ edu.year_completed }}</small>{% endif %}
-                            {% if edu.description %}<p class="small text-muted mb-0 mt-1">{{ edu.description }}</p>{% endif %}
+                            {% if edu.year_completed %}<small class="text-muted">Afsluttet {{ edu.year_completed
+                                }}</small>{% endif %}
+                            {% if edu.description %}<p class="small text-muted mb-0 mt-1">{{ edu.description }}</p>{%
+                            endif %}
                         </div>
                     </div>
                     {% endfor %}
@@ -225,8 +240,10 @@
                 </div>
                 <div class="card-body">
                     {% for exp in employee_experience %}
-                    <div class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
-                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center" style="width:40px;height:40px;min-width:40px;">
+                    <div
+                        class="d-flex align-items-start gap-3 {% if not loop.last %}mb-3 pb-3 border-bottom{% endif %}">
+                        <div class="rounded-circle bg-light d-flex align-items-center justify-content-center"
+                            style="width:40px;height:40px;min-width:40px;">
                             <i class="fas fa-briefcase text-success"></i>
                         </div>
                         <div>
@@ -235,7 +252,8 @@
                             <small class="text-muted">
                                 {{ exp.start_year or '?' }} — {{ 'nu' if exp.is_current else (exp.end_year or '?') }}
                             </small>
-                            {% if exp.description %}<p class="small text-muted mb-0 mt-1">{{ exp.description }}</p>{% endif %}
+                            {% if exp.description %}<p class="small text-muted mb-0 mt-1">{{ exp.description }}</p>{%
+                            endif %}
                         </div>
                     </div>
                     {% endfor %}
@@ -247,7 +265,8 @@
             {% if employee_completed_courses %}
             <div class="card mb-4">
                 <div class="card-header bg-white d-flex justify-content-between align-items-center">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-certificate text-warning me-2"></i>Gennemfoerte kurser & certifikater</h6>
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-certificate text-warning me-2"></i>Gennemfoerte kurser &
+                        certifikater</h6>
                     <span class="badge bg-warning text-dark rounded-pill">{{ employee_completed_courses|length }}</span>
                 </div>
                 <div class="card-body p-0">
@@ -289,7 +308,8 @@
                                 <tr>
                                     <th class="ps-3 small fw-bold text-muted text-uppercase border-0">Kursus</th>
                                     <th class="small fw-bold text-muted text-uppercase border-0 text-end">Pris</th>
-                                    <th class="small fw-bold text-muted text-uppercase border-0 text-center">Fremgang</th>
+                                    <th class="small fw-bold text-muted text-uppercase border-0 text-center">Fremgang
+                                    </th>
                                     <th class="small fw-bold text-muted text-uppercase border-0 text-center">Status</th>
                                     <th class="small fw-bold text-muted text-uppercase border-0">Tilmeldt</th>
                                 </tr>
@@ -304,7 +324,8 @@
                                     <td class="text-center">
                                         <div class="d-flex align-items-center justify-content-center gap-2">
                                             <div class="progress" style="height:6px;width:60px;">
-                                                <div class="progress-bar bg-success" style="width:{{ c.progress_percentage or 0 }}%"></div>
+                                                <div class="progress-bar bg-success"
+                                                    style="width:{{ c.progress_percentage or 0 }}%"></div>
                                             </div>
                                             <small>{{ (c.progress_percentage or 0)|round|int }}%</small>
                                         </div>
@@ -336,92 +357,158 @@
             <!-- Chatbot Activity (last 30 days) -->
             <div class="card mb-4">
                 <div class="card-header bg-white">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-robot text-primary me-2"></i>Chatbot-aktivitet (30 dage)</h6>
+                    <h6 class="mb-0 fw-bold"><i class="fas fa-robot text-primary me-2"></i>Chatbot-aktivitet (30 dage)
+                    </h6>
                 </div>
-                <div class="card-body">
-                    {% if interaction_history %}
-                    <div class="row g-3">
-                        {% for day in interaction_history[:14] %}
-                        <div class="col-auto">
-                            <div class="text-center">
-                                <div class="chat-day-bar" style="height:{{ [day.daily_interactions * 8, 60]|min }}px;" title="{{ day.interaction_date }}: {{ day.daily_interactions }} samtaler"></div>
-                                <small class="text-muted d-block" style="font-size:0.65rem;">{{ day.interaction_date.strftime('%d/%m') if day.interaction_date else '' }}</small>
-                            </div>
-                        </div>
-                        {% endfor %}
+                {% if chatbot_sessions %}
+                <div class="mt-4">
+                    <h6 class="small fw-bold text-muted mb-2">Historik over samtaler</h6>
+                    <div class="table-responsive">
+                        <table class="table table-sm table-hover small mb-0">
+                            <thead>
+                                <tr>
+                                    <th>Dato/Tid</th>
+                                    <th>Beskeder</th>
+                                    <th class="text-end">Handling</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for session in chatbot_sessions[:10] %}
+                                <tr>
+                                    <td>{{ session.last_activity.strftime('%d. %b %H:%M') if session.last_activity else
+                                        'N/A' }}</td>
+                                    <td><span class="badge bg-light text-primary border">{{ session.query_count
+                                            }}</span></td>
+                                    <td class="text-end">
+                                        <a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=session.session_id) }}"
+                                            class="btn btn-link btn-sm p-0 text-decoration-none">Se samtale</a>
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
                     </div>
-                    <div class="mt-3 d-flex gap-4">
-                        <div>
-                            <small class="text-muted">Seneste aktivitet</small>
-                            <div class="fw-bold small">{{ interaction_history[0].interaction_date if interaction_history else '—' }}</div>
-                        </div>
-                        {% set total_interactions = interaction_history|map(attribute='daily_interactions')|sum %}
-                        <div>
-                            <small class="text-muted">Samtaler (30d)</small>
-                            <div class="fw-bold small">{{ total_interactions }}</div>
-                        </div>
-                    </div>
-                    {% else %}
-                    <div class="text-center py-3">
-                        <i class="fas fa-comments fa-2x text-muted mb-2" style="opacity:0.3;"></i>
-                        <p class="text-muted small mb-0">Ingen chatbot-aktivitet de seneste 30 dage</p>
-                    </div>
-                    {% endif %}
                 </div>
+                {% endif %}
             </div>
+        </div>
 
-            <!-- Last Login / Activity -->
-            <div class="card mb-4">
-                <div class="card-header bg-white">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-history text-primary me-2"></i>Aktivitetslog</h6>
-                </div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <small class="text-muted d-block">Seneste login</small>
-                            <span class="fw-bold small">{{ employee.last_login or 'Aldrig' }}</span>
-                        </div>
-                        <div class="col-md-4">
-                            <small class="text-muted d-block">Seneste chatbot-brug</small>
-                            <span class="fw-bold small">{{ employee.last_chatbot_interaction or 'Aldrig' }}</span>
-                        </div>
-                        <div class="col-md-4">
-                            <small class="text-muted d-block">Tilfojet af</small>
-                            <span class="fw-bold small">{{ employee.added_by or '—' }}</span>
-                        </div>
+        <!-- Last Login / Activity -->
+        <div class="card mb-4">
+            <div class="card-header bg-white">
+                <h6 class="mb-0 fw-bold"><i class="fas fa-history text-primary me-2"></i>Aktivitetslog</h6>
+            </div>
+            <div class="card-body">
+                <div class="row g-3">
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Seneste login</small>
+                        <span class="fw-bold small">{{ employee.last_login or 'Aldrig' }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Seneste chatbot-brug</small>
+                        <span class="fw-bold small">{{ employee.last_chatbot_interaction or 'Aldrig' }}</span>
+                    </div>
+                    <div class="col-md-4">
+                        <small class="text-muted d-block">Tilfojet af</small>
+                        <span class="fw-bold small">{{ employee.added_by or '—' }}</span>
                     </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+</div>
 {% endblock %}
 
 {% block extra_styles %}
 <style>
-.profile-card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03); overflow: hidden; }
-.profile-avatar {
-    width: 72px; height: 72px; border-radius: 16px;
-    background: linear-gradient(135deg, #4e73df, #6366f1);
-    color: #fff; display: flex; align-items: center; justify-content: center;
-    font-weight: 700; font-size: 28px;
-}
-.profile-info-row {
-    display: flex; align-items: center; gap: 10px;
-    padding: 8px 0; font-size: 0.88rem;
-}
-.profile-info-row i { width: 18px; text-align: center; font-size: 0.8rem; }
-.stat-card {
-    background: #fff; border-radius: 12px; padding: 16px;
-    box-shadow: 0 1px 3px rgba(0,0,0,0.06); text-align: center;
-}
-.stat-value { font-size: 1.5rem; font-weight: 800; line-height: 1.2; }
-.stat-label { font-size: 0.72rem; font-weight: 600; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.03em; margin-top: 2px; }
-.text-purple { color: #a855f7; }
-.stat-icon { width: 40px; height: 40px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
-.card { border: none; border-radius: 12px; box-shadow: 0 1px 3px rgba(0,0,0,0.06), 0 4px 12px rgba(0,0,0,0.03); }
-.card-header { border-bottom: 1px solid #f1f5f9; }
-.chat-day-bar { width: 20px; background: linear-gradient(180deg, #a855f7, #6366f1); border-radius: 4px 4px 0 0; min-height: 4px; }
+    .profile-card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03);
+        overflow: hidden;
+    }
+
+    .profile-avatar {
+        width: 72px;
+        height: 72px;
+        border-radius: 16px;
+        background: linear-gradient(135deg, #4e73df, #6366f1);
+        color: #fff;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 700;
+        font-size: 28px;
+    }
+
+    .profile-info-row {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 8px 0;
+        font-size: 0.88rem;
+    }
+
+    .profile-info-row i {
+        width: 18px;
+        text-align: center;
+        font-size: 0.8rem;
+    }
+
+    .stat-card {
+        background: #fff;
+        border-radius: 12px;
+        padding: 16px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        text-align: center;
+    }
+
+    .stat-value {
+        font-size: 1.5rem;
+        font-weight: 800;
+        line-height: 1.2;
+    }
+
+    .stat-label {
+        font-size: 0.72rem;
+        font-weight: 600;
+        color: #94a3b8;
+        text-transform: uppercase;
+        letter-spacing: 0.03em;
+        margin-top: 2px;
+    }
+
+    .text-purple {
+        color: #a855f7;
+    }
+
+    .stat-icon {
+        width: 40px;
+        height: 40px;
+        border-radius: 10px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 1rem;
+    }
+
+    .card {
+        border: none;
+        border-radius: 12px;
+        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03);
+    }
+
+    .card-header {
+        border-bottom: 1px solid #f1f5f9;
+    }
+
+    .chat-day-bar {
+        width: 20px;
+        background: linear-gradient(180deg, #a855f7, #6366f1);
+        border-radius: 4px 4px 0 0;
+        min-height: 4px;
+    }
 </style>
 {% endblock %}
 
@@ -429,35 +516,35 @@
 {% if employee_skills %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-new Chart(document.getElementById('skillRadar'), {
-    type: 'radar',
-    data: {
-        labels: {{ employee_skills|map(attribute='skill_name')|list|tojson }},
+    new Chart(document.getElementById('skillRadar'), {
+        type: 'radar',
+        data: {
+            labels: {{ employee_skills| map(attribute = 'skill_name') | list | tojson }},
         datasets: [{
             label: 'Nuvaerende niveau',
-            data: {{ employee_skills|map(attribute='current_level')|list|tojson }},
-            backgroundColor: 'rgba(78,115,223,0.15)',
-            borderColor: '#4e73df',
-            borderWidth: 2,
-            pointBackgroundColor: '#4e73df',
-            pointRadius: 4
-        }{% if employee_skills|selectattr('target_level', 'greaterthan', 0)|list %},{
-            label: 'Maal',
-            data: {{ employee_skills|map(attribute='target_level')|list|tojson }},
-            backgroundColor: 'rgba(16,185,129,0.08)',
+            data: {{ employee_skills| map(attribute = 'current_level') | list | tojson }},
+        backgroundColor: 'rgba(78,115,223,0.15)',
+        borderColor: '#4e73df',
+        borderWidth: 2,
+        pointBackgroundColor: '#4e73df',
+        pointRadius: 4
+        }{% if employee_skills | selectattr('target_level', 'greaterthan', 0) | list %}, {
+        label: 'Maal',
+            data: { { employee_skills | map(attribute = 'target_level') | list | tojson } },
+        backgroundColor: 'rgba(16,185,129,0.08)',
             borderColor: '#10b981',
-            borderWidth: 1,
-            borderDash: [4,4],
-            pointRadius: 3,
-            pointBackgroundColor: '#10b981'
-        }{% endif %}]
+                borderWidth: 1,
+                    borderDash: [4, 4],
+                        pointRadius: 3,
+                            pointBackgroundColor: '#10b981'
+    } {% endif %}]
     },
     options: {
         responsive: true,
-        scales: {
+            scales: {
             r: {
                 min: 0, max: 5,
-                ticks: { stepSize: 1, font: { size: 10 } },
+                    ticks: { stepSize: 1, font: { size: 10 } },
                 pointLabels: { font: { size: 11, weight: '600' } },
                 grid: { color: 'rgba(0,0,0,0.05)' }
             }

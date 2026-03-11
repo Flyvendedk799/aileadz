@@ -1,0 +1,239 @@
+{% extends "base.html" %}
+{% block title %}Chat-sessioner - {{ company.company_name }}{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+    :root {
+        --glass-bg: rgba(255, 255, 255, 0.7);
+        --glass-border: rgba(255, 255, 255, 0.4);
+        --premium-gradient: linear-gradient(135deg, #6366f1 0%, #a855f7 100%);
+        --text-main: #1e293b;
+    }
+
+    body {
+        background: #f8fafc;
+        color: var(--text-main);
+    }
+
+    .glass-card {
+        background: var(--glass-bg);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
+        border: 1px solid var(--glass-border);
+        border-radius: 16px;
+        box-shadow: 0 8px 32px rgba(31, 38, 135, 0.07);
+    }
+
+    .premium-header {
+        background: var(--premium-gradient);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        font-weight: 800;
+    }
+
+    .table-container {
+        border-radius: 16px;
+        overflow: hidden;
+    }
+
+    .custom-table thead {
+        background: rgba(241, 245, 249, 0.8);
+    }
+
+    .custom-table th {
+        font-weight: 600;
+        text-transform: uppercase;
+        font-size: 0.75rem;
+        letter-spacing: 0.05em;
+        color: #64748b;
+        padding: 1.25rem 1rem;
+        border-bottom: 2px solid #f1f5f9;
+    }
+
+    .custom-table td {
+        padding: 1rem;
+        vertical-align: middle;
+        border-bottom: 1px solid #f1f5f9;
+        font-size: 0.9rem;
+    }
+
+    .user-avatar {
+        width: 32px;
+        height: 32px;
+        background: #e2e8f0;
+        border-radius: 8px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: 600;
+        color: #475569;
+        font-size: 0.8rem;
+    }
+
+    .btn-view {
+        background: white;
+        border: 1px solid #e2e8f0;
+        color: #6366f1;
+        border-radius: 8px;
+        padding: 0.4rem 0.8rem;
+        font-size: 0.85rem;
+        font-weight: 600;
+        transition: all 0.2s;
+    }
+
+    .btn-view:hover {
+        background: #f8fafc;
+        border-color: #6366f1;
+        transform: translateY(-1px);
+    }
+
+    .badge-quality {
+        padding: 0.4em 0.8em;
+        border-radius: 6px;
+        font-weight: 600;
+        font-size: 0.75rem;
+    }
+
+    .search-box {
+        position: relative;
+    }
+
+    .search-box i {
+        position: absolute;
+        left: 1rem;
+        top: 50%;
+        transform: translateY(-50%);
+        color: #94a3b8;
+    }
+
+    .search-box input {
+        padding-left: 2.75rem;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        background: white;
+        transition: all 0.2s;
+    }
+
+    .search-box input:focus {
+        border-color: #6366f1;
+        box-shadow: 0 0 0 4px rgba(99, 102, 241, 0.1);
+    }
+
+    .empty-state {
+        padding: 4rem 2rem;
+        text-align: center;
+    }
+
+    .empty-state i {
+        font-size: 3rem;
+        color: #e2e8f0;
+        margin-bottom: 1rem;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid py-4">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <div>
+            <h1 class="h3 mb-1 premium-header">AI Chat-sessioner</h1>
+            <p class="text-secondary mb-0">Overblik over alle medarbejderes interaktioner med chatbottens</p>
+        </div>
+        <div class="search-box">
+            <i class="fas fa-search"></i>
+            <input type="text" id="sessionSearch" class="form-control" placeholder="Søg i brugere eller afdelinger...">
+        </div>
+    </div>
+
+    <div class="glass-card table-container">
+        <table class="table custom-table mb-0" id="sessionsTable">
+            <thead>
+                <tr>
+                    <th>Bruger</th>
+                    <th>Afdeling</th>
+                    <th>Startet</th>
+                    <th>Seneste aktivitet</th>
+                    <th>Beskeder</th>
+                    <th>Kvalitetsscore</th>
+                    <th class="text-end">Handling</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% if sessions %}
+                {% for session in sessions %}
+                <tr>
+                    <td>
+                        <div class="d-flex align-items-center gap-3">
+                            <div class="user-avatar">
+                                {{ session.username[:2] | upper if session.username else '??' }}
+                            </div>
+                            <div>
+                                <div class="fw-bold text-dark">{{ session.username }}</div>
+                                <small class="text-muted">ID: {{ session.session_id[:8] }}</small>
+                            </div>
+                        </div>
+                    </td>
+                    <td>
+                        <span class="badge bg-light text-secondary border">{{ session.department or 'Ingen afdeling'
+                            }}</span>
+                    </td>
+                    <td>{{ session.started_at.strftime('%d. %b %H:%M') if session.started_at else 'N/A' }}</td>
+                    <td>{{ session.last_activity.strftime('%d. %b %H:%M') if session.last_activity else 'N/A' }}</td>
+                    <td>
+                        <span class="badge rounded-pill bg-primary bg-opacity-10 text-primary">
+                            {{ session.message_count }} beskeder
+                        </span>
+                    </td>
+                    <td>
+                        {% set score = session.avg_quality | float %}
+                        <span class="badge badge-quality 
+                                {% if score >= 4.0 %}bg-success bg-opacity-10 text-success
+                                {% elif score >= 3.0 %}bg-info bg-opacity-10 text-info
+                                {% elif score > 0 %}bg-warning bg-opacity-10 text-warning
+                                {% else %}bg-light text-muted{% endif %}">
+                            <i class="fas fa-star me-1"></i> {{ "%.1f"|format(score) if score > 0 else 'N/A' }}
+                        </span>
+                    </td>
+                    <td class="text-end">
+                        <a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=session.session_id) }}"
+                            class="btn-view">
+                            <i class="fas fa-eye me-1"></i> Se samtale
+                        </a>
+                    </td>
+                </tr>
+                {% endfor %}
+                {% else %}
+                <tr>
+                    <td colspan="7">
+                        <div class="empty-state">
+                            <i class="fas fa-comments"></i>
+                            <h4>Ingen samtaler fundet</h4>
+                            <p class="text-muted">Der er endnu ikke registreret nogen chat-interaktioner for denne
+                                virksomhed.</p>
+                        </div>
+                    </td>
+                </tr>
+                {% endif %}
+            </tbody>
+        </table>
+    </div>
+</div>
+
+{% block extra_scripts %}
+{{ super() }}
+<script>
+    document.getElementById('sessionSearch').addEventListener('keyup', function () {
+        const value = this.value.toLowerCase();
+        const rows = document.querySelectorAll('#sessionsTable tbody tr');
+
+        rows.forEach(row => {
+            const text = row.textContent.toLowerCase();
+            row.style.display = text.includes(value) ? '' : 'none';
+        });
+    });
+</script>
+{% endblock %}
+{% endblock %}

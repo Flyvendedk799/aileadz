@@ -24,8 +24,10 @@
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card border-left-primary shadow h-100 py-2">
                 <div class="card-body">
-                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Samlet Uddannelsesudgift</div>
-                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(roi.total_training_spend).replace(",", ".") }} kr</div>
+                    <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Samlet Uddannelsesudgift
+                    </div>
+                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(roi.total_training_spend).replace(",", ".") }} kr
+                    </div>
                 </div>
             </div>
         </div>
@@ -41,14 +43,16 @@
             <div class="card border-left-info shadow h-100 py-2">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Udgift pr. Medarbejder</div>
-                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(roi.spend_per_employee).replace(",", ".") }} kr</div>
+                    <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(roi.spend_per_employee).replace(",", ".") }} kr
+                    </div>
                 </div>
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
             <div class="card border-left-warning shadow h-100 py-2">
                 <div class="card-body">
-                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Gns. Tid til Faerdiggoering</div>
+                    <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Gns. Tid til Faerdiggoering
+                    </div>
                     <div class="h5 mb-0 fw-bold">{{ roi.avg_completion_days }} dage</div>
                 </div>
             </div>
@@ -87,10 +91,14 @@
             </div>
             <div class="table-responsive">
                 <table class="table table-sm table-hover">
-                    <thead class="table-light">
+                    <thead>
                         <tr>
-                            <th>Afdeling</th><th>Udgift</th><th>Medarbejdere</th>
-                            <th>Gennemfoert</th><th>Faerdiggoerelsesrate</th><th>Pris pr. Gennemfoering</th>
+                            <th>Afdeling</th>
+                            <th>Udgift</th>
+                            <th>Medarbejdere</th>
+                            <th>Gennemfoert</th>
+                            <th>Faerdiggoerelsesrate</th>
+                            <th>Pris pr. Gennemfoering</th>
                         </tr>
                     </thead>
                     <tbody>
@@ -103,7 +111,8 @@
                             <td>
                                 <div class="d-flex align-items-center gap-2">
                                     <div class="progress flex-grow-1" style="height:6px;min-width:60px;">
-                                        <div class="progress-bar bg-success" style="width:{{ d.completion_rate }}%"></div>
+                                        <div class="progress-bar bg-success" style="width:{{ d.completion_rate }}%">
+                                        </div>
                                     </div>
                                     <small>{{ d.completion_rate }}%</small>
                                 </div>
@@ -132,14 +141,23 @@
                     {% if predictions.churn_risk %}
                     <div class="table-responsive">
                         <table class="table table-sm">
-                            <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Inaktive dage</th><th>Tidl. queries</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>Medarbejder</th>
+                                    <th>Afdeling</th>
+                                    <th>Inaktive dage</th>
+                                    <th>Tidl. queries</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 {% for e in predictions.churn_risk %}
                                 <tr>
                                     <td>{{ e.username }}</td>
-                                    <td><span class="badge bg-light text-dark">{{ e.department or 'N/A' }}</span></td>
+                                    <td><span class="badge bg-secondary text-light">{{ e.department or 'N/A' }}</span>
+                                    </td>
                                     <td><span class="text-danger fw-bold">{{ e.days_inactive }}d</span></td>
-                                    <td>{{ e.total_chatbot_queries }}</td>
+                                    <td><a href="{{ url_for('hr_dashboard.chatbot_sessions') }}?username={{ e.username }}"
+                                            class="text-decoration-none">{{ e.total_chatbot_queries }}</a></td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -167,14 +185,22 @@
                     {% if predictions.at_risk_employees %}
                     <div class="table-responsive">
                         <table class="table table-sm">
-                            <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kompetence</th><th>Gab</th></tr></thead>
+                            <thead>
+                                <tr>
+                                    <th>Medarbejder</th>
+                                    <th>Afdeling</th>
+                                    <th>Kompetence</th>
+                                    <th>Gab</th>
+                                </tr>
+                            </thead>
                             <tbody>
                                 {% for e in predictions.at_risk_employees %}
                                 <tr>
                                     <td>{{ e.username }}</td>
                                     <td>{{ e.department or 'N/A' }}</td>
                                     <td>{{ e.skill_name }}</td>
-                                    <td><span class="badge bg-danger">-{{ e.gap }}</span> ({{ e.current_level }} &rarr; {{ e.target_level }})</td>
+                                    <td><span class="badge bg-danger">-{{ e.gap }}</span> ({{ e.current_level }} &rarr;
+                                        {{ e.target_level }})</td>
                                 </tr>
                                 {% endfor %}
                             </tbody>
@@ -194,14 +220,17 @@
     {% if predictions.trending_courses %}
     <div class="card shadow mb-4">
         <div class="card-header py-3">
-            <h6 class="m-0 font-weight-bold text-info"><i class="fas fa-search me-2"></i>Trending kursussoegninger (14 dage)</h6>
+            <h6 class="m-0 font-weight-bold text-info"><i class="fas fa-search me-2"></i>Trending kursussoegninger (14
+                dage)</h6>
         </div>
         <div class="card-body">
             <div class="row">
                 {% for t in predictions.trending_courses %}
                 <div class="col-md-4 col-lg-3 mb-2">
-                    <div class="border rounded p-2 d-flex justify-content-between align-items-center">
-                        <small class="text-truncate" style="max-width:180px;" title="{{ t.query_text }}">{{ t.query_text }}</small>
+                    <div class="border rounded p-2 d-flex justify-content-between align-items-center"
+                        style="border-color: var(--border-color) !important;">
+                        <small class="text-truncate" style="max-width:180px;" title="{{ t.query_text }}">{{ t.query_text
+                            }}</small>
                         <span class="badge bg-primary">{{ t.cnt }}</span>
                     </div>
                 </div>
@@ -217,38 +246,42 @@
 {{ super() }}
 {% if roi.department_roi %}
 <script>
-const deptData = {{ roi.department_roi | tojson | safe }};
-const labels = deptData.map(d => d.department);
+    const deptData = {{ roi.department_roi | tojson | safe }};
+    const labels = deptData.map(d => d.department);
 
-new Chart(document.getElementById('deptRoiChart'), {
-    type: 'bar',
-    data: {
-        labels: labels,
-        datasets: [{
-            label: 'Udgift (kr)',
-            data: deptData.map(d => d.spend),
-            backgroundColor: 'rgba(78, 115, 223, 0.7)',
-            borderRadius: 6
-        }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true } } }
-});
+    new Chart(document.getElementById('deptRoiChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Udgift (kr)',
+                data: deptData.map(d => d.spend),
+                backgroundColor: 'rgba(78, 115, 223, 0.7)',
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true, plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true } }
+        }
+    });
 
-new Chart(document.getElementById('deptCompletionChart'), {
-    type: 'bar',
-    data: {
-        labels: labels,
-        datasets: [{
-            label: 'Faerdiggoerelsesrate %',
-            data: deptData.map(d => d.completion_rate),
-            backgroundColor: deptData.map(d => d.completion_rate > 70 ? 'rgba(28,200,138,0.7)' : 'rgba(246,194,62,0.7)'),
-            borderRadius: 6
-        }]
-    },
-    options: { responsive: true, plugins: { legend: { display: false } },
-        scales: { y: { beginAtZero: true, max: 100 } } }
-});
+    new Chart(document.getElementById('deptCompletionChart'), {
+        type: 'bar',
+        data: {
+            labels: labels,
+            datasets: [{
+                label: 'Faerdiggoerelsesrate %',
+                data: deptData.map(d => d.completion_rate),
+                backgroundColor: deptData.map(d => d.completion_rate > 70 ? 'rgba(28,200,138,0.7)' : 'rgba(246,194,62,0.7)'),
+                borderRadius: 6
+            }]
+        },
+        options: {
+            responsive: true, plugins: { legend: { display: false } },
+            scales: { y: { beginAtZero: true, max: 100 } }
+        }
+    });
 </script>
 {% endif %}
 {% endblock %}

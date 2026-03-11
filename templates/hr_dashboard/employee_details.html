@@ -142,10 +142,12 @@
                     </div>
                 </div>
                 <div class="col-md-3 col-6">
-                    <div class="stat-card">
-                        <div class="stat-value text-purple">{{ employee.total_chatbot_queries or 0 }}</div>
-                        <div class="stat-label">Chatbot-samtaler</div>
-                    </div>
+                    <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}" class="text-decoration-none">
+                        <div class="stat-card">
+                            <div class="stat-value text-purple">{{ employee.total_chatbot_queries or 0 }}</div>
+                            <div class="stat-label">Chatbot-samtaler</div>
+                        </div>
+                    </a>
                 </div>
             </div>
 
@@ -166,7 +168,7 @@
 
             <!-- Skills Radar -->
             <div class="card mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-brain text-primary me-2"></i>Kompetencer</h6>
                     {% if employee_skills %}
                     <span class="badge bg-primary rounded-pill">{{ employee_skills|length }} skills</span>
@@ -205,7 +207,7 @@
             <!-- Education (from chatbot profile) -->
             {% if employee_education %}
             <div class="card mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-university text-primary me-2"></i>Uddannelse</h6>
                     <span class="badge bg-primary rounded-pill">{{ employee_education|length }}</span>
                 </div>
@@ -234,7 +236,7 @@
             <!-- Work Experience (from chatbot profile) -->
             {% if employee_experience %}
             <div class="card mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-briefcase text-primary me-2"></i>Erfaring</h6>
                     <span class="badge bg-primary rounded-pill">{{ employee_experience|length }}</span>
                 </div>
@@ -264,7 +266,7 @@
             <!-- Completed Courses from chatbot profile -->
             {% if employee_completed_courses %}
             <div class="card mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-certificate text-warning me-2"></i>Gennemfoerte kurser &
                         certifikater</h6>
                     <span class="badge bg-warning text-dark rounded-pill">{{ employee_completed_courses|length }}</span>
@@ -296,7 +298,7 @@
 
             <!-- Course History (orders) -->
             <div class="card mb-4">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <div class="card-header d-flex justify-content-between align-items-center">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-graduation-cap text-primary me-2"></i>Kursushistorik</h6>
                     <span class="badge bg-primary rounded-pill">{{ course_history|length }}</span>
                 </div>
@@ -356,7 +358,7 @@
 
             <!-- Chatbot Activity (last 30 days) -->
             <div class="card mb-4">
-                <div class="card-header bg-white">
+                <div class="card-header">
                     <h6 class="mb-0 fw-bold"><i class="fas fa-robot text-primary me-2"></i>Chatbot-aktivitet (30 dage)
                     </h6>
                 </div>
@@ -395,7 +397,7 @@
 
         <!-- Last Login / Activity -->
         <div class="card mb-4">
-            <div class="card-header bg-white">
+            <div class="card-header">
                 <h6 class="mb-0 fw-bold"><i class="fas fa-history text-primary me-2"></i>Aktivitetslog</h6>
             </div>
             <div class="card-body">
@@ -457,11 +459,17 @@
     }
 
     .stat-card {
-        background: #fff;
+        background: var(--card-bg);
         border-radius: 12px;
         padding: 16px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+        border: 1px solid var(--border-color);
+        box-shadow: var(--box-shadow);
         text-align: center;
+        transition: transform 0.2s;
+    }
+
+    .stat-card:hover {
+        transform: translateY(-2px);
     }
 
     .stat-value {
@@ -473,7 +481,7 @@
     .stat-label {
         font-size: 0.72rem;
         font-weight: 600;
-        color: #94a3b8;
+        color: var(--muted-text);
         text-transform: uppercase;
         letter-spacing: 0.03em;
         margin-top: 2px;
@@ -494,13 +502,15 @@
     }
 
     .card {
-        border: none;
+        border: 1px solid var(--border-color);
         border-radius: 12px;
-        box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 4px 12px rgba(0, 0, 0, 0.03);
+        box-shadow: var(--box-shadow);
+        background: var(--card-bg);
     }
 
     .card-header {
-        border-bottom: 1px solid #f1f5f9;
+        border-bottom: 1px solid var(--border-color);
+        background: transparent;
     }
 
     .chat-day-bar {
@@ -544,13 +554,14 @@
             scales: {
             r: {
                 min: 0, max: 5,
-                    ticks: { stepSize: 1, font: { size: 10 } },
-                pointLabels: { font: { size: 11, weight: '600' } },
-                grid: { color: 'rgba(0,0,0,0.05)' }
+                    ticks: { stepSize: 1, font: { size: 10 }, backdropColor: 'transparent', color: 'var(--muted-text)' },
+                pointLabels: { font: { size: 11, weight: '600' }, color: 'var(--text-color)' },
+                grid: { color: 'var(--border-color)' },
+                angleLines: { color: 'var(--border-color)' }
             }
         },
         plugins: {
-            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } }
+            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 }, color: 'var(--text-color)' } }
         }
     }
 });

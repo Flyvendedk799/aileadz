@@ -5,14 +5,50 @@
 {% block extra_styles %}
 {{ super() }}
 <style>
-  .vendor-card { border-radius: 12px; border: 1px solid #e5e7eb; padding: 16px; transition: all 0.2s; }
-  .vendor-card:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
-  .vendor-card.deactivated { opacity: 0.6; background: #f9fafb; }
-  .stat-pill { background: #f8fafc; border-radius: 12px; padding: 16px 20px; text-align: center; }
-  .stat-pill h3 { margin: 0; font-weight: 700; }
-  .stat-pill small { color: #6b7280; }
-  .filter-bar { background: #f8fafc; border-radius: 12px; padding: 16px; }
-  .vendor-toggle { cursor: pointer; }
+    .vendor-card {
+        border-radius: 12px;
+        border: 1px solid var(--border-color);
+        background: var(--card-bg);
+        padding: 16px;
+        transition: all 0.2s;
+    }
+
+    .vendor-card:hover {
+        box-shadow: var(--hover-shadow);
+    }
+
+    .vendor-card.deactivated {
+        opacity: 0.6;
+        background: rgba(255, 255, 255, 0.02);
+    }
+
+    .stat-pill {
+        background: var(--glass-bg);
+        border-radius: 12px;
+        padding: 16px 20px;
+        text-align: center;
+        border: 1px solid var(--border-color);
+    }
+
+    .stat-pill h3 {
+        margin: 0;
+        font-weight: 700;
+    }
+
+    .stat-pill small {
+        color: var(--muted-text);
+    }
+
+    .filter-bar {
+        background: var(--glass-bg);
+        border-radius: 12px;
+        padding: 16px;
+        border: 1px solid var(--border-color);
+    }
+
+    .vendor-toggle {
+        cursor: pointer;
+    }
 </style>
 {% endblock %}
 
@@ -87,7 +123,8 @@
     <!-- Vendor List -->
     <div class="row" id="vendorList">
         {% for vendor in vendors %}
-        <div class="col-md-6 col-lg-4 mb-3 vendor-item" data-name="{{ vendor.name|lower }}" data-active="{{ vendor.is_active }}">
+        <div class="col-md-6 col-lg-4 mb-3 vendor-item" data-name="{{ vendor.name|lower }}"
+            data-active="{{ vendor.is_active }}">
             <div class="vendor-card {{ 'deactivated' if not vendor.is_active }}">
                 <div class="d-flex justify-content-between align-items-start">
                     <div>
@@ -96,9 +133,8 @@
                     </div>
                     <div class="form-check form-switch">
                         <input class="form-check-input vendor-toggle" type="checkbox" role="switch"
-                               data-vendor="{{ vendor.name }}"
-                               {% if vendor.is_active %}checked{% endif %}
-                               onchange="toggleVendor(this)">
+                            data-vendor="{{ vendor.name }}" {% if vendor.is_active %}checked{% endif %}
+                            onchange="toggleVendor(this)">
                     </div>
                 </div>
                 {% if vendor.notes %}
@@ -122,54 +158,54 @@
 {% block extra_scripts %}
 {{ super() }}
 <script>
-function toggleVendor(checkbox) {
-    const vendorName = checkbox.dataset.vendor;
-    const isActive = checkbox.checked ? 1 : 0;
-    const card = checkbox.closest('.vendor-card');
+    function toggleVendor(checkbox) {
+        const vendorName = checkbox.dataset.vendor;
+        const isActive = checkbox.checked ? 1 : 0;
+        const card = checkbox.closest('.vendor-card');
 
-    fetch('{{ url_for("hr_dashboard.toggle_supplier") }}', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({vendor_name: vendorName, is_active: isActive})
-    }).then(r => r.json()).then(data => {
-        if (data.success) {
-            card.classList.toggle('deactivated', !isActive);
-            card.closest('.vendor-item').dataset.active = isActive;
-        } else {
-            checkbox.checked = !checkbox.checked;
-            alert('Fejl: ' + (data.message || 'Ukendt fejl'));
-        }
-    }).catch(() => { checkbox.checked = !checkbox.checked; });
-}
+        fetch('{{ url_for("hr_dashboard.toggle_supplier") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vendor_name: vendorName, is_active: isActive })
+        }).then(r => r.json()).then(data => {
+            if (data.success) {
+                card.classList.toggle('deactivated', !isActive);
+                card.closest('.vendor-item').dataset.active = isActive;
+            } else {
+                checkbox.checked = !checkbox.checked;
+                alert('Fejl: ' + (data.message || 'Ukendt fejl'));
+            }
+        }).catch(() => { checkbox.checked = !checkbox.checked; });
+    }
 
-function bulkToggle(isActive) {
-    const allNames = Array.from(document.querySelectorAll('.vendor-toggle')).map(cb => cb.dataset.vendor);
-    if (!confirm(`Er du sikker paa du vil ${isActive ? 'aktivere' : 'deaktivere'} alle ${allNames.length} leverandoerer?`)) return;
+    function bulkToggle(isActive) {
+        const allNames = Array.from(document.querySelectorAll('.vendor-toggle')).map(cb => cb.dataset.vendor);
+        if (!confirm(`Er du sikker paa du vil ${isActive ? 'aktivere' : 'deaktivere'} alle ${allNames.length} leverandoerer?`)) return;
 
-    fetch('{{ url_for("hr_dashboard.bulk_toggle_suppliers") }}', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({vendor_names: allNames, is_active: isActive})
-    }).then(r => r.json()).then(data => {
-        if (data.success) location.reload();
-        else alert('Fejl: ' + (data.message || ''));
-    });
-}
+        fetch('{{ url_for("hr_dashboard.bulk_toggle_suppliers") }}', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ vendor_names: allNames, is_active: isActive })
+        }).then(r => r.json()).then(data => {
+            if (data.success) location.reload();
+            else alert('Fejl: ' + (data.message || ''));
+        });
+    }
 
-// Client-side search & filter
-document.getElementById('vendorSearch').addEventListener('input', filterVendors);
-document.getElementById('vendorFilter').addEventListener('change', filterVendors);
+    // Client-side search & filter
+    document.getElementById('vendorSearch').addEventListener('input', filterVendors);
+    document.getElementById('vendorFilter').addEventListener('change', filterVendors);
 
-function filterVendors() {
-    const q = document.getElementById('vendorSearch').value.toLowerCase();
-    const filter = document.getElementById('vendorFilter').value;
-    document.querySelectorAll('.vendor-item').forEach(el => {
-        const nameMatch = el.dataset.name.includes(q);
-        const statusMatch = filter === 'all' ||
-                           (filter === 'active' && el.dataset.active === '1') ||
-                           (filter === 'inactive' && el.dataset.active === '0');
-        el.style.display = nameMatch && statusMatch ? '' : 'none';
-    });
-}
+    function filterVendors() {
+        const q = document.getElementById('vendorSearch').value.toLowerCase();
+        const filter = document.getElementById('vendorFilter').value;
+        document.querySelectorAll('.vendor-item').forEach(el => {
+            const nameMatch = el.dataset.name.includes(q);
+            const statusMatch = filter === 'all' ||
+                (filter === 'active' && el.dataset.active === '1') ||
+                (filter === 'inactive' && el.dataset.active === '0');
+            el.style.display = nameMatch && statusMatch ? '' : 'none';
+        });
+    }
 </script>
 {% endblock %}

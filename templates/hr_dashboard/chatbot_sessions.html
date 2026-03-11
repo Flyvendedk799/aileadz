@@ -30,7 +30,7 @@
     }
 
     .custom-table thead {
-        background: rgba(241, 245, 249, 0.8);
+        background: var(--glass-bg);
     }
 
     .custom-table th {
@@ -75,9 +75,10 @@
     }
 
     .btn-view:hover {
-        background: #f8fafc;
-        border-color: #6366f1;
+        background: var(--hover-shadow);
+        border-color: var(--primary-color);
         transform: translateY(-1px);
+        color: var(--primary-color);
     }
 
     .badge-quality {
@@ -96,7 +97,7 @@
         left: 1rem;
         top: 50%;
         transform: translateY(-50%);
-        color: #94a3b8;
+        color: var(--muted-text);
     }
 
     .search-box input {

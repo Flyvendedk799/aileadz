@@ -133,15 +133,32 @@ def _auto_sync_columns(conn, create_stmts):
         fix_cur = conn.cursor()
         fix_cur.execute("UPDATE company_departments SET department_code = NULL WHERE department_code = ''")
         fixed = fix_cur.rowcount
-        fix_cur.close()
         if fixed:
             logging.info("Auto-sync: nullified %d empty department_code values", fixed)
             synced += fixed
+        fix_cur.close()
+        conn.commit()  # always commit — the UPDATE is safe even if 0 rows changed
     except Exception as e:
         logging.warning("Auto-sync: nullify department_code warning: %s", e)
 
-    # Note: trigger creation skipped — requires SUPER privilege on managed MySQL.
-    # Empty department_code is handled in application code instead (set to NULL before INSERT).
+    # Drop the unique_company_dept key if it exists — it was manually added and
+    # blocks inserts when department_code is NULL/empty for multiple departments.
+    try:
+        idx_cur = conn.cursor()
+        idx_cur.execute("""
+            SELECT COUNT(1) FROM information_schema.STATISTICS
+            WHERE TABLE_SCHEMA = DATABASE()
+              AND TABLE_NAME = 'company_departments'
+              AND INDEX_NAME = 'unique_company_dept'
+        """)
+        if idx_cur.fetchone()[0] > 0:
+            idx_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
+            conn.commit()
+            logging.info("Auto-sync: dropped problematic unique_company_dept index")
+            synced += 1
+        idx_cur.close()
+    except Exception as e:
+        logging.warning("Auto-sync: drop unique_company_dept: %s", e)
 
     # Add unique key to employee_skills_matrix if missing
     try:

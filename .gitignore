@@ -5,3 +5,5 @@ static/uploads/
 *.mp3
 *.pptx
 *.zip
+*.db
+*.json

@@ -140,24 +140,8 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: nullify department_code warning: %s", e)
 
-    # Create trigger to auto-nullify empty department_code on INSERT (in case app code sends '')
-    try:
-        trg_cur = conn.cursor()
-        trg_cur.execute("DROP TRIGGER IF EXISTS trg_dept_code_nullify")
-        trg_cur.execute("""
-            CREATE TRIGGER trg_dept_code_nullify
-            BEFORE INSERT ON company_departments
-            FOR EACH ROW
-            BEGIN
-                IF NEW.department_code = '' THEN
-                    SET NEW.department_code = NULL;
-                END IF;
-            END
-        """)
-        trg_cur.close()
-        logging.info("Auto-sync: created trg_dept_code_nullify trigger")
-    except Exception as e:
-        logging.warning("Auto-sync: trigger warning: %s", e)
+    # Note: trigger creation skipped — requires SUPER privilege on managed MySQL.
+    # Empty department_code is handled in application code instead (set to NULL before INSERT).
 
     # Add unique key to employee_skills_matrix if missing
     try:
@@ -168,7 +152,23 @@ def _auto_sync_columns(conn, create_stmts):
               AND TABLE_NAME = 'employee_skills_matrix'
               AND INDEX_NAME = 'uk_emp_company_skill'
         """)
-        if uk_cur.fetchone()[0] == 0:
+        has_key = uk_cur.fetchone()[0]
+        if has_key == 0:
+            # Remove duplicates first so the unique key can be created
+            try:
+                uk_cur.execute("""
+                    DELETE t1 FROM employee_skills_matrix t1
+                    INNER JOIN employee_skills_matrix t2
+                    WHERE t1.id > t2.id
+                      AND t1.employee_id = t2.employee_id
+                      AND t1.company_id = t2.company_id
+                      AND t1.skill_name = t2.skill_name
+                """)
+                dupes = uk_cur.rowcount
+                if dupes:
+                    logging.info("Auto-sync: removed %d duplicate employee_skills_matrix rows", dupes)
+            except Exception:
+                pass
             uk_cur.execute("""
                 ALTER TABLE employee_skills_matrix
                 ADD UNIQUE KEY uk_emp_company_skill (employee_id, company_id, skill_name)
@@ -177,7 +177,7 @@ def _auto_sync_columns(conn, create_stmts):
             synced += 1
         uk_cur.close()
     except Exception as e:
-        logging.warning("Auto-sync: employee_skills_matrix unique key: %s", e)
+        logging.debug("Auto-sync: employee_skills_matrix unique key: %s", e)
 
     if synced:
         conn.commit()

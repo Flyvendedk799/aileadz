@@ -146,7 +146,7 @@ def _auto_sync_columns(conn, create_stmts):
             if hasattr(le, 'args') and le.args and le.args[0] == 1091:
                 pass # already gone — expected
             else:
-                logging.debug("Auto-sync: %s failed: %s", legacy_op, le)
+                logging.warning("Auto-sync: %s failed: %s (%s)", legacy_op, le, type(le).__name__)
 
     # Add unique key to employee_skills_matrix if missing
     try:

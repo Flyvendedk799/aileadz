@@ -135,14 +135,14 @@ def _auto_sync_columns(conn, create_stmts):
     #    This is required before we can drop the unique index.
     try:
         ic = conn.cursor()
-        ic.execute("CREATE INDEX idx_company_migration ON company_departments (company_id)")
+        ic.execute("ALTER TABLE company_departments ADD INDEX idx_company_migration (company_id)")
         conn.commit()
         ic.close()
-        logging.info("Auto-sync: Added idx_company_migration")
+        logging.info("Auto-sync: Added idx_company_migration index")
     except Exception as e:
         # 1061 = Duplicate key name (already exists) — that's fine
         if not (hasattr(e, 'args') and e.args and e.args[0] == 1061):
-            logging.debug("Auto-sync: Could not add migration index: %s", e)
+            logging.warning("Auto-sync: Could not add migration index: %s", e)
 
     for legacy_op in [
         "ALTER TABLE company_departments DROP INDEX unique_company_dept",

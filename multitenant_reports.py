@@ -102,11 +102,10 @@ def create_multitenant_reports_blueprint():
             cur.execute("""
                 SELECT ci.*, cu.department, cu.job_title, cu.role
                 FROM chatbot_interactions ci
-                LEFT JOIN company_users cu ON ci.username = (
-                    SELECT u.username FROM users u WHERE u.id = cu.user_id
-                ) AND cu.company_id = %s
-                WHERE ci.company_id = %s 
-                ORDER BY ci.created_at DESC 
+                LEFT JOIN users u ON ci.username = u.username
+                LEFT JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = %s
+                WHERE ci.company_id = %s
+                ORDER BY ci.created_at DESC
                 LIMIT 1000
             """, (company['id'], company['id']))
             interactions = cur.fetchall()

@@ -198,7 +198,7 @@ def _execute_get_team_training_status(args):
                MAX(co.created_at) as last_order_date
         FROM company_users cu
         JOIN users u ON cu.user_id = u.id
-        LEFT JOIN course_orders co ON co.username = u.username
+        LEFT JOIN course_orders co ON co.user_id = u.id AND co.company_id = cu.company_id
             AND co.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
         WHERE cu.company_id = %s AND cu.status = 'active'
         {dept_clause}
@@ -267,7 +267,7 @@ def _execute_get_company_skill_gaps(args):
     cur.execute(f"""
         SELECT cu.department, u.username, esm.skill_name, esm.current_level
         FROM employee_skills_matrix esm
-        JOIN users u ON esm.user_id = u.id
+        JOIN users u ON esm.employee_id = u.id
         JOIN company_users cu ON cu.user_id = u.id AND cu.company_id = %s
         WHERE cu.status = 'active' {emp_dept_clause}
     """, tuple(emp_params))
@@ -381,7 +381,7 @@ def _execute_get_employee_overview(args):
                MAX(ci.created_at) as last_chatbot_use
         FROM company_users cu
         JOIN users u ON cu.user_id = u.id
-        LEFT JOIN course_orders co ON co.username = u.username
+        LEFT JOIN course_orders co ON co.user_id = u.id AND co.company_id = cu.company_id
         LEFT JOIN chatbot_interactions ci ON ci.username = u.username AND ci.company_id = %s
         WHERE {where}
         GROUP BY u.username, u.email, cu.department, cu.role, cu.hire_date, cu.last_login
@@ -395,7 +395,7 @@ def _execute_get_employee_overview(args):
         cur.execute("""
             SELECT esm.skill_name, esm.current_level
             FROM employee_skills_matrix esm
-            JOIN users u ON esm.user_id = u.id
+            JOIN users u ON esm.employee_id = u.id
             WHERE u.username = %s
         """, (username,))
         skills = cur.fetchall()
@@ -522,7 +522,7 @@ def _execute_get_pending_actions(args):
         LEFT JOIN (
             SELECT esm.skill_name, AVG(esm.current_level) as avg_level
             FROM employee_skills_matrix esm
-            JOIN company_users cu ON esm.user_id = cu.user_id AND cu.company_id = %s
+            JOIN company_users cu ON esm.employee_id = cu.user_id AND cu.company_id = %s
             GROUP BY esm.skill_name
         ) skills ON skills.skill_name = cst.skill_name
         WHERE cst.company_id = %s AND (cst.target_level - COALESCE(skills.avg_level, 0)) >= 2

@@ -1053,7 +1053,7 @@ def nudges():
                       AND cst.skill_name NOT IN (
                           SELECT esm.skill_name FROM employee_skills_matrix esm
                           WHERE esm.company_id = %s
-                            AND esm.user_id = (SELECT id FROM users WHERE username = %s LIMIT 1)
+                            AND esm.employee_id = (SELECT id FROM users WHERE username = %s LIMIT 1)
                             AND esm.current_level >= cst.target_level
                       )
                     LIMIT 1

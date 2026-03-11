@@ -54,7 +54,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT elp.*, cu.department, cu.role, cu.job_title
                 FROM employee_learning_progress elp
-                JOIN company_users cu ON elp.user_id = cu.id
+                JOIN company_users cu ON elp.user_id = cu.user_id
                 WHERE elp.company_id = %s 
                 AND elp.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (company_id, days_back))
@@ -64,7 +64,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT epr.*, cu.department, cu.role
                 FROM employee_performance_reviews epr
-                JOIN company_users cu ON epr.employee_id = cu.id
+                JOIN company_users cu ON epr.employee_id = cu.user_id
                 WHERE epr.company_id = %s
                 AND epr.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (company_id, days_back))
@@ -74,7 +74,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT eg.*, cu.department, cu.role
                 FROM employee_goals eg
-                JOIN company_users cu ON eg.employee_id = cu.id
+                JOIN company_users cu ON eg.employee_id = cu.user_id
                 WHERE eg.company_id = %s
                 AND eg.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
             """, (company_id, days_back))
@@ -309,7 +309,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT esm.*, cu.department, cu.role
                 FROM employee_skills_matrix esm
-                JOIN company_users cu ON esm.employee_id = cu.id
+                JOIN company_users cu ON esm.employee_id = cu.user_id AND esm.company_id = cu.company_id
                 WHERE esm.company_id = %s
             """, (company_id,))
             

@@ -140,6 +140,25 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: nullify department_code warning: %s", e)
 
+    # Create trigger to auto-nullify empty department_code on INSERT (in case app code sends '')
+    try:
+        trg_cur = conn.cursor()
+        trg_cur.execute("DROP TRIGGER IF EXISTS trg_dept_code_nullify")
+        trg_cur.execute("""
+            CREATE TRIGGER trg_dept_code_nullify
+            BEFORE INSERT ON company_departments
+            FOR EACH ROW
+            BEGIN
+                IF NEW.department_code = '' THEN
+                    SET NEW.department_code = NULL;
+                END IF;
+            END
+        """)
+        trg_cur.close()
+        logging.info("Auto-sync: created trg_dept_code_nullify trigger")
+    except Exception as e:
+        logging.warning("Auto-sync: trigger warning: %s", e)
+
     if synced:
         conn.commit()
         logging.info("Auto-sync complete: %d changes made", synced)

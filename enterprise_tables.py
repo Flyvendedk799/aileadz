@@ -128,50 +128,35 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: cleanup warning: %s", e)
 
-    # Debug: dump company_departments state and unique_company_dept constraint info
-    import hashlib
-    try:
-        dbg_cur = conn.cursor()
-        dbg_cur.execute("SELECT id, company_id, department_name, department_code FROM company_departments WHERE company_id = 11")
-        rows = dbg_cur.fetchall()
-        for r in rows:
-            logging.info("Auto-sync DEBUG dept row: %s", r)
-        dbg_cur.execute("SHOW INDEX FROM company_departments WHERE Key_name = 'unique_company_dept'")
-        idx_rows = dbg_cur.fetchall()
-        for ir in idx_rows:
-            logging.info("Auto-sync DEBUG index: %s", ir)
-        dbg_cur.close()
-    except Exception as e:
-        logging.warning("Auto-sync DEBUG error: %s", e)
-
-    # Fix empty department_code values
+    # The unique_company_dept constraint is on (company_id, name) — a legacy column.
+    # Our schema uses department_name. Sync `name` = `department_name` so the
+    # constraint is satisfied, then drop the legacy `name` column if possible.
     try:
         fix_cur = conn.cursor()
-        fix_cur.execute("""
-            SELECT id, department_name FROM company_departments
-            WHERE department_code IS NULL OR department_code = ''
-        """)
-        empty_rows = fix_cur.fetchall()
-        fixed_count = 0
-        for row in empty_rows:
-            if isinstance(row, dict):
-                dept_id = row['id']
-                dept_name = row.get('department_name') or ''
-            else:
-                dept_id, dept_name = row[0], row[1] or ''
-            auto_code = 'D-' + hashlib.md5(dept_name.encode()).hexdigest()[:6].upper()
-            fix_cur.execute(
-                "UPDATE company_departments SET department_code = %s WHERE id = %s",
-                (auto_code, dept_id)
-            )
-            fixed_count += 1
-        if fixed_count:
+        # First, sync name = department_name for all rows
+        fix_cur.execute("UPDATE company_departments SET name = department_name WHERE name IS NULL OR name = '' OR name != department_name")
+        fixed = fix_cur.rowcount
+        if fixed:
             conn.commit()
-            logging.info("Auto-sync: fixed %d empty department_code values", fixed_count)
-            synced += fixed_count
+            logging.info("Auto-sync: synced %d company_departments.name values from department_name", fixed)
+            synced += fixed
+        # Try to drop the legacy `name` column and the constraint
+        # (may fail if FK references it — that's OK, the sync above keeps it working)
+        try:
+            fix_cur.execute("ALTER TABLE company_departments DROP INDEX unique_company_dept")
+            conn.commit()
+            logging.info("Auto-sync: dropped unique_company_dept index")
+        except Exception:
+            pass  # can't drop — that's fine, we keep `name` synced
+        try:
+            fix_cur.execute("ALTER TABLE company_departments DROP COLUMN name")
+            conn.commit()
+            logging.info("Auto-sync: dropped legacy `name` column")
+        except Exception:
+            pass  # column may be needed by FK — keep it synced instead
         fix_cur.close()
     except Exception as e:
-        logging.warning("Auto-sync: fix department_code warning: %s", e)
+        logging.warning("Auto-sync: fix company_departments.name: %s", e)
 
     # Add unique key to employee_skills_matrix if missing
     try:

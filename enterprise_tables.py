@@ -128,10 +128,23 @@ def _auto_sync_columns(conn, create_stmts):
     except Exception as e:
         logging.warning("Auto-sync: cleanup warning: %s", e)
 
-    # Fix empty department_code values — the unique_company_dept index on
-    # (company_id, department_code) blocks inserts with duplicate empty codes.
-    # Generate unique codes from the department name for any rows with empty/NULL codes.
+    # Debug: dump company_departments state and unique_company_dept constraint info
     import hashlib
+    try:
+        dbg_cur = conn.cursor()
+        dbg_cur.execute("SELECT id, company_id, department_name, department_code FROM company_departments WHERE company_id = 11")
+        rows = dbg_cur.fetchall()
+        for r in rows:
+            logging.info("Auto-sync DEBUG dept row: %s", r)
+        dbg_cur.execute("SHOW INDEX FROM company_departments WHERE Key_name = 'unique_company_dept'")
+        idx_rows = dbg_cur.fetchall()
+        for ir in idx_rows:
+            logging.info("Auto-sync DEBUG index: %s", ir)
+        dbg_cur.close()
+    except Exception as e:
+        logging.warning("Auto-sync DEBUG error: %s", e)
+
+    # Fix empty department_code values
     try:
         fix_cur = conn.cursor()
         fix_cur.execute("""
@@ -141,7 +154,6 @@ def _auto_sync_columns(conn, create_stmts):
         empty_rows = fix_cur.fetchall()
         fixed_count = 0
         for row in empty_rows:
-            # Handle both DictCursor and plain cursor
             if isinstance(row, dict):
                 dept_id = row['id']
                 dept_name = row.get('department_name') or ''

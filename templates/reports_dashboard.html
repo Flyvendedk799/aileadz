@@ -423,7 +423,7 @@
               <tr>
                 <td>{{ handle }}</td>
                 <td>{{ count }}</td>
-                <td><a href="https://futurematch.dk/products/{{ handle }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Åbn</a></td>
+                <td><a href="{{ url_for('catalog.product_detail', handle=handle) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Åbn</a></td>
               </tr>
               {% endfor %}
             </tbody>
@@ -450,7 +450,7 @@
               <tr>
                 <td>{{ handle }}</td>
                 <td>{{ count }}</td>
-                <td><a href="https://futurematch.dk/products/{{ handle }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Åbn</a></td>
+                <td><a href="{{ url_for('catalog.product_detail', handle=handle) }}" target="_blank" rel="noopener" class="btn btn-sm btn-outline-primary">Åbn</a></td>
               </tr>
               {% endfor %}
             </tbody>

@@ -9,7 +9,6 @@ from flask import Response, stream_with_context, current_app
 import json
 import openai
 import time
-from concurrent.futures import ThreadPoolExecutor
 from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS, execute_tool, set_search_context
 from app1.memory_store import log_debug
 from . import render_multi_course_media, render_product_media
@@ -150,22 +149,28 @@ Afslut ALTID med: <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggesti
 Maks 6 ord per forslag, dansk, handlingsorienteret, SPECIFIKT til situationen.
 
 VÆRKTØJER:
-- search_courses: Semantisk + nøgleord-søgning. Til åbne forespørgsler.
-- filter_courses: Strukturerede filtre (pris, lokation, type, tags). Brug ved konkrete krav. Kombiner: "e-learning under 5000 kr om ledelse" → filter_courses(product_type="E-learning", price_max=5000, query="ledelse").
-- get_course_details: Detaljer om ét kursus via handle.
-- compare_courses: Sammenlign 2-4 kurser side om side.
-- get_vendor_info: Info om udbyders omdømme, specialisering, lokationer. Brug ved udbyder-spørgsmål.
+- catalog_search: PRIMÆR katalogsøgning. Returnerer Futurematch produktkort + interne links til /products, /categories og /vendors.
+- catalog_get_product: Brug når brugeren spørger om et konkret kursus, en vedhæftet produktside, startdato, pris, lokation eller link.
+- catalog_get_category / catalog_get_vendor: Brug til kategori- og leverandørspørgsmål. Link altid til interne Futurematch-sider.
+- catalog_compare_products: Sammenlign 2-4 konkrete produkter fra kataloget.
+- search_courses/filter_courses/get_course_details/compare_courses: Legacy/RAG-værktøjer til ekstra ranking og detaljer når katalogværktøjerne ikke er nok.
+- get_learning_context: Hent brugerens profil, afdeling, leverandøraftaler, budgetsignaler og åbne ordrer i ét kald.
+- check_course_readiness / prepare_course_order: Brug før tilmelding. create_course_order må kun bruges efter tydelig brugerbekræftelse.
+- get_vendor_info: Ekstra udbyderintelligens når katalogets leverandørprofil ikke er nok.
 - get_user_profile / update_user_profile: Hent/opdater brugerprofil. Tilføj PROAKTIVT når brugeren nævner kompetencer, erfaring, eller præferencer.
 - recommend_for_profile: Anbefalinger baseret på profil og kompetencehuller.
 - suggest_learning_path: Sekventiel læringssti (fundament → avanceret). Kræver login.
 - create_course_order: Opret en kursusbestilling. Kræver product_handle + navn, email, telefon.
 
+DATAREGEL:
+Nævn aldrig konkrete kursusnavne, priser, datoer, leverandørstatus, budgetter, ordrestatus eller godkendelsesstatus uden først at bruge et relevant værktøj i samme tur. Brug ALDRIG gamle eksterne webshoplinks — produktlinks er interne /products/<handle>.
+
 BESTILLINGSFLOW:
 Når brugeren vil tilmelde sig / bestille et kursus:
-1. Brug get_course_details for at hente handle, pris, datoer, lokationer.
-2. Bekræft kurset med brugeren: "Du vil tilmelde dig [kursus] den [dato] i [lokation] til [pris] kr?"
-3. Spørg om kontaktoplysninger hvis du ikke har dem (navn, email, telefon). For logget-ind brugere: hent fra get_user_profile.
-4. Kald create_course_order med handle + kontaktinfo.
+1. Brug catalog_get_product + check_course_readiness.
+2. Brug prepare_course_order for at samle bekræftelsesdata uden at oprette ordre.
+3. Bed brugeren bekræfte hvis der er nok data, ellers spørg kun om manglende felter.
+4. Kald create_course_order først når brugeren eksplicit bekræfter.
 5. Vis ordrebekræftelsen til brugeren.
 Ved gruppetilmelding: spørg om antal deltagere og saml info for alle.
 
@@ -1535,12 +1540,6 @@ def handle_agentic_ask(user_query, session):
                     "content": "\n".join(guidance_parts)
                 })
 
-            # Agent Loop — include profile tools if user is logged in
-            all_tools = OPENAI_TOOLS + (PROFILE_TOOLS if logged_in_user else [])
-            had_tool_calls = False
-            max_iterations = 5  # Safety limit
-            iteration = 0
-
             # 2.6: Set search context — shown handles + user prefs for contextual search
             shown_handles = {p.get("handle") for p in SHOWN_PRODUCTS.get(sid, {}).get("products", []) if p.get("handle")}
             search_user_prefs = {}
@@ -1592,243 +1591,190 @@ def handle_agentic_ask(user_query, session):
             set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
                                blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements)
 
-            # Tool-calling loop (non-streaming for tool iterations)
-            last_message_is_final = False
-            while iteration < max_iterations:
-                iteration += 1
-                api_start = time.time()
+            from ai_runtime import (
+                PROMPT_VERSION as AI_PROMPT_VERSION,
+                log_agent_run,
+                log_tool_run,
+                main_model,
+                make_run_id,
+                run_agent_with_fallback,
+            )
+            from ai_tool_registry import get_employee_tool_selection, make_tool_choice, tool_name, toolset_enabled
+
+            if toolset_enabled():
+                all_tools, toolset_meta = get_employee_tool_selection(
+                    logged_in=bool(logged_in_user),
+                    company_id=company_id,
+                    intent=intent,
+                    user_query=user_query,
+                    shown_count=len(shown_handles),
+                )
+            else:
+                all_tools = OPENAI_TOOLS + (PROFILE_TOOLS if logged_in_user else [])
+                toolset_meta = {
+                    "version": "legacy-all-tools",
+                    "tool_names": [tool_name(t) for t in all_tools],
+                    "forced_tool": None,
+                }
+            tool_choice = make_tool_choice(toolset_meta.get("forced_tool"))
+            max_iterations = 5
+            iteration = 0
+            had_tool_calls = False
+            last_message_is_final = True
+            run_id = make_run_id()
+
+            try:
+                log_debug(sid, "toolset_selection", {
+                    "toolset_version": toolset_meta.get("version"),
+                    "tools": toolset_meta.get("tool_names", []),
+                    "forced_tool": toolset_meta.get("forced_tool"),
+                    "runtime": "responses",
+                })
+            except Exception:
+                pass
+
+            api_start = time.time()
+            runtime_result = run_agent_with_fallback(
+                messages=ephemeral_messages,
+                tools=all_tools,
+                tool_executor=execute_tool,
+                username=logged_in_user,
+                session_id=sid,
+                model=main_model(),
+                tool_choice=tool_choice,
+                max_iterations=max_iterations,
+                prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
+            )
+            _log_latency(sid, "ai_runtime_turn", api_start)
+            iteration = max(1, len(runtime_result.tool_results))
+            had_tool_calls = bool(runtime_result.tool_results)
+
+            try:
+                log_agent_run(
+                    getattr(current_app, "mysql", None),
+                    run_id=run_id,
+                    session_id=sid,
+                    company_id=company_id,
+                    username=logged_in_user,
+                    agent_scope="employee",
+                    runtime=runtime_result.runtime,
+                    model=main_model(),
+                    prompt_version=AI_PROMPT_VERSION,
+                    toolset_version=toolset_meta.get("version", ""),
+                    tool_names=toolset_meta.get("tool_names", []),
+                    response_id=runtime_result.response_id,
+                    status="ok",
+                    fallback_reason=runtime_result.fallback_reason,
+                    latency_ms=runtime_result.latency_ms,
+                    usage=runtime_result.usage,
+                )
+            except Exception:
+                pass
+
+            for tool_result in runtime_result.tool_results:
                 try:
-                    response = openai.chat.completions.create(
-                        model="gpt-4o",
-                        messages=ephemeral_messages,
-                        tools=all_tools,
-                        stream=False
+                    log_tool_run(
+                        getattr(current_app, "mysql", None),
+                        run_id=run_id,
+                        session_id=sid,
+                        company_id=company_id,
+                        username=logged_in_user,
+                        agent_scope="employee",
+                        result=tool_result,
                     )
-                except Exception as llm_err:
-                    print(f"[LLM API Error] iteration={iteration}: {llm_err}")
-                    # Retry once after a brief pause
-                    if iteration <= 1:
-                        import time as _t
-                        _t.sleep(1)
-                        try:
-                            response = openai.chat.completions.create(
-                                model="gpt-4o",
-                                messages=ephemeral_messages,
-                                tools=all_tools,
-                                stream=False
-                            )
-                        except Exception as retry_err:
-                            print(f"[LLM API Retry Failed] {retry_err}")
-                            raise
-                    else:
-                        raise
-                _log_latency(sid, "llm_tool_call", api_start)
+                except Exception:
+                    pass
+                try:
+                    tool_result_dict = json.loads(tool_result.output or "{}")
+                except (json.JSONDecodeError, TypeError) as parse_err:
+                    print(f"[Tool JSON Error] {tool_result.name}: {parse_err}")
+                    tool_result_dict = {"status": "error", "message": f"Ugyldigt værktøjssvar: {str(parse_err)[:100]}"}
 
-                message = response.choices[0].message
+                results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
+                _tools_used.append(tool_result.name)
+                _total_results += results_count
+                for _rp in tool_result_dict.get("raw_products", []):
+                    _h = _rp.get("handle") if isinstance(_rp, dict) else None
+                    if _h:
+                        _products_shown_handles.append(_h)
+                if "raw_product" in tool_result_dict:
+                    _h = tool_result_dict["raw_product"].get("handle") if isinstance(tool_result_dict.get("raw_product"), dict) else None
+                    if _h:
+                        _products_shown_handles.append(_h)
 
-                if not message.tool_calls:
-                    # Model wants to talk — DON'T append yet, we'll re-generate with streaming
-                    last_message_is_final = True
-                    break
+                try:
+                    _get_store().log_event(sid, "tool_call",
+                                           query_text=user_query,
+                                           tool_used=tool_result.name,
+                                           results_count=results_count)
+                except Exception:
+                    pass
 
-                # Tool call iteration — append and continue
-                messages.append(message.model_dump())
-                ephemeral_messages.append(message.model_dump())
-                had_tool_calls = True
+                try:
+                    result_titles = [r.get("title", "?") for r in tool_result_dict.get("results", [])[:5]]
+                    log_debug(sid, "tool_call", {
+                        "tool": tool_result.name,
+                        "args": tool_result.arguments,
+                        "results_count": results_count,
+                        "result_titles": result_titles,
+                        "status": tool_result_dict.get("status", "unknown"),
+                        "latency_ms": tool_result.latency_ms,
+                    })
+                except Exception:
+                    pass
 
-                # 5.2: Parallel tool execution when multiple independent tool calls
-                tool_results_map = {}
-                tool_start = time.time()
-                if len(message.tool_calls) > 1:
-                    with ThreadPoolExecutor(max_workers=4) as executor:
-                        futures = {
-                            executor.submit(execute_tool, tc, username=logged_in_user, session_id=sid): tc.id
-                            for tc in message.tool_calls
-                        }
-                        for future in futures:
-                            tc_id = futures[future]
-                            try:
-                                tool_results_map[tc_id] = future.result()
-                            except Exception as e:
-                                tool_results_map[tc_id] = json.dumps({"status": "error", "message": str(e)})
-
-                for tool_call in message.tool_calls:
-                    if tool_call.id in tool_results_map:
-                        tool_result_str = tool_results_map[tool_call.id]
-                    else:
-                        tool_result_str = execute_tool(tool_call, username=logged_in_user, session_id=sid)
+                if tool_result_dict.get("status") == "error":
                     try:
-                        tool_result_dict = json.loads(tool_result_str)
-                    except (json.JSONDecodeError, TypeError) as parse_err:
-                        print(f"[Tool JSON Error] {tool_call.function.name}: {parse_err}")
-                        tool_result_dict = {"status": "error", "message": f"Ugyldigt værktøjssvar: {str(parse_err)[:100]}"}
-                        tool_result_str = json.dumps(tool_result_dict)
-
-                    tool_msg = {
-                        "role": "tool",
-                        "tool_call_id": tool_call.id,
-                        "name": tool_call.function.name,
-                        "content": json.dumps({k: v for k, v in tool_result_dict.items() if not k.startswith("raw_")})
-                    }
-                    messages.append(tool_msg)
-                    ephemeral_messages.append(tool_msg)
-
-                    # Log tool call
-                    results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
-                    _tools_used.append(tool_call.function.name)
-                    _total_results += results_count
-                    # Collect shown product handles
-                    for _rp in tool_result_dict.get("raw_products", []):
-                        _h = _rp.get("handle") if isinstance(_rp, dict) else None
-                        if _h:
-                            _products_shown_handles.append(_h)
-                    if "raw_product" in tool_result_dict:
-                        _h = tool_result_dict["raw_product"].get("handle") if isinstance(tool_result_dict.get("raw_product"), dict) else None
-                        if _h:
-                            _products_shown_handles.append(_h)
-                    try:
-                        _get_store().log_event(sid, "tool_call",
-                                               query_text=user_query,
-                                               tool_used=tool_call.function.name,
-                                               results_count=results_count)
+                        log_debug(sid, "tool_error", {
+                            "tool": tool_result.name,
+                            "error": tool_result_dict.get("message", tool_result.error),
+                            "args": tool_result.arguments,
+                        })
                     except Exception:
                         pass
 
-                    # Debug: log tool call details
-                    try:
-                        tool_args = json.loads(tool_call.function.arguments)
-                        result_titles = [r.get("title", "?") for r in tool_result_dict.get("results", [])[:5]]
-                        search_debug = tool_result_dict.get("search_debug") if isinstance(tool_result_dict, dict) else None
+                fn = tool_result.name
+                if fn in ("search_courses", "filter_courses", "recommend_for_profile",
+                          "catalog_search", "catalog_get_category", "catalog_get_vendor",
+                          "catalog_compare_products") and "raw_products" in tool_result_dict:
+                    raw_products = tool_result_dict["raw_products"]
+                    if raw_products:
+                        buffered_ui_html.append(render_multi_course_media(raw_products))
+                        _track_shown_products(sid, tool_result_dict.get("results", []))
 
-                        debug_payload = {
-                            "tool": tool_call.function.name,
-                            "args": tool_args,
-                            "results_count": results_count,
-                            "result_titles": result_titles,
-                            "status": tool_result_dict.get("status", "unknown"),
-                        }
-                        if search_debug:
-                            debug_payload["matching_debug"] = {
-                                "query_tokens": search_debug.get("query_tokens", []),
-                                "core_query_tokens": search_debug.get("core_query_tokens", []),
-                                "expanded_query_tokens": search_debug.get("expanded_query_tokens", [])[:20],
-                                "preferences": search_debug.get("preferences", {}),
-                                "vector_candidates": search_debug.get("vector_candidates", 0),
-                                "bm25_candidates": search_debug.get("bm25_candidates", 0),
-                                "fused_candidates": search_debug.get("fused_candidates", 0),
-                                "top_vector_score": search_debug.get("top_vector_score", 0),
-                                "confidence": search_debug.get("confidence", "unknown"),
-                                "fuzzy_corrections": search_debug.get("fuzzy_corrections", []),
-                                "filtered_below_threshold": search_debug.get("filtered_below_threshold", 0),
-                                "cross_encoder_applied": search_debug.get("cross_encoder_applied", False),
-                                "selected": search_debug.get("selected", []),
-                            }
-                        log_debug(sid, "tool_call", debug_payload)
-                    except Exception:
-                        pass
+                elif fn in ("get_course_details", "catalog_get_product") and "raw_product" in tool_result_dict:
+                    buffered_ui_html.append(render_product_media(tool_result_dict["raw_product"]))
 
-                    # Log tool errors for visibility
-                    if tool_result_dict.get("status") == "error":
-                        error_msg = tool_result_dict.get("message", "Ukendt fejl")
-                        print(f"[Tool Error] {tool_call.function.name}: {error_msg}")
-                        try:
-                            log_debug(sid, "tool_error", {
-                                "tool": tool_call.function.name,
-                                "error": error_msg,
-                                "args": json.loads(tool_call.function.arguments),
-                            })
-                        except Exception:
-                            pass
+                elif fn == "update_user_profile":
+                    tool_status = tool_result_dict.get("status", "")
+                    if tool_status == "proposed":
+                        buffered_profile_events.append(json.dumps({
+                            'type': 'profile_confirm_request',
+                            'message': tool_result_dict.get('message', ''),
+                            'section': tool_result_dict.get('section', ''),
+                            'confirm': tool_result_dict.get('confirm', {})
+                        }))
+                    elif tool_status in ("success", "already_exists"):
+                        buffered_profile_events.append(json.dumps({
+                            'type': 'profile_update',
+                            'message': tool_result_dict.get('message', 'Profil opdateret'),
+                            'section': tool_result_dict.get('section', '')
+                        }))
 
-                    # UI Interceptor — buffer product cards
-                    fn = tool_call.function.name
-                    if fn in ("search_courses", "filter_courses", "recommend_for_profile") and "raw_products" in tool_result_dict:
-                        raw_products = tool_result_dict["raw_products"]
-                        if raw_products:
-                            ui_html = render_multi_course_media(raw_products)
-                            buffered_ui_html.append(ui_html)
-                            compact = tool_result_dict.get("results", [])
-                            _track_shown_products(sid, compact)
+                elif fn == "request_user_input":
+                    if tool_result_dict.get("status") == "ui_card":
+                        buffered_profile_events.append(json.dumps({
+                            'type': 'ui_card',
+                            'ui_type': tool_result_dict.get('ui_type', 'confirm'),
+                            'message': tool_result_dict.get('message', ''),
+                            'section': tool_result_dict.get('section', ''),
+                            'save_action': tool_result_dict.get('save_action', ''),
+                            'prefilled': tool_result_dict.get('prefilled', {}),
+                            'fields': tool_result_dict.get('fields', []),
+                            'choices': tool_result_dict.get('choices', []),
+                        }))
 
-                        if fn == "search_courses":
-                            try:
-                                dbg = tool_result_dict.get("search_debug", {})
-                                log_debug(sid, "matching_summary", {
-                                    "query": dbg.get("query", user_query),
-                                    "preferences": dbg.get("preferences", {}),
-                                    "core_query_tokens": dbg.get("core_query_tokens", []),
-                                    "selected_count": len(dbg.get("selected", [])),
-                                    "top_selected": dbg.get("selected", [])[:3],
-                                })
-                            except Exception:
-                                pass
-
-                    elif fn == "get_course_details" and "raw_product" in tool_result_dict:
-                        ui_html = render_product_media(tool_result_dict["raw_product"])
-                        buffered_ui_html.append(ui_html)
-
-                    elif fn == "update_user_profile":
-                        tool_status = tool_result_dict.get("status", "")
-                        if tool_status == "proposed":
-                            buffered_profile_events.append(json.dumps({
-                                'type': 'profile_confirm_request',
-                                'message': tool_result_dict.get('message', ''),
-                                'section': tool_result_dict.get('section', ''),
-                                'confirm': tool_result_dict.get('confirm', {})
-                            }))
-                        elif tool_status in ("success", "already_exists"):
-                            buffered_profile_events.append(json.dumps({
-                                'type': 'profile_update',
-                                'message': tool_result_dict.get('message', 'Profil opdateret'),
-                                'section': tool_result_dict.get('section', '')
-                            }))
-                        # Log profile event
-                        try:
-                            log_debug(sid, "profile_event", {
-                                "action": tool_args.get("action", ""),
-                                "status": tool_status,
-                                "section": tool_result_dict.get("section", ""),
-                                "message": tool_result_dict.get("message", "")[:200],
-                                "data": tool_args.get("data", {}),
-                            })
-                        except Exception:
-                            pass
-
-                    elif fn == "request_user_input":
-                        if tool_result_dict.get("status") == "ui_card":
-                            buffered_profile_events.append(json.dumps({
-                                'type': 'ui_card',
-                                'ui_type': tool_result_dict.get('ui_type', 'confirm'),
-                                'message': tool_result_dict.get('message', ''),
-                                'section': tool_result_dict.get('section', ''),
-                                'save_action': tool_result_dict.get('save_action', ''),
-                                'prefilled': tool_result_dict.get('prefilled', {}),
-                                'fields': tool_result_dict.get('fields', []),
-                                'choices': tool_result_dict.get('choices', []),
-                            }))
-                            # Log UI card event
-                            try:
-                                log_debug(sid, "ui_card", {
-                                    "ui_type": tool_result_dict.get("ui_type", ""),
-                                    "section": tool_result_dict.get("section", ""),
-                                    "save_action": tool_result_dict.get("save_action", ""),
-                                    "message": tool_result_dict.get("message", "")[:200],
-                                    "fields_count": len(tool_result_dict.get("fields", [])),
-                                    "prefilled_keys": list(tool_result_dict.get("prefilled", {}).keys()),
-                                })
-                            except Exception:
-                                pass
-
-                    elif fn == "compare_courses" and "raw_products" in tool_result_dict:
-                        raw_products = tool_result_dict["raw_products"]
-                        if raw_products:
-                            ui_html = render_multi_course_media(raw_products)
-                            buffered_ui_html.append(ui_html)
-
-                # 5.4: Log tool execution latency
-                _log_latency(sid, "tool_execution", tool_start)
-
-                continue
+            message = type("RuntimeMessage", (), {"content": runtime_result.text or ""})()
 
             # Phase 2: True streaming of the final text response
             # Stream the response in real-time, buffering only the <suggestions> tag

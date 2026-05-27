@@ -5,9 +5,8 @@ Separate from the employee chatbot. Uses HR-specific tools for company analytics
 import json
 import time
 import uuid
-import openai
 from flask import session, current_app, Response, stream_with_context
-from hr_tools import HR_TOOLS, execute_hr_tool
+from hr_tools import execute_hr_tool
 
 
 # In-memory chat history per HR session
@@ -26,6 +25,9 @@ HVAD DU KAN:
 - Analysere kompetencegab og anbefale indsatsomraader
 - Give budgetoverblik og advarsler
 - Finde og anbefale kurser til teams
+- Bruge Futurematch-katalogets produkt-, kategori- og leverandørsider som kilde til konkrete kursuslinks
+- Vurdere leverandøraftaler, aktive/inaktive leverandører og katalogdækning
+- Lave konkrete træningsplaner der binder kompetencegab, budget og kursuskatalog sammen
 - Vise chatbot-brugsstatistik for medarbejdere
 - Identificere inaktive medarbejdere og risikoomraader
 - Generere traeningsrapporter
@@ -45,6 +47,8 @@ REGLER:
 - Du har KUN adgang til denne virksomheds data. Nævn aldrig andre virksomheder.
 - Vis aldrig personfoelsomme data som CPR-numre eller loenoplysninger.
 - Hvis der mangler data, foreslaa hvordan HR kan udfylde det (f.eks. tilfoej kompetencemaal).
+- Brug værktøjer før du nævner konkrete budgetter, medarbejdertal, kompetencegab, leverandørstatus eller kursusanbefalinger.
+- Brug interne Futurematch-links (/products, /categories, /vendors). Brug aldrig gamle webshoplinks.
 
 OPFØLGNINGSFORSLAG:
 Afslut altid med 2-3 konkrete forslag til naeste skridt, formateret som:
@@ -108,50 +112,83 @@ def handle_hr_ask(user_query, flask_session):
                 clean = {k: v for k, v in m.items() if k != "_ts"}
                 clean_messages.append(clean)
 
-            max_iterations = 5
-            iteration = 0
-            final_text = ""
+            from ai_runtime import (
+                PROMPT_VERSION as AI_PROMPT_VERSION,
+                log_agent_run,
+                log_tool_run,
+                main_model,
+                make_run_id,
+                run_agent_with_fallback,
+            )
+            from ai_tool_registry import get_hr_tool_selection, make_tool_choice, tool_name, toolset_enabled
 
-            while iteration < max_iterations:
-                iteration += 1
-                response = openai.chat.completions.create(
-                    model="gpt-4o",
-                    messages=clean_messages,
-                    tools=HR_TOOLS,
-                    stream=False
+            if toolset_enabled():
+                hr_tools, toolset_meta = get_hr_tool_selection(
+                    company_id=flask_session.get("company_id"),
+                    user_query=user_query,
                 )
+            else:
+                from hr_tools import HR_TOOLS
+                hr_tools = HR_TOOLS
+                toolset_meta = {
+                    "version": "legacy-hr-all-tools",
+                    "tool_names": [tool_name(t) for t in hr_tools],
+                    "forced_tool": None,
+                }
+            run_id = make_run_id()
 
-                choice = response.choices[0]
-                msg = choice.message
+            def _hr_executor(tool_call, username=None, session_id=None):
+                return execute_hr_tool(tool_call)
 
-                if msg.tool_calls:
-                    # Execute tools
-                    clean_messages.append({
-                        "role": "assistant",
-                        "content": msg.content or "",
-                        "tool_calls": [
-                            {"id": tc.id, "type": "function",
-                             "function": {"name": tc.function.name, "arguments": tc.function.arguments}}
-                            for tc in msg.tool_calls
-                        ]
-                    })
+            runtime_result = run_agent_with_fallback(
+                messages=clean_messages,
+                tools=hr_tools,
+                tool_executor=_hr_executor,
+                username=flask_session.get("user"),
+                session_id=hr_sid,
+                model=main_model(),
+                tool_choice=make_tool_choice(toolset_meta.get("forced_tool")),
+                max_iterations=5,
+                prompt_cache_key=f"futurematch-hr:{toolset_meta.get('version')}",
+            )
+            final_text = runtime_result.text or ""
 
-                    for tc in msg.tool_calls:
-                        yield f"data: {json.dumps({'type': 'tool_call', 'name': tc.function.name})}\n\n"
-                        result = execute_hr_tool(tc)
-                        clean_messages.append({
-                            "role": "tool",
-                            "tool_call_id": tc.id,
-                            "content": result
-                        })
+            try:
+                log_agent_run(
+                    getattr(current_app, "mysql", None),
+                    run_id=run_id,
+                    session_id=hr_sid,
+                    company_id=flask_session.get("company_id"),
+                    username=flask_session.get("user"),
+                    agent_scope="hr",
+                    runtime=runtime_result.runtime,
+                    model=main_model(),
+                    prompt_version=AI_PROMPT_VERSION,
+                    toolset_version=toolset_meta.get("version", ""),
+                    tool_names=toolset_meta.get("tool_names", []),
+                    response_id=runtime_result.response_id,
+                    status="ok",
+                    fallback_reason=runtime_result.fallback_reason,
+                    latency_ms=runtime_result.latency_ms,
+                    usage=runtime_result.usage,
+                )
+            except Exception:
+                pass
 
-                    # If there was partial text before tools, stream it
-                    if msg.content:
-                        yield f"data: {json.dumps({'type': 'text', 'content': msg.content})}\n\n"
-                else:
-                    # Final text response
-                    final_text = msg.content or ""
-                    break
+            for tool_result in runtime_result.tool_results:
+                yield f"data: {json.dumps({'type': 'tool_call', 'name': tool_result.name})}\n\n"
+                try:
+                    log_tool_run(
+                        getattr(current_app, "mysql", None),
+                        run_id=run_id,
+                        session_id=hr_sid,
+                        company_id=flask_session.get("company_id"),
+                        username=flask_session.get("user"),
+                        agent_scope="hr",
+                        result=tool_result,
+                    )
+                except Exception:
+                    pass
 
             if final_text:
                 # Stream the response in chunks for a nice UX

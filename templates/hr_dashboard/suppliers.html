@@ -140,6 +140,9 @@
                 {% if vendor.notes %}
                 <small class="text-muted mt-2 d-block"><i class="fas fa-sticky-note"></i> {{ vendor.notes }}</small>
                 {% endif %}
+                <a class="btn btn-sm btn-outline-primary mt-3" href="{{ url_for('catalog.vendor_detail', slug=vendor.slug) }}" target="_blank">
+                    <i class="fas fa-up-right-from-square me-1"></i> Se leverandoerside
+                </a>
             </div>
         </div>
         {% endfor %}

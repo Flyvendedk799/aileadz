@@ -7,6 +7,7 @@ import json
 import datetime
 import openai
 from app1.rag import semantic_search_courses, semantic_search_courses_detailed, load_augmented_products, hybrid_rank_products
+import catalog_service as catalog
 
 import os as _os
 
@@ -149,6 +150,8 @@ def _extract_compact_fields(product):
         "title": product.get("title"),
         "handle": product.get("handle"),
         "vendor": product.get("vendor"),
+        "product_url": f"/products/{product.get('handle')}" if product.get("handle") else "",
+        "vendor_url": f"/vendors/{catalog.slugify(product.get('vendor'))}" if product.get("vendor") else "/vendors",
         "price": price,
         "summary": product.get("ai_summary"),
         "locations": cities,
@@ -420,6 +423,154 @@ OPENAI_TOOLS = [
 ]
 
 
+OPENAI_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "catalog_search",
+            "description": (
+                "Search the Futurematch catalog and return products with internal product, category, vendor, and ask-AI URLs. "
+                "Use this as the primary tool for course discovery, browsing, and product recommendations."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string", "description": "Search query, topic, or user need."},
+                    "category": {"type": "string", "description": "Category slug or category name filter."},
+                    "vendor": {"type": "string", "description": "Vendor slug or vendor name filter."},
+                    "format": {"type": "string", "description": "Course format such as E-learning, Kursus, Konference."},
+                    "location": {"type": "string", "description": "City/location filter."},
+                    "price_min": {"type": "number", "description": "Minimum price in DKK."},
+                    "price_max": {"type": "number", "description": "Maximum price in DKK."},
+                    "limit": {"type": "integer", "description": "Max products to return. Default 4."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "catalog_get_product",
+            "description": "Get canonical Futurematch catalog details and internal URL for one product by handle or title.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "handle": {"type": "string", "description": "Product handle if known."},
+                    "title": {"type": "string", "description": "Product title or partial title if handle is not known."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "catalog_get_category",
+            "description": "Get a Futurematch category page, category summary, and representative products.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slug": {"type": "string", "description": "Category slug if known."},
+                    "name": {"type": "string", "description": "Category name or partial name."},
+                    "limit": {"type": "integer", "description": "Representative product limit. Default 4."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "catalog_get_vendor",
+            "description": "Get a Futurematch vendor page, vendor profile, and representative products.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "slug": {"type": "string", "description": "Vendor slug if known."},
+                    "name": {"type": "string", "description": "Vendor name or partial name."},
+                    "topic": {"type": "string", "description": "Optional topic to evaluate vendor fit."},
+                    "limit": {"type": "integer", "description": "Representative product limit. Default 4."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "catalog_compare_products",
+            "description": "Compare 2-4 Futurematch catalog products and return internal links and raw products for cards.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "handles": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": "2-4 product handles.",
+                        "minItems": 2,
+                        "maxItems": 4
+                    }
+                },
+                "required": ["handles"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_learning_context",
+            "description": (
+                "Get the user's Futurematch learning context in one call: profile, shown products, company budget, "
+                "supplier preferences/agreements, open orders, and completed courses."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []}
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_course_readiness",
+            "description": (
+                "Check whether a user is ready to request/enroll in a course: product exists, supplier is active, "
+                "contact fields, variant, budget, and approval status."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_handle": {"type": "string", "description": "Course/product handle."},
+                    "variant_date": {"type": "string", "description": "Selected date if known."},
+                    "variant_location": {"type": "string", "description": "Selected location if known."}
+                },
+                "required": ["product_handle"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "prepare_course_order",
+            "description": (
+                "Prepare an order request and return a confirmation summary. This does NOT create an order. "
+                "Use before create_course_order."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_handle": {"type": "string", "description": "Course/product handle."},
+                    "user_name": {"type": "string", "description": "User full name if known."},
+                    "user_email": {"type": "string", "description": "User email if known."},
+                    "user_phone": {"type": "string", "description": "User phone if known."},
+                    "variant_date": {"type": "string", "description": "Selected date if known."},
+                    "variant_location": {"type": "string", "description": "Selected location if known."}
+                },
+                "required": ["product_handle"]
+            }
+        }
+    },
+])
+
+
 # ── Tool Execution ──
 
 # Module-level state for contextual search (set by agent before tool execution)
@@ -472,6 +623,465 @@ def _filter_blocked_vendors(products):
     if not _current_blocked_vendors:
         return products
     return [p for p in products if p.get('vendor', '') not in _current_blocked_vendors]
+
+
+def _catalog_product_url(product):
+    return catalog.build_product_url(product["handle"])
+
+
+def _catalog_vendor_url(product_or_vendor):
+    slug = product_or_vendor.get("vendor_slug") or product_or_vendor.get("slug")
+    return f"/vendors/{slug}" if slug else "/vendors"
+
+
+def _catalog_category_urls(product):
+    return [
+        {"name": name, "slug": slug, "url": f"/categories/{slug}"}
+        for name, slug in zip(product.get("categories") or [], product.get("category_slugs") or [])
+    ]
+
+
+def _catalog_legacy_raw(product):
+    """Convert a normalized catalog product to the legacy raw shape used by chat cards."""
+    raw = dict(product.get("raw") or {})
+    raw.setdefault("handle", product.get("handle"))
+    raw.setdefault("title", product.get("title"))
+    raw.setdefault("vendor", product.get("vendor"))
+    raw.setdefault("product_type", product.get("product_type") or product.get("format"))
+    raw.setdefault("ai_summary", product.get("summary") or product.get("description_excerpt"))
+    raw.setdefault("body_html", product.get("description_text") or product.get("summary") or "")
+    if product.get("image_url") and not raw.get("image"):
+        raw["image"] = {"src": product["image_url"]}
+    variants = raw.get("variants") or []
+    if not variants:
+        variants = [
+            {
+                "id": v.get("id"),
+                "title": v.get("title") or "",
+                "price": "" if v.get("price") is None else str(v.get("price")),
+                "option1": v.get("location") or v.get("city") or "",
+                "option2": v.get("date") or "",
+            }
+            for v in product.get("variants", [])
+        ]
+    else:
+        normalized = []
+        for v in variants:
+            if not isinstance(v, dict):
+                continue
+            vv = dict(v)
+            if "option1" not in vv:
+                vv["option1"] = vv.get("location") or vv.get("city") or ""
+            if "option2" not in vv:
+                vv["option2"] = vv.get("date") or ""
+            normalized.append(vv)
+        variants = normalized
+    raw["variants"] = variants
+    return raw
+
+
+def _catalog_compact_fields(product):
+    return {
+        "title": product.get("title"),
+        "handle": product.get("handle"),
+        "vendor": product.get("vendor"),
+        "vendor_slug": product.get("vendor_slug"),
+        "vendor_url": _catalog_vendor_url(product),
+        "product_url": _catalog_product_url(product),
+        "ask_ai_url": catalog.build_ask_ai_url(product),
+        "price": product.get("price_label"),
+        "price_min": product.get("price_min"),
+        "format": product.get("format"),
+        "summary": product.get("summary") or product.get("description_excerpt"),
+        "locations": product.get("locations", [])[:5],
+        "dates": product.get("dates", [])[:5],
+        "categories": _catalog_category_urls(product),
+        "image_url": product.get("image_url"),
+        "source": product.get("source"),
+    }
+
+
+def _resolve_category_slug(value):
+    value = (value or "").strip()
+    if not value:
+        return ""
+    value_slug = catalog.slugify(value)
+    for category in catalog.get_categories():
+        if category["slug"] == value or category["slug"] == value_slug or value.lower() in category["name"].lower():
+            return category["slug"]
+    return value_slug
+
+
+def _resolve_vendor_slug(value):
+    value = (value or "").strip()
+    if not value:
+        return ""
+    value_slug = catalog.slugify(value)
+    for vendor in catalog.get_vendors():
+        if vendor["slug"] == value or vendor["slug"] == value_slug or value.lower() in vendor["name"].lower():
+            return vendor["slug"]
+    return value_slug
+
+
+def _find_catalog_product(handle="", title=""):
+    handle = (handle or "").strip()
+    title = (title or "").strip()
+    if handle:
+        product = catalog.get_product(handle)
+        if product:
+            return product
+    if title:
+        title_lower = title.lower()
+        products = catalog.get_products()
+        exact = next((p for p in products if p["title"].lower() == title_lower), None)
+        if exact:
+            return exact
+        partial = next((p for p in products if title_lower in p["title"].lower()), None)
+        if partial:
+            return partial
+        search = catalog.search_products({"q": title}, page=1, per_page=1)
+        if search["products"]:
+            return search["products"][0]
+    return None
+
+
+def _execute_catalog_search(args):
+    filters = {
+        "q": args.get("query") or "",
+        "category": _resolve_category_slug(args.get("category") or ""),
+        "vendor": _resolve_vendor_slug(args.get("vendor") or ""),
+        "format": args.get("format") or "",
+        "location": args.get("location") or "",
+        "price_min": args.get("price_min"),
+        "price_max": args.get("price_max"),
+        "sort": "relevance",
+    }
+    limit = int(args.get("limit") or 4)
+    result = catalog.search_products(filters=filters, page=1, per_page=max(1, min(limit, 8)))
+    products = [
+        p for p in result["products"]
+        if p.get("handle") not in _current_shown_handles and p.get("vendor") not in _current_blocked_vendors
+    ]
+    if not products and result["products"]:
+        products = [p for p in result["products"] if p.get("vendor") not in _current_blocked_vendors]
+    compact = [_catalog_compact_fields(p) for p in products[:limit]]
+    return json.dumps({
+        "status": "success" if compact else "no_results",
+        "count": len(compact),
+        "total": result.get("total", len(compact)),
+        "filters": {k: v for k, v in filters.items() if v not in ("", None)},
+        "results": compact,
+        "raw_products": [_catalog_legacy_raw(p) for p in products[:limit]],
+        "catalog_url": "/catalog",
+    }, ensure_ascii=False)
+
+
+def _execute_catalog_get_product(args):
+    product = _find_catalog_product(args.get("handle", ""), args.get("title", ""))
+    if not product:
+        return json.dumps({"status": "not_found", "message": "Produktet blev ikke fundet i Futurematch kataloget."}, ensure_ascii=False)
+    vendor_state = _supplier_state_for_vendor(product.get("vendor"))
+    return json.dumps({
+        "status": "success",
+        "product": _catalog_compact_fields(product),
+        "supplier_state": vendor_state,
+        "variants": product.get("variants", [])[:8],
+        "metadata": product.get("metadata") or {},
+        "description": product.get("description_excerpt") or product.get("summary"),
+        "raw_product": _catalog_legacy_raw(product),
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_catalog_get_category(args):
+    slug = _resolve_category_slug(args.get("slug") or args.get("name") or "")
+    category = catalog.get_category(slug)
+    if not category:
+        return json.dumps({"status": "not_found", "message": "Kategorien blev ikke fundet.", "category_url": "/categories"}, ensure_ascii=False)
+    limit = int(args.get("limit") or 4)
+    result = catalog.search_products({"category": category["slug"], "sort": "relevance"}, page=1, per_page=max(1, min(limit, 8)))
+    products = [p for p in result["products"] if p.get("vendor") not in _current_blocked_vendors]
+    return json.dumps({
+        "status": "success",
+        "category": {
+            "name": category["name"],
+            "slug": category["slug"],
+            "count": category["count"],
+            "url": f"/categories/{category['slug']}",
+        },
+        "count": len(products[:limit]),
+        "results": [_catalog_compact_fields(p) for p in products[:limit]],
+        "raw_products": [_catalog_legacy_raw(p) for p in products[:limit]],
+    }, ensure_ascii=False)
+
+
+def _execute_catalog_get_vendor(args):
+    slug = _resolve_vendor_slug(args.get("slug") or args.get("name") or "")
+    vendor = catalog.get_vendor(slug)
+    if not vendor:
+        return json.dumps({"status": "not_found", "message": "Leverandøren blev ikke fundet.", "vendor_url": "/vendors"}, ensure_ascii=False)
+    limit = int(args.get("limit") or 4)
+    result = catalog.search_products({"vendor": vendor["slug"], "q": args.get("topic") or "", "sort": "relevance"}, page=1, per_page=max(1, min(limit, 8)))
+    products = result["products"][:limit]
+    return json.dumps({
+        "status": "success",
+        "vendor": {
+            "name": vendor["name"],
+            "slug": vendor["slug"],
+            "url": f"/vendors/{vendor['slug']}",
+            "course_count": vendor.get("course_count", 0),
+            "categories": vendor.get("categories", []),
+            "price_label": vendor.get("price_label", ""),
+            "profile": vendor.get("profile") or {},
+        },
+        "count": len(products),
+        "results": [_catalog_compact_fields(p) for p in products],
+        "raw_products": [_catalog_legacy_raw(p) for p in products],
+    }, ensure_ascii=False)
+
+
+def _execute_catalog_compare_products(args):
+    handles = args.get("handles") or []
+    products = [catalog.get_product(handle) for handle in handles[:4]]
+    products = [p for p in products if p]
+    if len(products) < 2:
+        return json.dumps({"status": "error", "message": "Mindst to gyldige produkter kræves for sammenligning."}, ensure_ascii=False)
+    comparison = []
+    for product in products:
+        comparison.append({
+            "title": product["title"],
+            "handle": product["handle"],
+            "url": _catalog_product_url(product),
+            "vendor": product["vendor"],
+            "vendor_url": _catalog_vendor_url(product),
+            "price": product["price_label"],
+            "format": product["format"],
+            "locations": product["locations"][:4],
+            "dates": product["dates"][:4],
+            "categories": [c["name"] for c in _catalog_category_urls(product)[:4]],
+            "summary": product.get("summary") or product.get("description_excerpt"),
+        })
+    return json.dumps({
+        "status": "success",
+        "count": len(products),
+        "comparison": comparison,
+        "raw_products": [_catalog_legacy_raw(p) for p in products],
+    }, ensure_ascii=False)
+
+
+def _supplier_state_for_vendor(vendor_name):
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not has_request_context():
+        return {"known": False, "is_active": True, "notes": ""}
+    company_id = flask_session.get("company_id")
+    if not company_id or not vendor_name:
+        return {"known": False, "is_active": True, "notes": ""}
+    try:
+        import db_compat  # noqa: F401
+        import MySQLdb.cursors
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            "SELECT is_active, notes FROM company_supplier_preferences WHERE company_id = %s AND vendor_name = %s",
+            (company_id, vendor_name),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            return {"known": True, "is_active": bool(row.get("is_active")), "notes": row.get("notes") or ""}
+    except Exception:
+        pass
+    return {"known": False, "is_active": True, "notes": ""}
+
+
+def _company_employee_contact(username):
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not has_request_context():
+        return {}
+    if not username or not flask_session.get("company_id"):
+        return {}
+    try:
+        import db_compat  # noqa: F401
+        import MySQLdb.cursors
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT cu.full_name, cu.email, cu.phone, cu.department, cu.job_title
+            FROM company_users cu JOIN users u ON cu.user_id = u.id
+            WHERE u.username = %s AND cu.company_id = %s AND cu.status = 'active'
+            LIMIT 1
+            """,
+            (username, flask_session.get("company_id")),
+        )
+        row = cur.fetchone() or {}
+        cur.close()
+        return row
+    except Exception:
+        return {}
+
+
+def _open_orders_for_user(username, limit=5):
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not has_request_context():
+        return []
+    if not username or not flask_session.get("company_id"):
+        return []
+    try:
+        import db_compat  # noqa: F401
+        import MySQLdb.cursors
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT order_id, product_handle, product_title, status, price, created_at
+            FROM course_orders
+            WHERE company_id = %s AND username = %s AND status NOT IN ('completed', 'cancelled')
+            ORDER BY created_at DESC LIMIT %s
+            """,
+            (flask_session.get("company_id"), username, limit),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return rows
+    except Exception:
+        return []
+
+
+def _supplier_agreements_for_company():
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not has_request_context():
+        return []
+    if not flask_session.get("company_id"):
+        return []
+    try:
+        import db_compat  # noqa: F401
+        import MySQLdb.cursors
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT vendor_name, discount_type, discount_value, agreement_name, valid_until
+            FROM company_supplier_agreements
+            WHERE company_id = %s AND is_active = 1
+              AND (valid_from IS NULL OR valid_from <= CURDATE())
+              AND (valid_until IS NULL OR valid_until >= CURDATE())
+            ORDER BY vendor_name
+            """,
+            (flask_session.get("company_id"),),
+        )
+        rows = cur.fetchall()
+        cur.close()
+        return rows
+    except Exception:
+        return []
+
+
+def _execute_get_learning_context(args, username):
+    from flask import session as flask_session, has_app_context, has_request_context
+    profile = {}
+    completed = []
+    if username and has_app_context():
+        try:
+            from app1.user_profile_db import get_full_profile, ensure_tables
+            ensure_tables()
+            profile = get_full_profile(username) or {}
+            completed = profile.get("completed_courses", [])[:10]
+        except Exception:
+            profile = {}
+    employee = _company_employee_contact(username)
+    shown = [
+        p for p in _current_shown_handles
+    ][:10]
+    return json.dumps({
+        "status": "success",
+        "username": username or "",
+        "company_id": flask_session.get("company_id") if has_request_context() else None,
+        "department": (flask_session.get("company_department") if has_request_context() else "") or employee.get("department") or "",
+        "employee": {
+            "name": employee.get("full_name", ""),
+            "email": employee.get("email", ""),
+            "phone": employee.get("phone", ""),
+            "job_title": employee.get("job_title", ""),
+        },
+        "profile": {
+            "headline": profile.get("headline", ""),
+            "goals": profile.get("goals", ""),
+            "preferred_location": profile.get("preferred_location", ""),
+            "preferred_format": profile.get("preferred_format", ""),
+            "budget_range": profile.get("budget_range", ""),
+            "skills": profile.get("skills", [])[:15],
+            "completed_courses": completed,
+        },
+        "shown_product_handles": shown,
+        "open_orders": _open_orders_for_user(username),
+        "supplier_agreements": _supplier_agreements_for_company()[:12],
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_check_course_readiness(args, username):
+    product = catalog.get_product(args.get("product_handle", ""))
+    if not product:
+        return json.dumps({"status": "not_found", "message": "Kurset blev ikke fundet."}, ensure_ascii=False)
+    supplier_state = _supplier_state_for_vendor(product.get("vendor"))
+    employee = _company_employee_contact(username)
+    missing = []
+    if not employee.get("full_name"):
+        missing.append("navn")
+    if not employee.get("email"):
+        missing.append("email")
+    if not employee.get("phone"):
+        missing.append("telefon")
+    variant_date = args.get("variant_date") or ""
+    variant_location = args.get("variant_location") or ""
+    if product.get("variants") and not (variant_date or variant_location):
+        missing.append("dato/lokation")
+    readiness = "ready" if not missing and supplier_state.get("is_active", True) else "blocked" if not supplier_state.get("is_active", True) else "needs_info"
+    return json.dumps({
+        "status": "success",
+        "readiness": readiness,
+        "missing_fields": missing,
+        "product": _catalog_compact_fields(product),
+        "supplier_state": supplier_state,
+        "employee": {
+            "name": employee.get("full_name", ""),
+            "email": employee.get("email", ""),
+            "phone": employee.get("phone", ""),
+            "department": employee.get("department", ""),
+        },
+        "message": "Klar til bekræftelse." if readiness == "ready" else "Der mangler oplysninger før tilmelding.",
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_prepare_course_order(args, username):
+    product = catalog.get_product(args.get("product_handle", ""))
+    if not product:
+        return json.dumps({"status": "not_found", "message": "Kurset blev ikke fundet."}, ensure_ascii=False)
+    employee = _company_employee_contact(username)
+    user_name = args.get("user_name") or employee.get("full_name") or username or ""
+    user_email = args.get("user_email") or employee.get("email") or ""
+    user_phone = args.get("user_phone") or employee.get("phone") or ""
+    missing = []
+    if not user_name:
+        missing.append("user_name")
+    if not user_email:
+        missing.append("user_email")
+    if not user_phone:
+        missing.append("user_phone")
+    payload = {
+        "product_handle": product["handle"],
+        "user_name": user_name,
+        "user_email": user_email,
+        "user_phone": user_phone,
+        "variant_date": args.get("variant_date") or "",
+        "variant_location": args.get("variant_location") or "",
+    }
+    return json.dumps({
+        "status": "ready_for_confirmation" if not missing else "needs_info",
+        "creates_order": False,
+        "missing_fields": missing,
+        "confirmation_payload": payload,
+        "product": _catalog_compact_fields(product),
+        "confirmation_text": (
+            f"Bekræft at du vil anmode om tilmelding til {product['title']} "
+            f"for {user_name or 'brugeren'}."
+        ),
+    }, ensure_ascii=False, default=str)
 
 
 def _execute_search_courses(args):
@@ -1664,7 +2274,23 @@ def execute_tool(tool_call, username=None, session_id=None):
         return json.dumps({"status": "error", "message": f"Kunne ikke parse tool-argumenter: {e}"})
 
     try:
-        if function_name == "search_courses":
+        if function_name == "catalog_search":
+            return _execute_catalog_search(args)
+        elif function_name == "catalog_get_product":
+            return _execute_catalog_get_product(args)
+        elif function_name == "catalog_get_category":
+            return _execute_catalog_get_category(args)
+        elif function_name == "catalog_get_vendor":
+            return _execute_catalog_get_vendor(args)
+        elif function_name == "catalog_compare_products":
+            return _execute_catalog_compare_products(args)
+        elif function_name == "get_learning_context":
+            return _execute_get_learning_context(args, username)
+        elif function_name == "check_course_readiness":
+            return _execute_check_course_readiness(args, username)
+        elif function_name == "prepare_course_order":
+            return _execute_prepare_course_order(args, username)
+        elif function_name == "search_courses":
             return _execute_search_courses(args)
         elif function_name == "filter_courses":
             return _execute_filter_courses(args)

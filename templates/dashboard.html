@@ -125,6 +125,21 @@
       </div>
     </a>
 
+    <a href="{{ url_for('catalog.catalog_index') }}" class="fm-tool-card" data-search-card data-fm-animate>
+      <div class="fm-tool-card-header">
+        <span class="fm-card-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+        <span class="fm-card-badge">Catalog</span>
+      </div>
+      <div>
+        <h3>Kursuskatalog</h3>
+        <p>Browse produkter, kategorier og leverandorer direkte uden at starte i AI-chatten.</p>
+      </div>
+      <div class="fm-tool-card-footer">
+        <span>Selvbetjening</span>
+        <span class="fm-arrow"><i class="fa-solid fa-arrow-right"></i></span>
+      </div>
+    </a>
+
     {% if session.get('company_id') %}
     <a href="/hr" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">

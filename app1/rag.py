@@ -15,6 +15,7 @@ load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 openai.api_key = os.environ.get("OPENAI_API_KEY")
 
 AUGMENTED_FILE = os.path.join(os.path.dirname(__file__), "shopify_products_augmented.json")
+SOURCE_FILE = os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
 _augmented_cache = None
 _augmented_mtime = 0  # Track file modification time for auto-rebuild
 
@@ -361,13 +362,16 @@ def load_augmented_products():
     Auto-rebuilds if the JSON file has been modified since last load."""
     global _augmented_cache, _augmented_mtime
     try:
-        current_mtime = os.path.getmtime(AUGMENTED_FILE) if os.path.exists(AUGMENTED_FILE) else 0
+        augmented_mtime = os.path.getmtime(AUGMENTED_FILE) if os.path.exists(AUGMENTED_FILE) else 0
+        source_mtime = os.path.getmtime(SOURCE_FILE) if os.path.exists(SOURCE_FILE) else 0
+        current_mtime = max(augmented_mtime, source_mtime)
     except OSError:
         current_mtime = 0
 
     if _augmented_cache is None or (current_mtime > _augmented_mtime and current_mtime > 0):
         try:
-            with open(AUGMENTED_FILE, "r", encoding="utf-8") as f:
+            load_path = AUGMENTED_FILE if os.path.exists(AUGMENTED_FILE) else SOURCE_FILE
+            with open(load_path, "r", encoding="utf-8") as f:
                 _augmented_cache = json.load(f)
             # Normalize tags to list at load time (avoids repeated isinstance checks)
             for p in _augmented_cache:
@@ -376,7 +380,7 @@ def load_augmented_products():
                     p["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
             _augmented_mtime = current_mtime
             _build_bm25_index(_augmented_cache)
-            print(f"[RAG] Loaded {len(_augmented_cache)} products, BM25 index built ({len(_bm25_index)} terms)")
+            print(f"[RAG] Loaded {len(_augmented_cache)} products from {os.path.basename(load_path)}, BM25 index built ({len(_bm25_index)} terms)")
         except Exception as e:
             print(f"Error loading augmented products: {e}")
             if _augmented_cache is None:

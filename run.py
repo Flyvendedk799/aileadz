@@ -1,5 +1,4 @@
 import logging
-import os
 try:
     import sshtunnel
 except ImportError:
@@ -98,18 +97,14 @@ logging.basicConfig(level=logging.INFO)
 
 def create_app():
     app = Flask(__name__, template_folder='templates')
-    app.secret_key = os.environ.get('FLASK_SECRET_KEY', 'your_secret_key_here')
-
-    mysql_password = os.environ.get('MYSQL_PASSWORD', '')
-    if not mysql_password:
-        logging.warning("MYSQL_PASSWORD is not set; database connections will fail until configured.")
+    app.secret_key = 'your_secret_key_here'
     
     app.config.update({
-        'MYSQL_HOST': os.environ.get('MYSQL_HOST', 'TobiasMastek.mysql.pythonanywhere-services.com'),
-        'MYSQL_USER': os.environ.get('MYSQL_USER', 'TobiasMastek'),
-        'MYSQL_PASSWORD': mysql_password,
-        'MYSQL_DB': os.environ.get('MYSQL_DB', 'TobiasMastek$AiLead'),
-        'MYSQL_CURSORCLASS': os.environ.get('MYSQL_CURSORCLASS', 'DictCursor')
+        'MYSQL_HOST': 'TobiasMastek.mysql.pythonanywhere-services.com',
+        'MYSQL_USER': 'TobiasMastek',
+        'MYSQL_PASSWORD': 'Jht89ryu1!!',
+        'MYSQL_DB': 'TobiasMastek$AiLead',
+        'MYSQL_CURSORCLASS': 'DictCursor'
     })
     
     mysql = MySQL(app)
@@ -173,17 +168,11 @@ def main():
 
     tunnel = None
     try:
-        ssh_password = os.environ.get('PYTHONANYWHERE_SSH_PASSWORD')
-        if not ssh_password:
-            logging.error("PYTHONANYWHERE_SSH_PASSWORD is not set. It is required for the local SSH tunnel.")
-            return
-
-        mysql_host = os.environ.get('MYSQL_HOST', 'TobiasMastek.mysql.pythonanywhere-services.com')
         tunnel = sshtunnel.SSHTunnelForwarder(
-            (os.environ.get('PYTHONANYWHERE_SSH_HOST', 'ssh.pythonanywhere.com'), 22),
-            ssh_username=os.environ.get('PYTHONANYWHERE_SSH_USER', 'TobiasMastek'),
-            ssh_password=ssh_password,
-            remote_bind_address=(mysql_host, 3306)
+            ('ssh.pythonanywhere.com', 22),
+            ssh_username='TobiasMastek',
+            ssh_password='Jht89ryu1!',
+            remote_bind_address=('TobiasMastek.mysql.pythonanywhere-services.com', 3306)
         )
         tunnel.start()
         logging.info("SSH tunnel established on local port: %s", tunnel.local_bind_port)

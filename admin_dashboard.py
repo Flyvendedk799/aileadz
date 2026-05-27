@@ -14,6 +14,7 @@ def require_admin():
     return None
 
 
+@admin_dashboard_bp.route('')
 @admin_dashboard_bp.route('/')
 def admin_home():
     check = require_admin()

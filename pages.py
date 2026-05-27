@@ -11,6 +11,18 @@ def about():
 def contact():
     return render_template('contact.html')
 
+@pages_bp.route('/support')
+def support():
+    return render_template('support.html')
+
+@pages_bp.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+@pages_bp.route('/terms')
+def terms():
+    return render_template('terms.html')
+
 @pages_bp.route('/notifications')
 def notifications():
     if 'user' not in session:

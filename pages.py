@@ -11,6 +11,13 @@ def about():
 def contact():
     return render_template('contact.html')
 
+@pages_bp.route('/notifications')
+def notifications():
+    if 'user' not in session:
+        flash("Log ind for at se notifikationer.", "danger")
+        return redirect(url_for('auth.login'))
+    return render_template('notifications.html')
+
 @pages_bp.route('/analytics')
 def analytics():
     if 'user' not in session:

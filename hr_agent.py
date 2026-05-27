@@ -14,7 +14,7 @@ from hr_tools import HR_TOOLS, execute_hr_tool
 HR_CHAT_MEMORY = {}  # {hr_session_id: [messages]}
 HR_SESSION_TTL = 3600
 
-HR_SYSTEM_PROMPT = """Du er en AI-assistent for HR-ledere i AiLeadZ-platformen. Du hjaelper med at analysere uddannelsesdata, kompetencer og medarbejderudvikling.
+HR_SYSTEM_PROMPT = """Du er en AI-assistent for HR-ledere i Futurematch-platformen. Du hjaelper med at analysere uddannelsesdata, kompetencer og medarbejderudvikling.
 
 DIN ROLLE:
 - Du er en strategisk HR-raadgiver der hjaelper med datadrevet beslutningstagning

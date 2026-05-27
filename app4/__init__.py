@@ -8,7 +8,10 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, send_from_directory, flash, current_app
-import whisper  # Local Whisper transcription
+try:
+    import whisper  # Local Whisper transcription; only needed for legacy video-caption routes.
+except ImportError:
+    whisper = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
@@ -391,6 +394,10 @@ def uploaded_file(filename):
 def auto_caption():
     """Auto-caption route: transcribes video and adds captions."""
     try:
+        if whisper is None:
+            flash("Video-transkription er ikke installeret i dette miljø.", "error")
+            return redirect(url_for('app4.index'))
+
         # Validate input
         if 'video' not in request.files:
             flash('No video file uploaded', 'error')

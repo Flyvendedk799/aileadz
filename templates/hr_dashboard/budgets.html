@@ -3,30 +3,33 @@
 {% block title %}Uddannelsesbudget - {{ company.company_name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-workspace fm-ops-page">
     {% include 'hr_dashboard/_hr_nav.html' %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2><i class="fas fa-wallet text-primary me-2"></i>Afdelingsbudgetter</h2>
-            <p class="text-muted mb-0">{{ company.company_name }} - {{ fiscal_year }}</p>
+    <section class="fm-page-hero mb-4">
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 position-relative">
+            <div>
+                <div class="fm-hero-eyebrow"><i class="fas fa-wallet"></i> Budgetstyring</div>
+                <h1 class="fm-hero-title">Afdelingsbudgetter</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} - {{ fiscal_year }}. Styr budget, forbrug og risiko pr. afdeling.</p>
+            </div>
+            <div class="fm-hero-actions">
+                <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year - 1) }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> {{ fiscal_year - 1 }}
+                </a>
+                <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year + 1) }}" class="btn btn-outline-secondary btn-sm">
+                    {{ fiscal_year + 1 }} <i class="fas fa-arrow-right"></i>
+                </a>
+                <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Dashboard
+                </a>
+            </div>
         </div>
-        <div class="d-flex gap-2">
-            <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year - 1) }}" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-arrow-left"></i> {{ fiscal_year - 1 }}
-            </a>
-            <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year + 1) }}" class="btn btn-outline-secondary btn-sm">
-                {{ fiscal_year + 1 }} <i class="fas fa-arrow-right"></i>
-            </a>
-            <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-arrow-left"></i> Dashboard
-            </a>
-        </div>
-    </div>
+    </section>
 
     <!-- Summary Cards -->
-    <div class="row mb-4">
+    <div class="row g-3 mb-4">
         <div class="col-md-3">
-            <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card border-left-primary shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-primary text-uppercase mb-1">Samlet budget</div>
                     <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_budget).replace(",", ".") }} kr</div>
@@ -34,7 +37,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card border-left-warning shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-warning text-uppercase mb-1">Brugt</div>
                     <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_spent).replace(",", ".") }} kr</div>
@@ -42,7 +45,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-left-success shadow h-100 py-2">
+            <div class="card border-left-success shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-success text-uppercase mb-1">Resterende</div>
                     <div class="h5 mb-0 font-weight-bold">{{ "{:,.0f}".format(total_budget - total_spent).replace(",", ".") }} kr</div>
@@ -50,7 +53,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card border-left-info shadow h-100 py-2">
+            <div class="card border-left-info shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-info text-uppercase mb-1">Afdelinger</div>
                     <div class="h5 mb-0 font-weight-bold">{{ budgets|length }}</div>
@@ -69,7 +72,7 @@
         </div>
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover align-middle">
+                <table class="table table-hover align-middle fm-modern-table">
                     <thead class="table-light">
                         <tr>
                             <th>Afdeling</th>

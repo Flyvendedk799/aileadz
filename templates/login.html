@@ -3,18 +3,18 @@
 {% block extra_styles %}
 <style>
   :root {
-    --auth-primary: #8B5CF6;
-    --auth-primary-dark: #7C3AED;
-    --auth-accent: #EC4899;
-    --auth-gradient-start: #8B5CF6;
-    --auth-gradient-end: #EC4899;
+    --auth-primary: #0f766e;
+    --auth-primary-dark: #0f766e;
+    --auth-accent: #2563eb;
+    --auth-gradient-start: #0f766e;
+    --auth-gradient-end: #2563eb;
     --auth-input-bg: rgba(255, 255, 255, 0.08);
     --auth-card-bg: rgba(17, 24, 39, 0.7);
     --auth-text: #E5E7EB;
     --auth-text-secondary: #9CA3AF;
     --auth-border: rgba(255, 255, 255, 0.1);
     --auth-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-    --auth-glow: 0 0 20px rgba(139, 92, 246, 0.5);
+    --auth-glow: 0 0 20px rgba(15, 118, 110, 0.5);
   }
 
   .auth-container {
@@ -22,9 +22,7 @@
     justify-content: center;
     align-items: center;
     min-height: calc(100vh - 150px);
-    background-image: 
-      radial-gradient(circle at 10% 20%, rgba(139, 92, 246, 0.2) 0%, transparent 30%),
-      radial-gradient(circle at 90% 80%, rgba(236, 72, 153, 0.2) 0%, transparent 30%);
+    background: transparent;
     position: relative;
     overflow: hidden;
     padding: 20px;
@@ -40,9 +38,9 @@
     background: linear-gradient(
       45deg,
       transparent 0%,
-      rgba(139, 92, 246, 0.03) 25%,
+      rgba(15, 118, 110, 0.03) 25%,
       transparent 50%,
-      rgba(236, 72, 153, 0.03) 75%,
+      rgba(37, 99, 235, 0.03) 75%,
       transparent 100%
     );
     animation: background-shimmer 10s linear infinite;
@@ -148,7 +146,7 @@
 
   .input-group input:focus {
     border-color: var(--auth-primary);
-    box-shadow: 0 0 0 2px rgba(139, 92, 246, 0.3);
+    box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.3);
   }
 
   .input-group input:focus + label {
@@ -169,7 +167,7 @@
     position: relative;
     overflow: hidden;
     z-index: 1;
-    box-shadow: 0 4px 12px rgba(139, 92, 246, 0.4);
+    box-shadow: 0 4px 12px rgba(15, 118, 110, 0.4);
   }
 
   .auth-btn::before {
@@ -278,8 +276,20 @@
     50% { transform: translate(20px, 20px) rotate(180deg); }
     100% { transform: translate(0, 0) rotate(360deg); }
   }
+
+  .auth-container { background: transparent; overflow: visible; }
+  .auth-container::before,
+  .auth-card::after { display: none; }
+  .auth-card h2 {
+    background: none;
+    color: var(--fm-text);
+    -webkit-text-fill-color: currentColor;
+  }
+  .input-group label { background: var(--fm-surface); }
 </style>
 {% endblock %}
+
+{% block global_flashes %}{% endblock %}
 
 {% block content %}
 <div class="auth-container">
@@ -295,14 +305,18 @@
         <path d="M2 12L12 17L22 12" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <defs>
           <linearGradient id="logo-gradient" x1="2" y1="12" x2="22" y2="12" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#8B5CF6"/>
-            <stop offset="1" stop-color="#EC4899"/>
+            <stop stop-color="#0f766e"/>
+            <stop offset="1" stop-color="#2563eb"/>
           </linearGradient>
         </defs>
       </svg>
+      <span class="auth-logo-name">{{ company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' }}</span>
     </div>
     
-    <h2>Welcome Back</h2>
+    <div class="auth-form-header">
+      <p class="auth-kicker">Sikker adgang</p>
+      <h2>Velkommen tilbage</h2>
+    </div>
     
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -316,20 +330,20 @@
     
     <form action="{{ url_for('auth.login') }}" method="POST">
       <div class="input-group">
+        <label for="username">Brugernavn</label>
         <input type="text" name="username" id="username" required autocomplete="username">
-        <label for="username">Username</label>
       </div>
       
       <div class="input-group">
+        <label for="password">Adgangskode</label>
         <input type="password" name="password" id="password" required autocomplete="current-password">
-        <label for="password">Password</label>
       </div>
       
-      <button type="submit" class="auth-btn">Sign In</button>
+      <button type="submit" class="auth-btn">Log ind</button>
     </form>
     
     <div class="auth-link">
-      <p>Don't have an account? <a href="{{ url_for('auth.register') }}">Create Account</a></p>
+      <p>Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></p>
     </div>
   </div>
 </div>

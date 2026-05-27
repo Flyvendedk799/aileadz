@@ -6,4 +6,6 @@ static/uploads/
 *.pptx
 *.zip
 *.db
+*.db-shm
+*.db-wal
 *.json

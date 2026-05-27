@@ -72,7 +72,7 @@
         background: rgba(255, 255, 255, 0.08);
         border-color: var(--primary-color);
         color: var(--text-color);
-        box-shadow: 0 0 0 3px rgba(168, 85, 247, 0.25);
+        box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.25);
     }
 
     .color-input-group {
@@ -343,10 +343,10 @@
                                     <label class="form-label">Primaer farve</label>
                                     <div class="color-input-group">
                                         <input type="color" id="colorPickerPrimary"
-                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#4F46E5' }}">
+                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0f766e' }}">
                                         <input type="text" class="form-control" id="theme_primary_color"
                                             name="theme_primary_color"
-                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#4F46E5' }}">
+                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0f766e' }}">
                                     </div>
                                 </div>
                                 <div class="col-md-4">
@@ -421,7 +421,7 @@
                             <div class="form-check">
                                 <input class="form-check-input" type="checkbox" id="show_branding" name="show_branding"
                                     {% if not widget or widget.show_branding !=false %}checked{% endif %}>
-                                <label class="form-check-label" for="show_branding">Vis "Powered by AiLead"
+                                <label class="form-check-label" for="show_branding">Vis "Powered by Futurematch"
                                     branding</label>
                             </div>
                         </div>
@@ -492,7 +492,7 @@
                                     <div class="preview-welcome-msg" id="previewWelcome">Hej! Hvordan kan jeg hjaelpe
                                         dig?</div>
                                 </div>
-                                <div id="previewBranding" class="preview-branding">Powered by AiLead</div>
+                                <div id="previewBranding" class="preview-branding">Powered by Futurematch</div>
                                 <div class="preview-chat-input">
                                     <input type="text" placeholder="Skriv en besked..." disabled>
                                     <button id="previewSendBtn">
@@ -529,7 +529,7 @@
                             <pre><code id="embedCode">&lt;script&gt;
 (function(){
   var w=document.createElement('script');
-  w.src='https://www.ailead.pro/app1/widget/{{ widget.widget_token }}/loader.js';
+  w.src='{{ request.url_root.rstrip("/") }}/app1/widget/{{ widget.widget_token }}/loader.js';
   w.async=true;
   document.head.appendChild(w);
 })();
@@ -614,7 +614,7 @@
         });
 
         function updatePreview() {
-            const primaryColor = document.getElementById('theme_primary_color').value || '#4F46E5';
+            const primaryColor = document.getElementById('theme_primary_color').value || '#0f766e';
             const textColor = document.getElementById('theme_text_color').value || '#FFFFFF';
             const bgColor = document.getElementById('theme_bg_color').value || '#FFFFFF';
             const title = document.getElementById('widget_title').value || 'Chat';

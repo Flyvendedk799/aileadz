@@ -3,8 +3,70 @@ try:
     import sshtunnel
 except ImportError:
     sshtunnel = None
-from flask import Flask, redirect, url_for
-from flask_mysqldb import MySQL
+try:
+    import MySQLdb  # noqa: F401
+except ImportError:
+    try:
+        import pymysql
+        pymysql.install_as_MySQLdb()
+    except ImportError:
+        pass
+from flask import Flask, current_app, g, redirect, url_for
+try:
+    from flask_mysqldb import MySQL
+except ImportError:
+    import pymysql
+
+    class _PyMySQLConnection:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def cursor(self, *args, **kwargs):
+            if kwargs.pop('dictionary', False):
+                args = (pymysql.cursors.DictCursor,)
+            return self._connection.cursor(*args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+    class MySQL:
+        def __init__(self, app=None):
+            self.app = None
+            if app is not None:
+                self.init_app(app)
+
+        def init_app(self, app):
+            self.app = app
+            app.teardown_appcontext(self._close_connection)
+
+        @property
+        def connection(self):
+            conn = getattr(g, '_futurematch_mysql_connection', None)
+            if conn is None or not getattr(conn._connection, 'open', True):
+                config = current_app.config
+                cursorclass = None
+                if config.get('MYSQL_CURSORCLASS') == 'DictCursor':
+                    cursorclass = pymysql.cursors.DictCursor
+                kwargs = {
+                    'host': config.get('MYSQL_HOST'),
+                    'user': config.get('MYSQL_USER'),
+                    'password': config.get('MYSQL_PASSWORD'),
+                    'database': config.get('MYSQL_DB'),
+                    'charset': config.get('MYSQL_CHARSET', 'utf8mb4'),
+                    'autocommit': False,
+                }
+                if config.get('MYSQL_PORT'):
+                    kwargs['port'] = int(config['MYSQL_PORT'])
+                if cursorclass:
+                    kwargs['cursorclass'] = cursorclass
+                conn = _PyMySQLConnection(pymysql.connect(**kwargs))
+                g._futurematch_mysql_connection = conn
+            return conn
+
+        def _close_connection(self, exception=None):
+            conn = getattr(g, '_futurematch_mysql_connection', None)
+            if conn is not None:
+                conn.close()
 
 # Import blueprints from your modules
 from dashboard import dashboard_bp

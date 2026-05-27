@@ -500,12 +500,29 @@ def create_hr_dashboard_blueprint():
             except Exception as sk_err:
                 current_app.logger.warning(f"Skills summary error: {sk_err}")
 
+            total_employees = hr_metrics.get('total_employees', 0) or 0
+            active_employees = hr_metrics.get('active_employees', 0) or 0
+            skills_coverage_rate = round((skills_summary['employees_with_skills'] / total_employees) * 100, 1) if total_employees else 0
+            avg_top_skill_level = 0
+            if skills_summary['top_skills']:
+                avg_top_skill_level = round(
+                    sum(float(s.get('avg_level') or 0) for s in skills_summary['top_skills']) / len(skills_summary['top_skills']),
+                    1
+                )
+            active_employee_rate = round((active_employees / total_employees) * 100, 1) if total_employees else 0
+            dashboard_health = {
+                'active_employee_rate': active_employee_rate,
+                'skills_coverage_rate': skills_coverage_rate,
+                'avg_top_skill_level': avg_top_skill_level,
+                'critical_skill_names': [g.get('skill_name') for g in skills_summary['critical_gap_list'][:3]],
+            }
+
             cur.close()
 
             # Calculate additional metrics
-            if hr_metrics['total_employees'] > 0:
-                engagement_rate = round((engagement_metrics['employees_using_chatbot'] / hr_metrics['total_employees']) * 100, 1) if engagement_metrics['employees_using_chatbot'] else 0
-                training_participation_rate = round((learning_metrics['employees_with_training'] / hr_metrics['total_employees']) * 100, 1) if learning_metrics['employees_with_training'] else 0
+            if total_employees > 0:
+                engagement_rate = round((engagement_metrics['employees_using_chatbot'] / total_employees) * 100, 1) if engagement_metrics['employees_using_chatbot'] else 0
+                training_participation_rate = round((learning_metrics['employees_with_training'] / total_employees) * 100, 1) if learning_metrics['employees_with_training'] else 0
             else:
                 engagement_rate = 0
                 training_participation_rate = 0
@@ -560,6 +577,7 @@ def create_hr_dashboard_blueprint():
                                  recent_sessions=recent_sessions,
                                  recent_activity=recent_activity,
                                  skills_summary=skills_summary,
+                                 dashboard_health=dashboard_health,
                                  active_hr_page='dashboard')
             
         except Exception as e:
@@ -981,6 +999,11 @@ def create_hr_dashboard_blueprint():
                 WHERE company_id = %s AND status = 'active' AND department IS NOT NULL
             """, (company['id'],))
             departments = [r['department'] for r in cur.fetchall()]
+            cur.execute("""
+                SELECT COUNT(DISTINCT user_id) AS cnt FROM company_users
+                WHERE company_id = %s AND status = 'active'
+            """, (company['id'],))
+            total_active_employees = (cur.fetchone() or {}).get('cnt') or 0
             cur.close()
 
             # Get all employee skills for search/browse (merge enterprise + chatbot)
@@ -1041,12 +1064,15 @@ def create_hr_dashboard_blueprint():
             total_gaps = 0
             critical_gaps = 0
             met_targets = 0
+            moderate_gaps = 0
             if heatmap:
                 for dept_skills in heatmap.values():
                     for data in dept_skills.values():
                         total_gaps += 1
                         if data.get('status') == 'red':
                             critical_gaps += 1
+                        elif data.get('status') == 'yellow':
+                            moderate_gaps += 1
                         elif data.get('status') == 'green':
                             met_targets += 1
 
@@ -1058,12 +1084,38 @@ def create_hr_dashboard_blueprint():
                 [t['skill_name'] for t in targets]
             ))
 
+            employees_with_skills = {
+                emp['user_id']
+                for skill in skill_list
+                for emp in skill.get('employees', [])
+                if emp.get('user_id')
+            }
+            avg_skill_level = round(
+                sum(float(s.get('avg_level') or 0) for s in skill_list) / len(skill_list),
+                1
+            ) if skill_list else 0
+            priority_counts = {'high': 0, 'medium': 0, 'low': 0}
+            for t in targets:
+                priority = t.get('priority') or 'medium'
+                if priority in priority_counts:
+                    priority_counts[priority] += 1
+            skill_dashboard = {
+                'employees_with_skills': len(employees_with_skills),
+                'total_active_employees': total_active_employees,
+                'skill_assignments': sum(s.get('count', 0) for s in skill_list),
+                'avg_skill_level': avg_skill_level,
+                'coverage_rate': round((len(employees_with_skills) / total_active_employees) * 100, 1) if total_active_employees else 0,
+                'moderate_gaps': moderate_gaps,
+                'priority_counts': priority_counts,
+            }
+
             return render_template('hr_dashboard/skill_gaps.html',
                                    company=company, heatmap=heatmap or {},
                                    targets=targets, departments=departments,
                                    skill_list=skill_list,
                                    all_employee_skills=all_employee_skills,
                                    all_skill_names=all_skill_names,
+                                   skill_dashboard=skill_dashboard,
                                    total_gaps=total_gaps,
                                    critical_gaps=critical_gaps,
                                    met_targets=met_targets,
@@ -1298,7 +1350,8 @@ def create_hr_dashboard_blueprint():
                                      'department': department_filter,
                                      'status': status_filter,
                                      'sort': sort_by
-                                 })
+                                 },
+                                 active_hr_page='dashboard')
             
         except Exception as e:
             current_app.logger.error(f"Error loading employee progress: {e}")
@@ -1471,7 +1524,8 @@ def create_hr_dashboard_blueprint():
                                  learning_path_effectiveness=learning_path_effectiveness,
                                  hourly_engagement=hourly_engagement,
                                  skills_gap_analysis=skills_gap_analysis,
-                                 chart_data=chart_data)
+                                 chart_data=chart_data,
+                                 active_hr_page='learning_analytics')
             
         except Exception as e:
             current_app.logger.error(f"Error loading learning analytics: {e}")
@@ -1489,8 +1543,96 @@ def create_hr_dashboard_blueprint():
         if not company:
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
-        
-        return render_template('hr_dashboard/reports.html', company=company)
+
+        report_summary = {
+            'employees': 0,
+            'departments': 0,
+            'orders': 0,
+            'completed_orders': 0,
+            'completion_rate': 0,
+            'skill_targets': 0,
+            'skills_recorded': 0,
+            'training_spend': 0,
+        }
+        department_rows = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT COUNT(DISTINCT user_id) AS employees,
+                       COUNT(DISTINCT department) AS departments
+                FROM company_users
+                WHERE company_id = %s AND status = 'active'
+            """, (company['id'],))
+            row = cur.fetchone() or {}
+            report_summary['employees'] = row.get('employees') or 0
+            report_summary['departments'] = row.get('departments') or 0
+
+            cur.execute("""
+                SELECT COUNT(*) AS orders,
+                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed_orders,
+                       COALESCE(SUM(CASE WHEN status NOT IN ('cancelled', 'rejected') THEN price END), 0) AS training_spend
+                FROM course_orders
+                WHERE company_id = %s
+            """, (company['id'],))
+            row = cur.fetchone() or {}
+            report_summary['orders'] = row.get('orders') or 0
+            report_summary['completed_orders'] = row.get('completed_orders') or 0
+            report_summary['training_spend'] = float(row.get('training_spend') or 0)
+            report_summary['completion_rate'] = round(
+                (report_summary['completed_orders'] / report_summary['orders']) * 100,
+                1
+            ) if report_summary['orders'] else 0
+
+            cur.execute("SELECT COUNT(*) AS cnt FROM company_skill_targets WHERE company_id = %s", (company['id'],))
+            report_summary['skill_targets'] = (cur.fetchone() or {}).get('cnt') or 0
+            cur.execute("SELECT COUNT(*) AS cnt FROM employee_skills_matrix WHERE company_id = %s", (company['id'],))
+            report_summary['skills_recorded'] = (cur.fetchone() or {}).get('cnt') or 0
+
+            cur.execute("""
+                SELECT cu.department,
+                       COUNT(DISTINCT cu.user_id) AS employees,
+                       COUNT(DISTINCT co.id) AS orders,
+                       COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS completed,
+                       COALESCE(SUM(CASE WHEN co.status NOT IN ('cancelled', 'rejected') THEN co.price END), 0) AS spend
+                FROM company_users cu
+                LEFT JOIN course_orders co ON co.user_id = cu.user_id AND co.company_id = cu.company_id
+                WHERE cu.company_id = %s AND cu.status = 'active'
+                GROUP BY cu.department
+                ORDER BY employees DESC, cu.department
+                LIMIT 8
+            """, (company['id'],))
+            department_rows = cur.fetchall()
+            cur.close()
+        except Exception as e:
+            current_app.logger.warning(f"HR reports summary error: {e}")
+
+        report_cards = [
+            {
+                'type': 'employee_progress',
+                'title': 'Medarbejderfremdrift',
+                'description': 'Status, afdeling, kurser, fremdrift og chatbot-engagement pr. medarbejder.',
+                'icon': 'fa-users',
+            },
+            {
+                'type': 'course_completions',
+                'title': 'Kursusgennemfoersel',
+                'description': 'Alle kursusordrer med status, dato, pris, lokation og gennemfoersel.',
+                'icon': 'fa-graduation-cap',
+            },
+            {
+                'type': 'department_summary',
+                'title': 'Afdelingsresume',
+                'description': 'Afdelingernes medarbejdere, tilmeldinger, completion rate og investering.',
+                'icon': 'fa-sitemap',
+            },
+        ]
+
+        return render_template('hr_dashboard/reports.html',
+                               company=company,
+                               report_summary=report_summary,
+                               department_rows=department_rows,
+                               report_cards=report_cards,
+                               active_hr_page='reports')
 
     @hr_dashboard_bp.route('/export/<report_type>')
     def export_report(report_type):

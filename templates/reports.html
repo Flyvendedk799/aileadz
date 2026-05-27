@@ -3,145 +3,127 @@
 {% block extra_styles %}
   {{ super() }}
   <style>
-    .reports-container {
-      max-width: 1200px;
-      margin: 2rem auto;
-      padding: 2rem;
-      background-color: var(--card-bg);
-      border-radius: var(--border-radius);
-      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
-    }
-    .reports-title {
-      font-size: 2.5rem;
-      text-align: center;
-      margin-bottom: 2rem;
-    }
-    .summary-section {
-      display: flex;
-      flex-wrap: wrap;
-      justify-content: space-around;
-      margin-bottom: 2rem;
-      text-align: center;
-    }
+    .reports-container { max-width: 1280px; margin: 0 auto; padding: 1.5rem; }
+    .reports-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
     .summary-box {
-      background-color: var(--sidebar-bg);
-      padding: 1rem;
-      border-radius: var(--border-radius);
-      flex: 1 1 30%;
-      margin: 0.5rem;
+      min-height: 128px;
+      padding: 18px;
+      border: 1px solid var(--fm-border);
+      border-radius: 8px;
+      background: var(--fm-surface-solid);
+      box-shadow: var(--fm-shadow-xs);
     }
     .summary-box h3 {
-      font-size: 1.2rem;
-      margin-bottom: 0.5rem;
+      color: var(--fm-text-muted);
+      font-size: .74rem;
+      font-weight: 800;
+      letter-spacing: .05em;
+      text-transform: uppercase;
+      margin-bottom: .65rem;
     }
-    .summary-box p {
-      font-size: 1.5rem;
-      font-weight: bold;
+    .summary-box p,
+    .summary-box .summary-value {
+      color: var(--fm-text);
+      font-size: 1.55rem;
+      font-weight: 830;
+      line-height: 1.1;
+      margin: 0;
     }
     .chart-container {
-      width: 100%;
-      margin: 2rem auto;
+      padding: 18px;
+      border: 1px solid var(--fm-border);
+      border-radius: 8px;
+      background: var(--fm-surface-solid);
+      box-shadow: var(--fm-shadow-xs);
     }
-    canvas {
-      background-color: #fff;
-      border: 1px solid #ccc;
-      border-radius: var(--border-radius);
-    }
+    .chart-container canvas { max-height: 340px; }
     .table-container {
       overflow-x: auto;
-      margin-top: 2rem;
+      border: 1px solid var(--fm-border);
+      border-radius: 8px;
+      background: var(--fm-surface-solid);
+      box-shadow: var(--fm-shadow-xs);
     }
-    table {
-      width: 100%;
-      border-collapse: collapse;
-    }
-    th, td {
-      padding: 0.75rem;
-      text-align: left;
-      border-bottom: 1px solid var(--muted-text);
-    }
-    th {
-      background-color: var(--sidebar-bg);
-      color: var(--text-color);
-    }
-    tr:nth-child(even) {
-      background-color: var(--card-bg);
-    }
-    tr:hover {
-      background-color: var(--hover-shadow);
-    }
-    .cta-button {
-      display: inline-block;
-      background-color: var(--primary-color);
-      color: #fff;
-      padding: 0.75rem 1.5rem;
-      border-radius: var(--border-radius);
-      text-align: center;
-      text-decoration: none;
-      font-weight: 600;
-      transition: background-color var(--transition-speed) ease;
-      margin-top: 1rem;
-    }
-    .cta-button:hover {
-      background-color: #9333ea;
-    }
+    .table-container h2 { font-size: 1rem; padding: 16px 18px; margin: 0; border-bottom: 1px solid var(--fm-border); }
+    .table-container table { width: 100%; border-collapse: collapse; }
+    .table-container th, .table-container td { padding: .8rem 1rem; text-align: left; border-bottom: 1px solid var(--fm-border); }
+    .table-container th { color: var(--fm-text-muted); background: var(--fm-surface-muted); font-size: .72rem; text-transform: uppercase; letter-spacing: .05em; }
+    .table-container tr:hover { background-color: color-mix(in srgb, var(--fm-primary) 6%, transparent); }
+    @media (max-width: 920px) { .reports-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+    @media (max-width: 640px) { .reports-container { padding: 1rem; } .reports-grid { grid-template-columns: 1fr; } }
   </style>
 {% endblock %}
 
 {% block content %}
 <div class="reports-container">
-  <div class="reports-title">Rapporter</div>
+  <section class="fm-report-hero mb-4">
+    <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 position-relative">
+      <div>
+        <div class="fm-hero-eyebrow"><i class="fas fa-file-lines"></i> Personlige rapporter</div>
+        <h1 class="fm-hero-title">Rapporter</h1>
+        <p class="fm-hero-subtitle">Overblik over kreditforbrug, app-aktivitet og historiske transaktioner i et mere læsbart format.</p>
+      </div>
+      <a href="/dashboard" class="btn btn-outline-primary"><i class="fas fa-arrow-left me-1"></i>Dashboard</a>
+    </div>
+  </section>
   
   <!-- Summary Section -->
-  <div class="summary-section">
+  <div class="reports-grid mb-4">
     <div class="summary-box">
       <h3>App Usage</h3>
       {% if app_usage %}
-        <ul style="list-style: none; padding: 0;">
+        <ul class="list-unstyled mb-0 small">
           {% for app, usage in app_usage.items() %}
-            <li>{{ app }}: {{ usage }}</li>
+            <li class="d-flex justify-content-between border-bottom py-1"><span>{{ app }}</span><strong>{{ usage }}</strong></li>
           {% endfor %}
         </ul>
       {% else %}
-        <p>Ingen data</p>
+        <p class="summary-value">Ingen data</p>
       {% endif %}
     </div>
     <div class="summary-box">
       <h3>Total Kreditter Forbrugt</h3>
-      <p>{{ total_used }}</p>
+      <p class="summary-value">{{ total_used }}</p>
     </div>
     <div class="summary-box">
       <h3>Tilgængelige Kreditter</h3>
-      <p>{{ current_credits }}</p>
+      <p class="summary-value">{{ current_credits }}</p>
     </div>
     <div class="summary-box">
       <h3>Social Exposure</h3>
-      <p>Følgere: {{ total_followers }}<br>Impressions: {{ total_impressions }}</p>
+      <p class="summary-value">{{ total_impressions }}</p>
+      <small class="text-muted">{{ total_followers }} følgere</small>
     </div>
     <div class="summary-box">
       <h3>Gennemsnitlig Daglig Forbrug</h3>
-      <p>{{ average_usage | round(2) }}</p>
+      <p class="summary-value">{{ average_usage | round(2) }}</p>
     </div>
     <div class="summary-box">
       <h3>Maksimalt Dagligt Forbrug</h3>
-      <p>{{ peak_usage }}</p>
-      <small>På {{ peak_day }}</small>
+      <p class="summary-value">{{ peak_usage }}</p>
+      <small class="text-muted">På {{ peak_day }}</small>
     </div>
   </div>
   
   <!-- Overall Credit Usage Line Chart -->
-  <div class="chart-container">
-    <canvas id="usageChart"></canvas>
-  </div>
-  
-  <!-- Last 7 Days Bar Chart -->
-  <div class="chart-container">
-    <canvas id="last7Chart"></canvas>
+  <div class="row g-4 mb-4">
+    <div class="col-xl-7">
+      <div class="chart-container h-100">
+        <h2 class="fm-card-title h6 mb-3"><i class="fas fa-chart-line text-primary"></i> Dagligt kreditforbrug</h2>
+        <canvas id="usageChart"></canvas>
+      </div>
+    </div>
+    <div class="col-xl-5">
+      <div class="chart-container h-100">
+        <h2 class="fm-card-title h6 mb-3"><i class="fas fa-chart-column text-primary"></i> Sidste 7 dage</h2>
+        <canvas id="last7Chart"></canvas>
+      </div>
+    </div>
   </div>
   
   <!-- Detailed Daily Usage Table -->
-  <div class="table-container">
-    <h2 style="text-align: center; margin-bottom: 1rem;">Daglig Kreditforbrug</h2>
+  <div class="table-container mb-4">
+    <h2>Dagligt kreditforbrug</h2>
     <table>
       <thead>
         <tr>
@@ -162,7 +144,7 @@
   
   <!-- Detailed Credit Transactions Table -->
   <div class="table-container">
-    <h2 style="text-align: center; margin-bottom: 1rem;">Detaljeret Kredittransaktioner</h2>
+    <h2>Detaljerede kredittransaktioner</h2>
     <table>
       <thead>
         <tr>
@@ -183,9 +165,6 @@
     </table>
   </div>
   
-  <div class="text-center">
-    <a href="/reports" class="cta-button">Se alle rapporter</a>
-  </div>
 </div>
 
 <!-- Include Chart.js -->
@@ -201,7 +180,7 @@
         label: 'Dagligt Kreditforbrug',
         data: {{ chart_data|tojson }},
         fill: false,
-        borderColor: '#a855f7',
+        borderColor: '#0f766e',
         tension: 0.1
       }]
     },
@@ -224,7 +203,7 @@
       datasets: [{
         label: 'Kreditter forbrugt (sidste 7 dage)',
         data: {{ last7_usage|tojson }},
-        backgroundColor: '#a855f7'
+        backgroundColor: '#0f766e'
       }]
     },
     options: {

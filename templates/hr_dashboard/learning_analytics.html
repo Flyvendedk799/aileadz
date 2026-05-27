@@ -1,0 +1,156 @@
+{% extends "base.html" %}
+
+{% block title %}Learning Analytics - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 fm-workspace">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <section class="fm-page-hero mb-4">
+        <div class="row g-4 align-items-end position-relative">
+            <div class="col-xl-8">
+                <div class="fm-hero-eyebrow"><i class="fas fa-chart-line"></i> Learning analytics</div>
+                <h1 class="fm-hero-title">Læringsanalyse</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} — trends, kursuseffekt, afdelingssammenligning og engagementsmønstre for perioden.</p>
+            </div>
+            <div class="col-xl-4">
+                <div class="fm-hero-actions">
+                    <a href="?period=7d" class="btn btn-sm {% if period == '7d' %}btn-primary{% else %}btn-outline-primary{% endif %}">7 dage</a>
+                    <a href="?period=30d" class="btn btn-sm {% if period == '30d' %}btn-primary{% else %}btn-outline-primary{% endif %}">30 dage</a>
+                    <a href="?period=90d" class="btn btn-sm {% if period == '90d' %}btn-primary{% else %}btn-outline-primary{% endif %}">90 dage</a>
+                    <a href="?period=1y" class="btn btn-sm {% if period == '1y' %}btn-primary{% else %}btn-outline-primary{% endif %}">1 år</a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    {% set total_enrollments = learning_trends|sum(attribute='enrollments') %}
+    {% set total_completions = learning_trends|sum(attribute='completions') %}
+    {% set total_learners = learning_trends|sum(attribute='unique_learners') %}
+    {% set completion_rate = ((total_completions / total_enrollments * 100) if total_enrollments else 0)|round(1) %}
+    <div class="fm-signal-strip mb-4">
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Tilmeldinger</div>
+            <div class="fm-signal-value">{{ total_enrollments }}</div>
+            <div class="fm-signal-detail">I valgt periode</div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Gennemførsler</div>
+            <div class="fm-signal-value">{{ total_completions }}</div>
+            <div class="fm-signal-detail">{{ completion_rate }}% completion rate</div>
+            <div class="fm-progress-line"><span style="width: {{ [completion_rate, 100]|min }}%"></span></div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Unikke learners</div>
+            <div class="fm-signal-value">{{ total_learners }}</div>
+            <div class="fm-signal-detail">Dagligt summeret aktivitet</div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Kategorier</div>
+            <div class="fm-signal-value">{{ skills_gap_analysis|length }}</div>
+            <div class="fm-signal-detail">Efterspurgte kompetenceområder</div>
+        </div>
+    </div>
+
+    <div class="row g-4 mb-4">
+        <div class="col-xl-8">
+            <div class="card fm-data-card h-100">
+                <div class="card-header"><h2 class="fm-card-title h6"><i class="fas fa-chart-area text-primary"></i> Læringstrend</h2></div>
+                <div class="card-body"><canvas id="learningTrendChart" height="260"></canvas></div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="card fm-data-card h-100">
+                <div class="card-header"><h2 class="fm-card-title h6"><i class="fas fa-clock text-primary"></i> Engagement pr. time</h2></div>
+                <div class="card-body"><canvas id="hourlyEngagementChart" height="260"></canvas></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-6">
+            <div class="card fm-data-card h-100">
+                <div class="card-header"><h2 class="fm-card-title h6"><i class="fas fa-graduation-cap text-primary"></i> Populære kurser</h2></div>
+                <div class="card-body p-0">
+                    {% if popular_courses %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 fm-modern-table">
+                            <thead><tr><th class="ps-4">Kursus</th><th>Tilmeldt</th><th>Rate</th><th class="text-end pe-4">Investering</th></tr></thead>
+                            <tbody>
+                                {% for course in popular_courses %}
+                                <tr>
+                                    <td class="ps-4 fw-bold">{{ course.product_title or course.product_handle }}</td>
+                                    <td>{{ course.enrollments }}</td>
+                                    <td><span class="fm-soft-badge">{{ course.completion_rate or 0 }}%</span></td>
+                                    <td class="text-end pe-4 fw-bold">{{ "{:,.0f}".format(course.revenue or 0).replace(",", ".") }} kr</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">Ingen kursusdata i perioden.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-6">
+            <div class="card fm-data-card h-100">
+                <div class="card-header"><h2 class="fm-card-title h6"><i class="fas fa-sitemap text-primary"></i> Afdelinger</h2></div>
+                <div class="card-body p-0">
+                    {% if department_comparison %}
+                    <div class="table-responsive">
+                        <table class="table table-hover align-middle mb-0 fm-modern-table">
+                            <thead><tr><th class="ps-4">Afdeling</th><th>Deltagelse</th><th>Completion</th><th class="text-end pe-4">Investering</th></tr></thead>
+                            <tbody>
+                                {% for dept in department_comparison %}
+                                <tr>
+                                    <td class="ps-4 fw-bold">{{ dept.department or 'Uden afdeling' }}</td>
+                                    <td>{{ dept.participation_rate or 0 }}%</td>
+                                    <td style="min-width:150px;"><div class="d-flex gap-2 align-items-center"><div class="fm-progress-line flex-grow-1 m-0"><span style="width: {{ [dept.completion_rate or 0, 100]|min }}%"></span></div><small>{{ dept.completion_rate or 0 }}%</small></div></td>
+                                    <td class="text-end pe-4 fw-bold">{{ "{:,.0f}".format(dept.training_investment or 0).replace(",", ".") }} kr</td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="text-center py-5 text-muted">Ingen afdelingsdata i perioden.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+    Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+    Chart.defaults.color = '#64748b';
+    var fmPrimary = '#0f766e';
+    var fmSecondary = '#2563eb';
+
+    new Chart(document.getElementById('learningTrendChart'), {
+        type: 'line',
+        data: {
+            labels: {{ chart_data.learning_trends.dates | tojson }},
+            datasets: [
+                { label: 'Tilmeldinger', data: {{ chart_data.learning_trends.enrollments | tojson }}, borderColor: fmPrimary, backgroundColor: 'rgba(15,118,110,0.08)', fill: true, tension: .35 },
+                { label: 'Gennemført', data: {{ chart_data.learning_trends.completions | tojson }}, borderColor: fmSecondary, backgroundColor: 'rgba(37,99,235,0.08)', fill: true, tension: .35 }
+            ]
+        },
+        options: { responsive: true, plugins: { legend: { position: 'bottom' } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+    });
+
+    new Chart(document.getElementById('hourlyEngagementChart'), {
+        type: 'bar',
+        data: {
+            labels: {{ chart_data.hourly_engagement.hours | tojson }},
+            datasets: [{ label: 'Interaktioner', data: {{ chart_data.hourly_engagement.interactions | tojson }}, backgroundColor: 'rgba(15,118,110,.35)', borderRadius: 6 }]
+        },
+        options: { responsive: true, plugins: { legend: { display: false } }, scales: { y: { beginAtZero: true }, x: { grid: { display: false } } } }
+    });
+</script>
+{% endblock %}

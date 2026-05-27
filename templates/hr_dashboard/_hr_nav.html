@@ -30,8 +30,9 @@
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'approvals' else '' }}"
                     href="{{ url_for('hr_dashboard.pending_approvals') }}">
                     <i class="fas fa-check-circle"></i> Godkendelser
-                    {% if pending_approval_count is defined and pending_approval_count > 0 %}
-                    <span class="hr-nav-badge">{{ pending_approval_count }}</span>
+                    {% set approval_badge_count = pending_approval_count if pending_approval_count is defined else (pending_approvals_count if pending_approvals_count is defined else 0) %}
+                    {% if approval_badge_count > 0 %}
+                    <span class="hr-nav-badge">{{ approval_badge_count }}</span>
                     {% endif %}
                 </a>
             </div>
@@ -69,6 +70,10 @@
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'learning_paths' else '' }}"
                     href="{{ url_for('hr_dashboard.learning_paths') }}">
                     <i class="fas fa-road"></i> Laeringsforloeb
+                </a>
+                <a class="hr-nav-link {{ 'active' if active_hr_page == 'learning_analytics' else '' }}"
+                    href="{{ url_for('hr_dashboard.learning_analytics') }}">
+                    <i class="fas fa-chart-line"></i> Learning BI
                 </a>
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'reports' else '' }}"
                     href="{{ url_for('hr_dashboard.reports') }}">
@@ -118,11 +123,13 @@
 
 <style>
     .hr-nav {
-        background: var(--card-bg);
-        border-radius: 12px;
-        box-shadow: var(--box-shadow);
+        background: color-mix(in srgb, var(--fm-surface-solid) 90%, transparent);
+        border: 1px solid var(--fm-border);
+        border-radius: 8px;
+        box-shadow: var(--fm-shadow-xs);
         padding: 0;
         overflow: hidden;
+        backdrop-filter: blur(18px);
     }
 
     .hr-nav-inner {
@@ -139,7 +146,7 @@
         padding: 14px 20px;
         font-weight: 700;
         font-size: 0.95rem;
-        color: #4e73df;
+        color: var(--fm-primary);
         text-decoration: none;
         white-space: nowrap;
     }
@@ -198,8 +205,8 @@
         padding: 8px 12px;
         border-radius: 8px;
         font-size: 0.82rem;
-        font-weight: 500;
-        color: var(--muted-text);
+        font-weight: 650;
+        color: var(--fm-text-muted) !important;
         text-decoration: none;
         white-space: nowrap;
         transition: all 0.15s ease;
@@ -207,23 +214,23 @@
     }
 
     .hr-nav-link:hover {
-        background: rgba(255, 255, 255, 0.06);
-        color: var(--text-color);
+        background: color-mix(in srgb, var(--fm-primary) 8%, transparent);
+        color: var(--fm-primary) !important;
     }
 
     .light-mode .hr-nav-link:hover {
-        background: #f1f5f9;
+        background: color-mix(in srgb, var(--fm-primary) 8%, #fff);
     }
 
     .hr-nav-link.active {
-        background: linear-gradient(135deg, #4e73df 0%, #224abe 100%);
-        color: #fff;
-        box-shadow: 0 2px 8px rgba(78, 115, 223, 0.3);
+        background: linear-gradient(135deg, var(--fm-primary), var(--fm-secondary));
+        color: #fff !important;
+        box-shadow: 0 8px 18px color-mix(in srgb, var(--fm-primary) 20%, transparent);
     }
 
     .hr-nav-link.active:hover {
-        background: linear-gradient(135deg, #5a7fe6 0%, #2a56c8 100%);
-        color: #fff;
+        background: linear-gradient(135deg, var(--fm-primary), var(--fm-secondary));
+        color: #fff !important;
     }
 
     .hr-nav-link i {
@@ -274,24 +281,25 @@
     }
 
     .hr-nav-action-btn.add {
-        background: #dcfce7;
-        color: #16a34a;
+        background: color-mix(in srgb, var(--fm-success) 12%, transparent);
+        color: #047857;
+        border: 1px solid color-mix(in srgb, var(--fm-success) 20%, transparent);
     }
 
     .hr-nav-action-btn.add:hover {
-        background: #16a34a;
+        background: #047857;
         color: #fff;
     }
 
     .hr-nav-action-btn.ai {
-        background: linear-gradient(135deg, #4e73df, #6366f1);
+        background: linear-gradient(135deg, var(--fm-primary), var(--fm-secondary));
         color: #fff;
     }
 
     .hr-nav-action-btn.ai:hover {
-        background: linear-gradient(135deg, #5a7fe6, #7578f5);
+        background: linear-gradient(135deg, var(--fm-primary-strong), var(--fm-secondary));
         color: #fff;
-        box-shadow: 0 2px 8px rgba(99, 102, 241, 0.3);
+        box-shadow: 0 8px 18px color-mix(in srgb, var(--fm-primary) 22%, transparent);
     }
 
     /* Responsive */
@@ -305,7 +313,7 @@
         }
     }
 
-    @media (max-width: 992px) {
+    @media (max-width: 1280px) {
         .hr-nav-toggle {
             display: block;
         }
@@ -325,7 +333,7 @@
             flex-direction: column;
             padding-left: 0;
             gap: 0;
-            border-bottom: 1px solid #f1f5f9;
+            border-bottom: 1px solid var(--fm-border);
             padding-bottom: 8px;
             margin-bottom: 4px;
         }

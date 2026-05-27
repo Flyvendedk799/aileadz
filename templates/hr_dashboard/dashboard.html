@@ -3,7 +3,7 @@
 {% block title %}HR Analytics Dashboard - {{ company.company_name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-hr-dashboard">
     <!-- HR Sub-Navigation -->
     {% include 'hr_dashboard/_hr_nav.html' %}
 
@@ -61,30 +61,28 @@
 {% endif %}
 
 <!-- Header Section -->
-<div class="row mb-4">
-    <div class="col-12">
-        <div class="d-flex justify-content-between align-items-center">
-            <div>
-                <h1 class="h3 mb-0">
-                    <i class="fas fa-building text-primary me-2"></i>
-                    {{ company.company_name }}
-                </h1>
-                <p class="text-muted mb-0">Virksomhedsoversigt &mdash; HR Analytics, medarbejdere og uddannelse</p>
-            </div>
-            <div class="d-flex gap-2">
-                <button class="btn btn-outline-primary btn-sm" onclick="exportReport()">
-                    <i class="fas fa-download"></i> Eksporter
+<section class="fm-hr-hero mb-4">
+    <div class="row g-4 align-items-end position-relative">
+        <div class="col-xl-8">
+            <div class="fm-hero-eyebrow"><i class="fas fa-building"></i> HR command center</div>
+            <h1 class="fm-hero-title">{{ company.company_name }}</h1>
+            <p class="fm-hero-subtitle">Et samlet overblik over medarbejdere, kompetencer, læring, budgetter og AI-aktivitet. Bygget til hurtige HR-beslutninger uden at miste detaljerne.</p>
+        </div>
+        <div class="col-xl-4">
+            <div class="fm-hero-actions">
+                <button class="btn btn-outline-primary" onclick="exportReport()">
+                    <i class="fas fa-download me-1"></i> Eksporter
                 </button>
-                <a href="{{ url_for('companies.settings') }}" class="btn btn-outline-secondary btn-sm">
-                    <i class="fas fa-cog"></i> Indstillinger
+                <a href="{{ url_for('hr_dashboard.reports') }}" class="btn btn-outline-primary">
+                    <i class="fas fa-file-lines me-1"></i> Rapporter
                 </a>
-                <a href="{{ url_for('companies.add_employee') }}" class="btn btn-success btn-sm">
-                    <i class="fas fa-user-plus"></i> Tilfoej medarbejder
+                <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary">
+                    <i class="fas fa-user-plus me-1"></i> Tilfoej
                 </a>
             </div>
         </div>
     </div>
-</div>
+</section>
 
 <!-- Key Performance Indicators -->
 <div class="row mb-4 g-3">
@@ -139,6 +137,34 @@
                 </div>
             </div>
         </div>
+    </div>
+</div>
+
+<!-- Operating Signals -->
+<div class="fm-signal-strip mb-4">
+    <div class="fm-signal-item">
+        <div class="fm-signal-label">Aktiv medarbejderbase</div>
+        <div class="fm-signal-value">{{ dashboard_health.active_employee_rate|default(0) }}%</div>
+        <div class="fm-signal-detail">{{ hr_metrics.active_employees or 0 }} aktive af {{ hr_metrics.total_employees or 0 }}</div>
+        <div class="fm-progress-line"><span style="width: {{ [dashboard_health.active_employee_rate|default(0), 100]|min }}%"></span></div>
+    </div>
+    <div class="fm-signal-item">
+        <div class="fm-signal-label">Kompetencedækning</div>
+        <div class="fm-signal-value">{{ dashboard_health.skills_coverage_rate|default(0) }}%</div>
+        <div class="fm-signal-detail">{{ skills_summary.employees_with_skills or 0 }} medarbejdere med registrerede kompetencer</div>
+        <div class="fm-progress-line"><span style="width: {{ [dashboard_health.skills_coverage_rate|default(0), 100]|min }}%"></span></div>
+    </div>
+    <div class="fm-signal-item">
+        <div class="fm-signal-label">Læringsdeltagelse</div>
+        <div class="fm-signal-value">{{ training_participation_rate or 0 }}%</div>
+        <div class="fm-signal-detail">{{ learning_metrics.employees_with_training or 0 }} medarbejdere med kurser</div>
+        <div class="fm-progress-line"><span style="width: {{ [training_participation_rate or 0, 100]|min }}%"></span></div>
+    </div>
+    <div class="fm-signal-item">
+        <div class="fm-signal-label">AI-engagement</div>
+        <div class="fm-signal-value">{{ engagement_rate or 0 }}%</div>
+        <div class="fm-signal-detail">{{ engagement_metrics.employees_using_chatbot or 0 }} medarbejdere bruger assistenten</div>
+        <div class="fm-progress-line"><span style="width: {{ [engagement_rate or 0, 100]|min }}%"></span></div>
     </div>
 </div>
 
@@ -668,48 +694,56 @@
 <!-- Skills / Kompetence Overview -->
 <div class="row mb-4">
     <div class="col-12">
-        <div class="card shadow">
-            <div class="card-header py-3 d-flex justify-content-between align-items-center">
-                <h6 class="m-0 fw-bold text-primary">
-                    <i class="fas fa-brain me-2"></i>Kompetenceoversigt
-                </h6>
-                <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-outline-primary">
-                    <i class="fas fa-arrow-right me-1"></i>Se alle kompetencer
-                </a>
+        <div class="card shadow fm-data-card fm-skill-board">
+            <div class="card-header py-3 d-flex justify-content-between align-items-center flex-wrap gap-2">
+                <div>
+                    <h6 class="m-0 fw-bold text-primary">
+                        <i class="fas fa-brain me-2"></i>Kompetenceoverblik
+                    </h6>
+                    <small class="text-muted">Dækning, topkompetencer og kritiske gab samlet i én beslutningsflade</small>
+                </div>
+                <div class="d-flex gap-2 flex-wrap">
+                    <span class="fm-soft-badge"><i class="fas fa-signal"></i>{{ dashboard_health.avg_top_skill_level|default(0) }}/5 gns.</span>
+                    <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-outline-primary">
+                        <i class="fas fa-arrow-right me-1"></i>Se kompetencer
+                    </a>
+                </div>
             </div>
             <div class="card-body">
                 {% if skills_summary and skills_summary.total_skills > 0 %}
-                <div class="row mb-3">
-                    <div class="col-md-3 text-center">
-                        <h3 class="fw-bold text-primary mb-0">{{ skills_summary.total_skills }}</h3>
-                        <small class="text-muted">Unikke kompetencer</small>
+                <div class="fm-signal-strip mb-4">
+                    <div class="fm-signal-item">
+                        <div class="fm-signal-label">Unikke kompetencer</div>
+                        <div class="fm-signal-value">{{ skills_summary.total_skills }}</div>
+                        <div class="fm-signal-detail">På tværs af enterprise- og chatbotprofiler</div>
                     </div>
-                    <div class="col-md-3 text-center">
-                        <h3 class="fw-bold text-success mb-0">{{ skills_summary.employees_with_skills }}</h3>
-                        <small class="text-muted">Medarbejdere med kompetencer</small>
+                    <div class="fm-signal-item">
+                        <div class="fm-signal-label">Dækkede medarbejdere</div>
+                        <div class="fm-signal-value">{{ skills_summary.employees_with_skills }}</div>
+                        <div class="fm-signal-detail">{{ dashboard_health.skills_coverage_rate|default(0) }}% af medarbejderbasen</div>
                     </div>
-                    <div class="col-md-3 text-center">
-                        <h3 class="fw-bold text-{{ 'danger' if skills_summary.critical_gaps > 0 else 'success' }} mb-0">
-                            {{ skills_summary.critical_gaps }}</h3>
-                        <small class="text-muted">Kritiske gab</small>
+                    <div class="fm-signal-item">
+                        <div class="fm-signal-label">Kritiske gab</div>
+                        <div class="fm-signal-value text-{{ 'danger' if skills_summary.critical_gaps > 0 else 'success' }}">{{ skills_summary.critical_gaps }}</div>
+                        <div class="fm-signal-detail">{{ dashboard_health.critical_skill_names|default([])|join(', ') if dashboard_health.critical_skill_names else 'Ingen kritiske gab' }}</div>
                     </div>
-                    <div class="col-md-3 text-center">
-                        <h3 class="fw-bold text-info mb-0">{{ skills_summary.top_skills|length }}</h3>
-                        <small class="text-muted">Top kompetencer</small>
+                    <div class="fm-signal-item">
+                        <div class="fm-signal-label">Topkompetencer</div>
+                        <div class="fm-signal-value">{{ skills_summary.top_skills|length }}</div>
+                        <div class="fm-signal-detail">Stærkeste registrerede områder</div>
                     </div>
                 </div>
 
                 {% if skills_summary.top_skills %}
-                <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Top kompetencer i virksomheden</h6>
-                <div class="row">
+                <h6 class="text-muted mb-2"><i class="fas fa-star me-1"></i>Topkompetencer i virksomheden</h6>
+                <div class="row g-3 mb-4">
                     {% for skill in skills_summary.top_skills %}
-                    <div class="col-md-4 col-lg-2 mb-2">
-                        <div class="border rounded p-2 text-center h-100" style="background: #f8fafc;">
+                    <div class="col-md-4 col-lg-2">
+                        <div class="fm-skill-tile text-center">
                             <strong class="d-block small">{{ skill.skill_name }}</strong>
-                            <div class="d-flex justify-content-center gap-1 my-1">
+                            <div class="fm-level-dots justify-content-center my-2">
                                 {% for i in range(5) %}
-                                <span
-                                    style="color: {{ '#f59e0b' if i < (skill.avg_level|int) else '#e5e7eb' }};">&#9679;</span>
+                                <span class="{{ 'active' if i < (skill.avg_level|int) else '' }}"></span>
                                 {% endfor %}
                             </div>
                             <small class="text-muted">{{ skill.employee_count }} medarbejder{{ 'e' if
@@ -721,10 +755,9 @@
                 {% endif %}
 
                 {% if skills_summary.critical_gap_list %}
-                <h6 class="text-muted mt-3 mb-2"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Kritiske
-                    kompetencegab</h6>
+                <h6 class="text-muted mt-3 mb-2"><i class="fas fa-exclamation-triangle text-warning me-1"></i>Kritiske kompetencegab</h6>
                 <div class="table-responsive">
-                    <table class="table table-sm table-hover mb-0">
+                    <table class="table table-sm table-hover mb-0 fm-modern-table">
                         <thead>
                             <tr>
                                 <th>Kompetence</th>
@@ -749,7 +782,7 @@
                 {% endif %}
 
                 {% else %}
-                <div class="text-center py-4">
+                <div class="text-center py-5">
                     <i class="fas fa-brain fa-3x text-muted mb-3 d-block"></i>
                     <p class="text-muted mb-2">Ingen kompetencedata registreret endnu</p>
                     <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-sm btn-primary">
@@ -1071,16 +1104,17 @@
         align-items: center;
         gap: 16px;
         padding: 20px;
-        border-radius: 12px;
-        background: var(--card-bg);
-        box-shadow: var(--box-shadow);
+        border: 1px solid var(--fm-border);
+        border-radius: 8px;
+        background: linear-gradient(180deg, var(--fm-surface-solid), color-mix(in srgb, var(--fm-surface) 92%, transparent));
+        box-shadow: var(--fm-shadow-xs);
         transition: transform 0.15s ease, box-shadow 0.15s ease;
         height: 100%;
     }
 
     .kpi-card:hover {
         transform: translateY(-2px);
-        box-shadow: 0 6px 16px rgba(0, 0, 0, 0.15);
+        box-shadow: var(--fm-shadow-sm);
     }
 
     .kpi-icon {
@@ -1105,8 +1139,8 @@
     }
 
     .kpi-purple .kpi-icon {
-        background: rgba(168, 85, 247, 0.1);
-        color: #a855f7;
+        background: rgba(15, 118, 110, 0.1);
+        color: #0f766e;
     }
 
     .kpi-amber .kpi-icon {
@@ -1123,7 +1157,7 @@
     }
 
     .kpi-purple {
-        border-left: 3px solid #a855f7;
+        border-left: 3px solid #0f766e;
     }
 
     .kpi-amber {
@@ -1156,19 +1190,20 @@
     .card {
         border: none;
         border-radius: 12px;
-        background: var(--card-bg);
-        box-shadow: var(--box-shadow);
+        background: linear-gradient(180deg, var(--fm-surface-solid), color-mix(in srgb, var(--fm-surface) 92%, transparent));
+        border: 1px solid var(--fm-border);
+        box-shadow: var(--fm-shadow-xs);
         overflow: hidden;
     }
 
     .card-header {
-        background: var(--card-bg);
-        border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+        background: transparent;
+        border-bottom: 1px solid var(--fm-border);
         padding: 16px 20px;
     }
 
     .light-mode .card-header {
-        border-bottom-color: #f1f5f9;
+        border-bottom-color: var(--fm-border);
     }
 
     .card-body {
@@ -1205,7 +1240,7 @@
         width: 38px;
         height: 38px;
         border-radius: 10px;
-        background: linear-gradient(135deg, #4e73df, #6366f1);
+        background: linear-gradient(135deg, var(--fm-primary), var(--fm-secondary));
         color: white;
         display: flex;
         align-items: center;
@@ -1241,7 +1276,7 @@
     }
 
     .bg-gradient-primary {
-        background: linear-gradient(135deg, #4e73df, #6366f1);
+        background: linear-gradient(135deg, #4e73df, #2563eb);
     }
 
     .bg-gradient-success {
@@ -1297,7 +1332,37 @@
     }
 
     .table-hover tbody tr:hover {
-        background-color: rgba(78, 115, 223, 0.03);
+        background-color: color-mix(in srgb, var(--fm-primary) 6%, transparent);
+    }
+
+    .fm-hr-dashboard .btn-primary,
+    .fm-hr-dashboard .btn-success {
+        background: var(--fm-primary);
+        border-color: var(--fm-primary);
+    }
+
+    .fm-hr-dashboard .btn-primary:hover,
+    .fm-hr-dashboard .btn-success:hover {
+        background: var(--fm-primary-strong);
+        border-color: var(--fm-primary-strong);
+    }
+
+    .fm-skill-board .fm-signal-strip {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+
+    .fm-skill-board .fm-signal-item {
+        background: color-mix(in srgb, var(--fm-surface-solid) 88%, transparent);
+    }
+
+    .fm-skill-board .fm-skill-tile {
+        transition: transform 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    .fm-skill-board .fm-skill-tile:hover {
+        transform: translateY(-2px);
+        border-color: var(--fm-border-strong);
+        box-shadow: var(--fm-shadow-sm);
     }
 
     /* === Alerts === */
@@ -1330,6 +1395,10 @@
 
     /* === Responsive === */
     @media (max-width: 768px) {
+        .fm-skill-board .fm-signal-strip {
+            grid-template-columns: 1fr;
+        }
+
         .kpi-card {
             padding: 14px;
         }

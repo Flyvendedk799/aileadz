@@ -1,0 +1,158 @@
+{% extends "base.html" %}
+
+{% block title %}Medarbejderfremdrift - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 fm-workspace">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <section class="fm-page-hero mb-4">
+        <div class="row g-4 align-items-end position-relative">
+            <div class="col-xl-8">
+                <div class="fm-hero-eyebrow"><i class="fas fa-users-viewfinder"></i> Employee progress</div>
+                <h1 class="fm-hero-title">Medarbejderfremdrift</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} — Følg læringsaktivitet, kursusstatus, AI-engagement og risikosignaler pr. medarbejder.</p>
+            </div>
+            <div class="col-xl-4">
+                <div class="fm-hero-actions">
+                    <a href="{{ url_for('hr_dashboard.export_report', report_type='employee_progress') }}" class="btn btn-primary">
+                        <i class="fas fa-file-csv me-1"></i> Eksporter CSV
+                    </a>
+                    <a href="{{ url_for('hr_dashboard.reports') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-file-lines me-1"></i> Rapporter
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="fm-signal-strip mb-4">
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Medarbejdere</div>
+            <div class="fm-signal-value">{{ summary_stats.total_count or 0 }}</div>
+            <div class="fm-signal-detail">{{ summary_stats.active_count or 0 }} aktive</div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Gns. fremdrift</div>
+            <div class="fm-signal-value">{{ "%.1f"|format(summary_stats.overall_avg_progress or 0) }}%</div>
+            <div class="fm-progress-line"><span style="width: {{ [summary_stats.overall_avg_progress or 0, 100]|min }}%"></span></div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Aktive learners</div>
+            <div class="fm-signal-value">{{ summary_stats.active_learners or 0 }}</div>
+            <div class="fm-signal-detail">Seneste 30 dage</div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Filtreret view</div>
+            <div class="fm-signal-value">{{ employees|length }}</div>
+            <div class="fm-signal-detail">Rækker i tabellen</div>
+        </div>
+    </div>
+
+    <form class="fm-filter-bar mb-4" method="GET">
+        <div class="row g-3 align-items-end">
+            <div class="col-lg-3">
+                <label class="form-label small fw-bold text-muted">Afdeling</label>
+                <select class="form-select" name="department">
+                    <option value="">Alle afdelinger</option>
+                    {% for department in departments %}
+                    <option value="{{ department }}" {% if current_filters.department == department %}selected{% endif %}>{{ department }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-lg-3">
+                <label class="form-label small fw-bold text-muted">Status</label>
+                <select class="form-select" name="status">
+                    <option value="">Alle statusser</option>
+                    <option value="active" {% if current_filters.status == 'active' %}selected{% endif %}>Aktiv</option>
+                    <option value="inactive" {% if current_filters.status == 'inactive' %}selected{% endif %}>Inaktiv</option>
+                </select>
+            </div>
+            <div class="col-lg-4">
+                <label class="form-label small fw-bold text-muted">Sortering</label>
+                <select class="form-select" name="sort">
+                    <option value="progress_desc" {% if current_filters.sort == 'progress_desc' %}selected{% endif %}>Fremdrift høj-lav</option>
+                    <option value="progress_asc" {% if current_filters.sort == 'progress_asc' %}selected{% endif %}>Fremdrift lav-høj</option>
+                    <option value="courses_desc" {% if current_filters.sort == 'courses_desc' %}selected{% endif %}>Flest gennemførte kurser</option>
+                    <option value="engagement_desc" {% if current_filters.sort == 'engagement_desc' %}selected{% endif %}>Mest chatbot-engagement</option>
+                    <option value="name_asc" {% if current_filters.sort == 'name_asc' %}selected{% endif %}>Navn A-Z</option>
+                </select>
+            </div>
+            <div class="col-lg-2">
+                <button class="btn btn-primary w-100" type="submit"><i class="fas fa-filter me-1"></i>Filtrer</button>
+            </div>
+        </div>
+    </form>
+
+    <div class="card fm-data-card">
+        <div class="card-header">
+            <h2 class="fm-card-title h6"><i class="fas fa-list-check text-primary"></i> Medarbejderstatus</h2>
+        </div>
+        <div class="card-body p-0">
+            {% if employees %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 fm-modern-table">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Medarbejder</th>
+                            <th>Afdeling</th>
+                            <th>Kurser</th>
+                            <th>Fremdrift</th>
+                            <th>AI</th>
+                            <th>Risiko</th>
+                            <th class="text-end pe-4"></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for employee in employees %}
+                        <tr>
+                            <td class="ps-4">
+                                <div class="fw-bold">{{ employee.username }}</div>
+                                <small class="text-muted">{{ employee.email }}</small>
+                            </td>
+                            <td>
+                                <span class="fm-soft-badge">{{ employee.department or 'General' }}</span>
+                                <div class="small text-muted mt-1">{{ employee.job_title or employee.role or 'Medarbejder' }}</div>
+                            </td>
+                            <td>
+                                <strong>{{ employee.courses_completed or 0 }}</strong>/<span class="text-muted">{{ employee.courses_enrolled or 0 }}</span>
+                                {% if employee.overdue_courses %}
+                                <div class="small text-danger">{{ employee.overdue_courses }} forsinket</div>
+                                {% endif %}
+                            </td>
+                            <td style="min-width:180px;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="fm-progress-line flex-grow-1 m-0"><span style="width: {{ [employee.avg_progress or 0, 100]|min }}%"></span></div>
+                                    <small class="fw-bold">{{ "%.1f"|format(employee.avg_progress or 0) }}%</small>
+                                </div>
+                            </td>
+                            <td><span class="fw-bold">{{ employee.total_chatbot_queries or 0 }}</span><small class="text-muted d-block">samtaler</small></td>
+                            <td>
+                                {% if employee.overdue_courses %}
+                                <span class="badge bg-danger">Kræver opfølgning</span>
+                                {% elif (employee.avg_progress or 0) >= 70 %}
+                                <span class="badge bg-success">God fremdrift</span>
+                                {% else %}
+                                <span class="badge bg-warning text-dark">Hold øje</span>
+                                {% endif %}
+                            </td>
+                            <td class="text-end pe-4">
+                                <a href="{{ url_for('hr_dashboard.employee_details', user_id=employee.user_id) }}" class="btn btn-sm btn-outline-primary">
+                                    <i class="fas fa-eye"></i>
+                                </a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-users fa-2x text-muted mb-3"></i>
+                <p class="text-muted mb-0">Ingen medarbejdere matcher filtrene.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

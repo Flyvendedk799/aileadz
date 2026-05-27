@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort
 from markupsafe import escape
 import json
 import logging
@@ -39,7 +39,7 @@ def _dkprice_filter(value):
 
 @app1_bp.route('/')
 def index():
-    return render_template('index.html', logged_in_user=session.get('user'))
+    return render_template('index.html', logged_in_user=session.get('user'), demo_mode=False, demo_messages=[])
 
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -358,43 +358,67 @@ def get_course_detail(query, product):
 
 # Single-course HTML snippet
 PRODUCT_MEDIA_TEMPLATE = """
-<div style="background: rgba(255,255,255,0.03); border-radius: 10px; overflow: hidden; font-family: 'Inter', Arial, sans-serif; color: #d4d4d8; width: 100%; max-width: 420px; border: 1px solid rgba(255,255,255,0.06);">
+<div class="fm-product-card course-card premium-course-card premium-course-featured" onclick="this.classList.toggle('expanded');">
   {% if product.image and product.image.src %}
-  <div style="background: rgba(0,0,0,0.15); padding: 20px; display: flex; justify-content: center; align-items: center;">
-    <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}" style="max-height: 80px; object-fit: contain;">
+  <div class="premium-course-media">
+    <img src="{{ product.image.src | e }}" alt="{{ product.title | e }}">
   </div>
   {% endif %}
-  <div style="padding: 16px;">
-    <div style="display: flex; justify-content: space-between; align-items: flex-start; gap: 10px; margin-bottom: 10px;">
-      <div>
-        <h3 style="margin: 0 0 2px; font-size: 15px; font-weight: 700; color: #f4f4f5; line-height: 1.3;">
-          <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#f4f4f5'">{{ product.title | e }}</a>
+  <div class="premium-course-body">
+    <div class="premium-course-header">
+      <div class="premium-course-main">
+        <div class="premium-course-kicker" title="{{ product.vendor | e }}">{{ product.vendor | e }}</div>
+        <h3 class="premium-course-title">
+          <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" onclick="event.stopPropagation();">{{ product.title | e }}</a>
         </h3>
-        <div style="font-size: 12px; color: #52525b; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 200px;" title="{{ product.vendor | e }}">{{ product.vendor | e }}</div>
       </div>
-      <div style="font-size: 14px; font-weight: 700; color: #a855f7; white-space: nowrap; flex-shrink: 0; text-align: right;">
+      <div class="premium-course-price">
         {% set price = (product.variants[0].price | string | trim) if product.variants and product.variants|length > 0 else '0' %}
         {% set price_val = price | float(-1) %}
         {% if product._original_price %}
-        <div style="font-size: 11px; color: #71717a; text-decoration: line-through; font-weight: 400;">kr {{ product._original_price | dkprice }}</div>
+        <span class="premium-course-price-old">kr {{ product._original_price | dkprice }}</span>
         {% endif %}
-        {% if price in ["", "None", "N/A"] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
+        <span>{% if price in ["", "None", "N/A"] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}</span>
         {% if product._agreement_name %}
-        <div style="font-size: 10px; color: #22c55e; font-weight: 500;">{{ product._agreement_name | e }}</div>
+        <span class="premium-course-agreement">{{ product._agreement_name | e }}</span>
         {% endif %}
       </div>
     </div>
     {% if product.ai_summary or product.body_html %}
     {% set _desc = get_short_description(product) %}
-    <div style="font-size: 13px; color: #a1a1aa; line-height: 1.5; margin-bottom: 12px;">{{ (_desc[:150] + '...') if _desc|length > 150 else _desc | e }}</div>
+    <div class="premium-course-summary">{{ (_desc[:170] + '...') if _desc|length > 170 else _desc | e }}</div>
     {% endif %}
-    <div style="display: flex; gap: 16px; margin-bottom: 14px; font-size: 12px; color: #52525b;">
-      <span>{% if product.variants and product.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
+    <div class="premium-course-meta">
+      <span>{% if product.variants and product.variants|length > 1 %}{{ product.variants|length }} varianter{% else %}1 variant{% endif %}</span>
       <span>{% if product.location %}{{ product.location | e }}{% else %}Online{% endif %}</span>
+      <span class="premium-expand-label">Se tider</span>
     </div>
-    <div style="display: flex; gap: 8px;">
-      <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" style="flex: 1; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 9px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
-      <button onclick="event.stopPropagation(); window.attachProductToChat('{{ product.handle | e }}', '{{ product.title | e }}')" style="padding: 9px 12px; border-radius: 8px; border: 1px solid rgba(168,85,247,0.25); background: rgba(168,85,247,0.08); color: #c084fc; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; font-family: inherit;" onmouseover="this.style.background='rgba(168,85,247,0.15)';this.style.borderColor='rgba(168,85,247,0.4)'" onmouseout="this.style.background='rgba(168,85,247,0.08)';this.style.borderColor='rgba(168,85,247,0.25)'">Spørg om</button>
+    {% if product.variants %}
+    <div class="course-details-wrapper">
+      <div class="course-details-inner">
+        <div class="course-details-content">
+          <div class="variant-panel">
+            <div class="variant-panel-title">Tider og lokationer</div>
+            {% for variant in product.variants[:5] %}
+            {% set v_price = (variant.price | string | trim) if variant.price is defined else '' %}
+            {% set v_price_val = v_price | float(-1) %}
+            <div class="variant-row">
+              <span class="variant-date">{{ variant.option2 or 'Dato efter aftale' }}</span>
+              <span class="variant-location">{{ variant.option1 or product.location or 'Online' }}</span>
+              <span class="variant-price">{% if v_price in ["", "None", "N/A"] or v_price_val == 0 %}Gratis{% elif v_price_val < 0 %}Efter aftale{% else %}kr {{ v_price | dkprice }}{% endif %}</span>
+            </div>
+            {% endfor %}
+            {% if product.variants|length > 5 %}
+            <div class="variant-more">+{{ product.variants|length - 5 }} flere muligheder</div>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+    {% endif %}
+    <div class="premium-course-actions">
+      <a class="course-primary-action" onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ product.handle }}" target="_blank">Vælg kursus</a>
+      <button class="course-secondary-action" onclick='event.stopPropagation(); window.attachProductToChat({{ product.handle | tojson }}, {{ product.title | tojson }})'>Spørg om</button>
     </div>
   </div>
 </div>
@@ -456,46 +480,60 @@ def render_product_media(product):
     return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=p, get_short_description=get_short_description)
 
 MULTIPLE_COURSES_TEMPLATE = """
-<div style="display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 420px;">
+<div class="premium-course-stack">
   {% for course in courses %}
-    <div class="course-card" onclick="this.classList.toggle('expanded');">
-      <div class="course-card-header">
-        <div style="background: rgba(0,0,0,0.2); border-radius: 8px; width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; overflow: hidden;">
+    <div class="course-card premium-course-card" onclick="this.classList.toggle('expanded');">
+      <div class="premium-course-header premium-course-header-compact">
+        <div class="premium-course-thumb">
           {% if course.image and course.image.src %}
-              <img src="{{ course.image.src | e }}" style="max-width: 80%; max-height: 80%; object-fit: contain;">
+              <img src="{{ course.image.src | e }}" alt="{{ course.title | e }}">
           {% else %}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#52525b" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
           {% endif %}
         </div>
-        <div style="flex-grow: 1; min-width: 0; font-family: 'Inter', Arial, sans-serif;">
-          <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 2px;">
-              <h4 style="margin: 0; font-size: 13.5px; font-weight: 600; line-height: 1.3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%; color: #e4e4e7;">
-                  <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="color: inherit; text-decoration: none;" onmouseover="this.style.color='#c084fc'" onmouseout="this.style.color='#e4e4e7'">{{ course.title | e }}</a>
-              </h4>
-              <div style="font-size: 12.5px; font-weight: 700; color: #a855f7; white-space: nowrap; text-align: right;">
-                  {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
-                  {% set price_val = price | float(-1) %}
-                  {% if course._original_price %}<span style="font-size:10px;color:#71717a;text-decoration:line-through;font-weight:400;">kr {{ course._original_price | dkprice }}</span> {% endif %}{% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}
-              </div>
-          </div>
-          <div style="display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: #52525b;">
-              <div style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 65%;">{{ course.vendor | e }}</div>
-              <svg class="course-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          </div>
+        <div class="premium-course-main">
+          <div class="premium-course-kicker" title="{{ course.vendor | e }}">{{ course.vendor | e }}</div>
+          <h4 class="premium-course-title">
+            <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" onclick="event.stopPropagation();">{{ course.title | e }}</a>
+          </h4>
         </div>
+        <div class="premium-course-price">
+          {% set price = (course.variants[0].price | string | trim) if course.variants and course.variants|length > 0 else '0' %}
+          {% set price_val = price | float(-1) %}
+          {% if course._original_price %}<span class="premium-course-price-old">kr {{ course._original_price | dkprice }}</span>{% endif %}
+          <span>{% if price in ['', 'None', 'N/A'] or price_val == 0 %}Gratis{% elif price_val < 0 %}Pris på forespørgsel{% else %}kr {{ price | dkprice }}{% endif %}</span>
+        </div>
+        <svg class="course-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>
       </div>
       <div class="course-details-wrapper">
         <div class="course-details-inner">
-          <div class="course-details-content" style="font-family: 'Inter', Arial, sans-serif;">
+          <div class="course-details-content">
             {% set _cdesc = get_short_description(course) %}
-            <div style="margin-top: 8px; font-size: 13px; color: #a1a1aa; line-height: 1.55;">{{ (_cdesc[:150] + '...') if _cdesc|length > 150 else _cdesc | e }}</div>
-            <div style="display: flex; gap: 16px; margin: 10px 0; font-size: 12px; color: #52525b;">
-              <span>{% if course.variants and course.variants|length > 1 %}Flere varianter{% else %}Én variant{% endif %}</span>
+            <div class="premium-course-summary">{{ (_cdesc[:170] + '...') if _cdesc|length > 170 else _cdesc | e }}</div>
+            <div class="premium-course-meta">
+              <span>{% if course.variants and course.variants|length > 1 %}{{ course.variants|length }} varianter{% else %}1 variant{% endif %}</span>
               <span>{% if course.location %}{{ course.location | e }}{% else %}Online{% endif %}</span>
             </div>
-            <div style="display: flex; gap: 8px;">
-              <a onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" style="flex: 1; text-align: center; background: #7c3aed; color: #fff; text-decoration: none; padding: 8px 0; border-radius: 8px; font-size: 13px; font-weight: 600; transition: background 0.15s;" onmouseover="this.style.background='#6d28d9'" onmouseout="this.style.background='#7c3aed'">Vælg kursus</a>
-              <button onclick="event.stopPropagation(); window.attachProductToChat('{{ course.handle | e }}', '{{ course.title | e }}')" style="padding: 8px 12px; border-radius: 8px; border: 1px solid rgba(168,85,247,0.25); background: rgba(168,85,247,0.08); color: #c084fc; font-size: 12px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: all 0.15s; font-family: inherit;" onmouseover="this.style.background='rgba(168,85,247,0.15)';this.style.borderColor='rgba(168,85,247,0.4)'" onmouseout="this.style.background='rgba(168,85,247,0.08)';this.style.borderColor='rgba(168,85,247,0.25)'">Spørg om</button>
+            {% if course.variants %}
+            <div class="variant-panel">
+              <div class="variant-panel-title">Tider og lokationer</div>
+              {% for variant in course.variants[:5] %}
+              {% set v_price = (variant.price | string | trim) if variant.price is defined else '' %}
+              {% set v_price_val = v_price | float(-1) %}
+              <div class="variant-row">
+                <span class="variant-date">{{ variant.option2 or 'Dato efter aftale' }}</span>
+                <span class="variant-location">{{ variant.option1 or course.location or 'Online' }}</span>
+                <span class="variant-price">{% if v_price in ["", "None", "N/A"] or v_price_val == 0 %}Gratis{% elif v_price_val < 0 %}Efter aftale{% else %}kr {{ v_price | dkprice }}{% endif %}</span>
+              </div>
+              {% endfor %}
+              {% if course.variants|length > 5 %}
+              <div class="variant-more">+{{ course.variants|length - 5 }} flere muligheder</div>
+              {% endif %}
+            </div>
+            {% endif %}
+            <div class="premium-course-actions">
+              <a class="course-primary-action" onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank">Vælg kursus</a>
+              <button class="course-secondary-action" onclick='event.stopPropagation(); window.attachProductToChat({{ course.handle | tojson }}, {{ course.title | tojson }})'>Spørg om</button>
             </div>
           </div>
         </div>
@@ -516,6 +554,165 @@ def render_multi_course_media(courses):
         c2 = _apply_product_discount(c2)
         enriched.append(c2)
     return render_template_string(MULTIPLE_COURSES_TEMPLATE, courses=enriched, get_short_description=get_short_description, unique_prefix=unique_prefix)
+
+
+def _demo_enabled():
+    """Keep the visual chat demo available locally without exposing it in production by accident."""
+    host = request.host.split(":", 1)[0]
+    return host in {"127.0.0.1", "localhost", "::1"} or os.getenv("FUTUREMATCH_ENABLE_DEMO_CHAT") == "1"
+
+
+def _demo_asset(label, start="#0b6b63", end="#2563eb"):
+    svg = (
+        "<svg xmlns='http://www.w3.org/2000/svg' width='320' height='180' viewBox='0 0 320 180'>"
+        f"<defs><linearGradient id='g' x1='0' y1='0' x2='1' y2='1'><stop stop-color='{start}'/><stop offset='1' stop-color='{end}'/></linearGradient></defs>"
+        "<rect width='320' height='180' rx='24' fill='url(#g)'/>"
+        "<circle cx='270' cy='40' r='58' fill='rgba(255,255,255,.16)'/>"
+        "<circle cx='42' cy='150' r='72' fill='rgba(255,255,255,.10)'/>"
+        "<text x='28' y='100' fill='white' font-family='Inter,Arial,sans-serif' font-size='24' font-weight='700'>"
+        f"{label}</text></svg>"
+    )
+    return "data:image/svg+xml;utf8," + svg.replace("#", "%23").replace(" ", "%20")
+
+
+def _demo_products():
+    return [
+        {
+            "title": "Agil projektledelse for teams",
+            "handle": "demo-agil-projektledelse",
+            "vendor": "Futurematch Academy",
+            "ai_summary": "Et praktisk forløb for projektledere og team leads, der vil skabe mere fremdrift, bedre prioritering og klarere samarbejde i agile miljøer.",
+            "location": "København",
+            "image": {"src": _demo_asset("Agil ledelse", "#0b6b63", "#2563eb")},
+            "variants": [
+                {"price": "12900.00", "option1": "København", "option2": "18. juni 2026"},
+                {"price": "12900.00", "option1": "Aarhus", "option2": "24. august 2026"},
+            ],
+        },
+        {
+            "title": "AI i HR og rekruttering",
+            "handle": "demo-ai-hr-rekruttering",
+            "vendor": "PeopleTech Institute",
+            "ai_summary": "Lær at bruge AI sikkert i screening, onboarding og kompetencekortlægning uden at miste transparens, etik og menneskelig vurdering.",
+            "location": "Online",
+            "image": {"src": _demo_asset("AI i HR", "#2563eb", "#7c3aed")},
+            "variants": [
+                {"price": "7900.00", "option1": "Online", "option2": "3. juli 2026"},
+                {"price": "8900.00", "option1": "København", "option2": "21. august 2026"},
+            ],
+        },
+        {
+            "title": "Power BI for HR-beslutninger",
+            "handle": "demo-power-bi-hr",
+            "vendor": "DataLab Learning",
+            "ai_summary": "Byg dashboards for fravær, kompetencegab, læringsbudgetter og medarbejderudvikling med et sprog, ledelsen kan handle på.",
+            "location": "Aarhus",
+            "image": {"src": _demo_asset("HR analytics", "#0891b2", "#0b6b63")},
+            "variants": [
+                {"price": "9800.00", "option1": "Aarhus", "option2": "11. september 2026"},
+                {"price": "8800.00", "option1": "Online", "option2": "2. oktober 2026"},
+            ],
+        },
+    ]
+
+
+def _demo_message_payload():
+    return [
+        {
+            "role": "user",
+            "content": "Vi skal finde kurser til HR og teamledere. Vis noget realistisk med priser og muligheder.",
+        },
+        {
+            "role": "assistant",
+            "content": (
+                "Her er et realistisk test-scenarie med produktkort, priser, leverandører og næste handlinger. "
+                "Kortene kan udvides, og du kan bruge **Spørg om** for at teste produkt-reference flowet."
+            ),
+            "products_html": render_multi_course_media(_demo_products()),
+            "suggestions": [
+                "Sammenlign de tre kurser",
+                "Hvilket kursus passer bedst til HR?",
+                "Vis et enkelt produktkort",
+            ],
+        },
+    ]
+
+
+def _demo_sse(payload):
+    return "data: " + json.dumps(payload, ensure_ascii=False) + "\n\n"
+
+
+def _chunk_demo_text(text, size=120):
+    for idx in range(0, len(text), size):
+        yield {"type": "chunk", "content": text[idx:idx + size]}
+
+
+@app1_bp.route("/demo")
+def demo_chat():
+    if not _demo_enabled():
+        abort(404)
+    return render_template(
+        "index.html",
+        logged_in_user="Demo HR Manager",
+        demo_mode=True,
+        demo_messages=_demo_message_payload(),
+    )
+
+
+@app1_bp.route("/demo/ask", methods=["POST"])
+def demo_ask():
+    if not _demo_enabled():
+        abort(404)
+
+    data = request.json or {}
+    query = (data.get("query") or "").lower()
+    products = _demo_products()
+
+    if "enkelt" in query or "agil" in query or "produktkort" in query:
+        text = (
+            "Her er et enkelt produktkort, så du kan teste layoutet for én anbefaling. "
+            "Det viser titel, leverandør, pris, kort beskrivelse, lokation og CTA’er."
+        )
+        events = list(_chunk_demo_text(text)) + [
+            {"type": "product", "html": render_product_media(products[0])},
+            {"type": "suggestions", "items": ["Hvad koster det?", "Hvornår starter kurset?", "Sammenlign med AI i HR"]},
+        ]
+    elif "sammenlign" in query:
+        text = (
+            "Kort sammenligning: **Agil projektledelse** er bedst til team leads, "
+            "**AI i HR** er stærkest for HR-processer, og **Power BI for HR** passer bedst til ledelsesrapportering. "
+            "Hvis målet er hurtig business value, ville jeg starte med AI i HR og derefter Power BI."
+        )
+        events = list(_chunk_demo_text(text)) + [
+            {"type": "product", "html": render_multi_course_media(products)},
+            {"type": "suggestions", "items": ["Lav en anbefaling til ledelsen", "Vis budget på 25.000 kr", "Hvilket kursus er online?"]},
+        ]
+    elif "budget" in query:
+        text = (
+            "Med et budget på 25.000 kr kan I vælge **AI i HR og rekruttering** plus **Power BI for HR-beslutninger**. "
+            "Det giver både procesforbedring og bedre rapportering uden at bruge hele budgettet."
+        )
+        events = list(_chunk_demo_text(text)) + [
+            {"type": "product", "html": render_multi_course_media(products[1:])},
+            {"type": "suggestions", "items": ["Lav en HR-plan", "Vis kun online kurser", "Hvad skal vi vælge først?"]},
+        ]
+    else:
+        text = (
+            "Demoen svarer uden OpenAI eller databasekald. Her er et anbefalingsflow med produktkort, "
+            "klikbare kurser, forslagchips og feedback-knapper, så du kan vurdere selve UI’et."
+        )
+        events = list(_chunk_demo_text(text)) + [
+            {"type": "product", "html": render_multi_course_media(products)},
+            {"type": "suggestions", "items": ["Sammenlign de tre kurser", "Vis et enkelt produktkort", "Lav en anbefaling til HR"]},
+        ]
+
+    def generate():
+        yield _demo_sse({"type": "meta", "message_index": 1})
+        for event in events:
+            yield _demo_sse(event)
+        yield "data: [DONE]\n\n"
+
+    return Response(stream_with_context(generate()), mimetype="text/event-stream")
 
 # 6.3: Anonymous browser token endpoint
 @app1_bp.route("/anon-token", methods=["POST"])
@@ -1163,7 +1360,7 @@ def widget_loader_js(token):
         return "/* Widget not found */", 404, {'Content-Type': 'application/javascript'}
 
     # Extract settings
-    primary = widget.get('theme_primary_color', '#4F46E5')
+    primary = widget.get('theme_primary_color', '#0f766e')
     text_color = widget.get('theme_text_color', '#FFFFFF')
     position = widget.get('position', 'bottom-right') or 'bottom-right'
     size = widget.get('widget_size', 'medium')

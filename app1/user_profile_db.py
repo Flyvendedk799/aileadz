@@ -5,6 +5,7 @@ Manages: skills, work experience, education, completed courses, and profile summ
 import time
 from flask import current_app
 import MySQLdb.cursors
+from db_compat import refresh_flask_mysql_connection
 
 
 # ── Table Creation (run once) ──
@@ -92,6 +93,7 @@ def ensure_tables():
     if _tables_ensured:
         return
     try:
+        refresh_flask_mysql_connection(current_app.mysql)
         cur = current_app.mysql.connection.cursor()
         for i, sql in enumerate(_TABLES_SQL):
             try:
@@ -414,6 +416,7 @@ def save_conversation(username, session_id, messages):
     import json as _json
     # Only save user + assistant messages (skip system/tool for size)
     saved = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
+    refresh_flask_mysql_connection(current_app.mysql)
     cur = current_app.mysql.connection.cursor()
     cur.execute(
         "INSERT INTO user_conversations (username, session_id, messages) VALUES (%s, %s, %s) "

@@ -3,31 +3,30 @@
 {% block title %}Company Reports - {{ company_name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-workspace fm-ops-page">
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
-            <div class="d-flex justify-content-between align-items-center">
-                <div>
-                    <h2><i class="fas fa-chart-bar text-primary"></i> Company Reports</h2>
-                    <p class="text-muted mb-0">{{ company_name }} - Analytics & Insights</p>
-                </div>
-                <div>
-                    <a href="{{ url_for('companies.dashboard') }}" class="btn btn-outline-secondary me-2">
-                        <i class="fas fa-arrow-left"></i> Back to Dashboard
-                    </a>
-                    <button class="btn btn-primary" onclick="exportAllReports()">
-                        <i class="fas fa-download"></i> Export All
-                    </button>
-                </div>
+    <section class="fm-page-hero mb-4">
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 position-relative">
+            <div>
+                <div class="fm-hero-eyebrow"><i class="fas fa-chart-bar"></i> Company intelligence</div>
+                <h1 class="fm-hero-title">Virksomhedsrapporter</h1>
+                <p class="fm-hero-subtitle">{{ company_name }} - analytics, kursusordrer og chatbotindsigt samlet til ledelsesbrug.</p>
+            </div>
+            <div class="fm-hero-actions">
+                <a href="{{ url_for('companies.dashboard') }}" class="btn btn-outline-secondary">
+                    <i class="fas fa-arrow-left"></i> Dashboard
+                </a>
+                <button class="btn btn-primary" onclick="exportAllReports()">
+                    <i class="fas fa-download"></i> Eksporter alt
+                </button>
             </div>
         </div>
-    </div>
+    </section>
 
     <!-- Report Summary Cards -->
     <div class="row mb-4">
         <div class="col-md-3">
-            <div class="card text-center">
+            <div class="card text-center fm-ops-metric">
                 <div class="card-body">
                     <i class="fas fa-users fa-3x text-primary mb-3"></i>
                     <h4>{{ stats.total_interactions }}</h4>
@@ -36,7 +35,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center">
+            <div class="card text-center fm-ops-metric">
                 <div class="card-body">
                     <i class="fas fa-shopping-cart fa-3x text-success mb-3"></i>
                     <h4>{{ stats.total_orders }}</h4>
@@ -45,7 +44,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center">
+            <div class="card text-center fm-ops-metric">
                 <div class="card-body">
                     <i class="fas fa-star fa-3x text-warning mb-3"></i>
                     <h4>{{ stats.avg_quality_score }}</h4>
@@ -54,7 +53,7 @@
             </div>
         </div>
         <div class="col-md-3">
-            <div class="card text-center">
+            <div class="card text-center fm-ops-metric">
                 <div class="card-body">
                     <i class="fas fa-graduation-cap fa-3x text-info mb-3"></i>
                     <h4>{{ stats.completion_rate }}%</h4>
@@ -111,14 +110,14 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-shopping-cart"></i> Recent Course Orders</h5>
-                    <a href="{{ url_for('multitenant_reports.export_orders') }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('multitenant_reports.export_analytics') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-download"></i> Export
                     </a>
                 </div>
                 <div class="card-body">
                     {% if recent_orders %}
                         <div class="table-responsive">
-                            <table class="table table-hover">
+                            <table class="table table-hover fm-modern-table">
                                 <thead>
                                     <tr>
                                         <th>Employee</th>
@@ -227,7 +226,7 @@
             <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <h5 class="mb-0"><i class="fas fa-robot"></i> Chatbot Interaction Analytics</h5>
-                    <a href="{{ url_for('multitenant_reports.export_interactions') }}" class="btn btn-sm btn-outline-primary">
+                    <a href="{{ url_for('multitenant_reports.export_analytics') }}" class="btn btn-sm btn-outline-primary">
                         <i class="fas fa-download"></i> Export
                     </a>
                 </div>
@@ -261,7 +260,7 @@
 
                     {% if recent_interactions %}
                     <div class="table-responsive">
-                        <table class="table table-sm">
+                        <table class="table table-sm fm-modern-table">
                             <thead>
                                 <tr>
                                     <th>Employee</th>
@@ -302,24 +301,9 @@
 {% block extra_scripts %}
 <script>
 function exportAllReports() {
-    // Create a form to submit export request
-    const form = document.createElement('form');
-    form.method = 'POST';
-    form.action = '{{ url_for("multitenant_reports.export_all") }}';
-    
-    // Add current filters as hidden inputs
     const params = new URLSearchParams(window.location.search);
-    for (const [key, value] of params) {
-        const input = document.createElement('input');
-        input.type = 'hidden';
-        input.name = key;
-        input.value = value;
-        form.appendChild(input);
-    }
-    
-    document.body.appendChild(form);
-    form.submit();
-    document.body.removeChild(form);
+    const query = params.toString();
+    window.location.href = '{{ url_for("multitenant_reports.export_analytics") }}' + (query ? '?' + query : '');
 }
 </script>
 {% endblock %}

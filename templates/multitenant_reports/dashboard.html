@@ -1,11 +1,28 @@
 {% extends "base.html" %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-reporting-dashboard">
 
     <!-- Header -->
-    <div class="row mb-4">
-        <div class="col-12">
+    <section class="fm-report-hero mb-4">
+        <div class="row g-4 align-items-end position-relative">
+            <div class="col-xl-8">
+                <div class="fm-hero-eyebrow"><i class="fas fa-chart-bar"></i> Virksomhedsrapporter</div>
+                <h1 class="fm-hero-title">Chatbot &amp; kursusrapporter</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} — Indsigt i chatbot-brug, kurser, samtaler og ordrer med ledelsesklart overblik.</p>
+            </div>
+            <div class="col-xl-4">
+                <div class="fm-report-actions">
+                    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-tachometer-alt me-1"></i> HR Dashboard
+                    </a>
+                    <a href="/" class="btn btn-outline-secondary">
+                        <i class="fas fa-arrow-left me-1"></i> Tilbage
+                    </a>
+                </div>
+            </div>
+        </div>
+        <div class="d-none">
             <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                 <div>
                     <h1 class="h3 mb-1 fw-bold">
@@ -24,7 +41,7 @@
                 </div>
             </div>
         </div>
-    </div>
+    </section>
 
     <!-- KPI Cards -->
     <div class="row mb-4 g-3">
@@ -371,15 +388,16 @@
     align-items: center;
     gap: 16px;
     padding: 20px;
-    border-radius: 12px;
-    background: var(--card-bg);
-    box-shadow: var(--box-shadow);
+    border: 1px solid var(--fm-border);
+    border-radius: 8px;
+    background: linear-gradient(180deg, var(--fm-surface-solid), color-mix(in srgb, var(--fm-surface) 92%, transparent));
+    box-shadow: var(--fm-shadow-xs);
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     height: 100%;
 }
 .kpi-card:hover {
     transform: translateY(-2px);
-    box-shadow: 0 6px 16px rgba(0,0,0,0.15);
+    box-shadow: var(--fm-shadow-sm);
 }
 .kpi-icon {
     width: 48px;
@@ -391,11 +409,11 @@
     font-size: 1.2rem;
     flex-shrink: 0;
 }
-.kpi-purple .kpi-icon { background: rgba(168,85,247,0.15); color: #a855f7; }
+.kpi-purple .kpi-icon { background: rgba(15,118,110,0.15); color: #0f766e; }
 .kpi-green .kpi-icon { background: rgba(16,185,129,0.15); color: #10b981; }
 .kpi-blue .kpi-icon { background: rgba(59,130,246,0.15); color: #3b82f6; }
 .kpi-amber .kpi-icon { background: rgba(245,158,11,0.15); color: #f59e0b; }
-.kpi-purple { border-left: 3px solid #a855f7; }
+.kpi-purple { border-left: 3px solid #0f766e; }
 .kpi-green { border-left: 3px solid #10b981; }
 .kpi-blue { border-left: 3px solid #3b82f6; }
 .kpi-amber { border-left: 3px solid #f59e0b; }
@@ -421,19 +439,19 @@
 
 /* Report Cards */
 .report-card {
-    border: none;
-    border-radius: 12px;
-    background: var(--card-bg);
-    box-shadow: var(--box-shadow);
+    border: 1px solid var(--fm-border);
+    border-radius: 8px;
+    background: linear-gradient(180deg, var(--fm-surface-solid), color-mix(in srgb, var(--fm-surface) 92%, transparent));
+    box-shadow: var(--fm-shadow-xs);
     overflow: hidden;
 }
 .report-card .card-header {
-    background: var(--card-bg);
-    border-bottom: 1px solid rgba(255,255,255,0.06);
+    background: transparent;
+    border-bottom: 1px solid var(--fm-border);
     padding: 16px 20px;
 }
 .light-mode .report-card .card-header {
-    border-bottom-color: #f1f5f9;
+    border-bottom-color: var(--fm-border);
 }
 .report-card .card-body { padding: 20px; }
 
@@ -442,8 +460,8 @@
     width: 32px;
     height: 32px;
     border-radius: 8px;
-    background: rgba(78,115,223,0.15);
-    color: #4e73df;
+    background: color-mix(in srgb, var(--fm-primary) 10%, transparent);
+    color: var(--fm-primary);
     display: flex;
     align-items: center;
     justify-content: center;
@@ -485,7 +503,7 @@
     vertical-align: middle;
 }
 .table-hover tbody tr:hover {
-    background-color: rgba(78,115,223,0.05);
+    background-color: color-mix(in srgb, var(--fm-primary) 6%, transparent);
 }
 
 /* Responsive */
@@ -500,7 +518,7 @@
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
-  const purple = '#a855f7', green = '#10b981', blue = '#3b82f6', amber = '#f59e0b', pink = '#ec4899', cyan = '#06b6d4';
+  const purple = '#0f766e', green = '#10b981', blue = '#3b82f6', amber = '#f59e0b', pink = '#f59e0b', cyan = '#06b6d4';
   Chart.defaults.font.family = "'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
   Chart.defaults.color = '#94a3b8';
   Chart.defaults.borderColor = 'rgba(0,0,0,0.04)';
@@ -514,7 +532,7 @@
         label: 'Forespørgsler',
         data: {{ daily_chatbot_query_data | tojson }},
         borderColor: purple,
-        backgroundColor: 'rgba(168,85,247,0.08)',
+        backgroundColor: 'rgba(15,118,110,0.08)',
         fill: true, tension: 0.4, pointRadius: 3, pointHoverRadius: 6,
         pointBackgroundColor: purple, borderWidth: 2
       }]
@@ -552,7 +570,7 @@
     type: 'bar',
     data: {
       labels: hours.map(h => h + ':00'),
-      datasets: [{ label: 'Forespørgsler', data: hours.map(h => hourlyData[h] || 0), backgroundColor: 'rgba(168,85,247,0.4)', hoverBackgroundColor: purple, borderRadius: 6 }]
+      datasets: [{ label: 'Forespørgsler', data: hours.map(h => hourlyData[h] || 0), backgroundColor: 'rgba(15,118,110,0.4)', hoverBackgroundColor: purple, borderRadius: 6 }]
     },
     options: {
       responsive: true,

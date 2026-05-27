@@ -2,11 +2,31 @@
 {% block title %}Kompetencer - {{ company.company_name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-skills-workspace">
     {% include 'hr_dashboard/_hr_nav.html' %}
 
     <!-- Header -->
-    <div class="d-flex justify-content-between align-items-end mb-5 flex-wrap gap-3">
+    <section class="fm-skills-hero mb-4">
+        <div class="row g-4 align-items-end position-relative">
+            <div class="col-xl-8">
+                <div class="fm-hero-eyebrow"><i class="fas fa-brain"></i> Kompetenceintelligens</div>
+                <h1 class="fm-hero-title">Kompetencer & skill gaps</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} — Strategisk analyse af kompetencemål, aktuelle niveauer og udviklingsbehov på tværs af afdelinger.</p>
+            </div>
+            <div class="col-xl-4">
+                <div class="fm-hero-actions">
+                    <button class="btn btn-outline-primary" data-bs-toggle="modal" data-bs-target="#assignSkillModal">
+                        <i class="fas fa-user-plus me-1"></i> Tildel
+                    </button>
+                    <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTargetModal">
+                        <i class="fas fa-plus me-1"></i> Nyt mål
+                    </button>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="d-none">
         <div>
             <nav aria-label="breadcrumb" class="mb-2">
                 <ol class="breadcrumb mb-0">
@@ -28,6 +48,30 @@
                 data-bs-target="#addTargetModal">
                 <i class="fas fa-plus me-2"></i> Nyt kompetencemaal
             </button>
+        </div>
+    </div>
+
+    <div class="fm-signal-strip mb-4">
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Kompetencedækning</div>
+            <div class="fm-signal-value">{{ skill_dashboard.coverage_rate|default(0) }}%</div>
+            <div class="fm-signal-detail">{{ skill_dashboard.employees_with_skills|default(0) }} af {{ skill_dashboard.total_active_employees|default(0) }} aktive medarbejdere</div>
+            <div class="fm-progress-line"><span style="width: {{ [skill_dashboard.coverage_rate|default(0), 100]|min }}%"></span></div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Gennemsnitligt niveau</div>
+            <div class="fm-signal-value">{{ skill_dashboard.avg_skill_level|default(0) }}/5</div>
+            <div class="fm-signal-detail">{{ skill_dashboard.skill_assignments|default(0) }} registrerede skill assignments</div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Kritiske/moderate gab</div>
+            <div class="fm-signal-value">{{ critical_gaps }}/{{ skill_dashboard.moderate_gaps|default(0) }}</div>
+            <div class="fm-signal-detail">Kritiske og moderate udviklingsbehov</div>
+        </div>
+        <div class="fm-signal-item">
+            <div class="fm-signal-label">Prioriterede mål</div>
+            <div class="fm-signal-value">{{ skill_dashboard.priority_counts.high|default(0) }}</div>
+            <div class="fm-signal-detail">Høj prioritet · {{ skill_dashboard.priority_counts.medium|default(0) }} medium</div>
         </div>
     </div>
 
@@ -110,7 +154,7 @@
                 <div class="card-header py-3 d-flex justify-content-between align-items-center">
                     <div class="d-flex align-items-center">
                         <div class="dept-avatar me-3"
-                            style="width:32px; height:32px; background:rgba(99,102,241,0.1); color:#6366f1; border-radius:8px; display:flex; align-items:center; justify-content:center;">
+                            style="width:32px; height:32px; background:rgba(37,99,235,0.1); color:#2563eb; border-radius:8px; display:flex; align-items:center; justify-content:center;">
                             <i class="fas fa-sitemap small"></i>
                         </div>
                         <h6 class="mb-0 fw-bold">{{ dept }}</h6>
@@ -280,7 +324,7 @@
                                 <a href="{{ url_for('hr_dashboard.employee_details', user_id=emp.user_id) }}"
                                     class="d-flex align-items-center gap-3 py-2 text-decoration-none skill-emp-row rounded-3 px-2">
                                     <div class="avatar-sm"
-                                        style="width:28px; height:28px; border-radius:50%; background:{{ ['#4f46e5','#10b981','#8b5cf6','#f59e0b','#ec4899'][loop.index0 % 5] }}; display:flex; align-items:center; justify-content:center; color:white; font-size:10px; font-weight:bold;">
+                                        style="width:28px; height:28px; border-radius:50%; background:{{ ['#0f766e','#10b981','#0f766e','#f59e0b','#f59e0b'][loop.index0 % 5] }}; display:flex; align-items:center; justify-content:center; color:white; font-size:10px; font-weight:bold;">
                                         {{ emp.username[:1].upper() }}
                                     </div>
                                     <div class="overflow-hidden">
@@ -541,7 +585,10 @@
 {% block extra_styles %}
 <style>
     :root {
-        --primary-gradient: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        --primary-gradient: linear-gradient(135deg, var(--fm-primary) 0%, var(--fm-secondary) 100%);
+        --glass-bg: color-mix(in srgb, var(--fm-surface-solid) 88%, transparent);
+        --glass-border: var(--fm-border);
+        --soft-shadow: var(--fm-shadow-xs);
     }
 
     /* KPI Cards with Glassmorphism */
@@ -550,25 +597,26 @@
         align-items: center;
         gap: 16px;
         padding: 24px;
-        border-radius: 20px;
+        border-radius: 8px;
         background: var(--glass-bg);
         backdrop-filter: blur(8px);
         -webkit-backdrop-filter: blur(8px);
         border: 1px solid var(--glass-border);
         box-shadow: var(--soft-shadow);
-        transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
         height: 100%;
     }
 
     .kpi-card:hover {
-        transform: translateY(-5px);
-        box-shadow: 0 12px 40px 0 rgba(31, 38, 135, 0.12);
+        transform: translateY(-2px);
+        border-color: var(--fm-border-strong);
+        box-shadow: var(--fm-shadow-sm);
     }
 
     .kpi-icon {
         width: 52px;
         height: 52px;
-        border-radius: 14px;
+        border-radius: 8px;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -577,8 +625,8 @@
     }
 
     .kpi-blue .kpi-icon {
-        background: rgba(99, 102, 241, 0.1);
-        color: #6366f1;
+        background: rgba(37, 99, 235, 0.1);
+        color: #2563eb;
     }
 
     .kpi-red .kpi-icon {
@@ -592,8 +640,8 @@
     }
 
     .kpi-purple .kpi-icon {
-        background: rgba(168, 85, 247, 0.1);
-        color: #a855f7;
+        background: rgba(15, 118, 110, 0.1);
+        color: #0f766e;
     }
 
     .kpi-label {
@@ -601,7 +649,7 @@
         font-weight: 700;
         text-transform: uppercase;
         letter-spacing: 0.05em;
-        color: #64748b;
+        color: var(--fm-text-muted);
         margin-bottom: 4px;
     }
 
@@ -613,30 +661,30 @@
 
     /* Premium Tabs */
     .nav-pills .nav-link {
-        color: #64748b;
+        color: var(--fm-text-muted);
         font-weight: 600;
         font-size: 0.9rem;
-        border-radius: 12px;
+        border-radius: 8px;
         padding: 10px 20px;
         transition: all 0.2s;
         border: 1px solid transparent;
     }
 
     .nav-pills .nav-link:hover {
-        background: rgba(99, 102, 241, 0.05);
-        color: #6366f1;
+        background: color-mix(in srgb, var(--fm-primary) 8%, transparent);
+        color: var(--fm-primary);
     }
 
     .nav-pills .nav-link.active {
         background: var(--primary-gradient);
         color: #fff;
-        box-shadow: 0 4px 12px rgba(99, 102, 241, 0.35);
+        box-shadow: 0 8px 18px color-mix(in srgb, var(--fm-primary) 20%, transparent);
     }
 
     /* Data Cards & Tables */
     .card {
         border: 1px solid var(--glass-border);
-        border-radius: 20px;
+        border-radius: 8px;
         background: var(--glass-bg);
         backdrop-filter: blur(4px);
         box-shadow: var(--soft-shadow);
@@ -680,7 +728,7 @@
     }
 
     .level-bar.active-3 {
-        background: #6366f1;
+        background: #2563eb;
     }
 
     .level-bar.active-4 {
@@ -694,7 +742,7 @@
     /* Status Badges */
     .badge-soft {
         padding: 6px 12px;
-        border-radius: 8px;
+        border-radius: 999px;
         font-weight: 600;
         font-size: 0.75rem;
     }
@@ -715,15 +763,15 @@
     }
 
     .badge-soft-blue {
-        background: rgba(99, 102, 241, 0.1);
-        color: #6366f1;
+        background: color-mix(in srgb, var(--fm-secondary) 10%, transparent);
+        color: var(--fm-secondary);
     }
 
     /* Skill Matrix Grid */
     .skill-card-grid {
         display: grid;
         grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-        gap: 24px;
+        gap: 14px;
     }
 
     .skill-mini-card {
@@ -731,8 +779,9 @@
     }
 
     .skill-mini-card:hover {
-        transform: translateY(-8px);
-        box-shadow: 0 12px 30px rgba(0, 0, 0, 0.08) !important;
+        transform: translateY(-2px);
+        border-color: var(--fm-border-strong) !important;
+        box-shadow: var(--fm-shadow-sm) !important;
     }
 
     .skill-emp-row {
@@ -741,16 +790,16 @@
     }
 
     .skill-emp-row:hover {
-        background: rgba(99, 102, 241, 0.05) !important;
-        border-color: rgba(99, 102, 241, 0.1);
+        background: color-mix(in srgb, var(--fm-primary) 7%, transparent) !important;
+        border-color: color-mix(in srgb, var(--fm-primary) 14%, transparent);
     }
 
     .bg-purple {
-        background-color: #8b5cf6 !important;
+        background-color: #0f766e !important;
     }
 
     .text-purple {
-        color: #8b5cf6 !important;
+        color: #0f766e !important;
     }
 
     @media (max-width: 768px) {

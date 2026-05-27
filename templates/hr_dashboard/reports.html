@@ -1,0 +1,155 @@
+{% extends "base.html" %}
+
+{% block title %}HR Rapporter - {{ company.company_name }}{% endblock %}
+
+{% block content %}
+<div class="container-fluid mt-4 fm-workspace">
+    {% include 'hr_dashboard/_hr_nav.html' %}
+
+    <section class="fm-report-hero mb-4">
+        <div class="row g-4 align-items-end position-relative">
+            <div class="col-xl-8">
+                <div class="fm-hero-eyebrow"><i class="fas fa-file-export"></i> HR reporting</div>
+                <h1 class="fm-hero-title">Rapporter klar til ledelse og drift</h1>
+                <p class="fm-hero-subtitle">
+                    Eksporter medarbejderfremdrift, kursusgennemfoersel og afdelingsresume uden at aendre eksisterende data eller arbejdsgange.
+                </p>
+            </div>
+            <div class="col-xl-4">
+                <div class="fm-report-actions">
+                    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-primary">
+                        <i class="fas fa-chart-line me-1"></i> HR overblik
+                    </a>
+                    <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-primary">
+                        <i class="fas fa-brain me-1"></i> Kompetencer
+                    </a>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <div class="fm-report-strip mb-4">
+        <div class="fm-report-strip-item">
+            <div class="fm-report-strip-label">Aktive medarbejdere</div>
+            <div class="fm-report-strip-value">{{ report_summary.employees }}</div>
+            <div class="fm-report-strip-detail">{{ report_summary.departments }} afdelinger</div>
+        </div>
+        <div class="fm-report-strip-item">
+            <div class="fm-report-strip-label">Kursusordrer</div>
+            <div class="fm-report-strip-value">{{ report_summary.orders }}</div>
+            <div class="fm-report-strip-detail">{{ report_summary.completed_orders }} gennemfoert</div>
+            <div class="fm-progress-line"><span style="width: {{ [report_summary.completion_rate, 100]|min }}%"></span></div>
+        </div>
+        <div class="fm-report-strip-item">
+            <div class="fm-report-strip-label">Completion rate</div>
+            <div class="fm-report-strip-value">{{ report_summary.completion_rate }}%</div>
+            <div class="fm-report-strip-detail">Samlet gennemfoersel</div>
+        </div>
+        <div class="fm-report-strip-item">
+            <div class="fm-report-strip-label">Kompetencedata</div>
+            <div class="fm-report-strip-value">{{ report_summary.skills_recorded }}</div>
+            <div class="fm-report-strip-detail">{{ report_summary.skill_targets }} aktive kompetencemaal</div>
+        </div>
+    </div>
+
+    <div class="row g-4">
+        <div class="col-xl-8">
+            <div class="card fm-data-card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <h2 class="fm-card-title h6"><i class="fas fa-download text-primary"></i> Eksporter rapporter</h2>
+                    <span class="fm-soft-badge"><i class="fas fa-lock"></i> CSV uden kontraktændringer</span>
+                </div>
+                <div class="card-body">
+                    <div class="fm-report-grid">
+                        {% for report in report_cards %}
+                        <a class="fm-report-option" href="{{ url_for('hr_dashboard.export_report', report_type=report.type) }}">
+                            <span class="fm-report-icon"><i class="fas {{ report.icon }}"></i></span>
+                            <span>
+                                <strong class="d-block mb-1">{{ report.title }}</strong>
+                                <span class="text-muted small">{{ report.description }}</span>
+                            </span>
+                            <span class="btn btn-sm btn-outline-primary mt-auto">
+                                <i class="fas fa-file-csv me-1"></i> Download CSV
+                            </span>
+                        </a>
+                        {% endfor %}
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-xl-4">
+            <div class="card fm-data-card h-100">
+                <div class="card-header">
+                    <h2 class="fm-card-title h6"><i class="fas fa-shield-halved text-primary"></i> Rapportstatus</h2>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <span class="text-muted">Datakilde</span>
+                        <strong>Live database</strong>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <span class="text-muted">Format</span>
+                        <strong>CSV</strong>
+                    </div>
+                    <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+                        <span class="text-muted">Filnavn</span>
+                        <strong>{{ company.company_slug }} + dato</strong>
+                    </div>
+                    <div class="mt-3 p-3 rounded border" style="background: var(--fm-surface-muted);">
+                        <div class="fw-bold mb-1"><i class="fas fa-circle-info text-primary me-1"></i> Ingen backend-risiko</div>
+                        <p class="small text-muted mb-0">Eksporterne bruger de eksisterende endpoints og returnerer samme CSV-formater som foer.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card fm-data-card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h2 class="fm-card-title h6"><i class="fas fa-sitemap text-primary"></i> Afdelingspreview</h2>
+            <span class="text-muted small">Samme datagrundlag som afdelingsresume-eksporten</span>
+        </div>
+        <div class="card-body p-0">
+            {% if department_rows %}
+            <div class="table-responsive">
+                <table class="table table-hover align-middle mb-0 fm-modern-table">
+                    <thead>
+                        <tr>
+                            <th class="ps-4">Afdeling</th>
+                            <th>Medarbejdere</th>
+                            <th>Ordrer</th>
+                            <th>Gennemfoert</th>
+                            <th>Completion</th>
+                            <th class="text-end pe-4">Investering</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for dept in department_rows %}
+                        {% set completion = ((dept.completed / dept.orders * 100) if dept.orders else 0)|round(1) %}
+                        <tr>
+                            <td class="ps-4 fw-bold">{{ dept.department or 'Uden afdeling' }}</td>
+                            <td>{{ dept.employees or 0 }}</td>
+                            <td>{{ dept.orders or 0 }}</td>
+                            <td>{{ dept.completed or 0 }}</td>
+                            <td style="min-width:160px;">
+                                <div class="d-flex align-items-center gap-2">
+                                    <div class="fm-progress-line flex-grow-1 m-0"><span style="width: {{ [completion, 100]|min }}%"></span></div>
+                                    <small class="fw-bold">{{ completion }}%</small>
+                                </div>
+                            </td>
+                            <td class="text-end pe-4 fw-bold">{{ "{:,.0f}".format(dept.spend or 0).replace(",", ".") }} kr</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            {% else %}
+            <div class="text-center py-5">
+                <i class="fas fa-sitemap fa-2x text-muted mb-3"></i>
+                <p class="text-muted mb-0">Ingen afdelingsdata endnu.</p>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

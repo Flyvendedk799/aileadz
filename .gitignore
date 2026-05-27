@@ -1,5 +1,7 @@
 __pycache__/
 instance/
+.env
+.env.*
 static/temp/
 static/uploads/
 *.mp3

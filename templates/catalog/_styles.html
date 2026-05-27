@@ -1,0 +1,36 @@
+<style>
+  .catalog-wrap { max-width: 1440px; margin: 0 auto; }
+  .catalog-toolbar { display: flex; justify-content: space-between; align-items: end; gap: 18px; margin-bottom: 22px; flex-wrap: wrap; }
+  .catalog-eyebrow { color: var(--fm-primary); font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.08em; }
+  .catalog-title { margin: 0; font-weight: 800; color: var(--fm-text); }
+  .catalog-subtitle { margin: 6px 0 0; color: var(--fm-text-muted); max-width: 760px; }
+  .catalog-filter { border: 1px solid var(--fm-border); border-radius: 8px; background: var(--fm-surface); padding: 16px; margin-bottom: 22px; box-shadow: var(--fm-shadow-xs); }
+  .catalog-filter .form-label { font-size: 0.78rem; font-weight: 750; color: var(--fm-text-muted); margin-bottom: 5px; }
+  .catalog-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .catalog-card { display: flex; flex-direction: column; min-height: 100%; border: 1px solid var(--fm-border); border-radius: 8px; overflow: hidden; background: var(--fm-surface); color: var(--fm-text); text-decoration: none; box-shadow: var(--fm-shadow-xs); transition: transform 0.16s ease, box-shadow 0.16s ease; }
+  .catalog-card:hover { color: var(--fm-text); transform: translateY(-2px); box-shadow: var(--fm-shadow-md); }
+  .catalog-card-media { aspect-ratio: 16 / 8; background: color-mix(in srgb, var(--fm-primary) 8%, var(--fm-surface)); display: flex; align-items: center; justify-content: center; color: var(--fm-primary); }
+  .catalog-card-media img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .catalog-card-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .catalog-card-kicker { font-size: 0.76rem; color: var(--fm-text-muted); font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .catalog-card h3 { font-size: 1rem; line-height: 1.32; font-weight: 800; margin: 0; }
+  .catalog-card p { color: var(--fm-text-muted); font-size: 0.88rem; line-height: 1.45; margin: 0; }
+  .catalog-meta { display: flex; gap: 6px; flex-wrap: wrap; }
+  .catalog-pill { display: inline-flex; align-items: center; gap: 5px; border-radius: 999px; padding: 4px 8px; background: color-mix(in srgb, var(--fm-primary) 8%, transparent); color: var(--fm-primary); font-size: 0.75rem; font-weight: 700; }
+  .catalog-card-footer { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-top: auto; padding-top: 4px; }
+  .catalog-price { font-weight: 850; color: var(--fm-text); }
+  .catalog-empty { border: 1px dashed var(--fm-border); border-radius: 8px; padding: 48px 20px; text-align: center; color: var(--fm-text-muted); background: var(--fm-surface); }
+  .catalog-index-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 14px; }
+  .catalog-index-item { display: flex; justify-content: space-between; gap: 12px; align-items: center; border: 1px solid var(--fm-border); border-radius: 8px; background: var(--fm-surface); padding: 14px 16px; text-decoration: none; color: var(--fm-text); }
+  .catalog-index-item:hover { color: var(--fm-text); border-color: color-mix(in srgb, var(--fm-primary) 45%, var(--fm-border)); }
+  .catalog-detail-layout { display: grid; grid-template-columns: minmax(0, 1fr) 380px; gap: 22px; align-items: start; }
+  .catalog-detail-panel { border: 1px solid var(--fm-border); border-radius: 8px; background: var(--fm-surface); box-shadow: var(--fm-shadow-xs); overflow: hidden; }
+  .catalog-detail-body { padding: 20px; }
+  .catalog-product-image { aspect-ratio: 16 / 7; background: color-mix(in srgb, var(--fm-primary) 8%, var(--fm-surface)); display: flex; align-items: center; justify-content: center; color: var(--fm-primary); }
+  .catalog-product-image img { width: 100%; height: 100%; object-fit: cover; }
+  .variant-list { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
+  .variant-option { border: 1px solid var(--fm-border); border-radius: 8px; padding: 10px; display: grid; grid-template-columns: auto 1fr; gap: 10px; cursor: pointer; }
+  .variant-option:hover { border-color: color-mix(in srgb, var(--fm-primary) 45%, var(--fm-border)); }
+  .vendor-hero { display: grid; grid-template-columns: 1fr auto; gap: 16px; border: 1px solid var(--fm-border); border-radius: 8px; padding: 20px; background: var(--fm-surface); margin-bottom: 18px; }
+  @media (max-width: 920px) { .catalog-detail-layout, .vendor-hero { grid-template-columns: 1fr; } }
+</style>

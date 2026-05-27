@@ -77,6 +77,7 @@ from app4 import app4_bp  # Added for app4
 
 from auth import auth_bp
 from pages import pages_bp
+from catalog_routes import catalog_bp
 from api import api_bp  # Import the API blueprint
 from admin_notifications import admin_notifications_bp
 from admin_dashboard import admin_dashboard_bp
@@ -116,6 +117,7 @@ def create_app():
     app.register_blueprint(app4_bp, url_prefix='/app4')  # Register app4 blueprint
     app.register_blueprint(auth_bp)
     app.register_blueprint(pages_bp)
+    app.register_blueprint(catalog_bp)
     app.register_blueprint(api_bp)  # Register the API blueprint
     app.register_blueprint(admin_notifications_bp, url_prefix='/admin')  # Register admin notifications
     app.register_blueprint(admin_dashboard_bp, url_prefix='/admin')

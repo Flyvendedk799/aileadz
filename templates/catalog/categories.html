@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+
+{% block title %}Kategorier - Futurematch{% endblock %}
+{% block page_heading %}Kategorier{% endblock %}
+{% block page_subheading %}Browse kataloget efter brede kursusemner.{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+{% include 'catalog/_styles.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="catalog-wrap">
+  <div class="catalog-toolbar">
+    <div>
+      <div class="catalog-eyebrow">Katalog</div>
+      <h2 class="catalog-title">Kategorier</h2>
+      <p class="catalog-subtitle">Kategorier bygger pa de generelle kursustags i kataloget og kan forbedres fra superadmin med AI-indeksering.</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('catalog.catalog_index') }}">Til katalog</a>
+  </div>
+
+  <section class="catalog-index-grid">
+    {% for category in categories %}
+    <a class="catalog-index-item" href="{{ url_for('catalog.category_detail', slug=category.slug) }}">
+      <span><i class="fa-solid fa-layer-group text-primary me-2"></i>{{ category.name }}</span>
+      <span class="catalog-pill">{{ category.count }}</span>
+    </a>
+    {% endfor %}
+  </section>
+</div>
+{% endblock %}

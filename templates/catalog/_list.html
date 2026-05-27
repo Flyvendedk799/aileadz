@@ -1,0 +1,38 @@
+{% include 'catalog/_filters.html' %}
+
+<div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+  <div class="text-muted">{{ pagination.total }} kurser fundet</div>
+  <div class="d-flex gap-2">
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('catalog.category_index') }}"><i class="fa-solid fa-layer-group me-1"></i>Kategorier</a>
+    <a class="btn btn-outline-primary btn-sm" href="{{ url_for('catalog.vendor_index') }}"><i class="fa-solid fa-store me-1"></i>Leverandorer</a>
+  </div>
+</div>
+
+{% if products %}
+<section class="catalog-grid" aria-label="Kurser">
+  {% for product in products %}
+  {% include 'catalog/_product_card.html' %}
+  {% endfor %}
+</section>
+
+{% if pagination.total_pages > 1 %}
+<nav class="mt-4" aria-label="Katalog pagination">
+  <ul class="pagination justify-content-center">
+    <li class="page-item {{ 'disabled' if not pagination.has_prev else '' }}">
+      <a class="page-link" href="{{ pagination_urls.prev }}">Forrige</a>
+    </li>
+    <li class="page-item disabled"><span class="page-link">Side {{ pagination.page }} af {{ pagination.total_pages }}</span></li>
+    <li class="page-item {{ 'disabled' if not pagination.has_next else '' }}">
+      <a class="page-link" href="{{ pagination_urls.next }}">Naeste</a>
+    </li>
+  </ul>
+</nav>
+{% endif %}
+{% else %}
+<div class="catalog-empty">
+  <i class="fa-solid fa-magnifying-glass fa-2x mb-3"></i>
+  <h3>Ingen kurser matcher filtrene</h3>
+  <p>Prov en bredere sogning eller ryd filtrene.</p>
+  <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}">Ryd filtre</a>
+</div>
+{% endif %}

@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+
+{% block title %}Ikke fundet - Futurematch{% endblock %}
+{% block page_heading %}Ikke fundet{% endblock %}
+{% block page_subheading %}Katalogsiden findes ikke eller er ikke laengere aktiv.{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+{% include 'catalog/_styles.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="catalog-wrap">
+  <div class="catalog-empty">
+    <i class="fa-solid fa-circle-exclamation fa-2x mb-3"></i>
+    <h2>Vi kunne ikke finde {{ kind|default('produkt') }}et</h2>
+    <p class="mb-3"><code>{{ handle }}</code></p>
+    <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}">Ga til kataloget</a>
+  </div>
+</div>
+{% endblock %}

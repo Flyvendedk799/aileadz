@@ -1,4 +1,7 @@
 import logging
+import os
+import tempfile
+import time
 try:
     import sshtunnel
 except ImportError:
@@ -95,6 +98,33 @@ from multitenant_reports import multitenant_reports_bp
 
 logging.basicConfig(level=logging.INFO)
 
+
+def _enterprise_sync_stamp_path():
+    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured")
+
+
+def _recent_enterprise_sync_exists():
+    if os.environ.get("ENTERPRISE_TABLE_SYNC_FORCE") == "1":
+        return False
+    try:
+        ttl = int(os.environ.get("ENTERPRISE_TABLE_SYNC_TTL_SECONDS", "21600"))
+    except ValueError:
+        ttl = 21600
+    if ttl <= 0:
+        return False
+    try:
+        return time.time() - os.path.getmtime(_enterprise_sync_stamp_path()) < ttl
+    except OSError:
+        return False
+
+
+def _mark_enterprise_sync_done():
+    try:
+        with open(_enterprise_sync_stamp_path(), "w", encoding="utf-8") as stamp:
+            stamp.write(str(int(time.time())))
+    except OSError:
+        pass
+
 def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = 'your_secret_key_here'
@@ -145,9 +175,12 @@ def create_app():
     def _ensure_enterprise_tables_once():
         if not getattr(app, '_enterprise_tables_created', False):
             app._enterprise_tables_created = True  # set early to prevent concurrent runs
+            if _recent_enterprise_sync_exists():
+                return
             try:
                 from enterprise_tables import ensure_enterprise_tables
                 ensure_enterprise_tables(app)
+                _mark_enterprise_sync_done()
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
 

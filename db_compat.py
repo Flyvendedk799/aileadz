@@ -18,3 +18,49 @@ def install_mysql_compat():
 
 
 install_mysql_compat()
+
+
+def close_flask_mysql_connection():
+    """Close and detach Flask-MySQLdb/PyMySQL request connections if present."""
+    try:
+        from flask import g, has_app_context
+    except Exception:
+        return
+    if not has_app_context():
+        return
+
+    for attr in ("mysql_db", "_futurematch_mysql_connection"):
+        conn = getattr(g, attr, None)
+        if conn is None:
+            continue
+        try:
+            conn.close()
+        except Exception:
+            pass
+        try:
+            delattr(g, attr)
+        except Exception:
+            pass
+
+
+def refresh_flask_mysql_connection(mysql):
+    """Ping the current request connection or reopen it after stale-connection errors."""
+    if not mysql:
+        return
+    try:
+        mysql.connection.ping(True)
+        return
+    except TypeError:
+        try:
+            mysql.connection.ping(reconnect=True)
+            return
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    close_flask_mysql_connection()
+    try:
+        mysql.connection.ping(True)
+    except TypeError:
+        mysql.connection.ping(reconnect=True)

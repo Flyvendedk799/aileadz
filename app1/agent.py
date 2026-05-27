@@ -12,6 +12,7 @@ import time
 from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS, execute_tool, set_search_context
 from app1.memory_store import log_debug
 from . import render_multi_course_media, render_product_media
+from db_compat import close_flask_mysql_connection, refresh_flask_mysql_connection
 
 import uuid
 import re as _re
@@ -1119,7 +1120,6 @@ def handle_agentic_ask(user_query, session):
             company_id = session.get("company_id")
             if company_id:
                 try:
-                    from flask import current_app
                     cur = current_app.mysql.connection.cursor()
                     company_context_parts = []
 
@@ -1590,6 +1590,7 @@ def handle_agentic_ask(user_query, session):
 
             set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
                                blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements)
+            close_flask_mysql_connection()
 
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
@@ -1774,6 +1775,7 @@ def handle_agentic_ask(user_query, session):
                             'choices': tool_result_dict.get('choices', []),
                         }))
 
+            close_flask_mysql_connection()
             message = type("RuntimeMessage", (), {"content": runtime_result.text or ""})()
 
             # Phase 2: True streaming of the final text response
@@ -1951,6 +1953,7 @@ def handle_agentic_ask(user_query, session):
             if logged_in_user:
                 try:
                     from app1.user_profile_db import save_conversation, save_conversation_history, ensure_tables
+                    refresh_flask_mysql_connection(getattr(current_app, "mysql", None))
                     ensure_tables()
                     save_conversation(logged_in_user, sid, messages)
                     save_conversation_history(logged_in_user, sid, messages)
@@ -1963,6 +1966,7 @@ def handle_agentic_ask(user_query, session):
 
             # Log to chatbot_interactions for admin + HR dashboards
             try:
+                refresh_flask_mysql_connection(getattr(current_app, "mysql", None))
                 response_time_ms = int((time.time() - _interaction_start) * 1000)
                 # Quality score: 0.0-1.0 based on response time + content quality signals
                 _resp_len = len(full_text or '')
@@ -2057,6 +2061,7 @@ def handle_agentic_ask(user_query, session):
             except (OSError, BrokenPipeError, ConnectionResetError):
                 pass  # Client already gone
         finally:
+            close_flask_mysql_connection()
             try:
                 yield "data: [DONE]\n\n"
             except (OSError, BrokenPipeError, ConnectionResetError):

@@ -10,6 +10,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
 
 from openai import OpenAI
 
+from db_compat import refresh_flask_mysql_connection
 from ai_tool_registry import (
     chat_tool_choice,
     is_parallel_safe,
@@ -24,6 +25,8 @@ from ai_tool_registry import (
 PROMPT_VERSION = "futurematch-ai-v3"
 _TOOL_CACHE: Dict[str, Tuple[float, str]] = {}
 _LOG_TABLES_READY = set()
+_OPENAI_CLIENT: Optional[OpenAI] = None
+_OPENAI_CLIENT_KEY = None
 
 
 @dataclass
@@ -70,6 +73,20 @@ def trace_sample_rate() -> float:
         return 1.0
 
 
+def _openai_client() -> OpenAI:
+    global _OPENAI_CLIENT, _OPENAI_CLIENT_KEY
+    try:
+        timeout = float(os.getenv("AI_OPENAI_TIMEOUT_SECONDS", "45"))
+    except ValueError:
+        timeout = 45.0
+    api_key = os.getenv("OPENAI_API_KEY")
+    cache_key = (id(OpenAI), id(getattr(OpenAI, "responses", None)), api_key, timeout)
+    if _OPENAI_CLIENT is None or _OPENAI_CLIENT_KEY != cache_key:
+        _OPENAI_CLIENT = OpenAI(api_key=api_key, timeout=timeout)
+        _OPENAI_CLIENT_KEY = cache_key
+    return _OPENAI_CLIENT
+
+
 def _safe_json(value: Any) -> str:
     try:
         return json.dumps(value, ensure_ascii=False, default=str)
@@ -102,6 +119,7 @@ def ensure_ai_log_tables(mysql) -> None:
     cache_key = id(mysql)
     if cache_key in _LOG_TABLES_READY:
         return
+    refresh_flask_mysql_connection(mysql)
     cur = mysql.connection.cursor()
     try:
         cur.execute(
@@ -189,6 +207,7 @@ def log_agent_run(
     if not mysql or trace_sample_rate() <= 0:
         return
     try:
+        refresh_flask_mysql_connection(mysql)
         ensure_ai_log_tables(mysql)
         cur = mysql.connection.cursor()
         input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
@@ -243,6 +262,7 @@ def log_tool_run(
     if not mysql or trace_sample_rate() <= 0:
         return
     try:
+        refresh_flask_mysql_connection(mysql)
         ensure_ai_log_tables(mysql)
         result_count = 0
         try:
@@ -417,7 +437,7 @@ def run_chat_agent(
 ) -> AgentRunResult:
     model = model or main_model()
     start = time.time()
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = _openai_client()
     working = list(messages)
     tool_results: List[ToolCallResult] = []
     tool_messages: List[Dict[str, Any]] = []
@@ -492,7 +512,7 @@ def run_responses_agent(
 ) -> AgentRunResult:
     model = model or main_model()
     start = time.time()
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    client = _openai_client()
     input_items = _messages_to_responses_input(messages)
     response_tools = [to_responses_tool(tool) for tool in tools]
     tool_results: List[ToolCallResult] = []

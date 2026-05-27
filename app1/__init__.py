@@ -1,5 +1,6 @@
 from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort
 from markupsafe import escape
+import db_compat  # noqa: F401
 import json
 import logging
 import openai
@@ -252,19 +253,24 @@ def get_short_description(product):
     if not full_desc:
         summary = "Ingen beskrivelse tilgængelig."
     else:
-        try:
-            response = openai.chat.completions.create(
-                model="gpt-4",
-                messages=[
-                    {"role": "system", "content": "Sammenfat følgende kursusbeskrivelse til en kort, attraktiv tekst på dansk (maks 50 ord)."},
-                    {"role": "user", "content": full_desc}
-                ],
-                temperature=0.5,
-            )
-            summary = response.choices[0].message.content.strip()
-        except Exception as e:
-            print(f"Error summarizing product description: {e}")
-            summary = (full_desc[:150] + '...') if len(full_desc) > 150 else full_desc
+        from catalog_service import clean_html, excerpt
+        clean_desc = clean_html(full_desc)
+        if not OPENAI_API_KEY:
+            summary = excerpt(clean_desc or full_desc, 150)
+        else:
+            try:
+                response = openai.chat.completions.create(
+                    model="gpt-4",
+                    messages=[
+                        {"role": "system", "content": "Sammenfat følgende kursusbeskrivelse til en kort, attraktiv tekst på dansk (maks 50 ord)."},
+                        {"role": "user", "content": clean_desc or full_desc}
+                    ],
+                    temperature=0.5,
+                )
+                summary = response.choices[0].message.content.strip()
+            except Exception as e:
+                print(f"Error summarizing product description: {e}")
+                summary = excerpt(clean_desc or full_desc, 150)
     _short_description_cache[pid] = summary
     return summary
 
@@ -370,7 +376,7 @@ PRODUCT_MEDIA_TEMPLATE = """
       <div class="premium-course-main">
         <div class="premium-course-kicker" title="{{ product.vendor | e }}">{{ product.vendor | e }}</div>
         <h3 class="premium-course-title">
-          <a href="https://futurematch.dk/products/{{ product.handle }}" target="_blank" onclick="event.stopPropagation();">{{ product.title | e }}</a>
+          <a href="{{ url_for('catalog.product_detail', handle=product.handle) }}" target="_blank" onclick="event.stopPropagation();">{{ product.title | e }}</a>
         </h3>
       </div>
       <div class="premium-course-price">
@@ -418,7 +424,7 @@ PRODUCT_MEDIA_TEMPLATE = """
     </div>
     {% endif %}
     <div class="premium-course-actions">
-      <a class="course-primary-action" onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ product.handle }}" target="_blank">Vælg kursus</a>
+      <a class="course-primary-action" onclick="event.stopPropagation();" href="{{ url_for('catalog.product_detail', handle=product.handle) }}" target="_blank">Vælg kursus</a>
       <button class="course-secondary-action" onclick='event.stopPropagation(); window.attachProductToChat({{ product.handle | tojson }}, {{ product.title | tojson }})'>Spørg om</button>
     </div>
   </div>
@@ -495,7 +501,7 @@ MULTIPLE_COURSES_TEMPLATE = """
         <div class="premium-course-main">
           <div class="premium-course-kicker" title="{{ course.vendor | e }}">{{ course.vendor | e }}</div>
           <h4 class="premium-course-title">
-            <a href="https://futurematch.dk/products/{{ course.handle }}" target="_blank" onclick="event.stopPropagation();">{{ course.title | e }}</a>
+            <a href="{{ url_for('catalog.product_detail', handle=course.handle) }}" target="_blank" onclick="event.stopPropagation();">{{ course.title | e }}</a>
           </h4>
         </div>
         <div class="premium-course-price">
@@ -533,7 +539,7 @@ MULTIPLE_COURSES_TEMPLATE = """
             </div>
             {% endif %}
             <div class="premium-course-actions">
-              <a class="course-primary-action" onclick="event.stopPropagation();" href="https://futurematch.dk/products/{{ course.handle }}" target="_blank">Vælg kursus</a>
+              <a class="course-primary-action" onclick="event.stopPropagation();" href="{{ url_for('catalog.product_detail', handle=course.handle) }}" target="_blank">Vælg kursus</a>
               <button class="course-secondary-action" onclick='event.stopPropagation(); window.attachProductToChat({{ course.handle | tojson }}, {{ course.title | tojson }})'>Spørg om</button>
             </div>
           </div>

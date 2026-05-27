@@ -1,956 +1,264 @@
 <!DOCTYPE html>
-<html lang="da">
+<html lang="da" data-theme="light">
 
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>AiLead Dashboard</title>
-  <!-- Modern typography with Inter for text and Poppins for headings -->
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&family=Poppins:wght@500;700&display=swap"
-    rel="stylesheet" />
-  <!-- Bootstrap 5 -->
+  <title>{% block title %}Futurematch{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
-  <!-- Font Awesome for icons -->
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css"
     crossorigin="anonymous" referrerpolicy="no-referrer" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/futurematch.css') }}">
   <style>
-    /* ------------------------------------------------------------
-       THEME & COLOR VARIABLES
-       ------------------------------------------------------------ */
     :root {
-      --primary-color: #a855f7;
-      --secondary-color: #f472b6;
-      --background-color: #0e0e0e;
-      --sidebar-bg: #131313;
-      --header-bg: linear-gradient(135deg, #1e1e1e, #0e0e0e);
-      --card-bg: #1a1a1a;
-      --text-color: #ffffff;
-      --muted-text: #d1d5db;
-      --muted-text-light: #d1d5db;
-      --hover-shadow: rgba(0, 0, 0, 0.8);
-      --transition-speed: 0.3s;
-      --border-radius: 10px;
-      --box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-      --glass-bg: rgba(30, 30, 30, 0.6);
-      --glass-border: rgba(255, 255, 255, 0.1);
-      --border-color: rgba(255, 255, 255, 0.1);
-    }
-
-    .light-mode {
-      --background-color: #f4f4f9;
-      --sidebar-bg: #ffffff;
-      --header-bg: linear-gradient(135deg, #f0f0f5, #ffffff);
-      --card-bg: #f8f8fc;
-      --text-color: #1a1a1a;
-      --muted-text: #555555;
-      --muted-text-light: #64748b;
-      --hover-shadow: rgba(0, 0, 0, 0.1);
-      --box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
-      --glass-bg: rgba(255, 255, 255, 0.7);
-      --glass-border: rgba(255, 255, 255, 0.4);
-      --border-color: rgba(0, 0, 0, 0.1);
-    }
-
-    /* ------------------------------------------------------------
-       GLOBAL STYLES
-       ------------------------------------------------------------ */
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-
-    body {
-      font-family: "Inter", sans-serif;
-      background: var(--background-color);
-      color: var(--text-color);
-      overflow-x: hidden;
-      transition: background var(--transition-speed) ease, color var(--transition-speed) ease;
-    }
-
-    a {
-      text-decoration: none;
-      color: var(--text-color);
-      transition: color var(--transition-speed) ease;
-    }
-
-    a:hover {
-      color: var(--primary-color);
-    }
-
-    .dashboard {
-      display: flex;
-      min-height: 100vh;
-    }
-
-    /* ------------------------------------------------------------
-       SIDEBAR
-       ------------------------------------------------------------ */
-    .sidebar {
-      width: 280px;
-      background: var(--sidebar-bg);
-      padding: 25px 20px;
-      display: flex;
-      flex-direction: column;
-      position: relative;
-      box-shadow: var(--box-shadow);
-      transition: width var(--transition-speed) ease, background var(--transition-speed) ease;
-      overflow: hidden;
-      animation: fadeInLeft 0.5s ease-out;
-    }
-
-    .sidebar.collapsed {
-      width: 70px;
-      padding: 15px 0;
-      align-items: center;
-    }
-
-    .sidebar-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      margin-bottom: 35px;
-    }
-
-    .logo h2 {
-      font-family: "Poppins", sans-serif;
-      font-size: 1.8rem;
-      font-weight: 700;
-      color: var(--primary-color);
-      letter-spacing: 1px;
-    }
-
-    .sidebar.collapsed .logo {
-      display: none;
-    }
-
-    .toggle-button {
-      background: transparent;
-      border: none;
-      cursor: pointer;
-      transition: transform var(--transition-speed) ease;
-      padding: 8px;
-    }
-
-    .toggle-button:hover {
-      transform: scale(1.1);
-    }
-
-    .nav-liste {
-      list-style: none;
-      margin-top: 10px;
-      flex-grow: 1;
-    }
-
-    .nav-liste li {
-      margin-bottom: 15px;
-      position: relative;
-    }
-
-    .nav-liste li a {
-      display: flex;
-      align-items: center;
-      padding: 14px 20px;
-      border-radius: var(--border-radius);
-      transition: background var(--transition-speed) ease, transform var(--transition-speed) ease;
-      color: var(--text-color);
-      font-weight: 500;
-      background: transparent;
-    }
-
-    .nav-liste li a i {
-      margin-right: 15px;
-      font-size: 1.2rem;
-      width: 25px;
-      text-align: center;
-    }
-
-    .sidebar:not(.collapsed) .nav-liste li a:hover,
-    .sidebar:not(.collapsed) .nav-liste li a.active {
-      background: linear-gradient(90deg, rgba(42, 42, 42, 0.8), rgba(42, 42, 42, 0.8));
-      transform: scale(1.03);
-    }
-
-    .sidebar:not(.collapsed) .nav-liste li a.active::after {
-      content: "";
-      position: absolute;
-      left: 0;
-      top: 0;
-      width: 4px;
-      height: 100%;
-      background: var(--primary-color);
-      border-radius: 4px;
-      transition: opacity var(--transition-speed) ease;
-    }
-
-    .sidebar.collapsed .nav-text {
-      display: none;
-    }
-
-    .sidebar.collapsed .nav-liste {
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-    }
-
-    .sidebar.collapsed .nav-liste li {
-      margin: 8px 0;
-    }
-
-    .sidebar.collapsed .nav-liste li a {
-      width: 44px;
-      height: 44px;
-      justify-content: center;
-      border-radius: 50%;
-      padding: 0;
-    }
-
-    .sidebar.collapsed .nav-liste li a i {
-      margin-right: 0;
-    }
-
-    .sidebar.collapsed .nav-liste li a:hover,
-    .sidebar.collapsed .nav-liste li a.active {
-      background: var(--card-bg);
-      transform: scale(1.1);
-    }
-
-    .sidebar-footer {
-      margin-top: auto;
-      text-align: center;
-      font-size: 0.85rem;
-      color: var(--muted-text);
-      border-top: 1px solid rgba(255, 255, 255, 0.1);
-      padding-top: 15px;
-    }
-
-    /* ------------------------------------------------------------
-       HEADER
-       ------------------------------------------------------------ */
-    .header {
-      background: var(--header-bg);
-      padding: 20px 25px;
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.15);
-      animation: fadeInDown 0.5s ease-out;
-      backdrop-filter: blur(10px);
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.4);
-      /* FIX: Set position and high z-index so dropdown appears on top */
-      position: relative;
-      z-index: 10000;
-    }
-
-    .side-titel h1 {
-      font-family: "Poppins", sans-serif;
-      font-size: 2.2rem;
-      font-weight: 700;
-      letter-spacing: 1px;
-    }
-
-    .header-handlinger {
-      font-size: 1rem;
-      display: flex;
-      align-items: center;
-      position: relative;
-      z-index: 1;
-    }
-
-    .header-handlinger a {
-      margin-left: 15px;
-      padding: 12px 16px;
-      background-color: var(--primary-color);
-      border-radius: var(--border-radius);
-      color: #ffffff;
-      font-weight: 600;
-      transition: background var(--transition-speed) ease, transform var(--transition-speed) ease;
-    }
-
-    .header-handlinger a:hover {
-      background-color: #9333ea;
-      transform: scale(1.05);
-    }
-
-    /* Header notifications dropdown */
-    #header-notif-wrapper {
-      position: relative;
-      margin-left: 15px;
-    }
-
-    #header-notifications {
-      cursor: pointer;
-      position: relative;
-    }
-
-    #header-notifications i {
-      font-size: 1.3rem;
-    }
-
-    #notif-badge {
-      position: absolute;
-      top: -6px;
-      right: -12px;
-      background: #e3342f;
-      color: #fff;
-      border-radius: 50%;
-      font-size: 0.7rem;
-      padding: 2px 6px;
-      min-width: 20px;
-      text-align: center;
-      transition: transform 0.2s ease;
-    }
-
-    #notif-dropdown {
-      display: none;
-      position: absolute;
-      top: 40px;
-      right: 0;
-      background: var(--card-bg);
-      border: 1px solid var(--muted-text);
-      border-radius: var(--border-radius);
-      box-shadow: 0 3px 10px rgba(0, 0, 0, 0.4);
-      width: 320px;
-      z-index: 10001;
-    }
-
-    #notif-dropdown.active {
-      display: block;
-    }
-
-    #notif-dropdown .dropdown-header {
-      padding: 12px;
-      border-bottom: 1px solid var(--muted-text);
-      font-weight: 600;
-    }
-
-    #notif-dropdown .dropdown-item {
-      padding: 12px;
-      border-bottom: 1px solid var(--muted-text);
-      display: flex;
-      align-items: center;
-      transition: background 0.2s;
-    }
-
-    #notif-dropdown .dropdown-item:hover {
-      background: var(--hover-shadow);
-    }
-
-    #notif-dropdown .dropdown-item:last-child {
-      border-bottom: none;
-    }
-
-    #notif-dropdown .dropdown-item a {
-      flex-grow: 1;
-      font-size: 0.9rem;
-      color: var(--text-color);
-    }
-
-    #notif-dropdown .dropdown-item img.dropdown-image {
-      max-width: 40px;
-      max-height: 40px;
-      border-radius: 6px;
-      margin-right: 8px;
-      object-fit: cover;
-    }
-
-    #notif-dropdown .dropdown-item button {
-      background: none;
-      border: none;
-      color: var(--primary-color);
-      cursor: pointer;
-      font-size: 0.8rem;
-    }
-
-    #notif-dropdown .dropdown-item button:hover {
-      text-decoration: underline;
-    }
-
-    #notif-dropdown .dropdown-footer {
-      padding: 12px;
-      text-align: center;
-    }
-
-    #notif-dropdown .dropdown-footer button,
-    #notif-dropdown .dropdown-footer a {
-      background: var(--primary-color);
-      color: #fff;
-      border: none;
-      border-radius: var(--border-radius);
-      padding: 6px 12px;
-      cursor: pointer;
-      text-decoration: none;
-      font-size: 0.9rem;
-      margin: 0 5px;
-      transition: background 0.3s;
-    }
-
-    #notif-dropdown .dropdown-footer button:hover,
-    #notif-dropdown .dropdown-footer a:hover {
-      background: #9333ea;
-    }
-
-    /* ------------------------------------------------------------
-       TOGGLE SLIDER
-       ------------------------------------------------------------ */
-    .toggle-slider {
-      position: relative;
-      width: 60px;
-      height: 30px;
-      background-color: #555;
-      border-radius: 15px;
-      border: none;
-      cursor: pointer;
-      outline: none;
-      transition: background-color var(--transition-speed) ease;
-      margin-left: 25px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 0 5px;
-    }
-
-    .toggle-slider .left-icon,
-    .toggle-slider .right-icon {
-      font-size: 14px;
-      color: #fff;
-      opacity: 0.8;
-    }
-
-    .toggle-slider .toggle-knob {
-      position: absolute;
-      top: 2px;
-      left: 2px;
-      width: 26px;
-      height: 26px;
-      background-color: #fff;
-      border-radius: 50%;
-      transition: left 0.3s ease;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
-    }
-
-    .toggle-slider.active {
-      background-color: var(--primary-color);
-    }
-
-    .toggle-slider.active .toggle-knob {
-      left: calc(100% - 28px);
-    }
-
-    /* ------------------------------------------------------------
-       MAIN CONTENT
-       ------------------------------------------------------------ */
-    .main-content {
-      flex-grow: 1;
-      min-width: 0;
-      /* allow flex child to shrink below content width */
-      display: flex;
-      flex-direction: column;
-      overflow-x: hidden;
-      /* prevent horizontal bleed */
-    }
-
-    .content {
-      flex-grow: 1;
-      padding: 30px;
-      background: var(--background-color);
-      animation: fadeInUp 0.5s ease-out;
-    }
-
-    @media (max-width: 768px) {
-      .content {
-        padding: 16px;
-      }
-    }
-
-    /* ------------------------------------------------------------
-       BOOTSTRAP COMPONENT THEME MAPPING
-       ------------------------------------------------------------ */
-    .card {
-      background-color: var(--card-bg);
-      border-color: var(--border-color);
-      color: var(--text-color);
-    }
-
-    .text-muted {
-      color: var(--muted-text-light) !important;
-    }
-
-    .text-secondary {
-      color: var(--muted-text-light) !important;
-    }
-
-    .card-header,
-    .card-footer {
-      background-color: transparent;
-      border-bottom: 1px solid var(--border-color);
-      color: var(--text-color);
-    }
-
-    .list-group-item {
-      background-color: var(--card-bg);
-      border-color: var(--border-color);
-      color: var(--text-color);
-    }
-
-    .list-group-item-action:hover {
-      background-color: var(--hover-shadow);
-      color: var(--primary-color);
-    }
-
-    .table {
-      color: var(--text-color);
-      border-color: var(--border-color);
-    }
-
-    .table th,
-    .table td {
-      border-color: var(--border-color);
-    }
-
-    .modal-content {
-      background-color: var(--card-bg);
-      color: var(--text-color);
-      border: 1px solid var(--border-color);
-    }
-
-    .modal-header,
-    .modal-footer {
-      border-color: var(--border-color);
-    }
-
-    .dropdown-menu {
-      background-color: var(--card-bg);
-      border-color: var(--border-color);
-      color: var(--text-color);
-      box-shadow: var(--box-shadow);
-    }
-
-    .dropdown-item {
-      color: var(--text-color);
-    }
-
-    .dropdown-item:hover {
-      background-color: var(--hover-shadow);
-      color: var(--primary-color);
-    }
-
-    .form-control,
-    .form-select {
-      background-color: rgba(255, 255, 255, 0.05);
-      border-color: var(--border-color);
-      color: var(--text-color);
-    }
-
-    .light-mode .form-control,
-    .light-mode .form-select {
-      background-color: #ffffff;
-      color: #212529;
-    }
-
-    .form-control:focus,
-    .form-select:focus {
-      background-color: rgba(255, 255, 255, 0.08);
-      border-color: var(--primary-color);
-      color: var(--text-color);
-      box-shadow: 0 0 0 0.25rem rgba(168, 85, 247, 0.25);
-    }
-
-    .modal-content {
-      color: var(--text-color);
-    }
-
-    .section-title {
-      margin: 35px 0 25px;
-      font-size: 1.8rem;
-      font-weight: 700;
-      border-bottom: 2px solid rgba(255, 255, 255, 0.2);
-      padding-bottom: 10px;
-      letter-spacing: 0.8px;
-    }
-
-    /* ------------------------------------------------------------
-       FOOTER
-       ------------------------------------------------------------ */
-    .footer {
-      padding: 20px 25px;
-      background: var(--header-bg);
-      text-align: center;
-      font-size: 0.85rem;
-      border-top: 1px solid rgba(255, 255, 255, 0.15);
-      backdrop-filter: blur(10px);
-    }
-
-    .footer a {
-      margin: 0 10px;
-      color: var(--text-color);
-      transition: color var(--transition-speed) ease;
-    }
-
-    .footer a:hover {
-      color: var(--primary-color);
-    }
-
-    /* ------------------------------------------------------------
-       KEYFRAMES
-       ------------------------------------------------------------ */
-    @keyframes fadeInUp {
-      0% {
-        opacity: 0;
-        transform: translateY(20px);
-      }
-
-      100% {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @keyframes fadeInDown {
-      0% {
-        opacity: 0;
-        transform: translateY(-20px);
-      }
-
-      100% {
-        opacity: 1;
-        transform: translateY(0);
-      }
-    }
-
-    @keyframes fadeInLeft {
-      0% {
-        opacity: 0;
-        transform: translateX(-20px);
-      }
-
-      100% {
-        opacity: 1;
-        transform: translateX(0);
-      }
-    }
-
-    /* Fix Bootstrap modals rendering behind header (z-index: 10000) */
-    .modal-backdrop {
-      z-index: 10001 !important;
-    }
-
-    .modal {
-      z-index: 10002 !important;
+      --fm-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+      --fm-secondary: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
+      --fm-accent: {% if white_label_active and company_branding.accent_color %}{{ company_branding.accent_color }}{% else %}#f59e0b{% endif %};
+      --fm-font-family: {% if white_label_active and company_branding.font_family %}{{ company_branding.font_family }}{% else %}"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif{% endif %};
     }
   </style>
+  {% if white_label_active and company_branding.custom_css %}
+  <style>{{ company_branding.custom_css|safe }}</style>
+  {% endif %}
   {% block extra_styles %}{% endblock %}
+  <style>
+    :root {
+      --primary-color: var(--fm-primary);
+      --secondary-color: var(--fm-secondary);
+      --accent-color: var(--fm-accent);
+      --background-color: var(--fm-bg);
+      --sidebar-bg: var(--fm-surface);
+      --header-bg: var(--fm-bg-elevated);
+      --card-bg: var(--fm-surface);
+      --text-color: var(--fm-text);
+      --muted-text: var(--fm-text-muted);
+      --muted-text-light: var(--fm-text-muted);
+      --border-color: var(--fm-border);
+      --border-radius: var(--fm-radius-sm);
+      --box-shadow: var(--fm-shadow-sm);
+      --hover-shadow: rgba(15, 23, 42, 0.06);
+      --danger-color: var(--fm-danger);
+      --success-color: var(--fm-success);
+    }
+  </style>
 </head>
 
-<body>
-  <div class="dashboard">
-    <!-- SIDEBAR -->
-    <aside class="sidebar collapsed" id="sidebar">
-      <div class="sidebar-header">
-        <div class="logo">
-          <h2>AiLead</h2>
-        </div>
-        <button id="sidebar-toggle" class="toggle-button" aria-label="Toggle Sidebar">
+<body class="futurematch-shell">
+  {% set platform_name = company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' %}
+  {% set platform_logo = company_branding.company_logo if white_label_active and company_branding.company_logo else none %}
+
+  <div class="dashboard fm-app-shell">
+    <aside class="sidebar fm-sidebar collapsed" id="sidebar" aria-label="Primær navigation">
+      <div class="fm-sidebar-header">
+        <a class="fm-brand" href="/dashboard" aria-label="{{ platform_name }}">
+          <span class="fm-brand-mark">
+            {% if platform_logo %}
+            <img src="{{ platform_logo }}" alt="{{ platform_name }}">
+            {% else %}
+            F
+            {% endif %}
+          </span>
+          <span class="fm-brand-text">
+            <span class="fm-brand-name">{{ platform_name }}</span>
+            <span class="fm-brand-kicker">Command Center</span>
+          </span>
+        </a>
+        <button id="sidebar-toggle" class="toggle-button" type="button" aria-label="Fold navigation">
           <i class="fa-solid fa-bars"></i>
         </button>
       </div>
-      <ul class="nav-liste">
+
+      <ul class="nav-liste fm-nav-list">
+        <li class="fm-nav-section-label">Workspace</li>
         <li>
-          <a href="/dashboard" class="active">
+          <a href="/dashboard" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-house"></i>
             <span class="nav-text">Oversigt</span>
           </a>
         </li>
         <li>
-          <a href="/about">
-            <i class="fa-solid fa-info-circle"></i>
-            <span class="nav-text">Om</span>
+          <a href="/app1" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-comments"></i>
+            <span class="nav-text">AI-assistent</span>
           </a>
         </li>
         <li>
-          <a href="/analytics">
+          <a href="/analytics" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-chart-line"></i>
             <span class="nav-text">Analyse</span>
           </a>
         </li>
         <li>
-          <a href="/indstillinger">
+          <a href="/reports" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-file-lines"></i>
+            <span class="nav-text">Rapporter</span>
+          </a>
+        </li>
+
+        {% if session.get('company_id') %}
+        <li class="fm-nav-section-label">Virksomhed</li>
+        <li>
+          <a href="/hr" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-building"></i>
+            <span class="nav-text">HR Workspace</span>
+          </a>
+        </li>
+        <li>
+          <a href="/companies/analytics" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-chart-simple"></i>
+            <span class="nav-text">Company BI</span>
+          </a>
+        </li>
+        <li>
+          <a href="/multitenant-reports" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-file-lines"></i>
+            <span class="nav-text">Virksomhedsrapporter</span>
+          </a>
+        </li>
+        {% endif %}
+
+        <li class="fm-nav-section-label">Konto</li>
+        <li>
+          <a href="/notifications" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-bell"></i>
+            <span class="nav-text">Notifikationer</span>
+          </a>
+        </li>
+        <li>
+          <a href="/profile" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-user"></i>
+            <span class="nav-text">Profil</span>
+          </a>
+        </li>
+        <li>
+          <a href="/indstillinger" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-sliders"></i>
             <span class="nav-text">Indstillinger</span>
           </a>
         </li>
-        {% if session.get('company_id') %}
-        <li>
-          <a href="/hr">
-            <i class="fa-solid fa-building"></i>
-            <span class="nav-text">Virksomhed</span>
-          </a>
-        </li>
-        <li>
-          <a href="/multitenant-reports">
-            <i class="fa-solid fa-file-chart-line"></i>
-            <span class="nav-text">Rapporter</span>
-          </a>
-        </li>
-        {% endif %}
+
         {% if session.get('role') == 'admin' or session.get('company_role') == 'company_admin' %}
+        <li class="fm-nav-section-label">Admin</li>
         <li>
-          <a href="/enterprise/company-settings">
+          <a href="/enterprise/company-settings" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-palette"></i>
-            <span class="nav-text">White Label</span>
+            <span class="nav-text">White label</span>
           </a>
         </li>
         {% endif %}
         {% if session.get('role') == 'admin' %}
         <li>
-          <a href="/admin/">
-            <i class="fa-solid fa-shield-alt"></i>
-            <span class="nav-text">Admin Panel</span>
+          <a href="/admin/" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-shield-halved"></i>
+            <span class="nav-text">Admin</span>
           </a>
         </li>
         <li>
-          <a href="/admin/chatbot-dashboard">
-            <i class="fa-solid fa-chart-line"></i>
-            <span class="nav-text">Chatbot Analytics</span>
+          <a href="/admin/chatbot-dashboard" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-robot"></i>
+            <span class="nav-text">Chatbot BI</span>
           </a>
         </li>
         {% endif %}
-        <li>
-          <a href="/profile">
-            <i class="fa-solid fa-user"></i>
-            <span class="nav-text">Profil</span>
-          </a>
-        </li>
       </ul>
-      <div class="sidebar-footer">
-        <small>&copy; 2025 AiLead</small>
+
+      <div class="fm-sidebar-footer">
+        <div class="fm-sidebar-footer-text">
+          <strong>{{ platform_name }}</strong><br>
+          Adaptiv lærings- og HR-platform
+        </div>
       </div>
     </aside>
 
-    <!-- MAIN CONTENT -->
-    <div class="main-content">
-      <!-- HEADER -->
-      <header class="header">
-        <div class="side-titel">
-          <h1>Oversigt</h1>
+    <div class="main-content fm-main">
+      <header class="header fm-topbar">
+        <div>
+          <h1 class="fm-page-title">{% block page_heading %}{{ platform_name }}{% endblock %}</h1>
+          <p class="fm-page-subtitle">{% block page_subheading %}AI, læring og virksomhedsindsigt samlet i én arbejdsoverflade.{% endblock %}</p>
         </div>
-        <div class="header-handlinger">
+
+        <div class="header-handlinger fm-topbar-actions">
           {% if session.get('user') %}
-          <span>Hej, {{ session.get('user') }}</span>
-          <span id="credits-display" style="margin-left:10px;">
+          <span class="fm-chip"><i class="fa-solid fa-user-circle"></i>{{ session.get('user') }}</span>
+          <span id="credits-display" class="fm-chip">
             {% if session.get('credits') %}
             <i class="fa-solid fa-coins"></i> {{ session.get('credits') }}
             {% else %}
-            {% if local_storage_credits %}
-            <i class="fa-solid fa-coins"></i> {{ local_storage_credits }}
-            {% else %}
             <i class="fa-solid fa-spinner fa-spin"></i>
             {% endif %}
-            {% endif %}
           </span>
-          <a href="/profile">Min Profil</a>
-          <a href="/logout">Log ud</a>
-          <!-- Header notifications dropdown -->
           <div id="header-notif-wrapper">
-            <div id="header-notifications">
+            <button id="header-notifications" class="fm-icon-button" type="button" aria-label="Notifikationer">
               <i class="fa-solid fa-bell"></i>
               <span id="notif-badge">0</span>
-            </div>
-            <div id="notif-dropdown">
-              <div class="dropdown-header">Nye Notifikationer</div>
-              <div id="notif-list">
-                <!-- Unread notifications will be loaded here -->
-              </div>
+            </button>
+            <div id="notif-dropdown" aria-live="polite">
+              <div class="dropdown-header">Nye notifikationer</div>
+              <div id="notif-list"></div>
               <div class="dropdown-footer">
-                <button id="mark-all-btn">Markér alle som læst</button>
+                <button id="mark-all-btn" type="button">Marker alle læst</button>
                 <a href="/notifications">Se alle</a>
               </div>
             </div>
           </div>
+          <a href="/profile" class="fm-action-link secondary"><i class="fa-solid fa-id-badge"></i>Profil</a>
+          <a href="/logout" class="fm-action-link secondary"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log ud</a>
           {% else %}
-          <a href="/login">Log ind</a>
-          <a href="/register">Registrer</a>
+          <a href="/login" class="fm-action-link"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind</a>
+          <a href="/register" class="fm-action-link secondary"><i class="fa-solid fa-user-plus"></i>Registrer</a>
           {% endif %}
-          <!-- Day/Night Toggle Slider -->
-          <button id="mode-toggle" class="toggle-slider" aria-label="Toggle Dark/Light Mode">
+          <button id="mode-toggle" class="toggle-slider fm-theme-toggle" type="button" aria-label="Skift tema">
             <i class="fa-solid fa-moon left-icon"></i>
-            <div class="toggle-knob"></div>
+            <span class="toggle-knob"></span>
             <i class="fa-solid fa-sun right-icon"></i>
           </button>
         </div>
       </header>
 
-      <!-- MAIN CONTENT AREA -->
-      <main class="content">
+      {% block global_flashes %}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="container-fluid px-4 pt-3">
+        {% for category, message in messages %}
+        <div class="alert alert-{{ 'danger' if category == 'error' else category }} alert-dismissible fade show"
+          role="alert">
+          {{ message }}
+          <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Luk"></button>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+      {% endblock %}
+
+      <main class="content fm-content">
         {% block content %}{% endblock %}
       </main>
 
-      <!-- FOOTER -->
-      <footer class="footer">
-        <p>&copy; 2025 AiLead. Alle rettigheder forbeholdes.</p>
-        <p>
-          <a href="/privacy">Fortrolighed</a> |
-          <a href="/terms">Vilkår</a> |
-          <a href="/support">Support</a>
-        </p>
+      <footer class="footer fm-footer">
+        <div class="fm-footer-inner">
+          <span>&copy; 2026 {{ platform_name }}. Alle rettigheder forbeholdes.</span>
+          <span>
+            {% if white_label_active and company_branding.support_email %}
+            <a href="mailto:{{ company_branding.support_email }}">Support</a>
+            {% else %}
+            <a href="/support">Support</a>
+            {% endif %}
+            <span aria-hidden="true"> · </span>
+            <a href="/privacy">Fortrolighed</a>
+            <span aria-hidden="true"> · </span>
+            <a href="/terms">Vilkår</a>
+          </span>
+        </div>
       </footer>
     </div>
   </div>
 
-  <!-- JavaScript: Dark/Light Mode, Sidebar Toggle, Credits Updater & Notifications Dropdown -->
-  <script>
-    document.addEventListener('DOMContentLoaded', function () {
-      // Dark/Light Mode Toggle
-      const modeToggle = document.getElementById('mode-toggle');
-      const body = document.body;
-      if (localStorage.getItem('mode') === 'light') {
-        body.classList.add('light-mode');
-        modeToggle.classList.add('active');
-      }
-      modeToggle.addEventListener('click', () => {
-        body.classList.toggle('light-mode');
-        modeToggle.classList.toggle('active');
-        localStorage.setItem('mode', body.classList.contains('light-mode') ? 'light' : 'dark');
-      });
-
-      // Sidebar Toggle
-      const sidebar = document.getElementById('sidebar');
-      const sidebarToggle = document.getElementById('sidebar-toggle');
-      sidebarToggle.addEventListener('click', () => {
-        sidebar.classList.toggle('collapsed');
-      });
-
-      // Credits updater
-      const creditsDisplay = document.getElementById('credits-display');
-      if (creditsDisplay && localStorage.getItem('credits')) {
-        creditsDisplay.innerHTML = '<i class="fa-solid fa-coins"></i> ' + localStorage.getItem('credits');
-      }
-      function updateCredits() {
-        if (!creditsDisplay) return;
-        fetch('/api/credits', { credentials: 'same-origin' })
-          .then(response => response.json())
-          .then(data => {
-            creditsDisplay.innerHTML = '<i class="fa-solid fa-coins"></i> ' + data.credits;
-            localStorage.setItem('credits', data.credits);
-          })
-          .catch(error => console.error('Error fetching credits:', error));
-      }
-      updateCredits();
-      setInterval(updateCredits, 5000);
-
-      // Notifications Badge Updater
-      function updateNotifBadge() {
-        fetch('/api/notifications/unread_count', { credentials: 'same-origin' })
-          .then(response => response.json())
-          .then(data => {
-            const badge = document.getElementById('notif-badge');
-            if (badge) {
-              badge.textContent = data.unread_count;
-              badge.style.transform = 'scale(1.2)';
-              setTimeout(() => { badge.style.transform = 'scale(1)'; }, 200);
-            }
-          })
-          .catch(error => console.error('Error fetching notifications count:', error));
-      }
-      updateNotifBadge();
-      setInterval(updateNotifBadge, 5000);
-
-      // Notifications Dropdown Functionality
-      function updateDropdown() {
-        fetch('/api/notifications/unread_list', { credentials: 'same-origin' })
-          .then(response => response.json())
-          .then(data => {
-            const list = document.getElementById('notif-list');
-            if (!list) return;
-
-            list.innerHTML = '';
-            if (data.notifications && data.notifications.length > 0) {
-              data.notifications.forEach(notif => {
-                const item = document.createElement('div');
-                item.className = 'dropdown-item';
-                item.id = 'dropdown-notif-' + notif.id;
-                let imageHTML = '';
-                if (notif.image_url) {
-                  imageHTML = `<img src="${notif.image_url}" class="dropdown-image">`;
-                }
-                item.innerHTML = `
-                  ${imageHTML}
-                  <a href="/notifications#notif-${notif.id}" class="notif-link">
-                    <div class="notif-text">
-                      <strong>${notif.title}</strong><br>
-                      <span style="font-size:0.8rem; color: var(--muted-text);">${notif.timestamp}</span>
-                    </div>
-                  </a>
-                  <button onclick="markDropdownRead(${notif.id})">Mark as read</button>
-                `;
-                list.appendChild(item);
-              });
-            } else {
-              list.innerHTML = '<div class="dropdown-item" style="text-align:center; padding:12px;">Ingen nye notifikationer</div>';
-            }
-          })
-          .catch(err => console.error(err));
-      }
-
-      const headerNotif = document.getElementById('header-notifications');
-      const notifDropdown = document.getElementById('notif-dropdown');
-      if (headerNotif && notifDropdown) {
-        headerNotif.addEventListener('click', function (e) {
-          notifDropdown.classList.toggle('active');
-          if (notifDropdown.classList.contains('active')) {
-            updateDropdown();
-          }
-        });
-      }
-
-      // Mark individual notification from dropdown as read
-      window.markDropdownRead = function (notifId) {
-        fetch('/api/notifications/' + notifId + '/mark_read', {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'Content-Type': 'application/json' }
-        })
-          .then(response => response.json())
-          .then(data => {
-            if (data.success) {
-              const item = document.getElementById('dropdown-notif-' + notifId);
-              if (item) { item.remove(); }
-              updateNotifBadge();
-            } else {
-              alert('Fejl: ' + data.error);
-            }
-          })
-          .catch(err => console.error(err));
-      };
-
-      // Mark all notifications as read from dropdown
-      const markAllBtn = document.getElementById('mark-all-btn');
-      if (markAllBtn) {
-        markAllBtn.addEventListener('click', function () {
-          fetch('/api/mark-notifications-read', {
-            method: 'POST',
-            credentials: 'same-origin',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ mark_all: true })
-          })
-            .then(response => response.json())
-            .then(data => {
-              if (data.success) {
-                notifDropdown.classList.remove('active');
-                updateNotifBadge();
-              } else {
-                alert('Fejl: ' + data.error);
-              }
-            })
-            .catch(err => console.error(err));
-        });
-      }
-
-      // Force update dropdown on window load in case it's needed
-      window.addEventListener('load', updateDropdown);
-    });
-  </script>
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="{{ url_for('static', filename='futurematch/futurematch.js') }}"></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 

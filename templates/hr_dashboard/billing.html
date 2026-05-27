@@ -2,30 +2,33 @@
 {% block title %}Fakturering - {{ company.company_name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-workspace fm-ops-page">
     {% include 'hr_dashboard/_hr_nav.html' %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2><i class="fas fa-file-invoice-dollar text-primary me-2"></i>Fakturering & Betaling</h2>
-            <p class="text-muted mb-0">{{ company.company_name }} - Oversigt over ordrer og betalingsstatus</p>
+    <section class="fm-page-hero mb-4">
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 position-relative">
+            <div>
+                <div class="fm-hero-eyebrow"><i class="fas fa-file-invoice-dollar"></i> Finanskontrol</div>
+                <h1 class="fm-hero-title">Fakturering & betaling</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} - overblik over ordrer, betalingsstatus og hurtige massehandlinger.</p>
+            </div>
+            <div class="fm-hero-actions">
+                <button class="btn btn-outline-success btn-sm" id="bulkInvoiceBtn" style="display:none;" onclick="bulkAction('invoiced')">
+                    <i class="fas fa-file-invoice"></i> Marker som faktureret
+                </button>
+                <button class="btn btn-primary btn-sm" id="bulkPaidBtn" style="display:none;" onclick="bulkAction('paid')">
+                    <i class="fas fa-check-circle"></i> Marker som betalt
+                </button>
+                <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Dashboard
+                </a>
+            </div>
         </div>
-        <div class="d-flex gap-2">
-            <button class="btn btn-success btn-sm" id="bulkInvoiceBtn" style="display:none;" onclick="bulkAction('invoiced')">
-                <i class="fas fa-file-invoice"></i> Marker som faktureret
-            </button>
-            <button class="btn btn-primary btn-sm" id="bulkPaidBtn" style="display:none;" onclick="bulkAction('paid')">
-                <i class="fas fa-check-circle"></i> Marker som betalt
-            </button>
-            <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
-                <i class="fas fa-arrow-left"></i> Dashboard
-            </a>
-        </div>
-    </div>
+    </section>
 
     <!-- Summary Cards -->
-    <div class="row mb-4">
+    <div class="row g-3 mb-4">
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-secondary shadow h-100 py-2">
+            <div class="card border-left-secondary shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-uppercase mb-1">Ikke faktureret</div>
                     <div class="h5 mb-0 fw-bold text-danger">{{ summary.not_invoiced or 0 }} ordrer</div>
@@ -34,7 +37,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-warning shadow h-100 py-2">
+            <div class="card border-left-warning shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-uppercase mb-1">Faktureret (afventer)</div>
                     <div class="h5 mb-0 fw-bold text-warning">{{ summary.invoiced or 0 }} ordrer</div>
@@ -43,7 +46,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-success shadow h-100 py-2">
+            <div class="card border-left-success shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-uppercase mb-1">Betalt</div>
                     <div class="h5 mb-0 fw-bold text-success">{{ summary.paid or 0 }} ordrer</div>
@@ -52,7 +55,7 @@
             </div>
         </div>
         <div class="col-xl-3 col-md-6 mb-3">
-            <div class="card border-left-primary shadow h-100 py-2">
+            <div class="card border-left-primary shadow h-100 py-2 fm-ops-metric">
                 <div class="card-body">
                     <div class="text-xs font-weight-bold text-uppercase mb-1">Total vaerdi</div>
                     <div class="h5 mb-0 fw-bold">{{ "{:,.0f}".format(summary.total_value or 0).replace(",", ".") }} kr</div>
@@ -63,7 +66,7 @@
     </div>
 
     <!-- Filters -->
-    <div class="card shadow mb-4">
+    <div class="card shadow mb-4 fm-filter-bar">
         <div class="card-body py-2">
             <form method="GET" class="d-flex gap-3 align-items-center flex-wrap">
                 <div class="d-flex align-items-center gap-2">
@@ -94,7 +97,7 @@
     <div class="card shadow mb-4">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-sm table-hover align-middle">
+                <table class="table table-sm table-hover align-middle fm-modern-table">
                     <thead class="table-light">
                         <tr>
                             <th><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>

@@ -3,14 +3,26 @@
 {% block title %}{{ employee.username }} - Medarbejderprofil{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-workspace fm-ops-page fm-employee-profile">
     {% include 'hr_dashboard/_hr_nav.html' %}
 
-    <!-- Back link -->
-    <a href="{{ url_for('companies.employees') }}"
-        class="text-decoration-none text-muted small d-inline-flex align-items-center mb-3">
-        <i class="fas fa-arrow-left me-1"></i> Tilbage til medarbejdere
-    </a>
+    <section class="fm-page-hero mb-4">
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 position-relative">
+            <div>
+                <div class="fm-hero-eyebrow"><i class="fas fa-user"></i> Medarbejderprofil</div>
+                <h1 class="fm-hero-title">{{ employee.username }}</h1>
+                <p class="fm-hero-subtitle">{{ employee.job_title or 'Ingen jobtitel' }} · {{ employee.department or 'Ingen afdeling' }} · {{ employee.email }}</p>
+            </div>
+            <div class="fm-hero-actions">
+                <a href="{{ url_for('companies.employees') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left me-1"></i> Medarbejdere
+                </a>
+                <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}" class="btn btn-primary btn-sm">
+                    <i class="fas fa-edit me-1"></i> Rediger
+                </a>
+            </div>
+        </div>
+    </section>
 
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -187,7 +199,7 @@
                                 <div class="d-flex gap-1">
                                     {% for i in range(1, 6) %}
                                     <span
-                                        style="width:10px;height:10px;border-radius:50%;display:inline-block;{{ 'background:#3b82f6;' if i <= s.current_level else 'background:#e2e8f0;' }}"></span>
+                                        style="width:10px;height:10px;border-radius:50%;display:inline-block;{{ 'background:var(--fm-primary);' if i <= s.current_level else 'background:var(--fm-surface-muted);' }}"></span>
                                     {% endfor %}
                                 </div>
                                 <small class="text-muted" style="min-width:30px;">{{ s.current_level }}/5</small>
@@ -434,8 +446,8 @@
     .profile-avatar {
         width: 72px;
         height: 72px;
-        border-radius: 16px;
-        background: linear-gradient(135deg, #4e73df, #6366f1);
+        border-radius: 8px;
+        background: linear-gradient(135deg, var(--fm-primary), var(--fm-secondary));
         color: #fff;
         display: flex;
         align-items: center;
@@ -459,11 +471,11 @@
     }
 
     .stat-card {
-        background: var(--card-bg);
-        border-radius: 12px;
+        background: linear-gradient(180deg, var(--fm-surface-solid), color-mix(in srgb, var(--fm-surface) 92%, transparent));
+        border-radius: 8px;
         padding: 16px;
-        border: 1px solid var(--border-color);
-        box-shadow: var(--box-shadow);
+        border: 1px solid var(--fm-border);
+        box-shadow: var(--fm-shadow-xs);
         text-align: center;
         transition: transform 0.2s;
     }
@@ -488,7 +500,7 @@
     }
 
     .text-purple {
-        color: #a855f7;
+        color: #0f766e;
     }
 
     .stat-icon {
@@ -515,7 +527,7 @@
 
     .chat-day-bar {
         width: 20px;
-        background: linear-gradient(180deg, #a855f7, #6366f1);
+        background: linear-gradient(180deg, var(--fm-primary), var(--fm-secondary));
         border-radius: 4px 4px 0 0;
         min-height: 4px;
     }
@@ -526,45 +538,54 @@
 {% if employee_skills %}
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
 <script>
+    const skillRadarLabels = {{ employee_skills|map(attribute='skill_name')|list|tojson }};
+    const skillRadarCurrent = {{ employee_skills|map(attribute='current_level')|list|tojson }};
+    const skillRadarTarget = {{ employee_skills|map(attribute='target_level')|list|tojson }};
+    const skillRadarDatasets = [{
+        label: 'Nuvaerende niveau',
+        data: skillRadarCurrent,
+        backgroundColor: 'rgba(15, 118, 110, 0.14)',
+        borderColor: '#0f766e',
+        borderWidth: 2,
+        pointBackgroundColor: '#0f766e',
+        pointRadius: 4
+    }];
+
+    if (skillRadarTarget.some(value => Number(value || 0) > 0)) {
+        skillRadarDatasets.push({
+            label: 'Maal',
+            data: skillRadarTarget.map(value => Number(value || 0)),
+            backgroundColor: 'rgba(16,185,129,0.08)',
+            borderColor: '#10b981',
+            borderWidth: 1,
+            borderDash: [4, 4],
+            pointRadius: 3,
+            pointBackgroundColor: '#10b981'
+        });
+    }
+
     new Chart(document.getElementById('skillRadar'), {
         type: 'radar',
         data: {
-            labels: {{ employee_skills| map(attribute = 'skill_name') | list | tojson }},
-        datasets: [{
-            label: 'Nuvaerende niveau',
-            data: {{ employee_skills| map(attribute = 'current_level') | list | tojson }},
-        backgroundColor: 'rgba(78,115,223,0.15)',
-        borderColor: '#4e73df',
-        borderWidth: 2,
-        pointBackgroundColor: '#4e73df',
-        pointRadius: 4
-        }{% if employee_skills | selectattr('target_level', 'greaterthan', 0) | list %}, {
-        label: 'Maal',
-            data: { { employee_skills | map(attribute = 'target_level') | list | tojson } },
-        backgroundColor: 'rgba(16,185,129,0.08)',
-            borderColor: '#10b981',
-                borderWidth: 1,
-                    borderDash: [4, 4],
-                        pointRadius: 3,
-                            pointBackgroundColor: '#10b981'
-    } {% endif %}]
-    },
-    options: {
-        responsive: true,
-            scales: {
-            r: {
-                min: 0, max: 5,
-                    ticks: { stepSize: 1, font: { size: 10 }, backdropColor: 'transparent', color: 'var(--muted-text)' },
-                pointLabels: { font: { size: 11, weight: '600' }, color: 'var(--text-color)' },
-                grid: { color: 'var(--border-color)' },
-                angleLines: { color: 'var(--border-color)' }
-            }
+            labels: skillRadarLabels,
+            datasets: skillRadarDatasets
         },
-        plugins: {
-            legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 }, color: 'var(--text-color)' } }
+        options: {
+            responsive: true,
+            scales: {
+                r: {
+                    min: 0, max: 5,
+                    ticks: { stepSize: 1, font: { size: 10 }, backdropColor: 'transparent', color: 'var(--muted-text)' },
+                    pointLabels: { font: { size: 11, weight: '600' }, color: 'var(--text-color)' },
+                    grid: { color: 'var(--border-color)' },
+                    angleLines: { color: 'var(--border-color)' }
+                }
+            },
+            plugins: {
+                legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 }, color: 'var(--text-color)' } }
+            }
         }
-    }
-});
+    });
 </script>
 {% endif %}
 {% endblock %}

@@ -3,17 +3,22 @@
 {% block title %}Godkendelser - {{ company.company_name }}{% endblock %}
 
 {% block content %}
-<div class="container-fluid mt-4">
+<div class="container-fluid mt-4 fm-workspace fm-ops-page">
     {% include 'hr_dashboard/_hr_nav.html' %}
-    <div class="d-flex justify-content-between align-items-center mb-4">
-        <div>
-            <h2><i class="fas fa-clipboard-check text-primary me-2"></i>Ordregodkendelser</h2>
-            <p class="text-muted mb-0">{{ company.company_name }} - {{ pending_count }} afventende</p>
+    <section class="fm-page-hero mb-4">
+        <div class="d-flex justify-content-between align-items-end flex-wrap gap-3 position-relative">
+            <div>
+                <div class="fm-hero-eyebrow"><i class="fas fa-clipboard-check"></i> Approval desk</div>
+                <h1 class="fm-hero-title">Ordregodkendelser</h1>
+                <p class="fm-hero-subtitle">{{ company.company_name }} - {{ pending_count }} afventende anmodning{{ 'er' if pending_count != 1 else '' }}.</p>
+            </div>
+            <div class="fm-hero-actions">
+                <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
+                    <i class="fas fa-arrow-left"></i> Dashboard
+                </a>
+            </div>
         </div>
-        <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">
-            <i class="fas fa-arrow-left"></i> Dashboard
-        </a>
-    </div>
+    </section>
 
     {% if pending_count > 0 %}
     <div class="alert alert-warning d-flex align-items-center mb-4">
@@ -25,7 +30,7 @@
     <div class="card shadow mb-4">
         <div class="card-body">
             <div class="table-responsive">
-                <table class="table table-hover align-middle" id="approvalsTable">
+                <table class="table table-hover align-middle fm-modern-table" id="approvalsTable">
                     <thead class="table-light">
                         <tr>
                             <th>Medarbejder</th>
@@ -43,7 +48,7 @@
                         <tr id="approval-row-{{ a.id }}">
                             <td>
                                 <div class="d-flex align-items-center">
-                                    <div class="avatar-circle me-2" style="width:32px;height:32px;font-size:0.8em;background:#eef2ff;color:#4338ca;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;">
+                                    <div class="fm-ops-avatar me-2" style="font-size:0.8em;">
                                         {{ a.requester_username[0].upper() if a.requester_username else 'U' }}
                                     </div>
                                     <div>

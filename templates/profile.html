@@ -5,7 +5,7 @@
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
   :root {
-    --primary-color: #6a11cb;
+    --primary-color: #0f766e;
     --secondary-color: #2575fc;
     --accent-color: #ff512f;
     --success-color: #4ade80;
@@ -163,7 +163,7 @@
   .skill-pill:hover { background: rgba(106,17,203,0.12); border-color: rgba(106,17,203,0.3); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
   .skill-pill.level-ekspert { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
   .skill-pill.level-avanceret { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.06); }
-  .skill-pill.level-mellem { border-color: rgba(168,85,247,0.3); background: rgba(168,85,247,0.06); }
+  .skill-pill.level-mellem { border-color: rgba(15,118,110,0.3); background: rgba(15,118,110,0.06); }
   .skill-pill.level-begynder { border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.06); }
   .skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
   .skill-level { font-size: 0.68rem; color: var(--muted-text); text-transform: capitalize; }
@@ -256,8 +256,8 @@
     animation: highlightPulse 1.5s ease;
   }
   @keyframes highlightPulse {
-    0% { box-shadow: 0 0 0 0 rgba(168,85,247,0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(168,85,247,0.1); }
+    0% { box-shadow: 0 0 0 0 rgba(15,118,110,0.4); }
+    50% { box-shadow: 0 0 0 8px rgba(15,118,110,0.1); }
     100% { box-shadow: 0 0 0 0 transparent; }
   }
 
@@ -511,8 +511,8 @@
   <div class="cv-section" id="section-skills">
     <div class="cv-section-header" onclick="toggleSection('skills')">
       <h3>
-        <span class="section-icon" style="background: rgba(168,85,247,0.15);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        <span class="section-icon" style="background: rgba(15,118,110,0.15);">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f766e" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
         </span>
         Kompetencer
         <span class="count-badge" id="skills-count">0</span>
@@ -745,7 +745,7 @@
 </div>
 
 <script>
-  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#a855f7', avanceret:'#f59e0b', ekspert:'#ef4444'};
+  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#0f766e', avanceret:'#f59e0b', ekspert:'#ef4444'};
   const LEVEL_LABELS = {begynder:'Begynder', mellem:'Mellem', avanceret:'Avanceret', ekspert:'Ekspert'};
   let _profileData = null;
 

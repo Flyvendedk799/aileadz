@@ -102,7 +102,7 @@ def create_app():
     app.config.update({
         'MYSQL_HOST': 'TobiasMastek.mysql.pythonanywhere-services.com',
         'MYSQL_USER': 'TobiasMastek',
-        'MYSQL_PASSWORD': 'REDACTED!',
+        'MYSQL_PASSWORD': 'REDACTED',
         'MYSQL_DB': 'TobiasMastek$AiLead',
         'MYSQL_CURSORCLASS': 'DictCursor'
     })

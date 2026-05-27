@@ -5,6 +5,7 @@ import datetime
 
 reports_bp = Blueprint('reports', __name__, template_folder='templates')
 
+@reports_bp.route('')
 @reports_bp.route('/')
 def reports():
     if 'user' not in session:

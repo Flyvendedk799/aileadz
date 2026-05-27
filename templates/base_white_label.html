@@ -69,7 +69,7 @@
 
   <nav class="navbar navbar-expand-lg white-label-nav">
     <div class="container-fluid px-4">
-      <a class="navbar-brand fm-brand" href="/">
+      <a class="navbar-brand fm-brand" href="{{ url_for('dashboard.dashboard') }}">
         <span class="fm-brand-mark">
           {% if white_label_active and company_branding.company_logo %}
           <img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" class="company-logo">
@@ -92,9 +92,9 @@
         <ul class="navbar-nav me-auto">
           {% if session.user %}
           <li class="nav-item"><a class="nav-link" href="{{ url_for('dashboard.dashboard') }}"><i class="fas fa-house me-1"></i>Oversigt</a></li>
-          <li class="nav-item"><a class="nav-link" href="/app1"><i class="fas fa-comments me-1"></i>AI-assistent</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('app1.index') }}"><i class="fas fa-comments me-1"></i>AI-assistent</a></li>
           {% if session.company_id %}
-          <li class="nav-item"><a class="nav-link" href="/hr"><i class="fas fa-building me-1"></i>HR Workspace</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fas fa-building me-1"></i>HR Workspace</a></li>
           {% endif %}
           {% endif %}
         </ul>

@@ -7,6 +7,15 @@ import catalog_service as catalog
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__, template_folder='templates')
 
 
+def _column_exists(cur, table_name, column_name):
+    try:
+        cur.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE %s", (column_name,))
+        return cur.fetchone() is not None
+    except Exception as e:
+        logging.warning("Could not inspect column %s.%s: %s", table_name, column_name, e)
+        return False
+
+
 def require_admin():
     """Check admin access. Returns redirect response or None."""
     if 'user' not in session or session.get('role') != 'admin':
@@ -15,12 +24,14 @@ def require_admin():
     return None
 
 
+@admin_dashboard_bp.route('')
 @admin_dashboard_bp.route('/')
 def admin_home():
     check = require_admin()
     if check:
         return check
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    users_has_created_at = _column_exists(cur, 'users', 'created_at')
 
     # Platform metrics
     cur.execute("SELECT COUNT(*) AS cnt FROM users")
@@ -42,11 +53,9 @@ def admin_home():
 
     # New users this month
     new_users_month = 0
-    try:
+    if users_has_created_at:
         cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_FORMAT(NOW(), '%%Y-%%m-01')")
         new_users_month = cur.fetchone()['cnt']
-    except Exception:
-        pass
 
     total_companies = 0
     try:
@@ -93,12 +102,18 @@ def admin_home():
     except Exception:
         pass
 
-    # Recent users
-    cur.execute("""
-        SELECT id, username, email, role, credits, created_at
-        FROM users ORDER BY id DESC LIMIT 15
-    """)
-    recent_users = cur.fetchall()
+    # Recent users. The live legacy users table does not always have created_at.
+    recent_users = []
+    try:
+        created_at_select = "created_at" if users_has_created_at else "NULL AS created_at"
+        user_order = "created_at DESC, id DESC" if users_has_created_at else "id DESC"
+        cur.execute("""
+            SELECT id, username, email, role, credits, {created_at_select}
+            FROM users ORDER BY {user_order} LIMIT 15
+        """.format(created_at_select=created_at_select, user_order=user_order))
+        recent_users = cur.fetchall()
+    except Exception as e:
+        logging.error("Error fetching recent users: %s", e)
 
     # Companies list with more details
     companies = []
@@ -184,15 +199,27 @@ def user_list():
     if check:
         return check
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute("""
-        SELECT u.id, u.username, u.email, u.role, u.credits, u.created_at,
-               cu.company_id, c.company_name, cu.role AS company_role
-        FROM users u
-        LEFT JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active'
-        LEFT JOIN companies c ON c.id = cu.company_id
-        ORDER BY u.id DESC
-    """)
-    users = cur.fetchall()
+    users_has_created_at = _column_exists(cur, 'users', 'created_at')
+    try:
+        created_at_select = "u.created_at" if users_has_created_at else "NULL AS created_at"
+        user_order = "u.created_at DESC, u.id DESC" if users_has_created_at else "u.id DESC"
+        cur.execute("""
+            SELECT u.id, u.username, u.email, u.role, u.credits, {created_at_select},
+                   cu.company_id, c.company_name, cu.role AS company_role
+            FROM users u
+            LEFT JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active'
+            LEFT JOIN companies c ON c.id = cu.company_id
+            ORDER BY {user_order}
+        """.format(created_at_select=created_at_select, user_order=user_order))
+        users = cur.fetchall()
+    except Exception as e:
+        logging.error("Error fetching admin user company data: %s", e)
+        cur.execute("""
+            SELECT id, username, email, role, credits, NULL AS created_at,
+                   NULL AS company_id, NULL AS company_name, NULL AS company_role
+            FROM users ORDER BY id DESC
+        """)
+        users = cur.fetchall()
     cur.close()
     return render_template('admin_users.html', users=users)
 

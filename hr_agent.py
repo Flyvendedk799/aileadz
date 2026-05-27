@@ -6,6 +6,7 @@ import json
 import time
 import uuid
 from flask import session, current_app, Response, stream_with_context
+from db_compat import close_flask_mysql_connection
 from hr_tools import execute_hr_tool
 
 
@@ -190,6 +191,7 @@ def handle_hr_ask(user_query, flask_session):
                 except Exception:
                     pass
 
+            close_flask_mysql_connection()
             if final_text:
                 # Stream the response in chunks for a nice UX
                 chunk_size = 20
@@ -214,6 +216,8 @@ def handle_hr_ask(user_query, flask_session):
             traceback.print_exc()
             yield f"data: {json.dumps({'type': 'error', 'content': f'Der opstod en fejl: {str(e)}'})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
+        finally:
+            close_flask_mysql_connection()
 
     return Response(
         stream_with_context(stream_generator()),

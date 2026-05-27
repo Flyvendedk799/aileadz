@@ -15,17 +15,17 @@
         godkendelser og indstillinger der holder arbejdet i gang.
       </p>
       <div class="fm-hero-actions">
-        <a href="/app1" class="fm-action-link">
+        <a href="{{ url_for('app1.index') }}" class="fm-action-link">
           <i class="fa-solid fa-comments"></i>
           Start AI-assistent
         </a>
         {% if session.get('company_id') %}
-        <a href="/hr" class="fm-action-link secondary">
+        <a href="{{ url_for('hr_dashboard.dashboard') }}" class="fm-action-link secondary">
           <i class="fa-solid fa-building"></i>
           Åbn HR Workspace
         </a>
         {% else %}
-        <a href="/analytics" class="fm-action-link secondary">
+        <a href="{{ url_for('pages.analytics') }}" class="fm-action-link secondary">
           <i class="fa-solid fa-chart-line"></i>
           Se analyse
         </a>
@@ -110,7 +110,7 @@
   </div>
 
   <section class="fm-card-grid" id="app-cards">
-    <a href="/app1" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('app1.index') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-comments"></i></span>
         <span class="fm-card-badge">Assistant</span>
@@ -126,7 +126,7 @@
     </a>
 
     {% if session.get('company_id') %}
-    <a href="/hr" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-building"></i></span>
         <span class="fm-card-badge">HR</span>
@@ -141,7 +141,7 @@
       </div>
     </a>
 
-    <a href="/companies/analytics" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('companies.analytics') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-chart-simple"></i></span>
         <span class="fm-card-badge">Company BI</span>
@@ -156,7 +156,7 @@
       </div>
     </a>
 
-    <a href="/multitenant-reports" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('multitenant_reports.reports') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-file-lines"></i></span>
         <span class="fm-card-badge">Reports</span>
@@ -172,7 +172,7 @@
     </a>
     {% endif %}
 
-    <a href="/analytics" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('pages.analytics') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-chart-line"></i></span>
         <span class="fm-card-badge">Usage</span>
@@ -187,7 +187,7 @@
       </div>
     </a>
 
-    <a href="/reports" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('reports.reports') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-file-lines"></i></span>
         <span class="fm-card-badge">Reports</span>
@@ -202,7 +202,7 @@
       </div>
     </a>
 
-    <a href="/notifications" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('pages.notifications') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-bell"></i></span>
         <span class="fm-card-badge">Inbox</span>
@@ -217,7 +217,7 @@
       </div>
     </a>
 
-    <a href="/profile" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('pages.profile') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-user"></i></span>
         <span class="fm-card-badge">Profile</span>
@@ -232,7 +232,7 @@
       </div>
     </a>
 
-    <a href="/indstillinger" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('pages.settings') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-sliders"></i></span>
         <span class="fm-card-badge">Settings</span>
@@ -248,7 +248,7 @@
     </a>
 
     {% if session.get('role') == 'admin' %}
-    <a href="/admin/" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('admin_dashboard.admin_home') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-shield-halved"></i></span>
         <span class="fm-card-badge">Admin</span>
@@ -263,7 +263,7 @@
       </div>
     </a>
 
-    <a href="/admin/chatbot-dashboard" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-robot"></i></span>
         <span class="fm-card-badge">Chatbot BI</span>
@@ -278,7 +278,7 @@
       </div>
     </a>
 
-    <a href="/companies/register" class="fm-tool-card" data-search-card data-fm-animate>
+    <a href="{{ url_for('companies.register_company') }}" class="fm-tool-card" data-search-card data-fm-animate>
       <div class="fm-tool-card-header">
         <span class="fm-card-icon"><i class="fa-solid fa-building-circle-arrow-right"></i></span>
         <span class="fm-card-badge">Enterprise</span>

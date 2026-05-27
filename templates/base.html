@@ -53,7 +53,7 @@
   <div class="dashboard fm-app-shell">
     <aside class="sidebar fm-sidebar collapsed" id="sidebar" aria-label="Primær navigation">
       <div class="fm-sidebar-header">
-        <a class="fm-brand" href="/dashboard" aria-label="{{ platform_name }}">
+        <a class="fm-brand" href="{{ url_for('dashboard.dashboard') }}" aria-label="{{ platform_name }}">
           <span class="fm-brand-mark">
             {% if platform_logo %}
             <img src="{{ platform_logo }}" alt="{{ platform_name }}">
@@ -74,25 +74,25 @@
       <ul class="nav-liste fm-nav-list">
         <li class="fm-nav-section-label">Workspace</li>
         <li>
-          <a href="/dashboard" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('dashboard.dashboard') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-house"></i>
             <span class="nav-text">Oversigt</span>
           </a>
         </li>
         <li>
-          <a href="/app1" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('app1.index') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-comments"></i>
             <span class="nav-text">AI-assistent</span>
           </a>
         </li>
         <li>
-          <a href="/analytics" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('pages.analytics') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-chart-line"></i>
             <span class="nav-text">Analyse</span>
           </a>
         </li>
         <li>
-          <a href="/reports" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('reports.reports') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-file-lines"></i>
             <span class="nav-text">Rapporter</span>
           </a>
@@ -101,19 +101,19 @@
         {% if session.get('company_id') %}
         <li class="fm-nav-section-label">Virksomhed</li>
         <li>
-          <a href="/hr" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('hr_dashboard.dashboard') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-building"></i>
             <span class="nav-text">HR Workspace</span>
           </a>
         </li>
         <li>
-          <a href="/companies/analytics" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('companies.analytics') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-chart-simple"></i>
             <span class="nav-text">Company BI</span>
           </a>
         </li>
         <li>
-          <a href="/multitenant-reports" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('multitenant_reports.reports') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-file-lines"></i>
             <span class="nav-text">Virksomhedsrapporter</span>
           </a>
@@ -122,19 +122,19 @@
 
         <li class="fm-nav-section-label">Konto</li>
         <li>
-          <a href="/notifications" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('pages.notifications') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-bell"></i>
             <span class="nav-text">Notifikationer</span>
           </a>
         </li>
         <li>
-          <a href="/profile" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('pages.profile') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-user"></i>
             <span class="nav-text">Profil</span>
           </a>
         </li>
         <li>
-          <a href="/indstillinger" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('pages.settings') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-sliders"></i>
             <span class="nav-text">Indstillinger</span>
           </a>
@@ -143,7 +143,7 @@
         {% if session.get('role') == 'admin' or session.get('company_role') == 'company_admin' %}
         <li class="fm-nav-section-label">Admin</li>
         <li>
-          <a href="/enterprise/company-settings" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('enterprise_settings.company_settings') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-palette"></i>
             <span class="nav-text">White label</span>
           </a>
@@ -151,13 +151,13 @@
         {% endif %}
         {% if session.get('role') == 'admin' %}
         <li>
-          <a href="/admin/" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('admin_dashboard.admin_home') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-shield-halved"></i>
             <span class="nav-text">Admin</span>
           </a>
         </li>
         <li>
-          <a href="/admin/chatbot-dashboard" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-robot"></i>
             <span class="nav-text">Chatbot BI</span>
           </a>
@@ -200,15 +200,15 @@
               <div id="notif-list"></div>
               <div class="dropdown-footer">
                 <button id="mark-all-btn" type="button">Marker alle læst</button>
-                <a href="/notifications">Se alle</a>
+                <a href="{{ url_for('pages.notifications') }}">Se alle</a>
               </div>
             </div>
           </div>
-          <a href="/profile" class="fm-action-link secondary"><i class="fa-solid fa-id-badge"></i>Profil</a>
-          <a href="/logout" class="fm-action-link secondary"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log ud</a>
+          <a href="{{ url_for('pages.profile') }}" class="fm-action-link secondary"><i class="fa-solid fa-id-badge"></i>Profil</a>
+          <a href="{{ url_for('auth.logout') }}" class="fm-action-link secondary"><i class="fa-solid fa-arrow-right-from-bracket"></i>Log ud</a>
           {% else %}
-          <a href="/login" class="fm-action-link"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind</a>
-          <a href="/register" class="fm-action-link secondary"><i class="fa-solid fa-user-plus"></i>Registrer</a>
+          <a href="{{ url_for('auth.login') }}" class="fm-action-link"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind</a>
+          <a href="{{ url_for('auth.register') }}" class="fm-action-link secondary"><i class="fa-solid fa-user-plus"></i>Registrer</a>
           {% endif %}
           <button id="mode-toggle" class="toggle-slider fm-theme-toggle" type="button" aria-label="Skift tema">
             <i class="fa-solid fa-moon left-icon"></i>
@@ -245,12 +245,12 @@
             {% if white_label_active and company_branding.support_email %}
             <a href="mailto:{{ company_branding.support_email }}">Support</a>
             {% else %}
-            <a href="/support">Support</a>
+            <a href="{{ url_for('pages.support') }}">Support</a>
             {% endif %}
             <span aria-hidden="true"> · </span>
-            <a href="/privacy">Fortrolighed</a>
+            <a href="{{ url_for('pages.privacy') }}">Fortrolighed</a>
             <span aria-hidden="true"> · </span>
-            <a href="/terms">Vilkår</a>
+            <a href="{{ url_for('pages.terms') }}">Vilkår</a>
           </span>
         </div>
       </footer>

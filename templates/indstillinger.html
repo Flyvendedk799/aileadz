@@ -469,8 +469,8 @@
   <div class="admin-section">
     <h2>Admin Only</h2>
     <div class="admin-links">
-      <a href="/admin/credits"><i class="fa-solid fa-coins"></i> Tildel Kreditter</a>
-      <a href="/admin/notifications"><i class="fa-solid fa-bullhorn"></i> Admin Notifikationer</a>
+      <a href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Tildel Kreditter</a>
+      <a href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Admin Notifikationer</a>
     </div>
   </div>
   {% endif %}

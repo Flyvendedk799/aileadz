@@ -47,6 +47,7 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error getting company context: {e}")
             return None
 
+    @hr_dashboard_bp.route('')
     @hr_dashboard_bp.route('/')
     def dashboard():
         """Main HR Dashboard with key metrics and insights"""

@@ -3,6 +3,7 @@ HR Chatbot Tools — Company-level analytics tools for HR managers.
 Separate from employee chatbot tools. Only available in HR dashboard chatbot.
 """
 import json
+import db_compat  # noqa: F401
 import MySQLdb.cursors
 from flask import current_app, session
 from datetime import datetime, timedelta
@@ -167,6 +168,68 @@ HR_TOOLS = [
         }
     },
 ]
+
+
+HR_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_get_company_learning_context",
+            "description": "Get one company-scoped HR context snapshot: budgets, skill gaps, pending actions, supplier agreements, and catalog coverage.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {"type": "string", "description": "Optional department filter."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_recommend_training_plan",
+            "description": "Recommend a practical Futurematch training plan for a department/team using skill gaps, budget, and catalog courses.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {"type": "string", "description": "Department to plan for. Leave empty for company-wide."},
+                    "focus": {"type": "string", "description": "Optional focus area such as leadership, ITIL, cybersecurity."},
+                    "limit": {"type": "integer", "description": "Max course recommendations. Default 5."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_get_supplier_coverage",
+            "description": "Show catalog vendor coverage with company supplier preferences and active agreements.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "topic": {"type": "string", "description": "Optional category/topic to filter supplier coverage."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_get_ai_usage_risks",
+            "description": "Analyze employee AI/chatbot usage risks: low feedback, slow turns, repeated searches, and weak conversion signals.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "period_days": {"type": "integer", "description": "Look back period in days. Default 30."}
+                },
+                "required": []
+            }
+        }
+    },
+])
 
 
 # ── Tool execution functions ──
@@ -429,8 +492,6 @@ def _execute_get_training_report(args):
     period_days = args.get('period_days', 90)
     cur = _get_cursor()
 
-    dept_join = "JOIN company_users cu ON co.username = (SELECT u2.username FROM users u2 JOIN company_users cu2 ON u2.id = cu2.user_id WHERE cu2.company_id = co.company_id AND cu2.department = %s AND u2.username = co.username LIMIT 1)" if department else ""
-
     # Total spend and order stats
     base_where = "co.company_id = %s AND co.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)"
     params = [company_id, period_days]
@@ -444,10 +505,10 @@ def _execute_get_training_report(args):
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
             COUNT(CASE WHEN status = 'pending_approval' THEN 1 END) as pending_approval,
             COUNT(CASE WHEN status IN ('confirmed','processing') THEN 1 END) as in_progress,
-            COALESCE(SUM(CASE WHEN status != 'cancelled' THEN total_price ELSE 0 END), 0) as total_spend,
+            COALESCE(SUM(CASE WHEN status != 'cancelled' THEN price ELSE 0 END), 0) as total_spend,
             COUNT(DISTINCT username) as unique_employees,
-            AVG(CASE WHEN status = 'completed' AND completed_at IS NOT NULL
-                THEN DATEDIFF(completed_at, created_at) END) as avg_completion_days
+            AVG(CASE WHEN status = 'completed' AND completion_date IS NOT NULL
+                THEN DATEDIFF(completion_date, created_at) END) as avg_completion_days
         FROM course_orders co
         WHERE {base_where}
     """, tuple(params))
@@ -455,11 +516,11 @@ def _execute_get_training_report(args):
 
     # Top ordered courses
     cur.execute(f"""
-        SELECT co.course_title, COUNT(*) as order_count,
-               SUM(total_price) as total_value
+        SELECT co.product_title, COUNT(*) as order_count,
+               SUM(price) as total_value
         FROM course_orders co
         WHERE {base_where} AND co.status != 'cancelled'
-        GROUP BY co.course_title
+        GROUP BY co.product_title
         ORDER BY order_count DESC
         LIMIT 10
     """, tuple(params))
@@ -475,7 +536,7 @@ def _execute_get_training_report(args):
         "total_spend": float(stats['total_spend'] or 0),
         "unique_employees": stats['unique_employees'] or 0,
         "avg_completion_days": round(float(stats['avg_completion_days'] or 0), 1),
-        "top_courses": [{"title": c['course_title'], "orders": c['order_count'],
+        "top_courses": [{"title": c['product_title'], "orders": c['order_count'],
                          "value": float(c['total_value'] or 0)} for c in top_courses]
     }, default=str)
 
@@ -615,6 +676,223 @@ def _execute_get_chatbot_usage_stats(args):
     }, default=str)
 
 
+def _json_tool(fn, args):
+    try:
+        return json.loads(fn(args))
+    except Exception as exc:
+        return {"error": str(exc)}
+
+
+def _execute_hr_get_company_learning_context(args):
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    department = args.get("department", "")
+    budget = _json_tool(_execute_get_budget_overview, {"department": department})
+    gaps = _json_tool(_execute_get_company_skill_gaps, {"department": department})
+    pending = _json_tool(_execute_get_pending_actions, {})
+    suppliers = _json_tool(_execute_hr_get_supplier_coverage, {})
+
+    return json.dumps({
+        "department": department or "Alle",
+        "budget": budget,
+        "skill_gaps": gaps,
+        "pending_actions": pending,
+        "supplier_coverage": {
+            "active_suppliers": suppliers.get("active_suppliers", 0),
+            "inactive_suppliers": suppliers.get("inactive_suppliers", 0),
+            "agreement_count": suppliers.get("agreement_count", 0),
+            "top_vendors": suppliers.get("vendors", [])[:8],
+        },
+    }, default=str)
+
+
+def _execute_hr_recommend_training_plan(args):
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    department = args.get("department", "")
+    focus = (args.get("focus") or "").strip()
+    limit = int(args.get("limit") or 5)
+    gaps_payload = _json_tool(_execute_get_company_skill_gaps, {"department": department})
+    gaps = [g for g in gaps_payload.get("gaps", []) if g.get("gap", 0) > 0]
+    gaps.sort(key=lambda g: (g.get("critical") is not True, -float(g.get("gap", 0))))
+
+    topics = []
+    if focus:
+        topics.append(focus)
+    topics.extend(g.get("skill", "") for g in gaps[:4] if g.get("skill"))
+    if not topics:
+        topics = [focus or "ledelse"]
+
+    try:
+        import catalog_service as catalog
+        recommendations = []
+        seen = set()
+        for topic in topics:
+            results = catalog.search_products({"q": topic, "sort": "relevance"}, page=1, per_page=3)
+            for product in results.get("products", []):
+                if product["handle"] in seen:
+                    continue
+                seen.add(product["handle"])
+                recommendations.append({
+                    "topic": topic,
+                    "title": product["title"],
+                    "handle": product["handle"],
+                    "url": catalog.build_product_url(product["handle"]),
+                    "vendor": product["vendor"],
+                    "vendor_url": f"/vendors/{product['vendor_slug']}",
+                    "price": product["price_label"],
+                    "format": product["format"],
+                    "categories": product["categories"][:4],
+                    "reason": f"Matcher kompetencebehovet '{topic}'.",
+                })
+                if len(recommendations) >= limit:
+                    break
+            if len(recommendations) >= limit:
+                break
+    except Exception as exc:
+        recommendations = []
+        gaps_payload["catalog_error"] = str(exc)
+
+    budget = _json_tool(_execute_get_budget_overview, {"department": department})
+    return json.dumps({
+        "department": department or "Alle",
+        "focus": focus,
+        "priority_gaps": gaps[:6],
+        "recommended_courses": recommendations,
+        "budget": budget,
+        "next_actions": [
+            "Prioriter kritiske kompetencegab først",
+            "Match anbefalinger mod aktive leverandøraftaler",
+            "Opret læringssti for berørte medarbejdere",
+        ],
+    }, default=str)
+
+
+def _execute_hr_get_supplier_coverage(args):
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    topic = (args.get("topic") or "").strip().lower()
+    cur = _get_cursor()
+    cur.execute(
+        "SELECT vendor_name, is_active, priority, notes FROM company_supplier_preferences WHERE company_id = %s",
+        (company_id,),
+    )
+    prefs = {r["vendor_name"].lower(): r for r in cur.fetchall()}
+    cur.execute(
+        """
+        SELECT vendor_name, discount_type, discount_value, agreement_name, valid_until
+        FROM company_supplier_agreements
+        WHERE company_id = %s AND is_active = 1
+          AND (valid_from IS NULL OR valid_from <= CURDATE())
+          AND (valid_until IS NULL OR valid_until >= CURDATE())
+        """,
+        (company_id,),
+    )
+    agreements = {r["vendor_name"].lower(): r for r in cur.fetchall()}
+    cur.close()
+
+    try:
+        import catalog_service as catalog
+        vendors = catalog.get_vendors()
+        if topic:
+            vendors = [v for v in vendors if topic in " ".join(v.get("categories", []) + [v.get("name", "")]).lower()]
+        rows = []
+        for vendor in vendors[:50]:
+            key = vendor["name"].lower()
+            pref = prefs.get(key, {})
+            agreement = agreements.get(key, {})
+            is_active = bool(pref.get("is_active", 1))
+            rows.append({
+                "name": vendor["name"],
+                "url": f"/vendors/{vendor['slug']}",
+                "course_count": vendor.get("course_count", 0),
+                "categories": vendor.get("categories", [])[:5],
+                "is_active": is_active,
+                "priority": pref.get("priority"),
+                "notes": pref.get("notes", ""),
+                "agreement": {
+                    "name": agreement.get("agreement_name", ""),
+                    "type": agreement.get("discount_type", ""),
+                    "value": float(agreement["discount_value"]) if agreement.get("discount_value") is not None else None,
+                    "valid_until": agreement.get("valid_until"),
+                } if agreement else None,
+            })
+    except Exception as exc:
+        return json.dumps({"error": f"Katalogfejl: {exc}"})
+
+    return json.dumps({
+        "topic": topic,
+        "vendors": rows,
+        "active_suppliers": sum(1 for r in rows if r["is_active"]),
+        "inactive_suppliers": sum(1 for r in rows if not r["is_active"]),
+        "agreement_count": sum(1 for r in rows if r.get("agreement")),
+    }, default=str)
+
+
+def _execute_hr_get_ai_usage_risks(args):
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    period_days = int(args.get("period_days") or 30)
+    cur = _get_cursor()
+    cur.execute(
+        """
+        SELECT
+            COUNT(*) AS total_queries,
+            COUNT(DISTINCT username) AS active_users,
+            AVG(response_time_ms) AS avg_latency,
+            SUM(CASE WHEN feedback_rating IS NOT NULL AND feedback_rating > 0 AND feedback_rating <= 2 THEN 1 ELSE 0 END) AS low_feedback,
+            SUM(CASE WHEN response_time_ms > 12000 THEN 1 ELSE 0 END) AS slow_turns,
+            SUM(CASE WHEN tool_results_count = 0 AND tools_used IS NOT NULL AND tools_used != '' THEN 1 ELSE 0 END) AS zero_result_tool_turns
+        FROM chatbot_interactions
+        WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """,
+        (company_id, period_days),
+    )
+    stats = cur.fetchone()
+    cur.execute(
+        """
+        SELECT query_text, COUNT(*) AS cnt
+        FROM chatbot_interactions
+        WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+          AND query_text IS NOT NULL AND query_text != ''
+        GROUP BY query_text
+        HAVING cnt >= 2
+        ORDER BY cnt DESC
+        LIMIT 10
+        """,
+        (company_id, period_days),
+    )
+    repeated = cur.fetchall()
+    cur.close()
+
+    total = stats.get("total_queries") or 0
+    risks = []
+    if stats.get("slow_turns", 0):
+        risks.append({"type": "latency", "count": int(stats["slow_turns"]), "message": "Flere AI-svar tager over 12 sekunder."})
+    if stats.get("zero_result_tool_turns", 0):
+        risks.append({"type": "search_quality", "count": int(stats["zero_result_tool_turns"]), "message": "Værktøjskald returnerer ofte nul resultater."})
+    if stats.get("low_feedback", 0):
+        risks.append({"type": "satisfaction", "count": int(stats["low_feedback"]), "message": "Der er lave feedback-ratings i perioden."})
+
+    return json.dumps({
+        "period_days": period_days,
+        "total_queries": total,
+        "active_users": stats.get("active_users") or 0,
+        "avg_latency_ms": round(float(stats.get("avg_latency") or 0), 1),
+        "risk_count": len(risks),
+        "risks": risks,
+        "repeated_queries": [{"query": r["query_text"][:120], "count": r["cnt"]} for r in repeated],
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -634,6 +912,10 @@ def execute_hr_tool(tool_call):
         "get_pending_actions": _execute_get_pending_actions,
         "search_courses_for_team": _execute_search_courses_for_team,
         "get_chatbot_usage_stats": _execute_get_chatbot_usage_stats,
+        "hr_get_company_learning_context": _execute_hr_get_company_learning_context,
+        "hr_recommend_training_plan": _execute_hr_recommend_training_plan,
+        "hr_get_supplier_coverage": _execute_hr_get_supplier_coverage,
+        "hr_get_ai_usage_risks": _execute_hr_get_ai_usage_risks,
     }
 
     fn = router.get(name)

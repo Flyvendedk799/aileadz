@@ -1901,6 +1901,21 @@
       return prods;
     }
 
+    function attachProductFromUrl() {
+      try {
+        const params = new URLSearchParams(window.location.search);
+        const handle = params.get('product_handle');
+        const title = params.get('product_title') || handle;
+        if (!handle) return;
+        window.attachProductToChat(handle, title);
+        chatInput.value = 'Fortæl mig mere om "' + title.substring(0, 90) + '"';
+        updateSendBtn();
+        history.replaceState({}, '', window.location.pathname);
+      } catch (e) {
+        console.warn('Could not attach product from URL:', e);
+      }
+    }
+
     // ── Feedback ──
     function addFeedbackButtons(botContent, queryText, fullResponseText, messageIndex, responseLatencyMs) {
       const row = document.createElement('div');
@@ -2422,6 +2437,7 @@
     }
 
     const hasLocal = restoreChatState();
+    attachProductFromUrl();
     if (IS_LOGGED_IN && !hasLocal) {
       fetch("{{ url_for('app1.load_conversation_endpoint') }}")
         .then(r => r.json())

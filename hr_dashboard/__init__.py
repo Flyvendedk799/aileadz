@@ -3391,19 +3391,12 @@ def create_hr_dashboard_blueprint():
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-            # Load all unique vendors from product catalog
-            import json as _json
-            import os
-            catalog_path = os.path.join(current_app.root_path, 'shopify_products_all_pages.json')
-            vendors = {}
-            if os.path.exists(catalog_path):
-                with open(catalog_path, 'r', encoding='utf-8') as f:
-                    products = _json.load(f)
-                for p in products:
-                    v = p.get('vendor', 'Unknown')
-                    if v not in vendors:
-                        vendors[v] = {'name': v, 'course_count': 0}
-                    vendors[v]['course_count'] += 1
+            # Load all unique vendors from the shared public catalog service.
+            import catalog_service as catalog
+            vendors = {
+                vendor['name']: {'name': vendor['name'], 'course_count': vendor['course_count']}
+                for vendor in catalog.get_vendors()
+            }
 
             # Load company preferences
             cur.execute("SELECT * FROM company_supplier_preferences WHERE company_id = %s", (company['id'],))
@@ -3415,6 +3408,7 @@ def create_hr_dashboard_blueprint():
                 pref = prefs.get(vname, {})
                 vendor_list.append({
                     'name': vname,
+                    'slug': catalog.slugify(vname),
                     'course_count': vdata['course_count'],
                     'is_active': pref.get('is_active', 1),
                     'priority': pref.get('priority', 5),
@@ -3532,16 +3526,9 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             agreements = cur.fetchall()
 
-            # Load vendor list for the dropdown
-            import json as _json, os
-            catalog_path = os.path.join(current_app.root_path, 'shopify_products_all_pages.json')
-            vendor_names = set()
-            if os.path.exists(catalog_path):
-                with open(catalog_path, 'r', encoding='utf-8') as f:
-                    for p in _json.load(f):
-                        v = p.get('vendor', '')
-                        if v:
-                            vendor_names.add(v)
+            # Load vendor list for the dropdown from the shared catalog service.
+            import catalog_service as catalog
+            vendor_names = {vendor['name'] for vendor in catalog.get_vendors()}
             cur.close()
         except Exception as e:
             current_app.logger.error(f"Error loading agreements: {e}")

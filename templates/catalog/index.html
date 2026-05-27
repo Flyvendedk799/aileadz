@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+
+{% block title %}Kursuskatalog - Futurematch{% endblock %}
+{% block page_heading %}Kursuskatalog{% endblock %}
+{% block page_subheading %}Find kurser, leverandorer og kategorier direkte i Futurematch.{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+{% include 'catalog/_styles.html' %}
+{% endblock %}
+
+{% block content %}
+<div class="catalog-wrap">
+  <div class="catalog-toolbar">
+    <div>
+      <div class="catalog-eyebrow">Futurematch katalog</div>
+      <h2 class="catalog-title">{{ page_title }}</h2>
+      <p class="catalog-subtitle">{{ page_subtitle }}</p>
+    </div>
+    <a class="btn btn-outline-primary" href="{{ url_for('app1.index') }}">
+      <i class="fa-solid fa-comments me-1"></i>Sporg AI
+    </a>
+  </div>
+
+  {% include 'catalog/_list.html' %}
+</div>
+{% endblock %}

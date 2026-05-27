@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}AI kategorisering - Futurematch{% endblock %}
+
+{% block extra_styles %}
+{{ super() }}
+<style>
+  .admin-wrap { max-width: 1500px; margin: 0 auto; }
+  .admin-card { border: 1px solid var(--fm-border); border-radius: 8px; background: var(--fm-surface); box-shadow: var(--fm-shadow-xs); }
+  .cat-chip { display: inline-flex; border-radius: 999px; padding: 4px 8px; margin: 2px; background: color-mix(in srgb, var(--fm-primary) 8%, transparent); color: var(--fm-primary); font-size: 0.78rem; font-weight: 700; }
+  .changed-row { background: color-mix(in srgb, var(--fm-accent) 8%, transparent); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="admin-wrap mt-3">
+  <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap mb-4">
+    <div>
+      <a class="btn btn-outline-primary btn-sm mb-3" href="{{ url_for('admin_dashboard.admin_catalog') }}">
+        <i class="fas fa-arrow-left me-1"></i>Katalogadmin
+      </a>
+      <h2 class="fw-bold mb-1">AI kategorisering</h2>
+      <p class="text-muted mb-0">Job {{ job.job_id }} · {{ job.processed or 0 }} / {{ job.total or 0 }} behandlet · status: {{ job.status }}</p>
+    </div>
+    <div class="d-flex gap-2 flex-wrap">
+      {% if job.status != 'confirmed' and job.status == 'complete' %}
+      <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_ai_confirm', job_id=job.job_id) }}">
+        <button class="btn btn-primary" type="submit"><i class="fas fa-check me-1"></i>Bekraeft {{ diff.changed_count }} aendringer</button>
+      </form>
+      {% endif %}
+      {% if job.status != 'confirmed' %}
+      <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_ai_cancel', job_id=job.job_id) }}">
+        <button class="btn btn-outline-danger" type="submit"><i class="fas fa-trash me-1"></i>Slet kladde</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="row g-3 mb-4">
+    <div class="col-md-3"><div class="admin-card p-3"><strong class="fs-4 text-primary">{{ diff.processed_count }}</strong><br><span class="text-muted">Behandlede produkter</span></div></div>
+    <div class="col-md-3"><div class="admin-card p-3"><strong class="fs-4 text-warning">{{ diff.changed_count }}</strong><br><span class="text-muted">Foreslaede aendringer</span></div></div>
+    <div class="col-md-3"><div class="admin-card p-3"><strong class="fs-4 text-success">{{ diff.unchanged_count }}</strong><br><span class="text-muted">Uændrede</span></div></div>
+    <div class="col-md-3"><div class="admin-card p-3"><strong class="fs-4 text-danger">{{ job.errors|length }}</strong><br><span class="text-muted">Batch-fejl</span></div></div>
+  </div>
+
+  {% if job.status not in ['complete', 'confirmed'] %}
+  <div class="admin-card p-4 mb-4">
+    <h5 class="fw-bold">Jobbet er ikke faerdigt</h5>
+    <p class="text-muted">Fortsæt batchbehandlingen og vend tilbage til preview, nar alle produkter er gennemgaet.</p>
+    <button class="btn btn-primary" id="continueJobBtn" type="button"><i class="fas fa-play me-1"></i>Fortsæt behandling</button>
+    <div class="progress mt-3" style="height: 8px;">
+      <div class="progress-bar" id="aiProgress" style="width: {{ ((job.processed or 0) / (job.total or 1) * 100)|round }}%"></div>
+    </div>
+    <div class="text-muted small mt-2" id="aiLog"></div>
+  </div>
+  {% endif %}
+
+  {% if job.errors %}
+  <div class="admin-card p-4 mb-4">
+    <h5 class="fw-bold text-warning">Fejl</h5>
+    <ul class="mb-0">
+      {% for error in job.errors %}
+      <li><code>{{ error.handles|join(', ') }}</code>: {{ error.message }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  <div class="admin-card p-4">
+    <h5 class="fw-bold">Detaljer</h5>
+    <div class="table-responsive">
+      <table class="table table-hover align-middle">
+        <thead>
+          <tr>
+            <th>Produkt</th>
+            <th>Nuvaerende kategorier</th>
+            <th>AI-forslag</th>
+            <th>Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in diff.rows %}
+          <tr class="{{ 'changed-row' if row.changed else '' }}">
+            <td>
+              <strong>{{ row.title }}</strong><br>
+              <a href="{{ url_for('catalog.product_detail', handle=row.handle) }}" target="_blank"><code>{{ row.handle }}</code></a><br>
+              <small class="text-muted">{{ row.vendor }}</small>
+            </td>
+            <td>
+              {% for category in row.current_categories %}
+              <span class="cat-chip">{{ category }}</span>
+              {% endfor %}
+            </td>
+            <td>
+              {% for category in row.proposed_categories %}
+              <span class="cat-chip">{{ category }}</span>
+              {% endfor %}
+            </td>
+            <td class="text-muted small">{{ row.reason }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{{ super() }}
+{% if job.status not in ['complete', 'confirmed'] %}
+<script>
+  const btn = document.getElementById('continueJobBtn');
+  const log = document.getElementById('aiLog');
+  const progress = document.getElementById('aiProgress');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    let status = '{{ job.status }}';
+    while (status !== 'complete') {
+      const response = await fetch("{{ url_for('admin_dashboard.admin_catalog_ai_batch', job_id=job.job_id) }}", { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) {
+        log.textContent = data.message || 'Fejl under batchbehandling';
+        btn.disabled = false;
+        return;
+      }
+      status = data.status;
+      const pct = data.total ? Math.round((data.processed / data.total) * 100) : 100;
+      progress.style.width = pct + '%';
+      log.textContent = `${data.processed} / ${data.total} behandlet. ${data.changed_count || 0} forslag aendrer kategori.`;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    window.location.reload();
+  });
+</script>
+{% endif %}
+{% endblock %}

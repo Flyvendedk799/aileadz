@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import MySQLdb.cursors
 import logging
 from datetime import datetime, timedelta
+import catalog_service as catalog
 
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__, template_folder='templates')
 
@@ -234,6 +235,147 @@ def update_user_credits(user_id):
     except Exception as e:
         logging.error("Error updating credits: %s", e)
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@admin_dashboard_bp.route('/catalog')
+def admin_catalog():
+    check = require_admin()
+    if check:
+        return check
+    stats = catalog.catalog_stats()
+    categories = catalog.get_categories()[:80]
+    vendors = catalog.get_vendors()[:80]
+    import_drafts = catalog.list_import_drafts()[:10]
+    ai_jobs = catalog.list_ai_category_jobs()[:10]
+    return render_template(
+        'admin_catalog.html',
+        stats=stats,
+        categories=categories,
+        vendors=vendors,
+        import_drafts=import_drafts,
+        ai_jobs=ai_jobs,
+    )
+
+
+@admin_dashboard_bp.route('/catalog/import', methods=['POST'])
+def admin_catalog_import():
+    check = require_admin()
+    if check:
+        return check
+    upload = request.files.get('catalog_csv')
+    if not upload or not upload.filename:
+        flash("Vaelg en CSV-fil.", "danger")
+        return redirect(url_for('admin_dashboard.admin_catalog'))
+    try:
+        parsed = catalog.parse_catalog_csv(upload)
+        draft = catalog.save_import_draft(parsed, filename=upload.filename, uploaded_by=session.get('user', ''))
+        flash("CSV importkladde er klar til gennemgang.", "success")
+        return redirect(url_for('admin_dashboard.admin_catalog_import_preview', job_id=draft['job_id']))
+    except Exception as e:
+        current_app.logger.error("Catalog CSV import failed: %s", e)
+        flash(f"CSV kunne ikke parses: {e}", "danger")
+        return redirect(url_for('admin_dashboard.admin_catalog'))
+
+
+@admin_dashboard_bp.route('/catalog/import/<job_id>')
+def admin_catalog_import_preview(job_id):
+    check = require_admin()
+    if check:
+        return check
+    draft = catalog.get_import_draft(job_id)
+    if not draft:
+        flash("Importkladde ikke fundet.", "warning")
+        return redirect(url_for('admin_dashboard.admin_catalog'))
+    products = [catalog.normalize_product(product, overrides={}) for product in draft.get('products', [])[:200]]
+    return render_template('admin_catalog_import_preview.html', draft=draft, products=products)
+
+
+@admin_dashboard_bp.route('/catalog/import/<job_id>/confirm', methods=['POST'])
+def admin_catalog_import_confirm(job_id):
+    check = require_admin()
+    if check:
+        return check
+    draft = catalog.confirm_import_draft(job_id)
+    if not draft:
+        flash("Importkladde ikke fundet.", "warning")
+    else:
+        flash("CSV import er bekraeftet og kataloget er opdateret.", "success")
+    return redirect(url_for('admin_dashboard.admin_catalog'))
+
+
+@admin_dashboard_bp.route('/catalog/import/<job_id>/cancel', methods=['POST'])
+def admin_catalog_import_cancel(job_id):
+    check = require_admin()
+    if check:
+        return check
+    catalog.delete_import_draft(job_id)
+    flash("Importkladde slettet.", "info")
+    return redirect(url_for('admin_dashboard.admin_catalog'))
+
+
+@admin_dashboard_bp.route('/catalog/ai-categorize/start', methods=['POST'])
+def admin_catalog_ai_start():
+    check = require_admin()
+    if check:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    job = catalog.create_ai_category_job(created_by=session.get('user', ''))
+    return jsonify({'success': True, 'job_id': job['job_id'], 'total': job['total']})
+
+
+@admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/batch', methods=['POST'])
+def admin_catalog_ai_batch(job_id):
+    check = require_admin()
+    if check:
+        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
+    job = catalog.process_ai_category_batch(job_id, batch_size=8)
+    if not job:
+        return jsonify({'success': False, 'message': 'Job not found'}), 404
+    diff = catalog.ai_category_diff(job)
+    return jsonify({
+        'success': True,
+        'job_id': job_id,
+        'status': job.get('status'),
+        'processed': job.get('processed', 0),
+        'total': job.get('total', 0),
+        'changed_count': diff['changed_count'],
+        'errors': job.get('errors', []),
+    })
+
+
+@admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>')
+def admin_catalog_ai_preview(job_id):
+    check = require_admin()
+    if check:
+        return check
+    job = catalog.get_ai_category_job(job_id)
+    if not job:
+        flash("AI-kategoriseringsjob ikke fundet.", "warning")
+        return redirect(url_for('admin_dashboard.admin_catalog'))
+    diff = catalog.ai_category_diff(job)
+    return render_template('admin_catalog_ai_preview.html', job=job, diff=diff)
+
+
+@admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/confirm', methods=['POST'])
+def admin_catalog_ai_confirm(job_id):
+    check = require_admin()
+    if check:
+        return check
+    job = catalog.confirm_ai_category_job(job_id)
+    if not job:
+        flash("AI-kategoriseringsjob ikke fundet.", "warning")
+    else:
+        flash("AI-kategorier bekraeftet og kataloget er opdateret.", "success")
+    return redirect(url_for('admin_dashboard.admin_catalog'))
+
+
+@admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/cancel', methods=['POST'])
+def admin_catalog_ai_cancel(job_id):
+    check = require_admin()
+    if check:
+        return check
+    catalog.delete_ai_category_job(job_id)
+    flash("AI-kategoriseringsjob slettet.", "info")
+    return redirect(url_for('admin_dashboard.admin_catalog'))
 
 
 @admin_dashboard_bp.route('/make-superadmin/<username>')

@@ -59,6 +59,10 @@
                     href="{{ url_for('hr_dashboard.internal_courses') }}">
                     <i class="fas fa-book-open"></i> Kurser
                 </a>
+                <a class="hr-nav-link {{ 'active' if request.path.startswith('/catalog') else '' }}"
+                    href="{{ url_for('catalog.catalog_index') }}">
+                    <i class="fas fa-graduation-cap"></i> Katalog
+                </a>
                 <a class="hr-nav-link {{ 'active' if active_hr_page == 'suppliers' else '' }}"
                     href="{{ url_for('hr_dashboard.supplier_management') }}">
                     <i class="fas fa-store"></i> Leverandoerer

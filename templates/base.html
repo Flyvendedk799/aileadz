@@ -86,6 +86,12 @@
           </a>
         </li>
         <li>
+          <a href="{{ url_for('catalog.catalog_index') }}" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-graduation-cap"></i>
+            <span class="nav-text">Kursuskatalog</span>
+          </a>
+        </li>
+        <li>
           <a href="/analytics" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-chart-line"></i>
             <span class="nav-text">Analyse</span>
@@ -154,6 +160,12 @@
           <a href="/admin/" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-shield-halved"></i>
             <span class="nav-text">Admin</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('admin_dashboard.admin_catalog') }}" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-boxes-stacked"></i>
+            <span class="nav-text">Katalogadmin</span>
           </a>
         </li>
         <li>

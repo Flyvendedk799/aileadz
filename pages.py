@@ -1,5 +1,6 @@
 # pages.py
 from flask import Blueprint, render_template, session, current_app, redirect, url_for, flash, request
+import MySQLdb.cursors
 
 pages_bp = Blueprint('pages', __name__, template_folder='templates')
 
@@ -108,7 +109,7 @@ def settings():
         return redirect(url_for('auth.login'))
     username = session.get('user')
     try:
-        cur = current_app.mysql.connection.cursor(dictionary=True)
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur.execute("SELECT username, email, email_notifications, password FROM users WHERE username = %s", (username,))
         user_data = cur.fetchone()
         cur.close()

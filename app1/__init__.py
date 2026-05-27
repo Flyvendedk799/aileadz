@@ -38,6 +38,7 @@ def _dkprice_filter(value):
     except (ValueError, TypeError):
         return value
 
+@app1_bp.route('')
 @app1_bp.route('/')
 def index():
     return render_template('index.html', logged_in_user=session.get('user'), demo_mode=False, demo_messages=[])

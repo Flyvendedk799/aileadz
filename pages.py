@@ -1,5 +1,6 @@
 # pages.py
 from flask import Blueprint, render_template, session, current_app, redirect, url_for, flash, request
+import MySQLdb.cursors
 
 pages_bp = Blueprint('pages', __name__, template_folder='templates')
 
@@ -10,6 +11,18 @@ def about():
 @pages_bp.route('/contact')
 def contact():
     return render_template('contact.html')
+
+@pages_bp.route('/support')
+def support():
+    return render_template('support.html')
+
+@pages_bp.route('/privacy')
+def privacy():
+    return render_template('privacy.html')
+
+@pages_bp.route('/terms')
+def terms():
+    return render_template('terms.html')
 
 @pages_bp.route('/notifications')
 def notifications():
@@ -96,7 +109,7 @@ def settings():
         return redirect(url_for('auth.login'))
     username = session.get('user')
     try:
-        cur = current_app.mysql.connection.cursor(dictionary=True)
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur.execute("SELECT username, email, email_notifications, password FROM users WHERE username = %s", (username,))
         user_data = cur.fetchone()
         cur.close()

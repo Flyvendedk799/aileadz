@@ -51,6 +51,7 @@ def create_multitenant_reports_blueprint():
             current_app.logger.error(f"Error getting company context: {e}")
             return None
 
+    @multitenant_reports_bp.route('')
     @multitenant_reports_bp.route('/')
     def reports():
         """

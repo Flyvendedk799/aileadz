@@ -1,268 +1,170 @@
 {% extends "base.html" %}
-{% block title %}Admin Dashboard - Futurematch{% endblock %}
 
-{% block extra_styles %}
-{{ super() }}
-<style>
-    .admin-wrap { max-width: 1400px; margin: 0 auto; }
-    .stat-card { border-radius: 12px; border: none; transition: transform 0.15s; }
-    .stat-card:hover { transform: translateY(-2px); }
-    .stat-card .stat-icon { width: 48px; height: 48px; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; }
-    .stat-card .stat-value { font-size: 1.8rem; font-weight: 700; }
-    .stat-card .stat-label { font-size: 0.85rem; color: #6b7280; }
-    .stat-card .stat-sub { font-size: 0.75rem; }
-    .table-admin th { font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.5px; color: #6b7280; border-bottom: 2px solid #e5e7eb; }
-    .table-admin td { vertical-align: middle; font-size: 0.9rem; }
-    .badge-role { font-size: 0.75rem; padding: 4px 10px; border-radius: 20px; }
-    .badge-admin { background: #ede9fe; color: #0f766e; }
-    .badge-user { background: #e0f2fe; color: #0284c7; }
-    .sub-active { background: #d1fae5; color: #065f46; }
-    .sub-trial { background: #fef3c7; color: #92400e; }
-    .sub-expired { background: #fee2e2; color: #991b1b; }
-    .admin-nav { background: #fff; border-bottom: 1px solid #e5e7eb; }
-    .admin-nav .nav-link { color: #374151; font-weight: 500; font-size: 0.9rem; padding: 12px 20px; border-bottom: 2px solid transparent; }
-    .admin-nav .nav-link.active { color: #0f766e; border-bottom-color: #0f766e; }
-    .admin-nav .nav-link:hover { color: #0f766e; }
-    .mini-stat { background: #f9fafb; border-radius: 8px; padding: 12px 16px; }
-    .mini-stat .mini-val { font-size: 1.1rem; font-weight: 700; }
-    .mini-stat .mini-lbl { font-size: 0.75rem; color: #6b7280; }
-</style>
-{% endblock %}
+{% block title %}Admin - Futurematch{% endblock %}
+{% block page_heading %}Admin{% endblock %}
+{% block page_subheading %}Platformsoverblik for brugere, virksomheder, kreditter og aktivitet.{% endblock %}
 
 {% block content %}
-<div class="admin-wrap mt-3">
-    <!-- Admin Navigation -->
-    <nav class="admin-nav rounded shadow-sm mb-4">
-        <div class="d-flex align-items-center px-3">
-            <span class="fw-bold text-primary me-4 py-2"><i class="fas fa-shield-alt me-1"></i> Admin</span>
-            <ul class="nav mb-0">
-                <li class="nav-item">
-                    <a class="nav-link active" href="{{ url_for('admin_dashboard.admin_home') }}">
-                        <i class="fas fa-tachometer-alt me-1"></i> Oversigt
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('admin_dashboard.user_list') }}">
-                        <i class="fas fa-users me-1"></i> Brugere
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('admin_dashboard.credits') }}">
-                        <i class="fas fa-coins me-1"></i> Kreditter
-                    </a>
-                </li>
-                <li class="nav-item">
-                    <a class="nav-link" href="{{ url_for('admin_dashboard.admin_catalog') }}">
-                        <i class="fas fa-boxes-stacked me-1"></i> Katalog
-                    </a>
-                </li>
-            </ul>
+<div class="fm-admin-page fm-ops-page">
+  <section class="fm-page-hero mb-4">
+    <div class="row align-items-center g-3">
+      <div class="col-lg-8">
+        <div class="fm-hero-eyebrow"><i class="fa-solid fa-shield-halved"></i> Platform admin</div>
+        <h1 class="fm-hero-title">Kontrolpanel for Futurematch.</h1>
+        <p class="fm-hero-subtitle">Brugere, virksomheder, omsaetning og chatbotaktivitet samlet i samme rolige business-interface som resten af produktet.</p>
+      </div>
+      <div class="col-lg-4">
+        <div class="fm-signal-strip" style="grid-template-columns: repeat(2, minmax(0, 1fr));">
+          <div class="fm-signal-item">
+            <div class="fm-signal-label">Admins</div>
+            <div class="fm-signal-value">{{ total_admins }}</div>
+          </div>
+          <div class="fm-signal-item">
+            <div class="fm-signal-label">Denne uge</div>
+            <div class="fm-signal-value">{{ queries_this_week }}</div>
+          </div>
         </div>
-    </nav>
+      </div>
+    </div>
+  </section>
 
-    <!-- Primary KPI Cards -->
-    <div class="row g-3 mb-3">
-        <div class="col-sm-6 col-xl-3">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-primary bg-opacity-10 text-primary">
-                        <i class="fas fa-users"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ total_users }}</div>
-                        <div class="stat-label">Brugere i alt</div>
-                        <div class="stat-sub text-success"><i class="fas fa-arrow-up"></i> {{ new_users_month }} denne maaned</div>
-                    </div>
-                </div>
-            </div>
+  <nav class="fm-admin-tabs" aria-label="Admin navigation">
+    <a class="fm-admin-tab active" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-gauge-high"></i>Oversigt</a>
+    <a class="fm-admin-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i>Brugere</a>
+    <a class="fm-admin-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i>Kreditter</a>
+    <a class="fm-admin-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i>Katalog</a>
+    <a class="fm-admin-tab" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i>Notifikationer</a>
+    <a class="fm-admin-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i>Chatbot BI</a>
+  </nav>
+
+  <section class="fm-signal-strip mb-4" aria-label="Admin nøgletal">
+    <article class="fm-signal-item">
+      <div class="fm-signal-label">Brugere i alt</div>
+      <div class="fm-signal-value">{{ total_users }}</div>
+      <div class="fm-signal-detail">{{ new_users_month }} nye denne maaned</div>
+    </article>
+    <article class="fm-signal-item">
+      <div class="fm-signal-label">Virksomheder</div>
+      <div class="fm-signal-value">{{ total_companies }}</div>
+      <div class="fm-signal-detail">{{ active_users_7d }} aktive brugere sidste 7 dage</div>
+    </article>
+    <article class="fm-signal-item">
+      <div class="fm-signal-label">Ordrer</div>
+      <div class="fm-signal-value">{{ total_orders }}</div>
+      <div class="fm-signal-detail">{{ orders_this_month }} denne maaned</div>
+    </article>
+    <article class="fm-signal-item">
+      <div class="fm-signal-label">Omsaetning</div>
+      <div class="fm-signal-value">{{ "{:,.0f}".format(total_revenue).replace(",", ".") }} kr</div>
+      <div class="fm-signal-detail">{{ "{:,.0f}".format(revenue_this_month).replace(",", ".") }} kr denne maaned</div>
+    </article>
+  </section>
+
+  <div class="row g-4">
+    <div class="col-xl-7">
+      <div class="card h-100">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="fm-card-title h6"><i class="fa-solid fa-building text-success"></i>Virksomheder</h2>
+          <span class="fm-soft-badge">{{ companies|length }} vist</span>
         </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-success bg-opacity-10 text-success">
-                        <i class="fas fa-building"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ total_companies }}</div>
-                        <div class="stat-label">Virksomheder</div>
-                        <div class="stat-sub text-muted">{{ total_admins }} admins</div>
-                    </div>
-                </div>
-            </div>
+        <div class="card-body p-0">
+          {% if companies %}
+          <div class="table-responsive">
+            <table class="table fm-modern-table table-hover mb-0">
+              <thead>
+                <tr>
+                  <th class="ps-3">Virksomhed</th>
+                  <th>Branche</th>
+                  <th class="text-center">Brugere</th>
+                  <th class="text-center">Ordrer</th>
+                  <th class="text-end">Omsaetning</th>
+                  <th class="text-center pe-3">Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                {% for c in companies %}
+                <tr>
+                  <td class="ps-3">
+                    <div class="fw-semibold">{{ c.company_name }}</div>
+                    <small class="text-muted">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else 'Ingen dato' }}</small>
+                  </td>
+                  <td class="text-muted">{{ c.industry or '-' }}</td>
+                  <td class="text-center"><span class="fm-soft-badge">{{ c.employee_count or 0 }}</span></td>
+                  <td class="text-center">{{ c.order_count or 0 }}</td>
+                  <td class="text-end fw-semibold">{{ "{:,.0f}".format(c.revenue or 0).replace(",", ".") }} kr</td>
+                  <td class="text-center pe-3">
+                    <span class="badge rounded-pill {{ 'text-bg-success' if c.subscription_status == 'active' else 'text-bg-warning' if c.subscription_status == 'trial' else 'text-bg-secondary' }}">
+                      {{ c.subscription_status or 'trial' }}
+                    </span>
+                  </td>
+                </tr>
+                {% endfor %}
+              </tbody>
+            </table>
+          </div>
+          {% else %}
+          <div class="fm-empty-state m-3">
+            <i class="fa-solid fa-building"></i>
+            <h3>Ingen virksomheder endnu</h3>
+            <p>Virksomheder vises her, naar de er oprettet.</p>
+          </div>
+          {% endif %}
         </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-info bg-opacity-10 text-info">
-                        <i class="fas fa-shopping-cart"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ total_orders }}</div>
-                        <div class="stat-label">Ordrer i alt</div>
-                        <div class="stat-sub text-success"><i class="fas fa-arrow-up"></i> {{ orders_this_month }} denne maaned</div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-sm-6 col-xl-3">
-            <div class="card stat-card shadow-sm h-100">
-                <div class="card-body d-flex align-items-center gap-3">
-                    <div class="stat-icon bg-warning bg-opacity-10 text-warning">
-                        <i class="fas fa-coins"></i>
-                    </div>
-                    <div>
-                        <div class="stat-value">{{ "{:,.0f}".format(total_revenue).replace(",", ".") }} kr</div>
-                        <div class="stat-label">Samlet omsaetning</div>
-                        <div class="stat-sub text-success"><i class="fas fa-arrow-up"></i> {{ "{:,.0f}".format(revenue_this_month).replace(",", ".") }} kr denne maaned</div>
-                    </div>
-                </div>
-            </div>
-        </div>
+      </div>
     </div>
 
-    <!-- Secondary metrics row -->
-    <div class="row g-3 mb-4">
-        <div class="col-md-4">
-            <div class="mini-stat d-flex justify-content-between align-items-center">
-                <div>
-                    <div class="mini-lbl">Aktive brugere (7 dage)</div>
-                    <div class="mini-val text-primary">{{ active_users_7d }}</div>
-                </div>
-                <i class="fas fa-signal text-primary opacity-25 fa-lg"></i>
-            </div>
+    <div class="col-xl-5">
+      <div class="card mb-4">
+        <div class="card-header">
+          <h2 class="fm-card-title h6"><i class="fa-solid fa-receipt text-info"></i>Seneste ordrer</h2>
         </div>
-        <div class="col-md-4">
-            <div class="mini-stat d-flex justify-content-between align-items-center">
-                <div>
-                    <div class="mini-lbl">Chatbot-samtaler i alt</div>
-                    <div class="mini-val text-info">{{ total_chatbot_queries }}</div>
-                </div>
-                <i class="fas fa-robot text-info opacity-25 fa-lg"></i>
+        <div class="card-body p-0">
+          {% if recent_orders %}
+          <div class="fm-admin-list">
+            {% for o in recent_orders %}
+            <div class="fm-admin-row">
+              <div class="fm-admin-row-title">
+                <div class="text-truncate">{{ o.product_title }}</div>
+                <div class="fm-admin-row-meta">{{ o.username }} · {{ o.company_name or 'Privat' }}</div>
+              </div>
+              <div class="text-end text-nowrap">
+                <div class="fw-semibold">{{ o.price }} kr</div>
+                <span class="badge rounded-pill {{ 'text-bg-success' if o.status == 'completed' else 'text-bg-warning' if o.status in ('pending', 'pending_approval') else 'text-bg-secondary' }}">{{ o.status }}</span>
+              </div>
             </div>
+            {% endfor %}
+          </div>
+          {% else %}
+          <div class="p-4 text-muted">Ingen ordrer endnu.</div>
+          {% endif %}
         </div>
-        <div class="col-md-4">
-            <div class="mini-stat d-flex justify-content-between align-items-center">
-                <div>
-                    <div class="mini-lbl">Chatbot denne uge</div>
-                    <div class="mini-val text-success">{{ queries_this_week }}</div>
-                </div>
-                <i class="fas fa-comments text-success opacity-25 fa-lg"></i>
+      </div>
+
+      <div class="card">
+        <div class="card-header d-flex justify-content-between align-items-center">
+          <h2 class="fm-card-title h6"><i class="fa-solid fa-user-clock text-primary"></i>Seneste brugere</h2>
+          <a href="{{ url_for('admin_dashboard.user_list') }}" class="btn btn-outline-primary btn-sm">Se alle</a>
+        </div>
+        <div class="card-body p-0">
+          <div class="fm-admin-list">
+            {% for u in recent_users[:8] %}
+            <div class="fm-admin-row">
+              <div>
+                <div class="fw-semibold">{{ u.username }}</div>
+                {% if u.email %}<div class="fm-admin-row-meta">{{ u.email }}</div>{% endif %}
+              </div>
+              <div class="text-end">
+                <span class="badge rounded-pill {{ 'text-bg-primary' if u.role == 'admin' else 'text-bg-light' }}">{{ u.role or 'user' }}</span>
+                <div class="fm-admin-row-meta">{{ u.created_at.strftime('%d/%m') if u.created_at else '' }}</div>
+              </div>
             </div>
+            {% else %}
+            <div class="p-4 text-muted">Ingen brugere at vise.</div>
+            {% endfor %}
+          </div>
         </div>
+      </div>
     </div>
-
-    <div class="row g-4">
-        <!-- Companies with revenue -->
-        <div class="col-lg-7">
-            <div class="card shadow-sm">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-building text-success me-2"></i>Virksomheder</h6>
-                </div>
-                <div class="card-body p-0">
-                    {% if companies %}
-                    <div class="table-responsive">
-                        <table class="table table-admin table-hover mb-0">
-                            <thead>
-                                <tr>
-                                    <th class="ps-3">Virksomhed</th>
-                                    <th>Branche</th>
-                                    <th class="text-center">Brugere</th>
-                                    <th class="text-center">Ordrer</th>
-                                    <th class="text-end">Omsaetning</th>
-                                    <th class="text-center">Status</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                {% for c in companies %}
-                                <tr>
-                                    <td class="ps-3">
-                                        <div class="fw-bold">{{ c.company_name }}</div>
-                                        <small class="text-muted">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else '' }}</small>
-                                    </td>
-                                    <td class="text-muted">{{ c.industry or '-' }}</td>
-                                    <td class="text-center">
-                                        <span class="badge bg-primary bg-opacity-10 text-primary">{{ c.employee_count or 0 }}</span>
-                                    </td>
-                                    <td class="text-center">{{ c.order_count or 0 }}</td>
-                                    <td class="text-end fw-bold">{{ "{:,.0f}".format(c.revenue or 0).replace(",", ".") }} kr</td>
-                                    <td class="text-center">
-                                        <span class="badge {{ 'sub-active' if c.subscription_status == 'active' else 'sub-trial' if c.subscription_status == 'trial' else 'sub-expired' }}">
-                                            {{ c.subscription_status or 'trial' }}
-                                        </span>
-                                    </td>
-                                </tr>
-                                {% endfor %}
-                            </tbody>
-                        </table>
-                    </div>
-                    {% else %}
-                    <div class="text-center py-4 text-muted">
-                        <i class="fas fa-building fa-2x mb-2 d-block"></i>
-                        <p>Ingen virksomheder endnu</p>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-        </div>
-
-        <!-- Right column: Recent orders + Recent users -->
-        <div class="col-lg-5">
-            <!-- Recent Orders -->
-            <div class="card shadow-sm mb-4">
-                <div class="card-header bg-white py-3">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-receipt text-info me-2"></i>Seneste ordrer</h6>
-                </div>
-                <div class="card-body p-0">
-                    {% if recent_orders %}
-                    <div class="list-group list-group-flush">
-                        {% for o in recent_orders %}
-                        <div class="list-group-item px-3 py-2">
-                            <div class="d-flex justify-content-between align-items-start">
-                                <div style="min-width: 0;">
-                                    <div class="fw-bold text-truncate">{{ o.product_title }}</div>
-                                    <small class="text-muted">{{ o.username }} &middot; {{ o.company_name or 'Privat' }}</small>
-                                </div>
-                                <div class="text-end text-nowrap ms-2">
-                                    <div class="fw-bold">{{ o.price }} kr</div>
-                                    <span class="badge {{ 'bg-success' if o.status == 'completed' else ('bg-warning text-dark' if o.status in ('pending', 'pending_approval') else 'bg-secondary') }}" style="font-size: 0.7rem;">
-                                        {{ o.status }}
-                                    </span>
-                                </div>
-                            </div>
-                        </div>
-                        {% endfor %}
-                    </div>
-                    {% else %}
-                    <div class="text-center py-3 text-muted">
-                        <small>Ingen ordrer endnu</small>
-                    </div>
-                    {% endif %}
-                </div>
-            </div>
-
-            <!-- Recent Users -->
-            <div class="card shadow-sm">
-                <div class="card-header bg-white d-flex justify-content-between align-items-center py-3">
-                    <h6 class="mb-0 fw-bold"><i class="fas fa-user-clock text-primary me-2"></i>Seneste brugere</h6>
-                    <a href="{{ url_for('admin_dashboard.user_list') }}" class="btn btn-outline-primary btn-sm">Se alle</a>
-                </div>
-                <div class="card-body p-0">
-                    <div class="list-group list-group-flush">
-                        {% for u in recent_users[:8] %}
-                        <div class="list-group-item px-3 py-2 d-flex justify-content-between align-items-center">
-                            <div>
-                                <span class="fw-medium">{{ u.username }}</span>
-                                <span class="badge badge-role {{ 'badge-admin' if u.role == 'admin' else 'badge-user' }} ms-1">{{ u.role or 'user' }}</span>
-                                {% if u.email %}<br><small class="text-muted">{{ u.email }}</small>{% endif %}
-                            </div>
-                            <small class="text-muted">{{ u.created_at.strftime('%d/%m') if u.created_at else '' }}</small>
-                        </div>
-                        {% endfor %}
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
+  </div>
 </div>
-
 {% endblock %}

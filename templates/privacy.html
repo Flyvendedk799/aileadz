@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+
+{% block title %}Fortrolighed - Futurematch{% endblock %}
+{% block page_heading %}Fortrolighed{% endblock %}
+{% block page_subheading %}Klart overblik over hvordan Futurematch behandler produkt- og læringsdata.{% endblock %}
+
+{% block content %}
+<div class="fm-workspace fm-ops-page">
+  <section class="fm-page-hero mb-4">
+    <div class="fm-hero-eyebrow"><i class="fa-solid fa-shield-halved"></i> Privacy</div>
+    <h1 class="fm-hero-title">Fortrolighed er en del af produktoplevelsen.</h1>
+    <p class="fm-hero-subtitle">Denne side fungerer som en stabil privacy-indgang i appen. Endelige juridiske tekster kan udbygges uden at ændre navigationen.</p>
+  </section>
+
+  <div class="card">
+    <div class="card-body p-4">
+      <h2 class="h5">Dataprincipper</h2>
+      <p class="text-muted">Futurematch viser lærings-, profil-, chatbot- og virksomhedsdata for at understøtte rådgivning, HR-overblik og rapportering.</p>
+      <div class="row g-3 mt-2">
+        <div class="col-md-4">
+          <div class="fm-filter-bar h-100">
+            <strong>Adgang</strong>
+            <p class="text-muted mb-0 mt-2">Rolle- og virksomhedsadgang styrer hvilke data brugeren kan se.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="fm-filter-bar h-100">
+            <strong>Formål</strong>
+            <p class="text-muted mb-0 mt-2">Data bruges til kursusmatch, rapportering, læringsanalyse og support.</p>
+          </div>
+        </div>
+        <div class="col-md-4">
+          <div class="fm-filter-bar h-100">
+            <strong>White-label</strong>
+            <p class="text-muted mb-0 mt-2">Tenant-branding ændrer oplevelsen, ikke de grundlæggende adgangsregler.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

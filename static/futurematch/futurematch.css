@@ -2046,6 +2046,98 @@ select:focus-visible {
   box-shadow: var(--fm-shadow-xs);
 }
 
+.fm-admin-page {
+  max-width: 1480px;
+  margin: 0 auto;
+}
+
+.fm-admin-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+  padding: 8px;
+  border: 1px solid var(--fm-border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fm-surface-solid) 88%, transparent);
+  box-shadow: var(--fm-shadow-xs);
+}
+
+.fm-admin-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 9px 12px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--fm-text-muted);
+  font-size: 0.86rem;
+  font-weight: 760;
+  text-decoration: none;
+  transition: background var(--fm-transition), border-color var(--fm-transition), color var(--fm-transition), transform var(--fm-transition);
+}
+
+.fm-admin-tab:hover,
+.fm-admin-tab.active {
+  color: var(--fm-primary);
+  border-color: color-mix(in srgb, var(--fm-primary) 18%, transparent);
+  background: color-mix(in srgb, var(--fm-primary) 8%, transparent);
+  transform: translateY(-1px);
+}
+
+.fm-admin-list {
+  display: grid;
+  gap: 0;
+}
+
+.fm-admin-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--fm-border);
+}
+
+.fm-admin-row:last-child {
+  border-bottom: 0;
+}
+
+.fm-admin-row-title {
+  min-width: 0;
+  color: var(--fm-text);
+  font-weight: 780;
+}
+
+.fm-admin-row-meta {
+  margin-top: 2px;
+  color: var(--fm-text-muted);
+  font-size: 0.82rem;
+}
+
+.fm-admin-form {
+  display: grid;
+  gap: 16px;
+}
+
+.fm-preview-card {
+  min-height: 180px;
+  padding: 22px;
+  border: 1px dashed color-mix(in srgb, var(--fm-primary) 24%, var(--fm-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--fm-primary) 5%, var(--fm-surface-solid));
+}
+
+.fm-preview-card img {
+  max-height: 220px;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+  border: 1px solid var(--fm-border);
+  background: var(--fm-surface-solid);
+}
+
 .fm-skill-tile {
   min-height: 100%;
   padding: 14px;

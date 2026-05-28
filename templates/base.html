@@ -158,12 +158,27 @@
 
         {% if session.get('role') == 'admin' or session.get('company_role') in ['company_admin', 'hr_manager'] %}
         <li class="fm-nav-section-label">Admin</li>
+        {% if session.get('role') == 'admin' %}
+        <li>
+          <a href="{{ url_for('companies.admin_companies_list') }}" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-building"></i>
+            <span class="nav-text">Virksomheder</span>
+          </a>
+        </li>
+        <li>
+          <a href="{{ url_for('companies.branding', company_id=session.get('admin_acting_company_id')) if session.get('admin_acting_company_id') else url_for('companies.admin_companies_list') }}" class="fm-nav-link" data-nav-link>
+            <i class="fa-solid fa-palette"></i>
+            <span class="nav-text">Branding</span>
+          </a>
+        </li>
+        {% else %}
         <li>
           <a href="{{ url_for('companies.branding') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-palette"></i>
             <span class="nav-text">Branding</span>
           </a>
         </li>
+        {% endif %}
         {% endif %}
         {% if session.get('role') == 'admin' %}
         <li>

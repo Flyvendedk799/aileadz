@@ -30,6 +30,7 @@
 
   <nav class="fm-admin-tabs" aria-label="Admin navigation">
     <a class="fm-admin-tab active" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-gauge-high"></i>Oversigt</a>
+    <a class="fm-admin-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i>Virksomheder</a>
     <a class="fm-admin-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i>Brugere</a>
     <a class="fm-admin-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i>Kreditter</a>
     <a class="fm-admin-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i>Katalog</a>
@@ -65,7 +66,7 @@
       <div class="card h-100">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h2 class="fm-card-title h6"><i class="fa-solid fa-building text-success"></i>Virksomheder</h2>
-          <span class="fm-soft-badge">{{ companies|length }} vist</span>
+          <a href="{{ url_for('companies.admin_companies_list') }}" class="btn btn-outline-primary btn-sm">Administrer</a>
         </div>
         <div class="card-body p-0">
           {% if companies %}
@@ -83,7 +84,7 @@
               </thead>
               <tbody>
                 {% for c in companies %}
-                <tr>
+                <tr style="cursor:pointer" onclick="window.location='{{ url_for('companies.admin_company_detail', company_id=c.id) }}'">
                   <td class="ps-3">
                     <div class="fw-semibold">{{ c.company_name }}</div>
                     <small class="text-muted">{{ c.created_at.strftime('%d/%m/%Y') if c.created_at else 'Ingen dato' }}</small>
@@ -96,6 +97,7 @@
                     <span class="badge rounded-pill {{ 'text-bg-success' if c.subscription_status == 'active' else 'text-bg-warning' if c.subscription_status == 'trial' else 'text-bg-secondary' }}">
                       {{ c.subscription_status or 'trial' }}
                     </span>
+                    {% if c.custom_branding %}<span class="badge text-bg-info ms-1" title="Branding aktiv">WL</span>{% endif %}
                   </td>
                 </tr>
                 {% endfor %}

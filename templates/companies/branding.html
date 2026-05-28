@@ -40,7 +40,7 @@
     </div>
     <div class="d-flex gap-2">
       <a href="{{ url_for('companies.settings') }}" class="btn btn-outline-secondary btn-sm">Virksomhedsprofil</a>
-      <a href="{{ url_for('hr_dashboard.widget') }}" class="btn btn-outline-primary btn-sm">Widget</a>
+      <a href="{{ url_for('hr_dashboard.widget_creator') }}" class="btn btn-outline-primary btn-sm">Widget</a>
       <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-outline-secondary btn-sm">Dashboard</a>
     </div>
   </div>
@@ -235,7 +235,7 @@
           <div class="tab-pane fade" id="tab-widget">
             <div class="branding-section">
               <p>Konfigurer det indlejrede chat-widget med samme farver som jeres branding.</p>
-              <a href="{{ url_for('hr_dashboard.widget') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-code"></i> Åbn widget-konfigurator</a>
+              <a href="{{ url_for('hr_dashboard.widget_creator') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-code"></i> Åbn widget-konfigurator</a>
               {% if company and company.company_slug %}
               <hr>
               <label class="form-label">Bruger-login (slug)</label>

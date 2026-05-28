@@ -47,6 +47,53 @@ def create_companies_blueprint():
             return redirect(url_for('dashboard.dashboard'))
         return None
 
+    def require_platform_admin():
+        if 'user' not in session or session.get('role') != 'admin':
+            flash("Kun platform-administratorer har adgang.", "danger")
+            return redirect(url_for('auth.login'))
+        return None
+
+    def get_company_by_id(company_id):
+        """Load company row for platform admin (no membership required)."""
+        if not company_id:
+            return None
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT c.*,
+                       cs.enable_white_label, cs.hide_platform_branding, cs.branding_status
+                FROM companies c
+                LEFT JOIN company_settings cs ON cs.company_id = c.id
+                WHERE c.id = %s
+            """, (company_id,))
+            row = cur.fetchone()
+            cur.close()
+            if row and row.get('features') and isinstance(row['features'], str):
+                try:
+                    row['features_parsed'] = json.loads(row['features'])
+                except (TypeError, ValueError):
+                    row['features_parsed'] = {}
+            elif row:
+                row['features_parsed'] = row.get('features') if isinstance(row.get('features'), dict) else {}
+            return row
+        except Exception as e:
+            current_app.logger.error(f"get_company_by_id: {e}")
+            return None
+
+    def _resolve_branding_company_id(explicit_id=None):
+        if explicit_id is not None and session.get('role') == 'admin':
+            session['admin_acting_company_id'] = explicit_id
+            return explicit_id
+        if session.get('role') == 'admin':
+            acting = request.args.get('company_id', type=int) or session.get('admin_acting_company_id')
+            if acting:
+                session['admin_acting_company_id'] = acting
+                return acting
+        company = get_company_context()
+        if company:
+            return company['id']
+        return session.get('company_id')
+
     def get_company_context():
         """Get current user's company context"""
         if 'user' not in session:
@@ -705,29 +752,159 @@ def create_companies_blueprint():
 
         return render_template('companies/settings.html', company=company, settings=settings)
 
+    @companies_bp.route('/admin')
+    def admin_companies_list():
+        """Platform admin: list all tenants with quick controls."""
+        auth_check = require_platform_admin()
+        if auth_check:
+            return auth_check
+        companies = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT c.id, c.company_name, c.company_slug, c.industry, c.status,
+                       c.subscription_plan, c.created_at, c.features,
+                       cs.enable_white_label,
+                       (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id AND cu.status = 'active') AS employee_count
+                FROM companies c
+                LEFT JOIN company_settings cs ON cs.company_id = c.id
+                ORDER BY c.company_name ASC
+            """)
+            companies = cur.fetchall()
+            cur.close()
+            for co in companies:
+                feats = co.get('features')
+                if isinstance(feats, str):
+                    try:
+                        feats = json.loads(feats)
+                    except (TypeError, ValueError):
+                        feats = {}
+                co['custom_branding'] = bool((feats or {}).get('custom_branding'))
+        except Exception as e:
+            current_app.logger.error(f"admin_companies_list: {e}")
+        return render_template(
+            'admin/companies.html',
+            companies=companies,
+            acting_company_id=session.get('admin_acting_company_id'),
+        )
+
+    @companies_bp.route('/admin/<int:company_id>', methods=['GET', 'POST'])
+    def admin_company_detail(company_id):
+        """Platform admin: tenant settings and feature toggles."""
+        auth_check = require_platform_admin()
+        if auth_check:
+            return auth_check
+
+        company = get_company_by_id(company_id)
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('companies.admin_companies_list'))
+
+        session['admin_acting_company_id'] = company_id
+
+        if request.method == 'POST':
+            action = request.form.get('action', 'save')
+            try:
+                if action == 'toggle_branding':
+                    enabled = request.form.get('enabled') == '1'
+                    set_custom_branding_feature(company_id, enabled)
+                    flash(
+                        f"Custom branding {'aktiveret' if enabled else 'deaktiveret'} for {company['company_name']}.",
+                        "success",
+                    )
+                elif action == 'toggle_whitelabel':
+                    enabled = request.form.get('enabled') == '1'
+                    save_branding_settings(company_id, {'enable_white_label': 1 if enabled else 0}, as_draft=False)
+                    flash(
+                        f"White-label {'aktiveret' if enabled else 'deaktiveret'} for {company['company_name']}.",
+                        "success",
+                    )
+                else:
+                    cur = current_app.mysql.connection.cursor()
+                    cur.execute("""
+                        UPDATE companies
+                        SET company_name = %s, industry = %s, subscription_plan = %s,
+                            status = %s, max_employees = %s, updated_at = NOW()
+                        WHERE id = %s
+                    """, (
+                        request.form.get('company_name', company['company_name']),
+                        request.form.get('industry', company.get('industry') or ''),
+                        request.form.get('subscription_plan', company.get('subscription_plan') or 'trial'),
+                        request.form.get('status', company.get('status') or 'active'),
+                        request.form.get('max_employees', company.get('max_employees') or 50),
+                        company_id,
+                    ))
+                    current_app.mysql.connection.commit()
+                    cur.close()
+                    flash("Virksomhedsindstillinger gemt.", "success")
+            except Exception as e:
+                current_app.logger.error(f"admin_company_detail save: {e}")
+                flash("Fejl ved gemning.", "danger")
+            return redirect(url_for('companies.admin_company_detail', company_id=company_id))
+
+        features = company.get('features_parsed') or {}
+        employee_count = 0
+        hr_contacts = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute(
+                "SELECT COUNT(*) AS cnt FROM company_users WHERE company_id = %s AND status = 'active'",
+                (company_id,),
+            )
+            employee_count = cur.fetchone()['cnt']
+            cur.execute("""
+                SELECT full_name, email, role, username
+                FROM company_users
+                WHERE company_id = %s AND role IN ('hr_manager', 'company_admin') AND status = 'active'
+                ORDER BY role, full_name LIMIT 5
+            """, (company_id,))
+            hr_contacts = cur.fetchall()
+            cur.close()
+        except Exception:
+            pass
+
+        return render_template(
+            'admin/company_detail.html',
+            company=company,
+            features=features,
+            custom_branding=bool(features.get('custom_branding')),
+            whitelabel_active=bool(company.get('enable_white_label')),
+            employee_count=employee_count,
+            hr_contacts=hr_contacts,
+        )
+
     @companies_bp.route('/branding', methods=['GET', 'POST'])
-    def branding():
+    @companies_bp.route('/branding/<int:company_id>', methods=['GET', 'POST'])
+    def branding(company_id=None):
         """Unified branding hub for HR admins."""
         auth_check = require_branding_access()
         if auth_check:
             return auth_check
 
-        company = get_company_context()
+        resolved_id = _resolve_branding_company_id(company_id)
+        company = get_company_by_id(resolved_id) if session.get('role') == 'admin' and resolved_id else get_company_context()
+        if not company and resolved_id:
+            company = get_company_by_id(resolved_id)
+
         if not company and session.get('role') != 'admin':
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
 
-        company_id = company['id'] if company else session.get('company_id')
+        company_id = resolved_id or (company['id'] if company else None)
         if not company_id:
             flash("Vælg en virksomhed for at administrere branding.", "warning")
-            return redirect(url_for('dashboard.dashboard'))
+            return redirect(url_for('companies.admin_companies_list'))
 
-        features = company.get('features') if company else '{}'
-        if isinstance(features, str):
-            try:
-                features = json.loads(features)
-            except (TypeError, ValueError):
-                features = {}
+        features = (company.get('features_parsed') if company else None) or {}
+        if not features and company:
+            raw = company.get('features')
+            if isinstance(raw, str):
+                try:
+                    features = json.loads(raw)
+                except (TypeError, ValueError):
+                    features = {}
+            elif isinstance(raw, dict):
+                features = raw
         branding_enabled = has_custom_branding_feature(company_id) or session.get('role') == 'admin'
 
         if request.method == 'POST':
@@ -773,7 +950,7 @@ def create_companies_blueprint():
                 flash("Branding gemt!" if as_draft else "Branding publiceret!", "success")
             else:
                 flash("Fejl ved gemning af branding.", "danger")
-            return redirect(url_for('companies.branding'))
+            return redirect(url_for('companies.branding', company_id=company_id))
 
         settings = {}
         try:
@@ -824,7 +1001,9 @@ def create_companies_blueprint():
             flash("Branding-adgang opdateret.", "success")
         else:
             flash("Kunne ikke opdatere branding-adgang.", "danger")
-        return redirect(request.referrer or url_for('companies.branding'))
+        if company_id:
+            return redirect(url_for('companies.admin_company_detail', company_id=company_id))
+        return redirect(request.referrer or url_for('companies.admin_companies_list'))
 
     return companies_bp
 

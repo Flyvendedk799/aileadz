@@ -170,6 +170,19 @@ def create_app():
     except Exception as e:
         logging.warning("White-label integration skipped: %s", e)
 
+    # Branding schema migration runs every process start (not gated by enterprise sync TTL)
+    @app.before_request
+    def _ensure_branding_schema_once():
+        if getattr(app, '_branding_schema_ensured', False):
+            return
+        app._branding_schema_ensured = True
+        try:
+            from branding_service import ensure_branding_schema, migrate_legacy_branding_data
+            ensure_branding_schema(app)
+            migrate_legacy_branding_data(app)
+        except Exception as e:
+            logging.warning("Branding schema init: %s", e)
+
     # Create enterprise tables on first request
     @app.before_request
     def _ensure_enterprise_tables_once():
@@ -182,7 +195,8 @@ def create_app():
                 ensure_enterprise_tables(app)
                 _mark_enterprise_sync_done()
                 try:
-                    from branding_service import migrate_legacy_branding_data
+                    from branding_service import ensure_branding_schema, migrate_legacy_branding_data
+                    ensure_branding_schema(app)
                     migrate_legacy_branding_data(app)
                 except Exception as mig_err:
                     logging.warning("Branding migration: %s", mig_err)

@@ -467,6 +467,40 @@ def set_custom_branding_feature(company_id: int, enabled: bool) -> bool:
         return False
 
 
+def ensure_branding_schema(app) -> None:
+    """Add whitelabel columns to existing databases (safe to run repeatedly)."""
+    column_migrations = [
+        ('company_settings', 'branding_status', "VARCHAR(20) DEFAULT 'live'"),
+        ('company_settings', 'branding_draft', 'JSON'),
+        ('company_settings', 'company_tagline', 'VARCHAR(255)'),
+    ]
+    with app.app_context():
+        conn = app.mysql.connection
+        if not conn:
+            return
+        try:
+            cur = conn.cursor()
+            for table, column, definition in column_migrations:
+                cur.execute(
+                    """
+                    SELECT COUNT(*) FROM information_schema.COLUMNS
+                    WHERE TABLE_SCHEMA = DATABASE()
+                      AND TABLE_NAME = %s AND COLUMN_NAME = %s
+                    """,
+                    (table, column),
+                )
+                if cur.fetchone()[0]:
+                    continue
+                cur.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}")
+                logging = __import__('logging')
+                logging.getLogger(__name__).info("Added column %s.%s", table, column)
+            conn.commit()
+            cur.close()
+        except Exception as e:
+            logging = __import__('logging')
+            logging.getLogger(__name__).warning("ensure_branding_schema: %s", e)
+
+
 def migrate_legacy_branding_data(app) -> None:
     """Copy companies inline branding into company_settings where missing."""
     with app.app_context():

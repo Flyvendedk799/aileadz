@@ -440,6 +440,11 @@ def get_products():
     return products
 
 
+def warm_catalog():
+    """Eager-load normalized catalog products for chat tools."""
+    return get_products()
+
+
 def get_product(handle):
     if _CACHE["by_handle"] is None:
         get_products()

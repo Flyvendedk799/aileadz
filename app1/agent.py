@@ -108,40 +108,35 @@ def _get_store():
     return _memory_store
 
 
-SYSTEM_PROMPT = """Du er en uddannelsesrådgiver for Futurematch — en erfaren, skarp og varm kollega der hjælper folk med at finde det rigtige kursus.
+SYSTEM_CORE = """Du er en uddannelsesrådgiver for Futurematch — en erfaren, skarp og varm kollega der hjælper folk med at finde det rigtige kursus.
 
 DIN TÆNKEPROCES (følg denne ved HVER besked):
-1. FORSTÅ: Hvad vil denne person egentlig? Ikke bare ordene — hvad er det underliggende behov? "Jeg vil lære projektledelse" kan betyde certificering, karriereskift, eller bare bedre overblik.
+1. FORSTÅ: Hvad vil denne person egentlig? Ikke bare ordene — hvad er det underliggende behov?
 2. VURDÉR: Hvad ved jeg allerede om dem? (profil, tidligere i samtalen, præferencer, hvad de har afvist)
 3. HANDL: Har jeg nok til at søge? → SØG. Mangler jeg noget kritisk? → Stil ét præcist spørgsmål.
-4. KNYT SAMMEN: Forbind altid dit svar til det de har fortalt dig. "Fordi du nævnte X, har jeg fokuseret på Y."
+4. KNYT SAMMEN: Forbind altid dit svar til det de har fortalt dig.
 
 HVEM DU ER:
 - Tænk som en rådgiver, ikke en søgemaskine. Du anbefaler, du lister ikke.
-- Vær direkte og ærlig. Hvis noget ikke passer, sig det. Hvis ét kursus skiller sig ud, sig det klart.
-- Tilpas din tone til personen: varm og guidende til nybegyndere, kort og ligeværdig til erfarne.
-- Hav en mening. "Hvis jeg var dig, ville jeg..." er stærkere end "Her er tre muligheder."
+- Vær direkte og ærlig. Hav en mening.
 - Stil aldrig et spørgsmål brugeren allerede har besvaret. Maks ét spørgsmål per svar.
 
 SAMTALEFLOW:
-- Velkomst: Kort, varm, nysgerrig. "Hej! Hvad leder du efter?" — ikke en wall of text.
-- Første søgning: Søg så snart du har et emne. Stil IKKE unødvendige spørgsmål først.
-- Efter resultater: 1-2 sætninger der knytter resultaterne til brugerens behov. Kurser vises som kort — gentag dem IKKE i teksten.
-- Forfining: Hvis resultaterne er brede, spørg ÉN ting der ville indsnævre: niveau, format, budget, eller underkategori.
-- Beslutning: Når du har nok info, giv en klar anbefaling med begrundelse.
-- Køb: Når brugeren vil tilmelde sig, skift til action-mode med konkrete næste skridt.
+- Velkomst: Kort, varm, nysgerrig.
+- Første søgning: Søg så snart du har et emne.
+- Efter resultater: 1-2 sætninger — kortene bærer informationen.
+- Beslutning: Giv en klar anbefaling med begrundelse.
 
 SVARLÆNGDE:
-- Efter søgning: Maks 1-2 sætninger. Kortene bærer informationen.
-- Rådgivning uden søgning: 2-4 sætninger, naturligt og samtaleagtigt.
-- Sammenligning/anbefaling: Op til 4-5 sætninger med klar struktur.
+- Efter søgning: Maks 1-2 sætninger.
+- Rådgivning uden søgning: 2-4 sætninger.
 - Hilsen: 1 sætning + suggestion chips.
-- ALDRIG walls of text. Hvis dit svar er ved at blive langt, klip det.
+- ALDRIG walls of text.
 
 VISUEL REGEL (VIGTIGSTE REGEL):
 Kurser vises AUTOMATISK som interaktive kort ved siden af din tekst. Du må ALDRIG:
 - Skrive kursusnavne, priser, lokationer eller beskrivelser i dit tekst-svar
-- Bruge lister (bullet points, numre) med kursusinformation
+- Bruge lister med kursusinformation
 - Bruge **fed skrift** til kursusnavne
 Dit svar skal være naturlig samtale, ikke en opsummering af kortene.
 
@@ -150,104 +145,76 @@ Afslut ALTID med: <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggesti
 Maks 6 ord per forslag, dansk, handlingsorienteret, SPECIFIKT til situationen.
 
 VÆRKTØJER:
-- catalog_search: PRIMÆR katalogsøgning. Returnerer Futurematch produktkort + interne links til /products, /categories og /vendors.
-- catalog_get_product: Brug når brugeren spørger om et konkret kursus, en vedhæftet produktside, startdato, pris, lokation eller link.
-- catalog_get_category / catalog_get_vendor: Brug til kategori- og leverandørspørgsmål. Link altid til interne Futurematch-sider.
-- catalog_compare_products: Sammenlign 2-4 konkrete produkter fra kataloget.
-- search_courses/filter_courses/get_course_details/compare_courses: Legacy/RAG-værktøjer til ekstra ranking og detaljer når katalogværktøjerne ikke er nok.
-- get_learning_context: Hent brugerens profil, afdeling, leverandøraftaler, budgetsignaler og åbne ordrer i ét kald.
-- check_course_readiness / prepare_course_order: Brug før tilmelding. create_course_order må kun bruges efter tydelig brugerbekræftelse.
-- get_vendor_info: Ekstra udbyderintelligens når katalogets leverandørprofil ikke er nok.
-- get_user_profile / update_user_profile: Hent/opdater brugerprofil. Tilføj PROAKTIVT når brugeren nævner kompetencer, erfaring, eller præferencer.
-- recommend_for_profile: Anbefalinger baseret på profil og kompetencehuller.
-- suggest_learning_path: Sekventiel læringssti (fundament → avanceret). Kræver login.
-- create_course_order: Opret en kursusbestilling. Kræver product_handle + navn, email, telefon.
+- catalog_search: PRIMÆR katalogsøgning (inkl. semantisk fallback internt).
+- catalog_get_product: Konkret kursus, startdato, pris, lokation eller link.
+- catalog_get_category / catalog_get_vendor: Kategori- og leverandørspørgsmål.
+- catalog_compare_products: Sammenlign 2-4 produkter fra kataloget.
+- check_course_readiness / prepare_course_order / create_course_order: Bestillingsflow.
+- get_user_profile / update_user_profile / request_user_input: Profil og CV-opdateringer.
+- recommend_for_profile / suggest_learning_path: Personaliserede anbefalinger (login).
+- analyze_skill_gaps / get_department_budget / check_order_approval_status: Virksomhedskontekst.
 
 DATAREGEL:
-Nævn aldrig konkrete kursusnavne, priser, datoer, leverandørstatus, budgetter, ordrestatus eller godkendelsesstatus uden først at bruge et relevant værktøj i samme tur. Brug ALDRIG gamle eksterne webshoplinks — produktlinks er interne /products/<handle>.
+Nævn aldrig konkrete kursusnavne, priser, datoer eller ordrestatus uden relevant værktøj i samme tur. Brug interne /products/<handle> links."""
 
-BESTILLINGSFLOW:
-Når brugeren vil tilmelde sig / bestille et kursus:
+SYSTEM_PLAYBOOK_BUYING = """BESTILLINGSFLOW:
 1. Brug catalog_get_product + check_course_readiness.
-2. Brug prepare_course_order for at samle bekræftelsesdata uden at oprette ordre.
-3. Bed brugeren bekræfte hvis der er nok data, ellers spørg kun om manglende felter.
-4. Kald create_course_order først når brugeren eksplicit bekræfter.
-5. Vis ordrebekræftelsen til brugeren.
-Ved gruppetilmelding: spørg om antal deltagere og saml info for alle.
+2. Brug prepare_course_order for bekræftelsesdata uden at oprette ordre.
+3. Kald create_course_order først ved eksplicit brugerbekræftelse.
+4. Vis ordrebekræftelsen. Ved gruppetilmelding: spørg om antal deltagere."""
 
-CV-INTELLIGENS (VIGTIG — gør dette automatisk):
-Når brugeren fortæller noget om sig selv, brug request_user_input til at vise et smart UI-kort der samler info.
+SYSTEM_PLAYBOOK_CV = """CV-INTELLIGENS (automatisk):
+Når brugeren fortæller noget om sig selv, brug request_user_input til smart UI-kort.
 
-FORETRUKKEN METODE — request_user_input (samler alt i ét kort):
-- "Jeg er varehuschef i Silvan" → request_user_input med:
-  ui_type="form", section="experience", save_action="add_experience",
-  message="Tilføj erfaring: Varehuschef @ Silvan",
-  prefilled={"title":"Varehuschef","company":"Silvan","is_current":true},
-  fields=[{"name":"start_year","label":"Startår","type":"number","placeholder":"f.eks. 2018"},
-          {"name":"end_year","label":"Slutår (tom = nuværende)","type":"number","required":false}]
-- "Jeg har en HD i ledelse" → request_user_input med:
-  ui_type="form", section="education", save_action="add_education",
-  message="Tilføj uddannelse: HD — Ledelse",
-  prefilled={"degree":"HD","description":"Ledelse"},
-  fields=[{"name":"institution","label":"Institution","type":"text","placeholder":"f.eks. CBS"},
-          {"name":"year_completed","label":"Afsluttet år","type":"number"}]
-- "Jeg kan Python og Excel" → 2 kald request_user_input med:
-  ui_type="confirm", section="skills", save_action="add_skill",
-  message="Tilføj kompetence: Python", prefilled={"skill_name":"Python","skill_level":"mellem"}
-  (og ét mere for Excel)
-- "Jeg har et certifikat i planlægning" → request_user_input med:
-  ui_type="form", section="courses", save_action="add_course",
-  message="Tilføj kursus/certifikat: Effektiv planlægning",
-  prefilled={"course_title":"Effektiv planlægning"},
-  fields=[{"name":"vendor","label":"Udbyder","type":"text","placeholder":"f.eks. Teknologisk Institut"},
-          {"name":"year_completed","label":"Afsluttet år","type":"number"}]
-- "Jeg har taget et Excel-kursus hos Microsoft" → request_user_input med:
-  ui_type="confirm", section="courses", save_action="add_course",
-  message="Tilføj kursus: Excel-kursus (Microsoft)",
-  prefilled={"course_title":"Excel-kursus","vendor":"Microsoft"}
-- "Mit mål er at blive IT-chef" → update_user_profile (simpelt, behøver ikke UI)
+FORETRUKKEN METODE — request_user_input:
+- Job/erfaring → ui_type=form, section=experience, save_action=add_experience
+- Uddannelse → section=education, save_action=add_education
+- Kompetencer → ui_type=confirm, section=skills, save_action=add_skill
+- Certifikat/kursus → section=courses, save_action=add_course
+- Simple mål → update_user_profile
 
 HVORNÅR BRUGE HVAD:
-- request_user_input: Når info mangler detaljer (erfaring → spørg om årstal, uddannelse → spørg om institution). Viser kort med forudfyldt + tomme felter.
-- update_user_profile: Til simple opdateringer (mål, præferencer, fjern/ændr). Til ting der ikke behøver ekstra detaljer.
-  Opdatér eksisterende: update_experience (kræver id), update_education (kræver id), update_course (kræver course_title).
-  Hent profil først med get_user_profile for at finde id'er.
-HUSK: Jobtitel/stilling = erfaring. Uddannelse = education. Kompetencer = skills. Certifikat/gennemført kursus = courses (add_course).
-HUSK: Ændr/opdatér erfaring = update_experience. Ændr uddannelse = update_education. Ændr kursus = update_course. Alle kræver id/titel fra get_user_profile.
+- request_user_input: Når info mangler detaljer (årstal, institution).
+- update_user_profile: Simple opdateringer. Hent profil med get_user_profile for id'er.
 
-Regler:
-- Når du bruger request_user_input, sig noget som: "Jeg har lavet et kort hvor du kan tilføje detaljerne — udfyld det herunder."
-- Når du bruger update_user_profile, får du "proposed" status — sig: "Bekræft i kortet herunder."
-- Kombiner med dit svar — afbryd IKKE samtaleflowet.
-- Du kan lave FLERE kald i én besked hvis brugeren nævner flere ting.
-- Hvis systemet siger "already_exists" — nævn det IKKE for brugeren.
+CV-ONBOARDING (når brugeren beder om CV/profil):
+Guid naturligt: erfaring → uddannelse → skills → kurser → mål. Spring udfyldte trin over."""
 
-CV-ONBOARDING (når brugeren beder om at opdatere CV/profil):
-Guid dem naturligt igennem — IKKE som en kedelig formular, men som en samtale:
-1. Start: "Fedt! Fortæl mig lidt om dig — hvad laver du til daglig?" (fang erfaring)
-2. Når de svarer: Gem det → "Hvad med uddannelse — hvad er din baggrund?" (fang uddannelse)
-3. Dernæst: "Hvilke kompetencer synes du selv du er stærkest i?" (fang skills)
-4. Så: "Har du taget nogen kurser eller certificeringer?" (fang kurser)
-5. Afslut: "Og hvad er dit mål? Hvad vil du gerne blive bedre til?" (fang mål + præferencer)
-Tilpas rækkefølgen ud fra hvad de allerede har fortalt. Spring trin over der allerede er udfyldt.
-Afslut med et overblik: "Din profil ser nu sådan ud: [kort opsummering]. Vil du tilføje mere, eller skal vi finde kurser der passer til dig?"
+SYSTEM_PLAYBOOK_SEARCH = """SØGE-INTELLIGENS:
+- Søg på BEHOV, ikke jobtitel.
+- Når brugeren nævner pris + lokation + emne → brug catalog_search med filtre.
+- "den billigste" / "nummer 2" → match mod VISTE KURSER, brug catalog_get_product.
+- Ved 0 resultater: prøv bredere termer. Ved lav confidence: spørg om præcisering.
+- Ved genviste kurser: anerkend kort dit tidligere forslag."""
 
-SØGE-INTELLIGENS:
-- Søg på BEHOV, ikke jobtitel. "Salgsleder der vil blive bedre til planlægning" → søg "planlægning".
-- Når brugeren nævner pris + lokation + emne → brug filter_courses, ikke search_courses.
-- "den billigste" / "nummer 2" → match mod VISTE KURSER, brug get_course_details.
-- Ved 0 resultater: prøv bredere søgetermer FØR du giver op. Foreslå alternativer.
-- Ved lav søgetillid ("confidence": "low"): sig ærligt at matchet er usikkert og spørg om præcisering.
-- Ved genviste kurser ("previously_shown": true): anerkend kort at du bekræfter dit tidligere forslag.
-
-SITUATIONSHÅNDTERING:
-- Afvisning ("nej", "forkert"): Anerkend → spørg hvad der ikke passede (emne/niveau/pris/format) → søg anderledes.
-- Køb (tilmelding, startdato, pladser): Hent detaljer, vis konkrete næste skridt, gør det let at handle.
-- Research-mode (bare kigger): Pres ikke. Inspirer med karriereværdi og læringsudbytte.
-- Team/gruppe: Spørg om antal, foreslå grupperabat/in-house, vis datoer med pladser.
-- Emneskift: Anerkend kort, søg straks på det nye emne, behold tidligere kontekst.
+SYSTEM_PLAYBOOK_SITUATION = """SITUATIONSHÅNDTERING:
+- Afvisning: Anerkend → spørg hvad der ikke passede → søg anderledes.
+- Køb: Hent detaljer, vis næste skridt.
+- Research-mode: Pres ikke — inspirer med værdi.
+- Team/gruppe: Spørg om antal, vis datoer med pladser.
+- Emneskift: Anerkend kort, søg straks på nyt emne.
 - Engelsk input: Forstå det, svar på dansk.
 - Vedhæftet kursus [VEDHÆFTET KURSUS: ...]: Besvar specifikt om det kursus."""
+
+SYSTEM_PROMPT = SYSTEM_CORE
+
+
+def _build_playbook_messages(stage, intent):
+    """Inject rare flow instructions only when stage/intent needs them."""
+    blocks = []
+    if stage in ("ready_to_buy", "team_buying") or intent in ("buying", "team_buying"):
+        blocks.append(SYSTEM_PLAYBOOK_BUYING)
+    if stage in ("profile_update", "profile_and_search") or intent in ("profile_update", "profile_and_search"):
+        blocks.append(SYSTEM_PLAYBOOK_CV)
+    if intent in ("discovery", "follow_up", "profile_and_search", "comparison", "detail") or stage in (
+        "searching", "needs_discovery", "correcting",
+    ):
+        blocks.append(SYSTEM_PLAYBOOK_SEARCH)
+    if stage in ("correcting", "researching", "team_buying") or intent in ("correction", "team_buying"):
+        blocks.append(SYSTEM_PLAYBOOK_SITUATION)
+    if not blocks:
+        return []
+    return [{"role": "system", "content": "\n\n".join(blocks)}]
 
 
 def get_system_prompt():
@@ -258,10 +225,10 @@ def get_system_prompt():
         cid = session.get('company_id')
         if cid and is_whitelabel_active(cid):
             name = get_branding(cid).get('company_name') or 'din virksomhed'
-            return SYSTEM_PROMPT.replace('Futurematch', name)
+            return SYSTEM_CORE.replace('Futurematch', name)
     except Exception:
         pass
-    return SYSTEM_PROMPT
+    return SYSTEM_CORE
 
 
 SESSION_TTL = 3600
@@ -637,38 +604,19 @@ def _build_shown_products_message(sid):
         return None
     # Phase 3A: Cap shown products to 10 most recent
     sp = sp[-10:]
-    lines = ["VISTE KURSER (brug denne liste til at besvare opfølgningsspørgsmål, sammenligninger, og anbefalinger):"]
-
-    # Quick overview for price/location questions
-    if len(sp) >= 2:
-        priced = [(p, p.get("price")) for p in sp if p.get("price") and str(p.get("price")) != "N/A"]
-        if priced:
-            try:
-                sorted_by_price = sorted(priced, key=lambda x: float(x[1]))
-                cheapest = sorted_by_price[0][0]
-                most_expensive = sorted_by_price[-1][0]
-                lines.append(f'\nHURTIG OVERSIGT:')
-                lines.append(f'  Billigst: "{cheapest["title"]}" — {cheapest["price"]} kr')
-                lines.append(f'  Dyrest: "{most_expensive["title"]}" — {most_expensive["price"]} kr')
-            except (ValueError, TypeError):
-                pass
-
-    for p in sp:
-        locs = ", ".join(p.get("locations", [])) if p.get("locations") else "N/A"
-        summary = p.get("summary", "")
-        tags = ", ".join(p.get("tags", []))
-        ptype = p.get("product_type", "")
-        lines.append(f'\n{p["index"]}. "{p["title"]}"')
-        lines.append(f'   Pris: {p["price"]} kr')
-        lines.append(f'   Handle: {p["handle"]}')
-        lines.append(f'   Lokationer: {locs}')
-        if ptype:
-            lines.append(f'   Type: {ptype}')
-        if tags:
-            lines.append(f'   Tags: {tags}')
-        if summary:
-            lines.append(f'   Resume: {summary}')
-    return {"role": "system", "content": "\n".join(lines)}
+    compact = [{
+        "i": p.get("index"),
+        "t": p.get("title"),
+        "h": p.get("handle"),
+        "p": p.get("price"),
+        "v": p.get("vendor"),
+        "l": (p.get("locations") or [])[:2],
+    } for p in sp]
+    return {
+        "role": "system",
+        "content": "VISTE KURSER (JSON — brug index/handle til opfølgning, sammenligning, pris/lokation):\n"
+                   + json.dumps(compact, ensure_ascii=False),
+    }
 
 
 # ── S3: Smart Context Builder ──
@@ -780,109 +728,18 @@ _TONE_HINTS = {
 # ── Memory Management ──
 
 def _summarize_pruned_messages(messages_to_prune):
-    """Create a structured conversation summary using GPT for intelligent compression.
-    Extracts key facts as structured JSON for compact, lossless context."""
-    transcript_parts = []
-    for msg in messages_to_prune:
-        role = msg.get("role", "")
-        content = msg.get("content", "")
-        if not content or role == "system":
-            continue
-        if role == "user":
-            transcript_parts.append(f"Bruger: {content[:300]}")
-        elif role == "assistant":
-            transcript_parts.append(f"Rådgiver: {content[:300]}")
-        elif role == "tool":
-            try:
-                data = json.loads(content) if isinstance(content, str) else content
-                results = data.get("results", [])
-                if results:
-                    titles = [r.get("title", "?") for r in results[:5]]
-                    transcript_parts.append(f"Søgeresultater: {', '.join(titles)}")
-            except (json.JSONDecodeError, AttributeError):
-                pass
-
-    if not transcript_parts:
-        return None
-
-    transcript = "\n".join(transcript_parts)
-
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": """Udtræk nøglefakta fra denne samtale som JSON. Bevar ALT vigtigt.
-Svar PRÆCIS som JSON:
-{
-  "needs": ["brugerens udtalte behov/mål"],
-  "preferences": {"budget": "...", "location": "...", "format": "...", "timeline": "..."},
-  "background": "rolle, erfaring, kompetencer nævnt",
-  "shown_courses": ["titler på viste kurser"],
-  "rejected": ["kurser/emner brugeren ikke var interesseret i og hvorfor"],
-  "decision_stage": "browsing|comparing|ready_to_buy",
-  "key_quotes": ["vigtige brugerudsagn der afslører præferencer"],
-  "conversation_arc": "kort beskrivelse af samtalens udvikling, f.eks. 'Startede bredt med ledelse → indsnævrede til PRINCE2 → afviste to dyre → leder efter budget-alternativ'",
-  "unresolved": ["spørgsmål eller behov der ikke er fuldt besvaret endnu"],
-  "mood": "neutral|entusiastisk|frustreret|usikker"
-}
-Udelad felter uden info. Maks 250 tokens."""},
-                {"role": "user", "content": transcript}
-            ],
-            temperature=0.1,
-            max_tokens=300
-        )
-        summary = response.choices[0].message.content.strip()
-        # Validate it's parseable JSON, fall back to raw text if not
-        try:
-            parsed = json.loads(summary)
-            # Format as compact structured context
-            lines = ["SAMTALEOVERSIGT (struktureret fra tidligere i samtalen):"]
-            if parsed.get("needs"):
-                lines.append(f"Behov: {', '.join(parsed['needs'])}")
-            prefs = parsed.get("preferences", {})
-            pref_parts = [f"{k}: {v}" for k, v in prefs.items() if v]
-            if pref_parts:
-                lines.append(f"Præferencer: {'; '.join(pref_parts)}")
-            if parsed.get("background"):
-                lines.append(f"Baggrund: {parsed['background']}")
-            if parsed.get("shown_courses"):
-                lines.append(f"Viste kurser: {', '.join(parsed['shown_courses'][:8])}")
-            if parsed.get("rejected"):
-                lines.append(f"Afvist: {', '.join(parsed['rejected'][:5])}")
-            if parsed.get("decision_stage"):
-                lines.append(f"Beslutningsfase: {parsed['decision_stage']}")
-            if parsed.get("key_quotes"):
-                lines.append(f"Nøglecitater: {' | '.join(parsed['key_quotes'][:3])}")
-            if parsed.get("conversation_arc"):
-                lines.append(f"Samtaleforløb: {parsed['conversation_arc']}")
-            if parsed.get("unresolved"):
-                lines.append(f"Ubesvaret: {', '.join(parsed['unresolved'][:3])}")
-            if parsed.get("mood") and parsed["mood"] != "neutral":
-                lines.append(f"Stemning: {parsed['mood']}")
-            return "\n".join(lines)
-        except (json.JSONDecodeError, TypeError):
-            return f"SAMTALEOVERSIGT (tidligere i samtalen):\n{summary}"
-    except Exception as e:
-        print(f"[Summary Error] {e}")
-        simple_parts = []
-        for msg in messages_to_prune:
-            role = msg.get("role", "")
-            content = msg.get("content", "")
-            if not content or role == "system":
-                continue
-            if role == "user":
-                simple_parts.append(f"Bruger: {content[:150]}")
-            elif role == "assistant":
-                simple_parts.append(f"Rådgiver: {content[:150]}")
-        if not simple_parts:
-            return None
-        return "SAMTALEOVERSIGT (tidligere i samtalen):\n" + "\n".join(simple_parts)
+    """Create a structured conversation summary — rules first, GPT only when needed."""
+    from ai_context import summarize_pruned_messages_smart
+    return summarize_pruned_messages_smart(messages_to_prune)
 
 
 def _extract_user_profile(sid, messages):
-    """Extract user preferences from conversation using GPT."""
+    """Extract user preferences from conversation using GPT (anonymous sessions only)."""
+    from ai_context import should_skip_anonymous_profile_extraction
+    from ai_runtime import run_direct_completion
+
     user_msg_count = sum(1 for m in messages if m.get("role") == "user")
-    if user_msg_count < 2 or user_msg_count % 3 != 0:
+    if should_skip_anonymous_profile_extraction(logged_in=False, user_msg_count=user_msg_count):
         return
 
     user_messages = [m.get("content", "") for m in messages if m.get("role") == "user" and m.get("content")]
@@ -893,21 +750,24 @@ def _extract_user_profile(sid, messages):
     existing_context = f"\nEksisterende profil: {existing}" if existing else ""
 
     try:
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": f"Analyser følgende bruger-beskeder fra en kursussøgning og udtræk en kort profil. Inkluder: interesseområder, budget/prisforventninger, foretrukket lokation, rolle/jobtitel, erfaringsniveau, læringspræferencer (e-learning vs. fysisk), og andre relevante detaljer. Skriv som korte punkter på dansk. Maks 100 ord. Hvis et felt er ukendt, udelad det.{existing_context}"},
-                {"role": "user", "content": "\n".join(user_messages[-6:])}
+        profile_text = run_direct_completion(
+            [
+                {"role": "system", "content": (
+                    "Analyser følgende bruger-beskeder fra en kursussøgning og udtræk en kort profil. "
+                    "Inkluder: interesseområder, budget/prisforventninger, foretrukket lokation, rolle/jobtitel, "
+                    "erfaringsniveau, læringspræferencer. Skriv som korte punkter på dansk. Maks 100 ord."
+                    f"{existing_context}"
+                )},
+                {"role": "user", "content": "\n".join(user_messages[-6:])},
             ],
-            temperature=0.2,
-            max_tokens=200
+            max_tokens=200,
         )
-        profile_text = response.choices[0].message.content.strip()
+        if not profile_text:
+            return
         USER_PROFILES[sid] = {
             "summary": profile_text,
             "last_updated": time.time()
         }
-        # Persist to SQLite
         try:
             _get_store().update_session_field(sid, "user_profile", profile_text)
         except Exception as e2:
@@ -922,6 +782,57 @@ def _build_user_profile_message(sid):
     if not profile:
         return None
     return {"role": "system", "content": f"BRUGERPROFIL (brug til at personalisere anbefalinger):\n{profile}"}
+
+
+def _infer_embedding_skipped(tool_results) -> Optional[bool]:
+    """Derive whether RAG skipped embedding API calls this turn."""
+    for result in tool_results or []:
+        try:
+            data = json.loads(result.output or "{}")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        if not isinstance(data, dict):
+            continue
+        debug = data.get("search_debug") or data.get("debug") or {}
+        if isinstance(debug, dict) and "embedding_skipped" in debug:
+            return bool(debug["embedding_skipped"])
+        if data.get("search_mode") == "catalog":
+            return True
+        if data.get("search_mode") == "rag":
+            return False
+    return None
+
+
+def _build_learning_context_message(logged_in_user, company_id, sid, supplier_agreements=None):
+    """Inject company learning context without a tool call."""
+    if not logged_in_user or not company_id:
+        return None
+    parts = []
+    try:
+        from flask import session as flask_session
+        dept = flask_session.get("company_department") or ""
+        if dept:
+            parts.append(f"Afdeling: {dept}")
+    except Exception:
+        pass
+    if supplier_agreements:
+        active = [
+            f"{name} ({info.get('agreement_name') or 'aftale'})"
+            for name, info in list(supplier_agreements.items())[:6]
+        ]
+        if active:
+            parts.append("Aktive leverandøraftaler: " + ", ".join(active))
+    try:
+        shown = SHOWN_PRODUCTS.get(sid, {}).get("products", [])[:8]
+        if shown:
+            handles = [p.get("handle") for p in shown if p.get("handle")]
+            if handles:
+                parts.append("Viste produkter denne session: " + ", ".join(handles))
+    except Exception:
+        pass
+    if not parts:
+        return None
+    return {"role": "system", "content": "LÆRINGSKONTEKST:\n" + "\n".join(parts)}
 
 
 # ── Phase 6: Response Quality Guardrails ──
@@ -995,8 +906,11 @@ Rådgiver: [søger fysiske kurser] Forstået — her er fysiske kurser der passe
 
 
 def _build_few_shot_examples():
-    """Build few-shot examples: hardcoded gold standard + top-rated user interactions."""
-    lines = [_GOLD_STANDARD_EXAMPLES]
+    """Build few-shot examples: compact gold standard + optional top-rated interactions."""
+    from ai_context import build_few_shot_message
+    base = build_few_shot_message(_GOLD_STANDARD_EXAMPLES)
+    if not base:
+        return None
 
     # Augment with real high-rated interactions if available
     try:
@@ -1011,11 +925,11 @@ def _build_few_shot_examples():
                 if q and answer:
                     real_examples.append(f"Bruger: {q[:100]}\nRådgiver: {answer[:200]}")
             if real_examples:
-                lines.append("VIRKELIGE GODE SVAR (fra denne platform):\n" + "\n\n".join(real_examples))
+                base["content"] += "\n\nVIRKELIGE GODE SVAR (fra denne platform):\n" + "\n\n".join(real_examples)
     except Exception:
         pass
 
-    return {"role": "system", "content": "\n\n".join(lines)}
+    return base
 
 
 # ── Inline Suggestion Extraction ──
@@ -1376,36 +1290,23 @@ def handle_agentic_ask(user_query, session):
     if not logged_in_user:
         _extract_user_profile(sid, messages)
 
-    # Memory pruning at 25+ messages (GPT-4o handles 128K context, no need to prune early)
-    if len(messages) > 25:
-        system_msg = messages[0]
-        # Preserve profile-related system messages during pruning
-        _PROFILE_MARKERS = ("BRUGERENS NUVÆRENDE PROFIL", "TILBAGEVENDENDE BRUGER", "TILBAGEVENDENDE ANONYM")
-        protected = []
-        to_prune = []
-        for msg in messages[1:-16]:
-            if msg.get("role") == "system" and any(m in (msg.get("content") or "") for m in _PROFILE_MARKERS):
-                protected.append(msg)
-            else:
-                to_prune.append(msg)
-        recent = messages[-16:]
-
-        summary_text = _summarize_pruned_messages(to_prune)
-        new_messages = [system_msg] + protected
-        if summary_text:
-            new_messages.append({"role": "system", "content": summary_text})
-        new_messages.extend(recent)
-        CHAT_MEMORY[sid] = new_messages
+    # Memory pruning at 18+ messages to keep TPM under control
+    from ai_context import prune_conversation_memory
+    pruned = prune_conversation_memory(messages)
+    if pruned is not messages:
+        CHAT_MEMORY[sid] = pruned
         messages = CHAT_MEMORY[sid]
+        summary_text = next(
+            (m.get("content") for m in messages if m.get("role") == "system" and str(m.get("content", "")).startswith("SAMTALEOVERSIGT")),
+            None,
+        )
 
-        # Persist summary
         try:
             if summary_text:
                 _get_store().update_session_field(sid, "conversation_summary", summary_text)
         except Exception as e:
             print(f"[Summary Persist Error] {e}")
 
-        # Persist summary to anonymous profile for cross-session memory
         if not logged_in_user and summary_text:
             browser_token = session.get("browser_token")
             if browser_token:
@@ -1447,11 +1348,21 @@ def handle_agentic_ask(user_query, session):
             # Build ephemeral messages with all context layers
             ephemeral_messages = list(messages)
             insert_idx = 1
+            company_id = session.get("company_id")
 
             # Phase 6: Few-shot examples from top-rated interactions
-            few_shot_msg = _build_few_shot_examples()
-            if few_shot_msg:
-                ephemeral_messages.insert(insert_idx, few_shot_msg)
+            pre_turn_estimate = sum(
+                _estimate_tokens(m.get("content", "")) + 4 for m in ephemeral_messages
+            )
+            if len(messages) <= 14 and pre_turn_estimate < 18000:
+                few_shot_msg = _build_few_shot_examples()
+                if few_shot_msg:
+                    ephemeral_messages.insert(insert_idx, few_shot_msg)
+                    insert_idx += 1
+
+            # Stage/intent playbooks (compact core prompt + conditional playbooks)
+            for playbook_msg in _build_playbook_messages(stage, intent):
+                ephemeral_messages.insert(insert_idx, playbook_msg)
                 insert_idx += 1
 
             # User profile context — prefer MySQL profile if logged in
@@ -1569,7 +1480,6 @@ def handle_agentic_ask(user_query, session):
             # Load blocked vendors and supplier agreements for company employees
             blocked_vendors = set()
             supplier_agreements = {}
-            company_id = session.get("company_id")
             if company_id:
                 try:
                     from flask import current_app as _ca
@@ -1603,18 +1513,36 @@ def handle_agentic_ask(user_query, session):
                 except Exception:
                     pass
 
+            learning_ctx = _build_learning_context_message(
+                logged_in_user, company_id, sid, supplier_agreements
+            )
+            if learning_ctx:
+                ephemeral_messages.append(learning_ctx)
+
             set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
                                blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements)
             close_flask_mysql_connection()
 
+            from ai_context import choose_max_iterations, run_chitchat_turn
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
+                check_turn_token_budget,
+                choose_turn_model,
+                compaction_level_for_messages,
+                estimate_messages_tokens,
+                fast_model,
+                in_rate_limit_cooldown,
+                iter_completion_stream,
                 log_agent_run,
                 log_tool_run,
                 main_model,
                 make_run_id,
+                max_output_tokens,
+                prepare_messages_for_turn,
                 run_agent_with_fallback,
+                user_facing_error_message,
             )
+            from app1.tools import resolve_products_for_ui
             from ai_tool_registry import get_employee_tool_selection, make_tool_choice, tool_name, toolset_enabled
 
             if toolset_enabled():
@@ -1633,11 +1561,39 @@ def handle_agentic_ask(user_query, session):
                     "forced_tool": None,
                 }
             tool_choice = make_tool_choice(toolset_meta.get("forced_tool"))
-            max_iterations = 5
+            max_iterations = choose_max_iterations(intent, scope="employee")
             iteration = 0
             had_tool_calls = False
-            last_message_is_final = True
+            token_estimate = estimate_messages_tokens(
+                prepare_messages_for_turn(ephemeral_messages)
+            )
+            turn_model = choose_turn_model(
+                intent=intent,
+                tool_count=len(all_tools),
+                token_estimate=token_estimate,
+                prefer_quality=intent in {"comparison", "buying", "team_buying", "profile_and_search"},
+            )
             run_id = make_run_id()
+            compaction_level = compaction_level_for_messages(ephemeral_messages)
+            allowed, budget_message, compaction_level = check_turn_token_budget(ephemeral_messages)
+            if not allowed:
+                yield f"data: {json.dumps({'type': 'chunk', 'content': budget_message})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            turn_count = session.get("_ai_turn_count", 0) + 1
+            session["_ai_turn_count"] = turn_count
+            if turn_count >= 18:
+                ephemeral_messages.append({
+                    "role": "system",
+                    "content": (
+                        "SYSTEMHINT: Samtalen er lang. Overvej kort at foreslå at brugeren "
+                        "starter en ny chat for bedre kvalitet — uden at afbryde flowet unødigt."
+                    ),
+                })
+                yield f"data: {json.dumps({'type': 'notice', 'content': 'Tip: En ny samtale giver ofte skarpere svar, når chatten bliver lang.'})}\n\n"
+
+            compaction_level = compaction_level_for_messages(ephemeral_messages)
 
             try:
                 log_debug(sid, "toolset_selection", {
@@ -1645,25 +1601,39 @@ def handle_agentic_ask(user_query, session):
                     "tools": toolset_meta.get("tool_names", []),
                     "forced_tool": toolset_meta.get("forced_tool"),
                     "runtime": "responses",
+                    "turn_model": turn_model,
+                    "token_estimate": token_estimate,
                 })
             except Exception:
                 pass
 
             api_start = time.time()
-            runtime_result = run_agent_with_fallback(
-                messages=ephemeral_messages,
-                tools=all_tools,
-                tool_executor=execute_tool,
-                username=logged_in_user,
-                session_id=sid,
-                model=main_model(),
-                tool_choice=tool_choice,
-                max_iterations=max_iterations,
-                prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
-            )
+            if all_tools:
+                yield f"data: {json.dumps({'type': 'thinking', 'content': 'Søger og analyserer…'})}\n\n"
+            if not all_tools and intent == "chit_chat":
+                runtime_result = run_chitchat_turn(ephemeral_messages, intent=intent)
+            else:
+                runtime_result = run_agent_with_fallback(
+                    messages=ephemeral_messages,
+                    tools=all_tools,
+                    tool_executor=execute_tool,
+                    username=logged_in_user,
+                    session_id=sid,
+                    model=turn_model,
+                    tool_choice=tool_choice,
+                    max_iterations=max_iterations,
+                    prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
+                )
             _log_latency(sid, "ai_runtime_turn", api_start)
             iteration = max(1, len(runtime_result.tool_results))
             had_tool_calls = bool(runtime_result.tool_results)
+            last_message_is_final = bool(
+                (runtime_result.text or "").strip() or runtime_result.needs_final_stream
+            )
+            compaction_level = runtime_result.compaction_level or compaction_level
+            if in_rate_limit_cooldown():
+                compaction_level = "cooldown"
+            embedding_skipped = _infer_embedding_skipped(runtime_result.tool_results)
 
             try:
                 log_agent_run(
@@ -1674,7 +1644,7 @@ def handle_agentic_ask(user_query, session):
                     username=logged_in_user,
                     agent_scope="employee",
                     runtime=runtime_result.runtime,
-                    model=main_model(),
+                    model=turn_model,
                     prompt_version=AI_PROMPT_VERSION,
                     toolset_version=toolset_meta.get("version", ""),
                     tool_names=toolset_meta.get("tool_names", []),
@@ -1683,6 +1653,9 @@ def handle_agentic_ask(user_query, session):
                     fallback_reason=runtime_result.fallback_reason,
                     latency_ms=runtime_result.latency_ms,
                     usage=runtime_result.usage,
+                    compaction_level=compaction_level,
+                    runtime_path=runtime_result.runtime_path or runtime_result.runtime,
+                    embedding_skipped=embedding_skipped,
                 )
             except Exception:
                 pass
@@ -1709,14 +1682,12 @@ def handle_agentic_ask(user_query, session):
                 results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
                 _tools_used.append(tool_result.name)
                 _total_results += results_count
-                for _rp in tool_result_dict.get("raw_products", []):
+                for _rp in tool_result_dict.get("results", []) or []:
                     _h = _rp.get("handle") if isinstance(_rp, dict) else None
                     if _h:
                         _products_shown_handles.append(_h)
-                if "raw_product" in tool_result_dict:
-                    _h = tool_result_dict["raw_product"].get("handle") if isinstance(tool_result_dict.get("raw_product"), dict) else None
-                    if _h:
-                        _products_shown_handles.append(_h)
+                if tool_result_dict.get("product", {}).get("handle"):
+                    _products_shown_handles.append(tool_result_dict["product"]["handle"])
 
                 try:
                     _get_store().log_event(sid, "tool_call",
@@ -1750,16 +1721,30 @@ def handle_agentic_ask(user_query, session):
                         pass
 
                 fn = tool_result.name
-                if fn in ("search_courses", "filter_courses", "recommend_for_profile",
-                          "catalog_search", "catalog_get_category", "catalog_get_vendor",
-                          "catalog_compare_products") and "raw_products" in tool_result_dict:
-                    raw_products = tool_result_dict["raw_products"]
+                _PRODUCT_CARD_TOOLS = (
+                    "search_courses", "filter_courses", "recommend_for_profile",
+                    "catalog_search", "catalog_get_category", "catalog_get_vendor",
+                    "catalog_compare_products", "suggest_learning_path",
+                )
+                if fn in _PRODUCT_CARD_TOOLS:
+                    raw_products = resolve_products_for_ui(
+                        compact_results=tool_result_dict.get("results"),
+                    )
                     if raw_products:
                         buffered_ui_html.append(render_multi_course_media(raw_products))
                         _track_shown_products(sid, tool_result_dict.get("results", []))
 
-                elif fn in ("get_course_details", "catalog_get_product") and "raw_product" in tool_result_dict:
-                    buffered_ui_html.append(render_product_media(tool_result_dict["raw_product"]))
+                elif fn in ("get_course_details", "catalog_get_product"):
+                    handle = (
+                        tool_result_dict.get("product", {}).get("handle")
+                        or tool_result.arguments.get("handle")
+                        or tool_result.arguments.get("product_handle")
+                    )
+                    if not handle and tool_result_dict.get("results"):
+                        handle = tool_result_dict["results"][0].get("handle")
+                    resolved = resolve_products_for_ui(single_handle=handle)
+                    if resolved:
+                        buffered_ui_html.append(render_product_media(resolved[0]))
 
                 elif fn == "update_user_profile":
                     tool_status = tool_result_dict.get("status", "")
@@ -1791,66 +1776,37 @@ def handle_agentic_ask(user_query, session):
                         }))
 
             close_flask_mysql_connection()
-            message = type("RuntimeMessage", (), {"content": runtime_result.text or ""})()
+            final_messages = list(
+                runtime_result.stream_messages or runtime_result.messages or ephemeral_messages
+            )
 
-            # Phase 2: True streaming of the final text response
-            # Stream the response in real-time, buffering only the <suggestions> tag
-            def _stream_final_response(msgs):
-                """Stream GPT-4o response, yielding text chunks and returning full text.
-                Uses a state machine to cleanly handle <suggestions> tag detection across chunk boundaries."""
-                try:
-                    resp = openai.chat.completions.create(
-                        model="gpt-4o",
-                        messages=msgs,
-                        stream=True
-                    )
-                except Exception as stream_err:
-                    print(f"[LLM Stream Error] {stream_err}")
-                    fallback = "Beklager, jeg havde et teknisk problem. Prøv at stille dit spørgsmål igen."
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': fallback})}\n\n"
-                    return
-                full = ""
+            full_text = runtime_result.text or ""
+
+            def _stream_tokens_to_client(text_iter):
+                nonlocal full_text
                 _TAG = "<suggestions>"
                 _TAG_LEN = len(_TAG)
-                state = "streaming"  # "streaming" | "buffering" | "in_tag"
+                state = "streaming"
                 buffer = ""
-
-                for chunk in resp:
-                    delta = chunk.choices[0].delta if chunk.choices else None
-                    if not delta or not delta.content:
-                        continue
-
-                    text_piece = delta.content
-                    full += text_piece
-
+                for text_piece in text_iter:
+                    full_text += text_piece
                     if state == "in_tag":
-                        continue  # Silently consume everything after <suggestions>
-
-                    # Accumulate into buffer for tag detection
+                        continue
                     buffer += text_piece
-
-                    # Check if full tag is present in buffer
                     tag_pos = buffer.find(_TAG)
                     if tag_pos >= 0:
-                        # Flush text before the tag
                         before = buffer[:tag_pos]
                         if before:
                             yield f"data: {json.dumps({'type': 'chunk', 'content': before})}\n\n"
                         state = "in_tag"
                         buffer = ""
                         continue
-
-                    # Check if buffer could still be a partial tag match
-                    # e.g., buffer ends with "<", "<s", "<su", ..., "<suggestion"
                     could_be_partial = False
                     for i in range(1, min(len(buffer) + 1, _TAG_LEN)):
                         if buffer.endswith(_TAG[:i]):
                             could_be_partial = True
                             break
-
                     if could_be_partial:
-                        # Keep potential tag prefix in buffer, flush the safe prefix
-                        # Find the start of the partial match
                         for i in range(min(len(buffer), _TAG_LEN), 0, -1):
                             if buffer.endswith(_TAG[:i]):
                                 safe = buffer[:-i]
@@ -1859,51 +1815,46 @@ def handle_agentic_ask(user_query, session):
                                 buffer = buffer[-i:]
                                 break
                     else:
-                        # No tag possibility — flush entire buffer
                         yield f"data: {json.dumps({'type': 'chunk', 'content': buffer})}\n\n"
                         buffer = ""
-
-                # Flush any remaining buffer (model ended without <suggestions>)
                 if buffer and state != "in_tag":
                     yield f"data: {json.dumps({'type': 'chunk', 'content': buffer})}\n\n"
 
-                # Store full text for post-processing
-                _stream_final_response._full_text = full
-
-            _stream_final_response._full_text = ""
-
             # Add reinforcement before final response when we have product cards
             if had_tool_calls and buffered_ui_html:
-                ephemeral_messages.append({
+                final_messages.append({
                     "role": "system",
                     "content": "PÅMINDELSE: Kurserne vises allerede som interaktive kort. "
                                "Dit svar SKAL være 1-2 korte sætninger der knytter resultaterne til brugerens behov. "
                                "ALDRIG liste kursusnavne, priser, beskrivelser eller detaljer i teksten."
                 })
 
-            # Stream the final text response FIRST for natural top-to-bottom flow
             if last_message_is_final:
-                full_text = message.content or ""
-                visible_text = _strip_suggestions_tag(full_text)
-                # Strip course listings when product cards are shown
-                if had_tool_calls and buffered_ui_html:
-                    visible_text = _strip_course_listings(visible_text)
-                # Progressive chunking for smooth streaming UX
-                _csz = 8
-                for _ci in range(0, len(visible_text), _csz):
-                    yield f"data: {json.dumps({'type': 'chunk', 'content': visible_text[_ci:_ci+_csz]})}\n\n"
+                stream_start = time.time()
+                full_text = ""
+                if runtime_result.needs_final_stream or not (runtime_result.text or "").strip():
+                    for sse in _stream_tokens_to_client(
+                        iter_completion_stream(final_messages, model=turn_model)
+                    ):
+                        yield sse
+                else:
+                    for sse in _stream_tokens_to_client(iter([runtime_result.text])):
+                        yield sse
+                _log_latency(sid, "llm_stream_response", stream_start)
             else:
-                # Max iterations exhausted — log warning and stream a fresh response
                 try:
                     log_debug(sid, "iteration_limit", {"iterations": iteration, "max": max_iterations})
                 except Exception:
                     pass
                 print(f"[Agent Warning] Max iterations ({max_iterations}) reached for session {sid}")
                 stream_start = time.time()
-                for sse_chunk in _stream_final_response(ephemeral_messages):
-                    yield sse_chunk
+                full_text = ""
+                for sse in _stream_tokens_to_client(
+                    iter_completion_stream(final_messages, model=turn_model)
+                ):
+                    yield sse
                 _log_latency(sid, "llm_stream_response", stream_start)
-                full_text = _stream_final_response._full_text
+
             messages.append({"role": "assistant", "content": _strip_suggestions_tag(full_text)})
 
             # ── Stream profile events AFTER text (natural reading order) ──
@@ -2071,7 +2022,7 @@ def handle_agentic_ask(user_query, session):
         except Exception as e:
             print(f"[Agent Error] {e}")
             try:
-                error_msg = "Beklager, der opstod en teknisk fejl. Prøv venligst igen."
+                error_msg = user_facing_error_message(e)
                 yield f"data: {json.dumps({'type': 'chunk', 'content': error_msg})}\n\n"
             except (OSError, BrokenPipeError, ConnectionResetError):
                 pass  # Client already gone

@@ -218,7 +218,7 @@ def get_employee_tool_selection(
 
     tool_map = _by_name(OPENAI_TOOLS + (PROFILE_TOOLS if logged_in else []))
     query = user_query or ""
-    names = {"catalog_search", "catalog_get_product", "get_learning_context"}
+    names = set()
     forced_tool = None
     is_approval_query = _has_any(query, ("godkend", "approval", "afventer", "ordrestatus"))
 
@@ -226,23 +226,23 @@ def get_employee_tool_selection(
         return [], {"version": TOOLSET_VERSION, "tool_names": [], "forced_tool": None}
 
     if intent in {"discovery", "follow_up", "profile_and_search"}:
-        names.update({"catalog_search", "filter_courses", "search_courses"})
+        names.add("catalog_search")
         if _has_any(query, ("under", "over", "budget", "pris", "kr", "københavn", "aarhus", "online", "e-learning")):
-            names.add("filter_courses")
+            names.add("catalog_search")
     if intent in {"detail"} or _has_any(query, ("[vedhæftet kursus", "handle:", "produkt", "kurset", "detaljer", "hvornår", "dato", "start", "hvor foregår")):
-        names.update({"catalog_get_product", "get_course_details"})
+        names.add("catalog_get_product")
         if _has_any(query, ("[vedhæftet kursus", "handle:")):
             forced_tool = "catalog_get_product"
     if intent in {"comparison"} or _has_any(query, ("sammenlign", "forskel", "bedst", "versus", "vs")):
-        names.update({"catalog_compare_products", "compare_courses", "catalog_get_product"})
+        names.update({"catalog_compare_products", "catalog_get_product"})
     if _has_any(query, ("kategori", "category", "type kurser")):
         names.add("catalog_get_category")
         forced_tool = "catalog_get_category"
     if _has_any(query, ("udbyder", "leverandør", "leverandor", "vendor", "hvem er", "fra hvem")):
-        names.update({"catalog_get_vendor", "get_vendor_info"})
+        names.add("catalog_get_vendor")
         forced_tool = "catalog_get_vendor"
     if (intent in {"buying", "team_buying"} or _has_any(query, ("tilmeld", "bestil", "ordre", "køb", "koeb", "plads"))) and not is_approval_query:
-        names.update({"catalog_get_product", "check_course_readiness", "prepare_course_order", "get_learning_context"})
+        names.update({"catalog_get_product", "check_course_readiness", "prepare_course_order"})
         if _explicit_order_confirmation(query):
             names.add("create_course_order")
     if is_approval_query:
@@ -259,7 +259,7 @@ def get_employee_tool_selection(
         if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt")):
             names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path"})
     if shown_count:
-        names.update({"catalog_get_product", "catalog_compare_products", "compare_courses"})
+        names.update({"catalog_get_product", "catalog_compare_products"})
 
     selected = []
     for name in sorted(names):
@@ -292,6 +292,8 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
     query = user_query or ""
     names = {"hr_get_company_learning_context", "get_pending_actions"}
     forced_tool = None
+    if _has_any(query, ("hej", "hello", "tak", "thanks", "godmorgen", "god aften")) and len(query.split()) <= 4:
+        return [], {"version": TOOLSET_VERSION, "tool_names": [], "forced_tool": None}
     if _has_any(query, ("budget", "forbrug", "økonomi", "remaining", "resterende")):
         names.update({"get_budget_overview", "hr_get_company_learning_context"})
         forced_tool = "get_budget_overview"

@@ -25,6 +25,9 @@ _bm25_doc_lengths = None  # [length_of_doc_0, length_of_doc_1, ...]
 _bm25_avg_dl = 0
 _bm25_N = 0
 _title_token_sets = None  # [set_of_tokens_for_doc_0, set_of_tokens_for_doc_1, ...]
+_vector_doc_indices = None  # global doc indices with embeddings
+_vector_matrix = None  # numpy matrix (n_docs, dim) when numpy is available
+_vector_norms = None
 
 # Danish stop words to exclude from indexing
 _STOP_WORDS = {
@@ -332,6 +335,87 @@ def _build_bm25_index(products):
     _bm25_avg_dl = sum(_bm25_doc_lengths) / max(_bm25_N, 1)
 
 
+def _build_vector_index(products):
+    """Precompute vector matrix for fast batch similarity search."""
+    global _vector_doc_indices, _vector_matrix, _vector_norms
+    expected = embedding_dimensions()
+    indices = []
+    vectors = []
+    for idx, product in enumerate(products):
+        vec = product.get("embedding")
+        if vec and len(vec) == expected:
+            indices.append(idx)
+            vectors.append(vec)
+    _vector_doc_indices = indices
+    _vector_matrix = None
+    _vector_norms = None
+    if not vectors:
+        return
+    try:
+        import numpy as np
+        matrix = np.asarray(vectors, dtype=np.float32)
+        norms = np.linalg.norm(matrix, axis=1)
+        norms[norms == 0] = 1.0
+        _vector_matrix = matrix
+        _vector_norms = norms
+    except Exception:
+        _vector_matrix = None
+        _vector_norms = None
+
+
+def _vector_search(query_vector, limit=20):
+    if not query_vector:
+        return []
+    expected = embedding_dimensions()
+    if len(query_vector) != expected:
+        return []
+
+    if _vector_matrix is not None and _vector_norms is not None and _vector_doc_indices:
+        try:
+            import numpy as np
+            q = np.asarray(query_vector, dtype=np.float32)
+            q_norm = float(np.linalg.norm(q)) or 1.0
+            sims = (_vector_matrix @ q) / (_vector_norms * q_norm)
+            order = np.argsort(sims)[::-1][:limit]
+            return [
+                (_vector_doc_indices[int(i)], float(sims[int(i)]))
+                for i in order
+                if float(sims[int(i)]) > 0
+            ]
+        except Exception:
+            pass
+
+    scored = []
+    products = _augmented_cache or []
+    for idx in _vector_doc_indices or []:
+        if idx >= len(products):
+            continue
+        product_vector = products[idx].get("embedding")
+        if not product_vector:
+            continue
+        score = cosine_similarity(query_vector, product_vector)
+        scored.append((idx, score))
+    scored.sort(key=lambda x: x[1], reverse=True)
+    return scored[:limit]
+
+
+def _bm25_confident_enough(core_query_tokens, bm25_ranked):
+    """Skip embedding API when lexical search already has a strong winner."""
+    if not core_query_tokens or len(bm25_ranked) < 2 or not _title_token_sets:
+        return False
+    top_idx, top_score = bm25_ranked[0]
+    _, second_score = bm25_ranked[1]
+    if top_score <= 0 or second_score <= 0:
+        return False
+    if top_score < second_score * 1.75:
+        return False
+    if top_idx >= len(_title_token_sets):
+        return False
+    title_tokens = _title_token_sets[top_idx]
+    hits = sum(1 for tok in core_query_tokens if tok in title_tokens)
+    return hits >= max(1, min(2, len(core_query_tokens)))
+
+
 def _bm25_search(query_tokens, limit=20):
     """Score documents using BM25 formula."""
     if not _bm25_index or not query_tokens:
@@ -380,6 +464,7 @@ def load_augmented_products():
                     p["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
             _augmented_mtime = current_mtime
             _build_bm25_index(_augmented_cache)
+            _build_vector_index(_augmented_cache)
             print(f"[RAG] Loaded {len(_augmented_cache)} products from {os.path.basename(load_path)}, BM25 index built ({len(_bm25_index)} terms)")
         except Exception as e:
             print(f"Error loading augmented products: {e}")
@@ -408,6 +493,36 @@ _SEARCH_CACHE_TTL = 900  # 15 minutes
 _SEARCH_CACHE_MAX = 100
 
 
+def embedding_model() -> str:
+    return os.getenv("AI_EMBEDDING_MODEL", "text-embedding-3-small")
+
+
+def embedding_dimensions() -> int:
+    try:
+        return max(256, int(os.getenv("AI_EMBEDDING_DIMENSIONS", "1024")))
+    except ValueError:
+        return 1024
+
+
+def cross_encoder_mode() -> str:
+    return os.getenv("AI_RAG_CROSS_ENCODER", "auto").lower().strip() or "auto"
+
+
+def cross_encoder_max_candidates() -> int:
+    try:
+        return max(2, int(os.getenv("AI_RAG_CROSS_ENCODER_MAX_CANDIDATES", "6")))
+    except ValueError:
+        return 6
+
+
+def warm_rag_index() -> int:
+    """Eager-load product index + BM25 + vector matrix so first chat query is fast."""
+    products = load_augmented_products()
+    if products and _vector_matrix is None:
+        _build_vector_index(products)
+    return len(products or [])
+
+
 def get_query_embedding(query_text):
     """Get the embedding vector for the user query, with caching.
     Uses text-embedding-3-large with 1024 dimensions for better quality."""
@@ -426,13 +541,14 @@ def get_query_embedding(query_text):
     try:
         response = openai.embeddings.create(
             input=query_text,
-            model="text-embedding-3-large",
-            dimensions=1024
+            model=embedding_model(),
+            dimensions=embedding_dimensions(),
         )
         embedding = response.data[0].embedding
 
         # Validate embedding dimensions before caching
-        if not embedding or len(embedding) != 1024:
+        expected_dims = embedding_dimensions()
+        if not embedding or len(embedding) != expected_dims:
             print(f"[Embedding Warning] Bad dimensions ({len(embedding) if embedding else 0}) for query: {query_text[:80]}")
             return embedding if embedding else None
 
@@ -493,6 +609,21 @@ def semantic_search_courses(query, limit=5, min_score=0.35, shown_handles=None, 
     return detailed.get("products", [])
 
 
+def _should_run_cross_encoder(query, core_query_tokens, reranked, confidence, top_vector_score):
+    mode = cross_encoder_mode()
+    if mode in {"0", "false", "no", "off", "never"}:
+        return False
+    if mode in {"always", "1", "true", "on"}:
+        return len(reranked) >= 2 and bool(core_query_tokens)
+    if confidence == "high" and top_vector_score > 0.65:
+        return False
+    if len(reranked) <= 1:
+        return False
+    if len(reranked) == 2 and confidence != "low":
+        return False
+    return len(reranked) >= 2 and bool(core_query_tokens)
+
+
 def _crossencoder_rerank(query, candidates, products, limit=5):
     """Cross-encoder reranking: use GPT-4o-mini to verify relevance of top candidates.
     Takes top candidates and filters out false positives where keyword/vector matching
@@ -504,7 +635,7 @@ def _crossencoder_rerank(query, candidates, products, limit=5):
     # Build batch prompt with all candidates
     course_lines = []
     candidate_indices = []
-    for i, (doc_idx, score, explain) in enumerate(candidates[:8]):  # Max 8 to limit cost
+    for i, (doc_idx, score, explain) in enumerate(candidates[:cross_encoder_max_candidates()]):
         title = products[doc_idx].get("title", "Ukendt")
         summary = (products[doc_idx].get("ai_summary", "") or "")[:150]
         vendor = products[doc_idx].get("vendor", "")
@@ -515,8 +646,10 @@ def _crossencoder_rerank(query, candidates, products, limit=5):
         return candidates
 
     try:
+        from ai_runtime import fast_model
+        ce_model = fast_model()
         response = openai.chat.completions.create(
-            model="gpt-4o-mini",
+            model=ce_model,
             messages=[
                 {"role": "system", "content": """Du er en relevansvurderer. En bruger søger efter kurser.
 For hvert kursus, vurdér hvor relevant det er for brugerens søgning.
@@ -620,25 +753,19 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
 
     shown_handles = shown_handles or set()
 
-    # ── 1. Vector search ──
-    vector_ranked = []
-    query_vector = get_query_embedding(query)
-    if query_vector:
-        scored = []
-        for idx, product in enumerate(products):
-            product_vector = product.get("embedding")
-            if not product_vector:
-                continue
-            score = cosine_similarity(query_vector, product_vector)
-            scored.append((idx, score))
-        scored.sort(key=lambda x: x[1], reverse=True)
-        vector_ranked = scored[:20]
-
-    # ── 2. BM25 keyword search (with synonym expansion) ──
+    # ── 1+2. Vector + BM25 in parallel ──
     query_tokens = _tokenize(query)
     core_query_tokens = _core_query_tokens(query_tokens)
     expanded_tokens, fuzzy_corrections = _expand_query_tokens(query_tokens)
     bm25_ranked = _bm25_search(expanded_tokens, limit=20)
+
+    vector_ranked = []
+    query_vector = None
+    skip_embedding = _bm25_confident_enough(core_query_tokens, bm25_ranked)
+    if not skip_embedding:
+        query_vector = get_query_embedding(query)
+        if query_vector:
+            vector_ranked = _vector_search(query_vector, limit=20)
 
     # ── 3. Weighted Reciprocal Rank Fusion ──
     # Weight depends on query specificity: specific queries favor BM25, vague favor vectors
@@ -765,18 +892,18 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
                     break
 
     # ── 8. Cross-encoder reranking — verify actual relevance of top candidates ──
-    # Only run when we have enough candidates and the query has substance
+    top_vector_score = vector_ranked[0][1] if vector_ranked else 0
+    pre_confidence = (
+        "high" if top_vector_score > 0.65
+        else "medium" if top_vector_score > 0.45
+        else "low"
+    )
     if len(reranked) >= 2 and core_query_tokens:
-        reranked = _crossencoder_rerank(query, reranked, products, limit=limit)
+        if _should_run_cross_encoder(query, core_query_tokens, reranked, pre_confidence, top_vector_score):
+            reranked = _crossencoder_rerank(query, reranked, products, limit=limit)
 
     # ── 9. Confidence signal for AI ──
-    top_vector_score = vector_ranked[0][1] if vector_ranked else 0
-    if top_vector_score > 0.65:
-        confidence = "high"
-    elif top_vector_score > 0.45:
-        confidence = "medium"
-    else:
-        confidence = "low"
+    confidence = pre_confidence
 
     # ── 10. Apply minimum relevance threshold + return top N ──
     _MIN_COMBINED_SCORE = 0.12
@@ -785,9 +912,9 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     filtered_below_threshold = pre_filter_count - len(reranked)
 
     # Track if cross-encoder was applied
-    cross_encoder_applied = len(reranked) >= 2 and core_query_tokens and any(
-        "cross_encoder_score" in explain for _, _, explain in reranked[:3]
-    )
+    cross_encoder_applied = _should_run_cross_encoder(
+        query, core_query_tokens, reranked[:limit], confidence, top_vector_score
+    ) and any("cross_encoder_score" in explain for _, _, explain in reranked[:3])
 
     result_indices = [doc_idx for doc_idx, _, _ in reranked[:limit]]
     selected_products = [products[idx] for idx in result_indices if idx < len(products)]
@@ -804,6 +931,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         "fused_candidates": len(fused),
         "filtered_below_threshold": filtered_below_threshold,
         "cross_encoder_applied": cross_encoder_applied,
+        "embedding_skipped": skip_embedding,
         "top_vector_score": round(top_vector_score, 4),
         "confidence": confidence,
         "effective_limit": limit,
@@ -837,6 +965,9 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
     if not query or not filtered_products:
         return filtered_products[:limit]
 
+    query_tokens = _tokenize(query)
+    core_query_tokens, _ = _expand_query_tokens(query_tokens)
+
     # Build index mapping from filtered products to their global indices
     handle_to_product = {p.get("handle"): p for p in filtered_products}
     handle_to_global_idx = {}
@@ -844,20 +975,7 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
         if p.get("handle") in handle_to_product:
             handle_to_global_idx[p.get("handle")] = idx
 
-    # Vector scoring
-    query_vector = get_query_embedding(query)
-    vector_ranked = []
-    if query_vector:
-        for handle, global_idx in handle_to_global_idx.items():
-            vec = all_products[global_idx].get("embedding")
-            if vec:
-                score = cosine_similarity(query_vector, vec)
-                vector_ranked.append((handle, score))
-        vector_ranked.sort(key=lambda x: x[1], reverse=True)
-
-    # BM25 scoring (on filtered set only) — proper BM25 with IDF from global index
-    query_tokens = _tokenize(query)
-    expanded_query_tokens, _ = _expand_query_tokens(query_tokens)
+    # BM25 on filtered set — skip embedding when keyword match is strong
     k1 = 1.5
     b = 0.75
     bm25_scored = []
@@ -879,17 +997,36 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
         for tok in doc_tokens:
             tf_map[tok] += 1
         score = 0.0
+        expanded_query_tokens, _ = _expand_query_tokens(query_tokens)
         for qt in expanded_query_tokens:
             tf = tf_map.get(qt, 0)
             if tf == 0:
                 continue
-            # IDF from global index
             df = len(_bm25_index.get(qt, {})) if _bm25_index else 1
             idf = math.log((_bm25_N - df + 0.5) / (df + 0.5) + 1.0) if _bm25_N else 1.0
             tf_norm = (tf * (k1 + 1)) / (tf + k1 * (1 - b + b * dl / max(_bm25_avg_dl, 1)))
             score += idf * tf_norm
         bm25_scored.append((handle, score))
     bm25_scored.sort(key=lambda x: x[1], reverse=True)
+
+    bm25_for_confidence = [
+        (handle_to_global_idx[h], s)
+        for h, s in bm25_scored
+        if h in handle_to_global_idx
+    ]
+    skip_embedding = _bm25_confident_enough(core_query_tokens, bm25_for_confidence)
+
+    # Vector scoring
+    vector_ranked = []
+    if not skip_embedding:
+        query_vector = get_query_embedding(query)
+        if query_vector:
+            for handle, global_idx in handle_to_global_idx.items():
+                vec = all_products[global_idx].get("embedding")
+                if vec:
+                    score = cosine_similarity(query_vector, vec)
+                    vector_ranked.append((handle, score))
+            vector_ranked.sort(key=lambda x: x[1], reverse=True)
 
     # Simple RRF on handles
     rrf = defaultdict(float)

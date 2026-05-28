@@ -106,6 +106,57 @@ def extract_city_name(address):
     cleaned = re.sub(r'\b\d{4}\s*', '', last_part).strip()
     return cleaned if cleaned else address.strip()
 
+
+def _truncate_summary(text, max_len=200):
+    text = (text or "").strip()
+    if len(text) <= max_len:
+        return text
+    return text[: max_len - 1] + "…"
+
+
+def _model_tool_json(**payload):
+    """JSON payload for the LLM (UI blobs resolved lazily by handle)."""
+    payload.pop("raw_products", None)
+    payload.pop("raw_product", None)
+    return json.dumps(payload, ensure_ascii=False, default=str)
+
+
+def resolve_products_for_ui(compact_results=None, handles=None, single_handle=None):
+    """Load full product dicts for card rendering from catalog or RAG cache."""
+    from app1.rag import load_augmented_products
+
+    wanted = []
+    if single_handle:
+        wanted.append(single_handle)
+    if handles:
+        wanted.extend(handles)
+    if compact_results:
+        for row in compact_results:
+            if isinstance(row, dict) and row.get("handle"):
+                wanted.append(row["handle"])
+    wanted = list(dict.fromkeys(h for h in wanted if h))
+
+    rag_by_handle = {}
+    try:
+        for p in load_augmented_products() or []:
+            h = p.get("handle")
+            if h:
+                rag_by_handle[h] = p
+    except Exception:
+        pass
+
+    resolved = []
+    for handle in wanted:
+        catalog_product = catalog.get_product(handle)
+        if catalog_product:
+            resolved.append(_catalog_legacy_raw(catalog_product))
+            continue
+        rag_product = rag_by_handle.get(handle)
+        if rag_product:
+            resolved.append(rag_product)
+    return resolved
+
+
 def _extract_compact_fields(product):
     """Extract enriched compact fields from a product."""
     variants = product.get("variants", [])
@@ -153,7 +204,7 @@ def _extract_compact_fields(product):
         "product_url": f"/products/{product.get('handle')}" if product.get("handle") else "",
         "vendor_url": f"/vendors/{catalog.slugify(product.get('vendor'))}" if product.get("vendor") else "/vendors",
         "price": price,
-        "summary": product.get("ai_summary"),
+        "summary": _truncate_summary(product.get("ai_summary")),
         "locations": cities,
         "dates": dates,
         "product_type": product_type,
@@ -692,7 +743,7 @@ def _catalog_compact_fields(product):
         "price": product.get("price_label"),
         "price_min": product.get("price_min"),
         "format": product.get("format"),
-        "summary": product.get("summary") or product.get("description_excerpt"),
+        "summary": _truncate_summary(product.get("summary") or product.get("description_excerpt")),
         "locations": product.get("locations", [])[:5],
         "dates": product.get("dates", [])[:5],
         "categories": _catalog_category_urls(product),
@@ -757,6 +808,10 @@ def _execute_catalog_search(args):
         "sort": "relevance",
     }
     limit = int(args.get("limit") or 4)
+    query = (args.get("query") or "").strip()
+    products = []
+    confidence = "medium"
+
     result = catalog.search_products(filters=filters, page=1, per_page=max(1, min(limit, 8)))
     products = [
         p for p in result["products"]
@@ -764,16 +819,45 @@ def _execute_catalog_search(args):
     ]
     if not products and result["products"]:
         products = [p for p in result["products"] if p.get("vendor") not in _current_blocked_vendors]
+
+    use_rag = query and (len(products) < max(1, limit // 2) or (result.get("total", 0) or 0) <= 1)
+    if use_rag:
+        detailed = semantic_search_courses_detailed(
+            query,
+            limit=limit,
+            shown_handles=_current_shown_handles,
+            user_prefs=_current_user_prefs,
+        )
+        if isinstance(detailed, dict) and "error" not in detailed:
+            confidence = detailed.get("confidence", confidence)
+            rag_products = _filter_blocked_vendors(detailed.get("products", []))
+            if rag_products:
+                compact = [_extract_compact_fields(p) for p in rag_products[:limit]]
+                debug = detailed.get("debug") or {}
+                return _model_tool_json(
+                    status="success",
+                    count=len(compact),
+                    confidence=confidence,
+                    search_mode="rag",
+                    results=compact,
+                    search_debug={
+                        "embedding_skipped": debug.get("embedding_skipped"),
+                        "cross_encoder_applied": debug.get("cross_encoder_applied"),
+                    } if debug else None,
+                )
+
     compact = [_catalog_compact_fields(p) for p in products[:limit]]
-    return json.dumps({
-        "status": "success" if compact else "no_results",
-        "count": len(compact),
-        "total": result.get("total", len(compact)),
-        "filters": {k: v for k, v in filters.items() if v not in ("", None)},
-        "results": compact,
-        "raw_products": [_catalog_legacy_raw(p) for p in products[:limit]],
-        "catalog_url": "/catalog",
-    }, ensure_ascii=False)
+    return _model_tool_json(
+        status="success" if compact else "no_results",
+        count=len(compact),
+        total=result.get("total", len(compact)),
+        confidence=confidence,
+        search_mode="catalog",
+        filters={k: v for k, v in filters.items() if v not in ("", None)},
+        results=compact,
+        catalog_url="/catalog",
+        search_debug={"embedding_skipped": True},
+    )
 
 
 def _execute_catalog_get_product(args):
@@ -781,15 +865,12 @@ def _execute_catalog_get_product(args):
     if not product:
         return json.dumps({"status": "not_found", "message": "Produktet blev ikke fundet i Futurematch kataloget."}, ensure_ascii=False)
     vendor_state = _supplier_state_for_vendor(product.get("vendor"))
-    return json.dumps({
-        "status": "success",
-        "product": _catalog_compact_fields(product),
-        "supplier_state": vendor_state,
-        "variants": product.get("variants", [])[:8],
-        "metadata": product.get("metadata") or {},
-        "description": product.get("description_excerpt") or product.get("summary"),
-        "raw_product": _catalog_legacy_raw(product),
-    }, ensure_ascii=False, default=str)
+    return _model_tool_json(
+        status="success",
+        product=_catalog_compact_fields(product),
+        supplier_state=vendor_state,
+        variants=product.get("variants", [])[:4],
+    )
 
 
 def _execute_catalog_get_category(args):
@@ -800,18 +881,17 @@ def _execute_catalog_get_category(args):
     limit = int(args.get("limit") or 4)
     result = catalog.search_products({"category": category["slug"], "sort": "relevance"}, page=1, per_page=max(1, min(limit, 8)))
     products = [p for p in result["products"] if p.get("vendor") not in _current_blocked_vendors]
-    return json.dumps({
-        "status": "success",
-        "category": {
+    return _model_tool_json(
+        status="success",
+        category={
             "name": category["name"],
             "slug": category["slug"],
             "count": category["count"],
             "url": f"/categories/{category['slug']}",
         },
-        "count": len(products[:limit]),
-        "results": [_catalog_compact_fields(p) for p in products[:limit]],
-        "raw_products": [_catalog_legacy_raw(p) for p in products[:limit]],
-    }, ensure_ascii=False)
+        count=len(products[:limit]),
+        results=[_catalog_compact_fields(p) for p in products[:limit]],
+    )
 
 
 def _execute_catalog_get_vendor(args):
@@ -822,21 +902,19 @@ def _execute_catalog_get_vendor(args):
     limit = int(args.get("limit") or 4)
     result = catalog.search_products({"vendor": vendor["slug"], "q": args.get("topic") or "", "sort": "relevance"}, page=1, per_page=max(1, min(limit, 8)))
     products = result["products"][:limit]
-    return json.dumps({
-        "status": "success",
-        "vendor": {
+    return _model_tool_json(
+        status="success",
+        vendor={
             "name": vendor["name"],
             "slug": vendor["slug"],
             "url": f"/vendors/{vendor['slug']}",
             "course_count": vendor.get("course_count", 0),
-            "categories": vendor.get("categories", []),
+            "categories": vendor.get("categories", [])[:5],
             "price_label": vendor.get("price_label", ""),
-            "profile": vendor.get("profile") or {},
         },
-        "count": len(products),
-        "results": [_catalog_compact_fields(p) for p in products],
-        "raw_products": [_catalog_legacy_raw(p) for p in products],
-    }, ensure_ascii=False)
+        count=len(products),
+        results=[_catalog_compact_fields(p) for p in products],
+    )
 
 
 def _execute_catalog_compare_products(args):
@@ -858,14 +936,9 @@ def _execute_catalog_compare_products(args):
             "locations": product["locations"][:4],
             "dates": product["dates"][:4],
             "categories": [c["name"] for c in _catalog_category_urls(product)[:4]],
-            "summary": product.get("summary") or product.get("description_excerpt"),
+            "summary": _truncate_summary(product.get("summary") or product.get("description_excerpt")),
         })
-    return json.dumps({
-        "status": "success",
-        "count": len(products),
-        "comparison": comparison,
-        "raw_products": [_catalog_legacy_raw(p) for p in products],
-    }, ensure_ascii=False)
+    return _model_tool_json(status="success", count=len(products), comparison=comparison)
 
 
 def _supplier_state_for_vendor(vendor_name):
@@ -988,30 +1061,19 @@ def _execute_get_learning_context(args, username):
     shown = [
         p for p in _current_shown_handles
     ][:10]
-    return json.dumps({
-        "status": "success",
-        "username": username or "",
-        "company_id": flask_session.get("company_id") if has_request_context() else None,
-        "department": (flask_session.get("company_department") if has_request_context() else "") or employee.get("department") or "",
-        "employee": {
+    return _model_tool_json(
+        status="success",
+        username=username or "",
+        department=(flask_session.get("company_department") if has_request_context() else "") or employee.get("department") or "",
+        employee={
             "name": employee.get("full_name", ""),
             "email": employee.get("email", ""),
             "phone": employee.get("phone", ""),
             "job_title": employee.get("job_title", ""),
         },
-        "profile": {
-            "headline": profile.get("headline", ""),
-            "goals": profile.get("goals", ""),
-            "preferred_location": profile.get("preferred_location", ""),
-            "preferred_format": profile.get("preferred_format", ""),
-            "budget_range": profile.get("budget_range", ""),
-            "skills": profile.get("skills", [])[:15],
-            "completed_courses": completed,
-        },
-        "shown_product_handles": shown,
-        "open_orders": _open_orders_for_user(username),
-        "supplier_agreements": _supplier_agreements_for_company()[:12],
-    }, ensure_ascii=False, default=str)
+        shown_product_handles=shown,
+        open_orders=_open_orders_for_user(username),
+    )
 
 
 def _execute_check_course_readiness(args, username):
@@ -1111,14 +1173,12 @@ def _execute_search_courses(args):
         if cr.get("handle") in _current_shown_handles:
             cr["previously_shown"] = True
 
-    return json.dumps({
-        "status": "success",
-        "count": len(compact_results),
-        "results": compact_results,
-        "raw_products": results,
-        "search_debug": detailed.get("debug", {}),
-        "confidence": confidence,
-    })
+    return _model_tool_json(
+        status="success",
+        count=len(compact_results),
+        results=compact_results,
+        confidence=confidence,
+    )
 
 
 def _execute_filter_courses(args):
@@ -1228,12 +1288,7 @@ def _execute_filter_courses(args):
         if cr.get("handle") in _current_shown_handles:
             cr["previously_shown"] = True
 
-    return json.dumps({
-        "status": "success",
-        "count": len(compact_results),
-        "results": compact_results,
-        "raw_products": filtered
-    })
+    return _model_tool_json(status="success", count=len(compact_results), results=compact_results)
 
 
 def _execute_get_course_details(args):
@@ -1248,17 +1303,18 @@ def _execute_get_course_details(args):
             dates = [v.get("option2") for v in p.get("variants", []) if v.get("option2")]
             meta = p.get("structured_metadata", {}) or {}
             result = {
+                "status": "success",
                 "title": p.get("title"),
+                "handle": handle,
                 "price": _normalize_price(p.get("variants", [{}])[0].get("price") if p.get("variants") else None),
                 "vendor": p.get("vendor"),
                 "locations": locations,
-                "upcoming_dates": dates,
-                "description": p.get("ai_summary", p.get("body_html", "")[:200]),
-                "raw_product": p,
+                "upcoming_dates": dates[:4],
+                "summary": _truncate_summary(p.get("ai_summary", p.get("body_html", "")[:200])),
             }
             if meta.get("duration_days"):
                 result["duration_days"] = meta["duration_days"]
-            return json.dumps(result)
+            return _model_tool_json(**result)
 
     return json.dumps({"status": "not_found", "message": f"Kunne ikke finde kursus med handle '{handle}'."})
 
@@ -1273,12 +1329,10 @@ def _execute_compare_courses(args):
     handle_map = {p.get("handle"): p for p in products}
 
     comparisons = []
-    raw_products = []
     for handle in handles[:4]:
         p = handle_map.get(handle)
         if not p:
             continue
-        raw_products.append(p)
         variants = p.get("variants", [])
         locations = list(set(extract_city_name(v.get("option1", "")) for v in variants if v.get("option1") and extract_city_name(v.get("option1"))))
         dates = [v.get("option2") for v in variants if v.get("option2")][:3]
@@ -1291,7 +1345,7 @@ def _execute_compare_courses(args):
             "product_type": p.get("product_type", ""),
             "locations": locations[:3],
             "upcoming_dates": dates,
-            "summary": p.get("ai_summary", "")[:200],
+            "summary": _truncate_summary(p.get("ai_summary", "")),
             "variant_count": len(variants),
         }
         meta = (p.get("structured_metadata") or {})
@@ -1302,11 +1356,7 @@ def _execute_compare_courses(args):
     if len(comparisons) < 2:
         return json.dumps({"status": "error", "message": "Kunne ikke finde nok kurser til sammenligning."})
 
-    return json.dumps({
-        "status": "success",
-        "comparison": comparisons,
-        "raw_products": raw_products
-    })
+    return _model_tool_json(status="success", comparison=comparisons)
 
 
 # ── Profile Management Tools (connected to MySQL user system) ──
@@ -1362,11 +1412,10 @@ def _execute_get_user_profile(args, username):
         ensure_tables()
         profile = get_full_profile(username)
         formatted = format_profile_for_ai(profile)
-        return json.dumps({
-            "status": "success",
-            "profile": profile,
-            "formatted": formatted if formatted else "Brugeren har endnu ikke udfyldt sin profil."
-        })
+        return _model_tool_json(
+            status="success",
+            profile_text=formatted if formatted else "Brugeren har endnu ikke udfyldt sin profil.",
+        )
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
 
@@ -1697,12 +1746,7 @@ def _execute_recommend_for_profile(args, username):
                 reason_parts.append("matcher dine mål")
             cr["recommendation_reason"] = "; ".join(reason_parts) if reason_parts else "relevant for din profil"
 
-        return json.dumps({
-            "status": "success",
-            "count": len(compact_results),
-            "results": compact_results,
-            "raw_products": filtered[:4]
-        })
+        return _model_tool_json(status="success", count=len(compact_results), results=compact_results)
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Fejl: {e}"})
 
@@ -1860,10 +1904,10 @@ def _execute_suggest_learning_path(args, username):
 
         context = "\n".join(context_parts)
 
-        # Use GPT-4o-mini to plan the learning path
-        response = openai.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
+        # Use fast model to plan the learning path (shared runtime retry/cooldown)
+        from ai_runtime import run_direct_completion
+        raw = run_direct_completion(
+            [
                 {"role": "system", "content": """Du er en uddannelsesrådgiver. Analyser brugerens profil og lav en læringssti.
 Svar som JSON med denne struktur:
 {
@@ -1875,19 +1919,17 @@ Svar som JSON med denne struktur:
   ]
 }
 Regler:
-- Maks 4 trin
+- Maks 3 trin
 - Hvert trin bygger logisk på det forrige
 - "topic" skal være et konkret søgeord der kan bruges til at finde kurser
 - Spring kompetencer over som brugeren allerede mestrer (avanceret/ekspert niveau)
 - Vær specifik — "PRINCE2 Foundation" er bedre end "projektledelse"
 - Skriv på dansk"""},
-                {"role": "user", "content": context}
+                {"role": "user", "content": context},
             ],
-            temperature=0.3,
-            max_tokens=500
+            max_tokens=500,
         )
-
-        raw = response.choices[0].message.content.strip()
+        raw = (raw or "").strip()
         if raw.startswith("```"):
             raw = re.sub(r'^```(?:json)?\s*', '', raw)
             raw = re.sub(r'\s*```$', '', raw)
@@ -1895,7 +1937,7 @@ Regler:
 
         # Search for courses matching each step
         steps_with_courses = []
-        for step in path_plan.get("steps", [])[:4]:
+        for step in path_plan.get("steps", [])[:3]:
             topic = step.get("topic", "")
             if not topic:
                 continue
@@ -1911,15 +1953,13 @@ Regler:
                 "topic": topic,
                 "reason": step.get("reason", ""),
                 "courses": courses,
-                "raw_products": results[:2] if isinstance(results, list) else []
             })
 
-        return json.dumps({
-            "status": "success",
-            "path_title": path_plan.get("path_title", "Din læringssti"),
-            "steps": steps_with_courses,
-            "raw_products": [c for step in steps_with_courses for c in step.get("raw_products", [])]
-        }, ensure_ascii=False)
+        return _model_tool_json(
+            status="success",
+            path_title=path_plan.get("path_title", "Din læringssti"),
+            steps=steps_with_courses,
+        )
 
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Fejl ved opbygning af læringssti: {e}"})

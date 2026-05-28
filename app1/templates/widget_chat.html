@@ -556,6 +556,19 @@
                             const data = JSON.parse(raw);
                             if (data.type === 'ping' || data.type === 'meta') continue;
 
+                            if (data.type === 'thinking') {
+                                if (!typing.parentNode) botContent.appendChild(typing);
+                                continue;
+                            }
+                            if (data.type === 'notice') {
+                                const note = document.createElement('div');
+                                note.className = 'chat-notice';
+                                note.textContent = data.content || '';
+                                botContent.appendChild(note);
+                                scrollBottom();
+                                continue;
+                            }
+
                             if (isFirst) {
                                 typing.remove();
                                 isFirst = false;

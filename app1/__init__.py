@@ -41,7 +41,15 @@ def _dkprice_filter(value):
 @app1_bp.route('')
 @app1_bp.route('/')
 def index():
-    return render_template('index.html', logged_in_user=session.get('user'), demo_mode=False, demo_messages=[])
+    from branding_service import get_template_context
+    branding_ctx = get_template_context(session.get('company_id')) if session.get('company_id') else {}
+    return render_template(
+        'index.html',
+        logged_in_user=session.get('user'),
+        demo_mode=False,
+        demo_messages=[],
+        **branding_ctx,
+    )
 
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -1306,7 +1314,11 @@ def widget_embed(token):
         if allowed_list and ref_domain and ref_domain.lower() not in allowed_list:
             return "Domain not allowed", 403
 
-    return render_template('app1/widget_chat.html', widget=widget)
+    from branding_service import get_branding
+    branding = get_branding(widget['cid'])
+    widget['tenant_logo'] = branding.get('logo_url') or branding.get('company_logo')
+
+    return render_template('app1/widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
 
 
 @app1_bp.route("/widget/<token>/ask", methods=["POST"])
@@ -1355,7 +1367,7 @@ def widget_loader_js(token):
     import MySQLdb.cursors
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute("""
-        SELECT ws.*, c.company_name
+        SELECT ws.*, c.company_name, c.id as cid, c.company_slug
         FROM company_widget_settings ws
         JOIN companies c ON ws.company_id = c.id
         WHERE ws.widget_token = %s AND ws.is_active = 1
@@ -1365,6 +1377,10 @@ def widget_loader_js(token):
 
     if not widget:
         return "/* Widget not found */", 404, {'Content-Type': 'application/javascript'}
+
+    from branding_service import get_branding
+    branding = get_branding(widget['cid'])
+    tenant_logo = branding.get('logo_url') or branding.get('company_logo') or ''
 
     # Extract settings
     primary = widget.get('theme_primary_color', '#0f766e')
@@ -1385,6 +1401,18 @@ def widget_loader_js(token):
     frame_pos = f"{vert}:{80}px;{horiz}:20px;"
 
     iframe_url = request.url_root.rstrip('/') + url_for('app1.widget_embed', token=token)
+    logo_html = (
+        f"<img src='{tenant_logo}' alt='' style='width:26px;height:26px;object-fit:contain;border-radius:50%;'>"
+        if tenant_logo else
+        "<svg viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z\"/></svg>"
+    )
+
+    chat_icon = '<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>'
+    close_icon = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'
+    btn_icon = logo_html if tenant_logo else chat_icon
+    btn_icon_js = json.dumps(btn_icon)
+    chat_icon_js = json.dumps(chat_icon)
+    close_icon_js = json.dumps(close_icon)
 
     js = f"""(function(){{
   if(window.__ailead_widget)return;
@@ -1419,7 +1447,7 @@ def widget_loader_js(token):
   var btn=document.createElement('button');
   btn.id='ailead-widget-btn';
   btn.title='{title}';
-  btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+  btn.innerHTML={btn_icon_js};
   document.body.appendChild(btn);
   var frame=document.createElement('iframe');
   frame.id='ailead-widget-frame';
@@ -1430,11 +1458,11 @@ def widget_loader_js(token):
   btn.addEventListener('click',function(){{
     open=!open;
     frame.classList.toggle('open',open);
-    btn.innerHTML=open?'<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>':'<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+    btn.innerHTML=open?{close_icon_js}:{btn_icon_js};
   }});
   window.addEventListener('message',function(e){{
     if(e.data==='ailead-close'){{open=false;frame.classList.remove('open');
-      btn.innerHTML='<svg viewBox="0 0 24 24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z"/></svg>';
+      btn.innerHTML={btn_icon_js};
     }}
   }});
 }})();"""

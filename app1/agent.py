@@ -249,6 +249,21 @@ SITUATIONSHÅNDTERING:
 - Engelsk input: Forstå det, svar på dansk.
 - Vedhæftet kursus [VEDHÆFTET KURSUS: ...]: Besvar specifikt om det kursus."""
 
+
+def get_system_prompt():
+    """Return tenant-aware system prompt when whitelabel is active."""
+    try:
+        from flask import session
+        from branding_service import get_branding, is_whitelabel_active
+        cid = session.get('company_id')
+        if cid and is_whitelabel_active(cid):
+            name = get_branding(cid).get('company_name') or 'din virksomhed'
+            return SYSTEM_PROMPT.replace('Futurematch', name)
+    except Exception:
+        pass
+    return SYSTEM_PROMPT
+
+
 SESSION_TTL = 3600
 
 
@@ -1073,7 +1088,7 @@ def handle_agentic_ask(user_query, session):
         except Exception as e:
             print(f"[Session Load Error] {e}")
 
-        CHAT_MEMORY[sid] = [{"role": "system", "content": SYSTEM_PROMPT}]
+        CHAT_MEMORY[sid] = [{"role": "system", "content": get_system_prompt()}]
 
         # 6.1: Cross-session learning — inject returning user context
         if logged_in_user:

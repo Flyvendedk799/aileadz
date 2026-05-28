@@ -181,6 +181,11 @@ def create_app():
                 from enterprise_tables import ensure_enterprise_tables
                 ensure_enterprise_tables(app)
                 _mark_enterprise_sync_done()
+                try:
+                    from branding_service import migrate_legacy_branding_data
+                    migrate_legacy_branding_data(app)
+                except Exception as mig_err:
+                    logging.warning("Branding migration: %s", mig_err)
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
 

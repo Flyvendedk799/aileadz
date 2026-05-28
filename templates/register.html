@@ -330,11 +330,11 @@
           </linearGradient>
         </defs>
       </svg>
-      <span class="auth-logo-name">{{ company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' }}</span>
+      <span class="auth-logo-name">{{ platform_name }}</span>
     </div>
     
     <div class="auth-form-header">
-      <p class="auth-kicker">Ny Futurematch-adgang</p>
+      <p class="auth-kicker">{% if white_label_active %}Opret adgang{% else %}Ny adgang{% endif %}</p>
       <h2>Opret konto</h2>
     </div>
     

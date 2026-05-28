@@ -47,6 +47,11 @@
                             %}<i class="far fa-circle text-muted me-3"></i>{% endif %}
                             <span>Saet uddannelsesbudget</span>
                         </a>
+                        <a href="{{ url_for('companies.branding') }}"
+                            class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
+                            <i class="far fa-circle text-muted me-3"></i>
+                            <span>Konfigurer branding</span>
+                        </a>
                         <a href="{{ url_for('hr_dashboard.hr_chatbot') }}"
                             class="list-group-item list-group-item-action border-0 px-0 py-2 d-flex align-items-center">
                             {% if onboarding.has_used_chatbot %}<i class="fas fa-check-circle text-success me-3"></i>{%

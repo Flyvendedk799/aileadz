@@ -53,29 +53,13 @@
       </div>
     </div>
 
-    <!-- Branding -->
+    <!-- Branding moved to dedicated hub -->
     <div class="settings-section">
       <h5><i class="fa-solid fa-palette"></i> Branding</h5>
-      <div class="row g-3">
-        <div class="col-md-4">
-          <label class="form-label">Primaer farve</label>
-          <div class="d-flex align-items-center gap-2">
-            <input type="color" class="form-control form-control-color" name="primary_color" value="{{ settings.primary_color or '#0f766e' }}">
-            <input type="text" class="form-control" name="primary_color_text" value="{{ settings.primary_color or '#0f766e' }}" style="max-width:120px;" readonly>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Sekundaer farve</label>
-          <div class="d-flex align-items-center gap-2">
-            <input type="color" class="form-control form-control-color" name="secondary_color" value="{{ settings.secondary_color or '#2575fc' }}">
-            <input type="text" class="form-control" name="secondary_color_text" value="{{ settings.secondary_color or '#2575fc' }}" style="max-width:120px;" readonly>
-          </div>
-        </div>
-        <div class="col-md-4">
-          <label class="form-label">Logo URL</label>
-          <input type="url" class="form-control" name="logo_url" value="{{ settings.logo_url or '' }}" placeholder="https://...">
-        </div>
-      </div>
+      <p class="text-muted mb-3">Logo, farver og white-label konfigureres i branding-hubben.</p>
+      <a href="{{ url_for('companies.branding') }}" class="btn btn-outline-primary btn-sm">
+        <i class="fa-solid fa-palette"></i> Åbn branding-hub
+      </a>
     </div>
 
     <!-- Notifications & Preferences -->

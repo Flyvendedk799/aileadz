@@ -52,7 +52,7 @@
                     <div class="label">Adgangskode</div>
                     <div class="value" id="cred-password">{{ hr_password }}</div>
                     <div class="label">Login-side</div>
-                    <div class="value">{{ request.host_url }}login</div>
+                    <div class="value">{{ request.host_url.rstrip('/') }}/login/{{ company_slug }}</div>
                 </div>
             </div>
         </div>
@@ -108,7 +108,7 @@
 function copyCredentials() {
     const email = document.getElementById('cred-email').textContent;
     const pw = document.getElementById('cred-password').textContent;
-    const loginUrl = '{{ request.host_url }}login';
+    const loginUrl = '{{ request.host_url.rstrip("/") }}/login/{{ company_slug }}';
     const text = `E-mail: ${email}\nAdgangskode: ${pw}\nLogin: ${loginUrl}`;
     navigator.clipboard.writeText(text).then(() => {
         const btn = document.querySelector('.copy-btn');

@@ -329,7 +329,7 @@ def sso_login(company_slug, provider):
     company = get_company_by_slug(company_slug)
     if not company:
         flash('Company not found', 'error')
-        return redirect(url_for('auth.login'))
+        return redirect(url_for('auth.login', slug=company_slug))
     
     # Get SSO configuration
     sso_config = sso_manager.get_company_sso_config(company['id'], provider)
@@ -354,7 +354,7 @@ def sso_callback(company_slug, provider):
     company = get_company_by_slug(company_slug)
     if not company:
         flash('Company not found', 'error')
-        return redirect(url_for('auth.login'))
+        return redirect(url_for('auth.login', slug=company_slug))
     
     # Extract authentication data based on provider
     if provider == 'saml':

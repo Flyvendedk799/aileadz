@@ -11,10 +11,30 @@ import secrets
 import string
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
+from branding_service import (
+    get_branding,
+    has_custom_branding_feature,
+    is_whitelabel_active,
+    log_branding_change,
+    publish_branding,
+    save_branding_settings,
+    set_custom_branding_feature,
+)
 import os
 
 def create_companies_blueprint():
     companies_bp = Blueprint('companies', __name__, template_folder='templates')
+
+    def require_branding_access():
+        if 'user' not in session:
+            flash("Please log in to access this feature.", "danger")
+            return redirect(url_for('auth.login'))
+        if session.get('role') == 'admin':
+            return None
+        if session.get('company_role') in ['company_admin', 'hr_manager']:
+            return None
+        flash("You don't have permission to manage branding.", "danger")
+        return redirect(url_for('dashboard.dashboard'))
 
     def require_company_admin():
         """Decorator to ensure user is a company admin"""
@@ -189,7 +209,8 @@ def create_companies_blueprint():
                     "view_analytics": True,
                     "export_data": True,
                     "manage_billing": False,
-                    "manage_integrations": False
+                    "manage_integrations": False,
+                    "manage_branding": True,
                 })
                 cur.execute("""
                     INSERT INTO company_users (
@@ -237,6 +258,7 @@ def create_companies_blueprint():
                 if generated_password:
                     return render_template('companies/register_success.html',
                         company_name=company_name,
+                        company_slug=company_slug,
                         hr_name=hr_name,
                         hr_email=hr_email,
                         hr_password=generated_password,
@@ -245,6 +267,7 @@ def create_companies_blueprint():
                 else:
                     return render_template('companies/register_success.html',
                         company_name=company_name,
+                        company_slug=company_slug,
                         hr_name=hr_name,
                         hr_email=hr_email,
                         is_new_user=False
@@ -651,31 +674,14 @@ def create_companies_blueprint():
                     company['id']
                 ))
                 # Also upsert company_settings for branding/preferences
-                cur.execute("""
-                    INSERT INTO company_settings (company_id, primary_color, secondary_color,
-                        logo_url, language, timezone, support_email, support_phone,
-                        company_website)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON DUPLICATE KEY UPDATE
-                        primary_color = VALUES(primary_color),
-                        secondary_color = VALUES(secondary_color),
-                        logo_url = VALUES(logo_url),
-                        language = VALUES(language),
-                        timezone = VALUES(timezone),
-                        support_email = VALUES(support_email),
-                        support_phone = VALUES(support_phone),
-                        company_website = VALUES(company_website)
-                """, (
-                    company['id'],
-                    request.form.get('primary_color', '#7c3aed'),
-                    request.form.get('secondary_color', '#2575fc'),
-                    request.form.get('logo_url', ''),
-                    request.form.get('language', 'da'),
-                    request.form.get('timezone', 'Europe/Copenhagen'),
-                    request.form.get('contact_email', request.form.get('support_email', '')),
-                    request.form.get('support_phone', ''),
-                    request.form.get('website', ''),
-                ))
+                branding_data = {
+                    'language': request.form.get('language', 'da'),
+                    'timezone': request.form.get('timezone', 'Europe/Copenhagen'),
+                    'support_email': request.form.get('contact_email', request.form.get('support_email', '')),
+                    'support_phone': request.form.get('support_phone', ''),
+                    'company_website': request.form.get('website', ''),
+                }
+                save_branding_settings(company['id'], branding_data, as_draft=False)
                 current_app.mysql.connection.commit()
                 cur.close()
                 # Update session
@@ -698,6 +704,127 @@ def create_companies_blueprint():
             pass
 
         return render_template('companies/settings.html', company=company, settings=settings)
+
+    @companies_bp.route('/branding', methods=['GET', 'POST'])
+    def branding():
+        """Unified branding hub for HR admins."""
+        auth_check = require_branding_access()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company and session.get('role') != 'admin':
+            flash("Company information not found.", "danger")
+            return redirect(url_for('auth.login'))
+
+        company_id = company['id'] if company else session.get('company_id')
+        if not company_id:
+            flash("Vælg en virksomhed for at administrere branding.", "warning")
+            return redirect(url_for('dashboard.dashboard'))
+
+        features = company.get('features') if company else '{}'
+        if isinstance(features, str):
+            try:
+                features = json.loads(features)
+            except (TypeError, ValueError):
+                features = {}
+        branding_enabled = has_custom_branding_feature(company_id) or session.get('role') == 'admin'
+
+        if request.method == 'POST':
+            action = request.form.get('action', 'save_draft')
+            data = {
+                'company_display_name': request.form.get('company_display_name', '').strip(),
+                'company_tagline': request.form.get('company_tagline', '').strip(),
+                'company_description': request.form.get('company_description', '').strip(),
+                'company_website': request.form.get('company_website', '').strip(),
+                'support_email': request.form.get('support_email', '').strip(),
+                'support_phone': request.form.get('support_phone', '').strip(),
+                'primary_color': request.form.get('primary_color', '#0f766e'),
+                'secondary_color': request.form.get('secondary_color', '#2563eb'),
+                'accent_color': request.form.get('accent_color', '#f59e0b'),
+                'background_color': request.form.get('background_color', '#f8fafc'),
+                'text_color': request.form.get('text_color', '#1f2937'),
+                'font_family': request.form.get('font_family', 'Inter, sans-serif'),
+                'font_size_base': request.form.get('font_size_base', '14px'),
+                'border_radius': request.form.get('border_radius', '8px'),
+                'logo_url': request.form.get('logo_url', '').strip(),
+                'favicon_url': request.form.get('favicon_url', '').strip(),
+                'custom_css': request.form.get('custom_css', ''),
+                'custom_js': request.form.get('custom_js', ''),
+                'language': request.form.get('language', 'da'),
+                'timezone': request.form.get('timezone', 'Europe/Copenhagen'),
+                'enable_white_label': 1 if request.form.get('enable_white_label') else 0,
+                'hide_platform_branding': 1 if request.form.get('hide_platform_branding') else 0,
+            }
+            if not branding_enabled:
+                data.pop('hide_platform_branding', None)
+                data.pop('custom_css', None)
+                data.pop('custom_js', None)
+
+            as_draft = action == 'save_draft'
+            ok = save_branding_settings(company_id, data, as_draft=as_draft, user_id=session.get('user_id'))
+            if action == 'publish':
+                ok = publish_branding(company_id, user_id=session.get('user_id'))
+            if ok:
+                log_branding_change(
+                    company_id, action, '', 'updated', session.get('user_id'),
+                    f'Branding {action} via hub',
+                )
+                flash("Branding gemt!" if as_draft else "Branding publiceret!", "success")
+            else:
+                flash("Fejl ved gemning af branding.", "danger")
+            return redirect(url_for('companies.branding'))
+
+        settings = {}
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("SELECT * FROM company_settings WHERE company_id = %s", (company_id,))
+            settings = cur.fetchone() or {}
+            cur.execute("""
+                SELECT csh.*, u.username AS changed_by_username
+                FROM company_settings_history csh
+                LEFT JOIN users u ON csh.changed_by = u.id
+                WHERE csh.company_id = %s
+                ORDER BY csh.created_at DESC LIMIT 30
+            """, (company_id,))
+            settings_history = cur.fetchall()
+            cur.execute(
+                "SELECT id, template_name, template_category, primary_color, secondary_color, accent_color "
+                "FROM company_theme_templates WHERE is_active = 1 ORDER BY template_category, template_name"
+            )
+            theme_templates = cur.fetchall()
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Branding hub load error: {e}")
+            settings_history = []
+            theme_templates = []
+
+        live_branding = get_branding(company_id)
+        return render_template(
+            'companies/branding.html',
+            company=company,
+            settings=settings,
+            branding=live_branding,
+            branding_enabled=branding_enabled,
+            whitelabel_active=is_whitelabel_active(company_id),
+            settings_history=settings_history,
+            theme_templates=theme_templates,
+            features=features,
+        )
+
+    @companies_bp.route('/branding/toggle-feature', methods=['POST'])
+    def toggle_branding_feature():
+        """Platform admin: enable/disable custom_branding for a tenant."""
+        if session.get('role') != 'admin':
+            flash("Kun platform-administratorer kan ændre branding-adgang.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+        company_id = request.form.get('company_id', type=int)
+        enabled = request.form.get('enabled') == '1'
+        if company_id and set_custom_branding_feature(company_id, enabled):
+            flash("Branding-adgang opdateret.", "success")
+        else:
+            flash("Kunne ikke opdatere branding-adgang.", "danger")
+        return redirect(request.referrer or url_for('companies.branding'))
 
     return companies_bp
 

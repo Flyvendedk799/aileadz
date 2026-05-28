@@ -655,7 +655,7 @@
   <!-- Brands Section -->
   <div class="brands-section">
     <div class="brands-header">
-      <h2 class="section-title">Dine Brands</h2>
+      <h2 class="section-title">Marketing-brands (personlige)</h2>
       <a href="/add_brand" class="btn btn-ai">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Tilføj Brand
@@ -737,7 +737,8 @@
     {% else %}
       <div class="empty-state" style="background:var(--card-bg);border:1px dashed var(--border-color);border-radius:var(--border-radius);padding:2.5rem;">
         <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-        <h3 style="margin:0.5rem 0;color:var(--text-color);">Ingen brands endnu</h3>
+        <h3 style="margin:0.5rem 0;color:var(--text-color);">Ingen marketing-brands endnu</h3>
+        <p class="text-muted small">Personlige marketing-profiler — adskilt fra virksomhedens <a href="{{ url_for('companies.branding') }}">white-label branding</a>.</p>
         <p>Tilføj dit første brand med knappen ovenfor.</p>
       </div>
     {% endif %}

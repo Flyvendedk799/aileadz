@@ -250,6 +250,40 @@ def require_api_auth(required_permission=None):
 # ENTERPRISE API ENDPOINTS
 # =====================================================
 
+@api_enterprise_bp.route('/api/v1/company/branding')
+@require_api_auth('read:branding')
+def get_company_branding_api():
+    """Get public-safe branding payload for integrators."""
+    try:
+        from branding_service import get_branding, is_whitelabel_active
+        branding = get_branding(g.company_id)
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            "SELECT widget_token FROM company_widget_settings WHERE company_id = %s AND is_active = 1 LIMIT 1",
+            (g.company_id,),
+        )
+        widget = cur.fetchone()
+        cur.execute("SELECT company_slug FROM companies WHERE id = %s", (g.company_id,))
+        company = cur.fetchone()
+        cur.close()
+        return jsonify({
+            'success': True,
+            'data': {
+                'company_slug': company.get('company_slug') if company else None,
+                'active': is_whitelabel_active(g.company_id),
+                'company_name': branding.get('company_name'),
+                'logo_url': branding.get('logo_url'),
+                'primary_color': branding.get('primary_color'),
+                'secondary_color': branding.get('secondary_color'),
+                'accent_color': branding.get('accent_color'),
+                'login_url_path': f"/login/{company.get('company_slug')}" if company and company.get('company_slug') else '/login',
+                'widget_token': widget.get('widget_token') if widget else None,
+            },
+        })
+    except Exception as e:
+        return jsonify({'error': f'Failed to retrieve branding: {str(e)}'}), 500
+
+
 @api_enterprise_bp.route('/api/v1/company/info')
 @require_api_auth('read:company')
 def get_company_info():
@@ -1181,6 +1215,9 @@ def _fire_webhook(company_id, event_type, payload):
     """Fire webhooks for a given event (best-effort, non-blocking)."""
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT company_slug FROM companies WHERE id = %s", (company_id,))
+        co = cur.fetchone()
+        slug = co.get('company_slug') if co else None
         cur.execute("""
             SELECT id, url, secret FROM company_webhooks
             WHERE company_id = %s AND is_active = 1
@@ -1193,14 +1230,21 @@ def _fire_webhook(company_id, event_type, payload):
                 events = json.loads(events)
             if event_type not in events and '*' not in events:
                 continue
-            # Best-effort POST (non-blocking would need celery/threading, keep sync for now)
             try:
                 import hashlib, hmac, urllib.request
-                body = json.dumps({'event': event_type, 'data': payload,
-                                   'timestamp': datetime.now().isoformat()}).encode()
+                body = json.dumps({
+                    'event': event_type,
+                    'data': payload,
+                    'timestamp': datetime.now().isoformat(),
+                    'company_slug': slug,
+                }).encode()
                 sig = hmac.new(wh['secret'].encode(), body, hashlib.sha256).hexdigest()
                 req = urllib.request.Request(wh['url'], data=body,
-                    headers={'Content-Type': 'application/json', 'X-Webhook-Signature': sig})
+                    headers={
+                        'Content-Type': 'application/json',
+                        'X-Webhook-Signature': sig,
+                        'X-Company-Slug': slug or '',
+                    })
                 urllib.request.urlopen(req, timeout=5)
                 cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, successful_deliveries=successful_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
             except Exception:
@@ -1240,6 +1284,7 @@ def api_docs():
             'configurable': 'Per API key'
         },
         'endpoints': {
+            'GET /api/v1/company/branding': 'Get company branding (colors, logo, slug)',
             'GET /api/v1/company/info': 'Get company information',
             'GET /api/v1/employees': 'List employees',
             'POST /api/v1/employees': 'Create employee',
@@ -1256,6 +1301,8 @@ def api_docs():
         },
         'permissions': {
             'read:company': 'Read company information',
+            'read:branding': 'Read company branding settings',
+            'write:branding': 'Update company branding settings',
             'read:employees': 'Read employee data',
             'write:employees': 'Create/update employees',
             'read:learning': 'Read learning progress',

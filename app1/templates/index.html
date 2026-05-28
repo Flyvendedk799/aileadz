@@ -519,6 +519,7 @@
     .thinking-row .dot { width: 5px; height: 5px; border-radius: 50%; background: var(--purple); animation: dotBounce 1.4s ease-in-out infinite; }
     .thinking-row .dot:nth-child(2) { animation-delay: 0.15s; }
     .thinking-row .dot:nth-child(3) { animation-delay: 0.3s; }
+    .chat-notice { font-size: 12px; color: var(--text-muted, #6b7280); padding: 6px 0 2px; font-style: italic; }
     @keyframes dotBounce {
       0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
       40% { opacity: 1; transform: translateY(-3px); }
@@ -2161,6 +2162,18 @@
               const data = JSON.parse(raw);
               if (data.type === 'ping') continue;
               if (data.type === 'meta') { msgIndex = data.message_index || 0; continue; }
+              if (data.type === 'thinking') {
+                if (!think.parentNode) botContent.appendChild(think);
+                continue;
+              }
+              if (data.type === 'notice') {
+                const note = document.createElement('div');
+                note.className = 'chat-notice';
+                note.textContent = data.content || '';
+                botContent.appendChild(note);
+                saveChatState();
+                continue;
+              }
               if (isFirst) { think.remove(); isFirst = false; }
 
               if (data.type === 'chunk') {

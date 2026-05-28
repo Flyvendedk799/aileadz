@@ -211,11 +211,11 @@ def _seed_theme_templates(conn):
             cur.close()
             return
         presets = [
-            ('Corporate Teal', 'professional', '#0f766e', '#2563eb', '#f59e0b', '#f8fafc', '#1f2937', 'Inter', '14px', '8px', '8px'),
-            ('Enterprise Purple', 'professional', '#7c3aed', '#2575fc', '#ff512f', '#0f0f23', '#e4e4e7', 'Inter', '14px', '8px', '8px'),
+            ('Professionel Teal', 'professional', '#0b6b63', '#2563eb', '#d97706', '#f5f5f7', '#111827', 'Inter', '14px', '8px', '8px'),
+            ('Nordisk Grå', 'professional', '#334155', '#475569', '#0ea5e9', '#f5f5f7', '#111827', 'Inter', '14px', '8px', '8px'),
             ('Modern Slate', 'modern', '#334155', '#64748b', '#0ea5e9', '#f1f5f9', '#0f172a', 'Inter', '15px', '10px', '8px'),
-            ('Warm Orange', 'creative', '#ea580c', '#dc2626', '#16a34a', '#fff7ed', '#431407', 'Inter', '14px', '12px', '8px'),
-            ('Nordic Blue', 'professional', '#1e40af', '#3b82f6', '#06b6d4', '#eff6ff', '#1e3a8a', 'Inter', '14px', '8px', '8px'),
+            ('Konservativ Blå', 'professional', '#1e40af', '#3b82f6', '#64748b', '#eff6ff', '#1e3a8a', 'Inter', '14px', '8px', '8px'),
+            ('Diskret Antracit', 'professional', '#18181b', '#3f3f46', '#71717a', '#fafafa', '#18181b', 'Inter', '14px', '8px', '8px'),
         ]
         for name, cat, pri, sec, acc, bg, txt, font, fs, br, sp in presets:
             cur.execute(

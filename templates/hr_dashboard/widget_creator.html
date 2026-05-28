@@ -343,10 +343,10 @@
                                     <label class="form-label">Primaer farve</label>
                                     <div class="color-input-group">
                                         <input type="color" id="colorPickerPrimary"
-                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0f766e' }}">
+                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
                                         <input type="text" class="form-control" id="theme_primary_color"
                                             name="theme_primary_color"
-                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0f766e' }}">
+                                            value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
                                     </div>
                                 </div>
                                 <div class="col-md-4">
@@ -614,7 +614,7 @@
         });
 
         function updatePreview() {
-            const primaryColor = document.getElementById('theme_primary_color').value || '#0f766e';
+            const primaryColor = document.getElementById('theme_primary_color').value || '#0b6b63';
             const textColor = document.getElementById('theme_text_color').value || '#FFFFFF';
             const bgColor = document.getElementById('theme_bg_color').value || '#FFFFFF';
             const title = document.getElementById('widget_title').value || 'Chat';

@@ -13,7 +13,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/futurematch.css') }}">
   <style>
     :root {
-      --fm-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+      --fm-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0b6b63{% endif %};
       --fm-secondary: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
       --fm-accent: {% if white_label_active and company_branding.accent_color %}{{ company_branding.accent_color }}{% else %}#f59e0b{% endif %};
       --fm-font-family: {% if white_label_active and company_branding.font_family %}{{ company_branding.font_family }}{% else %}"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif{% endif %};
@@ -79,7 +79,7 @@
         </span>
         <span class="fm-brand-text">
           <span class="fm-brand-name">{{ platform_name }}</span>
-          <span class="fm-brand-kicker">{{ company_branding.tagline if white_label_active and company_branding.tagline else 'Command Center' }}</span>
+          <span class="fm-brand-kicker">{{ company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' }}</span>
         </span>
       </a>
 

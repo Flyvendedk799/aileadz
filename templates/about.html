@@ -1,15 +1,17 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="UTF-8">
-  <title>About - AI Dashboard</title>
-  <link href="https://cdn.jsdelivr.net/npm/tailwindcss@^2/dist/tailwind.min.css" rel="stylesheet">
-</head>
-<body class="bg-gray-100 text-gray-900">
-  <div class="max-w-4xl mx-auto p-6">
-    <h1 class="text-3xl font-bold mb-4">About</h1>
-    <p>This is the About page. Here you can include details about the AI Dashboard and its features.</p>
-    <a href="/" class="mt-4 inline-block text-blue-500 hover:underline">Back to Dashboard</a>
+{% extends "base.html" %}
+
+{% block title %}Om Futurematch{% endblock %}
+{% block page_heading %}Om platformen{% endblock %}
+{% block page_subheading %}Futurematch samler kursusmatch, HR-styring og rapportering for moderne læringsorganisationer.{% endblock %}
+
+{% block content %}
+<div class="fm-workspace fm-ops-page">
+  <div class="fm-section">
+    <h2 class="fm-page-title">Om Futurematch</h2>
+    <p class="text-muted">Futurematch hjælper virksomheder med at matche medarbejdere, kompetencer og kurser — med tydelig governance, rapportering og white-label branding.</p>
+    <a href="{{ url_for('dashboard.dashboard') }}" class="btn btn-primary btn-sm mt-2">
+      <i class="fa-solid fa-arrow-left"></i> Tilbage til overblik
+    </a>
   </div>
-</body>
-</html>
+</div>
+{% endblock %}

@@ -5,28 +5,26 @@
   @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
 
   :root {
-    --primary-color: #0f766e;
-    --secondary-color: #2575fc;
-    --accent-color: #ff512f;
-    --success-color: #4ade80;
-    --warning-color: #fbbf24;
-    --danger-color: #f87171;
-    --text-color: #fff;
-    --muted-text: #9ca3af;
-    --bg-color: #1e1e2f;
-    --card-bg: rgba(255, 255, 255, 0.06);
-    --card-bg-hover: rgba(255, 255, 255, 0.1);
-    --border-color: rgba(255, 255, 255, 0.12);
-    --border-radius: 16px;
-    --shadow: 0 8px 16px rgba(0,0,0,0.3);
-    --transition: 0.3s ease;
+    --primary-color: var(--fm-primary, #0b6b63);
+    --secondary-color: var(--fm-secondary, #2563eb);
+    --accent-color: var(--fm-accent, #d97706);
+    --success-color: var(--fm-success, #10b981);
+    --warning-color: var(--fm-warning, #f59e0b);
+    --danger-color: var(--fm-danger, #ef4444);
+    --text-color: var(--fm-text, #111827);
+    --muted-text: var(--fm-text-muted, #5f6673);
+    --bg-color: var(--fm-bg, #f5f5f7);
+    --card-bg: var(--fm-surface-solid, #ffffff);
+    --card-bg-hover: var(--fm-surface-muted, #f0f2f5);
+    --border-color: var(--fm-border, rgba(17, 24, 39, 0.1));
+    --border-radius: var(--fm-radius-lg, 12px);
+    --shadow: var(--fm-shadow-sm);
+    --transition: var(--fm-duration-base, 320ms) var(--fm-ease-out, ease);
   }
 
-  body {
-    font-family: 'Inter', sans-serif;
-    background: linear-gradient(135deg, #1e1e2f, #2c2c3c);
-    color: var(--text-color);
-    margin: 0; padding: 0;
+  body.futurematch-shell {
+    background: var(--fm-bg) !important;
+    color: var(--fm-text) !important;
   }
 
   /* Override base.html Bootstrap text resets — profile uses dark-themed custom components */
@@ -442,7 +440,7 @@
 {% endblock %}
 
 {% block content %}
-<div class="profile-container">
+<div class="fm-workspace fm-ops-page profile-container">
   <div id="toast-container" class="toast-container"></div>
 
   <!-- Flash Messages -->
@@ -746,7 +744,7 @@
 </div>
 
 <script>
-  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#0f766e', avanceret:'#f59e0b', ekspert:'#ef4444'};
+  const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#0b6b63', avanceret:'#d97706', ekspert:'#ef4444'};
   const LEVEL_LABELS = {begynder:'Begynder', mellem:'Mellem', avanceret:'Avanceret', ekspert:'Ekspert'};
   let _profileData = null;
 

@@ -16,10 +16,10 @@ DEFAULT_BRANDING = {
     'company_slug': '',
     'company_logo': None,
     'logo_url': None,
-    'primary_color': '#0f766e',
+    'primary_color': '#0b6b63',
     'secondary_color': '#2563eb',
-    'accent_color': '#f59e0b',
-    'background_color': '#f8fafc',
+    'accent_color': '#d97706',
+    'background_color': '#f5f5f7',
     'text_color': '#1f2937',
     'font_family': 'Inter, sans-serif',
     'font_size_base': '14px',
@@ -467,38 +467,42 @@ def set_custom_branding_feature(company_id: int, enabled: bool) -> bool:
         return False
 
 
+def _column_exists(cur, table_name: str, column_name: str) -> bool:
+    cur.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE %s", (column_name,))
+    return cur.fetchone() is not None
+
+
 def ensure_branding_schema(app) -> None:
     """Add whitelabel columns to existing databases (safe to run repeatedly)."""
     column_migrations = [
         ('company_settings', 'branding_status', "VARCHAR(20) DEFAULT 'live'"),
-        ('company_settings', 'branding_draft', 'JSON'),
-        ('company_settings', 'company_tagline', 'VARCHAR(255)'),
+        ('company_settings', 'branding_draft', 'JSON NULL'),
+        ('company_settings', 'company_tagline', 'VARCHAR(255) NULL'),
+        ('companies', 'company_tagline', 'VARCHAR(255) NULL'),
     ]
-    with app.app_context():
-        conn = app.mysql.connection
+    log = __import__('logging').getLogger(__name__)
+
+    def _run(conn) -> None:
         if not conn:
             return
-        try:
-            cur = conn.cursor()
-            for table, column, definition in column_migrations:
-                cur.execute(
-                    """
-                    SELECT COUNT(*) FROM information_schema.COLUMNS
-                    WHERE TABLE_SCHEMA = DATABASE()
-                      AND TABLE_NAME = %s AND COLUMN_NAME = %s
-                    """,
-                    (table, column),
-                )
-                if cur.fetchone()[0]:
-                    continue
-                cur.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}")
-                logging = __import__('logging')
-                logging.getLogger(__name__).info("Added column %s.%s", table, column)
-            conn.commit()
-            cur.close()
-        except Exception as e:
-            logging = __import__('logging')
-            logging.getLogger(__name__).warning("ensure_branding_schema: %s", e)
+        cur = conn.cursor()
+        for table, column, definition in column_migrations:
+            if _column_exists(cur, table, column):
+                continue
+            cur.execute(f"ALTER TABLE `{table}` ADD COLUMN `{column}` {definition}")
+            log.info("Added column %s.%s", table, column)
+        conn.commit()
+        cur.close()
+
+    try:
+        from flask import has_request_context
+        if has_request_context():
+            _run(app.mysql.connection)
+        else:
+            with app.test_request_context():
+                _run(app.mysql.connection)
+    except Exception as e:
+        log.warning("ensure_branding_schema: %s", e)
 
 
 def migrate_legacy_branding_data(app) -> None:
@@ -533,7 +537,7 @@ def migrate_legacy_branding_data(app) -> None:
                     """,
                     (
                         row['id'],
-                        row.get('primary_color') or row.get('brand_primary_color') or '#0f766e',
+                        row.get('primary_color') or row.get('brand_primary_color') or '#0b6b63',
                         row.get('secondary_color') or row.get('brand_secondary_color') or '#2563eb',
                         row.get('accent_color') or '#f59e0b',
                         row.get('font_family') or 'Inter',

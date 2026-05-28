@@ -2,40 +2,22 @@
 
 {% block title %}Branding — {{ company.company_name if company else 'Virksomhed' }}{% endblock %}
 
-{% block extra_styles %}
-{{ super() }}
-<style>
-  .branding-tabs .nav-link { font-weight: 500; color: #64748b; }
-  .branding-tabs .nav-link.active { color: var(--fm-primary); border-bottom: 2px solid var(--fm-primary); }
-  .branding-section { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 20px; }
-  .branding-preview { border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden; min-height: 320px; }
-  .preview-sidebar { background: var(--preview-primary, #0f766e); color: #fff; padding: 20px; min-height: 280px; }
-  .preview-main { padding: 20px; background: var(--preview-bg, #f8fafc); }
-  .color-field { max-width: 140px; }
-  .status-pill { display: inline-block; padding: 4px 12px; border-radius: 999px; font-size: 0.8rem; font-weight: 600; }
-  .status-pill.live { background: #dcfce7; color: #166534; }
-  .status-pill.draft { background: #fef3c7; color: #92400e; }
-  .status-pill.disabled { background: #f1f5f9; color: #64748b; }
-  .embed-snippet { font-family: monospace; font-size: 0.85rem; background: #0f172a; color: #e2e8f0; padding: 12px; border-radius: 8px; }
-</style>
-{% endblock %}
-
 {% block content %}
-<div class="container-fluid mt-3">
+<div class="fm-workspace fm-branding-page fm-ops-page">
   <div class="d-flex flex-wrap justify-content-between align-items-start gap-3 mb-4">
     <div>
-      <h2><i class="fa-solid fa-palette text-primary"></i> Branding</h2>
-      <p class="text-muted mb-1">{{ company.company_name if company else 'Virksomhed' }}
+      <h2 class="fm-page-title"><i class="fa-solid fa-palette"></i> Branding</h2>
+      <p class="fm-page-subtitle mb-1">{{ company.company_name if company else 'Virksomhed' }}
         {% if settings.branding_status == 'draft' %}
-        <span class="status-pill draft">Kladde</span>
+        <span class="fm-status-pill draft">Kladde</span>
         {% elif whitelabel_active %}
-        <span class="status-pill live">Aktiv</span>
+        <span class="fm-status-pill live">Aktiv</span>
         {% else %}
-        <span class="status-pill disabled">Ikke aktiveret</span>
+        <span class="fm-status-pill disabled">Ikke aktiveret</span>
         {% endif %}
       </p>
       {% if company and company.company_slug %}
-      <small class="text-muted">Login-URL: <code>{{ request.host_url.rstrip('/') }}/login/{{ company.company_slug }}</code></small>
+      <small class="text-muted">Login-URL: <code class="fm-embed-snippet d-inline-block px-2 py-1">{{ request.host_url.rstrip('/') }}/login/{{ company.company_slug }}</code></small>
       {% endif %}
     </div>
     <div class="d-flex gap-2">
@@ -48,7 +30,7 @@
   {% if session.get('role') == 'admin' and company and not features.get('custom_branding') %}
   <div class="alert alert-warning">
     <i class="fa-solid fa-triangle-exclamation"></i>
-    Custom branding er ikke aktiveret for denne tenant endnu — medarbejdere ser stadig Futurematch.
+    Custom branding er ikke aktiveret for denne tenant endnu.
     <a href="{{ url_for('companies.admin_company_detail', company_id=company.id) }}" class="alert-link">Aktiver i virksomhedsadmin</a>.
   </div>
   {% elif not branding_enabled %}
@@ -67,7 +49,7 @@
 
   <div class="row g-4">
     <div class="col-lg-8">
-      <ul class="nav nav-tabs branding-tabs mb-3" role="tablist">
+      <ul class="nav nav-tabs fm-tabs mb-3" role="tablist">
         <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#tab-identity" type="button">Identitet</button></li>
         <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#tab-visuals" type="button">Visuelt</button></li>
         {% if branding_enabled %}
@@ -81,7 +63,7 @@
       <form method="POST" id="branding-form">
         <div class="tab-content">
           <div class="tab-pane fade show active" id="tab-identity">
-            <div class="branding-section">
+            <div class="fm-section">
               <div class="row g-3">
                 <div class="col-md-6">
                   <label class="form-label">Visningsnavn</label>
@@ -123,27 +105,28 @@
           </div>
 
           <div class="tab-pane fade" id="tab-visuals">
-            <div class="branding-section">
+            <div class="fm-section">
               <div class="row g-3">
                 <div class="col-md-4">
                   <label class="form-label">Primær farve</label>
-                  <input type="color" class="form-control form-control-color color-field" name="primary_color" value="{{ settings.primary_color or branding.primary_color or '#0f766e' }}" {% if not branding_enabled %}disabled{% endif %}>
+                  <input type="color" class="form-control form-control-color" name="primary_color" value="{{ settings.primary_color or branding.primary_color or '#0b6b63' }}" {% if not branding_enabled %}disabled{% endif %}>
+                  <span class="fm-contrast-badge pass" id="contrast-primary" hidden></span>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label">Sekundær farve</label>
-                  <input type="color" class="form-control form-control-color color-field" name="secondary_color" value="{{ settings.secondary_color or branding.secondary_color or '#2563eb' }}" {% if not branding_enabled %}disabled{% endif %}>
+                  <input type="color" class="form-control form-control-color" name="secondary_color" value="{{ settings.secondary_color or branding.secondary_color or '#2563eb' }}" {% if not branding_enabled %}disabled{% endif %}>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label">Accent</label>
-                  <input type="color" class="form-control form-control-color color-field" name="accent_color" value="{{ settings.accent_color or branding.accent_color or '#f59e0b' }}" {% if not branding_enabled %}disabled{% endif %}>
+                  <input type="color" class="form-control form-control-color" name="accent_color" value="{{ settings.accent_color or branding.accent_color or '#d97706' }}" {% if not branding_enabled %}disabled{% endif %}>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label">Baggrund</label>
-                  <input type="color" class="form-control form-control-color color-field" name="background_color" value="{{ settings.background_color or branding.background_color or '#f8fafc' }}" {% if not branding_enabled %}disabled{% endif %}>
+                  <input type="color" class="form-control form-control-color" name="background_color" value="{{ settings.background_color or branding.background_color or '#f5f5f7' }}" {% if not branding_enabled %}disabled{% endif %}>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label">Tekst</label>
-                  <input type="color" class="form-control form-control-color color-field" name="text_color" value="{{ settings.text_color or branding.text_color or '#1f2937' }}" {% if not branding_enabled %}disabled{% endif %}>
+                  <input type="color" class="form-control form-control-color" name="text_color" value="{{ settings.text_color or branding.text_color or '#111827' }}" {% if not branding_enabled %}disabled{% endif %}>
                 </div>
                 <div class="col-md-4">
                   <label class="form-label">Border radius</label>
@@ -160,7 +143,7 @@
               </div>
               {% if branding_enabled and theme_templates %}
               <hr>
-              <h6>Tema-skabeloner</h6>
+              <h6 class="fm-section-header">Tema-skabeloner</h6>
               <div class="d-flex flex-wrap gap-2">
                 {% for t in theme_templates %}
                 <form method="POST" action="{{ url_for('enterprise_settings.apply_theme_template', template_id=t.id) }}" class="d-inline">
@@ -177,7 +160,7 @@
 
           {% if branding_enabled %}
           <div class="tab-pane fade" id="tab-assets">
-            <div class="branding-section">
+            <div class="fm-section">
               <div class="row g-3">
                 <div class="col-md-6">
                   <label class="form-label">Logo URL</label>
@@ -192,7 +175,7 @@
           </div>
 
           <div class="tab-pane fade" id="tab-advanced">
-            <div class="branding-section">
+            <div class="fm-section">
               <div class="form-check form-switch mb-3">
                 <input class="form-check-input" type="checkbox" name="enable_white_label" id="enable_white_label" {% if settings.enable_white_label or whitelabel_active %}checked{% endif %}>
                 <label class="form-check-label" for="enable_white_label">Aktiver white-label for medarbejdere</label>
@@ -214,7 +197,7 @@
           </div>
 
           <div class="tab-pane fade" id="tab-history">
-            <div class="branding-section">
+            <div class="fm-section">
               {% if settings_history %}
               <div class="table-responsive">
                 <table class="table table-sm">
@@ -232,20 +215,20 @@
                 </table>
               </div>
               {% else %}
-              <p class="text-muted mb-0">Ingen ændringer endnu.</p>
+              <p class="fm-empty-state mb-0">Ingen ændringer endnu.</p>
               {% endif %}
             </div>
           </div>
           {% endif %}
 
           <div class="tab-pane fade" id="tab-widget">
-            <div class="branding-section">
+            <div class="fm-section">
               <p>Konfigurer det indlejrede chat-widget med samme farver som jeres branding.</p>
               <a href="{{ url_for('hr_dashboard.widget_creator') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-code"></i> Åbn widget-konfigurator</a>
               {% if company and company.company_slug %}
               <hr>
               <label class="form-label">Bruger-login (slug)</label>
-              <div class="embed-snippet">{{ request.host_url.rstrip('/') }}/login/{{ company.company_slug }}</div>
+              <div class="fm-embed-snippet">{{ request.host_url.rstrip('/') }}/login/{{ company.company_slug }}</div>
               {% endif %}
             </div>
           </div>
@@ -260,27 +243,45 @@
       </form>
     </div>
 
-    <div class="col-lg-4">
-      <div class="branding-section">
+    <div class="col-lg-4 fm-preview-panel">
+      <div class="fm-section">
         <h6 class="mb-3">Live forhåndsvisning</h6>
-        <div class="branding-preview" id="branding-preview">
-          <div class="preview-sidebar" id="preview-sidebar">
-            <div class="d-flex align-items-center gap-2 mb-3">
-              {% if branding.logo_url %}
-              <img src="{{ branding.logo_url }}" alt="" style="height:32px;border-radius:4px;">
-              {% else %}
-              <span class="rounded-circle bg-white text-dark d-inline-flex align-items-center justify-content-center" style="width:32px;height:32px;font-weight:700;">{{ (branding.company_name or 'C')[:1] }}</span>
-              {% endif %}
-              <strong id="preview-name">{{ branding.company_name }}</strong>
+        <div class="fm-branding-preview-modes" role="tablist" aria-label="Preview mode">
+          <button type="button" class="active" data-preview-mode="app">App</button>
+          <button type="button" data-preview-mode="login">Login</button>
+          <button type="button" data-preview-mode="widget">Widget</button>
+        </div>
+        <div class="fm-branding-preview" id="branding-preview">
+          <div class="fm-preview-shell" id="preview-app">
+            <div class="fm-preview-sidebar-mini" id="preview-sidebar">
+              <span class="fm-brand-mark"><span class="fm-brand-initials" id="preview-initials">{{ (branding.company_name or 'FM')[:2]|upper }}</span></span>
+              <div style="opacity:0.85;font-weight:700;font-size:0.65rem;line-height:1.2;" id="preview-name">{{ branding.company_name }}</div>
+              <div style="opacity:0.7;font-size:0.6rem;margin-top:4px;" id="preview-tagline">{{ branding.tagline or 'Læring & HR' }}</div>
             </div>
-            <small id="preview-tagline">{{ branding.tagline or 'Command Center' }}</small>
+            <div class="fm-preview-main-mini" id="preview-main">
+              <div class="fm-preview-topbar-mini">
+                <strong>Overblik</strong>
+                <span style="width:48px;height:8px;border-radius:999px;background:var(--fm-surface-muted);"></span>
+              </div>
+              <button type="button" class="btn btn-sm text-white" id="preview-btn" style="background:var(--fm-preview-primary, var(--fm-primary));">Primær knap</button>
+            </div>
           </div>
-          <div class="preview-main">
-            <div class="btn btn-sm text-white" id="preview-btn" style="background:var(--preview-primary);">Primær knap</div>
+          <div class="fm-preview-shell d-none" id="preview-login" style="align-items:center;justify-content:center;padding:24px;">
+            <div class="fm-section" style="width:100%;max-width:220px;margin:0;text-align:center;">
+              <span class="fm-brand-mark d-inline-flex mb-2"><span class="fm-brand-initials" id="preview-login-initials">{{ (branding.company_name or 'FM')[:2]|upper }}</span></span>
+              <div style="font-weight:700;" id="preview-login-name">{{ branding.company_name }}</div>
+              <div class="btn btn-sm text-white mt-3 w-100" id="preview-login-btn" style="background:var(--fm-preview-primary, var(--fm-primary));">Log ind</div>
+            </div>
+          </div>
+          <div class="fm-preview-shell d-none" id="preview-widget" style="align-items:flex-end;justify-content:flex-end;padding:16px;">
+            <div style="width:160px;border-radius:12px;overflow:hidden;border:1px solid var(--fm-border);box-shadow:var(--fm-shadow-sm);">
+              <div style="padding:8px 10px;color:#fff;font-size:0.65rem;font-weight:700;background:var(--fm-preview-primary, var(--fm-primary));" id="preview-widget-header">{{ branding.company_name }}</div>
+              <div style="padding:12px;background:var(--fm-preview-bg, var(--fm-bg));font-size:0.65rem;color:var(--fm-preview-text, var(--fm-text));">Hej — hvordan kan vi hjælpe?</div>
+            </div>
           </div>
         </div>
       </div>
-      <div class="branding-section">
+      <div class="fm-section">
         <h6>Branding-tjekliste</h6>
         <ul class="list-unstyled small mb-0">
           <li>{% if branding.logo_url %}<i class="fa-solid fa-check text-success"></i>{% else %}<i class="fa-regular fa-circle text-muted"></i>{% endif %} Logo sat</li>
@@ -299,24 +300,92 @@
 (function() {
   const form = document.getElementById('branding-form');
   if (!form) return;
-  const preview = document.getElementById('branding-preview');
-  const sidebar = document.getElementById('preview-sidebar');
-  const btn = document.getElementById('preview-btn');
-  function syncPreview() {
-    const primary = form.querySelector('[name=primary_color]')?.value || '#0f766e';
-    const bg = form.querySelector('[name=background_color]')?.value || '#f8fafc';
-    const name = form.querySelector('[name=company_display_name]')?.value || '{{ branding.company_name }}';
-    const tagline = form.querySelector('[name=company_tagline]')?.value || 'Command Center';
-    preview.style.setProperty('--preview-primary', primary);
-    preview.style.setProperty('--preview-bg', bg);
-    if (sidebar) sidebar.style.background = primary;
-    if (btn) btn.style.background = primary;
-    const nameEl = document.getElementById('preview-name');
-    const tagEl = document.getElementById('preview-tagline');
-    if (nameEl) nameEl.textContent = name;
-    if (tagEl) tagEl.textContent = tagline;
+
+  const previewRoot = document.getElementById('branding-preview');
+  const contrastEl = document.getElementById('contrast-primary');
+  const modeButtons = document.querySelectorAll('[data-preview-mode]');
+  const panels = {
+    app: document.getElementById('preview-app'),
+    login: document.getElementById('preview-login'),
+    widget: document.getElementById('preview-widget')
+  };
+
+  function hexToRgb(hex) {
+    const normalized = hex.replace('#', '');
+    const full = normalized.length === 3 ? normalized.split('').map((c) => c + c).join('') : normalized;
+    const num = parseInt(full, 16);
+    return { r: (num >> 16) & 255, g: (num >> 8) & 255, b: num & 255 };
   }
-  form.querySelectorAll('input, textarea, select').forEach(el => el.addEventListener('input', syncPreview));
+
+  function luminance({ r, g, b }) {
+    const srgb = [r, g, b].map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+    });
+    return 0.2126 * srgb[0] + 0.7152 * srgb[1] + 0.0722 * srgb[2];
+  }
+
+  function contrastRatio(a, b) {
+    const l1 = luminance(hexToRgb(a));
+    const l2 = luminance(hexToRgb(b));
+    const lighter = Math.max(l1, l2);
+    const darker = Math.min(l1, l2);
+    return (lighter + 0.05) / (darker + 0.05);
+  }
+
+  function syncPreview() {
+    const primary = form.querySelector('[name=primary_color]')?.value || '#0b6b63';
+    const bg = form.querySelector('[name=background_color]')?.value || '#f5f5f7';
+    const text = form.querySelector('[name=text_color]')?.value || '#111827';
+    const name = form.querySelector('[name=company_display_name]')?.value || '{{ branding.company_name }}';
+    const tagline = form.querySelector('[name=company_tagline]')?.value || 'Læring & HR';
+    const font = form.querySelector('[name=font_family]')?.value || 'Inter, sans-serif';
+    const initials = (name || 'FM').slice(0, 2).toUpperCase();
+
+    previewRoot.style.setProperty('--fm-preview-primary', primary);
+    previewRoot.style.setProperty('--fm-preview-bg', bg);
+    previewRoot.style.setProperty('--fm-preview-text', text);
+    previewRoot.style.fontFamily = font;
+
+    ['preview-name', 'preview-login-name', 'preview-widget-header'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = name;
+    });
+    const tagEl = document.getElementById('preview-tagline');
+    if (tagEl) tagEl.textContent = tagline;
+    ['preview-initials', 'preview-login-initials'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.textContent = initials;
+    });
+    ['preview-btn', 'preview-login-btn'].forEach((id) => {
+      const el = document.getElementById(id);
+      if (el) el.style.background = primary;
+    });
+    const sidebar = document.getElementById('preview-sidebar');
+    if (sidebar) sidebar.style.background = primary;
+    const main = document.getElementById('preview-main');
+    if (main) main.style.background = bg;
+
+    if (contrastEl) {
+      const ratio = contrastRatio(primary, bg);
+      const pass = ratio >= 4.5;
+      contrastEl.hidden = false;
+      contrastEl.className = 'fm-contrast-badge ' + (pass ? 'pass' : 'fail');
+      contrastEl.textContent = (pass ? 'AA' : 'Lav kontrast') + ' · ' + ratio.toFixed(1) + ':1';
+    }
+  }
+
+  modeButtons.forEach((btn) => {
+    btn.addEventListener('click', () => {
+      modeButtons.forEach((b) => b.classList.remove('active'));
+      btn.classList.add('active');
+      Object.values(panels).forEach((p) => p && p.classList.add('d-none'));
+      const mode = btn.dataset.previewMode;
+      if (panels[mode]) panels[mode].classList.remove('d-none');
+    });
+  });
+
+  form.querySelectorAll('input, textarea, select').forEach((el) => el.addEventListener('input', syncPreview));
   syncPreview();
 })();
 </script>

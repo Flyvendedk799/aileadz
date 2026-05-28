@@ -5,22 +5,22 @@
   <style>
     /* Modern Futuristic Design System */
     :root {
-      --primary: #6366f1;
-      --primary-dark: #4f46e5;
-      --primary-light: #a5b4fc;
-      --success: #10b981;
-      --warning: #f59e0b;
-      --danger: #ef4444;
-      --dark: #111827;
-      --darker: #030712;
-      --surface: #1f2937;
-      --surface-hover: #374151;
-      --text: #f3f4f6;
-      --text-secondary: #9ca3af;
-      --accent-gradient: linear-gradient(135deg, #6366f1, #8b5cf6, #d946ef);
+      --primary: var(--fm-primary, #0b6b63);
+      --primary-dark: var(--fm-primary-strong, #07544e);
+      --primary-light: color-mix(in srgb, var(--fm-primary) 40%, #fff);
+      --success: var(--fm-success, #10b981);
+      --warning: var(--fm-warning, #f59e0b);
+      --danger: var(--fm-danger, #ef4444);
+      --dark: var(--fm-text, #111827);
+      --darker: var(--fm-bg, #f5f5f7);
+      --surface: var(--fm-surface-solid, #ffffff);
+      --surface-hover: var(--fm-surface-muted, #f0f2f5);
+      --text: var(--fm-text, #111827);
+      --text-secondary: var(--fm-text-muted, #5f6673);
+      --accent-gradient: linear-gradient(135deg, var(--fm-primary), var(--fm-secondary));
     }
     
-    body {
+    body.futurematch-shell {
       margin: 0;
       font-family: 'Inter', sans-serif;
       background: radial-gradient(circle at 10% 20%, var(--darker) 0%, var(--dark) 90%);
@@ -93,7 +93,7 @@
       -webkit-background-clip: text;
       background-clip: text;
       -webkit-text-fill-color: transparent;
-      animation: gradientShift 8s ease infinite;
+      animation: none;
     }
     
     @keyframes gradientShift {
@@ -162,7 +162,7 @@
       font-weight: bold;
       font-size: 1.25rem;
       text-shadow: 0 2px 4px rgba(0, 0, 0, 0.5);
-      animation: captionPulse 3s infinite ease-in-out;
+      animation: none;
     }
     
     @keyframes captionPulse {
@@ -594,7 +594,7 @@
     .progress-bar {
       background: var(--accent-gradient);
       background-size: 200% 200%;
-      animation: gradientAnimation 2s ease infinite;
+      animation: none;
     }
     
     @keyframes gradientAnimation {

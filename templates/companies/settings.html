@@ -5,22 +5,21 @@
 {% block extra_styles %}
 {{ super() }}
 <style>
-  .settings-section { background: #fff; border-radius: 12px; padding: 28px; box-shadow: 0 2px 12px rgba(0,0,0,0.06); margin-bottom: 24px; }
-  .settings-section h5 { color: #374151; margin-bottom: 20px; padding-bottom: 12px; border-bottom: 2px solid #eef2ff; }
-  .color-preview { width: 36px; height: 36px; border-radius: 8px; border: 2px solid #e5e7eb; display: inline-block; vertical-align: middle; }
   .plan-badge { display: inline-block; padding: 4px 14px; border-radius: 20px; font-size: 0.8em; font-weight: 600; }
-  .plan-badge.trial { background: #fef3c7; color: #92400e; }
-  .plan-badge.pro { background: #eef2ff; color: #4338ca; }
-  .plan-badge.enterprise { background: #ecfdf5; color: #065f46; }
+  .plan-badge.trial { background: color-mix(in srgb, var(--fm-warning) 20%, transparent); color: #92400e; }
+  .plan-badge.pro { background: color-mix(in srgb, var(--fm-secondary) 12%, transparent); color: #4338ca; }
+  .plan-badge.enterprise { background: color-mix(in srgb, var(--fm-success) 16%, transparent); color: #065f46; }
+  .fm-section.danger { border-color: color-mix(in srgb, var(--fm-danger) 30%, transparent); }
+  .fm-section.danger .fm-section-header h5 { color: var(--fm-danger); }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="container mt-4">
+<div class="fm-workspace fm-ops-page">
   <div class="d-flex justify-content-between align-items-center mb-4">
     <div>
-      <h2><i class="fa-solid fa-gear text-primary"></i> Virksomhedsindstillinger</h2>
-      <p class="text-muted mb-0">{{ company.company_name }}
+      <h2 class="fm-page-title"><i class="fa-solid fa-gear"></i> Virksomhedsindstillinger</h2>
+      <p class="fm-page-subtitle mb-0">{{ company.company_name }}
         <span class="plan-badge {{ company.subscription_plan or 'trial' }}">{{ (company.subscription_plan or 'trial') | upper }}</span>
       </p>
     </div>
@@ -30,9 +29,10 @@
   </div>
 
   <form method="POST">
-    <!-- Company Info -->
-    <div class="settings-section">
-      <h5><i class="fa-solid fa-building"></i> Virksomhedsoplysninger</h5>
+    <div class="fm-section">
+      <div class="fm-section-header">
+        <h5><i class="fa-solid fa-building"></i> Virksomhedsoplysninger</h5>
+      </div>
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label">Virksomhedsnavn *</label>
@@ -53,18 +53,20 @@
       </div>
     </div>
 
-    <!-- Branding moved to dedicated hub -->
-    <div class="settings-section">
-      <h5><i class="fa-solid fa-palette"></i> Branding</h5>
+    <div class="fm-section">
+      <div class="fm-section-header">
+        <h5><i class="fa-solid fa-palette"></i> Branding</h5>
+      </div>
       <p class="text-muted mb-3">Logo, farver og white-label konfigureres i branding-hubben.</p>
       <a href="{{ url_for('companies.branding') }}" class="btn btn-outline-primary btn-sm">
         <i class="fa-solid fa-palette"></i> Åbn branding-hub
       </a>
     </div>
 
-    <!-- Notifications & Preferences -->
-    <div class="settings-section">
-      <h5><i class="fa-solid fa-bell"></i> Notifikationer</h5>
+    <div class="fm-section">
+      <div class="fm-section-header">
+        <h5><i class="fa-solid fa-bell"></i> Notifikationer</h5>
+      </div>
       <div class="row g-3">
         <div class="col-md-6">
           <label class="form-label">Sprog</label>
@@ -92,9 +94,10 @@
       </div>
     </div>
 
-    <!-- Danger zone -->
-    <div class="settings-section" style="border: 1px solid #fecaca;">
-      <h5 style="color: #dc2626; border-bottom-color: #fecaca;"><i class="fa-solid fa-triangle-exclamation"></i> Farezone</h5>
+    <div class="fm-section danger">
+      <div class="fm-section-header">
+        <h5><i class="fa-solid fa-triangle-exclamation"></i> Farezone</h5>
+      </div>
       <div class="d-flex justify-content-between align-items-center">
         <div>
           <strong>Deaktiver virksomhedskonto</strong>
@@ -110,17 +113,4 @@
     </div>
   </form>
 </div>
-{% endblock %}
-
-{% block extra_scripts %}
-{{ super() }}
-<script>
-// Sync color pickers with text inputs
-document.querySelectorAll('input[type="color"]').forEach(picker => {
-  const textInput = picker.parentElement.querySelector('input[type="text"]');
-  if (textInput) {
-    picker.addEventListener('input', () => textInput.value = picker.value);
-  }
-});
-</script>
 {% endblock %}

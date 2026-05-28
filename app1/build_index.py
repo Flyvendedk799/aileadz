@@ -233,12 +233,14 @@ def build_embedding_context(product, summary):
 
 
 def generate_embeddings_batch(texts):
-    """Generate embeddings for a batch of texts using text-embedding-3-large (1024 dims)."""
+    """Generate embeddings for a batch of texts using configured embedding model."""
+    from app1.rag import embedding_dimensions, embedding_model
+
     try:
         response = openai.embeddings.create(
             input=texts,
-            model="text-embedding-3-large",
-            dimensions=1024
+            model=embedding_model(),
+            dimensions=embedding_dimensions()
         )
         return [item.embedding for item in response.data]
     except Exception as e:
@@ -248,11 +250,13 @@ def generate_embeddings_batch(texts):
 
 def generate_embedding(text):
     """Generate text embedding for a single text (fallback)."""
+    from app1.rag import embedding_dimensions, embedding_model
+
     try:
         response = openai.embeddings.create(
             input=text,
-            model="text-embedding-3-large",
-            dimensions=1024
+            model=embedding_model(),
+            dimensions=embedding_dimensions()
         )
         return response.data[0].embedding
     except Exception as e:

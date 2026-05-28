@@ -1,7 +1,4 @@
-"""
-HR Chatbot Agent — AI assistant for HR managers within the HR dashboard.
-Separate from the employee chatbot. Uses HR-specific tools for company analytics.
-"""
+"""HR Chatbot Agent — AI assistant for HR managers within the HR dashboard."""
 import json
 import time
 import uuid
@@ -10,8 +7,7 @@ from db_compat import close_flask_mysql_connection
 from hr_tools import execute_hr_tool
 
 
-# In-memory chat history per HR session
-HR_CHAT_MEMORY = {}  # {hr_session_id: [messages]}
+HR_CHAT_MEMORY = {}
 HR_SESSION_TTL = 3600
 
 HR_SYSTEM_PROMPT = """Du er en AI-assistent for HR-ledere i Futurematch-platformen. Du hjaelper med at analysere uddannelsesdata, kompetencer og medarbejderudvikling.
@@ -70,13 +66,25 @@ def get_hr_system_prompt():
 
 
 def _cleanup_hr_sessions():
-    """Remove stale HR chat sessions."""
     now = time.time()
     stale = [sid for sid, msgs in HR_CHAT_MEMORY.items()
              if msgs and isinstance(msgs[-1], dict) and
              msgs[-1].get("_ts", 0) < now - HR_SESSION_TTL]
     for sid in stale:
         del HR_CHAT_MEMORY[sid]
+
+
+def _classify_hr_intent(user_query: str) -> str:
+    q = (user_query or "").lower()
+    if any(w in q for w in ("hej", "hello", "tak", "thanks", "godmorgen")) and len(q.split()) <= 4:
+        return "chit_chat"
+    if any(w in q for w in ("budget", "forbrug", "økonomi", "remaining")):
+        return "budget"
+    if any(w in q for w in ("kompetence", "skill", "gap", "mangler")):
+        return "skills"
+    if any(w in q for w in ("kursus", "kurser", "uddannelse", "træning", "plan")):
+        return "catalog"
+    return "general"
 
 
 def handle_hr_ask(user_query, flask_session):
@@ -88,7 +96,6 @@ def handle_hr_ask(user_query, flask_session):
         hr_sid = f"hr_{uuid.uuid4()}"
         flask_session["hr_chat_session_id"] = hr_sid
 
-    # Initialize chat memory
     if hr_sid not in HR_CHAT_MEMORY:
         HR_CHAT_MEMORY[hr_sid] = [
             {"role": "system", "content": get_hr_system_prompt()}
@@ -97,7 +104,6 @@ def handle_hr_ask(user_query, flask_session):
     messages = HR_CHAT_MEMORY[hr_sid]
     messages.append({"role": "user", "content": user_query, "_ts": time.time()})
 
-    # Inject company context
     company_name = flask_session.get('company_name', 'Virksomheden')
     user_role = flask_session.get('company_role', 'hr_manager')
     user_dept = flask_session.get('company_department', '')
@@ -107,33 +113,58 @@ def handle_hr_ask(user_query, flask_session):
     if user_dept:
         context_parts.append(f"AFDELING: {user_dept}")
 
-    # Check if context message already exists, update it
     context_msg = {"role": "system", "content": "\n".join(context_parts)}
     if len(messages) > 2 and messages[1].get("role") == "system" and messages[1].get("content", "").startswith("HR-BRUGER:"):
         messages[1] = context_msg
     else:
         messages.insert(1, context_msg)
 
+    intent = _classify_hr_intent(user_query)
+
     def stream_generator():
         try:
             yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
 
-            ephemeral_messages = [m for m in messages if not m.get("_ts") or m.get("role") != "user" or m == messages[-1]]
-            # Clean _ts from messages for API
             clean_messages = []
-            for m in ephemeral_messages:
-                clean = {k: v for k, v in m.items() if k != "_ts"}
-                clean_messages.append(clean)
+            for m in messages:
+                if m.get("_ts") and m is not messages[-1] and m.get("role") == "user":
+                    continue
+                clean_messages.append({k: v for k, v in m.items() if k != "_ts"})
 
+            from ai_context import build_few_shot_message, choose_max_iterations, few_shot_mode, prune_conversation_memory, run_chitchat_turn
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
+                check_turn_token_budget,
+                choose_turn_model,
+                estimate_messages_tokens,
+                in_rate_limit_cooldown,
+                iter_completion_stream,
                 log_agent_run,
                 log_tool_run,
-                main_model,
                 make_run_id,
+                prepare_messages_for_turn,
                 run_agent_with_fallback,
+                user_facing_error_message,
             )
             from ai_tool_registry import get_hr_tool_selection, make_tool_choice, tool_name, toolset_enabled
+
+            clean_messages = prune_conversation_memory(clean_messages, keep_recent=14, trigger_at=22)
+
+            pre_turn_estimate = estimate_messages_tokens(prepare_messages_for_turn(clean_messages))
+            if len(clean_messages) <= 14 and pre_turn_estimate < 18000 and few_shot_mode() not in {"0", "false", "no", "off", "never"}:
+                few_shot = build_few_shot_message("")
+                if few_shot:
+                    few_shot = {
+                        "role": "system",
+                        "content": (
+                            "EKSEMPLER (HR kort stil):\n"
+                            "Bruger: Hvad bruger vi på uddannelse?\n"
+                            "Assistent: [budget] Her er et kort overblik — vil du se det per afdeling?\n\n"
+                            "Bruger: Find kurser til salgsteamet\n"
+                            "Assistent: [katalog] Her er relevante kurser — skal jeg filtrere på format eller budget?"
+                        ),
+                    }
+                    clean_messages.insert(1, few_shot)
 
             if toolset_enabled():
                 hr_tools, toolset_meta = get_hr_tool_selection(
@@ -148,23 +179,44 @@ def handle_hr_ask(user_query, flask_session):
                     "tool_names": [tool_name(t) for t in hr_tools],
                     "forced_tool": None,
                 }
+
+            token_estimate = estimate_messages_tokens(prepare_messages_for_turn(clean_messages))
+            allowed, budget_message, compaction_level = check_turn_token_budget(clean_messages)
+            if not allowed:
+                yield f"data: {json.dumps({'type': 'text', 'content': budget_message})}\n\n"
+                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                return
+
+            turn_model = choose_turn_model(
+                intent=intent,
+                tool_count=len(hr_tools),
+                token_estimate=token_estimate,
+                prefer_quality=intent in {"skills", "catalog", "budget"},
+            )
             run_id = make_run_id()
 
             def _hr_executor(tool_call, username=None, session_id=None):
                 return execute_hr_tool(tool_call)
 
-            runtime_result = run_agent_with_fallback(
-                messages=clean_messages,
-                tools=hr_tools,
-                tool_executor=_hr_executor,
-                username=flask_session.get("user"),
-                session_id=hr_sid,
-                model=main_model(),
-                tool_choice=make_tool_choice(toolset_meta.get("forced_tool")),
-                max_iterations=5,
-                prompt_cache_key=f"futurematch-hr:{toolset_meta.get('version')}",
-            )
+            if not hr_tools and intent == "chit_chat":
+                runtime_result = run_chitchat_turn(clean_messages, intent=intent)
+            else:
+                if hr_tools:
+                    yield f"data: {json.dumps({'type': 'thinking', 'content': 'Analyserer…'})}\n\n"
+                runtime_result = run_agent_with_fallback(
+                    messages=clean_messages,
+                    tools=hr_tools,
+                    tool_executor=_hr_executor,
+                    username=flask_session.get("user"),
+                    session_id=hr_sid,
+                    model=turn_model,
+                    tool_choice=make_tool_choice(toolset_meta.get("forced_tool")),
+                    max_iterations=choose_max_iterations(intent, scope="hr"),
+                    prompt_cache_key=f"futurematch-hr:{toolset_meta.get('version')}:{AI_PROMPT_VERSION}",
+                )
             final_text = runtime_result.text or ""
+            if in_rate_limit_cooldown():
+                compaction_level = "cooldown"
 
             try:
                 log_agent_run(
@@ -175,7 +227,7 @@ def handle_hr_ask(user_query, flask_session):
                     username=flask_session.get("user"),
                     agent_scope="hr",
                     runtime=runtime_result.runtime,
-                    model=main_model(),
+                    model=turn_model,
                     prompt_version=AI_PROMPT_VERSION,
                     toolset_version=toolset_meta.get("version", ""),
                     tool_names=toolset_meta.get("tool_names", []),
@@ -184,6 +236,8 @@ def handle_hr_ask(user_query, flask_session):
                     fallback_reason=runtime_result.fallback_reason,
                     latency_ms=runtime_result.latency_ms,
                     usage=runtime_result.usage,
+                    compaction_level=runtime_result.compaction_level or compaction_level,
+                    runtime_path=runtime_result.runtime_path or runtime_result.runtime,
                 )
             except Exception:
                 pass
@@ -204,21 +258,19 @@ def handle_hr_ask(user_query, flask_session):
                     pass
 
             close_flask_mysql_connection()
-            if final_text:
-                # Stream the response in chunks for a nice UX
-                chunk_size = 20
-                for i in range(0, len(final_text), chunk_size):
-                    chunk = final_text[i:i+chunk_size]
-                    yield f"data: {json.dumps({'type': 'text', 'content': chunk})}\n\n"
+            final_messages = list(
+                runtime_result.stream_messages or runtime_result.messages or clean_messages
+            )
+            full_text = runtime_result.text or ""
+            if runtime_result.needs_final_stream or not full_text.strip():
+                for token in iter_completion_stream(final_messages, model=turn_model):
+                    full_text += token
+                    yield f"data: {json.dumps({'type': 'text', 'content': token})}\n\n"
+            elif full_text:
+                yield f"data: {json.dumps({'type': 'text', 'content': full_text})}\n\n"
 
-            # Store assistant response in memory
-            messages.append({"role": "assistant", "content": final_text, "_ts": time.time()})
-
-            # Prune if too long
-            if len(messages) > 30:
-                system_msgs = [m for m in messages[:3] if m.get("role") == "system"]
-                recent = messages[-20:]
-                HR_CHAT_MEMORY[hr_sid] = system_msgs + recent
+            messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
+            HR_CHAT_MEMORY[hr_sid] = prune_conversation_memory(messages, keep_recent=16, trigger_at=28)
 
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
 
@@ -226,7 +278,7 @@ def handle_hr_ask(user_query, flask_session):
             print(f"[HR Agent Error] {e}")
             import traceback
             traceback.print_exc()
-            yield f"data: {json.dumps({'type': 'error', 'content': f'Der opstod en fejl: {str(e)}'})}\n\n"
+            yield f"data: {json.dumps({'type': 'error', 'content': user_facing_error_message(e)})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         finally:
             close_flask_mysql_connection()

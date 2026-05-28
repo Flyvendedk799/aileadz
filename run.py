@@ -172,6 +172,27 @@ def create_app():
 
     # Branding schema migration runs every process start (not gated by enterprise sync TTL)
     @app.before_request
+    def _warm_ai_subsystems_once():
+        if getattr(app, '_ai_subsystems_warmed', False):
+            return
+        app._ai_subsystems_warmed = True
+        try:
+            from ai_context import warm_ai_subsystems
+            stats = warm_ai_subsystems()
+            logging.info("AI subsystems warmed: %s", stats)
+        except Exception as e:
+            logging.warning("AI warmup skipped: %s", e)
+
+    if os.getenv("AI_WARMUP_ON_IMPORT", "1").lower() not in {"0", "false", "no", "off"}:
+        try:
+            from ai_context import warm_ai_subsystems
+            stats = warm_ai_subsystems()
+            logging.info("AI subsystems warmed at import: %s", stats)
+            app._ai_subsystems_warmed = True
+        except Exception as e:
+            logging.warning("AI import warmup skipped: %s", e)
+
+    @app.before_request
     def _ensure_branding_schema_once():
         if getattr(app, '_branding_schema_ensured', False):
             return

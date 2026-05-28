@@ -57,6 +57,18 @@ Afslut altid med 2-3 konkrete forslag til naeste skridt, formateret som:
 """
 
 
+def get_hr_system_prompt():
+    try:
+        from branding_service import get_branding, is_whitelabel_active
+        cid = session.get('company_id')
+        if cid and is_whitelabel_active(cid):
+            name = get_branding(cid).get('company_name') or 'virksomheden'
+            return HR_SYSTEM_PROMPT.replace('Futurematch-platformen', f'{name}s læringsplatform').replace('Futurematch', name)
+    except Exception:
+        pass
+    return HR_SYSTEM_PROMPT
+
+
 def _cleanup_hr_sessions():
     """Remove stale HR chat sessions."""
     now = time.time()
@@ -79,7 +91,7 @@ def handle_hr_ask(user_query, flask_session):
     # Initialize chat memory
     if hr_sid not in HR_CHAT_MEMORY:
         HR_CHAT_MEMORY[hr_sid] = [
-            {"role": "system", "content": HR_SYSTEM_PROMPT}
+            {"role": "system", "content": get_hr_system_prompt()}
         ]
 
     messages = HR_CHAT_MEMORY[hr_sid]

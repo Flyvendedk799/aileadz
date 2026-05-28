@@ -201,6 +201,40 @@ def _auto_sync_columns(conn, create_stmts):
         logging.info("Auto-sync: all tables up to date")
 
 
+def _seed_theme_templates(conn):
+    """Seed default theme templates if table is empty."""
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM company_theme_templates")
+        count = cur.fetchone()[0]
+        if count > 0:
+            cur.close()
+            return
+        presets = [
+            ('Corporate Teal', 'professional', '#0f766e', '#2563eb', '#f59e0b', '#f8fafc', '#1f2937', 'Inter', '14px', '8px', '8px'),
+            ('Enterprise Purple', 'professional', '#7c3aed', '#2575fc', '#ff512f', '#0f0f23', '#e4e4e7', 'Inter', '14px', '8px', '8px'),
+            ('Modern Slate', 'modern', '#334155', '#64748b', '#0ea5e9', '#f1f5f9', '#0f172a', 'Inter', '15px', '10px', '8px'),
+            ('Warm Orange', 'creative', '#ea580c', '#dc2626', '#16a34a', '#fff7ed', '#431407', 'Inter', '14px', '12px', '8px'),
+            ('Nordic Blue', 'professional', '#1e40af', '#3b82f6', '#06b6d4', '#eff6ff', '#1e3a8a', 'Inter', '14px', '8px', '8px'),
+        ]
+        for name, cat, pri, sec, acc, bg, txt, font, fs, br, sp in presets:
+            cur.execute(
+                """
+                INSERT INTO company_theme_templates
+                (template_name, template_category, primary_color, secondary_color,
+                 accent_color, background_color, text_color, font_family,
+                 font_size_base, border_radius, spacing_unit, is_active)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 1)
+                """,
+                (name, cat, pri, sec, acc, bg, txt, font, fs, br, sp),
+            )
+        conn.commit()
+        cur.close()
+        logging.info("Seeded %d theme templates", len(presets))
+    except Exception as e:
+        logging.warning("Theme template seed skipped: %s", e)
+
+
 def ensure_enterprise_tables(app):
     """Create enterprise tables using the app's MySQL connection."""
     try:
@@ -610,6 +644,9 @@ def ensure_enterprise_tables(app):
                     chatbot_show_internal TINYINT DEFAULT 1,
                     enable_white_label TINYINT DEFAULT 0,
                     hide_platform_branding TINYINT DEFAULT 0,
+                    branding_status VARCHAR(20) DEFAULT 'live',
+                    branding_draft JSON,
+                    company_tagline VARCHAR(255),
                     language VARCHAR(10) DEFAULT 'da',
                     timezone VARCHAR(50) DEFAULT 'Europe/Copenhagen',
                     currency VARCHAR(10) DEFAULT 'DKK',
@@ -859,6 +896,7 @@ def ensure_enterprise_tables(app):
             # Auto-sync: detect missing columns on existing tables and add them
             cur.close()
             _auto_sync_columns(conn, tables)
+            _seed_theme_templates(conn)
             logging.info("Enterprise tables ensured (%d tables)", len(tables))
 
     except Exception as e:

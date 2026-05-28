@@ -3,11 +3,11 @@
 {% block extra_styles %}
 <style>
   :root {
-    --auth-primary: #0f766e;
-    --auth-primary-dark: #0f766e;
-    --auth-accent: #2563eb;
-    --auth-gradient-start: #0f766e;
-    --auth-gradient-end: #2563eb;
+    --auth-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+    --auth-primary-dark: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+    --auth-accent: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
+    --auth-gradient-start: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+    --auth-gradient-end: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
     --auth-input-bg: rgba(255, 255, 255, 0.08);
     --auth-card-bg: rgba(17, 24, 39, 0.7);
     --auth-text: #E5E7EB;
@@ -299,22 +299,26 @@
   
   <div class="auth-card">
     <div class="auth-logo">
+      {% if white_label_active and company_branding.company_logo %}
+      <img src="{{ company_branding.company_logo }}" alt="{{ company_branding.company_name }}" style="height:48px;max-width:180px;object-fit:contain;">
+      {% else %}
       <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M2 17L12 22L22 17" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <path d="M2 12L12 17L22 12" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
         <defs>
           <linearGradient id="logo-gradient" x1="2" y1="12" x2="22" y2="12" gradientUnits="userSpaceOnUse">
-            <stop stop-color="#0f766e"/>
-            <stop offset="1" stop-color="#2563eb"/>
+            <stop stop-color="var(--auth-gradient-start)"/>
+            <stop offset="1" stop-color="var(--auth-gradient-end)"/>
           </linearGradient>
         </defs>
       </svg>
-      <span class="auth-logo-name">{{ company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' }}</span>
+      {% endif %}
+      <span class="auth-logo-name">{{ platform_name }}</span>
     </div>
     
     <div class="auth-form-header">
-      <p class="auth-kicker">Sikker adgang</p>
+      <p class="auth-kicker">{% if white_label_active %}Sikker adgang{% else %}Sikker adgang{% endif %}</p>
       <h2>Velkommen tilbage</h2>
     </div>
     

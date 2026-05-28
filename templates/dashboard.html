@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 
-{% block title %}Futurematch Command Center{% endblock %}
+{% block title %}{{ platform_name }} Command Center{% endblock %}
 {% block page_heading %}Command Center{% endblock %}
 {% block page_subheading %}Kursusrådgivning, HR-overblik, rapporter og kontoarbejde samlet i én adaptiv flade.{% endblock %}
 
@@ -8,7 +8,7 @@
 <div class="fm-command-center">
   <section class="fm-command-hero">
     <div class="fm-hero-panel" data-fm-animate>
-      <span class="fm-eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> Futurematch</span>
+      <span class="fm-eyebrow"><i class="fa-solid fa-wand-magic-sparkles"></i> {{ platform_name }}</span>
       <h2 class="fm-hero-title">Find det næste match mellem mennesker, læring og data.</h2>
       <p class="fm-hero-copy">
         Brug AI-assistenten til kursusvalg, følg virksomhedens læringsaktivitet, og gå direkte til de rapporter,

@@ -599,6 +599,7 @@ def create_multitenant_reports_blueprint():
             'export_date': datetime.datetime.now().isoformat(),
             'company_id': company['id'],
             'company_name': company['company_name'],
+            'company_slug': company.get('company_slug'),
             'exported_by': session.get('user'),
             'metrics': {},
             'time_series': {},

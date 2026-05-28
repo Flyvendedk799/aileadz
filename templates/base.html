@@ -17,7 +17,7 @@
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/futurematch.css') }}">
   <style>
     :root {
-      --fm-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+      --fm-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0b6b63{% endif %};
       --fm-secondary: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
       --fm-accent: {% if white_label_active and company_branding.accent_color %}{{ company_branding.accent_color }}{% else %}#f59e0b{% endif %};
       --fm-font-family: {% if white_label_active and company_branding.font_family %}{{ company_branding.font_family }}{% else %}"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif{% endif %};
@@ -58,7 +58,7 @@
 <body class="futurematch-shell">
   {% set platform_name = company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' %}
   {% set platform_logo = company_branding.company_logo if white_label_active and company_branding.company_logo else none %}
-  {% set brand_kicker = company_branding.tagline if white_label_active and company_branding.tagline else 'Command Center' %}
+  {% set brand_kicker = company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' %}
 
   <div class="dashboard fm-app-shell">
     <aside class="sidebar fm-sidebar collapsed" id="sidebar" aria-label="Primær navigation">
@@ -279,7 +279,7 @@
       </main>
 
       <footer class="footer fm-footer">
-        <div class="fm-footer-inner">
+        <div class="fm-footer-inner fm-app-footer">
           <span>&copy; 2026 {{ platform_name }}. Alle rettigheder forbeholdes.</span>
           <span>
             {% if white_label_active and company_branding.support_email %}

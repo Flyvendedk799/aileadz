@@ -8,6 +8,7 @@
   <link rel="icon" href="{{ company_branding.favicon_url }}">
   {% endif %}
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/chat.css') }}">
   <style>
     /* ── Theme ── */
     :root {
@@ -20,10 +21,10 @@
       --text-secondary: #a1a1aa;
       --text-muted: #52525b;
       --text-faint: #3f3f46;
-      --purple: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
-      --purple-dark: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
-      --purple-glow: rgba(15,118,110,0.08);
-      --purple-border: rgba(15,118,110,0.18);
+      --purple: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0b6b63{% endif %};
+      --purple-dark: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#07544e{% endif %};
+      --purple-glow: color-mix(in srgb, var(--purple) 8%, transparent);
+      --purple-border: color-mix(in srgb, var(--purple) 18%, transparent);
       --green: #4ade80;
       --red: #ef4444;
       --red-soft: #fca5a5;

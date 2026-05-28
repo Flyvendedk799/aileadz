@@ -916,7 +916,7 @@ def create_companies_blueprint():
                 'company_website': request.form.get('company_website', '').strip(),
                 'support_email': request.form.get('support_email', '').strip(),
                 'support_phone': request.form.get('support_phone', '').strip(),
-                'primary_color': request.form.get('primary_color', '#0f766e'),
+                'primary_color': request.form.get('primary_color', '#0b6b63'),
                 'secondary_color': request.form.get('secondary_color', '#2563eb'),
                 'accent_color': request.form.get('accent_color', '#f59e0b'),
                 'background_color': request.form.get('background_color', '#f8fafc'),

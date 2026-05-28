@@ -3,6 +3,7 @@
 {% block title %}Medarbejdere - {{ company.company_name }}{% endblock %}
 
 {% block content %}
+<div class="fm-workspace fm-ops-page">
 <div class="container-fluid mt-4">
     {% include 'hr_dashboard/_hr_nav.html' %}
 
@@ -84,13 +85,13 @@
             <table class="table table-hover align-middle mb-0" id="employeeTable">
                 <thead>
                     <tr class="bg-light">
-                        <th class="ps-3 border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Medarbejder</th>
-                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Afdeling</th>
-                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Rolle</th>
-                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Status</th>
-                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Laering</th>
-                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;">Chatbot</th>
-                        <th class="border-0 text-end pe-3" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:#64748b;"></th>
+                        <th class="ps-3 border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);">Medarbejder</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);">Afdeling</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);">Rolle</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);">Status</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);">Laering</th>
+                        <th class="border-0" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);">Chatbot</th>
+                        <th class="border-0 text-end pe-3" style="font-size:0.73rem;font-weight:700;text-transform:uppercase;letter-spacing:0.03em;color:var(--fm-text-muted);"></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -214,6 +215,7 @@
             </div>
         </div>
     </div>
+</div>
 </div>
 {% endblock %}
 

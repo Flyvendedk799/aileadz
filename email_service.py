@@ -59,7 +59,7 @@ def render_branded_email(template_name: str, branding: dict, **context) -> str:
     ctx = {
         'company_name': branding.get('company_name', 'Futurematch'),
         'logo_url': branding.get('logo_url') or branding.get('company_logo'),
-        'primary_color': branding.get('primary_color', '#0f766e'),
+        'primary_color': branding.get('primary_color', '#0b6b63'),
         'background_color': branding.get('background_color', '#f8fafc'),
         'font_family': branding.get('font_family', 'Inter, sans-serif'),
         'support_email': branding.get('support_email', ''),

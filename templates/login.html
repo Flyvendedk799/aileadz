@@ -1,353 +1,54 @@
 {% extends "base.html" %}
 
 {% block extra_styles %}
+{{ super() }}
 <style>
-  :root {
-    --auth-primary: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
-    --auth-primary-dark: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
-    --auth-accent: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
-    --auth-gradient-start: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
-    --auth-gradient-end: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
-    --auth-input-bg: rgba(255, 255, 255, 0.08);
-    --auth-card-bg: rgba(17, 24, 39, 0.7);
-    --auth-text: #E5E7EB;
-    --auth-text-secondary: #9CA3AF;
-    --auth-border: rgba(255, 255, 255, 0.1);
-    --auth-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
-    --auth-glow: 0 0 20px rgba(15, 118, 110, 0.5);
-  }
-
-  .auth-container {
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    min-height: calc(100vh - 150px);
-    background: transparent;
-    position: relative;
-    overflow: hidden;
-    padding: 20px;
-  }
-
-  .auth-container::before {
-    content: '';
-    position: absolute;
-    top: -50%;
-    left: -50%;
-    width: 200%;
-    height: 200%;
-    background: linear-gradient(
-      45deg,
-      transparent 0%,
-      rgba(15, 118, 110, 0.03) 25%,
-      transparent 50%,
-      rgba(37, 99, 235, 0.03) 75%,
-      transparent 100%
-    );
-    animation: background-shimmer 10s linear infinite;
-    z-index: 0;
-  }
-
-  @keyframes background-shimmer {
-    0% { transform: rotate(0deg) translate(-50px, -50px); }
-    100% { transform: rotate(360deg) translate(-50px, -50px); }
-  }
-
-  .auth-card {
-    position: relative;
-    width: 100%;
-    max-width: 420px;
-    background-color: var(--auth-card-bg);
-    backdrop-filter: blur(10px);
-    padding: 40px;
-    border-radius: 16px;
-    box-shadow: var(--auth-shadow);
-    border: 1px solid var(--auth-border);
-    z-index: 1;
-    transition: all 0.3s ease;
-    overflow: hidden;
-  }
-
-  .auth-card:hover {
-    box-shadow: var(--auth-glow);
-    transform: translateY(-5px);
-  }
-
-  .auth-card::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: -100%;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      rgba(255, 255, 255, 0.1),
-      transparent
-    );
-    transition: 0.5s;
-  }
-
-  .auth-card:hover::after {
-    left: 100%;
-  }
-
-  .auth-logo {
-    display: flex;
-    justify-content: center;
-    margin-bottom: 24px;
-  }
-
-  .auth-logo svg {
-    height: 40px;
-    width: auto;
-  }
-
-  .auth-card h2 {
-    font-size: 2rem;
-    color: var(--auth-text);
-    text-align: center;
-    margin-bottom: 30px;
-    font-weight: 700;
-    background: linear-gradient(to right, var(--auth-gradient-start), var(--auth-gradient-end));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    letter-spacing: 0.5px;
-  }
-
-  .input-group {
-    position: relative;
-    margin-bottom: 24px;
-  }
-
-  .input-group label {
-    position: absolute;
-    top: 0;
-    left: 12px;
-    font-size: 0.8rem;
-    color: var(--auth-text-secondary);
-    background-color: var(--auth-card-bg);
-    padding: 0 5px;
-    transform: translateY(-50%);
-    transition: all 0.3s ease;
-  }
-
-  .input-group input {
-    width: 100%;
-    padding: 16px;
-    background-color: var(--auth-input-bg);
-    border: 1px solid var(--auth-border);
-    border-radius: 12px;
-    color: var(--auth-text);
-    font-size: 1rem;
-    transition: all 0.3s ease;
-    outline: none;
-  }
-
-  .input-group input:focus {
-    border-color: var(--auth-primary);
-    box-shadow: 0 0 0 2px rgba(15, 118, 110, 0.3);
-  }
-
-  .input-group input:focus + label {
-    color: var(--auth-primary);
-  }
-
-  .auth-btn {
-    width: 100%;
-    padding: 16px;
-    background: linear-gradient(to right, var(--auth-gradient-start), var(--auth-gradient-end));
-    color: white;
-    border: none;
-    border-radius: 12px;
-    font-size: 1rem;
-    font-weight: 600;
-    cursor: pointer;
-    transition: all 0.3s ease;
-    position: relative;
-    overflow: hidden;
-    z-index: 1;
-    box-shadow: 0 4px 12px rgba(15, 118, 110, 0.4);
-  }
-
-  .auth-btn::before {
-    content: '';
-    position: absolute;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background: linear-gradient(to right, var(--auth-gradient-end), var(--auth-gradient-start));
-    transition: opacity 0.5s ease;
-    z-index: -1;
-    opacity: 0;
-  }
-
-  .auth-btn:hover::before {
-    opacity: 1;
-  }
-
-  .auth-btn:active {
-    transform: scale(0.98);
-  }
-
-  .auth-link {
-    display: block;
-    text-align: center;
-    margin-top: 24px;
-    color: var(--auth-text-secondary);
-    font-size: 0.9rem;
-  }
-
-  .auth-link a {
-    color: var(--auth-primary);
-    text-decoration: none;
-    font-weight: 500;
-    transition: all 0.3s ease;
-  }
-
-  .auth-link a:hover {
-    color: var(--auth-accent);
-    text-decoration: underline;
-  }
-
-  .flash-message {
-    padding: 12px;
-    border-radius: 8px;
-    margin-bottom: 20px;
-    font-size: 0.9rem;
-    animation: fadeIn 0.3s ease;
-    text-align: center;
-  }
-
-  .flash-message.success {
-    background-color: rgba(16, 185, 129, 0.1);
-    border: 1px solid rgba(16, 185, 129, 0.3);
-    color: #10B981;
-  }
-
-  .flash-message.danger {
-    background-color: rgba(239, 68, 68, 0.1);
-    border: 1px solid rgba(239, 68, 68, 0.3);
-    color: #EF4444;
-  }
-
-  @keyframes fadeIn {
-    from { opacity: 0; transform: translateY(-10px); }
-    to { opacity: 1; transform: translateY(0); }
-  }
-
-  /* Floating elements animation */
-  .floating-element {
-    position: absolute;
-    border-radius: 50%;
-    background: linear-gradient(135deg, var(--auth-gradient-start), var(--auth-gradient-end));
-    opacity: 0.1;
-    filter: blur(10px);
-    z-index: 0;
-  }
-
-  .float-1 {
-    width: 100px;
-    height: 100px;
-    top: 20%;
-    left: 15%;
-    animation: float 15s ease-in-out infinite;
-  }
-
-  .float-2 {
-    width: 150px;
-    height: 150px;
-    bottom: 10%;
-    right: 20%;
-    animation: float 18s ease-in-out infinite 2s;
-  }
-
-  .float-3 {
-    width: 70px;
-    height: 70px;
-    bottom: 30%;
-    left: 30%;
-    animation: float 12s ease-in-out infinite 1s;
-  }
-
-  @keyframes float {
-    0% { transform: translate(0, 0) rotate(0deg); }
-    50% { transform: translate(20px, 20px) rotate(180deg); }
-    100% { transform: translate(0, 0) rotate(360deg); }
-  }
-
-  .auth-container { background: transparent; overflow: visible; }
-  .auth-container::before,
-  .auth-card::after { display: none; }
-  .auth-card h2 {
-    background: none;
-    color: var(--fm-text);
-    -webkit-text-fill-color: currentColor;
-  }
-  .input-group label { background: var(--fm-surface); }
+  body.futurematch-shell .main-content { padding: 0; }
 </style>
 {% endblock %}
 
 {% block global_flashes %}{% endblock %}
 
 {% block content %}
-<div class="auth-container">
-  <div class="floating-element float-1"></div>
-  <div class="floating-element float-2"></div>
-  <div class="floating-element float-3"></div>
-  
-  <div class="auth-card">
-    <div class="auth-logo">
-      {% if white_label_active and company_branding.company_logo %}
-      <img src="{{ company_branding.company_logo }}" alt="{{ company_branding.company_name }}" style="height:48px;max-width:180px;object-fit:contain;">
-      {% else %}
-      <svg viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-        <path d="M12 2L2 7L12 12L22 7L12 2Z" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M2 17L12 22L22 17" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <path d="M2 12L12 17L22 12" stroke="url(#logo-gradient)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        <defs>
-          <linearGradient id="logo-gradient" x1="2" y1="12" x2="22" y2="12" gradientUnits="userSpaceOnUse">
-            <stop stop-color="var(--auth-gradient-start)"/>
-            <stop offset="1" stop-color="var(--auth-gradient-end)"/>
-          </linearGradient>
-        </defs>
-      </svg>
-      {% endif %}
-      <span class="auth-logo-name">{{ platform_name }}</span>
-    </div>
-    
-    <div class="auth-form-header">
-      <p class="auth-kicker">{% if white_label_active %}Sikker adgang{% else %}Sikker adgang{% endif %}</p>
-      <h2>Velkommen tilbage</h2>
-    </div>
-    
-    {% with messages = get_flashed_messages(with_categories=true) %}
-      {% if messages %}
-        {% for category, message in messages %}
-          <div class="flash-message {{ category }}">
-            {{ message }}
-          </div>
-        {% endfor %}
-      {% endif %}
-    {% endwith %}
-    
-    <form action="{{ url_for('auth.login') }}" method="POST">
-      <div class="input-group">
-        <label for="username">Brugernavn</label>
-        <input type="text" name="username" id="username" required autocomplete="username">
+<div class="fm-auth-page">
+  <div class="auth-container">
+    <div class="auth-card" data-fm-animate>
+      <div class="auth-logo">
+        {% if white_label_active and company_branding.company_logo %}
+        <img src="{{ company_branding.company_logo }}" alt="{{ company_branding.company_name }}" style="height:48px;max-width:180px;object-fit:contain;">
+        {% else %}
+        <span class="fm-brand-mark"><span class="fm-brand-initials">{{ platform_name[:2]|upper }}</span></span>
+        {% endif %}
       </div>
-      
-      <div class="input-group">
-        <label for="password">Adgangskode</label>
-        <input type="password" name="password" id="password" required autocomplete="current-password">
+
+      <div class="auth-form-header">
+        <p class="auth-kicker">{{ platform_name }}</p>
+        <h2>Velkommen tilbage</h2>
       </div>
-      
-      <button type="submit" class="auth-btn">Log ind</button>
-    </form>
-    
-    <div class="auth-link">
-      <p>Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></p>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+        {% if messages %}
+          {% for category, message in messages %}
+            <div class="flash-message {{ category }}">{{ message }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <form action="{{ url_for('auth.login') }}" method="POST">
+        <div class="input-group">
+          <label for="username">Brugernavn</label>
+          <input type="text" name="username" id="username" required autocomplete="username">
+        </div>
+        <div class="input-group">
+          <label for="password">Adgangskode</label>
+          <input type="password" name="password" id="password" required autocomplete="current-password">
+        </div>
+        <button type="submit" class="auth-btn btn btn-primary">Log ind</button>
+      </form>
+
+      <div class="auth-link">
+        <p>Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></p>
+      </div>
     </div>
   </div>
 </div>

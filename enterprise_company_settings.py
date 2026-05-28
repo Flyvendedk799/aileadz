@@ -59,8 +59,11 @@ class EnterpriseSettingsManager:
     
     def __init__(self):
         self.s3_client = None
-        if ENTERPRISE_CONFIG['CDN_ENABLED']:
-            self.s3_client = boto3.client('s3')
+        if ENTERPRISE_CONFIG['CDN_ENABLED'] and boto3 is not None:
+            try:
+                self.s3_client = boto3.client('s3')
+            except Exception:
+                self.s3_client = None
 
     def get_db(self):
         """Get database connection"""
@@ -104,17 +107,18 @@ class EnterpriseSettingsManager:
         if not any(filename.endswith(f'.{ext}') for ext in ENTERPRISE_CONFIG['ALLOWED_IMAGE_EXTENSIONS']):
             return False, "Invalid file type. Allowed: " + ", ".join(ENTERPRISE_CONFIG['ALLOWED_IMAGE_EXTENSIONS'])
         
-        # Check MIME type using python-magic
-        try:
-            file_content = file.read(1024)
-            file.seek(0)
-            mime_type = magic.from_buffer(file_content, mime=True)
-            
-            allowed_mimes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp', 'image/x-icon']
-            if mime_type not in allowed_mimes:
-                return False, f"Invalid MIME type: {mime_type}"
-        except Exception as e:
-            current_app.logger.warning(f"MIME type check failed: {e}")
+        # Check MIME type using python-magic when available
+        if magic is not None:
+            try:
+                file_content = file.read(1024)
+                file.seek(0)
+                mime_type = magic.from_buffer(file_content, mime=True)
+                
+                allowed_mimes = ['image/jpeg', 'image/png', 'image/gif', 'image/svg+xml', 'image/webp', 'image/x-icon']
+                if mime_type not in allowed_mimes:
+                    return False, f"Invalid MIME type: {mime_type}"
+            except Exception as e:
+                current_app.logger.warning(f"MIME type check failed: {e}")
         
         return True, "Valid"
     
@@ -131,16 +135,12 @@ class EnterpriseSettingsManager:
             
             processed_assets = {}
             
-            if file_ext == 'svg':
-                # Handle SVG files (no resizing needed)
+            if file_ext == 'svg' or Image is None:
                 file_path = os.path.join(upload_dir, unique_filename)
                 file.save(file_path)
                 processed_assets['original'] = f"/static/brand_assets/{company_id}/{unique_filename}"
             else:
-                # Process raster images
                 image = Image.open(file)
-                
-                # Convert to RGB if necessary
                 if image.mode in ('RGBA', 'LA', 'P'):
                     background = Image.new('RGB', image.size, (255, 255, 255))
                     if image.mode == 'P':
@@ -148,18 +148,13 @@ class EnterpriseSettingsManager:
                     background.paste(image, mask=image.split()[-1] if image.mode == 'RGBA' else None)
                     image = background
                 
-                # Generate multiple sizes if configured
                 sizes = ENTERPRISE_CONFIG['BRAND_ASSET_SIZES'].get(asset_type, [(image.width, image.height)])
                 
                 for width, height in sizes:
-                    # Resize maintaining aspect ratio
                     resized_image = ImageOps.fit(image, (width, height), Image.Resampling.LANCZOS)
-                    
-                    # Save optimized version
                     size_filename = f"{company_id}_{asset_type}_{width}x{height}_{uuid.uuid4().hex}.{file_ext}"
                     size_path = os.path.join(upload_dir, size_filename)
                     
-                    # Optimize based on format
                     if file_ext in ['jpg', 'jpeg']:
                         resized_image.save(size_path, 'JPEG', quality=85, optimize=True)
                     elif file_ext == 'png':
@@ -169,7 +164,6 @@ class EnterpriseSettingsManager:
                     
                     processed_assets[f"{width}x{height}"] = f"/static/brand_assets/{company_id}/{size_filename}"
                 
-                # Save original
                 original_path = os.path.join(upload_dir, unique_filename)
                 image.save(original_path, quality=95, optimize=True)
                 processed_assets['original'] = f"/static/brand_assets/{company_id}/{unique_filename}"
@@ -290,56 +284,41 @@ class EnterpriseSettingsManager:
             
             default_settings = {
                 'company_id': company_id,
-                'company_name': company_name,
-                'company_legal_name': company_name,
+                'company_display_name': company_name,
                 'company_description': '',
                 'company_website': '',
-                'company_industry': '',
-                'company_size': 'medium',
                 'primary_color': '#667eea',
                 'secondary_color': '#764ba2',
                 'accent_color': '#28a745',
-                'success_color': '#48bb78',
-                'warning_color': '#f6ad55',
-                'danger_color': '#fc8181',
-                'info_color': '#4299e1',
-                'neutral_color': '#6b7280',
                 'background_color': '#f8fafc',
-                'surface_color': '#ffffff',
-                'text_primary_color': '#1f2937',
-                'text_secondary_color': '#6b7280',
-                'border_color': '#e5e7eb',
-                'font_family_primary': 'Inter, system-ui, sans-serif',
-                'font_family_secondary': 'Inter, system-ui, sans-serif',
-                'font_family_monospace': 'JetBrains Mono, monospace',
+                'text_color': '#1f2937',
+                'font_family': 'Inter, system-ui, sans-serif',
                 'font_size_base': '16px',
-                'font_weight_normal': '400',
-                'font_weight_medium': '500',
-                'font_weight_bold': '700',
-                'line_height_base': '1.5',
-                'letter_spacing': '0',
-                'border_radius_sm': '4px',
-                'border_radius_md': '8px',
-                'border_radius_lg': '12px',
+                'border_radius': '8px',
                 'spacing_unit': '8px',
-                'container_max_width': '1200px',
-                'white_label_active': False,
-                'default_language': 'en',
-                'supported_languages': json.dumps(['en']),
-                'dark_mode_enabled': True,
-                'theme_switcher_enabled': True,
-                'animations_enabled': True,
-                'created_by': session.get('user_id')
+                'enable_white_label': 0,
+                'hide_platform_branding': 0,
+                'language': 'da',
+                'timezone': 'Europe/Copenhagen',
+                'branding_status': 'live',
             }
             
-            # Insert default settings
-            columns = ', '.join(default_settings.keys())
-            placeholders = ', '.join(['%s'] * len(default_settings))
-            
-            cur.execute(f"""
-                INSERT INTO company_settings ({columns})
-                VALUES ({placeholders})
-            """, list(default_settings.values()))
+            # Insert default settings using only existing columns
+            cur.execute("""
+                INSERT INTO company_settings (
+                    company_id, company_display_name, company_description, company_website,
+                    primary_color, secondary_color, accent_color, background_color, text_color,
+                    font_family, font_size_base, border_radius, spacing_unit,
+                    enable_white_label, hide_platform_branding, language, timezone, branding_status
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                company_id, company_name, '', '',
+                default_settings['primary_color'], default_settings['secondary_color'],
+                default_settings['accent_color'], default_settings['background_color'],
+                default_settings['text_color'], default_settings['font_family'],
+                default_settings['font_size_base'], default_settings['border_radius'],
+                default_settings['spacing_unit'], 0, 0, 'da', 'Europe/Copenhagen', 'live',
+            ))
             
             db.commit()
             cur.close()
@@ -376,11 +355,10 @@ class EnterpriseSettingsManager:
                     update_values.append(value)
             
             if update_fields:
-                update_values.extend([company_id, session.get('user_id')])
-                
+                update_values.append(company_id)
                 cur.execute(f"""
                     UPDATE company_settings 
-                    SET {', '.join(update_fields)}, updated_at = NOW(), updated_by = %s
+                    SET {', '.join(update_fields)}, updated_at = NOW()
                     WHERE company_id = %s
                 """, update_values)
                 
@@ -437,11 +415,11 @@ class EnterpriseSettingsManager:
                 'secondary_color': template['secondary_color'],
                 'accent_color': template['accent_color'],
                 'background_color': template['background_color'],
-                'text_primary_color': template['text_color'],
-                'font_family_primary': template['font_family'],
+                'text_color': template['text_color'],
+                'font_family': template['font_family'],
                 'font_size_base': template['font_size_base'],
-                'border_radius_md': template['border_radius'],
-                'spacing_unit': template['spacing_unit']
+                'border_radius': template['border_radius'],
+                'spacing_unit': template['spacing_unit'],
             }
             
             # Add custom CSS if available
@@ -489,9 +467,12 @@ def require_enterprise_access():
             
             user_type = session.get('user_type', 'regular')
             company_role = session.get('company_role', '')
+            platform_role = session.get('role', '')
             
-            # Allow platform admins and company admins/HR managers
-            if user_type == 'platform_admin':
+            if user_type == 'platform_admin' or platform_role == 'admin':
+                return f(*args, **kwargs)
+            
+            if company_role in ['hr_manager', 'company_admin']:
                 return f(*args, **kwargs)
             
             if user_type == 'company_user' and company_role in ['hr_manager', 'company_admin']:
@@ -557,40 +538,8 @@ def get_company_context():
 @enterprise_settings_bp.route('/company-settings')
 @require_enterprise_access()
 def company_settings():
-    """Enterprise company settings dashboard"""
-    company = get_company_context()
-    if not company:
-        flash("Company information not found.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
-    
-    # Get current settings
-    settings = settings_manager.get_company_settings(company['id'])
-    
-    # Get theme templates
-    theme_templates = settings_manager.get_theme_templates()
-    
-    # Get settings history (last 50 changes)
-    try:
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("""
-            SELECT csh.*, u.username as changed_by_username
-            FROM company_settings_history csh
-            LEFT JOIN users u ON csh.changed_by = u.id
-            WHERE csh.company_id = %s
-            ORDER BY csh.created_at DESC
-            LIMIT 50
-        """, (company['id'],))
-        settings_history = cur.fetchall()
-        cur.close()
-    except Exception as e:
-        current_app.logger.error(f"Failed to get settings history: {e}")
-        settings_history = []
-    
-    return render_template('hr_dashboard/enterprise_company_settings.html',
-                         company=company,
-                         settings=settings,
-                         theme_templates=theme_templates,
-                         settings_history=settings_history)
+    """Redirect legacy enterprise settings to unified branding hub."""
+    return redirect(url_for('companies.branding'))
 
 @enterprise_settings_bp.route('/company-settings', methods=['POST'])
 @require_enterprise_access()
@@ -647,14 +596,20 @@ def update_company_settings():
             if field in request.form:
                 settings_data[field] = request.form[field]
         
-        # Boolean settings
-        boolean_fields = [
-            'white_label_active', 'dark_mode_enabled', 'theme_switcher_enabled',
-            'animations_enabled', 'sound_effects_enabled'
-        ]
+        # Boolean settings — map white_label_active to enable_white_label
+        if 'white_label_active' in request.form or 'enable_white_label' in request.form:
+            settings_data['enable_white_label'] = (
+                'white_label_active' in request.form or 'enable_white_label' in request.form
+            )
+        if 'hide_platform_branding' in request.form:
+            settings_data['hide_platform_branding'] = True
+        elif request.form.get('_hide_platform_branding_present'):
+            settings_data['hide_platform_branding'] = False
         
+        boolean_fields = ['dark_mode_enabled', 'theme_switcher_enabled', 'animations_enabled']
         for field in boolean_fields:
-            settings_data[field] = field in request.form
+            if field in request.form:
+                settings_data[field] = True
         
         # Custom code
         if 'custom_css' in request.form:
@@ -772,4 +727,12 @@ def export_settings():
     if not company:
         return jsonify({'error': 'Company not found'}), 404
     
-    settings = settings_manager.get_company
+    settings = settings_manager.get_company_settings(company['id'])
+    export_data = {
+        'company_id': company['id'],
+        'company_slug': company.get('company_slug'),
+        'company_name': company.get('company_name'),
+        'exported_at': datetime.now().isoformat(),
+        'settings': {k: v for k, v in settings.items() if k not in ('brand_assets', 'custom_code')},
+    }
+    return jsonify(export_data)

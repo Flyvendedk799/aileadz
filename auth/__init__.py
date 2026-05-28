@@ -12,8 +12,44 @@ def allowed_file(filename):
     ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
     return filename and ('.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS)
 
+def _apply_session_user_context(user):
+    """Set session fields after successful authentication."""
+    session['user'] = user['username']
+    session['user_id'] = user['id']
+    session['credits'] = user['credits']
+    session['role'] = user.get('role', 'user')
+    if session['role'] == 'admin':
+        session['user_type'] = 'platform_admin'
+    else:
+        session['user_type'] = 'regular'
+    session.pop('company_id', None)
+    session.pop('company_role', None)
+    session.pop('company_name', None)
+    try:
+        cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur2.execute("""
+            SELECT cu.company_id, cu.role AS company_role, c.company_name, c.company_slug
+            FROM company_users cu
+            JOIN companies c ON c.id = cu.company_id
+            WHERE cu.user_id = %s AND cu.status = 'active'
+            ORDER BY cu.added_at DESC LIMIT 1
+        """, (user['id'],))
+        comp = cur2.fetchone()
+        cur2.close()
+        if comp:
+            session['company_id'] = comp['company_id']
+            session['company_role'] = comp['company_role']
+            session['company_name'] = comp['company_name']
+            session['company_slug'] = comp.get('company_slug', '')
+            session['user_type'] = 'company_user'
+    except Exception:
+        pass
+
+
 @auth_bp.route('/login', methods=['GET', 'POST'])
-def login():
+@auth_bp.route('/login/<slug>', methods=['GET', 'POST'])
+def login(slug=None):
+    tenant_slug = slug or request.args.get('tenant') or ''
     if request.method == 'POST':
         username = request.form.get('username')
         password = request.form.get('password')
@@ -40,34 +76,15 @@ def login():
                     except Exception:
                         pass
         if user and password_valid:
-            session['user'] = user['username']
-            session['user_id'] = user['id']
-            session['credits'] = user['credits']
-            session['role'] = user.get('role', 'user')  # Set role here
-            # Load company context if user belongs to a company
-            try:
-                cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-                cur2.execute("""
-                    SELECT cu.company_id, cu.role AS company_role, c.company_name
-                    FROM company_users cu
-                    JOIN companies c ON c.id = cu.company_id
-                    WHERE cu.user_id = %s AND cu.status = 'active'
-                    ORDER BY cu.added_at DESC LIMIT 1
-                """, (user['id'],))
-                comp = cur2.fetchone()
-                cur2.close()
-                if comp:
-                    session['company_id'] = comp['company_id']
-                    session['company_role'] = comp['company_role']
-                    session['company_name'] = comp['company_name']
-            except Exception:
-                pass  # company tables may not exist yet
+            _apply_session_user_context(user)
             flash('Login successful!', 'success')
-            return redirect(url_for('auth.profile'))
+            return redirect(url_for('dashboard.dashboard'))
         else:
             flash('Invalid username or password', 'danger')
+            if tenant_slug:
+                return redirect(url_for('auth.login', slug=tenant_slug))
             return redirect(url_for('auth.login'))
-    return render_template('login.html')
+    return render_template('login.html', tenant_slug=tenant_slug)
 
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
@@ -91,8 +108,10 @@ def register():
         current_app.mysql.connection.commit()
         cur.close()
         flash('Registration successful! Please log in.', 'success')
+        if request.args.get('tenant'):
+            return redirect(url_for('auth.login', slug=request.args.get('tenant')))
         return redirect(url_for('auth.login'))
-    return render_template('register.html')
+    return render_template('register.html', tenant_slug=request.args.get('tenant') or '')
 
 @auth_bp.route('/logout')
 def logout():

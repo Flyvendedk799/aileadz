@@ -312,11 +312,15 @@
     <!-- Header -->
     <div class="chat-header">
         <div class="chat-header-left">
+            {% if tenant_logo %}
+            <img src="{{ tenant_logo }}" alt="" style="height:32px;width:32px;object-fit:contain;border-radius:6px;margin-right:8px;">
+            {% else %}
             <div class="chat-header-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke-width="2">
                     <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path>
                 </svg>
             </div>
+            {% endif %}
             <div>
                 <div class="chat-header-title">{{ widget.widget_title or 'Chat' }}</div>
                 <div class="chat-header-status">Online</div>
@@ -347,7 +351,9 @@
     <!-- Branding -->
     {% if widget.show_branding %}
     <div class="branding">
-        <a href="https://futurematch.dk" target="_blank" rel="noopener">Powered by Futurematch</a>
+        {% if widget.show_branding %}
+        <a href="https://futurematch.dk" target="_blank" rel="noopener">{{ widget.powered_by_text or 'Powered by Futurematch' }}</a>
+        {% endif %}
     </div>
     {% endif %}
 

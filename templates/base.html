@@ -4,7 +4,10 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>{% block title %}Futurematch{% endblock %}</title>
+  <title>{% block title %}{% if white_label_active and hide_platform_branding %}{{ company_branding.company_name }}{% elif white_label_active %}{{ company_branding.company_name }}{% else %}Futurematch{% endif %}{% endblock %}</title>
+  {% if white_label_active and company_branding.favicon_url %}
+  <link rel="icon" href="{{ company_branding.favicon_url }}">
+  {% endif %}
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -18,10 +21,16 @@
       --fm-secondary: {% if white_label_active and company_branding.secondary_color %}{{ company_branding.secondary_color }}{% else %}#2563eb{% endif %};
       --fm-accent: {% if white_label_active and company_branding.accent_color %}{{ company_branding.accent_color }}{% else %}#f59e0b{% endif %};
       --fm-font-family: {% if white_label_active and company_branding.font_family %}{{ company_branding.font_family }}{% else %}"Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif{% endif %};
+      --fm-bg: {% if white_label_active and company_branding.background_color %}{{ company_branding.background_color }}{% else %}var(--fm-bg, #f8fafc){% endif %};
+      --fm-text: {% if white_label_active and company_branding.text_color %}{{ company_branding.text_color }}{% else %}#1f2937{% endif %};
+      --fm-radius-sm: {% if white_label_active and company_branding.border_radius %}{{ company_branding.border_radius }}{% else %}8px{% endif %};
     }
   </style>
   {% if white_label_active and company_branding.custom_css %}
   <style>{{ company_branding.custom_css|safe }}</style>
+  {% endif %}
+  {% if white_label_active and company_branding.custom_js %}
+  <script>{{ company_branding.custom_js|safe }}</script>
   {% endif %}
   {% block extra_styles %}{% endblock %}
   <style>
@@ -49,6 +58,7 @@
 <body class="futurematch-shell">
   {% set platform_name = company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' %}
   {% set platform_logo = company_branding.company_logo if white_label_active and company_branding.company_logo else none %}
+  {% set brand_kicker = company_branding.tagline if white_label_active and company_branding.tagline else 'Command Center' %}
 
   <div class="dashboard fm-app-shell">
     <aside class="sidebar fm-sidebar collapsed" id="sidebar" aria-label="Primær navigation">
@@ -58,12 +68,12 @@
             {% if platform_logo %}
             <img src="{{ platform_logo }}" alt="{{ platform_name }}">
             {% else %}
-            F
+            <span class="fm-brand-initials">{{ platform_name[:2]|upper }}</span>
             {% endif %}
           </span>
           <span class="fm-brand-text">
             <span class="fm-brand-name">{{ platform_name }}</span>
-            <span class="fm-brand-kicker">Command Center</span>
+            <span class="fm-brand-kicker">{{ brand_kicker }}</span>
           </span>
         </a>
         <button id="sidebar-toggle" class="toggle-button" type="button" aria-label="Fold navigation">
@@ -146,12 +156,12 @@
           </a>
         </li>
 
-        {% if session.get('role') == 'admin' or session.get('company_role') == 'company_admin' %}
+        {% if session.get('role') == 'admin' or session.get('company_role') in ['company_admin', 'hr_manager'] %}
         <li class="fm-nav-section-label">Admin</li>
         <li>
-          <a href="{{ url_for('enterprise_settings.company_settings') }}" class="fm-nav-link" data-nav-link>
+          <a href="{{ url_for('companies.branding') }}" class="fm-nav-link" data-nav-link>
             <i class="fa-solid fa-palette"></i>
-            <span class="nav-text">White label</span>
+            <span class="nav-text">Branding</span>
           </a>
         </li>
         {% endif %}
@@ -180,6 +190,9 @@
       <div class="fm-sidebar-footer">
         <div class="fm-sidebar-footer-text">
           <strong>{{ platform_name }}</strong><br>
+          {% if not (white_label_active and hide_platform_branding) and white_label_active %}
+          Powered by Futurematch<br>
+          {% endif %}
           Adaptiv lærings- og HR-platform
         </div>
       </div>

@@ -1,8 +1,8 @@
 {% extends "base.html" %}
 
-{% block title %}Kursuskatalog - Futurematch{% endblock %}
+{% block title %}Kursuskatalog - {{ platform_name }}{% endblock %}
 {% block page_heading %}Kursuskatalog{% endblock %}
-{% block page_subheading %}Find kurser, leverandorer og kategorier direkte i Futurematch.{% endblock %}
+{% block page_subheading %}Find kurser, leverandorer og kategorier direkte i {{ platform_name }}.{% endblock %}
 
 {% block extra_styles %}
 {{ super() }}
@@ -13,7 +13,7 @@
 <div class="catalog-wrap">
   <div class="catalog-toolbar">
     <div>
-      <div class="catalog-eyebrow">Futurematch katalog</div>
+      <div class="catalog-eyebrow">{{ platform_name }} katalog</div>
       <h2 class="catalog-title">{{ page_title }}</h2>
       <p class="catalog-subtitle">{{ page_subtitle }}</p>
     </div>

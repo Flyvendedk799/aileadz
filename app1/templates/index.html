@@ -3,7 +3,10 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Futurematch — Kursusrådgiver</title>
+  <title>{% if white_label_active %}{{ platform_name }} — Kursusrådgiver{% else %}Futurematch — Kursusrådgiver{% endif %}</title>
+  {% if white_label_active and company_branding.favicon_url %}
+  <link rel="icon" href="{{ company_branding.favicon_url }}">
+  {% endif %}
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
   <style>
     /* ── Theme ── */
@@ -17,8 +20,8 @@
       --text-secondary: #a1a1aa;
       --text-muted: #52525b;
       --text-faint: #3f3f46;
-      --purple: #0f766e;
-      --purple-dark: #0f766e;
+      --purple: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
+      --purple-dark: {% if white_label_active and company_branding.primary_color %}{{ company_branding.primary_color }}{% else %}#0f766e{% endif %};
       --purple-glow: rgba(15,118,110,0.08);
       --purple-border: rgba(15,118,110,0.18);
       --green: #4ade80;
@@ -1358,10 +1361,14 @@
     <aside class="sidebar" id="sidebar">
       <div class="sb-header">
         <div class="sb-logo">
+          {% if white_label_active and company_branding.company_logo %}
+          <img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" style="height:28px;max-width:120px;object-fit:contain;">
+          {% else %}
           <div class="sb-logo-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
           </div>
-          <span class="sb-logo-text">Futurematch</span>
+          {% endif %}
+          <span class="sb-logo-text">{% if white_label_active %}{{ platform_name }}{% else %}Futurematch{% endif %}</span>
         </div>
         <button class="sb-toggle" id="sidebarToggle" onclick="toggleSidebar()" title="Fold sidebar">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>

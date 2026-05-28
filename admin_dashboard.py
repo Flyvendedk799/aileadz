@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, jsonify
 import MySQLdb.cursors
 import logging
+import json
 from datetime import datetime, timedelta
 import catalog_service as catalog
 
@@ -119,15 +120,26 @@ def admin_home():
     companies = []
     try:
         cur.execute("""
-            SELECT c.id, c.company_name, c.industry, c.company_size,
-                   c.subscription_plan AS subscription_status,
+            SELECT c.id, c.company_name, c.company_slug, c.industry, c.company_size,
+                   c.subscription_plan AS subscription_status, c.features,
                    c.trial_ends_at AS trial_end_date, c.created_at,
+                   cs.enable_white_label,
                    (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id) AS employee_count,
                    (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id) AS order_count,
                    (SELECT COALESCE(SUM(price), 0) FROM course_orders co WHERE co.company_id = c.id) AS revenue
-            FROM companies c ORDER BY c.created_at DESC LIMIT 20
+            FROM companies c
+            LEFT JOIN company_settings cs ON cs.company_id = c.id
+            ORDER BY c.created_at DESC LIMIT 20
         """)
         companies = cur.fetchall()
+        for co in companies:
+            feats = co.get('features')
+            if isinstance(feats, str):
+                try:
+                    feats = json.loads(feats)
+                except (TypeError, ValueError):
+                    feats = {}
+            co['custom_branding'] = bool((feats or {}).get('custom_branding'))
     except Exception:
         pass
 

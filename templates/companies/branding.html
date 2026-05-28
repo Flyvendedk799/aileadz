@@ -45,16 +45,22 @@
     </div>
   </div>
 
-  {% if not branding_enabled %}
+  {% if session.get('role') == 'admin' and company and not features.get('custom_branding') %}
+  <div class="alert alert-warning">
+    <i class="fa-solid fa-triangle-exclamation"></i>
+    Custom branding er ikke aktiveret for denne tenant endnu — medarbejdere ser stadig Futurematch.
+    <a href="{{ url_for('companies.admin_company_detail', company_id=company.id) }}" class="alert-link">Aktiver i virksomhedsadmin</a>.
+  </div>
+  {% elif not branding_enabled %}
   <div class="alert alert-info">
     <i class="fa-solid fa-lock"></i>
-    Custom branding er ikke aktiveret for denne virksomhed. Kontakt platform-administrator for at aktivere Enterprise white-label.
+    Custom branding er ikke aktiveret for denne virksomhed.
     {% if session.get('role') == 'admin' and company %}
-    <form method="POST" action="{{ url_for('companies.toggle_branding_feature') }}" class="d-inline ms-2">
-      <input type="hidden" name="company_id" value="{{ company.id }}">
-      <input type="hidden" name="enabled" value="1">
-      <button type="submit" class="btn btn-sm btn-primary">Aktiver branding</button>
-    </form>
+    <a href="{{ url_for('companies.admin_company_detail', company_id=company.id) }}" class="alert-link">Gå til virksomhedsadmin</a> for at aktivere branding.
+    {% elif session.get('role') == 'admin' %}
+    <a href="{{ url_for('companies.admin_companies_list') }}" class="alert-link">Vælg en virksomhed</a> for at aktivere branding.
+    {% else %}
+    Kontakt platform-administrator for at aktivere Enterprise white-label.
     {% endif %}
   </div>
   {% endif %}

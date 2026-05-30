@@ -8,14 +8,30 @@ from typing import List, Dict, Any, Optional, Tuple
 from dataclasses import dataclass
 from datetime import timedelta
 from flask import Blueprint, render_template, request, redirect, url_for, send_from_directory, flash, current_app
-try:
-    import whisper  # Local Whisper transcription; only needed for legacy video-caption routes.
-except ImportError:
-    whisper = None
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
+
+_whisper = None
+_whisper_import_failed = False
+
+
+def _get_whisper():
+    """Load Whisper on demand; unavailable in constrained hosts (e.g. PythonAnywhere)."""
+    global _whisper, _whisper_import_failed
+    if _whisper is not None:
+        return _whisper
+    if _whisper_import_failed:
+        return None
+    try:
+        import whisper  # Local Whisper transcription; only needed for legacy video-caption routes.
+        _whisper = whisper
+        return _whisper
+    except Exception as exc:
+        _whisper_import_failed = True
+        logger.warning("Whisper unavailable in this environment: %s", exc)
+        return None
 
 app4_bp = Blueprint('app4', __name__, template_folder='templates')
 
@@ -394,6 +410,7 @@ def uploaded_file(filename):
 def auto_caption():
     """Auto-caption route: transcribes video and adds captions."""
     try:
+        whisper = _get_whisper()
         if whisper is None:
             flash("Video-transkription er ikke installeret i dette miljø.", "error")
             return redirect(url_for('app4.index'))

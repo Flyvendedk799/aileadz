@@ -17,6 +17,7 @@ from db_compat import close_flask_mysql_connection, refresh_flask_mysql_connecti
 import uuid
 import re as _re
 import random as _random
+from typing import Optional
 
 # 5.4: Prompt versioning for A/B testing
 _PROMPT_VERSIONS = ["v2.0"]  # Add variants here for A/B testing, e.g. ["v2.0", "v2.1"]

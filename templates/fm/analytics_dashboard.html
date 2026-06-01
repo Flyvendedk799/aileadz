@@ -1,0 +1,156 @@
+{% extends "fm_base.html" %}
+{% block page_id %}company{% endblock %}
+{% block title %}Avanceret analyse{% endblock %}
+{% block topbar_title %}Avanceret analyse{% endblock %}
+{% block topbar_sub %}Engagement, kompetencegab og ML-drevne indsigter for din virksomhed.{% endblock %}
+
+{% block extra_head %}
+<style>
+  .an-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 22px; }
+  @media (max-width: 1100px) { .an-kpis { grid-template-columns: repeat(2, 1fr); } }
+  @media (max-width: 600px) { .an-kpis { grid-template-columns: 1fr; } }
+  .an-kpi { padding: 18px 18px 16px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); }
+  .an-kpi .lab { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .an-kpi .val { font-family: var(--ff-display); font-size: 28px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; }
+  .an-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 22px; }
+  @media (max-width: 980px) { .an-grid { grid-template-columns: 1fr; } }
+  .an-chart { min-height: 320px; }
+  .an-eng { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px; border-radius: var(--r-pill); font-size: 12px; font-weight: 600; }
+  .an-eng.High { background: color-mix(in srgb, var(--fm-success) 14%, var(--fm-surface)); color: var(--fm-success); }
+  .an-eng.Medium { background: color-mix(in srgb, var(--fm-warning) 16%, var(--fm-surface)); color: var(--fm-warning); }
+  .an-eng.Low { background: color-mix(in srgb, var(--fm-danger) 14%, var(--fm-surface)); color: var(--fm-danger); }
+  .an-empty { padding: 40px; text-align: center; color: var(--fm-ink-3); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+
+  {% set emp_count = (data.employees|length) if data and data.employees else 0 %}
+  {% set high_eng = (engagement_scores|selectattr('engagement_label','equalto','High')|list|length) if engagement_scores else 0 %}
+  {% set anomaly_count = (learning_anomalies|length) if learning_anomalies else 0 %}
+  {% set model_acc = performance_predictions.model_accuracy if performance_predictions and performance_predictions.model_accuracy is defined else None %}
+
+  <section class="an-kpis">
+    <div class="an-kpi"><div class="lab">Aktive medarbejdere</div><div class="val tnum">{{ emp_count }}</div></div>
+    <div class="an-kpi"><div class="lab">Højt engageret</div><div class="val tnum">{{ high_eng }}</div></div>
+    <div class="an-kpi"><div class="lab">Lærings-anomalier</div><div class="val tnum">{{ anomaly_count }}</div></div>
+    <div class="an-kpi"><div class="lab">Model-præcision</div><div class="val tnum">{{ (model_acc * 100)|round(0)|int ~ '%' if model_acc is not none else '—' }}</div></div>
+  </section>
+
+  <div class="an-grid">
+    <div class="fm-card" style="padding:18px 20px">
+      <div class="fm-eyebrow"><i class="fa-solid fa-chart-pie"></i> Engagement</div>
+      <h2 class="fm-section-title" style="margin:4px 0 12px">Fordeling</h2>
+      <div id="chart-engagement" class="an-chart"></div>
+    </div>
+    <div class="fm-card" style="padding:18px 20px">
+      <div class="fm-eyebrow clay"><i class="fa-solid fa-arrow-trend-up"></i> Performance</div>
+      <h2 class="fm-section-title" style="margin:4px 0 12px">Udvikling over tid</h2>
+      <div id="chart-performance" class="an-chart"></div>
+    </div>
+  </div>
+
+  <div class="fm-card" style="padding:18px 20px; margin-bottom:22px">
+    <div class="fm-eyebrow"><i class="fa-solid fa-building"></i> Læring</div>
+    <h2 class="fm-section-title" style="margin:4px 0 12px">Læringstimer pr. afdeling</h2>
+    <div id="chart-dept" class="an-chart"></div>
+  </div>
+
+  {# Engagement table #}
+  <div class="fm-card" style="padding:18px 20px; margin-bottom:22px">
+    <h2 class="fm-section-title" style="margin:0 0 12px">Medarbejder-engagement</h2>
+    {% if engagement_scores %}
+    <table class="fm-table">
+      <thead><tr><th>Medarbejder</th><th>Engagement</th><th>Gennemførte</th><th>Fremgang</th><th>Inaktive dage</th></tr></thead>
+      <tbody>
+        {% for e in engagement_scores %}
+        <tr>
+          <td>{{ e.employee_name }}</td>
+          <td><span class="an-eng {{ e.engagement_label }}">{{ e.engagement_label }}</span></td>
+          <td class="tnum">{{ e.features.completed_courses|round(0)|int }}</td>
+          <td class="tnum">{{ (e.features.avg_progress)|round(0)|int }}%</td>
+          <td class="tnum">{{ e.features.days_inactive|round(0)|int }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="an-empty"><i class="fa-solid fa-users-slash"></i><br>Ingen engagement-data endnu. Kræver aktive medarbejdere med læringsaktivitet.</div>
+    {% endif %}
+  </div>
+
+  {# Skill gaps #}
+  <div class="fm-card" style="padding:18px 20px; margin-bottom:22px">
+    <h2 class="fm-section-title" style="margin:0 0 12px">Kompetencegab pr. afdeling</h2>
+    {% if skill_gaps %}
+    <table class="fm-table">
+      <thead><tr><th>Afdeling</th><th>Kompetence</th><th>Medarbejdere</th><th>Nuværende niveau</th><th>Mål</th><th>Gab</th></tr></thead>
+      <tbody>
+        {% for dept, skills in skill_gaps.items() %}
+          {% for skill, s in skills.items() %}
+          <tr>
+            <td>{{ dept }}</td>
+            <td>{{ skill }}</td>
+            <td class="tnum">{{ s.employees }}</td>
+            <td class="tnum">{{ s.avg_current_level|round(1) }}</td>
+            <td class="tnum">{{ s.avg_target_level|round(1) }}</td>
+            <td><span class="fm-badge {{ 'amber' if s.gap_score and s.gap_score >= 1 else '' }}">{{ s.gap_score|round(1) }}</span></td>
+          </tr>
+          {% endfor %}
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="an-empty"><i class="fa-solid fa-layer-group"></i><br>Ingen kompetencegab-data tilgængelig.</div>
+    {% endif %}
+  </div>
+
+  {# Anomalies #}
+  {% if learning_anomalies %}
+  <div class="fm-card" style="padding:18px 20px; margin-bottom:22px">
+    <h2 class="fm-section-title" style="margin:0 0 12px">Lærings-anomalier</h2>
+    <table class="fm-table">
+      <thead><tr><th>Type</th><th>Detalje</th></tr></thead>
+      <tbody>
+        {% for a in learning_anomalies %}
+        <tr>
+          <td><span class="fm-badge amber">{{ a.anomaly_type if a.anomaly_type is defined else 'Anomali' }}</span></td>
+          <td>{{ a.description if a.description is defined else (a.course_title if a.course_title is defined else '—') }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="https://cdn.plot.ly/plotly-2.30.0.min.js"></script>
+<script>
+  (function () {
+    var charts = {{ charts|tojson if charts else '{}'|safe }};
+    var theme = document.documentElement.getAttribute('data-theme') === 'dark';
+    var layout = { paper_bgcolor: 'transparent', plot_bgcolor: 'transparent',
+      font: { color: getComputedStyle(document.body).getPropertyValue('--fm-ink') || '#1a211d', family: 'Hanken Grotesk, sans-serif' },
+      margin: { t: 30, r: 10, b: 40, l: 40 } };
+    function draw(id, key) {
+      var el = document.getElementById(id);
+      if (!el) return;
+      var raw = charts[key];
+      if (!raw) { el.innerHTML = '<div style="padding:36px;text-align:center;color:var(--fm-ink-3)">Ingen data til denne graf.</div>'; return; }
+      try {
+        var fig = typeof raw === 'string' ? JSON.parse(raw) : raw;
+        Plotly.newPlot(el, fig.data || [], Object.assign({}, fig.layout || {}, layout), { responsive: true, displayModeBar: false });
+      } catch (e) {
+        el.innerHTML = '<div style="padding:36px;text-align:center;color:var(--fm-ink-3)">Kunne ikke vise grafen.</div>';
+      }
+    }
+    draw('chart-engagement', 'engagement_pie');
+    draw('chart-performance', 'performance_trend');
+    draw('chart-dept', 'dept_learning_hours');
+  })();
+</script>
+{% endblock %}

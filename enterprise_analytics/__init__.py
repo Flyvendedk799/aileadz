@@ -4,7 +4,7 @@ Enterprise Analytics & AI System
 Advanced analytics, predictive insights, and machine learning capabilities
 """
 
-from flask import Blueprint, request, jsonify, render_template, session, current_app
+from flask import Blueprint, request, jsonify, render_template, session, current_app, redirect, url_for, flash
 import MySQLdb.cursors
 import json
 from datetime import datetime, timedelta
@@ -510,7 +510,7 @@ def analytics_dashboard(company_id):
     # Create visualizations
     charts = create_analytics_charts(data, engagement_scores, performance_predictions)
     
-    return render_template('analytics_dashboard.html',
+    return render_template('fm/analytics_dashboard.html',
                          company_id=company_id,
                          engagement_scores=engagement_scores,
                          performance_predictions=performance_predictions,
@@ -527,10 +527,16 @@ def employee_recommendations(employee_id):
         return jsonify({'error': 'Unauthorized'}), 401
     
     recommendations = analytics_engine.create_learning_recommendations(company_id, employee_id)
-    
+
     if recommendations is None:
-        return jsonify({'error': 'Unable to generate recommendations'}), 500
-    
+        # No data to base recommendations on (e.g. new employee / empty history).
+        # Return an empty, successful payload so the UI can show a graceful empty state.
+        return jsonify({
+            'success': True,
+            'recommendations': [],
+            'message': 'Ingen anbefalinger tilgængelige endnu.'
+        })
+
     return jsonify({
         'success': True,
         'recommendations': recommendations

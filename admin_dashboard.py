@@ -35,11 +35,15 @@ def admin_home():
     users_has_created_at = _column_exists(cur, 'users', 'created_at')
 
     # Platform metrics
+    def _cnt(default=0):
+        row = cur.fetchone()
+        return row['cnt'] if row and 'cnt' in row else default
+
     cur.execute("SELECT COUNT(*) AS cnt FROM users")
-    total_users = cur.fetchone()['cnt']
+    total_users = _cnt()
 
     cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE role = 'admin'")
-    total_admins = cur.fetchone()['cnt']
+    total_admins = _cnt()
 
     # Active users (logged in last 7 days) — use last_login if available, else fallback
     active_users_7d = 0
@@ -56,7 +60,7 @@ def admin_home():
     new_users_month = 0
     if users_has_created_at:
         cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_FORMAT(NOW(), '%%Y-%%m-01')")
-        new_users_month = cur.fetchone()['cnt']
+        new_users_month = _cnt()
 
     total_companies = 0
     try:

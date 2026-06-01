@@ -2,17 +2,75 @@
 {% block page_id %}company{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomhedsindstillinger{% endblock %}
-{% block topbar_sub %}Plan, adgang og politikker for Nordi A/S.{% endblock %}
+{% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · plan, kontakt og politikker.{% endblock %}
 {% block extra_head %}
-<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}.swatch{width:38px;height:38px;border-radius:10px;border:2px solid var(--fm-line);cursor:pointer}.swatch.sel{border-color:var(--fm-primary);box-shadow:0 0 0 3px var(--fm-ring)}</style>
+<style>
+  .plan-badge { display:inline-block; padding:4px 12px; border-radius:999px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; }
+  .plan-badge.trial { background: color-mix(in srgb, var(--fm-warning) 20%, transparent); color:#92400e; }
+  .plan-badge.pro { background: color-mix(in srgb, var(--fm-indigo) 14%, transparent); color: var(--fm-indigo); }
+  .plan-badge.enterprise { background: color-mix(in srgb, var(--fm-success) 16%, transparent); color:#065f46; }
+</style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="split"><div class="stack"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Stamdata</h3></div><div class="fm-card-body"><div class="form-grid"><div class="fm-field"><label>Virksomhedsnavn</label><input class="fm-input" value="Nordi A/S"/></div><div class="fm-field"><label>CVR</label><input class="fm-input" value="12345678"/></div><div class="fm-field full"><label>Faktura-e-mail</label><input class="fm-input" value="faktura@nordi.dk"/></div></div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield"></i></span><h3>Politikker</h3></div><div class="fm-card-body" style="padding-top:6px">
-  <div class="trow"><div><div class="t">Kræv godkendelse over 5.000 kr</div><div class="d">Ordrer sendes til HR</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-  <div class="trow"><div><div class="t">SSO påkrævet</div><div class="d">Login kun via Microsoft</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-  <div class="trow"><div><div class="t">Tillad selvbetjening</div><div class="d">Medarbejdere kan bestille selv</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div></div></div></div>
-  <div class="stack"><div class="fm-card"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:4px">Nuværende plan</div><div style="font-family:var(--ff-display);font-size:24px;font-weight:700">Enterprise</div><div style="font-size:12.5px;color:var(--fm-ink-2);margin:4px 0 14px">248 pladser · white-label · SSO</div><a href="{{ url_for('futurematch.showcase', page='billing') }}" class="btn btn-ghost btn-sm" style="width:100%">Administrér plan</a></div></div></div></div>
+<form method="POST" action="{{ url_for('companies.settings') }}">
+<div class="split"><div class="stack">
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsoplysninger</h3>
+    <span class="plan-badge {{ company.subscription_plan or 'trial' }}" style="margin-left:auto">{{ (company.subscription_plan or 'trial') }}</span>
+  </div><div class="fm-card-body">
+    <div class="form-grid">
+      <div class="fm-field"><label>Virksomhedsnavn *</label><input class="fm-input" name="company_name" value="{{ company.company_name or '' }}" required></div>
+      <div class="fm-field"><label>Branche</label><input class="fm-input" name="industry" value="{{ company.industry or '' }}" placeholder="f.eks. IT, Finans, Sundhed"></div>
+      <div class="fm-field"><label>Kontakt-email</label><input class="fm-input" type="email" name="contact_email" value="{{ settings.support_email or '' }}"></div>
+      <div class="fm-field"><label>Hjemmeside</label><input class="fm-input" type="url" name="website" value="{{ settings.company_website or '' }}" placeholder="https://..."></div>
+    </div>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bell"></i></span><h3>Sprog & support</h3></div><div class="fm-card-body">
+    <div class="form-grid">
+      <div class="fm-field"><label>Sprog</label>
+        <select class="fm-select" name="language">
+          <option value="da" {% if (settings.language or 'da') == 'da' %}selected{% endif %}>Dansk</option>
+          <option value="en" {% if settings.language == 'en' %}selected{% endif %}>English</option>
+        </select>
+      </div>
+      <div class="fm-field"><label>Tidszone</label>
+        <select class="fm-select" name="timezone">
+          <option value="Europe/Copenhagen" {% if (settings.timezone or 'Europe/Copenhagen') == 'Europe/Copenhagen' %}selected{% endif %}>Europe/Copenhagen</option>
+          <option value="Europe/London" {% if settings.timezone == 'Europe/London' %}selected{% endif %}>Europe/London</option>
+          <option value="Europe/Berlin" {% if settings.timezone == 'Europe/Berlin' %}selected{% endif %}>Europe/Berlin</option>
+        </select>
+      </div>
+      <div class="fm-field"><label>Support-email</label><input class="fm-input" type="email" name="support_email" value="{{ settings.support_email or '' }}" placeholder="support@virksomhed.dk"></div>
+      <div class="fm-field"><label>Support-telefon</label><input class="fm-input" type="tel" name="support_phone" value="{{ settings.support_phone or '' }}" placeholder="+45 XX XX XX XX"></div>
+    </div>
+  </div></div>
+
+  <div class="fm-flex fm-gap8" style="justify-content:flex-end">
+    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-ghost">Annuller</a>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem indstillinger</button>
+  </div>
+
+  </div>
+  <div class="stack" style="align-self:start">
+    <div class="fm-card"><div class="fm-card-body">
+      <div style="font-weight:700;margin-bottom:4px">Nuværende plan</div>
+      <div style="font-family:var(--ff-display);font-size:24px;font-weight:700;text-transform:capitalize">{{ company.subscription_plan or 'Trial' }}</div>
+      <div style="font-size:12.5px;color:var(--fm-ink-2);margin:4px 0 14px">{{ company.max_employees or 50 }} pladser</div>
+      <a href="{{ url_for('companies.branding') }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-palette"></i> Åbn branding-hub</a>
+    </div></div>
+    <div class="fm-card"><div class="fm-card-body">
+      <div class="fm-flex" style="justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <div style="font-weight:700;color:var(--fm-danger)">Deaktiver konto</div>
+          <p style="font-size:12px;color:var(--fm-ink-2);margin:4px 0 0">Alle medarbejdere mister adgang. Data bevares i 90 dage.</p>
+        </div>
+        <button type="button" class="btn btn-ghost btn-sm" disabled>Deaktiver</button>
+      </div>
+    </div></div>
+  </div>
+</div>
+</form>
 </div>
 {% endblock %}

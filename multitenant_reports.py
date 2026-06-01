@@ -410,7 +410,7 @@ def create_multitenant_reports_blueprint():
             employee_engagement_rate = 0
         
         return render_template(
-            'multitenant_reports/dashboard.html',
+            'fm/company_reports.html',
             company=company,
             company_stats=company_stats,
             
@@ -487,7 +487,7 @@ def create_multitenant_reports_blueprint():
                 flash("Order not found or not accessible.", "danger")
                 return redirect(url_for('multitenant_reports.reports'))
             
-            return render_template('multitenant_reports/order_detail.html', 
+            return render_template('fm/mt_order_detail.html',
                                  company=company, order=order)
         except Exception as e:
             current_app.logger.error(f"Error fetching order details: {e}")
@@ -681,7 +681,7 @@ def create_multitenant_reports_blueprint():
             
             cur.close()
             
-            return render_template('multitenant_reports/department_analytics.html',
+            return render_template('fm/department_analytics.html',
                                  company=company,
                                  department_name=department_name,
                                  dept_stats=dept_stats,

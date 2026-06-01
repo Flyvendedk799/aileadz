@@ -1,11 +1,52 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Kreditadministration{% endblock %}
-{% block topbar_sub %}Tildel og justér kreditter pr. tenant.{% endblock %}
+{% block page_id %}admin{% endblock %}
+{% block title %}Kreditter{% endblock %}
+{% block topbar_title %}Tildel kreditter{% endblock %}
+{% block topbar_sub %}En kontrolleret formular til manuelle kreditjusteringer.{% endblock %}
+{% block extra_head %}
+<style>
+  .cr-split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .cr-split { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a><a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a><a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a><a class="pg-tab active" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='admin_chatbot') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='notifications_admin') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a></div><div class="kpi-row k3"><div class="kpi-tile"><div class="kl">Udstedt (md.)</div><div class="kv tnum">124k</div><div class="kd">på tværs af tenants</div></div><div class="kpi-tile"><div class="kl">Forbrugt</div><div class="kv tnum">82k</div><div class="kd">66% udnyttelse</div></div><div class="kpi-tile"><div class="kl">Gns. pr. tenant</div><div class="kv tnum">2.560</div><div class="kd">kreditter/md.</div></div></div>
-  <div class="fm-table-wrap"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Kreditter pr. tenant</h3></div><table class="fm-table"><thead><tr><th>Virksomhed</th><th>Saldo</th><th>Forbrug (md.)</th><th></th></tr></thead><tbody><tr><td style="font-weight:650">Nordi A/S</td><td class="mono"><span class="fm-badge teal">420</span></td><td class="mono">180</td><td style="text-align:right"><button class="btn btn-ghost btn-sm">Justér</button></td></tr><tr><td style="font-weight:650">Vestas Wind</td><td class="mono"><span class="fm-badge teal">2100</span></td><td class="mono">1240</td><td style="text-align:right"><button class="btn btn-ghost btn-sm">Justér</button></td></tr><tr><td style="font-weight:650">Coloplast</td><td class="mono"><span class="fm-badge teal">1340</span></td><td class="mono">620</td><td style="text-align:right"><button class="btn btn-ghost btn-sm">Justér</button></td></tr><tr><td style="font-weight:650">Ørsted</td><td class="mono"><span class="fm-badge teal">980</span></td><td class="mono">510</td><td style="text-align:right"><button class="btn btn-ghost btn-sm">Justér</button></td></tr></tbody></table></div>
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+    <a class="pg-tab" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+  </div>
+
+  <div class="cr-split">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-plus"></i></span><h3>Ny kredittildeling</h3></div>
+      <div class="fm-card-body">
+        <form action="{{ url_for('admin_dashboard.credits') }}" method="POST">
+          <div class="fm-field">
+            <label for="target_user">Brugernavn</label>
+            <input type="text" class="fm-input" id="target_user" name="target_user" placeholder="Indtast brugernavn" required>
+          </div>
+          <div class="fm-field" style="margin-top:14px">
+            <label for="credit_amount">Kreditter at tildele</label>
+            <input type="number" class="fm-input" id="credit_amount" name="credit_amount" placeholder="Angiv antal kreditter" required min="1">
+          </div>
+          <div style="display:flex;justify-content:flex-end;margin-top:18px">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-coins"></i> Tildel kreditter</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield-halved"></i></span><h3>Administrativ handling</h3></div>
+      <div class="fm-card-body">
+        <p style="color:var(--fm-ink-2);font-size:13.5px;line-height:1.6">Kreditter tilføjes direkte til den angivne bruger. Brug brugerlisten til at validere stavning og eksisterende saldo før større justeringer.</p>
+        <a href="{{ url_for('admin_dashboard.user_list') }}" class="btn btn-ghost btn-sm" style="margin-top:6px"><i class="fa-solid fa-users"></i> Se brugere</a>
+      </div>
+    </div>
+  </div>
 </div>
 {% endblock %}

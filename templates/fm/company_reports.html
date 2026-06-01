@@ -2,9 +2,92 @@
 {% block page_id %}creports{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomhedsrapporter{% endblock %}
-{% block topbar_sub %}Eksportklare rapporter for Nordi A/S.{% endblock %}
+{% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · samlet rapportoverblik.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="fm-grid" style="grid-template-columns:repeat(4,1fr)"><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-users"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Engagement-rapport</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">Q2 2026</span><span><i class="fa-solid fa-file"></i> PDF</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-filter"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Konverteringsanalyse</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">Maj 2026</span><span><i class="fa-solid fa-file"></i> CSV</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Læringsoverblik</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">Q2 2026</span><span><i class="fa-solid fa-file"></i> PDF</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-robot"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Chatbot-indsigt</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">Maj 2026</span><span><i class="fa-solid fa-file"></i> CSV</span></div></a></div>
+
+<div class="kpi-row">
+  <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Chatbot-forespørgsler</div><div class="kv tnum">{{ total_chatbot_queries }}</div><div class="kd">{{ total_conversations }} samtaler</div></div></div>
+  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-filter"></i></span><div><div class="kl">Konvertering</div><div class="kv tnum">{{ conversion_rate }}%</div><div class="kd">{{ completed_orders_count }} af / {{ pending_orders_count }} afventer</div></div></div>
+  <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Engagement</div><div class="kv tnum">{{ employee_engagement_rate }}%</div><div class="kd">{{ company_stats.active_users_30d if company_stats else 0 }} aktive (30 d)</div></div></div>
+  <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ "{:,.0f}".format(total_revenue) }}</div><div class="kd">kr fra {{ completed_orders_count }} ordrer</div></div></div>
 </div>
+
+<div class="split">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3><span class="fm-badge teal" style="margin-left:auto">samtaler</span></div><div class="fm-card-body"><canvas id="dailyChart" height="200"></canvas></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3>{% if popular_courses %}<span class="fm-badge" style="margin-left:auto">{{ popular_courses|length }} kurser</span>{% endif %}</div><div class="fm-card-body" style="padding-top:6px">
+    {% if popular_courses %}
+    {% for c in popular_courses %}
+    <div class="prog-row"><div class="pt"><b>{{ c.handle }}</b><span class="mono">{{ c.views }} visn.</span></div><div class="fm-prog"><span style="width:{{ (c.views / (popular_courses[0].views or 1) * 100)|round(1) }}%"></span></div>{% if c.conversion_rate %}<div style="font-size:11px;color:var(--fm-ink-3);margin-top:2px">{{ c.conversion_rate }}% konvertering</div>{% endif %}</div>
+    {% endfor %}
+    {% else %}<p style="color:var(--fm-ink-3);margin:0">Ingen kursusdata endnu.</p>{% endif %}
+  </div></div>
+</div>
+
+<div class="fm-table-wrap" style="margin-top:18px">
+  <div class="fm-card-head" style="padding:14px 18px"><span class="fm-ch-icon"><i class="fa-solid fa-receipt"></i></span><h3>Seneste ordrer</h3><span class="fm-badge amber" style="margin-left:auto">{{ pending_orders_count }} afventer</span></div>
+  {% if recent_orders %}
+  <table class="fm-table">
+    <thead><tr><th>Ordre</th><th>Kursus</th><th>Medarbejder</th><th>Afdeling</th><th>Pris</th><th>Status</th><th>Dato</th><th></th></tr></thead>
+    <tbody>
+      {% for o in recent_orders %}
+      <tr>
+        <td><span class="mono" style="font-size:12px">{{ o.order_id_short }}</span></td>
+        <td><div style="font-weight:600">{{ o.product_title or o.product_handle }}</div>{% if o.variant_location %}<div class="muted" style="font-size:11.5px"><i class="fa-solid fa-location-dot"></i> {{ o.variant_location }}</div>{% endif %}</td>
+        <td><div>{{ o.user_name or '—' }}</div><div class="muted" style="font-size:11.5px">{{ o.user_email or '' }}</div></td>
+        <td><span class="fm-badge">{{ o.department or '—' }}</span></td>
+        <td class="mono">{{ o.price }} kr</td>
+        <td>
+          {% if o.status == 'completed' or o.completion_status == 'completed' %}<span class="status-pill green" style="height:24px;font-size:11.5px">Gennemført</span>
+          {% elif o.status == 'confirmed' %}<span class="status-pill" style="height:24px;font-size:11.5px">Bekræftet</span>
+          {% elif o.status == 'cancelled' %}<span class="status-pill" style="height:24px;font-size:11.5px;color:var(--fm-danger)">Annulleret</span>
+          {% elif o.status == 'processing' %}<span class="status-pill" style="height:24px;font-size:11.5px">Behandles</span>
+          {% else %}<span class="status-pill amber" style="height:24px;font-size:11.5px">Afventer</span>{% endif %}
+        </td>
+        <td class="muted" style="font-size:11.5px">{{ o.created_at }}</td>
+        <td style="text-align:right"><a href="{{ url_for('multitenant_reports.order_detail', order_id=o.order_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i></a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="text-align:center;padding:40px 18px;color:var(--fm-ink-3)"><i class="fa-solid fa-receipt" style="font-size:30px;opacity:.4"></i><p style="margin:12px 0 0">Ingen ordrer endnu</p></div>
+  {% endif %}
+</div>
+
+{% if recent_conversations %}
+<div class="fm-table-wrap" style="margin-top:18px">
+  <div class="fm-card-head" style="padding:14px 18px"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Seneste samtaler</h3></div>
+  <table class="fm-table">
+    <thead><tr><th>Session</th><th>Tidspunkt</th><th>Beskeder</th><th>Emner</th><th>Afdeling</th></tr></thead>
+    <tbody>
+      {% for c in recent_conversations %}
+      <tr>
+        <td><span class="mono" style="font-size:12px">{{ c.session_id }}</span></td>
+        <td class="muted" style="font-size:12px">{{ c.start_time }}</td>
+        <td class="mono">{{ c.query_count }}</td>
+        <td>{% for t in c.topics %}<span class="fm-badge teal" style="margin-right:4px">{{ t }}</span>{% endfor %}</td>
+        <td><span class="fm-badge">{{ c.department or '—' }}</span></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const labels = {{ daily_chatbot_query_labels | tojson | safe }};
+const data = {{ daily_chatbot_query_data | tojson | safe }};
+const css = getComputedStyle(document.documentElement);
+const primary = (css.getPropertyValue('--fm-primary') || '#0b6b63').trim();
+new Chart(document.getElementById('dailyChart'), {
+  type: 'bar',
+  data: { labels: labels, datasets: [{ label: 'Forespørgsler', data: data, backgroundColor: primary, borderRadius: 4 }] },
+  options: { responsive: true, plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
+});
+</script>
 {% endblock %}

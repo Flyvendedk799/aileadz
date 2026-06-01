@@ -1,10 +1,100 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Brugere{% endblock %}
-{% block topbar_sub %}4.218 brugere på tværs af alle tenants.{% endblock %}
+{% block page_id %}admin{% endblock %}
+{% block title %}Brugere{% endblock %}
+{% block topbar_title %}Brugeradministration{% endblock %}
+{% block topbar_sub %}Skift rolle og tildel kreditter uden at forlade admin-workspacet.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a><a class="pg-tab active" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a><a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a><a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='admin_chatbot') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='notifications_admin') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a></div><div class="fm-table-wrap"><div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line)"><label class="fm-search" style="width:280px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg bruger…"/></label><select class="fm-select" style="width:auto;height:36px;font-size:13px"><option>Alle tenants</option></select></div><table class="fm-table"><thead><tr><th>Bruger</th><th>Virksomhed</th><th>Rolle</th><th>Status</th><th></th></tr></thead><tbody><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">MK</span><div><div style="font-weight:650">Mette Krogh</div><div class="muted" style="font-size:11.5px">mette@nordi.dk</div></div></div></td><td>Nordi A/S</td><td><span class="fm-badge teal">HR-manager</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-ellipsis"></i></button></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">LM</span><div><div style="font-weight:650">Lars Møller</div><div class="muted" style="font-size:11.5px">lars@nordi.dk</div></div></div></td><td>Nordi A/S</td><td><span class="fm-badge ">Medarbejder</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-ellipsis"></i></button></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,#8a55a0,var(--fm-primary))">AB</span><div><div style="font-weight:650">Anna Berg</div><div class="muted" style="font-size:11.5px">anna@vestas.dk</div></div></div></td><td>Vestas Wind</td><td><span class="fm-badge indigo">Admin</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-ellipsis"></i></button></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,#c8973a,var(--fm-clay))">PS</span><div><div style="font-weight:650">Peter Sand</div><div class="muted" style="font-size:11.5px">peter@orsted.dk</div></div></div></td><td>Ørsted</td><td><span class="fm-badge ">Medarbejder</span></td><td><span class="status-pill amber" style="height:24px;font-size:11.5px">Inviteret</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-ellipsis"></i></button></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">SH</span><div><div style="font-weight:650">Sofie Holm</div><div class="muted" style="font-size:11.5px">sofie@coloplast.dk</div></div></div></td><td>Coloplast</td><td><span class="fm-badge teal">HR-manager</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-ellipsis"></i></button></td></tr></tbody></table></div>
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+    <a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+  </div>
+
+  <div class="fm-card">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-users"></i></span>
+      <h3>Alle brugere</h3>
+      <label class="fm-search" style="width:300px;margin-left:auto">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" id="userSearch" placeholder="Søg efter bruger, email eller virksomhed" />
+      </label>
+      <span class="fm-badge" style="margin-left:10px">{{ users|length }} brugere</span>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table" id="usersTable">
+          <thead>
+            <tr>
+              <th>ID</th><th>Bruger</th><th>Email</th><th>Rolle</th><th>Virksomhed</th><th>Virksomhedsrolle</th>
+              <th style="text-align:right">Kreditter</th><th>Oprettet</th><th style="text-align:right">Handlinger</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for u in users %}
+            <tr>
+              <td class="muted">{{ u.id }}</td>
+              <td style="font-weight:650">{{ u.username }}</td>
+              <td class="muted">{{ u.email or '-' }}</td>
+              <td><span class="fm-badge {{ 'indigo' if u.role == 'admin' else '' }}">{{ u.role or 'user' }}</span></td>
+              <td>{{ u.company_name or '-' }}</td>
+              <td class="muted">{{ u.company_role or '-' }}</td>
+              <td style="text-align:right;font-weight:650">{{ u.credits or 0 }}</td>
+              <td class="muted">{{ u.created_at.strftime('%d/%m/%Y') if u.created_at else '-' }}</td>
+              <td style="text-align:right;white-space:nowrap">
+                {% if u.role != 'admin' %}
+                <button class="btn btn-ghost btn-sm" onclick="setRole({{ u.id }}, 'admin')" title="Gør til admin"><i class="fa-solid fa-crown"></i></button>
+                {% else %}
+                <button class="btn btn-ghost btn-sm" onclick="setRole({{ u.id }}, 'user')" title="Fjern admin"><i class="fa-solid fa-user"></i></button>
+                {% endif %}
+                <button class="btn btn-soft btn-sm" onclick="addCredits({{ u.id }})" title="Tilføj kreditter"><i class="fa-solid fa-coins"></i></button>
+              </td>
+            </tr>
+            {% else %}
+            <tr><td colspan="9" class="muted" style="text-align:center;padding:28px">Ingen brugere fundet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+document.getElementById('userSearch').addEventListener('input', function() {
+  const q = this.value.toLowerCase();
+  document.querySelectorAll('#usersTable tbody tr').forEach(tr => {
+    tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
+  });
+});
+
+function setRole(userId, role) {
+  if (!confirm(`Skift rolle til "${role}"?`)) return;
+  fetch(`/admin/users/${userId}/role`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({role})
+  }).then(r => r.json()).then(d => {
+    if (d.success) location.reload();
+    else alert('Fejl: ' + d.message);
+  });
+}
+
+function addCredits(userId) {
+  const amount = prompt('Antal kreditter at tilføje:');
+  if (!amount) return;
+  fetch(`/admin/users/${userId}/credits`, {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({amount: parseInt(amount)})
+  }).then(r => r.json()).then(d => {
+    if (d.success) location.reload();
+    else alert('Fejl: ' + d.message);
+  });
+}
+</script>
 {% endblock %}

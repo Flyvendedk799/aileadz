@@ -317,6 +317,8 @@
     if (attached.includes(title)) return;
     attached.push(title); renderRef(); input.focus();
   }
+  // Injected backend product cards call this from their "Spørg om" button.
+  window.attachProductToChat = function (handle, title) { attachProduct(title || handle); };
   function renderRef() {
     refBar.innerHTML = "";
     refBar.classList.toggle("show", attached.length > 0);
@@ -427,6 +429,101 @@
 
   function route(q) { const m = SCN.find((s) => s.test.test(q)); return m ? m.run : (b) => scnCourses(b, q, "projekt"); }
 
+  /* ============================================================
+     REAL AI — talks to app1's streaming /ask endpoint (SSE)
+     POST /app1/ask  {query}  →  data: {json}\n\n ... data: [DONE]
+     event types: meta | chunk | product | suggestions | notice |
+                  thinking | ping | profile_confirm_request |
+                  profile_update | ui_card
+     ============================================================ */
+  const ASK_URL = "/app1/ask";
+
+  function injectProductHtml(body, html) {
+    if (!html) return;
+    let cards = body.querySelector(".cards");
+    if (!cards) { cards = document.createElement("div"); cards.className = "cards"; body.appendChild(cards); }
+    const wrap = document.createElement("div");
+    wrap.innerHTML = html;
+    cards.appendChild(wrap);
+    down();
+  }
+
+  function showError(body, query) {
+    body.innerHTML = `<div class="err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Der opstod en fejl. Prøv igen.</span><button class="retry">Prøv igen</button></div>`;
+    body.querySelector(".retry").onclick = () => { body.closest(".msg").remove(); run(query, { skipUser: true }); };
+  }
+
+  async function streamFromBackend(body, query) {
+    // Reference any attached products the same way the real app1 UI does.
+    let actualQuery = query;
+    if (attached.length) {
+      const refs = attached.map((t) => `[VEDHÆFTET KURSUS: "${t}"]`).join(" ");
+      actualQuery = refs + "\n" + query;
+    }
+
+    const resp = await fetch(ASK_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query: actualQuery }),
+    });
+    if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let buffer = "", textEl = null, fullText = "", suggestions = null, done = false;
+
+    while (!done) {
+      if (aborted) { try { reader.cancel(); } catch (e) {} break; }
+      const r = await reader.read();
+      if (r.done) break;
+      buffer += decoder.decode(r.value, { stream: true });
+      const parts = buffer.split("\n\n");
+      buffer = parts.pop();
+      for (const part of parts) {
+        const line = part.split("\n").find((l) => l.startsWith("data: "));
+        if (!line) continue;
+        const raw = line.slice(6).trim();
+        if (raw === "[DONE]") { done = true; break; }
+        let data;
+        try { data = JSON.parse(raw); } catch (e) { continue; }
+
+        if (data.type === "ping" || data.type === "meta" || data.type === "thinking") continue;
+
+        if (data.type === "chunk") {
+          if (!textEl) { textEl = document.createElement("div"); textEl.className = "md"; body.appendChild(textEl); }
+          fullText += (data.content || "");
+          textEl.innerHTML = md(fullText);
+          down();
+        } else if (data.type === "product") {
+          injectProductHtml(body, data.html);
+        } else if (data.type === "suggestions") {
+          suggestions = data.items || [];
+        } else if (data.type === "notice") {
+          const note = document.createElement("div");
+          note.className = "md"; note.style.opacity = ".7"; note.style.fontStyle = "italic";
+          note.textContent = data.content || "";
+          body.appendChild(note); down();
+        } else if (data.type === "profile_update" || data.type === "profile_confirm_request") {
+          // Render the assistant's profile note as plain text so nothing is lost.
+          const note = document.createElement("div");
+          note.className = "md";
+          note.innerHTML = md(data.message || "Profil opdateret");
+          body.appendChild(note); down();
+        } else if (data.type === "ui_card") {
+          if (data.message) {
+            const note = document.createElement("div");
+            note.className = "md";
+            note.innerHTML = md(data.message);
+            body.appendChild(note); down();
+          }
+        }
+      }
+    }
+    // Render suggestion chips last, like the source UI.
+    if (suggestions && suggestions.length) addChips(body, suggestions);
+    return fullText;
+  }
+
   /* ---------------- send / run ---------------- */
   async function run(query, opts = {}) {
     if (sending) return;
@@ -437,15 +534,13 @@
     setSending(true);
     const body = addBot();
     const th = thinking(body);
-    await sleep(620 + Math.random() * 350);
-    if (aborted) { th.remove(); body.closest(".msg").remove(); finish(); return; }
-    th.remove();
     try {
-      await route(query)(body, query);
+      await streamFromBackend(body, query);
+      th.remove();
       if (!aborted) addFeedback(body, query);
     } catch (e) {
-      body.innerHTML = `<div class="err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Der opstod en fejl. Prøv igen.</span><button class="retry">Prøv igen</button></div>`;
-      body.querySelector(".retry").onclick = () => { body.closest(".msg").remove(); run(query, { skipUser: true }); };
+      th.remove();
+      showError(body, query);
     }
     finish();
   }

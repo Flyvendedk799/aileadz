@@ -2,42 +2,38 @@
 {% block page_id %}catalog{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Leverandører{% endblock %}
-{% block topbar_sub %}32 kursusudbydere på Futurematch.{% endblock %}
+{% block topbar_sub %}{{ vendors|length if vendors else 0 }} kursusudbydere på Futurematch.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Leverandører</span></div>
-  <div class="fm-grid" style="grid-template-columns:repeat(4,1fr)"><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">TI</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.7</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Teknologisk Institut</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Teknik · Ledelse · IT</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">42 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">MZ</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.6</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Mannaz</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Ledelse · Projektledelse</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">38 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">CB</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.8</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">CBS Executive</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Strategi · Ledelse</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">24 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">IB</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.5</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">IBC Innovationsfabrikken</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Agil · Innovation</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">19 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">DJ</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.4</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">DJØF</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Jura · HR</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">21 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">MS</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.7</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Microsoft Learning</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">IT · Cloud · Data</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">31 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">SL</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.3</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Smart Learning</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Data · Marketing</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">27 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">CX</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4.2</span></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Confex</h3><p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">Salg · Kommunikation</p></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">15 kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
-</a></div>
+  <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Leverandører</span></div>
+
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-grip"></i> Alle kurser</a>
+    <a class="pg-tab" href="{{ url_for('catalog.category_index') }}"><i class="fa-solid fa-shapes"></i> Kategorier</a>
+    <a class="pg-tab active" href="{{ url_for('catalog.vendor_index') }}"><i class="fa-solid fa-building"></i> Leverandører</a>
+  </div>
+
+  {% if vendors %}
+  <div class="fm-grid" style="grid-template-columns:repeat(4,1fr)">
+    {% for vendor in vendors %}
+    <a href="{{ url_for('catalog.vendor_detail', slug=vendor.slug) }}" class="fm-card" style="text-decoration:none;color:inherit;padding:18px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" data-reveal onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+      <div class="fm-spread">
+        <span style="width:48px;height:48px;border-radius:13px;display:grid;place-items:center;font-family:var(--ff-display);font-weight:700;font-size:17px;color:#fff;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">{{ (vendor.profile.short_name or vendor.name)[:2]|upper }}</span>
+        <span class="fm-badge teal">{{ vendor.price_label }}</span>
+      </div>
+      <div>
+        <h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">{{ vendor.name }}</h3>
+        <p style="font-size:12.5px;color:var(--fm-ink-3);margin-top:3px">{{ vendor.categories[:3]|join(' · ') if vendor.categories else 'Kursusudbyder' }}</p>
+      </div>
+      <div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">{{ vendor.course_count }} kurser</span><span class="fm-arrow" style="color:var(--fm-ink-3)"><i class="fa-solid fa-arrow-right"></i></span></div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-2)">
+    <i class="fa-solid fa-building fa-2x" style="color:var(--fm-ink-3);margin-bottom:12px"></i>
+    <h3>Ingen leverandører endnu</h3>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

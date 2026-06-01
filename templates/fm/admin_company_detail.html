@@ -1,12 +1,99 @@
 {% extends "fm_base.html" %}
 {% block page_id %}{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Nordi A/S{% endblock %}
-{% block topbar_sub %}Tenant · Enterprise · oprettet mar 2024.{% endblock %}
+{% block topbar_title %}{{ company.company_name }}{% endblock %}
+{% block topbar_sub %}Tenant-indstillinger og feature-kontrol.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('companies.admin_companies_list') }}">Virksomheder</a><i class="fa-solid fa-chevron-right"></i><span>Nordi A/S</span></div>
-  <section class="detail-hero" data-reveal><div class="detail-mark av">NA</div><div class="detail-info"><div class="detail-kick">Enterprise tenant</div><h1 class="detail-title">Nordi A/S</h1><p class="detail-sub">248 medarbejdere · white-label aktiv · SSO via Microsoft. CVR 12345678.</p><div class="detail-tags"><span class="fm-badge teal dot">Aktiv</span><span class="fm-badge indigo">Enterprise</span><span class="fm-badge">White-label</span></div></div></section>
-  <div class="kpi-row"><div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">248</div><div class="kd">231 aktive</div></div><div class="kpi-tile"><div class="kl">Kreditter</div><div class="kv tnum">420</div><div class="kd">fornyes 1. jun</div></div><div class="kpi-tile"><div class="kl">Ordrer (md.)</div><div class="kv tnum">37</div><div class="kd">31% konvertering</div></div><div class="kpi-tile"><div class="kl">MRR</div><div class="kv tnum">28.400</div><div class="kd">kr/md.</div></div></div>
+<div class="crumb"><a href="{{ url_for('companies.admin_companies_list') }}">Virksomheder</a><i class="fa-solid fa-chevron-right"></i><span>{{ company.company_name }}</span></div>
+
+<section class="detail-hero" data-reveal>
+  <div class="detail-mark av">{{ (company.company_name[:2]|upper) if company.company_name else '??' }}</div>
+  <div class="detail-info">
+    <div class="detail-kick">{{ (company.subscription_plan or 'trial')|capitalize }} tenant</div>
+    <h1 class="detail-title">{{ company.company_name }}</h1>
+    <p class="detail-sub">Slug: <span class="mono">{{ company.company_slug }}</span>{% if company.company_slug %} · <a href="{{ url_for('auth.login', slug=company.company_slug) }}" target="_blank">login-side</a>{% endif %} · {{ employee_count }} aktive medarbejdere.</p>
+    <div class="detail-tags">
+      <span class="fm-badge {{ 'green dot' if (company.status or 'active') == 'active' else '' }}">{{ (company.status or 'active')|capitalize }}</span>
+      <span class="fm-badge indigo">{{ (company.subscription_plan or 'trial')|capitalize }}</span>
+      {% if whitelabel_active %}<span class="fm-badge">White-label</span>{% endif %}
+    </div>
+  </div>
+</section>
+
+<div class="split">
+<div class="stack">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsprofil</h3></div><div class="fm-card-body">
+    <form method="POST" action="{{ url_for('companies.admin_company_detail', company_id=company.id) }}">
+      <input type="hidden" name="action" value="save">
+      <div class="form-grid">
+        <div class="fm-field full"><label>Virksomhedsnavn</label><input type="text" class="fm-input" name="company_name" value="{{ company.company_name }}" required></div>
+        <div class="fm-field"><label>Status</label>
+          <select class="fm-select" name="status">
+            <option value="active" {% if (company.status or 'active') == 'active' %}selected{% endif %}>Active</option>
+            <option value="suspended" {% if company.status == 'suspended' %}selected{% endif %}>Suspended</option>
+            <option value="inactive" {% if company.status == 'inactive' %}selected{% endif %}>Inactive</option>
+          </select>
+        </div>
+        <div class="fm-field"><label>Branche</label><input type="text" class="fm-input" name="industry" value="{{ company.industry or '' }}"></div>
+        <div class="fm-field"><label>Abonnement</label>
+          <select class="fm-select" name="subscription_plan">
+            {% for plan in ['trial', 'starter', 'pro', 'enterprise'] %}
+            <option value="{{ plan }}" {% if (company.subscription_plan or 'trial') == plan %}selected{% endif %}>{{ plan|upper }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="fm-field"><label>Max medarbejdere</label><input type="number" class="fm-input" name="max_employees" value="{{ company.max_employees or 50 }}" min="1"></div>
+      </div>
+      <div style="margin-top:14px"><button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem profil</button></div>
+    </form>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user-tie"></i></span><h3>HR-kontakter</h3></div><div class="fm-card-body">
+    {% if hr_contacts %}
+    {% for hr in hr_contacts %}
+    <div style="padding:9px 0;{% if not loop.last %}border-bottom:1px solid var(--fm-line){% endif %}">
+      <div><strong>{{ hr.full_name or hr.username }}</strong> <span class="fm-badge">{{ hr.role }}</span></div>
+      <div style="font-size:12px;color:var(--fm-ink-3)">{{ hr.email }}</div>
+    </div>
+    {% endfor %}
+    {% else %}<p style="color:var(--fm-ink-3);margin:0">Ingen HR-administrator fundet.</p>{% endif %}
+  </div></div>
+</div>
+
+<div class="stack" style="align-self:start">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-palette"></i></span><h3>Branding & white-label</h3></div><div class="fm-card-body">
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 14px">Aktiver custom branding før HR kan konfigurere logo og farver. White-label viser branding for medarbejdere.</p>
+
+    <div class="fm-spread" style="padding:12px;border-radius:12px;background:var(--fm-surface-2);margin-bottom:12px">
+      <div><div style="font-weight:650">Custom branding (Enterprise)</div><div style="font-size:12px;color:var(--fm-ink-3)">Giver adgang til branding-hub</div></div>
+      <form method="POST" action="{{ url_for('companies.admin_company_detail', company_id=company.id) }}" style="margin:0">
+        <input type="hidden" name="action" value="toggle_branding">
+        <input type="hidden" name="enabled" value="{{ '0' if custom_branding else '1' }}">
+        <button type="submit" class="btn btn-sm {{ 'btn-ghost' if custom_branding else 'btn-primary' }}">{{ 'Deaktiver' if custom_branding else 'Aktiver' }}</button>
+      </form>
+    </div>
+
+    <div class="fm-spread" style="padding:12px;border-radius:12px;background:var(--fm-surface-2);margin-bottom:14px">
+      <div><div style="font-weight:650">White-label aktiv</div><div style="font-size:12px;color:var(--fm-ink-3)">Medarbejdere ser tenant-branding</div></div>
+      <form method="POST" action="{{ url_for('companies.admin_company_detail', company_id=company.id) }}" style="margin:0">
+        <input type="hidden" name="action" value="toggle_whitelabel">
+        <input type="hidden" name="enabled" value="{{ '0' if whitelabel_active else '1' }}">
+        <button type="submit" class="btn btn-sm {{ 'btn-ghost' if whitelabel_active else 'btn-primary' }}">{{ 'Deaktiver' if whitelabel_active else 'Aktiver' }}</button>
+      </form>
+    </div>
+
+    <a href="{{ url_for('companies.branding', company_id=company.id) }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-palette"></i> Åbn branding-hub</a>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-list-check"></i></span><h3>Status</h3></div><div class="fm-card-body">
+    <ul style="list-style:none;padding:0;margin:0;font-size:13px;line-height:2">
+      <li><i class="fa-solid fa-{{ 'check' if custom_branding else 'xmark' }}" style="color:{{ 'var(--fm-success)' if custom_branding else 'var(--fm-ink-3)' }}"></i> Custom branding</li>
+      <li><i class="fa-solid fa-{{ 'check' if whitelabel_active else 'xmark' }}" style="color:{{ 'var(--fm-success)' if whitelabel_active else 'var(--fm-ink-3)' }}"></i> White-label runtime</li>
+      <li><i class="fa-solid fa-{{ 'check' if company.company_slug else 'xmark' }}" style="color:{{ 'var(--fm-success)' if company.company_slug else 'var(--fm-ink-3)' }}"></i> Login-slug</li>
+    </ul>
+  </div></div>
+</div>
+</div>
 </div>
 {% endblock %}

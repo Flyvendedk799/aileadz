@@ -2,15 +2,97 @@
 {% block page_id %}company{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomheds-BI{% endblock %}
-{% block topbar_sub %}Nordi A/S · aktivitet og konvertering på tværs.{% endblock %}
+{% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · sidste {{ days }} dage.{% endblock %}
+{% block extra_head %}
+<style>
+  .period-bar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:18px; }
+  .period-btn { padding:7px 14px; border-radius:999px; border:1px solid var(--fm-line); background:var(--fm-surface); color:var(--fm-ink-2); text-decoration:none; font-size:13px; font-weight:700; transition:var(--t); }
+  .period-btn.active, .period-btn:hover { background:var(--fm-primary); color:#fff; border-color:var(--fm-primary); }
+  .dept-row { display:flex; justify-content:space-between; align-items:center; padding:11px 0; border-bottom:1px solid var(--fm-line); }
+  .dept-row:last-child { border-bottom:0; }
+  .course-rank { width:28px; height:28px; border-radius:8px; background:var(--fm-primary-tint); color:var(--fm-primary); display:grid; place-items:center; font-weight:700; font-size:12.5px; flex:0 0 28px; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="kpi-row"><div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Aktive brugere</div><div class="kv tnum">231</div><div class="kd">93% af basen</div></div></div><div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">AI-samtaler</div><div class="kv tnum">1.204</div><div class="kd">+18% md/md</div></div></div><div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">Ordrer</div><div class="kv tnum">37</div><div class="kd">31% konvertering</div></div></div><div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Forbrug</div><div class="kv tnum">42.800</div><div class="kd">kr denne md.</div></div></div></div>
-  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Aktivitet over tid</h3><span class="fm-badge teal" style="margin-left:auto">samtaler</span></div><div class="fm-card-body"><div class="barset"><div class="bar"><div class="fill" style="height:61%"></div><div class="bl">Jan</div></div><div class="bar"><div class="fill" style="height:74%"></div><div class="bl">Feb</div></div><div class="bar"><div class="fill" style="height:70%"></div><div class="bl">Mar</div></div><div class="bar"><div class="fill" style="height:88%"></div><div class="bl">Apr</div></div><div class="bar"><div class="fill" style="height:86%"></div><div class="bl">Maj</div></div><div class="bar"><div class="fill" style="height:100%"></div><div class="bl">Jun</div></div></div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-filter"></i></span><h3>Konverteringstragt</h3></div><div class="fm-card-body">
-  <div class="prog-row"><div class="pt"><b>Sessioner</b><span class="mono">1.204</span></div><div class="fm-prog"><span style="width:100%"></span></div></div>
-  <div class="prog-row"><div class="pt"><b>Produktvisning</b><span class="mono">486</span></div><div class="fm-prog"><span style="width:40%;background:var(--fm-info)"></span></div></div>
-  <div class="prog-row"><div class="pt"><b>Ordrer</b><span class="mono">37</span></div><div class="fm-prog"><span style="width:9%;background:var(--fm-warning)"></span></div></div>
-  <div class="prog-row" style="margin:0"><div class="pt"><b>Gennemført</b><span class="mono">29</span></div><div class="fm-prog"><span style="width:7%;background:var(--fm-success)"></span></div></div></div></div></div>
+<div class="period-bar">
+  <a href="?period=7d" class="period-btn {% if period == '7d' %}active{% endif %}">7 dage</a>
+  <a href="?period=30d" class="period-btn {% if period == '30d' %}active{% endif %}">30 dage</a>
+  <a href="?period=90d" class="period-btn {% if period == '90d' %}active{% endif %}">90 dage</a>
+  <a href="{{ url_for('hr_dashboard.dashboard') }}" class="period-btn" style="margin-left:auto"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
 </div>
+
+<div class="kpi-row">
+  <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Medarbejdere</div><div class="kv tnum">{{ emp_stats.total or 0 }}</div><div class="kd">{{ emp_stats.active or 0 }} aktive · {{ emp_stats.new_hires or 0 }} nye</div></div></div>
+  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">Kursusordrer</div><div class="kv tnum">{{ order_stats.total_orders or 0 }}</div><div class="kd">{{ order_stats.completed or 0 }} gennemført</div></div></div>
+  <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="kl">Gennemførelse</div><div class="kv tnum">{{ completion_rate }}%</div><div class="kd">{{ "%.0f"|format(order_stats.total_spent or 0) }} kr investeret</div></div></div>
+  <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Chatbot-brug</div><div class="kv tnum">{{ chat_stats.total_interactions or 0 }}</div><div class="kd">{{ chat_stats.unique_users or 0 }} unikke brugere</div></div></div>
+</div>
+
+<div class="split">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3></div><div class="fm-card-body"><canvas id="activityChart" height="220"></canvas></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Chatbot-kvalitet</h3></div><div class="fm-card-body">
+    <div style="text-align:center;padding:8px 0 14px"><div class="kv tnum" style="font-size:32px">{{ "%.1f"|format((chat_stats.avg_quality or 0) * 100) }}%</div><div class="kl">Tilfredshedsscore</div></div>
+    <div class="info-list">
+      <div class="kv"><span class="k">Gns. svartid</span><span class="v mono">{{ "%.0f"|format(chat_stats.avg_response_time or 0) }} ms</span></div>
+      <div class="kv"><span class="k">Interaktioner</span><span class="v mono">{{ chat_stats.total_interactions or 0 }}</span></div>
+      <div class="kv"><span class="k">Unikke brugere</span><span class="v mono">{{ chat_stats.unique_users or 0 }}</span></div>
+    </div>
+  </div></div>
+</div>
+
+<div class="split">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Afdelinger</h3></div><div class="fm-card-body" style="padding-top:6px">
+    {% if departments %}
+    {% for dept in departments %}
+    {% set pct = ((dept.completed_orders / dept.orders * 100) if dept.orders else 0)|round %}
+    <div class="dept-row">
+      <div><strong>{{ dept.department }}</strong><div style="font-size:12px;color:var(--fm-ink-3)">{{ dept.employees }} medarbejdere</div></div>
+      <div style="text-align:right;min-width:130px">
+        <div style="font-size:13px">{{ dept.orders }} ordrer</div>
+        <div class="fm-prog thin" style="width:100px;margin:4px 0 0 auto"><span style="width:{{ pct }}%"></span></div>
+        <div style="font-size:11.5px;color:var(--fm-ink-3);margin-top:2px">{{ pct }}% gennemført</div>
+      </div>
+    </div>
+    {% endfor %}
+    {% else %}<p style="color:var(--fm-ink-3)">Ingen afdelingsdata endnu.</p>{% endif %}
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3></div><div class="fm-card-body" style="padding-top:6px">
+    {% if top_courses %}
+    {% for course in top_courses %}
+    <div class="fm-flex fm-gap8" style="align-items:center;padding:9px 0;{% if not loop.last %}border-bottom:1px solid var(--fm-line){% endif %}">
+      <div class="course-rank">{{ loop.index }}</div>
+      <div style="flex:1"><strong>{{ course.product_title }}</strong><div style="font-size:11.5px;color:var(--fm-ink-3)">{{ "%.0f"|format(course.avg_price) }} kr gns.</div></div>
+      <span class="fm-badge teal">{{ course.order_count }} ordrer</span>
+    </div>
+    {% endfor %}
+    {% else %}<p style="color:var(--fm-ink-3)">Ingen kursusdata endnu.</p>{% endif %}
+  </div></div>
+</div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script>
+const labels = {{ (daily_activity | map(attribute='day') | list) | tojson | safe }};
+const data = {{ (daily_activity | map(attribute='interactions') | list) | tojson | safe }};
+const fmtLabels = labels.map(d => {
+  if (!d) return '';
+  const dt = new Date(d);
+  return dt.toLocaleDateString('da-DK', {day:'numeric', month:'short'});
+});
+const css = getComputedStyle(document.documentElement);
+const primary = (css.getPropertyValue('--fm-primary') || '#0b6b63').trim();
+new Chart(document.getElementById('activityChart'), {
+  type: 'line',
+  data: { labels: fmtLabels, datasets: [{
+    label: 'Chatbot-interaktioner', data: data,
+    borderColor: primary, backgroundColor: 'rgba(11,107,99,0.10)',
+    fill: true, tension: 0.4, pointRadius: 3, pointBackgroundColor: primary
+  }]},
+  options: { responsive: true, plugins: { legend: { display: false } },
+    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
+});
+</script>
 {% endblock %}

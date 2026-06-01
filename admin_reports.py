@@ -357,7 +357,7 @@ def chatbot_dashboard():
 
     cur.close()
 
-    return render_template('reports_dashboard.html',
+    return render_template('fm/reports_dashboard.html',
                            total_chatbot_queries=total_chatbot_queries,
                            avg_conversation_length=avg_conversation_length,
                            avg_chatbot_response_time=avg_chatbot_response_time,

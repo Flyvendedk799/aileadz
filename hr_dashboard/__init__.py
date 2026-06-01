@@ -539,7 +539,7 @@ def create_hr_dashboard_blueprint():
             if total_chatbot_queries > 0:
                 conversion_rate = round((len(recent_orders) / total_chatbot_queries) * 100, 2)
             
-            return render_template('hr_dashboard/dashboard.html',
+            return render_template('fm/hr.html',
                                  company=company,
                                  hr_metrics=hr_metrics,
                                  learning_metrics=learning_metrics,
@@ -739,7 +739,7 @@ def create_hr_dashboard_blueprint():
                 flash("Order not found.", "danger")
                 return redirect(url_for('hr_dashboard.dashboard'))
             
-            return render_template('hr_dashboard/order_details.html', 
+            return render_template('fm/order_details.html', 
                                  order=order, 
                                  company=company)
             
@@ -782,7 +782,7 @@ def create_hr_dashboard_blueprint():
             pending_count = sum(1 for a in approvals if a['status'] == 'pending')
             cur.close()
 
-            return render_template('hr_dashboard/approvals.html',
+            return render_template('fm/approvals.html',
                                    company=company,
                                    approvals=approvals,
                                    pending_count=pending_count)
@@ -907,7 +907,7 @@ def create_hr_dashboard_blueprint():
 
             cur.close()
 
-            return render_template('hr_dashboard/budgets.html',
+            return render_template('fm/budgets.html',
                                    company=company,
                                    budgets=budgets,
                                    fiscal_year=fiscal_year,
@@ -1110,7 +1110,7 @@ def create_hr_dashboard_blueprint():
                 'priority_counts': priority_counts,
             }
 
-            return render_template('hr_dashboard/skill_gaps.html',
+            return render_template('fm/skill_gaps.html',
                                    company=company, heatmap=heatmap or {},
                                    targets=targets, departments=departments,
                                    skill_list=skill_list,
@@ -1237,7 +1237,7 @@ def create_hr_dashboard_blueprint():
             from insights_engine import get_roi_metrics, get_predictive_data
             roi = get_roi_metrics(current_app._get_current_object(), company['id'])
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
-            return render_template('hr_dashboard/roi.html',
+            return render_template('fm/roi.html',
                                    company=company, roi=roi, predictions=predictions)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
@@ -1342,7 +1342,7 @@ def create_hr_dashboard_blueprint():
             
             cur.close()
             
-            return render_template('hr_dashboard/employee_progress.html',
+            return render_template('fm/employee_progress.html',
                                  company=company,
                                  employees=employees,
                                  departments=departments,
@@ -1516,7 +1516,7 @@ def create_hr_dashboard_blueprint():
             for engagement in hourly_engagement:
                 chart_data['hourly_engagement']['interactions'][engagement['hour_of_day']] = engagement['interactions']
             
-            return render_template('hr_dashboard/learning_analytics.html',
+            return render_template('fm/learning_analytics.html',
                                  company=company,
                                  period=period,
                                  learning_trends=learning_trends,
@@ -1628,7 +1628,7 @@ def create_hr_dashboard_blueprint():
             },
         ]
 
-        return render_template('hr_dashboard/reports.html',
+        return render_template('fm/hr_reports.html',
                                company=company,
                                report_summary=report_summary,
                                department_rows=department_rows,
@@ -1914,7 +1914,7 @@ def create_hr_dashboard_blueprint():
 
             cur.close()
 
-            return render_template('hr_dashboard/employee_details.html',
+            return render_template('fm/employee_details.html',
                                  company=company,
                                  employee=employee,
                                  course_history=course_history,
@@ -2137,7 +2137,7 @@ def create_hr_dashboard_blueprint():
             departments = [r['department'] for r in cur.fetchall()]
 
             cur.close()
-            return render_template('hr_dashboard/billing.html',
+            return render_template('fm/billing.html',
                                    company=company, orders=orders, summary=summary,
                                    departments=departments,
                                    billing_filter=billing_filter, dept_filter=dept_filter)
@@ -2283,7 +2283,7 @@ def create_hr_dashboard_blueprint():
         if not company:
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
-        return render_template('hr_dashboard/chatbot.html', company=company)
+        return render_template('fm/chatbot.html', company=company)
 
     @hr_dashboard_bp.route('/chatbot/ask', methods=['POST'])
     def hr_chatbot_ask():
@@ -2347,7 +2347,7 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             sessions = cur.fetchall()
             cur.close()
-            return render_template('hr_dashboard/chatbot_sessions.html', 
+            return render_template('fm/chatbot_sessions.html', 
                                  company=company, sessions=sessions,
                                  active_hr_page='analytics')
         except Exception as e:
@@ -2386,7 +2386,7 @@ def create_hr_dashboard_blueprint():
             user_id = interactions[0]['user_id']
             
             cur.close()
-            return render_template('hr_dashboard/chatbot_session_detail.html',
+            return render_template('fm/chatbot_session_detail.html',
                                  company=company, session_id=session_id,
                                  interactions=interactions, username=username,
                                  user_id=user_id, active_hr_page='analytics')
@@ -2563,7 +2563,7 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error loading departments: {e}")
             departments_list = []
 
-        return render_template('hr_dashboard/departments.html',
+        return render_template('fm/departments.html',
                                company=company,
                                departments=departments_list,
                                active_hr_page='departments')
@@ -2810,7 +2810,7 @@ def create_hr_dashboard_blueprint():
 
             cur.close()
 
-            return render_template('hr_dashboard/my_department.html',
+            return render_template('fm/my_department.html',
                                    company=company,
                                    department=user_department,
                                    employees=employees,
@@ -2882,7 +2882,7 @@ def create_hr_dashboard_blueprint():
                 enrollments[e['learning_path_id']].append(e)
 
             cur.close()
-            return render_template('hr_dashboard/learning_paths.html',
+            return render_template('fm/learning_paths.html',
                                    paths=paths,
                                    employees=employees,
                                    departments=departments,
@@ -3105,7 +3105,7 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error loading internal courses: {e}")
             courses, categories, stats = [], [], {'total': 0, 'active': 0, 'mandatory': 0, 'categories': 0}
 
-        return render_template('hr_dashboard/internal_courses.html',
+        return render_template('fm/internal_courses.html',
                                company=company,
                                courses=courses,
                                categories=categories,
@@ -3173,7 +3173,7 @@ def create_hr_dashboard_blueprint():
         except Exception:
             pass
 
-        return render_template('hr_dashboard/course_form.html',
+        return render_template('fm/course_form.html',
                                company=company, course=None, departments=departments,
                                active_hr_page='courses')
 
@@ -3250,7 +3250,7 @@ def create_hr_dashboard_blueprint():
         except Exception:
             pass
 
-        return render_template('hr_dashboard/course_form.html',
+        return render_template('fm/course_form.html',
                                company=company, course=course, departments=departments,
                                active_hr_page='courses')
 
@@ -3437,7 +3437,7 @@ def create_hr_dashboard_blueprint():
             deactivated_vendors = 0
             agreements_count = 0
 
-        return render_template('hr_dashboard/suppliers.html',
+        return render_template('fm/suppliers.html',
                                company=company,
                                vendors=vendor_list,
                                active_vendors=active_vendors,
@@ -3536,7 +3536,7 @@ def create_hr_dashboard_blueprint():
             agreements = []
             vendor_names = set()
 
-        return render_template('hr_dashboard/supplier_agreements.html',
+        return render_template('fm/supplier_agreements.html',
                                company=company, agreements=agreements,
                                vendor_names=sorted(vendor_names),
                                active_hr_page='suppliers')
@@ -3694,7 +3694,7 @@ def create_hr_dashboard_blueprint():
         except Exception:
             pass
 
-        return render_template('hr_dashboard/chatbot_settings.html',
+        return render_template('fm/chatbot_settings.html',
                                company=company,
                                settings=settings,
                                internal_course_count=internal_course_count,
@@ -3717,7 +3717,7 @@ def create_hr_dashboard_blueprint():
         widget = cur.fetchone()
         cur.close()
 
-        return render_template('hr_dashboard/widget_creator.html',
+        return render_template('fm/widget_creator.html',
                               company=company, widget=widget,
                               active_hr_page='widget')
 

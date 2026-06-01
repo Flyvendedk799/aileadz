@@ -2,13 +2,89 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Uddannelsesbudget{% endblock %}
-{% block topbar_sub %}Budgetåret 2026 · forbrug pr. afdeling.{% endblock %}
+{% block topbar_sub %}Budgetåret {{ fiscal_year }} · forbrug pr. afdeling.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='roi') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='suppliers') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
-  <div class="kpi-row k3"><div class="kpi-tile"><div class="kl">Samlet budget</div><div class="kv tnum">1.010.000</div><div class="kd">kr for 2026</div></div><div class="kpi-tile"><div class="kl">Brugt</div><div class="kv tnum">716.000</div><div class="kd">71% af budget</div></div><div class="kpi-tile"><div class="kl">Resterende</div><div class="kv tnum" style="color:var(--fm-success)">294.000</div><div class="kd">kr tilbage</div></div></div>
-  <div class="callout warn" style="margin-bottom:18px"><span class="ci"><i class="fa-solid fa-triangle-exclamation"></i></span><div style="flex:1"><div style="font-weight:650">Udvikling nærmer sig sit loft</div><div style="font-size:12.5px;color:var(--fm-ink-2)">74% af afdelingens budget er brugt med 7 måneder tilbage af året.</div></div><button class="btn btn-ghost btn-sm">Se detaljer</button></div>
-  <div class="fm-table-wrap"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Budget pr. afdeling</h3><span class="fm-badge">2026</span></div>
-  <table class="fm-table"><thead><tr><th>Afdeling</th><th>Budget</th><th>Brugt</th><th>Resterende</th><th>Forbrug</th></tr></thead><tbody><tr><td style="font-weight:650">Udvikling</td><td class="mono">420.000 kr</td><td class="mono">312.000 kr</td><td class="mono" style="color:var(--fm-success)">108.000 kr</td><td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:74%;background:var(--fm-warning)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">74%</span></td></tr><tr><td style="font-weight:650">Salg</td><td class="mono">280.000 kr</td><td class="mono">198.000 kr</td><td class="mono" style="color:var(--fm-success)">82.000 kr</td><td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:71%;background:var(--fm-warning)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">71%</span></td></tr><tr><td style="font-weight:650">Produkt</td><td class="mono">190.000 kr</td><td class="mono">142.000 kr</td><td class="mono" style="color:var(--fm-success)">48.000 kr</td><td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:75%;background:var(--fm-warning)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">75%</span></td></tr><tr><td style="font-weight:650">HR</td><td class="mono">120.000 kr</td><td class="mono">64.000 kr</td><td class="mono" style="color:var(--fm-success)">56.000 kr</td><td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:53%;background:var(--fm-primary)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">53%</span></td></tr></tbody></table></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+
+  {% set tb = total_budget|float %}
+  {% set ts = total_spent|float %}
+  <div class="kpi-row k3">
+    <div class="kpi-tile"><div class="kl">Samlet budget</div><div class="kv tnum">{{ '{:,.0f}'.format(tb).replace(',','.') }}</div><div class="kd">kr for {{ fiscal_year }}</div></div>
+    <div class="kpi-tile"><div class="kl">Brugt</div><div class="kv tnum">{{ '{:,.0f}'.format(ts).replace(',','.') }}</div><div class="kd">{{ ((ts/tb*100)|round(0)|int) if tb > 0 else 0 }}% af budget</div></div>
+    <div class="kpi-tile"><div class="kl">Resterende</div><div class="kv tnum" style="color:var(--fm-success)">{{ '{:,.0f}'.format(tb-ts).replace(',','.') }}</div><div class="kd">kr tilbage</div></div>
+  </div>
+
+  <div class="fm-flex fm-gap8" style="margin-bottom:14px;flex-wrap:wrap;align-items:center">
+    <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year - 1) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> {{ fiscal_year - 1 }}</a>
+    <a href="{{ url_for('hr_dashboard.department_budgets', year=fiscal_year + 1) }}" class="btn btn-ghost btn-sm">{{ fiscal_year + 1 }} <i class="fa-solid fa-arrow-right"></i></a>
+    <button class="btn btn-primary btn-sm" style="margin-left:auto" onclick="openBudgetModal()"><i class="fa-solid fa-plus"></i> Tilføj budget</button>
+  </div>
+
+  <div class="fm-table-wrap"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Budget pr. afdeling</h3><span class="fm-badge">{{ fiscal_year }}</span></div>
+  <table class="fm-table"><thead><tr><th>Afdeling</th><th>Medarbejdere</th><th>Budget</th><th>Brugt</th><th>Resterende</th><th>Forbrug</th><th></th></tr></thead><tbody>
+    {% for b in budgets %}
+    {% set budget_val = b.annual_budget|float %}
+    {% set spent_val = b.spent|float %}
+    {% set remaining = budget_val - spent_val %}
+    {% set util_pct = ((spent_val / budget_val * 100)|round(1)) if budget_val > 0 else 0 %}
+    {% set barcol = 'var(--fm-danger)' if util_pct > 90 else ('var(--fm-warning)' if util_pct > 80 else 'var(--fm-primary)') %}
+    <tr>
+      <td style="font-weight:650">{{ b.department }}</td>
+      <td>{{ b.employee_count or 0 }}</td>
+      <td class="mono">{{ '{:,.0f}'.format(budget_val).replace(',','.') }} kr</td>
+      <td class="mono">{{ '{:,.0f}'.format(spent_val).replace(',','.') }} kr</td>
+      <td class="mono" style="{{ 'color:var(--fm-danger);font-weight:700' if remaining < 0 else 'color:var(--fm-success)' }}">{{ '{:,.0f}'.format(remaining).replace(',','.') }} kr</td>
+      <td style="min-width:160px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [util_pct,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ util_pct }}%</span></td>
+      <td><button class="fm-icon-btn" style="width:32px;height:32px" onclick="editBudget('{{ b.department|e }}', {{ budget_val }})"><i class="fa-solid fa-pen"></i></button></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fm-ink-3)"><i class="fa-solid fa-wallet" style="display:block;font-size:22px;margin-bottom:8px"></i>Ingen budgetter oprettet for {{ fiscal_year }}.</td></tr>
+    {% endfor %}
+  </tbody></table></div>
 </div>
+
+<div id="budgetModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="fm-card" style="max-width:460px;width:90%;padding:22px">
+    <h3 id="budgetModalTitle" style="font-size:17px;font-weight:700;margin-bottom:14px">Tilføj afdelingsbudget</h3>
+    <label class="fm-field"><span>Afdeling</span>
+      <select class="fm-input" id="budgetDepartment">
+        {% for dept in unbudgeted_depts %}<option value="{{ dept }}">{{ dept }}</option>{% endfor %}
+        {% for b in budgets %}<option value="{{ b.department }}">{{ b.department }} (opdater)</option>{% endfor %}
+      </select>
+    </label>
+    <label class="fm-field"><span>Budget (DKK)</span><input type="number" class="fm-input" id="budgetAmount" placeholder="f.eks. 100000" min="0" step="1000"></label>
+    <input type="hidden" id="budgetYear" value="{{ fiscal_year }}">
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-ghost btn-sm" onclick="closeBudgetModal()">Annuller</button>
+      <button class="btn btn-primary btn-sm" onclick="saveBudget()"><i class="fa-solid fa-floppy-disk"></i> Gem</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function openBudgetModal(){ document.getElementById('budgetModalTitle').textContent='Tilføj afdelingsbudget'; document.getElementById('budgetModal').style.display='flex'; }
+function closeBudgetModal(){ document.getElementById('budgetModal').style.display='none'; }
+function editBudget(dept, amount) {
+  document.getElementById('budgetDepartment').value = dept;
+  document.getElementById('budgetAmount').value = amount;
+  document.getElementById('budgetModalTitle').textContent = 'Opdater budget: ' + dept;
+  document.getElementById('budgetModal').style.display='flex';
+}
+function saveBudget() {
+  const dept = document.getElementById('budgetDepartment').value;
+  const amount = document.getElementById('budgetAmount').value;
+  const year = document.getElementById('budgetYear').value;
+  if (!dept || !amount) { alert('Udfyld alle felter.'); return; }
+  fetch('{{ url_for("hr_dashboard.save_budget") }}', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({department: dept, annual_budget: parseFloat(amount), fiscal_year: parseInt(year)})
+  })
+  .then(r => r.json())
+  .then(data => { if (data.success) { location.reload(); } else { alert('Fejl: ' + data.message); } })
+  .catch(err => alert('Netvaerksfejl: ' + err));
+}
+</script>
 {% endblock %}

@@ -1,12 +1,72 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Importforhåndsvisning{% endblock %}
-{% block topbar_sub %}Gennemgå 24 kurser før import.{% endblock %}
+{% block page_id %}acatalog{% endblock %}
+{% block title %}CSV import preview{% endblock %}
+{% block topbar_title %}CSV import preview{% endblock %}
+{% block topbar_sub %}{{ draft.filename }} · {{ draft.created_at }}{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('admin_dashboard.admin_catalog') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Import</span></div>
-  <div class="callout" style="margin-bottom:18px"><span class="ci"><i class="fa-solid fa-file-csv"></i></span><div style="flex:1"><div style="font-weight:650">leverandor_kurser.csv</div><div style="font-size:12.5px;color:var(--fm-ink-2)">24 rækker · 22 nye · 2 dubletter (springes over)</div></div><span class="fm-badge green">Validt</span></div>
-  <div class="fm-table-wrap"><table class="fm-table"><thead><tr><th>Kursus</th><th>Leverandør</th><th>Pris</th><th>Status</th></tr></thead><tbody><tr><td style="font-weight:650">PRINCE2 Foundation</td><td class="muted">Confex</td><td class="mono">9.500 kr</td><td><span class="fm-badge green">Ny</span></td></tr><tr><td style="font-weight:650">ITIL 4 Foundation</td><td class="muted">Confex</td><td class="mono">7.800 kr</td><td><span class="fm-badge green">Ny</span></td></tr><tr><td style="font-weight:650">Lean Green Belt</td><td class="muted">Teknologisk Institut</td><td class="mono">14.500 kr</td><td><span class="fm-badge amber">Dublet</span></td></tr><tr><td style="font-weight:650">Forhandlingsteknik</td><td class="muted">Mannaz</td><td class="mono">6.900 kr</td><td><span class="fm-badge green">Ny</span></td></tr></tbody></table></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-arrow-left"></i> Katalogadmin</a>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      {% if draft.status != 'confirmed' %}
+      <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_import_confirm', job_id=draft.job_id) }}">
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check"></i> Bekræft import</button>
+      </form>
+      {% endif %}
+      <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_import_cancel', job_id=draft.job_id) }}">
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--fm-danger)"><i class="fa-solid fa-trash"></i> Slet kladde</button>
+      </form>
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-circle-plus"></i></span><div><div class="kl">Nye produkter</div><div class="kv tnum">{{ draft.summary.created }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-pen"></i></span><div><div class="kl">Opdateringer</div><div class="kv tnum">{{ draft.summary.updated }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-forward"></i></span><div><div class="kl">Fejl/skipped</div><div class="kv tnum">{{ draft.summary.skipped }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-eye"></i></span><div><div class="kl">Preview produkter</div><div class="kv tnum">{{ products|length }}</div></div></div>
+  </div>
+
+  {% if draft.issues %}
+  <div class="fm-card" style="margin-bottom:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-triangle-exclamation"></i></span><h3>Valideringsnoter</h3></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead><tr><th>Linje</th><th>Besked</th></tr></thead>
+          <tbody>
+            {% for issue in draft.issues %}
+            <tr><td>{{ issue.line }}</td><td>{{ issue.message }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="fm-card">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-boxes-stacked"></i></span><h3>Produkter i kladden</h3></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead><tr><th>Titel</th><th>Leverandør</th><th>Kategorier</th><th>Pris</th><th>Varianter</th></tr></thead>
+          <tbody>
+            {% for product in products %}
+            <tr>
+              <td><strong>{{ product.title }}</strong><br><code>{{ product.handle }}</code></td>
+              <td>{{ product.vendor }}</td>
+              <td>{{ product.categories|join(', ') }}</td>
+              <td>{{ product.price_label }}</td>
+              <td>{{ product.variants|length }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% if draft.products|length > products|length %}
+      <p class="muted" style="font-size:12.5px;margin-top:10px">Viser de første {{ products|length }} produkter af {{ draft.products|length }}.</p>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% endblock %}

@@ -2,18 +2,86 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Tilføj medarbejder{% endblock %}
-{% block topbar_sub %}Opret en ny medarbejder i Nordi A/S.{% endblock %}
+{% block topbar_sub %}Opret en ny medarbejder i {{ company.company_name if company else 'virksomheden' }}.{% endblock %}
+{% block extra_head %}
+<style>.pw-input{display:flex}.pw-input .fm-input{border-radius:10px 0 0 10px}.pw-input .btn{border-radius:0 10px 10px 0}</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>Tilføj</span></div>
-  <div style="max-width:720px;margin:0 auto"><div class="fm-card"><div class="fm-card-body">
-  <div class="form-grid"><div class="fm-field"><label>Fornavn</label><input class="fm-input" placeholder="fx Sara"/></div><div class="fm-field"><label>Efternavn</label><input class="fm-input" placeholder="fx Lind"/></div>
-  <div class="fm-field full"><label>E-mail</label><input class="fm-input" type="email" placeholder="navn@nordi.dk"/></div>
-  <div class="fm-field"><label>Afdeling</label><select class="fm-select"><option>Udvikling</option><option>Salg</option><option>Produkt</option><option>HR</option></select></div>
-  <div class="fm-field"><label>Stilling</label><input class="fm-input" placeholder="fx Product Owner"/></div>
-  <div class="fm-field"><label>Rolle</label><select class="fm-select"><option>Medarbejder</option><option>Afdelingsleder</option><option>HR-manager</option></select></div>
-  <div class="fm-field"><label>Startdato</label><input class="fm-input" type="date"/></div></div>
-  <div class="callout" style="margin-top:6px"><span class="ci"><i class="fa-solid fa-envelope"></i></span><div style="flex:1"><div style="font-weight:650">Send invitation</div><div style="font-size:12.5px;color:var(--fm-ink-2)">Medarbejderen får en e-mail med login og onboarding.</div></div></div>
-  </div></div></div>
+<div class="crumb"><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>Tilføj</span></div>
+<div style="max-width:760px;margin:0 auto">
+  <form method="POST" action="{{ url_for('companies.add_employee') }}">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user-plus"></i></span><h3>Tilføj ny medarbejder</h3></div><div class="fm-card-body">
+    <div class="split">
+      <div class="stack">
+        <div class="fm-eyebrow"><i class="fa-solid fa-id-card"></i> Personoplysninger</div>
+        <div class="fm-field"><label>Fulde navn *</label><input type="text" class="fm-input" name="full_name" id="full_name_field" required placeholder="f.eks. Jens Hansen"></div>
+        <div class="fm-field"><label>Brugernavn *</label><input type="text" class="fm-input" name="username" id="username_field" required placeholder="f.eks. jens.hansen"><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Bruges til login — foreslås automatisk</div></div>
+        <div class="fm-field"><label>Email *</label><input type="email" class="fm-input" name="email" required placeholder="jens@firma.dk"></div>
+        <div class="fm-field"><label>Password *</label><div class="pw-input"><input type="text" class="fm-input" name="password" id="passwordField" required><button type="button" class="btn btn-ghost" onclick="generatePassword()"><i class="fa-solid fa-dice"></i></button></div><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Klik terningen for at generere. Del det med medarbejderen.</div></div>
+        <div class="fm-field"><label>Medarbejder-ID</label><input type="text" class="fm-input" name="employee_id" placeholder="Auto-genereres hvis tom"></div>
+      </div>
+      <div class="stack">
+        <div class="fm-eyebrow clay"><i class="fa-solid fa-briefcase"></i> Arbejdsinformation</div>
+        <div class="fm-field"><label>Afdeling *</label>
+          <select class="fm-select" name="department" required>
+            <option value="">Vælg afdeling</option>
+            {% for dept in departments %}<option value="{{ dept }}">{{ dept }}</option>{% endfor %}
+          </select>
+          <div style="font-size:12px;margin-top:3px"><a href="{{ url_for('hr_dashboard.departments') }}">Opret ny afdeling</a></div>
+        </div>
+        <div class="fm-field"><label>Jobtitel *</label><input type="text" class="fm-input" name="job_title" required placeholder="f.eks. Sælger, Udvikler"></div>
+        <div class="fm-field"><label>Systemrolle</label>
+          <select class="fm-select" name="role">
+            <option value="employee">Medarbejder</option>
+            <option value="department_head">Afdelingsleder</option>
+            <option value="hr_manager">HR Manager</option>
+            {% if session.get('company_role') == 'company_admin' %}<option value="company_admin">Admin</option>{% endif %}
+          </select>
+        </div>
+        <div class="form-grid">
+          <div class="fm-field"><label>Ansættelsesdato</label><input type="date" class="fm-input" name="hire_date"></div>
+          <div class="fm-field"><label>Ansættelsestype</label>
+            <select class="fm-select" name="employment_type">
+              <option value="full_time">Fuldtid</option>
+              <option value="part_time">Deltid</option>
+              <option value="contract">Kontrakt</option>
+              <option value="intern">Praktikant</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="callout" style="margin-top:14px"><span class="ci"><i class="fa-solid fa-circle-info"></i></span><div style="flex:1"><div style="font-weight:650">Hvad sker der?</div><div style="font-size:12.5px;color:var(--fm-ink-2)">En brugerkonto oprettes med det angivne brugernavn og password. Medarbejderen kan logge ind med det samme — ingen email-bekræftelse kræves.</div></div></div>
+    <div class="fm-flex" style="justify-content:space-between;margin-top:16px">
+      <a href="{{ url_for('companies.employees') }}" class="btn btn-ghost"><i class="fa-solid fa-arrow-left"></i> Annuller</a>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-user-plus"></i> Opret medarbejder</button>
+    </div>
+  </div></div>
+  </form>
 </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function generatePassword() {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pw = '';
+    for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('passwordField').value = pw;
+}
+generatePassword();
+(function() {
+    const nameField = document.getElementById('full_name_field');
+    const ufield = document.getElementById('username_field');
+    let userEditedUsername = false;
+    ufield.addEventListener('input', function() { userEditedUsername = true; });
+    function autoSuggest(name) {
+        return name.trim().toLowerCase()
+            .replace(/[æ]/g, 'ae').replace(/[ø]/g, 'oe').replace(/[å]/g, 'aa')
+            .replace(/[^a-z0-9\s.-]/g, '').split(/\s+/).filter(p => p).join('.');
+    }
+    nameField.addEventListener('input', function() { if (!userEditedUsername) ufield.value = autoSuggest(this.value); });
+})();
+</script>
 {% endblock %}

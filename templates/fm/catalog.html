@@ -1,8 +1,8 @@
 {% extends "fm_base.html" %}
 {% block page_id %}catalog{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Kursuskatalog{% endblock %}
-{% block topbar_sub %}Find kurser, leverandører og kategorier direkte.{% endblock %}
+{% block topbar_title %}{{ page_title or 'Kursuskatalog' }}{% endblock %}
+{% block topbar_sub %}{{ page_subtitle or 'Find kurser, leverandører og kategorier direkte.' }}{% endblock %}
 {% block extra_head %}
 <style>
   .cat-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: end; padding: 26px 28px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; margin-bottom: 22px; }
@@ -14,20 +14,20 @@
   .cat-stat .s .n { font-family: var(--ff-display); font-size: 22px; font-weight: 700; }
   .cat-stat .s .l { font-size: 12px; color: var(--fm-ink-3); }
 
-  .cat-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
-  .cat-chips { display: flex; gap: 8px; flex-wrap: wrap; }
-  .fchip { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink-2); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--t); display: inline-flex; align-items: center; gap: 7px; }
-  .fchip:hover { border-color: var(--fm-line-2); color: var(--fm-ink); }
-  .fchip.active { background: var(--fm-primary); color: #fff; border-color: transparent; box-shadow: var(--sh-glow); }
-  [data-theme="dark"] .fchip.active { color: #06201d; }
-  .fchip .ct { font-family: var(--ff-mono); font-size: 11px; opacity: .7; }
+  .cat-filter { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; align-items: end; padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); margin-bottom: 20px; }
+  .cat-filter .ff { display: flex; flex-direction: column; gap: 5px; }
+  .cat-filter label { font-size: 11.5px; font-weight: 600; color: var(--fm-ink-3); }
+  .cat-filter .fm-input, .cat-filter .fm-select { height: 38px; }
+  .cat-filter .submit { display: flex; align-items: flex-end; }
+
+  .cat-meta-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
+  .cat-meta-row .count { color: var(--fm-ink-2); font-size: 13.5px; }
 
   .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
-  .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); cursor: pointer; }
+  .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); text-decoration: none; color: inherit; }
   .ccard:hover { transform: translateY(-3px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
-  .ccard-media { height: 130px; display: grid; place-items: center; font-size: 30px; color: var(--fm-primary); background: linear-gradient(135deg, var(--fm-primary-tint), color-mix(in srgb, var(--fm-clay) 9%, transparent)); border-bottom: 1px solid var(--fm-line); position: relative; }
-  .ccard-media .save { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink-3); display: grid; place-items: center; font-size: 13px; transition: var(--t); }
-  .ccard-media .save:hover { color: var(--fm-clay); border-color: var(--fm-clay); }
+  .ccard-media { height: 130px; display: grid; place-items: center; font-size: 30px; color: var(--fm-primary); background: linear-gradient(135deg, var(--fm-primary-tint), color-mix(in srgb, var(--fm-clay) 9%, transparent)); border-bottom: 1px solid var(--fm-line); position: relative; overflow: hidden; }
+  .ccard-media img { width: 100%; height: 100%; object-fit: cover; }
   .ccard-body { padding: 16px; display: flex; flex-direction: column; gap: 11px; flex: 1; }
   .ccard-kick { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
   .ccard h3 { font-size: 16px; font-weight: 700; letter-spacing: -.02em; line-height: 1.25; }
@@ -37,7 +37,14 @@
   .cpill i { font-size: 10px; color: var(--fm-ink-3); }
   .ccard-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--fm-line); }
   .ccard-price { font-family: var(--ff-display); font-size: 18px; font-weight: 700; color: var(--fm-ink); }
-  .ccard-price .from { font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); font-weight: 500; }
+
+  .cat-empty { text-align: center; padding: 60px 20px; color: var(--fm-ink-2); }
+  .cat-empty i { color: var(--fm-ink-3); margin-bottom: 14px; }
+
+  .cat-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 28px; }
+  .cat-pager .pg-info { font-size: 13px; color: var(--fm-ink-2); }
+  .cat-pager .btn.disabled { opacity: .45; pointer-events: none; }
+
   @media (max-width: 1100px) { .cat-grid { grid-template-columns: repeat(2,1fr); } }
   @media (max-width: 680px) { .cat-grid { grid-template-columns: 1fr; } .cat-hero { grid-template-columns: 1fr; } }
 </style>
@@ -47,18 +54,15 @@
         <section class="cat-hero" data-reveal data-d="1">
           <div>
             <span class="fm-eyebrow"><i class="fa-solid fa-graduation-cap"></i> Futurematch katalog</span>
-            <h1>248 kurser fra 32 leverandører</h1>
-            <p>Kuraterede kurser, certificeringer og forløb — klar til at bestille til dig selv eller dit team.</p>
+            <h1>{{ page_title or 'Kursuskatalog' }}</h1>
+            <p>{{ page_subtitle or 'Kuraterede kurser, certificeringer og forløb — klar til at bestille til dig selv eller dit team.' }}</p>
             <div class="cat-stat">
-              <div class="s"><div class="n tnum">248</div><div class="l">Kurser</div></div>
-              <div class="s"><div class="n tnum">32</div><div class="l">Leverandører</div></div>
-              <div class="s"><div class="n tnum">14</div><div class="l">Kategorier</div></div>
+              <div class="s"><div class="n tnum">{{ pagination.total if pagination else 0 }}</div><div class="l">Kurser</div></div>
+              <div class="s"><div class="n tnum">{{ (filter_options.vendors|length) if filter_options and filter_options.vendors else 0 }}</div><div class="l">Leverandører</div></div>
+              <div class="s"><div class="n tnum">{{ (filter_options.categories|length) if filter_options and filter_options.categories else 0 }}</div><div class="l">Kategorier</div></div>
             </div>
           </div>
-          <label class="fm-search" style="width:280px">
-            <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" id="catSearch" placeholder="Søg i katalog…" />
-          </label>
+          <a class="btn btn-ghost" href="{{ url_for('app1.index') }}"><i class="fa-solid fa-comments"></i> Spørg AI</a>
         </section>
 
         <div class="pg-subnav">
@@ -67,20 +71,106 @@
           <a class="pg-tab" href="{{ url_for('catalog.vendor_index') }}"><i class="fa-solid fa-building"></i> Leverandører</a>
         </div>
 
-        <div class="cat-toolbar">
-          <div class="cat-chips" id="chips">
-            <button class="fchip active" data-cat="all">Alle <span class="ct">248</span></button>
-            <button class="fchip" data-cat="ledelse">Ledelse <span class="ct">42</span></button>
-            <button class="fchip" data-cat="it">IT &amp; Data <span class="ct">61</span></button>
-            <button class="fchip" data-cat="projekt">Projektledelse <span class="ct">28</span></button>
-            <button class="fchip" data-cat="hr">HR &amp; Jura <span class="ct">19</span></button>
-            <button class="fchip" data-cat="salg">Salg &amp; Marketing <span class="ct">34</span></button>
+        <form class="cat-filter" method="GET" action="{{ url_for('catalog.catalog_index') }}">
+          <div class="ff" style="grid-column: span 2">
+            <label for="catalog-q">Søg</label>
+            <input id="catalog-q" class="fm-input" type="search" name="q" value="{{ filters.q if filters else '' }}" placeholder="Kursus, emne eller leverandør">
           </div>
-          <div style="margin-left:auto" class="fm-flex fm-gap8">
-            <select class="fm-select" style="width:auto;height:36px;font-size:13px"><option>Sortér: Populære</option><option>Pris ↑</option><option>Pris ↓</option><option>Nyeste</option></select>
+          <div class="ff">
+            <label for="catalog-category">Kategori</label>
+            <select id="catalog-category" class="fm-select" name="category">
+              <option value="">Alle kategorier</option>
+              {% for category in (filter_options.categories if filter_options else []) %}
+              <option value="{{ category.slug }}" {% if filters and filters.category == category.slug %}selected{% endif %}>{{ category.name }} ({{ category.count }})</option>
+              {% endfor %}
+            </select>
           </div>
+          <div class="ff">
+            <label for="catalog-vendor">Leverandør</label>
+            <select id="catalog-vendor" class="fm-select" name="vendor">
+              <option value="">Alle leverandører</option>
+              {% for vendor in (filter_options.vendors if filter_options else []) %}
+              <option value="{{ vendor.slug }}" {% if filters and filters.vendor == vendor.slug %}selected{% endif %}>{{ vendor.name }} ({{ vendor.course_count }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="ff">
+            <label for="catalog-format">Format</label>
+            <select id="catalog-format" class="fm-select" name="format">
+              <option value="">Alle formater</option>
+              {% for format in (filter_options.formats if filter_options else []) %}
+              <option value="{{ format }}" {% if filters and filters.format == format %}selected{% endif %}>{{ format }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="ff">
+            <label for="catalog-max">Max pris</label>
+            <input id="catalog-max" class="fm-input" type="number" min="0" step="500" name="price_max" value="{{ filters.price_max if filters else '' }}">
+          </div>
+          <div class="ff">
+            <label for="catalog-sort">Sortering</label>
+            <select id="catalog-sort" class="fm-select" name="sort">
+              <option value="relevance" {% if filters and filters.sort == 'relevance' %}selected{% endif %}>Match</option>
+              <option value="price_asc" {% if filters and filters.sort == 'price_asc' %}selected{% endif %}>Pris op</option>
+              <option value="price_desc" {% if filters and filters.sort == 'price_desc' %}selected{% endif %}>Pris ned</option>
+              <option value="vendor" {% if filters and filters.sort == 'vendor' %}selected{% endif %}>Leverandør</option>
+            </select>
+          </div>
+          <div class="ff submit">
+            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Filtrér</button>
+          </div>
+        </form>
+
+        <div class="cat-meta-row">
+          <div class="count">{{ pagination.total if pagination else 0 }} kurser fundet</div>
         </div>
 
-        <section class="cat-grid" id="grid"></section>
+        {% if products %}
+        <section class="cat-grid">
+          {% for product in products %}
+          <a class="ccard" href="{{ url_for('catalog.product_detail', handle=product.handle) }}" data-reveal>
+            <div class="ccard-media">
+              {% if product.image_url %}
+              <img src="{{ product.image_url }}" alt="{{ product.title }}">
+              {% else %}
+              <i class="fa-solid fa-graduation-cap"></i>
+              {% endif %}
+            </div>
+            <div class="ccard-body">
+              <div class="ccard-kick">{{ product.vendor }}</div>
+              <h3>{{ product.title }}</h3>
+              {% if product.description_excerpt %}
+              <p class="desc">{{ product.description_excerpt }}</p>
+              {% endif %}
+              <div class="ccard-meta">
+                {% for category in product.categories[:2] %}
+                <span class="cpill">{{ category }}</span>
+                {% endfor %}
+                {% if product.format %}<span class="cpill"><i class="fa-solid fa-display"></i>{{ product.format }}</span>{% endif %}
+              </div>
+              <div class="ccard-foot">
+                <span class="ccard-price">{{ product.price_label }}</span>
+                <span class="cpill">{{ product.variants|length }} variant{{ '' if product.variants|length == 1 else 'er' }}</span>
+              </div>
+            </div>
+          </a>
+          {% endfor %}
+        </section>
+
+        {% if pagination and pagination.total_pages > 1 %}
+        <nav class="cat-pager" aria-label="Katalog pagination">
+          <a class="btn btn-ghost {{ '' if pagination.has_prev else 'disabled' }}" href="{{ pagination_urls.prev if pagination_urls else '#' }}"><i class="fa-solid fa-arrow-left"></i> Forrige</a>
+          <span class="pg-info">Side {{ pagination.page }} af {{ pagination.total_pages }}</span>
+          <a class="btn btn-ghost {{ '' if pagination.has_next else 'disabled' }}" href="{{ pagination_urls.next if pagination_urls else '#' }}">Næste <i class="fa-solid fa-arrow-right"></i></a>
+        </nav>
+        {% endif %}
+        {% else %}
+        <div class="cat-empty">
+          <i class="fa-solid fa-magnifying-glass fa-2x"></i>
+          <h3>Ingen kurser matcher filtrene</h3>
+          <p>Prøv en bredere søgning eller ryd filtrene.</p>
+          <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}" style="margin-top:14px">Ryd filtre</a>
+        </div>
+        {% endif %}
       </div>
 {% endblock %}

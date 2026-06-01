@@ -1,49 +1,169 @@
 {% extends "fm_base.html" %}
 {% block page_id %}catalog{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Projektledelse Praktisk{% endblock %}
-{% block topbar_sub %}Teknologisk Institut · Projektledelse{% endblock %}
+{% block topbar_title %}{{ product.title if product else 'Kursus' }}{% endblock %}
+{% block topbar_sub %}{{ product.vendor if product else '' }}{% if product and product.product_type %} · {{ product.product_type }}{% endif %}{% endblock %}
+{% block extra_head %}
+<style>
+  .detail-tags .cpill { display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2); }
+  .detail-tags .cpill i { font-size:10px;color:var(--fm-ink-3); }
+  .variant-list { display: flex; flex-direction: column; gap: 8px; }
+  .variant-option { display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px; border: 1px solid var(--fm-line); border-radius: var(--r-md); cursor: pointer; transition: var(--t); }
+  .variant-option:hover { border-color: var(--fm-line-2); }
+  .variant-option input { margin-top: 3px; accent-color: var(--fm-primary); }
+  .req-field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
+  .req-field label { font-size: 12px; font-weight: 600; color: var(--fm-ink-3); }
+  .req-field .fm-input, .req-field textarea { width: 100%; }
+  .req-field textarea { min-height: 60px; border: 1px solid var(--fm-line); border-radius: var(--r-sm); background: var(--fm-surface); color: var(--fm-ink); padding: 9px 11px; font: inherit; font-size: 13.5px; resize: vertical; }
+  .grid-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
+  .grid-meta .gm strong { display: block; font-size: 13px; }
+  .grid-meta .gm span { font-size: 13px; color: var(--fm-ink-2); }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
 
-  <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('catalog.category_index') }}">Projektledelse</a><i class="fa-solid fa-chevron-right"></i><span>Projektledelse Praktisk</span></div>
+  <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i>{% if product and product.vendor_slug %}<a href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}">{{ product.vendor }}</a><i class="fa-solid fa-chevron-right"></i>{% endif %}<span>{{ product.title if product else 'Kursus' }}</span></div>
+
+  {% if request.args.get('order') %}
+  <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-success);background:color-mix(in srgb,var(--fm-success) 8%,var(--fm-surface))">
+    <i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Tilmeldingsanmodning oprettet med reference <strong>{{ request.args.get('order') }}</strong>.
+  </div>
+  {% endif %}
+
   <section class="detail-hero" data-reveal>
-    <div class="detail-mark"><i class="fa-solid fa-diagram-project"></i></div>
+    <div class="detail-mark">
+      {% if product and product.image_url %}<img src="{{ product.image_url }}" alt="{{ product.title }}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">{% else %}<i class="fa-solid fa-graduation-cap"></i>{% endif %}
+    </div>
     <div class="detail-info">
-      <div class="detail-kick">Teknologisk Institut</div>
-      <h1 class="detail-title">Projektledelse Praktisk</h1>
-      <p class="detail-sub">Et intensivt 3-dages forløb der giver projektledere konkrete værktøjer til planlægning, interessenthåndtering og eksekvering — med øvelser baseret på egne projekter.</p>
-      <div class="detail-tags"><span class="cpill" style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>3 dage</span><span class="cpill" style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-location-dot" style="font-size:10px;color:var(--fm-ink-3)"></i>København</span><span class="cpill" style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-certificate" style="font-size:10px;color:var(--fm-ink-3)"></i>Certifikat</span><span class="cpill" style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-language" style="font-size:10px;color:var(--fm-ink-3)"></i>Dansk</span><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4,8 (212)</span></div>
+      <div class="detail-kick">{{ product.vendor if product else '' }}</div>
+      <h1 class="detail-title">{{ product.title if product else 'Kursus' }}</h1>
+      {% if product and product.summary %}<p class="detail-sub">{{ product.summary }}</p>{% endif %}
+      <div class="detail-tags">
+        {% for category in (product.categories if product else []) %}
+        <a class="cpill" style="text-decoration:none" href="{{ url_for('catalog.category_detail', slug=product.category_slugs[loop.index0]) }}">{{ category }}</a>
+        {% endfor %}
+        {% if product and product.format %}<span class="cpill"><i class="fa-solid fa-display"></i>{{ product.format }}</span>{% endif %}
+        {% if product and product.locations %}<span class="cpill"><i class="fa-solid fa-location-dot"></i>{{ product.locations[:3]|join(', ') }}</span>{% endif %}
+      </div>
     </div>
   </section>
+
   <div class="split">
     <div class="stack">
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-align-left"></i></span><h3>Om kurset</h3></div>
-        <div class="fm-card-body"><p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0 0 12px">Kurset henvender sig til både nye og erfarne projektledere, der ønsker en struktureret tilgang til projektarbejde. Du arbejder hands-on med cases fra egen hverdag og går hjem med en konkret værktøjskasse.</p><p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0">Underviserne er erfarne projektledere med baggrund i både private og offentlige organisationer.</p></div>
+        <div class="fm-card-body">
+          {% if product and product.description_text and product.description_text != product.summary %}
+            {% for paragraph in product.description_text.split('\n\n')[:8] %}
+            {% if paragraph.strip() %}<p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0 0 12px">{{ paragraph }}</p>{% endif %}
+            {% endfor %}
+          {% elif product and product.summary %}
+            <p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0">{{ product.summary }}</p>
+          {% else %}
+            <p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0">Beskrivelse følger.</p>
+          {% endif %}
+
+          {% if product and product.metadata %}
+          <div class="grid-meta">
+            {% if product.metadata.duration_days %}<div class="gm"><strong>Varighed</strong><span>{{ product.metadata.duration_days }} dage</span></div>{% endif %}
+            {% if product.metadata.difficulty %}<div class="gm"><strong>Niveau</strong><span>{{ product.metadata.difficulty }}</span></div>{% endif %}
+            {% if product.metadata.certification %}<div class="gm"><strong>Certificering</strong><span>{{ product.metadata.certification }}</span></div>{% endif %}
+          </div>
+          {% endif %}
+        </div>
       </div>
-      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-list-check"></i></span><h3>Det lærer du</h3></div>
-        <div class="fm-card-body" style="padding-top:6px"><ul style="list-style:none;margin:0;padding:0"><li style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--fm-line)"><i class="fa-solid fa-circle-check" style="color:var(--fm-primary);margin-top:3px"></i><span style="font-size:14px">Planlæg og styr projekter med anerkendte metoder</span></li><li style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--fm-line)"><i class="fa-solid fa-circle-check" style="color:var(--fm-primary);margin-top:3px"></i><span style="font-size:14px">Håndtér interessenter, risici og ændringer</span></li><li style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--fm-line)"><i class="fa-solid fa-circle-check" style="color:var(--fm-primary);margin-top:3px"></i><span style="font-size:14px">Lav realistiske tidsplaner og budgetter</span></li><li style="display:flex;gap:10px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--fm-line)"><i class="fa-solid fa-circle-check" style="color:var(--fm-primary);margin-top:3px"></i><span style="font-size:14px">Led teamet gennem hele projektets livscyklus</span></li></ul></div>
-      </div>
+
+      {% if product and product.variants %}
       <div class="fm-table-wrap">
-        <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-calendar"></i></span><h3 style="font-size:15px;font-weight:700">Kommende hold</h3></div><span class="fm-badge teal">3 datoer</span></div>
-        <table class="fm-table"><thead><tr><th>Dato</th><th>Sted</th><th>Pladser</th><th>Pris</th><th></th></tr></thead><tbody><tr><td><div style="display:flex;align-items:center;gap:8px;font-weight:650"><i class="fa-solid fa-calendar-day" style="color:var(--fm-ink-3);font-size:12px"></i>12. jun 2026</div></td><td class="muted">København K</td><td><span class="status-pill green" style="height:24px;font-size:11.5px">8 pladser</span></td><td class="mono" style="color:var(--fm-primary);font-weight:700">8.900 kr</td><td style="text-align:right"><button class="btn btn-soft btn-sm">Vælg hold</button></td></tr><tr><td><div style="display:flex;align-items:center;gap:8px;font-weight:650"><i class="fa-solid fa-calendar-day" style="color:var(--fm-ink-3);font-size:12px"></i>3. sep 2026</div></td><td class="muted">Aarhus C</td><td><span class="status-pill amber" style="height:24px;font-size:11.5px">2 pladser</span></td><td class="mono" style="color:var(--fm-primary);font-weight:700">8.900 kr</td><td style="text-align:right"><button class="btn btn-soft btn-sm">Vælg hold</button></td></tr><tr><td><div style="display:flex;align-items:center;gap:8px;font-weight:650"><i class="fa-solid fa-calendar-day" style="color:var(--fm-ink-3);font-size:12px"></i>21. okt 2026</div></td><td class="muted">Online live</td><td><span class="status-pill green" style="height:24px;font-size:11.5px">12 pladser</span></td><td class="mono" style="color:var(--fm-primary);font-weight:700">7.900 kr</td><td style="text-align:right"><button class="btn btn-soft btn-sm">Vælg hold</button></td></tr></tbody></table>
+        <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-calendar"></i></span><h3 style="font-size:15px;font-weight:700">Kommende hold</h3></div><span class="fm-badge teal">{{ product.variants|length }} dato{{ '' if product.variants|length == 1 else 'er' }}</span></div>
+        <table class="fm-table"><thead><tr><th>Dato</th><th>Sted</th><th>Pris</th></tr></thead><tbody>
+          {% for variant in product.variants[:12] %}
+          <tr>
+            <td><div style="display:flex;align-items:center;gap:8px;font-weight:650"><i class="fa-solid fa-calendar-day" style="color:var(--fm-ink-3);font-size:12px"></i>{{ variant.date or 'Dato efter aftale' }}</div></td>
+            <td class="muted">{{ variant.location or variant.city or 'Online/efter aftale' }}</td>
+            <td class="mono" style="color:var(--fm-primary);font-weight:700">{{ variant.price_label or product.price_label }}</td>
+          </tr>
+          {% endfor %}
+        </tbody></table>
       </div>
+      {% endif %}
     </div>
+
     <div class="stack">
       <div class="fm-card"><div class="fm-card-body">
-        <div class="fm-flex" style="align-items:baseline;gap:8px"><span style="font-family:var(--ff-display);font-size:34px;font-weight:700;letter-spacing:-.03em">8.900</span><span style="color:var(--fm-ink-2);font-weight:600">kr</span><span style="margin-left:auto;font-size:13px;color:var(--fm-ink-3);text-decoration:line-through">10.500</span></div>
-        <div class="status-pill teal" style="margin-top:6px"><i class="fa-solid fa-handshake" style="background:none;width:auto;height:auto"></i> Aftalepris for Nordi A/S</div>
-        <div class="info-list" style="margin-top:14px"><div class="kv"><span class="k">Varighed</span><span class="v">3 dage</span></div><div class="kv"><span class="k">Format</span><span class="v">Fysisk + online</span></div><div class="kv"><span class="k">Kreditter</span><span class="v">12</span></div><div class="kv"><span class="k">Godkendelse</span><span class="v">Kræves ikke</span></div></div>
-        <button class="btn btn-primary" style="width:100%;margin-top:14px"><i class="fa-solid fa-cart-plus"></i> Bestil til team</button>
-        <button class="btn btn-ghost" style="width:100%;margin-top:8px"><i class="fa-solid fa-bookmark"></i> Gem til senere</button>
+        <div class="fm-flex" style="align-items:baseline;gap:8px">
+          <span style="font-family:var(--ff-display);font-size:30px;font-weight:700;letter-spacing:-.03em">{{ product.price_label if product else 'Pris på forespørgsel' }}</span>
+          <span style="margin-left:auto" class="fm-badge">{{ (product.variants|length) if product else 0 }} variant{{ '' if product and product.variants|length == 1 else 'er' }}</span>
+        </div>
+
+        {% if supplier_state and not supplier_state.is_active %}
+        <div class="status-pill amber" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;padding:10px 12px;line-height:1.4">
+          <i class="fa-solid fa-triangle-exclamation" style="background:none;width:auto;height:auto;margin-top:2px"></i>
+          <span>Denne leverandør er deaktiveret for din virksomhed. HR kan aktivere den under leverandørstyring.</span>
+        </div>
+        {% endif %}
+
+        <form method="POST" action="{{ url_for('catalog.request_product', handle=product.handle) }}" style="margin-top:14px">
+          <div class="req-field"><label>Vælg tidspunkt/lokation</label></div>
+          <div class="variant-list">
+            {% for variant in (product.variants[:12] if product else []) %}
+            <label class="variant-option">
+              <input type="radio" name="variant_index" value="{{ loop.index0 }}" {% if loop.first %}checked{% endif %} {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
+              <span>
+                <strong>{{ variant.date or 'Dato efter aftale' }}</strong><br>
+                <span class="muted" style="font-size:12.5px">{{ variant.location or variant.city or 'Online/efter aftale' }}</span><br>
+                <span style="font-size:12.5px">{{ variant.price_label or product.price_label }}</span>
+              </span>
+            </label>
+            {% endfor %}
+          </div>
+
+          <div class="req-field">
+            <label for="request-name">Navn</label>
+            <input id="request-name" class="fm-input" name="name" value="{{ session.get('user', '') }}" required {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
+          </div>
+          <div class="req-field">
+            <label for="request-email">Email</label>
+            <input id="request-email" class="fm-input" type="email" name="email" required {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
+          </div>
+          <div class="req-field">
+            <label for="request-phone">Telefon</label>
+            <input id="request-phone" class="fm-input" name="phone" {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
+          </div>
+          <div class="req-field">
+            <label for="request-notes">Note</label>
+            <textarea id="request-notes" name="notes" rows="2" {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}></textarea>
+          </div>
+
+          <button class="btn btn-primary" type="submit" style="width:100%;margin-top:14px" {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
+            <i class="fa-solid fa-circle-check"></i> Anmod om tilmelding
+          </button>
+          <a class="btn btn-ghost" style="width:100%;margin-top:8px" href="{{ url_for('app1.index', product_handle=product.handle, product_title=product.title) }}">
+            <i class="fa-solid fa-comments"></i> Spørg AI om kurset
+          </a>
+        </form>
       </div></div>
+
+      {% if product and product.vendor_slug %}
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Leverandør</h3></div>
-        <div class="fm-card-body"><a href="{{ url_for('futurematch.showcase', page='vendor_detail') }}" class="row-item" style="text-decoration:none;border:0;padding:0"><span class="ra">TI</span><div class="rt"><div class="rn">Teknologisk Institut</div><div class="rm">42 kurser · 4,7 ★</div></div><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></a></div>
+        <div class="fm-card-body"><a href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}" class="row-item" style="text-decoration:none;border:0;padding:0"><span class="ra">{{ product.vendor[:2]|upper }}</span><div class="rt"><div class="rn">{{ product.vendor }}</div><div class="rm">Se alle kurser</div></div><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></a></div>
       </div>
+      {% endif %}
+
+      {% if related_products %}
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shuffle"></i></span><h3>Lignende kurser</h3></div>
-        <div class="fm-card-body" style="padding-top:6px"><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="row-item" style="text-decoration:none"><span class="ra soft"><i class="fa-solid fa-bolt"></i></span><div class="rt"><div class="rn">Agil Projektledelse & Scrum</div><div class="rm">IBC Innovationsfabrikken</div></div><span class="mono" style="font-weight:700;color:var(--fm-primary)">6.400 kr</span></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="row-item" style="text-decoration:none"><span class="ra soft"><i class="fa-solid fa-toolbox"></i></span><div class="rt"><div class="rn">Projektlederens Værktøjskasse</div><div class="rm">Mannaz</div></div><span class="mono" style="font-weight:700;color:var(--fm-primary)">11.200 kr</span></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="row-item" style="text-decoration:none"><span class="ra soft"><i class="fa-solid fa-people-arrows"></i></span><div class="rt"><div class="rn">Forandringsledelse</div><div class="rm">CBS Executive</div></div><span class="mono" style="font-weight:700;color:var(--fm-primary)">10.900 kr</span></a></div>
+        <div class="fm-card-body" style="padding-top:6px">
+          {% for related in related_products %}
+          <a href="{{ url_for('catalog.product_detail', handle=related.handle) }}" class="row-item" style="text-decoration:none">
+            <span class="ra soft"><i class="fa-solid fa-graduation-cap"></i></span>
+            <div class="rt"><div class="rn">{{ related.title }}</div><div class="rm">{{ related.vendor }}</div></div>
+            <span class="mono" style="font-weight:700;color:var(--fm-primary)">{{ related.price_label }}</span>
+          </a>
+          {% endfor %}
+        </div>
       </div>
+      {% endif %}
     </div>
   </div>
-    </div>
+</div>
 {% endblock %}

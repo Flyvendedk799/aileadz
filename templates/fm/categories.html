@@ -5,34 +5,29 @@
 {% block topbar_sub %}Find kurser efter emne og fagområde.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Kategorier</span></div>
-  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)"><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-primary) 12%,transparent);color:var(--fm-primary)"><i class="fa-solid fa-users-gear"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Ledelse</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">42</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-indigo) 12%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-microchip"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">IT & Data</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">61</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-clay) 12%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-diagram-project"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Projektledelse</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">28</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-primary) 12%,transparent);color:var(--fm-primary)"><i class="fa-solid fa-scale-balanced"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">HR & Jura</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">19</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-gold) 12%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-bullhorn"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Salg & Marketing</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">34</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-indigo) 12%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-comments"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Kommunikation</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">22</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-clay) 12%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-coins"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Økonomi</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">17</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-primary) 12%,transparent);color:var(--fm-primary)"><i class="fa-solid fa-language"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Sprog</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">14</span> kurser</p></div>
-</a><a href="{{ url_for('futurematch.showcase', page='category_detail') }}" class="fm-card" style="text-decoration:none;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-  <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-gold) 12%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-leaf"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
-  <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">Bæredygtighed</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">11</span> kurser</p></div>
-</a></div>
-    </div>
+  <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>Kategorier</span></div>
+
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-grip"></i> Alle kurser</a>
+    <a class="pg-tab active" href="{{ url_for('catalog.category_index') }}"><i class="fa-solid fa-shapes"></i> Kategorier</a>
+    <a class="pg-tab" href="{{ url_for('catalog.vendor_index') }}"><i class="fa-solid fa-building"></i> Leverandører</a>
+  </div>
+
+  {% if categories %}
+  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
+    {% for category in categories %}
+    <a href="{{ url_for('catalog.category_detail', slug=category.slug) }}" class="fm-card" style="text-decoration:none;color:inherit;padding:20px;display:flex;flex-direction:column;gap:14px;transition:transform var(--t),box-shadow var(--t)" data-reveal onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
+      <div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;font-size:18px;background:color-mix(in srgb,var(--fm-primary) 12%,transparent);color:var(--fm-primary)"><i class="fa-solid fa-layer-group"></i></span><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></div>
+      <div><h3 style="font-size:17px;font-weight:700;letter-spacing:-.02em">{{ category.name }}</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:3px"><span class="mono">{{ category.count }}</span> kurser</p></div>
+    </a>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-2)">
+    <i class="fa-solid fa-shapes fa-2x" style="color:var(--fm-ink-3);margin-bottom:12px"></i>
+    <h3>Ingen kategorier endnu</h3>
+    <p>Kategorier bygges fra kursustags i kataloget.</p>
+  </div>
+  {% endif %}
+</div>
 {% endblock %}

@@ -1,12 +1,255 @@
 {% extends "fm_base.html" %}
-{% block page_id %}reports{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Rapportcenter{% endblock %}
-{% block topbar_sub %}Vælg en rapporttype og generér på sekunder.{% endblock %}
+{% block page_id %}abot{% endblock %}
+{% block title %}Chatbot BI{% endblock %}
+{% block topbar_title %}Chatbot & produkt-BI{% endblock %}
+{% block topbar_sub %}Ledelsesoverblik over samtaler, ordrer, produktvisninger, feedback og conversion.{% endblock %}
+{% block extra_head %}
+<style>
+  .bi-charts { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+  .bi-charts-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+  .bi-chart-card { padding: 18px; min-height: 360px; display: flex; flex-direction: column; }
+  .bi-chart-card h3 { font-size: 15px; font-weight: 700; }
+  .bi-chart-card p { font-size: 12.5px; color: var(--fm-ink-2); margin: 3px 0 12px; }
+  .bi-chart-wrap { position: relative; flex: 1; min-height: 260px; }
+  .bi-tables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+  .bi-empty { padding: 36px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
+  .st-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; text-transform: capitalize; background: var(--fm-surface-3); color: var(--fm-ink-2); }
+  .st-badge.pending { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  .st-badge.completed, .st-badge.paid { background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .st-badge.cancelled, .st-badge.rejected { background: color-mix(in srgb, var(--fm-danger) 14%, transparent); color: var(--fm-danger); }
+  @media (max-width: 1100px) { .bi-charts, .bi-charts-3, .bi-tables { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="fm-grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:24px"><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:14px"><div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:17px"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge">4 skabeloner</span></div><div><h3 style="font-size:16px;font-weight:700">Læring</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:4px;line-height:1.5">Gennemførelse, deltagelse og fremdrift</p></div><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-plus"></i> Generér rapport</a></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:14px"><div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:17px"><i class="fa-solid fa-coins"></i></span><span class="fm-badge">3 skabeloner</span></div><div><h3 style="font-size:16px;font-weight:700">Økonomi</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:4px;line-height:1.5">Kreditforbrug, budgetter og ROI</p></div><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-plus"></i> Generér rapport</a></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:14px"><div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:17px"><i class="fa-solid fa-robot"></i></span><span class="fm-badge">5 skabeloner</span></div><div><h3 style="font-size:16px;font-weight:700">AI-assistent</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:4px;line-height:1.5">Samtaler, konvertering og emner</p></div><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-plus"></i> Generér rapport</a></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:14px"><div class="fm-spread"><span style="width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:17px"><i class="fa-solid fa-users"></i></span><span class="fm-badge">2 skabeloner</span></div><div><h3 style="font-size:16px;font-weight:700">Medarbejdere</h3><p style="font-size:13px;color:var(--fm-ink-2);margin-top:4px;line-height:1.5">Aktivitet, kompetencer og udvikling</p></div><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-plus"></i> Generér rapport</a></div></div>
-  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-clock-rotate-left"></i> Seneste</span><h2 class="fm-section-title">Senest genereret</h2></div></div>
-  <div class="fm-table-wrap"><table class="fm-table"><thead><tr><th>Rapport</th><th>Type</th><th>Dato</th><th></th></tr></thead><tbody><tr><td style="font-weight:650">Uddannelses-ROI Q2</td><td><span class="fm-badge">Økonomi</span></td><td class="muted mono">28. maj</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-ghost btn-sm">Åbn</a></td></tr><tr><td style="font-weight:650">Chatbot-indsigt maj</td><td><span class="fm-badge">AI</span></td><td class="muted mono">26. maj</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-ghost btn-sm">Åbn</a></td></tr><tr><td style="font-weight:650">Læringsfremdrift uge 21</td><td><span class="fm-badge">Læring</span></td><td class="muted mono">22. maj</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="btn btn-ghost btn-sm">Åbn</a></td></tr></tbody></table></div>
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+    <a class="pg-tab active" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+  </div>
+
+  <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Forespørgsler</div><div class="kv tnum">{{ total_chatbot_queries }}</div><div class="kd">Samlede interaktioner</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Samtaledybde</div><div class="kv tnum">{{ avg_conversation_length }}</div><div class="kd">Beskeder pr. samtale</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-gauge-high"></i></span><div><div class="kl">Responstid</div><div class="kv tnum">{{ avg_chatbot_response_time }}ms</div><div class="kd">Gns. svartid</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-bullseye"></i></span><div><div class="kl">Conversion</div><div class="kv tnum">{{ conversion_rate }}%</div><div class="kd">Samtaler til ordrer</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ total_revenue|round|int }} kr</div><div class="kd">Betalte/gennemførte</div></div></div>
+  </div>
+  <div class="kpi-row" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-box-open"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_orders_count }}</div><div class="kd">Ordrer i behandling</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-star"></i></span><div><div class="kl">Feedback</div><div class="kv tnum">{{ avg_feedback }}/5</div><div class="kd">Gns. vurdering</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-repeat"></i></span><div><div class="kl">Session depth</div><div class="kv tnum">{{ avg_depth }}</div><div class="kd">Beskeder pr. session</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Kvalitet</div><div class="kv tnum">{{ (avg_quality * 100)|round|int }}%</div><div class="kd">Interaktionskvalitet</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-route"></i></span><div><div class="kl">Før ordre</div><div class="kv tnum">{{ avg_queries_before_order }}</div><div class="kd">Beskeder før conversion</div></div></div>
+  </div>
+  {% if total_pending_approvals > 0 %}
+  <div class="kpi-row" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-hourglass-half"></i></span><div><div class="kl">Godkendelser</div><div class="kv tnum">{{ total_pending_approvals }}</div><div class="kd">Enterprise-ordrer afventer</div></div></div>
+  </div>
+  {% endif %}
+
+  <div class="bi-charts" style="margin-top:16px">
+    <div class="fm-card bi-chart-card">
+      <h3><i class="fa-solid fa-chart-line"></i> Daglig chatbotaktivitet</h3>
+      <p>Forespørgsler de seneste 30 dage.</p>
+      <div class="bi-chart-wrap"><canvas id="dailyActivityChart"></canvas></div>
+    </div>
+    <div class="fm-card bi-chart-card">
+      <h3><i class="fa-solid fa-user-check"></i> Brugertype</h3>
+      <p>Loggede ind vs. anonyme brugere.</p>
+      <div class="bi-chart-wrap"><canvas id="loginChart"></canvas></div>
+    </div>
+  </div>
+
+  <div class="bi-charts-3">
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-tags"></i> Spørgsmålstyper</h3><p>Hvilke intent-typer fylder mest.</p><div class="bi-chart-wrap"><canvas id="queryTypeChart"></canvas></div></div>
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-layer-group"></i> Kategorier</h3><p>Produkt- og samtalekategorier.</p><div class="bi-chart-wrap"><canvas id="categoryChart"></canvas></div></div>
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-location-dot"></i> Lokationer</h3><p>Registrerede brugerområder.</p><div class="bi-chart-wrap"><canvas id="locationChart"></canvas></div></div>
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-screwdriver-wrench"></i> Tool usage</h3><p>Hvilke chatbotværktøjer bruges mest.</p><div class="bi-chart-wrap"><canvas id="toolUsageChart"></canvas></div></div>
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-face-smile"></i> Feedback</h3><p>Fordeling af brugerfeedback.</p><div class="bi-chart-wrap"><canvas id="feedbackChart"></canvas></div></div>
+    {% if conversion_by_tool %}
+    <div class="fm-card bi-chart-card"><h3><i class="fa-solid fa-filter-circle-dollar"></i> Conversion pr. tool</h3><p>Værktøjer der ender i ordreflow.</p><div class="bi-chart-wrap"><canvas id="conversionToolChart"></canvas></div></div>
+    {% endif %}
+  </div>
+
+  <div class="bi-tables">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-eye"></i></span><h3>Produkter vist</h3>
+        <label class="fm-search" style="width:200px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="productsTable"></label></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if products_shown_ranking %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="productsTable">
+          <thead><tr><th>Produkt</th><th>Visninger</th><th></th></tr></thead>
+          <tbody>{% for handle, count in products_shown_ranking.items() %}
+            <tr><td>{{ handle }}</td><td>{{ count }}</td><td><a href="{{ url_for('catalog.product_detail', handle=handle) }}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Åbn</a></td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="bi-empty">Produktvisninger vises her, når chatbotten begynder at anbefale produkter.</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Populære kurser</h3>
+        <label class="fm-search" style="width:200px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="popularCoursesTable"></label></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if popular_courses %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="popularCoursesTable">
+          <thead><tr><th>Kursus</th><th>Interesse</th><th></th></tr></thead>
+          <tbody>{% for handle, count in popular_courses %}
+            <tr><td>{{ handle }}</td><td>{{ count }}</td><td><a href="{{ url_for('catalog.product_detail', handle=handle) }}" target="_blank" rel="noopener" class="btn btn-ghost btn-sm">Åbn</a></td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="bi-empty">Kursusinteresse vises her, når brugere begynder at browse.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-cart-shopping"></i></span><h3>Seneste ordrer</h3>
+      <label class="fm-search" style="width:240px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg ordrer" data-table-search="ordersTable"></label></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if recent_orders %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="ordersTable">
+        <thead><tr><th>Ordre</th><th>Produkt</th><th>Pris</th><th>Status</th><th>Dato</th><th>Email</th><th></th></tr></thead>
+        <tbody>{% for order in recent_orders %}
+          <tr>
+            <td>{{ order.order_id_short }}</td>
+            <td>{{ order.product_title }}</td>
+            <td>{{ order.price }} kr</td>
+            <td><span class="st-badge {{ order.status }}">{{ order.status }}</span></td>
+            <td>{{ order.created_at }}</td>
+            <td>{{ order.user_email }}</td>
+            <td><a href="{{ url_for('multitenant_reports.order_detail', order_id=order.order_id) }}" class="btn btn-soft btn-sm">Detaljer</a></td>
+          </tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}<div class="bi-empty">Ordrer vises her, når kunder gennemfører ordreflowet.</div>{% endif %}
+    </div>
+  </div>
+
+  <div class="bi-tables">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-question"></i></span><h3>Hyppige spørgsmål</h3>
+        <label class="fm-search" style="width:200px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="questionsTable"></label></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if frequent_questions %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="questionsTable">
+          <thead><tr><th>Spørgsmål</th><th>Antal</th><th>Typisk svar</th></tr></thead>
+          <tbody>{% for question in frequent_questions[:10] %}
+            <tr><td>{{ question.text }}</td><td>{{ question.count }}</td><td class="muted" style="font-size:12px">{{ question.top_response }}</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="bi-empty">Hyppige spørgsmål samles her, når chatbotten får mere trafik.</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Seneste samtaler</h3>
+        <label class="fm-search" style="width:200px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="conversationTable"></label></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if recent_conversations %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="conversationTable">
+          <thead><tr><th>Session</th><th>Start</th><th>Varighed</th><th>Beskeder</th><th>Emner</th></tr></thead>
+          <tbody>{% for conv in recent_conversations %}
+            <tr><td>{{ conv.session_id }}</td><td>{{ conv.start_time }}</td><td>{{ conv.duration }}</td><td>{{ conv.query_count }}</td><td>{{ conv.topics|join(', ') if conv.topics else 'General' }}</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="bi-empty">Samtalehistorik vises her, når brugere interagerer med chatbotten.</div>{% endif %}
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const styles = getComputedStyle(document.documentElement);
+    const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
+    const secondary = styles.getPropertyValue('--fm-indigo').trim() || '#2563eb';
+    const accent = styles.getPropertyValue('--fm-clay').trim() || '#f59e0b';
+    const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
+    const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
+    const palette = [primary, secondary, accent, '#10b981', '#06b6d4', '#64748b', '#ef4444', '#8b5cf6'];
+
+    Chart.defaults.color = muted;
+    Chart.defaults.borderColor = border;
+
+    const shared = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } },
+        tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 }
+      },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+    };
+
+    function entries(o) { return Object.entries(o || {}); }
+    function doughnut(id, dataObject) {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const e = entries(dataObject);
+      new Chart(canvas, {
+        type: 'doughnut',
+        data: { labels: e.map(([l]) => l), datasets: [{ data: e.map(([, v]) => v), backgroundColor: palette, borderWidth: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: shared.plugins }
+      });
+    }
+
+    const dailyCanvas = document.getElementById('dailyActivityChart');
+    if (dailyCanvas) {
+      new Chart(dailyCanvas, {
+        type: 'line',
+        data: {
+          labels: {{ daily_chatbot_query_labels | tojson | safe }},
+          datasets: [{
+            label: 'Forespørgsler',
+            data: {{ daily_chatbot_query_data | tojson | safe }},
+            borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .1)',
+            fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: primary, borderWidth: 2
+          }]
+        },
+        options: shared
+      });
+    }
+
+    doughnut('queryTypeChart', {{ query_type_distribution | tojson | safe }});
+    doughnut('categoryChart', {{ category_distribution | tojson | safe }});
+    doughnut('locationChart', {{ user_locations | tojson | safe }});
+    doughnut('toolUsageChart', {{ tool_usage | tojson | safe }});
+    doughnut('feedbackChart', {{ feedback_distribution | tojson | safe }});
+
+    const loginCanvas = document.getElementById('loginChart');
+    if (loginCanvas) {
+      new Chart(loginCanvas, {
+        type: 'bar',
+        data: { labels: ['Logget ind', 'Anonym'], datasets: [{ label: 'Brugere', data: [{{ logged_in_count }}, {{ anonymous_count }}], backgroundColor: [primary, secondary], borderRadius: 8, maxBarThickness: 52 }] },
+        options: shared
+      });
+    }
+
+    {% if conversion_by_tool %}
+    const conversionToolCanvas = document.getElementById('conversionToolChart');
+    if (conversionToolCanvas) {
+      const conversionToolData = {{ conversion_by_tool | tojson | safe }};
+      new Chart(conversionToolCanvas, {
+        type: 'bar',
+        data: { labels: Object.keys(conversionToolData), datasets: [{ label: 'Conversions', data: Object.values(conversionToolData), backgroundColor: accent, borderRadius: 8, maxBarThickness: 42 }] },
+        options: shared
+      });
+    }
+    {% endif %}
+
+    document.querySelectorAll('[data-table-search]').forEach(function (input) {
+      const table = document.getElementById(input.dataset.tableSearch);
+      if (!table) return;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      input.addEventListener('input', function () {
+        const value = this.value.toLowerCase().trim();
+        rows.forEach(function (row) { row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none'; });
+      });
+    });
+  })();
+</script>
 {% endblock %}

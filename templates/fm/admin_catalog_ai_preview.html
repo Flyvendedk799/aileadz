@@ -1,12 +1,117 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}AI-berigelse{% endblock %}
-{% block topbar_sub %}AI har genereret beskrivelser og tags — gennemgå før publicering.{% endblock %}
+{% block page_id %}acatalog{% endblock %}
+{% block title %}AI kategorisering{% endblock %}
+{% block topbar_title %}AI kategorisering{% endblock %}
+{% block topbar_sub %}Job {{ job.job_id }} · {{ job.processed or 0 }} / {{ job.total or 0 }} behandlet · status: {{ job.status }}{% endblock %}
+{% block extra_head %}
+<style>
+  .cat-chip { display: inline-flex; border-radius: 999px; padding: 4px 9px; margin: 2px; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 12px; font-weight: 650; }
+  .changed-row { background: var(--fm-clay-tint); }
+  .ai-progress { height: 8px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; margin-top: 14px; }
+  .ai-progress > div { height: 100%; background: var(--fm-primary); transition: width .2s ease; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('admin_dashboard.admin_catalog') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>AI-berigelse</span></div>
-  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-lines"></i></span><h3>Original</h3></div><div class="fm-card-body"><div style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6">Projektledelse kursus. 3 dage. København. Lær projektledelse.</div></div></div>
-  <div class="fm-card" style="border-color:var(--fm-primary-300)"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span><h3>AI-beriget</h3><span class="fm-badge teal" style="margin-left:auto">Forslag</span></div><div class="fm-card-body"><div style="font-size:13.5px;color:var(--fm-ink);line-height:1.7">Et intensivt 3-dages forløb der giver projektledere konkrete værktøjer til planlægning, interessenthåndtering og eksekvering — med øvelser baseret på egne projekter.</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px"><span class="fm-badge teal">Projektledelse</span><span class="fm-badge teal">Certifikat</span><span class="fm-badge teal">Begynder</span></div></div></div></div>
+  <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:14px;flex-wrap:wrap;margin-bottom:18px">
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-arrow-left"></i> Katalogadmin</a>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      {% if job.status != 'confirmed' and job.status == 'complete' %}
+      <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_ai_confirm', job_id=job.job_id) }}">
+        <button class="btn btn-primary" type="submit"><i class="fa-solid fa-check"></i> Bekræft {{ diff.changed_count }} ændringer</button>
+      </form>
+      {% endif %}
+      {% if job.status != 'confirmed' %}
+      <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_ai_cancel', job_id=job.job_id) }}">
+        <button class="btn btn-ghost btn-sm" type="submit" style="color:var(--fm-danger)"><i class="fa-solid fa-trash"></i> Slet kladde</button>
+      </form>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-list-check"></i></span><div><div class="kl">Behandlede produkter</div><div class="kv tnum">{{ diff.processed_count }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-pen"></i></span><div><div class="kl">Foreslåede ændringer</div><div class="kv tnum">{{ diff.changed_count }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-equals"></i></span><div><div class="kl">Uændrede</div><div class="kv tnum">{{ diff.unchanged_count }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-triangle-exclamation"></i></span><div><div class="kl">Batch-fejl</div><div class="kv tnum">{{ job.errors|length }}</div></div></div>
+  </div>
+
+  {% if job.status not in ['complete', 'confirmed'] %}
+  <div class="fm-card" style="margin-bottom:16px">
+    <div class="fm-card-body">
+      <h3 style="font-size:16px;font-weight:700">Jobbet er ikke færdigt</h3>
+      <p style="color:var(--fm-ink-2);font-size:13.5px;margin:6px 0 14px">Fortsæt batchbehandlingen og vend tilbage til preview, når alle produkter er gennemgået.</p>
+      <button class="btn btn-primary" id="continueJobBtn" type="button"><i class="fa-solid fa-play"></i> Fortsæt behandling</button>
+      <div class="ai-progress"><div id="aiProgress" style="width: {{ ((job.processed or 0) / (job.total or 1) * 100)|round }}%"></div></div>
+      <div class="muted" style="font-size:12.5px;margin-top:8px" id="aiLog"></div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if job.errors %}
+  <div class="fm-card" style="margin-bottom:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-triangle-exclamation"></i></span><h3>Fejl</h3></div>
+    <div class="fm-card-body">
+      <ul style="margin:0;padding-left:18px">
+        {% for error in job.errors %}
+        <li><code>{{ error.handles|join(', ') }}</code>: {{ error.message }}</li>
+        {% endfor %}
+      </ul>
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="fm-card">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-table-list"></i></span><h3>Detaljer</h3></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead><tr><th>Produkt</th><th>Nuværende kategorier</th><th>AI-forslag</th><th>Begrundelse</th></tr></thead>
+          <tbody>
+            {% for row in diff.rows %}
+            <tr class="{{ 'changed-row' if row.changed else '' }}">
+              <td>
+                <strong>{{ row.title }}</strong><br>
+                <a href="{{ url_for('catalog.product_detail', handle=row.handle) }}" target="_blank"><code>{{ row.handle }}</code></a><br>
+                <span class="muted" style="font-size:11.5px">{{ row.vendor }}</span>
+              </td>
+              <td>{% for category in row.current_categories %}<span class="cat-chip">{{ category }}</span>{% endfor %}</td>
+              <td>{% for category in row.proposed_categories %}<span class="cat-chip">{{ category }}</span>{% endfor %}</td>
+              <td class="muted" style="font-size:12.5px">{{ row.reason }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+{% if job.status not in ['complete', 'confirmed'] %}
+<script>
+  const btn = document.getElementById('continueJobBtn');
+  const log = document.getElementById('aiLog');
+  const progress = document.getElementById('aiProgress');
+  btn.addEventListener('click', async () => {
+    btn.disabled = true;
+    let status = '{{ job.status }}';
+    while (status !== 'complete') {
+      const response = await fetch("{{ url_for('admin_dashboard.admin_catalog_ai_batch', job_id=job.job_id) }}", { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) {
+        log.textContent = data.message || 'Fejl under batchbehandling';
+        btn.disabled = false;
+        return;
+      }
+      status = data.status;
+      const pct = data.total ? Math.round((data.processed / data.total) * 100) : 100;
+      progress.style.width = pct + '%';
+      log.textContent = `${data.processed} / ${data.total} behandlet. ${data.changed_count || 0} forslag ændrer kategori.`;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    window.location.reload();
+  });
+</script>
+{% endif %}
 {% endblock %}

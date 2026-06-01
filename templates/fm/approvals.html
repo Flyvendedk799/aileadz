@@ -2,29 +2,89 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Godkendelser{% endblock %}
-{% block topbar_sub %}7 ordrer afventer din godkendelse.{% endblock %}
+{% block topbar_sub %}{{ pending_count or 0 }} ordrer afventer din godkendelse.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='roi') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='suppliers') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
-  <div class="kpi-row k3"><div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">7</div><div class="kd">samlet 58.300 kr</div></div></div>
-  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Godkendt (md.)</div><div class="kv tnum">23</div><div class="kd">gns. svartid 6 t</div></div></div>
-  <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-xmark"></i></span><div><div class="kl">Afvist (md.)</div><div class="kv tnum">2</div><div class="kd">8% afvisningsrate</div></div></div></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+
+  {% set pending_sum = 0 %}
+  {% for a in approvals %}{% if a.status == 'pending' and a.price %}{% set pending_sum = pending_sum + a.price|float %}{% endif %}{% endfor %}
+  <div class="kpi-row k3">
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_count or 0 }}</div><div class="kd">samlet {{ '{:,.0f}'.format(pending_sum) }} kr</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Godkendt</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','approved')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-xmark"></i></span><div><div class="kl">Afvist</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','rejected')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
+  </div>
+
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-clipboard-check"></i> Afventer handling</span><h2 class="fm-section-title">Godkendelsesanmodninger</h2></div></div>
-  <div class="fm-card" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-<div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">SL</span><div><div style="font-weight:650">Sara Lind</div><div style="font-size:12px;color:var(--fm-ink-3)">Produkt · 2 t siden</div></div></div>
-<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">Scrum Master CSM</div><div style="font-size:12px;color:var(--fm-ink-2)">Mannaz · <span class="mono" style="color:var(--fm-primary);font-weight:700">11.200 kr</span></div></div>
-<div class="fm-flex fm-gap8"><button class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Godkend</button><button class="btn btn-ghost btn-sm">Afvis</button><a href="{{ url_for('futurematch.showcase', page='order_details') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-eye"></i></a></div></div><div class="fm-card" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-<div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">FH</span><div><div style="font-weight:650">Frederik Holm</div><div style="font-size:12px;color:var(--fm-ink-3)">Salg · 5 t siden</div></div></div>
-<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">B2B Salg & Forhandling</div><div style="font-size:12px;color:var(--fm-ink-2)">Confex · <span class="mono" style="color:var(--fm-primary);font-weight:700">7.100 kr</span></div></div>
-<div class="fm-flex fm-gap8"><button class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Godkend</button><button class="btn btn-ghost btn-sm">Afvis</button><a href="{{ url_for('futurematch.showcase', page='order_details') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-eye"></i></a></div></div><div class="fm-card" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-<div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra" style="background:linear-gradient(140deg,#8a55a0,var(--fm-primary))">CB</span><div><div style="font-weight:650">Camilla Berg</div><div style="font-size:12px;color:var(--fm-ink-3)">Udvikling · I går</div></div></div>
-<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">Power BI Avanceret</div><div style="font-size:12px;color:var(--fm-ink-2)">Smart Learning · <span class="mono" style="color:var(--fm-primary);font-weight:700">7.800 kr</span></div></div>
-<div class="fm-flex fm-gap8"><button class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Godkend</button><button class="btn btn-ghost btn-sm">Afvis</button><a href="{{ url_for('futurematch.showcase', page='order_details') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-eye"></i></a></div></div><div class="fm-card" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-<div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra" style="background:linear-gradient(140deg,#c8973a,var(--fm-clay))">TP</span><div><div style="font-weight:650">Thomas Poulsen</div><div style="font-size:12px;color:var(--fm-ink-3)">IT · I går</div></div></div>
-<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">Azure Administrator</div><div style="font-size:12px;color:var(--fm-ink-2)">Microsoft · <span class="mono" style="color:var(--fm-primary);font-weight:700">9.400 kr</span></div></div>
-<div class="fm-flex fm-gap8"><button class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Godkend</button><button class="btn btn-ghost btn-sm">Afvis</button><a href="{{ url_for('futurematch.showcase', page='order_details') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-eye"></i></a></div></div><div class="fm-card" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
-<div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">LD</span><div><div style="font-weight:650">Louise Dahl</div><div style="font-size:12px;color:var(--fm-ink-3)">Produkt · 2 dage</div></div></div>
-<div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">Service Design</div><div style="font-size:12px;color:var(--fm-ink-2)">CBS Executive · <span class="mono" style="color:var(--fm-primary);font-weight:700">12.500 kr</span></div></div>
-<div class="fm-flex fm-gap8"><button class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Godkend</button><button class="btn btn-ghost btn-sm">Afvis</button><a href="{{ url_for('futurematch.showcase', page='order_details') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-eye"></i></a></div></div>
+
+  {% for a in approvals %}
+  <div class="fm-card" id="approval-row-{{ a.id }}" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+    <div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra">{{ (a.user_name or a.requester_username or 'U')[:2]|upper }}</span><div><div style="font-weight:650">{{ a.user_name or a.requester_username }}</div><div style="font-size:12px;color:var(--fm-ink-3)">{{ a.department or 'N/A' }}{% if a.requested_at %} · {{ a.requested_at.strftime('%d/%m %H:%M') }}{% endif %}</div></div></div>
+    <div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">{{ a.product_title }}</div><div style="font-size:12px;color:var(--fm-ink-2)">{% if a.variant_location %}{{ a.variant_location }} · {% endif %}<span class="mono" style="color:var(--fm-primary);font-weight:700">{{ a.price }} kr</span></div></div>
+    <div class="fm-flex fm-gap8" data-action-cell>
+      {% if a.status == 'pending' %}
+      <button class="btn btn-primary btn-sm" onclick="decideApproval({{ a.id }}, 'approved')"><i class="fa-solid fa-check"></i> Godkend</button>
+      <button class="btn btn-ghost btn-sm" onclick="decideApproval({{ a.id }}, 'rejected')">Afvis</button>
+      {% elif a.status == 'approved' %}
+      <span class="fm-badge green dot">Godkendt</span>
+      {% elif a.status == 'rejected' %}
+      <span class="fm-badge red dot">Afvist</span>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:30px;text-align:center;color:var(--fm-ink-3)"><i class="fa-solid fa-circle-check" style="font-size:24px;color:var(--fm-success);display:block;margin-bottom:8px"></i>Ingen godkendelsesanmodninger endnu.</div>
+  {% endfor %}
 </div>
+
+<div id="rejectModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="fm-card" style="max-width:440px;width:90%;padding:22px">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:12px">Afvis ordre</h3>
+    <label class="fm-field"><span>Begrundelse (valgfrit)</span><textarea class="fm-input" id="rejectNotes" rows="3" placeholder="Skriv en begrundelse..."></textarea></label>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-ghost btn-sm" onclick="closeRejectModal()">Annuller</button>
+      <button class="btn btn-clay btn-sm" id="confirmRejectBtn">Afvis ordre</button>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+let _pendingRejectId = null;
+function closeRejectModal(){ document.getElementById('rejectModal').style.display='none'; }
+function decideApproval(approvalId, decision) {
+  if (decision === 'rejected') {
+    _pendingRejectId = approvalId;
+    const m = document.getElementById('rejectModal');
+    m.style.display = 'flex';
+    return;
+  }
+  sendDecision(approvalId, decision, '');
+}
+document.getElementById('confirmRejectBtn').addEventListener('click', function() {
+  const notes = document.getElementById('rejectNotes').value;
+  sendDecision(_pendingRejectId, 'rejected', notes);
+  closeRejectModal();
+});
+function sendDecision(approvalId, decision, notes) {
+  fetch(`{{ url_for('hr_dashboard.decide_approval', approval_id=0) }}`.replace('/0/', '/' + approvalId + '/'), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({decision: decision, notes: notes})
+  })
+  .then(r => r.json())
+  .then(data => {
+    if (data.success) {
+      const row = document.getElementById('approval-row-' + approvalId);
+      const cell = row.querySelector('[data-action-cell]');
+      cell.innerHTML = decision === 'approved'
+        ? '<span class="fm-badge green dot">Godkendt</span>'
+        : '<span class="fm-badge red dot">Afvist</span>';
+    } else {
+      alert('Fejl: ' + data.message);
+    }
+  })
+  .catch(err => alert('Netvaerksfejl: ' + err));
+}
+</script>
 {% endblock %}

@@ -2,9 +2,49 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}HR-rapporter{% endblock %}
-{% block topbar_sub %}Genererede rapporter for Nordi A/S.{% endblock %}
+{% block topbar_sub %}Genererede rapporter for {{ company.company_name if company else 'virksomheden' }}.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="fm-grid" style="grid-template-columns:repeat(3,1fr)"><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-chart-pie"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Uddannelses-ROI Q2</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">28. maj</span><span><i class="fa-solid fa-file"></i> PDF</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Læringsfremdrift uge 21</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">22. maj</span><span><i class="fa-solid fa-file"></i> PDF</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-brain"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Kompetencegab-analyse</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">21. maj</span><span><i class="fa-solid fa-file"></i> PDF</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-wallet"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Budgetoverblik 2026</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">18. maj</span><span><i class="fa-solid fa-file"></i> XLSX</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-users"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Medarbejderaktivitet</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">15. maj</span><span><i class="fa-solid fa-file"></i> CSV</span></div></a><a href="{{ url_for('futurematch.showcase', page='report_detail') }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-robot"></i></span><span class="fm-badge green dot">Klar</span></div><h3 style="font-size:15px;font-weight:700">Chatbot-indsigt maj</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span class="mono">26. maj</span><span><i class="fa-solid fa-file"></i> CSV</span></div></a></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-lines"></i> Rapporter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a></div>
+
+  {% set rs = report_summary or {} %}
+  <div class="kpi-row">
+    <div class="kpi-tile"><div class="kl">Aktive medarbejdere</div><div class="kv tnum">{{ rs.employees|default(0) }}</div><div class="kd">{{ rs.departments|default(0) }} afdelinger</div></div>
+    <div class="kpi-tile"><div class="kl">Kursusordrer</div><div class="kv tnum">{{ rs.orders|default(0) }}</div><div class="kd">{{ rs.completed_orders|default(0) }} gennemført</div></div>
+    <div class="kpi-tile"><div class="kl">Completion rate</div><div class="kv tnum">{{ rs.completion_rate|default(0) }}%</div><div class="kd">samlet gennemførsel</div></div>
+    <div class="kpi-tile"><div class="kl">Kompetencedata</div><div class="kv tnum">{{ rs.skills_recorded|default(0) }}</div><div class="kd">{{ rs.skill_targets|default(0) }} kompetencemål</div></div>
+  </div>
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-download"></i> Eksport</span><h2 class="fm-section-title">Hent rapporter som CSV</h2></div></div>
+  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
+    {% for report in (report_cards or []) %}
+    <a href="{{ url_for('hr_dashboard.export_report', report_type=report.type) }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px">
+      <div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid {{ report.icon|replace('fa-','fa-') }}"></i></span><span class="fm-badge green dot">Klar</span></div>
+      <h3 style="font-size:15px;font-weight:700">{{ report.title }}</h3>
+      <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0">{{ report.description }}</p>
+      <div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span><i class="fa-solid fa-file-csv"></i> Download CSV</span><i class="fa-solid fa-arrow-right"></i></div>
+    </a>
+    {% endfor %}
+  </div>
+
+  <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Afdelingspreview</h3><span class="fm-badge">Live data</span></div>
+  {% if department_rows %}
+  <table class="fm-table"><thead><tr><th>Afdeling</th><th>Medarbejdere</th><th>Ordrer</th><th>Gennemført</th><th>Completion</th><th>Investering</th></tr></thead><tbody>
+    {% for dept in department_rows %}
+    {% set completion = ((dept.completed / dept.orders * 100) if dept.orders else 0)|round(1) %}
+    <tr>
+      <td style="font-weight:650">{{ dept.department or 'Uden afdeling' }}</td>
+      <td>{{ dept.employees or 0 }}</td>
+      <td>{{ dept.orders or 0 }}</td>
+      <td>{{ dept.completed or 0 }}</td>
+      <td style="min-width:150px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [completion,100]|min }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ completion }}%</span></td>
+      <td class="mono">{{ '{:,.0f}'.format(dept.spend or 0).replace(',','.') }} kr</td>
+    </tr>
+    {% endfor %}
+  </tbody></table>
+  {% else %}
+  <div style="text-align:center;padding:28px;color:var(--fm-ink-3)">Ingen afdelingsdata endnu.</div>
+  {% endif %}
+  </div>
 </div>
 {% endblock %}

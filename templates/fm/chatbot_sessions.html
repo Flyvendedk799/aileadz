@@ -2,11 +2,59 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}AI-samtaler{% endblock %}
-{% block topbar_sub %}Chatbot-sessioner på tværs af medarbejdere.{% endblock %}
+{% block topbar_sub %}Chatbot-sessioner på tværs af {{ company.company_name }}.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="kpi-row k3"><div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Samtaler (30d)</div><div class="kv tnum">1.204</div><div class="kd">144 medarbejdere</div></div></div><div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-box-open"></i></span><div><div class="kl">Produktvisninger</div><div class="kv tnum">486</div><div class="kd">40% af sessioner</div></div></div><div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">Ordrer fra AI</div><div class="kv tnum">37</div><div class="kd">31% konvertering</div></div></div></div>
-  <div class="fm-table-wrap"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Seneste sessioner</h3><label class="fm-search" style="width:220px;height:36px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg medarbejder"/></label></div>
-  <table class="fm-table"><thead><tr><th>Medarbejder</th><th>Beskeder</th><th>Produkter</th><th>Ordrer</th><th>Sidst aktiv</th><th></th></tr></thead><tbody><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">JV</span><div style="font-weight:650">Jonas Vester</div></div></td><td><span class="fm-badge">8 beskeder</span></td><td class="mono">3</td><td class="mono">1</td><td class="muted">12 min siden</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='chatbot_session_detail') }}" class="btn btn-ghost btn-sm">Se samtale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">SL</span><div style="font-weight:650">Sara Lind</div></div></td><td><span class="fm-badge">14 beskeder</span></td><td class="mono">5</td><td class="mono">1</td><td class="muted">38 min siden</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='chatbot_session_detail') }}" class="btn btn-ghost btn-sm">Se samtale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">ML</span><div style="font-weight:650">Mia Lund</div></div></td><td><span class="fm-badge">5 beskeder</span></td><td class="mono">2</td><td class="mono">0</td><td class="muted">1 t siden</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='chatbot_session_detail') }}" class="btn btn-ghost btn-sm">Se samtale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">AK</span><div style="font-weight:650">Anders Kjær</div></div></td><td><span class="fm-badge">11 beskeder</span></td><td class="mono">4</td><td class="mono">2</td><td class="muted">2 t siden</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='chatbot_session_detail') }}" class="btn btn-ghost btn-sm">Se samtale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">CB</span><div style="font-weight:650">Camilla Berg</div></div></td><td><span class="fm-badge">6 beskeder</span></td><td class="mono">1</td><td class="mono">0</td><td class="muted">3 t siden</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='chatbot_session_detail') }}" class="btn btn-ghost btn-sm">Se samtale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">FH</span><div style="font-weight:650">Frederik Holm</div></div></td><td><span class="fm-badge">9 beskeder</span></td><td class="mono">3</td><td class="mono">1</td><td class="muted">I går</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='chatbot_session_detail') }}" class="btn btn-ghost btn-sm">Se samtale</a></td></tr></tbody></table></div>
+
+  <div class="kpi-row k3">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Sessioner</div><div class="kv tnum">{{ sessions|length }}</div><div class="kd">seneste 100</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-message"></i></span><div><div class="kl">Beskeder i alt</div><div class="kv tnum">{{ sessions|sum(attribute='message_count') }}</div><div class="kd">på tværs af sessioner</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-users"></i></span><div><div class="kl">Unikke brugere</div><div class="kv tnum">{{ sessions|map(attribute='username')|select|unique|list|length }}</div><div class="kd">aktive medarbejdere</div></div></div>
+  </div>
+
+  <div class="fm-table-wrap">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <h3 style="font-size:15px;font-weight:700">Seneste sessioner</h3>
+      <label class="fm-search" style="width:240px;height:36px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="sessionSearch" placeholder="Søg bruger eller afdeling"/></label>
+    </div>
+    <table class="fm-table" id="sessionsTable">
+      <thead><tr><th>Bruger</th><th>Afdeling</th><th>Startet</th><th>Seneste aktivitet</th><th>Beskeder</th><th>Kvalitet</th><th></th></tr></thead>
+      <tbody>
+      {% for s in sessions %}
+        <tr>
+          <td><div class="fm-cell-user">
+            <span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">{{ (s.username[:2]|upper) if s.username else '??' }}</span>
+            <div><div style="font-weight:650">{{ s.username or 'Ukendt' }}</div><div style="font-size:11.5px;color:var(--fm-ink-3)">ID: {{ s.session_id[:8] }}</div></div>
+          </div></td>
+          <td><span class="fm-chip">{{ s.department or 'Ingen afdeling' }}</span></td>
+          <td class="muted">{{ s.started_at.strftime('%d. %b %H:%M') if s.started_at else 'N/A' }}</td>
+          <td class="muted">{{ s.last_activity.strftime('%d. %b %H:%M') if s.last_activity else 'N/A' }}</td>
+          <td><span class="fm-badge">{{ s.message_count }} beskeder</span></td>
+          <td>
+            {% set score = s.avg_quality|float %}
+            {% if score >= 4.0 %}<span class="fm-badge green dot"><i class="fa-solid fa-star"></i> {{ "%.1f"|format(score) }}</span>
+            {% elif score >= 3.0 %}<span class="fm-badge dot"><i class="fa-solid fa-star"></i> {{ "%.1f"|format(score) }}</span>
+            {% elif score > 0 %}<span class="fm-badge amber dot"><i class="fa-solid fa-star"></i> {{ "%.1f"|format(score) }}</span>
+            {% else %}<span class="fm-badge">N/A</span>{% endif %}
+          </td>
+          <td style="text-align:right"><a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=s.session_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i> Se samtale</a></td>
+        </tr>
+      {% else %}
+        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--fm-ink-3)"><i class="fa-solid fa-comments" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i><div style="font-weight:650;margin-bottom:4px">Ingen samtaler fundet</div>Der er endnu ikke registreret nogen chat-interaktioner for denne virksomhed.</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+const _ss = document.getElementById('sessionSearch');
+if (_ss) _ss.addEventListener('keyup', function(){
+  const value = this.value.toLowerCase();
+  document.querySelectorAll('#sessionsTable tbody tr').forEach(row => {
+    row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none';
+  });
+});
+</script>
 {% endblock %}

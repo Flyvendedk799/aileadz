@@ -2,10 +2,70 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Min afdeling{% endblock %}
-{% block topbar_sub %}Produkt · 31 medarbejdere · Kim Hansen (leder){% endblock %}
+{% block topbar_sub %}{{ department }} · {{ employees|length }} medarbejder{{ 'e' if employees|length != 1 else '' }}.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="kpi-row k3"><div class="kpi-tile"><div class="kl">Teamstørrelse</div><div class="kv tnum">31</div><div class="kd">4 i onboarding</div></div><div class="kpi-tile"><div class="kl">Gennemførelse</div><div class="kv tnum">58%</div><div class="kd">under måltal 85%</div></div><div class="kpi-tile"><div class="kl">Budget brugt</div><div class="kv tnum">75%</div><div class="kd">142.000 af 190.000 kr</div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-people-group"></i></span><h3>Mit team</h3><a href="{{ url_for('futurematch.showcase', page='employees') }}" class="fm-badge teal" style="margin-left:auto">Se alle</a></div><div class="fm-card-body" style="padding-top:6px"><div class="row-item"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">SL</span><div class="rt"><div class="rn">Sara Lind</div><div class="rm">Product Owner</div></div><div style="width:120px"><div class="fm-prog thin" style="margin-bottom:3px"><span style="width:72%"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">72%</span></div><a href="{{ url_for('futurematch.showcase', page='employee_details') }}" class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-arrow-right"></i></a></div><div class="row-item"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">LD</span><div class="rt"><div class="rn">Louise Dahl</div><div class="rm">UX Designer</div></div><div style="width:120px"><div class="fm-prog thin" style="margin-bottom:3px"><span style="width:88%"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">88%</span></div><a href="{{ url_for('futurematch.showcase', page='employee_details') }}" class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-arrow-right"></i></a></div><div class="row-item"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">KH</span><div class="rt"><div class="rn">Kim Hansen</div><div class="rm">Developer</div></div><div style="width:120px"><div class="fm-prog thin" style="margin-bottom:3px"><span style="width:54%"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">54%</span></div><a href="{{ url_for('futurematch.showcase', page='employee_details') }}" class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-arrow-right"></i></a></div><div class="row-item"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">NR</span><div class="rt"><div class="rn">Nina Roed</div><div class="rm">QA Engineer</div></div><div style="width:120px"><div class="fm-prog thin" style="margin-bottom:3px"><span style="width:66%"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">66%</span></div><a href="{{ url_for('futurematch.showcase', page='employee_details') }}" class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-arrow-right"></i></a></div></div></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+
+  {% set util = budget.utilization|float %}
+  {% set barcol = 'var(--fm-danger)' if util > 90 else ('var(--fm-warning)' if util > 80 else 'var(--fm-success)') %}
+  <div class="kpi-row k4">
+    <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ employees|length }}</div><div class="kd">i {{ department }}</div></div>
+    <div class="kpi-tile"><div class="kl">Ordrer i alt</div><div class="kv tnum">{{ orders|length }}</div><div class="kd">seneste 20</div></div>
+    <div class="kpi-tile"><div class="kl">Afventer godkendelse</div><div class="kv tnum">{{ pending_count }}</div><div class="kd">ordrer</div></div>
+    <div class="kpi-tile"><div class="kl">Budget {{ fiscal_year }}</div><div class="kv tnum">{{ '{:,.0f}'.format(budget.annual_budget).replace(',','.') }}</div><div class="kd">{{ util }}% brugt · {{ '{:,.0f}'.format(budget.remaining).replace(',','.') }} kr tilbage</div></div>
+  </div>
+
+  {% if budget.annual_budget > 0 %}
+  <div class="fm-prog thin" style="margin-bottom:18px"><span style="width:{{ [util,100]|min }}%;background:{{ barcol }}"></span></div>
+  {% endif %}
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-people-group"></i> Team</span><h2 class="fm-section-title">Medarbejdere i {{ department }}</h2></div></div>
+  <div class="fm-table-wrap">
+    <table class="fm-table"><thead><tr><th>Navn</th><th>Stilling</th><th>Rolle</th><th>Status</th><th>Kurser</th><th>AI-samtaler</th><th>Sidst aktiv</th></tr></thead><tbody>
+      {% for emp in employees %}
+      <tr>
+        <td><div class="fm-flex fm-ac fm-gap12"><span class="ra">{{ (emp.username or 'U')[0]|upper }}</span><div><div style="font-weight:650">{{ emp.username }}</div><div style="font-size:12px;color:var(--fm-ink-3)">{{ emp.email or '' }}</div></div></div></td>
+        <td>{{ emp.job_title or '-' }}</td>
+        <td><span class="fm-chip">{{ emp.role or 'employee' }}</span></td>
+        <td>{% if emp.status == 'active' %}<span class="fm-badge green dot">Aktiv</span>{% else %}<span class="fm-badge dot">{{ emp.status }}</span>{% endif %}</td>
+        <td class="tnum">{{ emp.total_courses_completed or 0 }}</td>
+        <td class="tnum">{{ emp.total_chatbot_queries or 0 }}</td>
+        <td style="font-size:12px;color:var(--fm-ink-2)">{{ emp.last_login.strftime('%d/%m/%Y') if emp.last_login else '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen medarbejdere fundet i denne afdeling.</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
+
+  <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-cart-shopping"></i> Aktivitet</span><h2 class="fm-section-title">Seneste kursusordrer</h2></div></div>
+  <div class="fm-table-wrap">
+    <table class="fm-table"><thead><tr><th>Medarbejder</th><th>Kursus</th><th>Pris</th><th>Status</th><th>Fremgang</th><th>Dato</th></tr></thead><tbody>
+      {% for o in orders %}
+      <tr>
+        <td style="font-weight:650">{{ o.username }}</td>
+        <td>{{ o.product_title }}</td>
+        <td class="mono">{{ o.price or 0 }} kr</td>
+        <td>
+          {% if o.status == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
+          {% elif o.status == 'pending' %}<span class="fm-badge dot">Afventer</span>
+          {% elif o.status == 'pending_approval' %}<span class="fm-badge dot">Afventer godkendelse</span>
+          {% elif o.status == 'approved' %}<span class="fm-badge dot">Godkendt</span>
+          {% elif o.status == 'rejected' %}<span class="fm-badge red dot">Afvist</span>
+          {% else %}<span class="fm-badge dot">{{ o.status }}</span>{% endif %}
+        </td>
+        <td>
+          {% if o.completion_status == 'completed' %}<span class="fm-badge green dot">Færdig</span>
+          {% elif o.completion_status == 'in_progress' %}<span class="fm-badge dot">I gang</span>
+          {% else %}<span class="fm-chip">Ikke startet</span>{% endif %}
+        </td>
+        <td style="font-size:12px;color:var(--fm-ink-2)">{{ o.created_at.strftime('%d/%m/%Y') if o.created_at else '-' }}</td>
+      </tr>
+      {% else %}
+      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen ordrer endnu.</td></tr>
+      {% endfor %}
+    </tbody></table>
+  </div>
 </div>
 {% endblock %}

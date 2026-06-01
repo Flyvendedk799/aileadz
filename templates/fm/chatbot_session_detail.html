@@ -1,12 +1,60 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Samtale · Sara Lind{% endblock %}
-{% block topbar_sub %}14 beskeder · 38 min siden · førte til 1 ordre{% endblock %}
+{% block topbar_title %}Samtale · {{ username or 'Ukendt' }}{% endblock %}
+{% block topbar_sub %}{{ interactions|length }} beskeder · session {{ session_id[:12] }}…{% endblock %}
+{% block extra_head %}
+<style>
+.tr-area{display:flex;flex-direction:column;gap:16px}
+.tr-row{display:flex;width:100%;gap:11px}
+.tr-row.user{flex-direction:row-reverse}
+.tr-av{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;flex-shrink:0;font-size:.9rem}
+.tr-row.user .tr-av{background:var(--fm-line-2);color:var(--fm-ink-2)}
+.tr-row.ai .tr-av{background:var(--fm-primary-tint);color:var(--fm-primary)}
+.tr-bubble{max-width:80%;padding:12px 16px;border-radius:16px;font-size:14px;line-height:1.6}
+.tr-row.user .tr-bubble{background:var(--fm-primary);color:#fff;border-radius:16px 16px 4px 16px}
+.tr-row.ai .tr-bubble{background:var(--fm-surface-2);border:1px solid var(--fm-line);border-radius:16px 16px 16px 4px}
+.tr-time{font-size:11px;color:var(--fm-ink-3);margin-top:6px;display:block}
+.tr-row.user .tr-time{color:rgba(255,255,255,.8);text-align:right}
+.tr-tools{font-size:11px;background:var(--fm-surface-3);color:var(--fm-ink-3);padding:3px 8px;border-radius:6px;margin-top:8px;display:inline-block}
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='chatbot_sessions') }}">AI-samtaler</a><i class="fa-solid fa-chevron-right"></i><span>Sara Lind</span></div>
-  <div class="split wide-r"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-info"></i></span><h3>Session</h3></div><div class="fm-card-body"><div class="info-list"><div class="kv"><span class="k">Medarbejder</span><span class="v">Sara Lind</span></div><div class="kv"><span class="k">Beskeder</span><span class="v">14</span></div><div class="kv"><span class="k">Produktvisninger</span><span class="v">5</span></div><div class="kv"><span class="k">Resultat</span><span class="v"><span class="fm-badge green">1 ordre</span></span></div><div class="kv"><span class="k">Varighed</span><span class="v">6 min</span></div></div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Transskription</h3></div><div class="fm-card-body" style="display:flex;flex-direction:column;gap:14px"><div style="display:flex;justify-content:flex-end"><div style="background:var(--fm-primary);color:#fff;padding:10px 15px;border-radius:14px 14px 4px 14px;font-size:14px;max-width:75%">Jeg skal finde et Scrum-kursus til mit team</div></div><div style="display:flex;gap:11px"><span style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-robot"></i></span><div style="background:var(--fm-surface-2);border:1px solid var(--fm-line);padding:11px 15px;border-radius:14px 14px 14px 4px;font-size:14px;max-width:78%;line-height:1.6"><strong>J</strong><strong>e</strong><strong>g</strong><strong> </strong><strong>h</strong><strong>a</strong><strong>r</strong><strong> </strong><strong>f</strong><strong>u</strong><strong>n</strong><strong>d</strong><strong>e</strong><strong>t</strong><strong> </strong><strong>3</strong><strong> </strong><strong>r</strong><strong>e</strong><strong>l</strong><strong>e</strong><strong>v</strong><strong>a</strong><strong>n</strong><strong>t</strong><strong>e</strong><strong> </strong><strong>S</strong><strong>c</strong><strong>r</strong><strong>u</strong><strong>m</strong><strong>-</strong><strong>f</strong><strong>o</strong><strong>r</strong><strong>l</strong><strong>ø</strong><strong>b</strong><strong>.</strong><strong> </strong><strong>D</strong><strong>e</strong><strong>t</strong><strong> </strong><strong>m</strong><strong>e</strong><strong>s</strong><strong>t</strong><strong> </strong><strong>p</strong><strong>o</strong><strong>p</strong><strong>u</strong><strong>l</strong><strong>æ</strong><strong>r</strong><strong>e</strong><strong> </strong><strong>e</strong><strong>r</strong><strong> </strong><strong>*</strong><strong>*</strong><strong>A</strong><strong>g</strong><strong>i</strong><strong>l</strong><strong> </strong><strong>P</strong><strong>r</strong><strong>o</strong><strong>j</strong><strong>e</strong><strong>k</strong><strong>t</strong><strong>l</strong><strong>e</strong><strong>d</strong><strong>e</strong><strong>l</strong><strong>s</strong><strong>e</strong><strong> </strong><strong>&</strong><strong> </strong><strong>S</strong><strong>c</strong><strong>r</strong><strong>u</strong><strong>m</strong><strong>*</strong><strong>*</strong><strong> </strong><strong>f</strong><strong>r</strong><strong>a</strong><strong> </strong><strong>I</strong><strong>B</strong><strong>C</strong><strong> </strong><strong>t</strong><strong>i</strong><strong>l</strong><strong> </strong><strong>6</strong><strong>.</strong><strong>4</strong><strong>0</strong><strong>0</strong><strong> </strong><strong>k</strong><strong>r</strong><strong> </strong><strong>—</strong><strong> </strong><strong>2</strong><strong> </strong><strong>d</strong><strong>a</strong><strong>g</strong><strong>e</strong><strong>,</strong><strong> </strong><strong>k</strong><strong>a</strong><strong>n</strong><strong> </strong><strong>k</strong><strong>ø</strong><strong>r</strong><strong>e</strong><strong>s</strong><strong> </strong><strong>o</strong><strong>n</strong><strong>l</strong><strong>i</strong><strong>n</strong><strong>e</strong><strong> </strong><strong>f</strong><strong>o</strong><strong>r</strong><strong> </strong><strong>h</strong><strong>e</strong><strong>l</strong><strong>e</strong><strong> </strong><strong>t</strong><strong>e</strong><strong>a</strong><strong>m</strong><strong>e</strong><strong>t</strong><strong>.</strong></div></div><div style="display:flex;justify-content:flex-end"><div style="background:var(--fm-primary);color:#fff;padding:10px 15px;border-radius:14px 14px 4px 14px;font-size:14px;max-width:75%">Findes der en certificeret mulighed?</div></div><div style="display:flex;gap:11px"><span style="width:30px;height:30px;flex:0 0 30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-robot"></i></span><div style="background:var(--fm-surface-2);border:1px solid var(--fm-line);padding:11px 15px;border-radius:14px 14px 14px 4px;font-size:14px;max-width:78%;line-height:1.6"><strong>J</strong><strong>a</strong><strong> </strong><strong>—</strong><strong> </strong><strong>*</strong><strong>*</strong><strong>S</strong><strong>c</strong><strong>r</strong><strong>u</strong><strong>m</strong><strong> </strong><strong>M</strong><strong>a</strong><strong>s</strong><strong>t</strong><strong>e</strong><strong>r</strong><strong> </strong><strong>C</strong><strong>S</strong><strong>M</strong><strong>*</strong><strong>*</strong><strong> </strong><strong>f</strong><strong>r</strong><strong>a</strong><strong> </strong><strong>M</strong><strong>a</strong><strong>n</strong><strong>n</strong><strong>a</strong><strong>z</strong><strong> </strong><strong>g</strong><strong>i</strong><strong>v</strong><strong>e</strong><strong>r</strong><strong> </strong><strong>e</strong><strong>n</strong><strong> </strong><strong>a</strong><strong>n</strong><strong>e</strong><strong>r</strong><strong>k</strong><strong>e</strong><strong>n</strong><strong>d</strong><strong>t</strong><strong> </strong><strong>c</strong><strong>e</strong><strong>r</strong><strong>t</strong><strong>i</strong><strong>f</strong><strong>i</strong><strong>c</strong><strong>e</strong><strong>r</strong><strong>i</strong><strong>n</strong><strong>g</strong><strong> </strong><strong>(</strong><strong>1</strong><strong>1</strong><strong>.</strong><strong>2</strong><strong>0</strong><strong>0</strong><strong> </strong><strong>k</strong><strong>r</strong><strong>,</strong><strong> </strong><strong>2</strong><strong> </strong><strong>d</strong><strong>a</strong><strong>g</strong><strong>e</strong><strong> </strong><strong>i</strong><strong> </strong><strong>A</strong><strong>a</strong><strong>r</strong><strong>h</strong><strong>u</strong><strong>s</strong><strong> </strong><strong>3</strong><strong>.</strong><strong> </strong><strong>s</strong><strong>e</strong><strong>p</strong><strong>)</strong><strong>.</strong><strong> </strong><strong>S</strong><strong>k</strong><strong>a</strong><strong>l</strong><strong> </strong><strong>j</strong><strong>e</strong><strong>g</strong><strong> </strong><strong>l</strong><strong>æ</strong><strong>g</strong><strong>g</strong><strong>e</strong><strong> </strong><strong>d</strong><strong>e</strong><strong>n</strong><strong> </strong><strong>i</strong><strong> </strong><strong>k</strong><strong>u</strong><strong>r</strong><strong>v</strong><strong>e</strong><strong>n</strong><strong>?</strong></div></div><div style="display:flex;justify-content:flex-end"><div style="background:var(--fm-primary);color:#fff;padding:10px 15px;border-radius:14px 14px 4px 14px;font-size:14px;max-width:75%">Ja tak, til 4 personer</div></div></div></div></div>
+<div class="crumb"><a href="{{ url_for('hr_dashboard.chatbot_sessions') }}">AI-samtaler</a><i class="fa-solid fa-chevron-right"></i><span>{{ username or 'Ukendt' }}</span></div>
+
+  <div class="split wide-r">
+    <div class="stack">
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-info"></i></span><h3>Session</h3></div>
+      <div class="fm-card-body"><div class="info-list">
+        <div class="kv"><span class="k">Medarbejder</span><span class="v">{{ username or 'Ukendt' }}</span></div>
+        <div class="kv"><span class="k">Beskeder</span><span class="v">{{ interactions|length }}</span></div>
+        <div class="kv"><span class="k">Session-ID</span><span class="v mono">{{ session_id[:12] }}…</span></div>
+        {% if interactions and interactions[0].created_at %}<div class="kv"><span class="k">Startet</span><span class="v">{{ interactions[0].created_at.strftime('%d. %b %H:%M') }}</span></div>{% endif %}
+      </div></div></div>
+      {% if user_id %}
+      <a href="{{ url_for('hr_dashboard.employee_details', user_id=user_id) }}" class="btn btn-soft" style="width:100%"><i class="fa-solid fa-id-card"></i> Se medarbejder-profil</a>
+      {% endif %}
+    </div>
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Transskription</h3></div>
+    <div class="fm-card-body"><div class="tr-area">
+      {% for interaction in interactions %}
+        <div class="tr-row user">
+          <div class="tr-av"><i class="fa-solid fa-user"></i></div>
+          <div class="tr-bubble">{{ interaction.query_text }}<span class="tr-time">{{ interaction.created_at.strftime('%H:%M:%S') if interaction.created_at else '' }}</span></div>
+        </div>
+        <div class="tr-row ai">
+          <div class="tr-av"><i class="fa-solid fa-robot"></i></div>
+          <div class="tr-bubble">{{ interaction.response_text|safe }}
+            {% if interaction.tools_used %}<div class="tr-tools"><i class="fa-solid fa-wrench"></i> Kørte værktøjer: {{ interaction.tools_used }}</div>{% endif %}
+            <span class="tr-time">{{ interaction.created_at.strftime('%H:%M:%S') if interaction.created_at else '' }}</span>
+          </div>
+        </div>
+      {% else %}
+        <div style="text-align:center;padding:30px;color:var(--fm-ink-3)">Ingen beskeder i denne samtale.</div>
+      {% endfor %}
+    </div></div></div>
+  </div>
 </div>
 {% endblock %}

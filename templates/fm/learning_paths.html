@@ -2,39 +2,156 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Læringsforløb{% endblock %}
-{% block topbar_sub %}Strukturerede udviklingsprogrammer for teams.{% endblock %}
+{% block topbar_sub %}{{ paths|length }} forløb · strukturerede udviklingsprogrammer.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='roi') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='suppliers') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div><div class="fm-grid" style="grid-template-columns:repeat(3,1fr)"><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px">
-<div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-users-gear"></i></span><div class="fm-flex fm-gap8"><span class="fm-badge">Ledelse</span></div></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Ny Leder-akademi</h3></div>
-<div class="prog-row" style="margin:0"><div class="pt"><b>Gns. fremdrift</b><span class="mono">61%</span></div><div class="fm-prog"><span style="width:61%"></span></div></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><div style="text-align:center;flex:1"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-primary)">18</div><div style="font-size:11px;color:var(--fm-ink-3)">Tilmeldt</div></div><div style="text-align:center;flex:1;border-left:1px solid var(--fm-line)"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-success)">11</div><div style="font-size:11px;color:var(--fm-ink-3)">Gennemført</div></div></div>
-<button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Administrer tilmeldinger</button></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px">
-<div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-chart-line"></i></span><div class="fm-flex fm-gap8"><span class="fm-badge">IT & Data</span></div></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Data-spor for Analytikere</h3></div>
-<div class="prog-row" style="margin:0"><div class="pt"><b>Gns. fremdrift</b><span class="mono">67%</span></div><div class="fm-prog"><span style="width:67%"></span></div></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><div style="text-align:center;flex:1"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-primary)">24</div><div style="font-size:11px;color:var(--fm-ink-3)">Tilmeldt</div></div><div style="text-align:center;flex:1;border-left:1px solid var(--fm-line)"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-success)">16</div><div style="font-size:11px;color:var(--fm-ink-3)">Gennemført</div></div></div>
-<button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Administrer tilmeldinger</button></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px">
-<div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-code"></i></span><div class="fm-flex fm-gap8"><span class="fm-badge">Udvikling</span></div></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Onboarding Udvikling</h3></div>
-<div class="prog-row" style="margin:0"><div class="pt"><b>Gns. fremdrift</b><span class="mono">75%</span></div><div class="fm-prog"><span style="width:75%"></span></div></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><div style="text-align:center;flex:1"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-primary)">12</div><div style="font-size:11px;color:var(--fm-ink-3)">Tilmeldt</div></div><div style="text-align:center;flex:1;border-left:1px solid var(--fm-line)"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-success)">9</div><div style="font-size:11px;color:var(--fm-ink-3)">Gennemført</div></div></div>
-<button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Administrer tilmeldinger</button></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px">
-<div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-bullhorn"></i></span><div class="fm-flex fm-gap8"><span class="fm-badge">Salg</span></div></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Salgsekspert-forløb</h3></div>
-<div class="prog-row" style="margin:0"><div class="pt"><b>Gns. fremdrift</b><span class="mono">40%</span></div><div class="fm-prog"><span style="width:40%"></span></div></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><div style="text-align:center;flex:1"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-primary)">15</div><div style="font-size:11px;color:var(--fm-ink-3)">Tilmeldt</div></div><div style="text-align:center;flex:1;border-left:1px solid var(--fm-line)"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-success)">6</div><div style="font-size:11px;color:var(--fm-ink-3)">Gennemført</div></div></div>
-<button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Administrer tilmeldinger</button></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px">
-<div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-shield-halved"></i></span><div class="fm-flex fm-gap8"><span class="fm-badge">HR & Jura</span></div></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">GDPR & Compliance</h3></div>
-<div class="prog-row" style="margin:0"><div class="pt"><b>Gns. fremdrift</b><span class="mono">90%</span></div><div class="fm-prog"><span style="width:90%"></span></div></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><div style="text-align:center;flex:1"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-primary)">31</div><div style="font-size:11px;color:var(--fm-ink-3)">Tilmeldt</div></div><div style="text-align:center;flex:1;border-left:1px solid var(--fm-line)"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-success)">28</div><div style="font-size:11px;color:var(--fm-ink-3)">Gennemført</div></div></div>
-<button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Administrer tilmeldinger</button></div><div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px">
-<div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-diagram-project"></i></span><div class="fm-flex fm-gap8"><span class="fm-badge">Projektledelse</span></div></div>
-<div><h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">Projektleder-certificering</h3></div>
-<div class="prog-row" style="margin:0"><div class="pt"><b>Gns. fremdrift</b><span class="mono">44%</span></div><div class="fm-prog"><span style="width:44%"></span></div></div>
-<div class="fm-spread" style="padding-top:12px;border-top:1px solid var(--fm-line)"><div style="text-align:center;flex:1"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-primary)">9</div><div style="font-size:11px;color:var(--fm-ink-3)">Tilmeldt</div></div><div style="text-align:center;flex:1;border-left:1px solid var(--fm-line)"><div style="font-family:var(--ff-display);font-weight:700;font-size:18px;color:var(--fm-success)">4</div><div style="font-size:11px;color:var(--fm-ink-3)">Gennemført</div></div></div>
-<button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-users"></i> Administrer tilmeldinger</button></div></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+
+  {% set can_create = session.get('company_role') in ['company_admin', 'hr_manager', 'department_head'] %}
+  {% set can_manage = session.get('company_role') in ['company_admin', 'hr_manager'] %}
+  {% set total_avg = paths|sum(attribute='avg_progress') %}
+  {% set active_enrolled = paths|selectattr('enrolled_count', 'gt', 0)|list|length %}
+  <div class="kpi-row k4">
+    <div class="kpi-tile"><div class="kl">Forløb i alt</div><div class="kv tnum">{{ paths|length }}</div><div class="kd">{{ paths|selectattr('is_active')|list|length }} aktive</div></div>
+    <div class="kpi-tile"><div class="kl">Tilmeldte</div><div class="kv tnum">{{ paths|sum(attribute='enrolled_count') }}</div><div class="kd">medarbejdere i forløb</div></div>
+    <div class="kpi-tile"><div class="kl">Gennemført</div><div class="kv tnum">{{ paths|sum(attribute='completed_count') }}</div><div class="kd">færdige</div></div>
+    <div class="kpi-tile"><div class="kl">Gns. fremskridt</div><div class="kv tnum">{{ (total_avg / active_enrolled)|round(0)|int if active_enrolled > 0 else 0 }}%</div><div class="kd">blandt tilmeldte</div></div>
+  </div>
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-route"></i> Udvikling</span><h2 class="fm-section-title">Læringsforløb</h2></div>
+    {% if can_create %}<button class="btn btn-primary btn-sm" onclick="openCreatePath()"><i class="fa-solid fa-plus"></i> Opret forløb</button>{% endif %}
+  </div>
+
+  {% if paths %}
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(420px,1fr))">
+    {% for path in paths %}
+    {% set prog = path.avg_progress|round(0)|int %}
+    {% set barcol = 'var(--fm-success)' if prog >= 70 else ('var(--fm-warning)' if prog >= 40 else 'var(--fm-primary)') %}
+    <div class="fm-card" style="padding:20px;display:flex;flex-direction:column;gap:13px;{{ 'opacity:.6' if not path.is_active }}">
+      <div class="fm-spread">
+        <div class="fm-flex fm-ac fm-gap12">
+          <span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-route"></i></span>
+          <div>
+            <h3 style="font-size:16px;font-weight:700;letter-spacing:-.02em">{{ path.path_name }}{% if not path.is_active %} <span class="fm-chip">Inaktiv</span>{% endif %}</h3>
+            <div style="font-size:12px;color:var(--fm-ink-3)">{% if path.path_category %}{{ path.path_category }} · {% endif %}{{ (path.difficulty_level or 'beginner')|title }}</div>
+          </div>
+        </div>
+        <div class="fm-flex fm-gap8">
+          {% if can_create %}<button class="fm-icon-btn" style="width:32px;height:32px" title="Tildel" onclick="openAssign({{ path.id }})"><i class="fa-solid fa-user-plus"></i></button>{% endif %}
+          {% if can_manage %}
+          <form method="POST" action="{{ url_for('hr_dashboard.toggle_learning_path', path_id=path.id) }}" style="display:inline">
+            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px" title="{{ 'Deaktiver' if path.is_active else 'Aktiver' }}"><i class="fa-solid fa-{{ 'pause' if path.is_active else 'play' }}"></i></button>
+          </form>
+          <form method="POST" action="{{ url_for('hr_dashboard.delete_learning_path', path_id=path.id) }}" style="display:inline" onsubmit="return confirm('Slet dette læringsforløb og alle tilmeldinger?')">
+            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px;color:var(--fm-danger)" title="Slet"><i class="fa-solid fa-trash"></i></button>
+          </form>
+          {% endif %}
+        </div>
+      </div>
+      <div class="prog-row" style="margin:0"><div class="pt"><b>{{ path.enrolled_count }} tilmeldt · {{ path.completed_count }} gennemført</b><span class="mono">{{ prog }}%</span></div><div class="fm-prog"><span style="width:{{ prog }}%;background:{{ barcol }}"></span></div></div>
+
+      {% set path_enrollments = enrollments.get(path.id, []) %}
+      {% if path_enrollments %}
+      <div class="fm-table-wrap" style="max-height:240px;overflow-y:auto;margin:0">
+        <table class="fm-table"><thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Status</th><th>Fremskridt</th></tr></thead><tbody>
+          {% for e in path_enrollments %}
+          <tr>
+            <td style="font-weight:600">{{ e.full_name or e.username }}</td>
+            <td style="font-size:12px;color:var(--fm-ink-2)">{{ e.department or '-' }}</td>
+            <td>
+              {% if e.completed_at %}<span class="fm-badge green dot">Gennemført</span>
+              {% elif e.status == 'in_progress' %}<span class="fm-badge dot">I gang</span>
+              {% else %}<span class="fm-chip">Ikke startet</span>{% endif %}
+            </td>
+            <td style="min-width:110px"><div class="fm-prog thin" style="margin-bottom:3px"><span style="width:{{ e.progress_percentage|round(0)|int }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ e.progress_percentage|round(0)|int }}%</span></td>
+          </tr>
+          {% endfor %}
+        </tbody></table>
+      </div>
+      {% else %}
+      <div style="text-align:center;color:var(--fm-ink-3);font-size:12.5px;padding:8px 0">Ingen tilmeldte endnu</div>
+      {% endif %}
+    </div>
+
+    <div class="fm-modal-bk" id="assignModal{{ path.id }}" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+      <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
+        <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Tildel: {{ path.path_name }}</h3>
+        <form method="POST" action="{{ url_for('hr_dashboard.assign_learning_path', path_id=path.id) }}">
+          <label class="fm-field"><span>Tildelingstype</span>
+            <select name="assign_type" class="fm-input" id="assignType{{ path.id }}" onchange="toggleAssignFields({{ path.id }})">
+              <option value="individual">Enkelt medarbejder</option>
+              <option value="department">Hel afdeling</option>
+            </select>
+          </label>
+          <div id="individualField{{ path.id }}">
+            <label class="fm-field"><span>Medarbejder</span>
+              <select name="user_id" class="fm-input">
+                <option value="">Vælg medarbejder...</option>
+                {% for emp in employees %}<option value="{{ emp.user_id }}">{{ emp.full_name or emp.username }} ({{ emp.department or 'Ingen afd.' }})</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+          <div id="departmentField{{ path.id }}" style="display:none">
+            <label class="fm-field"><span>Afdeling</span>
+              <select name="department" class="fm-input">
+                <option value="">Vælg afdeling...</option>
+                {% for dept in departments %}<option value="{{ dept }}">{{ dept }}</option>{% endfor %}
+              </select>
+            </label>
+          </div>
+          <label class="fm-field"><span>Deadline (valgfri)</span><input type="date" name="due_date" class="fm-input"></label>
+          <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+            <button type="button" class="btn btn-ghost btn-sm" onclick="closeAssign({{ path.id }})">Annuller</button>
+            <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tildel</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-3)">
+    <i class="fa-solid fa-route" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i>
+    <div style="font-weight:650;color:var(--fm-ink-2);margin-bottom:4px">Ingen læringsforløb oprettet endnu</div>
+    <div style="margin-bottom:14px">Opret dit første læringsforløb for at spore medarbejdernes udvikling.</div>
+    {% if can_create %}<button class="btn btn-primary btn-sm" onclick="openCreatePath()"><i class="fa-solid fa-plus"></i> Opret forløb</button>{% endif %}
+  </div>
+  {% endif %}
 </div>
+
+{% if can_create %}
+<div id="createPathModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Opret læringsforløb</h3>
+    <form method="POST" action="{{ url_for('hr_dashboard.create_learning_path') }}">
+      <label class="fm-field"><span>Navn *</span><input type="text" name="path_name" class="fm-input" required placeholder="F.eks. Onboarding for nye medarbejdere"></label>
+      <label class="fm-field"><span>Kategori</span><input type="text" name="path_category" class="fm-input" placeholder="F.eks. Compliance, Ledelse, Teknisk"></label>
+      <label class="fm-field"><span>Sværhedsgrad</span>
+        <select name="difficulty_level" class="fm-input">
+          <option value="beginner">Begynder</option>
+          <option value="intermediate">Øvet</option>
+          <option value="advanced">Avanceret</option>
+        </select>
+      </label>
+      <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeCreatePath()">Annuller</button>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Opret</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endif %}
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function openCreatePath(){ document.getElementById('createPathModal').style.display = 'flex'; }
+function closeCreatePath(){ document.getElementById('createPathModal').style.display = 'none'; }
+function openAssign(id){ document.getElementById('assignModal' + id).style.display = 'flex'; }
+function closeAssign(id){ document.getElementById('assignModal' + id).style.display = 'none'; }
+function toggleAssignFields(pathId) {
+  const type = document.getElementById('assignType' + pathId).value;
+  document.getElementById('individualField' + pathId).style.display = type === 'individual' ? '' : 'none';
+  document.getElementById('departmentField' + pathId).style.display = type === 'department' ? '' : 'none';
+}
+</script>
 {% endblock %}

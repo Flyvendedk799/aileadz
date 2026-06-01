@@ -1,22 +1,91 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Opret internt kursus{% endblock %}
-{% block topbar_sub %}Tilføj et forløb til virksomhedens katalog.{% endblock %}
-{% block extra_head %}
-<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}</style>
-{% endblock %}
+{% block topbar_title %}{{ 'Rediger kursus' if course else 'Opret internt kursus' }}{% endblock %}
+{% block topbar_sub %}{{ 'Opdater forløbet i virksomhedens katalog.' if course else 'Tilføj et forløb til virksomhedens katalog.' }}{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='internal_courses') }}">Interne kurser</a><i class="fa-solid fa-chevron-right"></i><span>Opret</span></div>
-  <div style="max-width:760px;margin:0 auto"><div class="fm-card"><div class="fm-card-body">
-  <div class="form-grid"><div class="fm-field full"><label>Kursustitel</label><input class="fm-input" placeholder="fx Nordi Onboarding"/></div>
-  <div class="fm-field"><label>Kategori</label><select class="fm-select"><option>Intern</option><option>Obligatorisk</option><option>Onboarding</option></select></div>
-  <div class="fm-field"><label>Varighed</label><input class="fm-input" placeholder="fx 2 timer"/></div>
-  <div class="fm-field"><label>Format</label><select class="fm-select"><option>Online · selvstudie</option><option>Fysisk</option><option>Hybrid</option></select></div>
-  <div class="fm-field"><label>Ansvarlig</label><input class="fm-input" value="Mette Krogh"/></div>
-  <div class="fm-field full"><label>Beskrivelse</label><textarea class="fm-textarea" placeholder="Hvad lærer medarbejderen?"></textarea></div></div>
-  <div class="trow" style="border-top:1px solid var(--fm-line);margin-top:8px;border-bottom:0"><div><div style="font-size:14px;font-weight:600">Obligatorisk for nye medarbejdere</div><div style="font-size:12.5px;color:var(--fm-ink-2);margin-top:2px">Tilføjes automatisk til onboarding</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-  </div></div></div>
+  <div class="crumb"><a href="{{ url_for('hr_dashboard.internal_courses') }}">Interne kurser</a><i class="fa-solid fa-chevron-right"></i><span>{{ 'Rediger' if course else 'Opret' }}</span></div>
+
+  <form method="POST" style="max-width:820px;margin:0 auto">
+    <div class="fm-card" style="padding:24px;margin-bottom:18px">
+      <span class="fm-eyebrow"><i class="fa-solid fa-circle-info"></i> Grundlæggende</span>
+      <h3 class="fm-section-title" style="margin:4px 0 16px">Information</h3>
+      <div class="fm-grid" style="grid-template-columns:repeat(2,1fr)">
+        <label class="fm-field" style="grid-column:1/-1"><span>Kursusnavn *</span><input type="text" class="fm-input" name="title" value="{{ course.title if course else '' }}" required></label>
+        <label class="fm-field" style="grid-column:1/-1"><span>Beskrivelse</span><textarea class="fm-input" name="description" rows="3">{{ course.description if course else '' }}</textarea></label>
+        <label class="fm-field"><span>Kategori</span><input type="text" class="fm-input" name="category" value="{{ course.category if course else '' }}" placeholder="f.eks. Ledelse, IT, Sikkerhed"></label>
+        <label class="fm-field"><span>Tags (komma-separeret)</span><input type="text" class="fm-input" name="tags" value="{{ course.tags if course else '' }}" placeholder="f.eks. onboarding, compliance"></label>
+      </div>
+    </div>
+
+    <div class="fm-card" style="padding:24px;margin-bottom:18px">
+      <span class="fm-eyebrow"><i class="fa-solid fa-gear"></i> Format</span>
+      <h3 class="fm-section-title" style="margin:4px 0 16px">Format og detaljer</h3>
+      <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
+        <label class="fm-field"><span>Kursustype</span>
+          <select class="fm-input" name="course_type">
+            <option value="internal" {% if not course or course.course_type == 'internal' %}selected{% endif %}>Internt</option>
+            <option value="external_linked" {% if course and course.course_type == 'external_linked' %}selected{% endif %}>Eksternt (linket)</option>
+          </select>
+        </label>
+        <label class="fm-field"><span>Format</span>
+          <select class="fm-input" name="format">
+            <option value="classroom" {% if not course or course.format == 'classroom' %}selected{% endif %}>Klasseværelse</option>
+            <option value="e-learning" {% if course and course.format == 'e-learning' %}selected{% endif %}>E-learning</option>
+            <option value="blended" {% if course and course.format == 'blended' %}selected{% endif %}>Blended</option>
+            <option value="webinar" {% if course and course.format == 'webinar' %}selected{% endif %}>Webinar</option>
+            <option value="workshop" {% if course and course.format == 'workshop' %}selected{% endif %}>Workshop</option>
+            <option value="self-paced" {% if course and course.format == 'self-paced' %}selected{% endif %}>Selvstudium</option>
+          </select>
+        </label>
+        <label class="fm-field"><span>Sværhedsgrad</span>
+          <select class="fm-input" name="difficulty_level">
+            <option value="beginner" {% if not course or course.difficulty_level == 'beginner' %}selected{% endif %}>Begynder</option>
+            <option value="intermediate" {% if course and course.difficulty_level == 'intermediate' %}selected{% endif %}>Mellem</option>
+            <option value="advanced" {% if course and course.difficulty_level == 'advanced' %}selected{% endif %}>Avanceret</option>
+          </select>
+        </label>
+        <label class="fm-field"><span>Varighed (timer)</span><input type="number" class="fm-input" name="duration_hours" step="0.5" min="0" value="{{ course.duration_hours if course else '' }}"></label>
+        <label class="fm-field"><span>Pris (DKK)</span><input type="number" class="fm-input" name="price" step="0.01" min="0" value="{{ course.price if course else '0' }}"></label>
+        <label class="fm-field"><span>Maks. deltagere</span><input type="number" class="fm-input" name="max_participants" min="0" value="{{ course.max_participants if course else '' }}" placeholder="Tomt = ubegrænset"></label>
+      </div>
+    </div>
+
+    <div class="fm-card" style="padding:24px;margin-bottom:18px">
+      <span class="fm-eyebrow"><i class="fa-solid fa-chalkboard-user"></i> Underviser</span>
+      <h3 class="fm-section-title" style="margin:4px 0 16px">Underviser og lokation</h3>
+      <div class="fm-grid" style="grid-template-columns:repeat(2,1fr)">
+        <label class="fm-field"><span>Underviser</span><input type="text" class="fm-input" name="instructor" value="{{ course.instructor if course else '' }}"></label>
+        <label class="fm-field"><span>Lokation</span><input type="text" class="fm-input" name="location" value="{{ course.location if course else '' }}" placeholder="f.eks. Kontor, Online, Adresse"></label>
+        <label class="fm-field"><span>Afdeling (valgfrit)</span>
+          <select class="fm-input" name="department">
+            <option value="">Alle afdelinger</option>
+            {% for dept in departments %}<option value="{{ dept }}" {% if course and course.department == dept %}selected{% endif %}>{{ dept }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="fm-field"><span>Kompetence-tags</span><input type="text" class="fm-input" name="skill_tags" value="{{ course.skill_tags if course else '' }}" placeholder="f.eks. ledelse, kommunikation"></label>
+        <label class="fm-field" style="grid-column:1/-1"><span>Eksternt link (valgfrit)</span><input type="url" class="fm-input" name="external_url" value="{{ course.external_url if course else '' }}" placeholder="https://..."></label>
+      </div>
+    </div>
+
+    <div class="fm-card" style="padding:24px;margin-bottom:18px">
+      <span class="fm-eyebrow"><i class="fa-solid fa-sliders"></i> Indstillinger</span>
+      <h3 class="fm-section-title" style="margin:4px 0 16px">Indstillinger</h3>
+      <label class="fm-flex fm-ac fm-gap12" style="margin-bottom:12px;cursor:pointer">
+        <input type="checkbox" name="is_mandatory" id="is_mandatory" {% if course and course.is_mandatory %}checked{% endif %}>
+        <span><span style="font-weight:600">Obligatorisk kursus</span><br><span style="font-size:12px;color:var(--fm-ink-3)">Vises som krav for medarbejdere</span></span>
+      </label>
+      <label class="fm-flex fm-ac fm-gap12" style="cursor:pointer">
+        <input type="checkbox" name="is_active" id="is_active" value="1" {% if not course or course.is_active %}checked{% endif %}>
+        <span><span style="font-weight:600">Aktiv</span><br><span style="font-size:12px;color:var(--fm-ink-3)">Inaktive kurser er skjulte for medarbejdere</span></span>
+      </label>
+    </div>
+
+    <div class="fm-spread" style="margin-bottom:30px">
+      <a href="{{ url_for('hr_dashboard.internal_courses') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Annuller</a>
+      <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> {{ 'Gem ændringer' if course else 'Opret kursus' }}</button>
+    </div>
+  </form>
 </div>
 {% endblock %}

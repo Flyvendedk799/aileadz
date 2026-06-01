@@ -1,13 +1,122 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Leverandører & aftaler{% endblock %}
-{% block topbar_sub %}Rammeaftaler og rabatter for Nordi A/S.{% endblock %}
+{% block topbar_title %}Leverandørstyring{% endblock %}
+{% block topbar_sub %}{{ vendors|length }} leverandør{{ 'er' if vendors|length != 1 else '' }} · aktivér kurser for medarbejdere.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='roi') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='suppliers') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
-  <div class="kpi-row k3"><div class="kpi-tile"><div class="kl">Aktive aftaler</div><div class="kv tnum">4</div><div class="kd">1 under forhandling</div></div><div class="kpi-tile"><div class="kl">Gns. rabat</div><div class="kv tnum">11%</div><div class="kd">på aftaleomfanget</div></div><div class="kpi-tile"><div class="kl">Sparet i år</div><div class="kv tnum">84.000</div><div class="kd">kr via aftaler</div></div></div>
-  <div class="fm-table-wrap"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Leverandøraftaler</h3></div>
-  <table class="fm-table"><thead><tr><th>Leverandør</th><th>Status</th><th>Rabat</th><th>Fornyelse</th><th></th></tr></thead><tbody><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">TI</span><div><div style="font-weight:650">Teknologisk Institut</div><div class="muted" style="font-size:11.5px">42 kurser</div></div></div></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td><span class="fm-badge teal">15% rabat</span></td><td class="muted">Fornyes jan 2027</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='supplier_agreements') }}" class="btn btn-ghost btn-sm">Aftale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">MZ</span><div><div style="font-weight:650">Mannaz</div><div class="muted" style="font-size:11.5px">38 kurser</div></div></div></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td><span class="fm-badge teal">12% rabat</span></td><td class="muted">Fornyes mar 2027</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='supplier_agreements') }}" class="btn btn-ghost btn-sm">Aftale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">CB</span><div><div style="font-weight:650">CBS Executive</div><div class="muted" style="font-size:11.5px">24 kurser</div></div></div></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td><span class="fm-badge teal">10% rabat</span></td><td class="muted">Fornyes jun 2026</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='supplier_agreements') }}" class="btn btn-ghost btn-sm">Aftale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">MS</span><div><div style="font-weight:650">Microsoft Learning</div><div class="muted" style="font-size:11.5px">31 kurser</div></div></div></td><td><span class="status-pill amber" style="height:24px;font-size:11.5px">Under forhandling</span></td><td><span class="fm-badge teal">—</span></td><td class="muted">Tilbud afventer</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='supplier_agreements') }}" class="btn btn-ghost btn-sm">Aftale</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">DJ</span><div><div style="font-weight:650">DJØF</div><div class="muted" style="font-size:11.5px">21 kurser</div></div></div></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td><span class="fm-badge teal">8% rabat</span></td><td class="muted">Fornyes sep 2026</td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='supplier_agreements') }}" class="btn btn-ghost btn-sm">Aftale</a></td></tr></tbody></table></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a></div>
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-store"></i> Katalog</span><h2 class="fm-section-title">Leverandørstyring</h2></div>
+    <a href="{{ url_for('hr_dashboard.supplier_agreements') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-handshake"></i> Rabataftaler{% if agreements_count %} <span class="fm-badge">{{ agreements_count }}</span>{% endif %}</a>
+  </div>
+
+  <div class="kpi-row k4">
+    <div class="kpi-tile"><div class="kl">Leverandører i alt</div><div class="kv tnum">{{ vendors|length }}</div></div>
+    <div class="kpi-tile"><div class="kl">Aktive</div><div class="kv tnum" style="color:var(--fm-success)">{{ active_vendors }}</div></div>
+    <div class="kpi-tile"><div class="kl">Deaktiverede</div><div class="kv tnum" style="color:var(--fm-danger)">{{ deactivated_vendors }}</div></div>
+    <div class="kpi-tile"><div class="kl">Rabataftaler</div><div class="kv tnum">{{ agreements_count or 0 }}</div></div>
+  </div>
+
+  <div class="fm-card" style="padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+    <input type="text" class="fm-input" id="vendorSearch" placeholder="Søg leverandør..." style="flex:2;min-width:180px">
+    <select class="fm-input" id="vendorFilter" style="flex:1;min-width:140px">
+      <option value="all">Alle</option>
+      <option value="active">Kun aktive</option>
+      <option value="inactive">Kun deaktiverede</option>
+    </select>
+    <div class="fm-flex fm-gap8" style="margin-left:auto">
+      <button class="btn btn-ghost btn-sm" onclick="bulkToggle(1)"><i class="fa-solid fa-check-double"></i> Aktivér alle</button>
+      <button class="btn btn-ghost btn-sm" style="color:var(--fm-danger)" onclick="bulkToggle(0)"><i class="fa-solid fa-ban"></i> Deaktivér alle</button>
+    </div>
+  </div>
+
+  {% if vendors %}
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))" id="vendorList">
+    {% for vendor in vendors %}
+    <div class="vendor-item" data-name="{{ vendor.name|lower }}" data-active="{{ vendor.is_active }}">
+      <div class="fm-card vendor-card" style="padding:18px;display:flex;flex-direction:column;gap:11px;{{ 'opacity:.6' if not vendor.is_active }}">
+        <div class="fm-spread">
+          <div>
+            <h3 style="font-size:15px;font-weight:700">{{ vendor.name }}</h3>
+            <div style="font-size:12px;color:var(--fm-ink-3)">{{ vendor.course_count }} kurser tilgængelige</div>
+          </div>
+          <label class="fm-switch" style="cursor:pointer">
+            <input type="checkbox" class="vendor-toggle" data-vendor="{{ vendor.name }}" {% if vendor.is_active %}checked{% endif %} onchange="toggleVendor(this)">
+            <span class="fm-switch-track"></span>
+          </label>
+        </div>
+        {% if vendor.notes %}<div style="font-size:12px;color:var(--fm-ink-2)"><i class="fa-solid fa-note-sticky"></i> {{ vendor.notes }}</div>{% endif %}
+        <a class="btn btn-soft btn-sm" style="margin-top:auto" href="{{ url_for('catalog.vendor_detail', slug=vendor.slug) }}" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> Se leverandørside</a>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-3)">
+    <i class="fa-solid fa-store" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i>
+    <div style="font-weight:650;color:var(--fm-ink-2);margin-bottom:4px">Ingen leverandører fundet</div>
+    <div>Kursuskataloget indeholder ingen leverandører endnu.</div>
+  </div>
+  {% endif %}
 </div>
+{% endblock %}
+{% block extra_head %}
+<style>
+.fm-switch{position:relative;display:inline-block}
+.fm-switch input{position:absolute;opacity:0;width:0;height:0}
+.fm-switch-track{display:block;width:42px;height:24px;border-radius:999px;background:var(--fm-line-2);position:relative;transition:var(--t,.2s)}
+.fm-switch-track::after{content:"";position:absolute;top:3px;left:3px;width:18px;height:18px;border-radius:999px;background:#fff;transition:var(--t,.2s)}
+.fm-switch input:checked + .fm-switch-track{background:var(--fm-primary)}
+.fm-switch input:checked + .fm-switch-track::after{transform:translateX(18px)}
+</style>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function toggleVendor(checkbox) {
+  const vendorName = checkbox.dataset.vendor;
+  const isActive = checkbox.checked ? 1 : 0;
+  const card = checkbox.closest('.vendor-card');
+  fetch('{{ url_for("hr_dashboard.toggle_supplier") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vendor_name: vendorName, is_active: isActive })
+  }).then(r => r.json()).then(data => {
+    if (data.success) {
+      card.style.opacity = isActive ? '' : '.6';
+      checkbox.closest('.vendor-item').dataset.active = isActive;
+    } else {
+      checkbox.checked = !checkbox.checked;
+      alert('Fejl: ' + (data.message || 'Ukendt fejl'));
+    }
+  }).catch(() => { checkbox.checked = !checkbox.checked; });
+}
+function bulkToggle(isActive) {
+  const allNames = Array.from(document.querySelectorAll('.vendor-toggle')).map(cb => cb.dataset.vendor);
+  if (!confirm(`Er du sikker på du vil ${isActive ? 'aktivere' : 'deaktivere'} alle ${allNames.length} leverandører?`)) return;
+  fetch('{{ url_for("hr_dashboard.bulk_toggle_suppliers") }}', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ vendor_names: allNames, is_active: isActive })
+  }).then(r => r.json()).then(data => {
+    if (data.success) location.reload();
+    else alert('Fejl: ' + (data.message || ''));
+  });
+}
+const _vs = document.getElementById('vendorSearch');
+const _vf = document.getElementById('vendorFilter');
+if (_vs) _vs.addEventListener('input', filterVendors);
+if (_vf) _vf.addEventListener('change', filterVendors);
+function filterVendors() {
+  const q = _vs.value.toLowerCase();
+  const filter = _vf.value;
+  document.querySelectorAll('.vendor-item').forEach(el => {
+    const nameMatch = el.dataset.name.includes(q);
+    const statusMatch = filter === 'all' ||
+      (filter === 'active' && el.dataset.active === '1') ||
+      (filter === 'inactive' && el.dataset.active === '0');
+    el.style.display = nameMatch && statusMatch ? '' : 'none';
+  });
+}
+</script>
 {% endblock %}

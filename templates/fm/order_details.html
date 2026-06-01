@@ -1,18 +1,138 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Ordre #FM-2048{% endblock %}
-{% block topbar_sub %}Scrum Master CSM · Sara Lind{% endblock %}
+{% block topbar_title %}Ordre #{{ order.order_id }}{% endblock %}
+{% block topbar_sub %}{{ order.product_title }} · {{ order.username }}{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.showcase', page='approvals') }}">Ordrer</a><i class="fa-solid fa-chevron-right"></i><span>#FM-2048</span></div>
+<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('hr_dashboard.billing_overview') }}">Ordrer</a><i class="fa-solid fa-chevron-right"></i><span>#{{ order.order_id }}</span></div>
+
+  {% set st = order.status or 'pending' %}
+  {% set bs = order.billing_status or 'not_invoiced' %}
+  <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">
+    <div></div>
+    <div class="fm-flex fm-gap8">
+      <button class="btn btn-ghost btn-sm" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+      <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Tilbage</a>
+    </div>
+  </div>
+
   <div class="split"><div class="stack">
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursusdetaljer</h3><span class="status-pill amber" style="margin-left:auto;height:26px">Afventer godkendelse</span></div>
-    <div class="fm-card-body"><div class="info-list"><div class="kv"><span class="k">Kursus</span><span class="v">Scrum Master CSM</span></div><div class="kv"><span class="k">Leverandør</span><span class="v">Mannaz</span></div><div class="kv"><span class="k">Hold</span><span class="v">3. sep 2026 · Aarhus</span></div><div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">11.200 kr</span></div><div class="kv"><span class="k">Kreditter</span><span class="v">14</span></div></div></div></div>
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-timeline"></i></span><h3>Ordreforløb</h3></div><div class="fm-card-body"><div class="timeline"><div class="tl-item "><div class="tl-time">12. maj · 14:02</div><div class="tl-title">Bestilt</div><div class="tl-desc">Sara Lind bestilte kurset</div></div><div class="tl-item "><div class="tl-time">12. maj · 14:02</div><div class="tl-title">Afventer godkendelse</div><div class="tl-desc">Sendt til HR-manager</div></div><div class="tl-item "><div class="tl-time">12. maj · 16:30</div><div class="tl-title">Godkendt</div><div class="tl-desc">Godkendt af Mette Krogh</div></div><div class="tl-item "><div class="tl-time">13. maj · 09:10</div><div class="tl-title">Tilmeldt leverandør</div><div class="tl-desc">Bekræftet af Mannaz</div></div><div class="tl-item muted"><div class="tl-time">3. sep 2026</div><div class="tl-title">Gennemføres</div><div class="tl-desc">Holdstart</div></div></div></div></div>
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursusdetaljer</h3>
+      {% if st == 'completed' %}<span class="status-pill green" style="margin-left:auto;height:26px">Gennemført</span>
+      {% elif st == 'pending' %}<span class="status-pill amber" style="margin-left:auto;height:26px">Afventer</span>
+      {% elif st == 'processing' %}<span class="status-pill" style="margin-left:auto;height:26px">Behandles</span>
+      {% else %}<span class="status-pill" style="margin-left:auto;height:26px">{{ st|title }}</span>{% endif %}
+    </div>
+    <div class="fm-card-body"><div class="info-list">
+      <div class="kv"><span class="k">Ordre-ID</span><span class="v mono">{{ order.order_id }}</span></div>
+      <div class="kv"><span class="k">Kursus</span><span class="v">{{ order.product_title }}</span></div>
+      {% if order.product_handle %}<div class="kv"><span class="k">Handle</span><span class="v mono">{{ order.product_handle }}</span></div>{% endif %}
+      {% if order.variant_location %}<div class="kv"><span class="k">Lokation</span><span class="v">{{ order.variant_location }}</span></div>{% endif %}
+      {% if order.variant_date %}<div class="kv"><span class="k">Dato</span><span class="v">{{ order.variant_date }}</span></div>{% endif %}
+      <div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">{{ order.price }} kr</span></div>
+      <div class="kv"><span class="k">Oprettet</span><span class="v">{{ order.created_at.strftime('%Y-%m-%d %H:%M') if order.created_at else 'N/A' }}</span></div>
+      {% if order.updated_at %}<div class="kv"><span class="k">Opdateret</span><span class="v">{{ order.updated_at.strftime('%Y-%m-%d %H:%M') }}</span></div>{% endif %}
+    </div></div></div>
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Læringsfremdrift</h3></div>
+    <div class="fm-card-body"><div class="info-list">
+      {% set cs = order.completion_status or 'not_started' %}
+      <div class="kv"><span class="k">Status</span><span class="v">
+        {% if cs == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
+        {% elif cs == 'in_progress' %}<span class="fm-badge dot">I gang</span>
+        {% else %}<span class="fm-badge amber dot">Ikke startet</span>{% endif %}
+      </span></div>
+      {% if order.started_at %}<div class="kv"><span class="k">Startet</span><span class="v">{{ order.started_at.strftime('%Y-%m-%d') }}</span></div>{% endif %}
+      {% if order.completion_date %}<div class="kv"><span class="k">Gennemført</span><span class="v">{{ order.completion_date.strftime('%Y-%m-%d') }}</span></div>{% endif %}
+      {% if order.completion_deadline %}<div class="kv"><span class="k">Deadline</span><span class="v">{{ order.completion_deadline.strftime('%Y-%m-%d') }}</span></div>{% endif %}
+    </div></div></div>
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-invoice-dollar"></i></span><h3>Fakturering &amp; Betaling</h3>
+      {% if bs == 'paid' %}<span class="status-pill green" style="margin-left:auto;height:26px">Betalt</span>
+      {% elif bs == 'invoiced' %}<span class="status-pill amber" style="margin-left:auto;height:26px">Faktureret</span>
+      {% elif bs == 'credited' %}<span class="status-pill" style="margin-left:auto;height:26px">Krediteret</span>
+      {% else %}<span class="status-pill" style="margin-left:auto;height:26px;color:var(--fm-clay)">Ikke faktureret</span>{% endif %}
+    </div>
+    <div class="fm-card-body"><div class="info-list">
+      <div class="kv"><span class="k">Fakturanr.</span><span class="v">{{ order.invoice_number or '-' }}</span></div>
+      <div class="kv"><span class="k">Fakturadato</span><span class="v">{{ order.invoice_date.strftime('%Y-%m-%d') if order.invoice_date else '-' }}</span></div>
+      <div class="kv"><span class="k">Betalingsdato</span><span class="v">{{ order.payment_date.strftime('%Y-%m-%d') if order.payment_date else '-' }}</span></div>
+      <div class="kv"><span class="k">Metode</span><span class="v">{{ order.payment_method or '-' }}</span></div>
+      <div class="kv"><span class="k">Reference</span><span class="v">{{ order.payment_reference or '-' }}</span></div>
+      {% if order.billing_note %}<div class="kv"><span class="k">Note</span><span class="v">{{ order.billing_note }}</span></div>{% endif %}
+    </div>
+    {% if session.company_role in ['company_admin', 'hr_manager'] %}
+    <div class="fm-flex fm-gap8" style="flex-wrap:wrap;margin-top:14px">
+      {% if bs == 'not_invoiced' %}<button class="btn btn-ghost btn-sm" onclick="updateBilling('invoiced')"><i class="fa-solid fa-file-invoice"></i> Marker faktureret</button>{% endif %}
+      {% if bs in ['not_invoiced', 'invoiced'] %}<button class="btn btn-primary btn-sm" onclick="updateBilling('paid')"><i class="fa-solid fa-check-circle"></i> Marker betalt</button>{% endif %}
+      {% if bs in ['invoiced', 'paid'] %}<button class="btn btn-ghost btn-sm" onclick="updateBilling('credited')"><i class="fa-solid fa-rotate-left"></i> Krediter</button>{% endif %}
+      <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="btn btn-ghost btn-sm" style="margin-left:auto"><i class="fa-solid fa-list"></i> Alle faktureringer</a>
+    </div>
+    {% endif %}
+    </div></div>
+
   </div><div class="stack">
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Medarbejder</h3></div><div class="fm-card-body"><a href="{{ url_for('futurematch.showcase', page='employee_details') }}" class="row-item" style="text-decoration:none;border:0;padding:0"><span class="ra" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">SL</span><div class="rt"><div class="rn">Sara Lind</div><div class="rm">Product Owner · Produkt</div></div><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></a></div></div>
-    <div class="fm-card"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:10px">Handling påkrævet</div><button class="btn btn-primary" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-check"></i> Godkend ordre</button><button class="btn btn-ghost" style="width:100%">Afvis ordre</button></div></div>
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Medarbejder</h3></div>
+    <div class="fm-card-body"><div class="info-list">
+      <div class="kv"><span class="k">Navn</span><span class="v">{{ order.username }}</span></div>
+      <div class="kv"><span class="k">Email</span><span class="v">{{ order.email or order.user_email or 'N/A' }}</span></div>
+      <div class="kv"><span class="k">Afdeling</span><span class="v">{{ order.department or 'N/A' }}</span></div>
+      <div class="kv"><span class="k">Stilling</span><span class="v">{{ order.job_title or 'N/A' }}</span></div>
+      <div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ order.employee_id or 'N/A' }}</span></div>
+    </div></div></div>
+
+    <div class="fm-card"><div class="fm-card-body">
+      <div class="fm-eyebrow"><i class="fa-solid fa-tag"></i> Kursuspris</div>
+      <div class="kv tnum" style="font-size:28px;color:var(--fm-primary);margin-top:4px">{{ order.price }} kr</div>
+    </div></div>
+
+    {% if session.company_role in ['company_admin', 'hr_manager'] %}
+    <div class="fm-card"><div class="fm-card-body">
+      <div style="font-weight:700;margin-bottom:10px">Opdater ordrestatus</div>
+      <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px" onclick="updateOrderStatus('{{ order.order_id }}','processing')"><i class="fa-solid fa-gear"></i> Marker som behandles</button>
+      <button class="btn btn-primary btn-sm" style="width:100%;margin-bottom:8px" onclick="updateOrderStatus('{{ order.order_id }}','completed')"><i class="fa-solid fa-check"></i> Marker som gennemført</button>
+      <button class="btn btn-ghost btn-sm" style="width:100%" onclick="updateOrderStatus('{{ order.order_id }}','cancelled')"><i class="fa-solid fa-xmark"></i> Annuller ordre</button>
+    </div></div>
+    {% endif %}
+
   </div></div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function fmToast(type, message){
+  const d=document.createElement('div');
+  d.style.cssText='position:fixed;top:20px;right:20px;z-index:9999;min-width:280px;padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;box-shadow:var(--sh-glow);background:'+(type==='success'?'#16a34a':'#c0532f');
+  d.textContent=message;document.body.appendChild(d);
+  setTimeout(()=>d.remove(),5000);
+}
+function updateOrderStatus(orderId, newStatus){
+  if(!confirm('Marker denne ordre som ' + newStatus + '?')) return;
+  fetch(`{{ url_for('hr_dashboard.update_company_order_status', order_id='ORDER_ID') }}`.replace('ORDER_ID', orderId), {
+    method:'POST',
+    headers:{'Content-Type':'application/json','X-Requested-With':'XMLHttpRequest'},
+    body:JSON.stringify({status:newStatus})
+  }).then(r=>r.json()).then(data=>{
+    if(data.success){fmToast('success', data.message);setTimeout(()=>location.reload(),1200);}
+    else{fmToast('danger','Fejl: '+data.message);}
+  }).catch(()=>fmToast('danger','Fejl ved opdatering af status'));
+}
+function updateBilling(newStatus){
+  if(!confirm('Marker denne ordre som ' + newStatus + '?')) return;
+  const data={billing_status:newStatus};
+  if(newStatus==='paid') data.payment_date=new Date().toISOString().split('T')[0];
+  if(newStatus==='invoiced') data.invoice_date=new Date().toISOString().split('T')[0];
+  fetch(`{{ url_for('hr_dashboard.update_billing', order_id=order.order_id) }}`, {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify(data)
+  }).then(r=>r.json()).then(d=>{
+    if(d.success){fmToast('success', d.message);setTimeout(()=>location.reload(),1000);}
+    else{fmToast('danger','Fejl: '+d.message);}
+  }).catch(()=>fmToast('danger','Netværksfejl'));
+}
+</script>
 {% endblock %}

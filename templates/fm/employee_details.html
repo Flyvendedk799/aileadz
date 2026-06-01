@@ -1,14 +1,220 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Sara Lind{% endblock %}
-{% block topbar_sub %}Product Owner · Produkt-afdelingen{% endblock %}
+{% block topbar_title %}{{ employee.username }}{% endblock %}
+{% block topbar_sub %}{{ employee.job_title or 'Ingen jobtitel' }} · {{ employee.department or 'Ingen afdeling' }}{% endblock %}
+{% block extra_head %}
+<style>
+.emp-dot{width:10px;height:10px;border-radius:50%;display:inline-block}
+.emp-dot.on{background:var(--fm-primary)}.emp-dot.off{background:var(--fm-line-2)}
+.emp-skill-row{display:flex;align-items:center;gap:9px;padding:9px 0;border-bottom:1px solid var(--fm-line)}
+.emp-skill-row:last-child{border-bottom:0}
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.showcase', page='employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>Sara Lind</span></div>
-  <section class="detail-hero" data-reveal><div class="detail-mark av" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">SL</div><div class="detail-info"><div class="detail-kick">Produkt-afdelingen</div><h1 class="detail-title">Sara Lind</h1><p class="detail-sub">Product Owner med fokus på agil leverance og kundeindsigt. Ansat siden marts 2023.</p><div class="detail-tags"><span class="fm-badge teal dot">Aktiv</span><span class="fm-badge"><i class="fa-solid fa-envelope"></i> sara@nordi.dk</span><span class="fm-badge">5 kurser</span></div></div></section>
-  <div class="kpi-row k3"><div class="kpi-tile"><div class="kl">Kurser gennemført</div><div class="kv tnum">4</div><div class="kd">1 i gang</div></div><div class="kpi-tile"><div class="kl">Læringsfremdrift</div><div class="kv tnum">72%</div><div class="kd">over måltal</div></div><div class="kpi-tile"><div class="kl">AI-samtaler</div><div class="kv tnum">14</div><div class="kd">seneste 30 dage</div></div></div>
-  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-book"></i></span><h3>Kursushistorik</h3></div><div class="fm-card-body" style="padding-top:6px"><div class="row-item"><span class="ra soft"><i class="fa-solid fa-book"></i></span><div class="rt"><div class="rn">Projektledelse Praktisk</div><div class="rm">Maj 2026</div></div><span class="status-pill green" style="height:24px;font-size:11.5px">Gennemført</span></div><div class="row-item"><span class="ra soft"><i class="fa-solid fa-book"></i></span><div class="rt"><div class="rn">Agil Projektledelse</div><div class="rm">I gang · 60%</div></div><span class="status-pill amber" style="height:24px;font-size:11.5px">I gang</span></div><div class="row-item"><span class="ra soft"><i class="fa-solid fa-book"></i></span><div class="rt"><div class="rn">Stakeholder Management</div><div class="rm">Feb 2026</div></div><span class="status-pill green" style="height:24px;font-size:11.5px">Gennemført</span></div><div class="row-item"><span class="ra soft"><i class="fa-solid fa-book"></i></span><div class="rt"><div class="rn">Kommunikation for ledere</div><div class="rm">Nov 2025</div></div><span class="status-pill green" style="height:24px;font-size:11.5px">Gennemført</span></div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-simple"></i></span><h3>Kompetencer</h3></div><div class="fm-card-body"><div class="prog-row"><div class="pt"><b>Projektledelse</b><span class="mono">4.5/5</span></div><div class="fm-prog"><span style="width:90%"></span></div></div><div class="prog-row"><div class="pt"><b>Agil metode</b><span class="mono">3.8/5</span></div><div class="fm-prog"><span style="width:75%"></span></div></div><div class="prog-row"><div class="pt"><b>Stakeholder mgmt</b><span class="mono">4.1/5</span></div><div class="fm-prog"><span style="width:82%"></span></div></div><div class="prog-row"><div class="pt"><b>Kommunikation</b><span class="mono">3.4/5</span></div><div class="fm-prog"><span style="width:68%"></span></div></div></div></div></div>
+<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>{{ employee.username }}</span></div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+  <div class="fm-card" style="padding:12px 16px;margin-bottom:12px;border-left:3px solid var(--fm-primary)">{{ message }}</div>
+  {% endfor %}{% endif %}
+  {% endwith %}
+
+  <section class="detail-hero" data-reveal>
+    <div class="detail-mark av" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">{{ employee.username[0].upper() if employee.username else 'U' }}</div>
+    <div class="detail-info">
+      <div class="detail-kick">{{ employee.department or 'Ingen afdeling' }}</div>
+      <h1 class="detail-title">{{ employee.username }}</h1>
+      <p class="detail-sub">{{ employee.job_title or 'Ingen jobtitel' }}{% if employee.email %} · {{ employee.email }}{% endif %}</p>
+      <div class="detail-tags">
+        {% if employee.role == 'company_admin' %}<span class="fm-badge red dot">Admin</span>
+        {% elif employee.role == 'hr_manager' %}<span class="fm-badge amber dot">HR Manager</span>
+        {% elif employee.role == 'department_head' %}<span class="fm-badge dot">Afdelingsleder</span>
+        {% else %}<span class="fm-badge dot">Medarbejder</span>{% endif %}
+        {% if employee.status == 'active' %}<span class="fm-badge green dot">Aktiv</span>
+        {% elif employee.status == 'inactive' %}<span class="fm-badge dot">Inaktiv</span>
+        {% else %}<span class="fm-badge amber dot">Orlov</span>{% endif %}
+        {% if employee.email %}<span class="fm-badge"><i class="fa-solid fa-envelope"></i> {{ employee.email }}</span>{% endif %}
+      </div>
+    </div>
+    <div class="fm-flex fm-gap8" style="align-self:flex-start">
+      <a href="{{ url_for('companies.employees') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Medarbejdere</a>
+      <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-pen"></i> Rediger</a>
+    </div>
+  </section>
+
+  <div class="kpi-row k4">
+    <div class="kpi-tile"><div class="kl">Kurser tilmeldt</div><div class="kv tnum">{{ employee.total_enrollments or 0 }}</div></div>
+    <div class="kpi-tile"><div class="kl">Gennemført</div><div class="kv tnum">{{ employee.completed_courses or 0 }}</div></div>
+    <div class="kpi-tile"><div class="kl">I gang</div><div class="kv tnum">{{ employee.in_progress_courses or 0 }}</div></div>
+    <a href="{{ url_for('hr_dashboard.chatbot_sessions') }}" class="kpi-tile" style="text-decoration:none"><div class="kl">Chatbot-samtaler</div><div class="kv tnum">{{ employee.total_chatbot_queries or 0 }}</div></a>
+  </div>
+
+  <div class="split">
+    <div class="stack">
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-id-card"></i></span><h3>Profil</h3></div>
+      <div class="fm-card-body"><div class="info-list">
+        <div class="kv"><span class="k">Email</span><span class="v">{{ employee.email or '—' }}</span></div>
+        <div class="kv"><span class="k">Afdeling</span><span class="v">{{ employee.department or 'Ingen afdeling' }}</span></div>
+        {% if employee.employee_id %}<div class="kv"><span class="k">Medarbejder-ID</span><span class="v">{{ employee.employee_id }}</span></div>{% endif %}
+        <div class="kv"><span class="k">Ansættelse</span><span class="v">{{ {'full_time':'Fuldtid','part_time':'Deltid','contract':'Kontrakt','intern':'Praktikant'}.get(employee.employment_type, 'Fuldtid') }}</span></div>
+        {% if employee.hire_date %}<div class="kv"><span class="k">Ansat</span><span class="v">{{ employee.hire_date }}</span></div>{% endif %}
+        {% if employee.manager_name %}<div class="kv"><span class="k">Manager</span><span class="v">{{ employee.manager_name }}</span></div>{% endif %}
+        {% if employee.total_learning_time %}<div class="kv"><span class="k">Total læringstid</span><span class="v">{{ (employee.total_learning_time / 60)|round(1) }} timer</span></div>{% endif %}
+      </div></div></div>
+
+      <div class="fm-card"><div class="fm-card-body">
+        <div style="font-weight:700;margin-bottom:10px">Handlinger</div>
+        <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-pen"></i> Rediger medarbejder</a>
+        <form method="POST" action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}" onsubmit="return confirm('Nyt password genereres og vises på skærmen. Fortsæt?')" style="margin-bottom:8px">
+          <button type="submit" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-key"></i> Nulstil password</button>
+        </form>
+        {% if employee.status == 'active' and employee.role != 'company_admin' %}
+        <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}" onsubmit="return confirm('Deaktiver denne medarbejder?')">
+          <input type="hidden" name="new_status" value="inactive">
+          <button type="submit" class="btn btn-ghost btn-sm" style="width:100%;color:var(--fm-clay)"><i class="fa-solid fa-user-xmark"></i> Deaktiver</button>
+        </form>
+        {% elif employee.status == 'inactive' %}
+        <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}">
+          <input type="hidden" name="new_status" value="active">
+          <button type="submit" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-user-check"></i> Aktiver igen</button>
+        </form>
+        {% endif %}
+      </div></div>
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Aktivitetslog</h3></div>
+      <div class="fm-card-body"><div class="info-list">
+        <div class="kv"><span class="k">Seneste login</span><span class="v">{{ employee.last_login or 'Aldrig' }}</span></div>
+        <div class="kv"><span class="k">Seneste chatbot-brug</span><span class="v">{{ employee.last_chatbot_interaction or 'Aldrig' }}</span></div>
+        <div class="kv"><span class="k">Tilføjet af</span><span class="v">{{ employee.added_by or '—' }}</span></div>
+      </div></div></div>
+
+    </div>
+    <div class="stack">
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetencer</h3>{% if employee_skills %}<span class="fm-badge" style="margin-left:auto">{{ employee_skills|length }} skills</span>{% endif %}</div>
+      <div class="fm-card-body">
+        {% if employee_skills %}
+        <div class="split"><div><canvas id="skillRadar" height="260"></canvas></div>
+        <div>{% for s in employee_skills %}
+          <div class="emp-skill-row"><span style="font-weight:600;font-size:13px;flex:1">{{ s.skill_name }}</span>
+            <span class="fm-flex" style="gap:4px">{% for i in range(1,6) %}<span class="emp-dot {{ 'on' if i <= s.current_level else 'off' }}"></span>{% endfor %}</span>
+            <small class="muted" style="min-width:30px;text-align:right">{{ s.current_level }}/5</small>
+          </div>
+        {% endfor %}</div></div>
+        {% else %}
+        <div style="text-align:center;padding:20px;color:var(--fm-ink-3)"><i class="fa-solid fa-brain" style="font-size:22px;display:block;margin-bottom:8px;opacity:.3"></i>Ingen kompetencer registreret endnu</div>
+        {% endif %}
+      </div></div>
+
+      {% if employee_education %}
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building-columns"></i></span><h3>Uddannelse</h3><span class="fm-badge" style="margin-left:auto">{{ employee_education|length }}</span></div>
+      <div class="fm-card-body">{% for edu in employee_education %}
+        <div class="row-item" style="border:0;padding:8px 0"><span class="ra soft"><i class="fa-solid fa-graduation-cap"></i></span><div class="rt"><div class="rn">{{ edu.degree }}</div><div class="rm">{% if edu.institution %}{{ edu.institution }}{% endif %}{% if edu.year_completed %} · Afsluttet {{ edu.year_completed }}{% endif %}</div>{% if edu.description %}<div class="rm">{{ edu.description }}</div>{% endif %}</div></div>
+      {% endfor %}</div></div>
+      {% endif %}
+
+      {% if employee_experience %}
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erfaring</h3><span class="fm-badge" style="margin-left:auto">{{ employee_experience|length }}</span></div>
+      <div class="fm-card-body">{% for exp in employee_experience %}
+        <div class="row-item" style="border:0;padding:8px 0"><span class="ra soft"><i class="fa-solid fa-briefcase"></i></span><div class="rt"><div class="rn">{{ exp.title }}</div><div class="rm">{% if exp.company %}{{ exp.company }} · {% endif %}{{ exp.start_year or '?' }} — {{ 'nu' if exp.is_current else (exp.end_year or '?') }}</div>{% if exp.description %}<div class="rm">{{ exp.description }}</div>{% endif %}</div></div>
+      {% endfor %}</div></div>
+      {% endif %}
+
+      {% if employee_completed_courses %}
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-certificate"></i></span><h3>Gennemførte kurser &amp; certifikater</h3><span class="fm-badge gold" style="margin-left:auto">{{ employee_completed_courses|length }}</span></div>
+      <div class="fm-card-body" style="padding:0"><table class="fm-table"><thead><tr><th>Kursus/Certifikat</th><th>Udbyder</th><th>Dato</th></tr></thead><tbody>
+        {% for cc in employee_completed_courses %}<tr><td style="font-weight:650">{{ cc.course_title }}</td><td class="muted">{{ cc.vendor or '—' }}</td><td class="muted">{{ cc.completed_date or '—' }}</td></tr>{% endfor %}
+      </tbody></table></div></div>
+      {% endif %}
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursushistorik</h3><span class="fm-badge" style="margin-left:auto">{{ course_history|length }}</span></div>
+      <div class="fm-card-body" style="padding:0">
+        {% if course_history %}
+        <table class="fm-table"><thead><tr><th>Kursus</th><th style="text-align:right">Pris</th><th style="text-align:center">Fremgang</th><th style="text-align:center">Status</th><th>Tilmeldt</th></tr></thead><tbody>
+        {% for c in course_history %}
+          <tr>
+            <td style="font-weight:650">{{ c.product_title or c.product_handle }}</td>
+            <td class="mono" style="text-align:right">{{ c.price or 0 }} kr</td>
+            <td style="text-align:center"><div class="fm-flex fm-ac" style="gap:8px;justify-content:center"><div class="fm-prog" style="width:60px"><span style="width:{{ c.progress_percentage or 0 }}%"></span></div><small>{{ (c.progress_percentage or 0)|round|int }}%</small></div></td>
+            <td style="text-align:center">
+              {% if c.completion_status == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
+              {% elif c.completion_status == 'in_progress' %}<span class="fm-badge dot">I gang</span>
+              {% else %}<span class="fm-badge">Ikke startet</span>{% endif %}
+            </td>
+            <td class="muted">{{ c.enrollment_date }}</td>
+          </tr>
+        {% endfor %}
+        </tbody></table>
+        {% else %}
+        <div style="text-align:center;padding:24px;color:var(--fm-ink-3)"><i class="fa-solid fa-graduation-cap" style="font-size:22px;display:block;margin-bottom:8px;opacity:.3"></i>Ingen kurser tilmeldt endnu</div>
+        {% endif %}
+      </div></div>
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Chatbot-aktivitet</h3></div>
+      <div class="fm-card-body" style="padding:0">
+        {% if chatbot_sessions %}
+        <table class="fm-table"><thead><tr><th>Dato/Tid</th><th>Beskeder</th><th style="text-align:right"></th></tr></thead><tbody>
+        {% for s in chatbot_sessions[:10] %}
+          <tr>
+            <td class="muted">{{ s.last_activity.strftime('%d. %b %H:%M') if s.last_activity else 'N/A' }}</td>
+            <td><span class="fm-badge">{{ s.query_count }}</span></td>
+            <td style="text-align:right"><a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=s.session_id) }}" class="btn btn-ghost btn-sm">Se samtale</a></td>
+          </tr>
+        {% endfor %}
+        </tbody></table>
+        {% else %}
+        <div style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen chatbot-aktivitet registreret.</div>
+        {% endif %}
+      </div></div>
+
+    </div>
+  </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+{% if employee_skills %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const skillRadarLabels = {{ employee_skills|map(attribute='skill_name')|list|tojson }};
+const skillRadarCurrent = {{ employee_skills|map(attribute='current_level')|list|tojson }};
+const skillRadarTarget = {{ employee_skills|map(attribute='target_level')|list|tojson }};
+const skillRadarDatasets = [{
+  label: 'Nuværende niveau',
+  data: skillRadarCurrent,
+  backgroundColor: 'rgba(15, 118, 110, 0.14)',
+  borderColor: '#0f766e',
+  borderWidth: 2,
+  pointBackgroundColor: '#0f766e',
+  pointRadius: 4
+}];
+if (skillRadarTarget.some(value => Number(value || 0) > 0)) {
+  skillRadarDatasets.push({
+    label: 'Mål',
+    data: skillRadarTarget.map(value => Number(value || 0)),
+    backgroundColor: 'rgba(16,185,129,0.08)',
+    borderColor: '#10b981',
+    borderWidth: 1,
+    borderDash: [4, 4],
+    pointRadius: 3,
+    pointBackgroundColor: '#10b981'
+  });
+}
+new Chart(document.getElementById('skillRadar'), {
+  type: 'radar',
+  data: { labels: skillRadarLabels, datasets: skillRadarDatasets },
+  options: {
+    responsive: true,
+    scales: { r: {
+      min: 0, max: 5,
+      ticks: { stepSize: 1, font: { size: 10 }, backdropColor: 'transparent' },
+      pointLabels: { font: { size: 11, weight: '600' } }
+    } },
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } } }
+  }
+});
+</script>
+{% endif %}
 {% endblock %}

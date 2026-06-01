@@ -2,20 +2,257 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Opret chatbot-widget{% endblock %}
-{% block topbar_sub %}Indlejr Futurematch-assistenten på jeres intranet.{% endblock %}
+{% block topbar_sub %}Indlejr Futurematch-assistenten på {{ company.company_name }}s hjemmeside.{% endblock %}
 {% block extra_head %}
-<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}</style>
+<style>
+.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t);padding:0}
+.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}
+.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}
+.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 0;border-bottom:1px solid var(--fm-line)}
+.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}
+.color-group{display:flex;align-items:center;gap:8px}
+.color-group input[type=color]{width:40px;height:36px;border:1px solid var(--fm-line);border-radius:8px;padding:2px;cursor:pointer;background:transparent}
+.color-group input[type=text]{width:100%;font-family:var(--ff-mono)}
+.form-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.form-grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.embed-block{background:#1e293b;border-radius:10px;padding:14px;position:relative;overflow-x:auto}
+.embed-block pre{margin:0;font-size:12px;color:#e2e8f0;white-space:pre-wrap;word-break:break-all;font-family:var(--ff-mono)}
+.copy-btn{position:absolute;top:8px;right:8px;background:rgba(255,255,255,.12);border:none;color:#e2e8f0;border-radius:6px;padding:4px 10px;font-size:12px;cursor:pointer}
+.copy-btn.copied{background:#22c55e;color:#fff}
+.token-display{font-family:var(--ff-mono);font-size:13px;background:var(--fm-surface-2);padding:7px 12px;border-radius:8px;border:1px solid var(--fm-line)}
+.pv-container{background:var(--fm-surface-3);border-radius:12px;padding:18px;min-height:360px;display:flex;flex-direction:column;align-items:flex-end;justify-content:flex-end;border:1px solid var(--fm-line)}
+.pv-window{width:100%;max-width:300px;border-radius:12px;box-shadow:0 8px 32px rgba(0,0,0,.12);overflow:hidden;margin-bottom:10px;background:#fff}
+.pv-header{padding:10px 14px;display:flex;align-items:center;justify-content:space-between}
+.pv-title{font-size:14px;font-weight:700}
+.pv-body{padding:14px;min-height:140px}
+.pv-welcome{display:inline-block;padding:8px 11px;border-radius:12px 12px 12px 2px;font-size:12.5px;background:#eef1f4;color:#333;max-width:90%}
+.pv-branding{text-align:center;font-size:10px;color:#999;padding:4px 0 6px}
+.pv-input{display:flex;align-items:center;gap:8px;padding:9px 11px;border-top:1px solid #eee}
+.pv-input input{flex:1;border:none;outline:none;font-size:12.5px;background:transparent}
+.pv-input button{border:none;border-radius:50%;width:30px;height:30px;display:grid;place-items:center;cursor:pointer}
+.pv-input button svg,.pv-bubble svg{width:15px;height:15px}
+.pv-bubble{width:52px;height:52px;border-radius:50%;display:grid;place-items:center;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.18)}
+.pv-bubble svg{width:24px;height:24px}
+@media(max-width:980px){.form-grid3{grid-template-columns:1fr}}
+</style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="split"><div class="stack">
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-paintbrush"></i></span><h3>Udseende</h3></div><div class="fm-card-body">
-  <div class="fm-field"><label>Knaptekst</label><input class="fm-input" value="Spørg om kurser"/></div>
-  <div class="form-grid"><div class="fm-field"><label>Placering</label><select class="fm-select"><option>Nederst højre</option><option>Nederst venstre</option></select></div><div class="fm-field"><label>Accentfarve</label><input class="fm-input" value="#0c6b62"/></div></div>
-  <div class="trow" style="border-bottom:0"><div><div class="t">Vis kun for indloggede</div><div class="d">Kræv SSO før chat</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-code"></i></span><h3>Indlejringskode</h3></div><div class="fm-card-body"><pre style="background:var(--fm-surface-3);border:1px solid var(--fm-line);border-radius:10px;padding:14px;font-family:var(--ff-mono);font-size:12px;color:var(--fm-ink-2);overflow-x:auto;margin:0"><code>&lt;script src="https://cdn.futurematch.dk/widget.js"
-  data-company="nordi"
-  data-color="#0c6b62"&gt;&lt;/script&gt;</code></pre></div></div></div>
-  <div class="fm-card" style="align-self:start"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:10px">Forhåndsvisning</div><div style="position:relative;height:280px;border-radius:12px;background:var(--fm-surface-3);border:1px solid var(--fm-line);overflow:hidden"><div style="position:absolute;bottom:16px;right:16px;display:inline-flex;align-items:center;gap:9px;height:46px;padding:0 18px;border-radius:999px;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700));color:#fff;font-weight:650;box-shadow:var(--sh-glow)"><i class="fa-solid fa-comment-dots"></i> Spørg om kurser</div></div></div></div></div>
+
+  {% with messages = get_flashed_messages(with_categories=true) %}
+  {% if messages %}{% for category, message in messages %}
+  <div class="fm-card" style="padding:12px 16px;margin-bottom:12px;border-left:3px solid var(--fm-primary)">{{ message }}</div>
+  {% endfor %}{% endif %}
+  {% endwith %}
+
+  <form method="POST" action="{{ url_for('hr_dashboard.widget_save') }}" id="widgetForm">
+  <div class="split">
+    <div class="stack">
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-power-off"></i></span><h3>Aktivering</h3></div>
+      <div class="fm-card-body">
+        <div class="trow" style="border-bottom:0;padding:0">
+          <div><div class="t">Widget aktiv</div><div class="d">Slå chatbotten til på din hjemmeside</div></div>
+          <button type="button" class="sw {% if widget and widget.is_active %}on{% endif %}" id="is_active_sw" onclick="toggleSwitch('is_active')"></button>
+          <input type="checkbox" name="is_active" id="is_active" style="display:none" {% if widget and widget.is_active %}checked{% endif %}>
+        </div>
+      </div></div>
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-palette"></i></span><h3>Udseende</h3></div>
+      <div class="fm-card-body">
+        <div class="fm-eyebrow" style="margin-bottom:10px">Farver</div>
+        <div class="form-grid3" style="margin-bottom:18px">
+          <div class="fm-field" style="margin:0"><label>Primær farve</label><div class="color-group">
+            <input type="color" id="colorPickerPrimary" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
+            <input type="text" class="fm-input" id="theme_primary_color" name="theme_primary_color" value="{{ widget.theme_primary_color if widget and widget.theme_primary_color else '#0b6b63' }}">
+          </div></div>
+          <div class="fm-field" style="margin:0"><label>Tekst på primær</label><div class="color-group">
+            <input type="color" id="colorPickerText" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
+            <input type="text" class="fm-input" id="theme_text_color" name="theme_text_color" value="{{ widget.theme_text_color if widget and widget.theme_text_color else '#FFFFFF' }}">
+          </div></div>
+          <div class="fm-field" style="margin:0"><label>Baggrundsfarve</label><div class="color-group">
+            <input type="color" id="colorPickerBg" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
+            <input type="text" class="fm-input" id="theme_bg_color" name="theme_bg_color" value="{{ widget.theme_bg_color if widget and widget.theme_bg_color else '#FFFFFF' }}">
+          </div></div>
+        </div>
+
+        <div class="fm-eyebrow" style="margin-bottom:10px">Tekst</div>
+        <div class="fm-field"><label for="widget_title">Widget titel</label><input type="text" class="fm-input" id="widget_title" name="widget_title" value="{{ widget.widget_title if widget and widget.widget_title else '' }}" placeholder="F.eks. Kursusrådgiver"></div>
+        <div class="fm-field"><label for="welcome_message">Velkomstbesked</label><textarea class="fm-input" id="welcome_message" name="welcome_message" rows="3" placeholder="F.eks. Hej! Hvordan kan jeg hjælpe dig i dag?">{{ widget.welcome_message if widget and widget.welcome_message else '' }}</textarea></div>
+
+        <div class="fm-eyebrow" style="margin:6px 0 10px">Layout</div>
+        <div class="form-grid2">
+          <div class="fm-field" style="margin:0"><label for="position">Position</label>
+            <select class="fm-input" id="position" name="position">
+              <option value="bottom-right" {% if widget and widget.position=='bottom-right' %}selected{% endif %}>Nederst til højre</option>
+              <option value="bottom-left" {% if widget and widget.position=='bottom-left' %}selected{% endif %}>Nederst til venstre</option>
+              <option value="top-right" {% if widget and widget.position=='top-right' %}selected{% endif %}>Øverst til højre</option>
+              <option value="top-left" {% if widget and widget.position=='top-left' %}selected{% endif %}>Øverst til venstre</option>
+            </select>
+          </div>
+          <div class="fm-field" style="margin:0"><label for="widget_size">Størrelse</label>
+            <select class="fm-input" id="widget_size" name="widget_size">
+              <option value="small" {% if widget and widget.widget_size=='small' %}selected{% endif %}>Lille (350px)</option>
+              <option value="medium" {% if widget and widget.widget_size=='medium' %}selected{% endif %}>Medium (400px)</option>
+              <option value="large" {% if widget and widget.widget_size=='large' %}selected{% endif %}>Stor (450px)</option>
+            </select>
+          </div>
+        </div>
+
+        <div class="trow" style="margin-top:6px">
+          <div><div class="t">Vis "Powered by Futurematch" branding</div></div>
+          <button type="button" class="sw {% if not widget or widget.show_branding != false %}on{% endif %}" id="show_branding_sw" onclick="toggleSwitch('show_branding')"></button>
+          <input type="checkbox" name="show_branding" id="show_branding" style="display:none" {% if not widget or widget.show_branding != false %}checked{% endif %}>
+        </div>
+      </div></div>
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield-halved"></i></span><h3>Sikkerhed</h3></div>
+      <div class="fm-card-body">
+        <div class="fm-field" style="margin:0"><label for="allowed_domains">Tilladte domæner</label>
+          <textarea class="fm-input" id="allowed_domains" name="allowed_domains" rows="2" placeholder="example.com, mysite.dk">{{ widget.allowed_domains if widget and widget.allowed_domains else '' }}</textarea>
+          <small style="font-size:12px;color:var(--fm-ink-3)">Lad feltet stå tomt for at tillade alle domæner. Adskil med komma.</small>
+        </div>
+      </div></div>
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-code"></i></span><h3>Avanceret</h3></div>
+      <div class="fm-card-body">
+        <div class="fm-field" style="margin:0"><label for="custom_css">Brugerdefineret CSS</label>
+          <textarea class="fm-input" id="custom_css" name="custom_css" rows="4" placeholder="/* Tilføj brugerdefinerede CSS-regler her */" style="font-family:var(--ff-mono);font-size:12.5px">{{ widget.custom_css if widget and widget.custom_css else '' }}</textarea>
+        </div>
+      </div></div>
+
+      <div><button type="submit" class="btn btn-primary btn-lg"><i class="fa-solid fa-floppy-disk"></i> Gem indstillinger</button></div>
+    </div>
+
+    <div class="stack">
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-eye"></i></span><h3>Live forhåndsvisning</h3><span class="fm-badge" style="margin-left:auto">Opdateres i realtid</span></div>
+      <div class="fm-card-body" style="padding:0">
+        <div class="pv-container" id="previewContainer">
+          <div class="pv-window" id="previewWindow">
+            <div class="pv-header" id="previewHeader">
+              <span class="pv-title" id="previewTitle">Chat</span>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="opacity:.6"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+            </div>
+            <div class="pv-body" id="previewBody"><div class="pv-welcome" id="previewWelcome">Hej! Hvordan kan jeg hjælpe dig?</div></div>
+            <div id="previewBranding" class="pv-branding">Powered by Futurematch</div>
+            <div class="pv-input"><input type="text" placeholder="Skriv en besked..." disabled>
+              <button id="previewSendBtn"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg></button>
+            </div>
+          </div>
+          <div class="pv-bubble" id="previewBubble"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg></div>
+        </div>
+      </div></div>
+
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clipboard"></i></span><h3>Embed-kode</h3></div>
+      <div class="fm-card-body">
+        {% if widget and widget.widget_token %}
+        <p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 10px">Indsæt denne kode på din hjemmeside, lige før <code>&lt;/body&gt;</code>:</p>
+        <div class="embed-block">
+          <button class="copy-btn" type="button" onclick="copyEmbed(this)" title="Kopier"><i class="fa-solid fa-copy"></i> Kopier</button>
+          <pre><code id="embedCode">&lt;script&gt;
+(function(){
+  var w=document.createElement('script');
+  w.src='{{ request.url_root.rstrip("/") }}/app1/widget/{{ widget.widget_token }}/loader.js';
+  w.async=true;
+  document.head.appendChild(w);
+})();
+&lt;/script&gt;</code></pre>
+        </div>
+        {% else %}
+        <div style="text-align:center;padding:24px;color:var(--fm-ink-3)"><i class="fa-solid fa-circle-info" style="font-size:26px;display:block;margin-bottom:8px;opacity:.4"></i>Gem indstillinger først for at generere embed-kode</div>
+        {% endif %}
+      </div></div>
+
+      {% if widget and widget.widget_token %}
+      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-key"></i></span><h3>Token-administration</h3></div>
+      <div class="fm-card-body">
+        <div class="fm-field"><label>Aktuel token</label><div class="token-display">{{ widget.widget_token[:6] }}...{{ widget.widget_token[-4:] }}</div></div>
+        <button type="button" class="btn btn-ghost btn-sm" onclick="regenerateToken()"><i class="fa-solid fa-rotate"></i> Regenerer token</button>
+        <div style="font-size:12px;color:var(--fm-ink-3);margin-top:8px"><i class="fa-solid fa-triangle-exclamation" style="color:var(--fm-gold,#c79100)"></i> Advarsel: Regenerering ugyldiggør den gamle embed-kode. Du skal opdatere koden på din hjemmeside.</div>
+      </div></div>
+      {% endif %}
+
+    </div>
+  </div>
+  </form>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function toggleSwitch(id){
+  const cb = document.getElementById(id);
+  const sw = document.getElementById(id + '_sw');
+  cb.checked = !cb.checked;
+  sw.classList.toggle('on', cb.checked);
+  updatePreview();
+}
+
+const colorPairs = [
+  {picker:'colorPickerPrimary', text:'theme_primary_color'},
+  {picker:'colorPickerText', text:'theme_text_color'},
+  {picker:'colorPickerBg', text:'theme_bg_color'}
+];
+
+document.addEventListener('DOMContentLoaded', function(){
+  colorPairs.forEach(pair => {
+    const picker = document.getElementById(pair.picker);
+    const text = document.getElementById(pair.text);
+    if (!picker || !text) return;
+    picker.addEventListener('input', () => { text.value = picker.value.toUpperCase(); updatePreview(); });
+    text.addEventListener('input', () => { if (/^#[0-9A-Fa-f]{6}$/.test(text.value)){ picker.value = text.value; } updatePreview(); });
+  });
+  document.querySelectorAll('#widgetForm input, #widgetForm textarea, #widgetForm select').forEach(input => {
+    input.addEventListener('input', updatePreview);
+    input.addEventListener('change', updatePreview);
+  });
+  updatePreview();
+});
+
+function updatePreview(){
+  const primaryColor = document.getElementById('theme_primary_color').value || '#0b6b63';
+  const textColor = document.getElementById('theme_text_color').value || '#FFFFFF';
+  const bgColor = document.getElementById('theme_bg_color').value || '#FFFFFF';
+  const title = document.getElementById('widget_title').value || 'Chat';
+  const welcome = document.getElementById('welcome_message').value || 'Hej! Hvordan kan jeg hjælpe dig?';
+  const showBranding = document.getElementById('show_branding').checked;
+
+  const header = document.getElementById('previewHeader');
+  header.style.backgroundColor = primaryColor;
+  header.style.color = textColor;
+  header.querySelector('svg').style.stroke = textColor;
+  document.getElementById('previewTitle').textContent = title;
+  document.getElementById('previewTitle').style.color = textColor;
+  document.getElementById('previewBody').style.backgroundColor = bgColor;
+  document.getElementById('previewWindow').style.backgroundColor = bgColor;
+  document.getElementById('previewWelcome').textContent = welcome;
+  const bubble = document.getElementById('previewBubble');
+  bubble.style.backgroundColor = primaryColor;
+  bubble.querySelector('svg').style.stroke = textColor;
+  const sendBtn = document.getElementById('previewSendBtn');
+  sendBtn.style.backgroundColor = primaryColor;
+  sendBtn.querySelector('svg').style.stroke = textColor;
+  document.getElementById('previewBranding').style.display = showBranding ? 'block' : 'none';
+}
+
+function copyEmbed(btn){
+  const code = document.getElementById('embedCode');
+  if (!code) return;
+  const text = code.textContent.replace(/&lt;/g,'<').replace(/&gt;/g,'>').replace(/&amp;/g,'&');
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = '<i class="fa-solid fa-check"></i> Kopieret!';
+    setTimeout(() => { btn.classList.remove('copied'); btn.innerHTML = '<i class="fa-solid fa-copy"></i> Kopier'; }, 2000);
+  });
+}
+
+function regenerateToken(){
+  if (!confirm('Er du sikker? Den gamle embed-kode vil stoppe med at virke, og du skal opdatere koden på din hjemmeside.')) return;
+  const form = document.createElement('form');
+  form.method = 'POST';
+  form.action = "{{ url_for('hr_dashboard.widget_regenerate_token') }}";
+  document.body.appendChild(form);
+  form.submit();
+}
+</script>
 {% endblock %}

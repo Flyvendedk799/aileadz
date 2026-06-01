@@ -2,17 +2,103 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Afdelinger{% endblock %}
-{% block topbar_sub %}4 afdelinger · organisering og performance.{% endblock %}
+{% block topbar_sub %}{{ departments|length }} afdeling{{ 'er' if departments|length != 1 else '' }} · organisering og budgetter.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='roi') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='suppliers') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div><div class="fm-grid" style="grid-template-columns:repeat(2,1fr)"><div class="fm-card" style="padding:20px"><div class="fm-spread" style="margin-bottom:14px"><div class="fm-flex fm-ac fm-gap12"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-code"></i></span><div><h3 style="font-size:16px;font-weight:700">Udvikling</h3><div style="font-size:12px;color:var(--fm-ink-3)">62 medarbejdere · Lars Møller</div></div></div><a href="{{ url_for('futurematch.showcase', page='my_department') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-arrow-right"></i></a></div>
-<div class="prog-row" style="margin-bottom:12px"><div class="pt"><b>Gennemførelse</b><span class="mono">91%</span></div><div class="fm-prog"><span style="width:91%;background:var(--fm-success)"></span></div></div>
-<div class="fm-spread" style="font-size:12.5px;color:var(--fm-ink-2)"><span>Budget brugt: <b style="color:var(--fm-ink)">312.000 kr</b></span><span>af 420.000 kr</span></div></div><div class="fm-card" style="padding:20px"><div class="fm-spread" style="margin-bottom:14px"><div class="fm-flex fm-ac fm-gap12"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-bullhorn"></i></span><div><h3 style="font-size:16px;font-weight:700">Salg</h3><div style="font-size:12px;color:var(--fm-ink-3)">48 medarbejdere · Pia Sørensen</div></div></div><a href="{{ url_for('futurematch.showcase', page='my_department') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-arrow-right"></i></a></div>
-<div class="prog-row" style="margin-bottom:12px"><div class="pt"><b>Gennemførelse</b><span class="mono">74%</span></div><div class="fm-prog"><span style="width:74%;background:var(--fm-info)"></span></div></div>
-<div class="fm-spread" style="font-size:12.5px;color:var(--fm-ink-2)"><span>Budget brugt: <b style="color:var(--fm-ink)">198.000 kr</b></span><span>af 280.000 kr</span></div></div><div class="fm-card" style="padding:20px"><div class="fm-spread" style="margin-bottom:14px"><div class="fm-flex fm-ac fm-gap12"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-cube"></i></span><div><h3 style="font-size:16px;font-weight:700">Produkt</h3><div style="font-size:12px;color:var(--fm-ink-3)">31 medarbejdere · Kim Hansen</div></div></div><a href="{{ url_for('futurematch.showcase', page='my_department') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-arrow-right"></i></a></div>
-<div class="prog-row" style="margin-bottom:12px"><div class="pt"><b>Gennemførelse</b><span class="mono">58%</span></div><div class="fm-prog"><span style="width:58%;background:var(--fm-warning)"></span></div></div>
-<div class="fm-spread" style="font-size:12.5px;color:var(--fm-ink-2)"><span>Budget brugt: <b style="color:var(--fm-ink)">142.000 kr</b></span><span>af 190.000 kr</span></div></div><div class="fm-card" style="padding:20px"><div class="fm-spread" style="margin-bottom:14px"><div class="fm-flex fm-ac fm-gap12"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-people-group"></i></span><div><h3 style="font-size:16px;font-weight:700">HR</h3><div style="font-size:12px;color:var(--fm-ink-3)">12 medarbejdere · Mette Krogh</div></div></div><a href="{{ url_for('futurematch.showcase', page='my_department') }}" class="fm-icon-btn" style="width:34px;height:34px"><i class="fa-solid fa-arrow-right"></i></a></div>
-<div class="prog-row" style="margin-bottom:12px"><div class="pt"><b>Gennemførelse</b><span class="mono">88%</span></div><div class="fm-prog"><span style="width:88%;background:var(--fm-success)"></span></div></div>
-<div class="fm-spread" style="font-size:12.5px;color:var(--fm-ink-2)"><span>Budget brugt: <b style="color:var(--fm-ink)">64.000 kr</b></span><span>af 120.000 kr</span></div></div></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-sitemap"></i> Organisering</span><h2 class="fm-section-title">Afdelinger</h2></div>
+    <button class="btn btn-primary btn-sm" onclick="openDeptModal()"><i class="fa-solid fa-plus"></i> Ny afdeling</button>
+  </div>
+
+  {% if departments %}
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(300px,1fr))">
+    {% for dept in departments %}
+    {% set budget = dept.learning_budget_per_employee|float %}
+    <div class="fm-card" style="padding:20px">
+      <div class="fm-spread" style="margin-bottom:14px">
+        <div class="fm-flex fm-ac fm-gap12">
+          <span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid fa-people-group"></i></span>
+          <div>
+            <h3 style="font-size:16px;font-weight:700">{{ dept.department_name }}</h3>
+            {% if dept.department_code %}<span class="fm-chip" style="margin-top:2px">{{ dept.department_code }}</span>{% endif %}
+          </div>
+        </div>
+        <div class="fm-flex fm-gap8">
+          <button class="fm-icon-btn" style="width:34px;height:34px" title="Rediger"
+            onclick="editDept('{{ dept.id }}', this)"
+            data-name="{{ dept.department_name|e }}"
+            data-code="{{ dept.department_code or '' }}"
+            data-desc="{{ dept.description or '' }}"
+            data-budget="{{ budget }}"><i class="fa-solid fa-pen"></i></button>
+          <form method="POST" action="{{ url_for('hr_dashboard.delete_department', dept_id=dept.id) }}" onsubmit="return confirm('Er du sikker på du vil slette denne afdeling?')" style="display:inline">
+            <button type="submit" class="fm-icon-btn" style="width:34px;height:34px;color:var(--fm-danger)" title="Slet"><i class="fa-solid fa-trash"></i></button>
+          </form>
+        </div>
+      </div>
+      {% if dept.description %}<p style="font-size:12.5px;color:var(--fm-ink-2);margin-bottom:14px">{{ dept.description }}</p>{% endif %}
+      <div class="fm-flex fm-gap8" style="gap:24px">
+        <div>
+          <div style="font-weight:700;font-size:18px;color:var(--fm-primary)" class="tnum">{{ dept.employee_count or 0 }}</div>
+          <div style="font-size:11.5px;color:var(--fm-ink-3)">Medarbejdere</div>
+        </div>
+        {% if budget %}
+        <div>
+          <div style="font-weight:700;font-size:18px;color:var(--fm-success)" class="tnum">{{ '{:,.0f}'.format(budget).replace(',','.') }} kr</div>
+          <div style="font-size:11.5px;color:var(--fm-ink-3)">Budget/person</div>
+        </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-3)">
+    <i class="fa-solid fa-sitemap" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i>
+    <div style="font-weight:650;color:var(--fm-ink-2);margin-bottom:4px">Ingen afdelinger oprettet endnu</div>
+    <div style="margin-bottom:14px">Opret afdelinger for at organisere medarbejdere og budgetter.</div>
+    <button class="btn btn-primary btn-sm" onclick="openDeptModal()"><i class="fa-solid fa-plus"></i> Opret første afdeling</button>
+  </div>
+  {% endif %}
 </div>
+
+<div id="deptModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
+    <h3 id="deptModalTitle" style="font-size:17px;font-weight:700;margin-bottom:14px">Ny afdeling</h3>
+    <form method="POST" id="deptForm" action="{{ url_for('hr_dashboard.add_department') }}">
+      <label class="fm-field"><span>Afdelingsnavn *</span><input type="text" class="fm-input" name="department_name" id="dept_name" required placeholder="f.eks. Salg, IT, Marketing"></label>
+      <label class="fm-field"><span>Afdelingskode</span><input type="text" class="fm-input" name="department_code" id="dept_code" maxlength="20" placeholder="f.eks. SAL, IT, MKT"></label>
+      <label class="fm-field"><span>Beskrivelse</span><textarea class="fm-input" name="description" id="dept_desc" rows="2" placeholder="Hvad laver afdelingen?"></textarea></label>
+      <label class="fm-field"><span>Læringsbudget pr. medarbejder (kr)</span><input type="number" class="fm-input" name="learning_budget_per_employee" id="dept_budget" value="0" min="0" step="100"></label>
+      <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeDeptModal()">Annuller</button>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Gem</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+const _addDeptAction = "{{ url_for('hr_dashboard.add_department') }}";
+function openDeptModal(){
+  document.getElementById('deptModalTitle').textContent = 'Ny afdeling';
+  document.getElementById('deptForm').action = _addDeptAction;
+  document.getElementById('dept_name').value = '';
+  document.getElementById('dept_code').value = '';
+  document.getElementById('dept_desc').value = '';
+  document.getElementById('dept_budget').value = '0';
+  document.getElementById('deptModal').style.display = 'flex';
+}
+function closeDeptModal(){ document.getElementById('deptModal').style.display = 'none'; }
+function editDept(id, btn){
+  document.getElementById('deptModalTitle').textContent = 'Rediger afdeling';
+  document.getElementById('deptForm').action = '/hr/departments/' + id + '/edit';
+  document.getElementById('dept_name').value = btn.dataset.name;
+  document.getElementById('dept_code').value = btn.dataset.code;
+  document.getElementById('dept_desc').value = btn.dataset.desc;
+  document.getElementById('dept_budget').value = btn.dataset.budget;
+  document.getElementById('deptModal').style.display = 'flex';
+}
+</script>
 {% endblock %}

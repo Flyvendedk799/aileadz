@@ -2,24 +2,89 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Chatbot-indstillinger{% endblock %}
-{% block topbar_sub %}Konfigurér AI-assistenten for dine medarbejdere.{% endblock %}
+{% block topbar_sub %}Konfigurér AI-assistenten for {{ company.company_name }}s medarbejdere.{% endblock %}
 {% block extra_head %}
-<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}</style>
+<style>
+.mode-card{border:2px solid var(--fm-line);border-radius:14px;padding:18px;cursor:pointer;transition:var(--t);text-align:center}
+.mode-card:hover{border-color:var(--fm-primary)}
+.mode-card.active{border-color:var(--fm-primary);background:var(--fm-primary-tint)}
+.mode-card i{font-size:1.7em;margin-bottom:8px;color:var(--fm-primary)}
+.mode-card h6{font-size:14px;font-weight:700;margin:4px 0}
+.mode-card small{color:var(--fm-ink-2);font-size:12px}
+.mode-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.preview-box{background:var(--fm-surface-2);border-radius:10px;padding:14px;border-left:3px solid var(--fm-primary)}
+.fm-range{width:100%}
+.fm-check{display:flex;align-items:center;gap:9px;font-size:13.5px}
+@media(max-width:720px){.mode-grid{grid-template-columns:1fr}}
+</style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="split"><div class="stack">
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sliders"></i></span><h3>Adfærd</h3></div><div class="fm-card-body">
-  <div class="fm-field"><label>Tone</label><select class="fm-select"><option>Professionel &amp; venlig</option><option>Kort &amp; konkret</option><option>Uddybende</option></select></div>
-  <div class="fm-field"><label>Kun kurser fra aftaleleverandører</label><select class="fm-select"><option>Ja — prioritér aftaler</option><option>Nej — vis alle</option></select></div>
-  <div class="fm-field" style="margin-bottom:0"><label>Velkomstbesked</label><textarea class="fm-textarea">Hej! Jeg hjælper dig med at finde det rette kursus. Hvad vil du lære?</textarea></div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-toggle-on"></i></span><h3>Funktioner</h3></div><div class="fm-card-body" style="padding-top:6px">
-  <div class="trow"><div><div class="t">Foreslå kurser proaktivt</div><div class="d">Vis anbefalinger baseret på profil</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-  <div class="trow"><div><div class="t">Opdatér profil via chat</div><div class="d">Lad medarbejdere udfylde CV i samtalen</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-  <div class="trow"><div><div class="t">Kræv godkendelse ved bestilling</div><div class="d">Ordrer sendes til HR-manager</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-  <div class="trow"><div><div class="t">Tillad gratis kurser uden godkendelse</div><div class="d">Spar godkendelsestrin</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div></div></div>
-  </div><div class="stack">
-  <div class="fm-card"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:6px">Forhåndsvisning</div><p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 12px">Sådan ser assistenten ud for dine medarbejdere.</p><a href="{{ url_for('futurematch.chat') }}" class="btn btn-soft" style="width:100%"><i class="fa-solid fa-comment-dots"></i> Åbn assistenten</a></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-code"></i></span><h3>Indlejring</h3></div><div class="fm-card-body"><p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 10px">Føj chatbotten til jeres intranet.</p><a href="{{ url_for('futurematch.showcase', page='widget_creator') }}" class="btn btn-ghost btn-sm" style="width:100%">Opret widget</a></div></div></div></div>
+<form method="POST">
+  <div class="stack" style="max-width:820px;margin:0 auto">
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursuskilder</h3></div>
+    <div class="fm-card-body">
+      <p style="color:var(--fm-ink-2);font-size:13.5px;margin:0 0 16px">Vælg hvilke kurser chatbotten skal anbefale til jeres medarbejdere.</p>
+      {% set mode = settings.chatbot_course_mode or 'both' %}
+      <div class="mode-grid" style="margin-bottom:18px">
+        <div class="mode-card {% if mode == 'internal_only' %}active{% endif %}" onclick="selectMode('internal_only')"><i class="fa-solid fa-building"></i><h6>Kun interne</h6><small>Vis kun virksomhedens egne kurser</small></div>
+        <div class="mode-card {% if mode == 'both' %}active{% endif %}" onclick="selectMode('both')"><i class="fa-solid fa-right-left"></i><h6>Begge</h6><small>Mix af interne og eksterne kurser</small></div>
+        <div class="mode-card {% if mode == 'external_only' %}active{% endif %}" onclick="selectMode('external_only')"><i class="fa-solid fa-globe"></i><h6>Kun eksterne</h6><small>Vis kun kurser fra eksterne udbydere</small></div>
+      </div>
+      <input type="hidden" name="chatbot_course_mode" id="chatbot_course_mode" value="{{ mode }}">
+
+      <div id="sliderSection" style="display:{{ 'block' if mode == 'both' else 'none' }};padding:14px 0">
+        <label style="font-weight:600;font-size:13.5px">Prioritering: Interne vs. eksterne kurser</label>
+        <input type="range" class="fm-range" name="chatbot_internal_weight" id="chatbot_internal_weight" min="0" max="100" value="{{ settings.chatbot_internal_weight or 50 }}" oninput="updateSliderLabel(this.value)" style="margin-top:8px">
+        <div class="fm-spread" style="margin-top:6px;font-size:12px;color:var(--fm-ink-2)">
+          <span><i class="fa-solid fa-globe"></i> 100% Eksterne</span>
+          <span id="sliderValue" style="font-weight:700;color:var(--fm-primary)">{{ settings.chatbot_internal_weight or 50 }}% interne</span>
+          <span><i class="fa-solid fa-building"></i> 100% Interne</span>
+        </div>
+      </div>
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:14px">
+        <label class="fm-check"><input type="checkbox" name="chatbot_show_internal" id="chatbot_show_internal" {% if settings.chatbot_show_internal is not defined or settings.chatbot_show_internal %}checked{% endif %}> Vis interne kurser ({{ internal_course_count }} tilgængelige)</label>
+        <label class="fm-check"><input type="checkbox" name="chatbot_show_external" id="chatbot_show_external" {% if settings.chatbot_show_external is not defined or settings.chatbot_show_external %}checked{% endif %}> Vis eksterne kurser fra katalog</label>
+      </div>
+    </div></div>
+
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-pen-fancy"></i></span><h3>Tilpassede instruktioner</h3></div>
+    <div class="fm-card-body">
+      <p style="color:var(--fm-ink-2);font-size:13.5px;margin:0 0 12px">Virksomhedsspecifikke retningslinjer som chatbotten skal følge. Disse injiceres i chatbottens systemprompt.</p>
+      <textarea class="fm-input" name="chatbot_custom_instructions" id="chatbot_custom_instructions" rows="6" maxlength="2000" placeholder="f.eks.&#10;- Anbefal altid compliance-kurser først for nye medarbejdere&#10;- Prioritér e-learning over klasseværelse&#10;- Nævn altid vores interne onboarding-program">{{ settings.chatbot_custom_instructions or '' }}</textarea>
+      <div class="fm-spread" style="margin-top:6px">
+        <small style="color:var(--fm-ink-3)">Påvirker kun chatbotten for {{ company.company_name }}s medarbejdere.</small>
+        <span style="font-size:12px;color:var(--fm-ink-3)"><span id="charCount">{{ (settings.chatbot_custom_instructions or '')|length }}</span>/2000</span>
+      </div>
+      <div class="preview-box" style="margin-top:14px">
+        <strong style="font-size:13px"><i class="fa-solid fa-eye"></i> Forhåndsvisning af chatbot-kontekst:</strong>
+        <p style="margin:8px 0 0;font-size:12.5px" id="previewText">
+          {% if settings.chatbot_custom_instructions %}"Virksomhedsspecifikke retningslinjer for {{ company.company_name }}: {{ settings.chatbot_custom_instructions[:200] }}..."{% else %}<span style="color:var(--fm-ink-3)">Ingen tilpassede instruktioner — chatbotten bruger standardadfærd.</span>{% endif %}
+        </p>
+      </div>
+    </div></div>
+
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end">
+      <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-ghost">Annuller</a>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem indstillinger</button>
+    </div>
+  </div>
+</form>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function selectMode(mode){
+  document.getElementById('chatbot_course_mode').value = mode;
+  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+  document.getElementById('sliderSection').style.display = mode === 'both' ? 'block' : 'none';
+}
+function updateSliderLabel(val){ document.getElementById('sliderValue').textContent = val + '% interne'; }
+const ta = document.getElementById('chatbot_custom_instructions');
+const cc = document.getElementById('charCount');
+if (ta && cc) ta.addEventListener('input', () => { cc.textContent = ta.value.length; });
+</script>
 {% endblock %}

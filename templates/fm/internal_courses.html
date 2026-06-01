@@ -2,10 +2,122 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Interne kurser{% endblock %}
-{% block topbar_sub %}Virksomhedens egne forløb og onboarding.{% endblock %}
+{% block topbar_sub %}{{ stats.total or 0 }} kurser · virksomhedens egne forløb.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.internal_courses') }}"><i class="fa-solid fa-book-open"></i> Interne kurser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
 
-  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)"><div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-clay-tint);color:var(--fm-clay);font-size:16px"><i class="fa-solid fa-door-open"></i></span><span class="fm-badge ">Intern</span></div><h3 style="font-size:15px;font-weight:700">Nordi Onboarding</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12.5px;color:var(--fm-ink-2)"><span><span class="mono" style="font-weight:700;color:var(--fm-ink)">48</span> tilmeldt</span><a href="{{ url_for('futurematch.showcase', page='course_form') }}" style="color:var(--fm-primary);font-weight:600">Rediger</a></div></div><div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-clay-tint);color:var(--fm-clay);font-size:16px"><i class="fa-solid fa-cube"></i></span><span class="fm-badge ">Intern</span></div><h3 style="font-size:15px;font-weight:700">Produktintro 2026</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12.5px;color:var(--fm-ink-2)"><span><span class="mono" style="font-weight:700;color:var(--fm-ink)">31</span> tilmeldt</span><a href="{{ url_for('futurematch.showcase', page='course_form') }}" style="color:var(--fm-primary);font-weight:600">Rediger</a></div></div><div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-clay-tint);color:var(--fm-clay);font-size:16px"><i class="fa-solid fa-lock"></i></span><span class="fm-badge amber">Obligatorisk</span></div><h3 style="font-size:15px;font-weight:700">Sikkerhed & IT-politik</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12.5px;color:var(--fm-ink-2)"><span><span class="mono" style="font-weight:700;color:var(--fm-ink)">62</span> tilmeldt</span><a href="{{ url_for('futurematch.showcase', page='course_form') }}" style="color:var(--fm-primary);font-weight:600">Rediger</a></div></div><div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-clay-tint);color:var(--fm-clay);font-size:16px"><i class="fa-solid fa-bullhorn"></i></span><span class="fm-badge ">Intern</span></div><h3 style="font-size:15px;font-weight:700">Salgsplaybook</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12.5px;color:var(--fm-ink-2)"><span><span class="mono" style="font-weight:700;color:var(--fm-ink)">22</span> tilmeldt</span><a href="{{ url_for('futurematch.showcase', page='course_form') }}" style="color:var(--fm-primary);font-weight:600">Rediger</a></div></div><div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-clay-tint);color:var(--fm-clay);font-size:16px"><i class="fa-solid fa-pen-nib"></i></span><span class="fm-badge ">Intern</span></div><h3 style="font-size:15px;font-weight:700">Brand & Tone of Voice</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12.5px;color:var(--fm-ink-2)"><span><span class="mono" style="font-weight:700;color:var(--fm-ink)">18</span> tilmeldt</span><a href="{{ url_for('futurematch.showcase', page='course_form') }}" style="color:var(--fm-primary);font-weight:600">Rediger</a></div></div><div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:12px"><div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-clay-tint);color:var(--fm-clay);font-size:16px"><i class="fa-solid fa-shield-halved"></i></span><span class="fm-badge amber">Obligatorisk</span></div><h3 style="font-size:15px;font-weight:700">Compliance-grundkursus</h3><div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12.5px;color:var(--fm-ink-2)"><span><span class="mono" style="font-weight:700;color:var(--fm-ink)">74</span> tilmeldt</span><a href="{{ url_for('futurematch.showcase', page='course_form') }}" style="color:var(--fm-primary);font-weight:600">Rediger</a></div></div></div>
+  <div class="kpi-row k4">
+    <div class="kpi-tile"><div class="kl">Kurser i alt</div><div class="kv tnum">{{ stats.total or 0 }}</div></div>
+    <div class="kpi-tile"><div class="kl">Aktive</div><div class="kv tnum">{{ stats.active or 0 }}</div></div>
+    <div class="kpi-tile"><div class="kl">Obligatoriske</div><div class="kv tnum">{{ stats.mandatory or 0 }}</div></div>
+    <div class="kpi-tile"><div class="kl">Kategorier</div><div class="kv tnum">{{ stats.categories or 0 }}</div></div>
+  </div>
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-book-open"></i> Katalog</span><h2 class="fm-section-title">Interne kurser</h2></div>
+    <div class="fm-flex fm-gap8">
+      <button class="btn btn-ghost btn-sm" onclick="openImport()"><i class="fa-solid fa-file-csv"></i> Importer CSV</button>
+      <a href="{{ url_for('hr_dashboard.add_internal_course') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Nyt kursus</a>
+    </div>
+  </div>
+
+  <form method="GET" class="fm-card" style="padding:14px 16px;margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap;align-items:end">
+    <label class="fm-field" style="flex:2;min-width:180px;margin:0"><span>Søg</span><input type="text" class="fm-input" name="q" placeholder="Søg kurser..." value="{{ request.args.get('q', '') }}"></label>
+    <label class="fm-field" style="flex:1;min-width:140px;margin:0"><span>Kategori</span>
+      <select class="fm-input" name="category">
+        <option value="">Alle kategorier</option>
+        {% for cat in categories %}<option value="{{ cat }}" {% if request.args.get('category') == cat %}selected{% endif %}>{{ cat }}</option>{% endfor %}
+      </select>
+    </label>
+    <label class="fm-field" style="flex:1;min-width:130px;margin:0"><span>Status</span>
+      <select class="fm-input" name="status">
+        <option value="">Alle statusser</option>
+        <option value="active" {% if request.args.get('status') == 'active' %}selected{% endif %}>Aktive</option>
+        <option value="inactive" {% if request.args.get('status') == 'inactive' %}selected{% endif %}>Inaktive</option>
+      </select>
+    </label>
+    <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Filtrer</button>
+  </form>
+
+  {% if courses %}
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+    {% for course in courses %}
+    <div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:11px;{{ 'opacity:.6' if not course.is_active }}">
+      <div class="fm-spread">
+        <h3 style="font-size:15px;font-weight:700;flex:1">{{ course.title }}</h3>
+        <div class="fm-flex fm-gap8">
+          {% if course.is_mandatory %}<span class="fm-badge amber dot">Obligatorisk</span>{% endif %}
+          {% if course.is_active %}<span class="fm-badge green dot" id="status-{{ course.id }}">Aktiv</span>{% else %}<span class="fm-chip" id="status-{{ course.id }}">Inaktiv</span>{% endif %}
+        </div>
+      </div>
+      {% if course.description %}<p style="font-size:12.5px;color:var(--fm-ink-2);margin:0">{{ course.description[:120] }}{% if course.description|length > 120 %}...{% endif %}</p>{% endif %}
+      <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+        {% if course.category %}<span class="fm-chip"><i class="fa-solid fa-folder"></i> {{ course.category }}</span>{% endif %}
+        {% if course.format %}<span class="fm-chip"><i class="fa-solid fa-desktop"></i> {{ course.format }}</span>{% endif %}
+        {% if course.difficulty_level %}<span class="fm-chip"><i class="fa-solid fa-signal"></i> {{ course.difficulty_level }}</span>{% endif %}
+      </div>
+      <div class="fm-spread" style="font-size:12px;color:var(--fm-ink-2);padding-top:10px;border-top:1px solid var(--fm-line)">
+        <span><i class="fa-solid fa-clock"></i> {{ course.duration_hours or 0 }} t</span>
+        <span><i class="fa-solid fa-users"></i> {{ course.enrollment_count or 0 }} tilmeldt</span>
+        {% if course.price and course.price > 0 %}<span><i class="fa-solid fa-tag"></i> {{ course.price }} kr</span>{% else %}<span style="color:var(--fm-success)"><i class="fa-solid fa-tag"></i> Gratis</span>{% endif %}
+      </div>
+      {% if course.instructor %}<div style="font-size:12px;color:var(--fm-ink-3)"><i class="fa-solid fa-chalkboard-user"></i> {{ course.instructor }}</div>{% endif %}
+      <div class="fm-flex fm-gap8" style="margin-top:auto;padding-top:8px">
+        <a href="{{ url_for('hr_dashboard.edit_internal_course', course_id=course.id) }}" class="btn btn-soft btn-sm" style="flex:1"><i class="fa-solid fa-pen"></i> Rediger</a>
+        <button class="btn btn-ghost btn-sm" title="{{ 'Deaktiver' if course.is_active else 'Aktiver' }}" onclick="toggleCourse({{ course.id }}, this)"><i class="fa-solid fa-power-off"></i></button>
+        <form method="POST" action="{{ url_for('hr_dashboard.delete_internal_course', course_id=course.id) }}" onsubmit="return confirm('Er du sikker på du vil slette dette kursus?')" style="display:inline">
+          <button type="submit" class="btn btn-ghost btn-sm" style="color:var(--fm-danger)" title="Slet"><i class="fa-solid fa-trash"></i></button>
+        </form>
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-3)">
+    <i class="fa-solid fa-book-open" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i>
+    <div style="font-weight:650;color:var(--fm-ink-2);margin-bottom:4px">Ingen interne kurser endnu</div>
+    <div style="margin-bottom:14px">Opret jeres første interne kursus eller importer fra CSV.</div>
+    <div class="fm-flex fm-gap8" style="justify-content:center">
+      <a href="{{ url_for('hr_dashboard.add_internal_course') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Opret kursus</a>
+      <button class="btn btn-ghost btn-sm" onclick="openImport()"><i class="fa-solid fa-file-csv"></i> Importer CSV</button>
+    </div>
+  </div>
+  {% endif %}
 </div>
+
+<div id="importModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="fm-card" style="max-width:520px;width:90%;padding:22px">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px"><i class="fa-solid fa-file-csv"></i> Importer kurser fra CSV</h3>
+    <form method="POST" action="{{ url_for('hr_dashboard.import_courses_csv') }}" enctype="multipart/form-data">
+      <div style="border:2px dashed var(--fm-line);border-radius:12px;padding:24px;text-align:center;cursor:pointer" onclick="document.getElementById('csv_file').click()">
+        <i class="fa-solid fa-cloud-arrow-up" style="font-size:24px;color:var(--fm-ink-3);display:block;margin-bottom:8px"></i>
+        <div style="font-weight:600">Klik for at vælge CSV-fil</div>
+        <div style="font-size:12px;color:var(--fm-ink-3)">Semikolon-separeret (;) med UTF-8 encoding</div>
+        <input type="file" id="csv_file" name="csv_file" accept=".csv" style="display:none" onchange="document.getElementById('file-name').textContent = this.files[0]?.name || ''">
+      </div>
+      <div id="file-name" style="color:var(--fm-primary);font-weight:700;margin:10px 0"></div>
+      <div class="fm-card" style="padding:12px;font-size:12px;background:var(--fm-primary-tint)">
+        <strong>Forventede kolonner:</strong><br>
+        <code style="font-size:11px">title;description;category;tags;format;duration_hours;price;instructor;location;department;difficulty_level;is_mandatory</code><br>
+        <span style="color:var(--fm-ink-2)">Kun <code>title</code>/<code>titel</code> er påkrævet. Danske navne understøttes.</span>
+      </div>
+      <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeImport()">Annuller</button>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-upload"></i> Importer</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function openImport(){ document.getElementById('importModal').style.display = 'flex'; }
+function closeImport(){ document.getElementById('importModal').style.display = 'none'; }
+function toggleCourse(id, btn){
+  fetch(`{{ url_for('hr_dashboard.toggle_internal_course', course_id=0) }}`.replace('/0/', '/' + id + '/'), {method:'POST'})
+    .then(r => r.json())
+    .then(d => { if (d.success) { location.reload(); } else { alert('Fejl: ' + (d.message || '')); } })
+    .catch(err => alert('Netværksfejl: ' + err));
+}
+</script>
 {% endblock %}

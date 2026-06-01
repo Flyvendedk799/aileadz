@@ -1,0 +1,24 @@
+{% extends "fm_base.html" %}
+{% block page_id %}ui{% endblock %}
+{% block title %}Design-galleri{% endblock %}
+{% block topbar_title %}Futurematch · Design-galleri{% endblock %}
+{% block topbar_sub %}Alle sider i det nye design. Klik for at åbne.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="fm-card" style="padding:18px 20px;margin-bottom:18px">
+    <p style="color:var(--fm-ink-2);font-size:14px;margin:0">
+      Disse sider er en del af det nye Futurematch-design. De navigerbare hovedsider er koblet til backend-ruter;
+      resten vises her som design-referencer.
+    </p>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px">
+    {% for page in pages if not page.startswith('_') %}
+    <a class="fm-card" href="{{ url_for('futurematch.showcase', page=page) }}"
+       style="padding:16px 18px;text-decoration:none;display:flex;align-items:center;gap:12px;transition:var(--t)">
+      <span class="fm-avatar" style="background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-file-lines"></i></span>
+      <span style="font-weight:600;font-size:14px;color:var(--fm-ink)">{{ page.replace('_',' ')|title }}</span>
+    </a>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

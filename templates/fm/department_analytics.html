@@ -1,0 +1,12 @@
+{% extends "fm_base.html" %}
+{% block page_id %}creports{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Afdelingsanalyse{% endblock %}
+{% block topbar_sub %}Udvikling · læring, aktivitet og ordrer.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='mt_dashboard') }}">Virksomhedsrapporter</a><i class="fa-solid fa-chevron-right"></i><span>Udvikling</span></div>
+  <div class="kpi-row"><div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">62</div><div class="kd">59 aktive</div></div><div class="kpi-tile"><div class="kl">Gennemførelse</div><div class="kv tnum">91%</div><div class="kd">bedst i org.</div></div><div class="kpi-tile"><div class="kl">Ordrer</div><div class="kv tnum">14</div><div class="kd">denne md.</div></div><div class="kpi-tile"><div class="kl">Budget brugt</div><div class="kv tnum">74%</div><div class="kd">312k af 420k</div></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Aktivitet pr. måned</h3></div><div class="fm-card-body"><div class="barset"><div class="bar"><div class="fill" style="height:44%"></div><div class="bl">Jan</div></div><div class="bar"><div class="fill" style="height:67%"></div><div class="bl">Feb</div></div><div class="bar"><div class="fill" style="height:56%"></div><div class="bl">Mar</div></div><div class="bar"><div class="fill" style="height:83%"></div><div class="bl">Apr</div></div><div class="bar"><div class="fill" style="height:78%"></div><div class="bl">Maj</div></div><div class="bar"><div class="fill" style="height:100%"></div><div class="bl">Jun</div></div></div></div></div>
+</div>
+{% endblock %}

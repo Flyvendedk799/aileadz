@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="da">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Futurematch — Kursusrådgiver</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}" />
+</head>
+<body>
+<div class="overlay" id="overlay"></div>
+<div class="layout">
+
+  <!-- Rail -->
+  <aside class="rail" id="rail">
+    <div class="r-head">
+      <a class="r-logo r-hide" href="{{ url_for('dashboard.dashboard') }}">
+        <span class="r-mark">F</span>
+        <span><div class="r-name">Futurematch</div><div class="r-sub">Kursusrådgiver</div></span>
+      </a>
+      <button class="r-toggle" id="railToggle" aria-label="Fold panel">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="11 17 6 12 11 7"/><polyline points="18 17 13 12 18 7"/></svg>
+      </button>
+    </div>
+
+    <div class="r-body">
+      <button class="new-chat" data-new>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span class="r-hide">Ny samtale</span>
+      </button>
+
+      <div class="r-label r-hide">Samtaler</div>
+      <div class="conv-group r-hide" id="convList"></div>
+
+      <a class="ring-widget r-hide" href="{{ url_for('pages.profile') }}" title="Udfyld din profil">
+        <svg class="ring-svg" viewBox="0 0 36 36"><circle class="ring-bg" cx="18" cy="18" r="15.5"/><circle class="ring-fg" id="ringFg" cx="18" cy="18" r="15.5" stroke-dasharray="0 97.4"/></svg>
+        <div class="ring-info"><div class="ring-pct" id="ringPct">0%</div><div class="ring-lab">Udfyld profil</div></div>
+      </a>
+
+      <div class="r-label r-hide">Navigation</div>
+      <a class="nav-item" href="{{ url_for('dashboard.dashboard') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg><span class="r-hide">Til Overblik</span></a>
+      <a class="nav-item" href="{{ url_for('catalog.catalog_index') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg><span class="r-hide">Kursuskatalog</span></a>
+      <a class="nav-item" href="{{ url_for('pages.profile') }}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg><span class="r-hide">Profil / CV</span></a>
+    </div>
+
+    <div class="r-foot">
+      <div class="user">
+        <span class="av">MK</span>
+        <span class="r-hide"><div class="nm">Mette Krogh</div><div class="mt"><a href="{{ url_for('dashboard.dashboard') }}">Log ud</a> · 420 kreditter</div></span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Chat -->
+  <main class="chat">
+    <div class="chat-top">
+      <button class="menu-btn" id="menuBtn" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+      <div class="chat-title"><span class="live"></span> Kursusrådgiver <span class="demo-badge">Demo</span></div>
+      <div class="spacer"></div>
+      <button class="tbtn" data-new><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Ny samtale</button>
+    </div>
+
+    <div class="nudge" id="nudge">
+      <div class="nudge-inner">
+        <span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
+        <a class="nt" href="#" id="nudgeLink">Din profil er <b>62% udfyldt</b> — tilføj din erfaring for skarpere anbefalinger</a>
+        <button class="nudge-x" id="nudgeX" aria-label="Luk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+      </div>
+    </div>
+
+    <div class="scroll" id="scroll">
+      <div class="thread" id="thread"></div>
+      <button class="fab" id="fab" aria-label="Scroll ned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+    </div>
+
+    <div class="input-wrap">
+      <div class="ref-bar" id="refBar"></div>
+      <div class="composer">
+        <button class="plus" title="Vedhæft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+        <textarea id="input" rows="1" placeholder="Spørg om kurser, kompetencer eller hold…"></textarea>
+        <button class="stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
+        <button class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+      </div>
+      <div class="hint">Futurematch AI · kan tage fejl — bekræft vigtige detaljer</div>
+    </div>
+  </main>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}"></script>
+</body>
+</html>

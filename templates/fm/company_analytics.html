@@ -1,0 +1,16 @@
+{% extends "fm_base.html" %}
+{% block page_id %}company{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Virksomheds-BI{% endblock %}
+{% block topbar_sub %}Nordi A/S · aktivitet og konvertering på tværs.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="kpi-row"><div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Aktive brugere</div><div class="kv tnum">231</div><div class="kd">93% af basen</div></div></div><div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">AI-samtaler</div><div class="kv tnum">1.204</div><div class="kd">+18% md/md</div></div></div><div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">Ordrer</div><div class="kv tnum">37</div><div class="kd">31% konvertering</div></div></div><div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Forbrug</div><div class="kv tnum">42.800</div><div class="kd">kr denne md.</div></div></div></div>
+  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Aktivitet over tid</h3><span class="fm-badge teal" style="margin-left:auto">samtaler</span></div><div class="fm-card-body"><div class="barset"><div class="bar"><div class="fill" style="height:61%"></div><div class="bl">Jan</div></div><div class="bar"><div class="fill" style="height:74%"></div><div class="bl">Feb</div></div><div class="bar"><div class="fill" style="height:70%"></div><div class="bl">Mar</div></div><div class="bar"><div class="fill" style="height:88%"></div><div class="bl">Apr</div></div><div class="bar"><div class="fill" style="height:86%"></div><div class="bl">Maj</div></div><div class="bar"><div class="fill" style="height:100%"></div><div class="bl">Jun</div></div></div></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-filter"></i></span><h3>Konverteringstragt</h3></div><div class="fm-card-body">
+  <div class="prog-row"><div class="pt"><b>Sessioner</b><span class="mono">1.204</span></div><div class="fm-prog"><span style="width:100%"></span></div></div>
+  <div class="prog-row"><div class="pt"><b>Produktvisning</b><span class="mono">486</span></div><div class="fm-prog"><span style="width:40%;background:var(--fm-info)"></span></div></div>
+  <div class="prog-row"><div class="pt"><b>Ordrer</b><span class="mono">37</span></div><div class="fm-prog"><span style="width:9%;background:var(--fm-warning)"></span></div></div>
+  <div class="prog-row" style="margin:0"><div class="pt"><b>Gennemført</b><span class="mono">29</span></div><div class="fm-prog"><span style="width:7%;background:var(--fm-success)"></span></div></div></div></div></div>
+</div>
+{% endblock %}

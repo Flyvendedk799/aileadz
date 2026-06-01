@@ -1,0 +1,50 @@
+{% extends "fm_base.html" %}
+{% block page_id %}reports{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Rapporter{% endblock %}
+{% block topbar_sub %}Historik, aktivitet og eksportklare rapporter.{% endblock %}
+{% block extra_head %}
+<style>
+  .rep-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
+  .rep-card { padding: 20px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); cursor: pointer; display: flex; flex-direction: column; gap: 14px; }
+  .rep-card:hover { transform: translateY(-3px); box-shadow: var(--sh-md); }
+  .rep-top { display: flex; align-items: center; justify-content: space-between; }
+  .rep-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 17px; background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .rep-card h3 { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+  .rep-card p { font-size: 13px; color: var(--fm-ink-2); line-height: 1.5; margin-top: 4px; }
+  .rep-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--fm-line); font-size: 12px; color: var(--fm-ink-3); }
+  .rep-foot .mono { font-family: var(--ff-mono); }
+  @media (max-width: 1000px) { .rep-grid { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 640px) { .rep-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+        <div class="fm-section-head" style="margin-top:0">
+          <div><span class="fm-eyebrow"><i class="fa-solid fa-folder-open"></i> Genererede rapporter</span><h2 class="fm-section-title">Seneste rapporter</h2></div>
+          <label class="fm-search" style="width:260px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg rapporter" /></label>
+        </div>
+
+        <section class="rep-grid">
+          <article class="rep-card" data-reveal data-d="1"><div class="rep-top"><span class="rep-ic"><i class="fa-solid fa-chart-pie"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Uddannelses-ROI Q2</h3><p>Omsætning, konvertering og effekt af kursusforbrug på tværs af afdelinger.</p></div><div class="rep-foot"><span class="mono">28. maj 2026</span><span><i class="fa-solid fa-file-pdf"></i> PDF · 14 sider</span></div></article>
+          <article class="rep-card" data-reveal data-d="2"><div class="rep-top"><span class="rep-ic" style="background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-robot"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Chatbot-indsigt maj</h3><p>Samtaler, populære emner og produktvisninger fra AI-assistenten.</p></div><div class="rep-foot"><span class="mono">26. maj 2026</span><span><i class="fa-solid fa-file-csv"></i> CSV · 1.204 rækker</span></div></article>
+          <article class="rep-card" data-reveal data-d="3"><div class="rep-top"><span class="rep-ic" style="background:var(--fm-clay-tint);color:var(--fm-clay)"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge amber dot">Genererer</span></div><div><h3>Læringsfremdrift uge 21</h3><p>Gennemførelse, igangværende kurser og deltagelse pr. medarbejder.</p></div><div class="rep-foot"><span class="mono">I gang…</span><span><i class="fa-solid fa-spinner"></i> 68%</span></div></article>
+          <article class="rep-card" data-reveal data-d="4"><div class="rep-top"><span class="rep-ic" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-coins"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Kreditforbrug maj</h3><p>Forbrug pr. funktion, daglige snit og transaktionshistorik.</p></div><div class="rep-foot"><span class="mono">24. maj 2026</span><span><i class="fa-solid fa-file-excel"></i> XLSX</span></div></article>
+          <article class="rep-card" data-reveal data-d="5"><div class="rep-top"><span class="rep-ic"><i class="fa-solid fa-brain"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Kompetencegab-analyse</h3><p>Kritiske gab, måltal og dækning på tværs af kompetenceområder.</p></div><div class="rep-foot"><span class="mono">21. maj 2026</span><span><i class="fa-solid fa-file-pdf"></i> PDF · 9 sider</span></div></article>
+          <article class="rep-card" data-reveal data-d="6"><div class="rep-top"><span class="rep-ic" style="background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-cart-shopping"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Ordreoversigt Q2</h3><p>Alle kursusordrer med status, pris og godkendelsesflow.</p></div><div class="rep-foot"><span class="mono">18. maj 2026</span><span><i class="fa-solid fa-file-csv"></i> CSV · 37 rækker</span></div></article>
+        </section>
+
+        <div class="fm-table-wrap" data-reveal>
+          <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Aktivitetslog</h3><a href="#" class="fm-badge teal">Eksportér alt</a></div>
+          <table class="fm-table">
+            <thead><tr><th>Tidspunkt</th><th>Rapport</th><th>Type</th><th>Udløst af</th><th>Status</th></tr></thead>
+            <tbody>
+              <tr><td class="mono muted">28/5 14:02</td><td>Uddannelses-ROI Q2</td><td><span class="fm-badge">PDF</span></td><td>Mette Krogh</td><td><span class="fm-badge green dot">Færdig</span></td></tr>
+              <tr><td class="mono muted">26/5 09:30</td><td>Chatbot-indsigt maj</td><td><span class="fm-badge">CSV</span></td><td>Automatisk</td><td><span class="fm-badge green dot">Færdig</span></td></tr>
+              <tr><td class="mono muted">24/5 16:40</td><td>Kreditforbrug maj</td><td><span class="fm-badge">XLSX</span></td><td>Mette Krogh</td><td><span class="fm-badge green dot">Færdig</span></td></tr>
+              <tr><td class="mono muted">22/5 11:05</td><td>Læringsfremdrift uge 21</td><td><span class="fm-badge">PDF</span></td><td>Automatisk</td><td><span class="fm-badge amber dot">Genererer</span></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+{% endblock %}

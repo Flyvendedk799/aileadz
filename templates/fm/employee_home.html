@@ -1,0 +1,120 @@
+{% extends "fm_base.html" %}
+{% block page_id %}emphome{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Min læring{% endblock %}
+{% block topbar_sub %}Dine kurser, anbefalinger og udvikling — samlet ét sted.{% endblock %}
+{% block extra_head %}
+<style>
+  .emp-hero { position: relative; overflow: hidden; padding: 30px 32px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); margin-bottom: 22px; display: grid; grid-template-columns: 1.5fr auto; gap: 26px; align-items: center; }
+  .emp-hero::before { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(110% 120% at 100% 0%, var(--fm-primary-tint), transparent 55%), radial-gradient(80% 80% at 0% 100%, var(--fm-clay-tint), transparent 50%); opacity: .85; }
+  .emp-hero > * { position: relative; }
+  .emp-hello { font-size: clamp(24px,3vw,34px); letter-spacing: -.03em; line-height: 1.08; margin: 12px 0 8px; }
+  .emp-hello em { font-style: normal; color: var(--fm-primary); }
+  .emp-sub { color: var(--fm-ink-2); font-size: 14.5px; max-width: 48ch; margin: 0 0 18px; }
+  .emp-cta { display: flex; gap: 10px; flex-wrap: wrap; }
+  .emp-streak { display: flex; gap: 18px; }
+  .streak-card { text-align: center; padding: 16px 20px; border-radius: var(--r-md); border: 1px solid var(--fm-line); background: var(--fm-surface-2); box-shadow: var(--sh-xs); }
+  .streak-card .v { font-family: var(--ff-display); font-size: 28px; font-weight: 700; letter-spacing: -.03em; }
+  .streak-card .l { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 2px; }
+  .streak-card .v.flame { color: var(--fm-clay); }
+
+  .learn-card { display: grid; grid-template-columns: 52px 1fr auto; gap: 14px; align-items: center; padding: 16px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); cursor: pointer; }
+  .learn-card:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+  .learn-thumb { width: 52px; height: 52px; border-radius: 13px; display: grid; place-items: center; font-size: 19px; color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .learn-main { min-width: 0; }
+  .learn-vendor { font-family: var(--ff-mono); font-size: 10px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .learn-title { font-size: 15px; font-weight: 700; letter-spacing: -.015em; margin: 2px 0 8px; }
+  .learn-ring { --p: 0; width: 52px; height: 52px; border-radius: 999px; display: grid; place-items: center; background: conic-gradient(var(--fm-primary) calc(var(--p) * 1%), var(--fm-surface-3) 0); }
+  .learn-ring span { width: 40px; height: 40px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; font-family: var(--ff-mono); font-size: 11.5px; font-weight: 700; }
+
+  .rec-card { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t); cursor: pointer; }
+  .rec-card:hover { transform: translateY(-3px); box-shadow: var(--sh-md); }
+  .rec-media { height: 96px; display: grid; place-items: center; font-size: 26px; color: var(--fm-primary); background: linear-gradient(135deg, var(--fm-primary-tint), color-mix(in srgb,var(--fm-clay) 9%,transparent)); border-bottom: 1px solid var(--fm-line); position: relative; }
+  .rec-match { position: absolute; top: 10px; right: 10px; display: inline-flex; align-items: center; gap: 5px; height: 22px; padding: 0 9px; border-radius: 999px; background: var(--fm-surface); border: 1px solid var(--fm-line); font-size: 10.5px; font-weight: 700; color: var(--fm-primary); font-family: var(--ff-mono); }
+  .rec-body { padding: 14px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .rec-body h3 { font-size: 14.5px; font-weight: 700; letter-spacing: -.015em; line-height: 1.25; }
+  .rec-why { font-size: 12px; color: var(--fm-ink-2); line-height: 1.45; }
+  .rec-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 10px; border-top: 1px solid var(--fm-line); }
+  .rec-price { font-family: var(--ff-display); font-weight: 700; font-size: 15px; }
+
+  .ring-big { width: 132px; height: 132px; border-radius: 999px; display: grid; place-items: center; margin: 0 auto; background: conic-gradient(var(--fm-primary) calc(var(--p,72) * 1%), var(--fm-surface-3) 0); }
+  .ring-big > div { width: 104px; height: 104px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; flex-direction: column; text-align: center; }
+  .ring-big .pct { font-family: var(--ff-display); font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+  .ring-big .lab { font-size: 10.5px; color: var(--fm-ink-3); margin-top: 2px; }
+
+  .order-row { display: flex; align-items: center; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--fm-line); }
+  .order-row:last-child { border-bottom: 0; }
+  .order-ic { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 10px; display: grid; place-items: center; font-size: 13px; }
+
+  @media (max-width: 1080px){ .emp-hero { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+
+        <!-- Hero -->
+        <section class="emp-hero" data-reveal>
+          <div>
+            <span class="fm-eyebrow"><i class="fa-solid fa-hand-sparkles"></i> Goddag, Jonas</span>
+            <h1 class="emp-hello">Du er <em>tæt på</em> at fuldføre Agil Projektledelse.</h1>
+            <p class="emp-sub">Fortsæt hvor du slap, eller spørg AI-assistenten om dit næste skridt baseret på din profil.</p>
+            <div class="emp-cta">
+              <a href="{{ url_for('futurematch.chat') }}" class="btn btn-primary"><i class="fa-solid fa-comment-dots"></i> Spørg AI-assistenten</a>
+              <a href="{{ url_for('catalog.catalog_index') }}" class="btn btn-ghost"><i class="fa-solid fa-graduation-cap"></i> Udforsk kurser</a>
+            </div>
+          </div>
+          <div class="emp-streak">
+            <div class="streak-card"><div class="v flame">12</div><div class="l">dages stime 🔥</div></div>
+            <div class="streak-card"><div class="v tnum">4</div><div class="l">kurser i alt</div></div>
+          </div>
+        </section>
+
+        <!-- Continue learning -->
+        <div class="fm-section-head" style="margin-top:0">
+          <div><span class="fm-eyebrow"><i class="fa-solid fa-play"></i> Fortsæt hvor du slap</span><h2 class="fm-section-title">I gang lige nu</h2></div>
+        </div>
+        <section class="fm-grid" style="grid-template-columns:1fr 1fr;gap:14px">
+          <div class="learn-card" data-reveal data-d="1">
+            <span class="learn-thumb"><i class="fa-solid fa-bolt"></i></span>
+            <div class="learn-main"><div class="learn-vendor">IBC Innovationsfabrikken</div><div class="learn-title">Agil Projektledelse &amp; Scrum</div><div class="fm-prog thin"><span style="width:80%"></span></div></div>
+            <div class="learn-ring" style="--p:80"><span>80%</span></div>
+          </div>
+          <div class="learn-card" data-reveal data-d="2">
+            <span class="learn-thumb"><i class="fa-solid fa-table-cells"></i></span>
+            <div class="learn-main"><div class="learn-vendor">Mannaz</div><div class="learn-title">Excel for Analytikere</div><div class="fm-prog thin"><span style="width:45%"></span></div></div>
+            <div class="learn-ring" style="--p:45"><span>45%</span></div>
+          </div>
+        </section>
+
+        <!-- Two column: recommended + side -->
+        <div class="split" style="margin-top:8px">
+          <div>
+            <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-wand-magic-sparkles"></i> Matchet til din profil</span><h2 class="fm-section-title">Anbefalet til dig</h2></div><a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal">Spørg AI</a></div>
+            <div class="fm-grid" style="grid-template-columns:1fr 1fr 1fr;gap:14px">
+              <a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="rec-card" data-reveal data-d="1"><div class="rec-media"><i class="fa-solid fa-diagram-project"></i><span class="rec-match">94% match</span></div><div class="rec-body"><h3>Projektledelse Praktisk</h3><div class="rec-why">Bygger på din Scrum-erfaring</div><div class="rec-foot"><span class="rec-price">8.900 kr</span><span class="fm-badge teal">3 dage</span></div></div></a>
+              <a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="rec-card" data-reveal data-d="2"><div class="rec-media"><i class="fa-solid fa-chart-line"></i><span class="rec-match">88% match</span></div><div class="rec-body"><h3>Dataanalyse med Power BI</h3><div class="rec-why">Næste skridt efter Excel</div><div class="rec-foot"><span class="rec-price">7.800 kr</span><span class="fm-badge teal">3 dage</span></div></div></a>
+              <a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="rec-card" data-reveal data-d="3"><div class="rec-media"><i class="fa-solid fa-users-gear"></i><span class="rec-match">81% match</span></div><div class="rec-body"><h3>Leadership Essentials</h3><div class="rec-why">Matcher dit karrieremål</div><div class="rec-foot"><span class="rec-price">12.500 kr</span><span class="fm-badge teal">4 dage</span></div></div></a>
+            </div>
+
+            <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-receipt"></i> Mine bestillinger</span><h2 class="fm-section-title">Status</h2></div></div>
+            <div class="fm-card"><div class="fm-card-body" style="padding-top:8px">
+              <div class="order-row"><span class="order-ic" style="background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-check"></i></span><div style="flex:1"><div style="font-weight:650;font-size:13.5px">Projektledelse Praktisk</div><div style="font-size:12px;color:var(--fm-ink-3)">Teknologisk Institut</div></div><span class="status-pill green" style="height:24px;font-size:11.5px">Godkendt</span></div>
+              <div class="order-row"><span class="order-ic" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-clock"></i></span><div style="flex:1"><div style="font-weight:650;font-size:13.5px">Scrum Master CSM</div><div style="font-size:12px;color:var(--fm-ink-3)">Mannaz · 11.200 kr</div></div><span class="status-pill amber" style="height:24px;font-size:11.5px">Afventer HR</span></div>
+              <div class="order-row"><span class="order-ic" style="background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-graduation-cap"></i></span><div style="flex:1"><div style="font-weight:650;font-size:13.5px">Excel for Analytikere</div><div style="font-size:12px;color:var(--fm-ink-3)">Mannaz · i gang</div></div><span class="status-pill teal" style="height:24px;font-size:11.5px">Tilmeldt</span></div>
+            </div></div>
+          </div>
+
+          <div class="stack">
+            <div class="fm-card" data-reveal data-d="1"><div class="fm-card-body" style="text-align:center">
+              <div class="ring-big" style="--p:72"><div><div><span class="pct">72%</span><div class="lab">Profil udfyldt</div></div></div></div>
+              <p style="font-size:13px;color:var(--fm-ink-2);margin:14px auto 14px;max-width:30ch;line-height:1.5">Tilføj din erfaring, så bliver anbefalingerne endnu skarpere.</p>
+              <a href="{{ url_for('pages.profile') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-id-card"></i> Forbedr min profil</a>
+            </div></div>
+            <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-pie"></i></span><h3>Kompetenceprofil</h3><a href="{{ url_for('pages.profile') }}" class="fm-badge teal" style="margin-left:auto">Detaljer</a></div>
+              <div class="fm-card-body"><div style="height:200px"><canvas id="miniRadar"></canvas></div></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+{% endblock %}

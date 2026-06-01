@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="da" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>{% block title %}Futurematch{% endblock %}{% if white_label_active and company_branding.company_name %} · {{ company_branding.company_name }}{% endif %}</title>
+  {% if white_label_active and company_branding.favicon_url %}
+  <link rel="icon" href="{{ company_branding.favicon_url }}">
+  {% endif %}
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=13" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=13" />
+  {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
+  <style id="fm-wl-vars">
+    :root {
+      {% if company_branding.primary_color %}--fm-primary: {{ company_branding.primary_color }};{% endif %}
+      {% if company_branding.accent_color %}--fm-clay: {{ company_branding.accent_color }};{% endif %}
+    }
+  </style>
+  {% endif %}
+  {% if white_label_active and company_branding.custom_css %}
+  <style>{{ company_branding.custom_css|safe }}</style>
+  {% endif %}
+  {% block extra_head %}{% endblock %}
+</head>
+
+{% set _role = 'employee' if (session.get('company_role') == 'employee') else 'manager' %}
+{% set platform_name = company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' %}
+{% set platform_tagline = company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' %}
+{% set _uname = session.get('user') or 'Gæst' %}
+{% set _initials = (_uname[:2] | upper) if _uname else 'FM' %}
+{% set _usermeta = (session.get('company_name') ~ ' · ' ~ (session.get('company_role') or 'Bruger')) if session.get('company_name') else 'Futurematch' %}
+<body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" class="{% block body_class %}{% endblock %}">
+
+{% if white_label_active and company_branding.company_name %}
+<script>
+  try {
+    localStorage.setItem('fm-brand', JSON.stringify({
+      name: {{ company_branding.company_name|tojson }},
+      tagline: {{ (company_branding.tagline or 'Læring & HR')|tojson }},
+      mark: {{ (company_branding.company_name[:1]|upper)|tojson }},
+      primary: {{ (company_branding.primary_color or '')|tojson }},
+      accent: {{ (company_branding.accent_color or '')|tojson }},
+      poweredBy: {{ ('false' if hide_platform_branding else 'true')|safe }}
+    }));
+  } catch (e) {}
+</script>
+{% endif %}
+
+<div class="fm-shell">
+  <aside class="fm-side" id="fmSide" aria-label="Primær navigation">
+    <div class="fm-side-head">
+      <a class="fm-brand" href="{{ url_for('dashboard.dashboard') }}">
+        {% if white_label_active and company_branding.company_logo %}
+        <span class="fm-mark"><img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></span>
+        {% else %}
+        <span class="fm-mark">{{ platform_name[:1]|upper }}</span>
+        {% endif %}
+        <span class="fm-brand-tx">
+          <span class="fm-brand-name">{{ platform_name }}</span>
+          <span class="fm-brand-sub">{{ platform_tagline }}</span>
+        </span>
+      </a>
+      <button class="fm-side-toggle" id="fmSideToggle" aria-label="Fold panel"><i class="fa-solid fa-bars"></i></button>
+    </div>
+
+    <div class="fm-side-scroll">
+      {% set page = self.page_id() %}
+      {% if _role == 'employee' %}
+      <div class="fm-nav-label">Min læring</div>
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if page == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
+      </ul>
+      {% else %}
+      <div class="fm-nav-label">Workspace</div>
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if page == 'index' }}" href="{{ url_for('dashboard.dashboard') }}"><i class="fa-solid fa-house"></i><span>Oversigt</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'analytics' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-chart-line"></i><span>Analyse</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'reports' }}" href="{{ url_for('reports.reports') }}"><i class="fa-solid fa-file-lines"></i><span>Rapporter</span></a></li>
+      </ul>
+      {% endif %}
+
+      {% if session.get('company_id') %}
+      <div class="fm-nav-label">Virksomhed</div>
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if page == 'hr' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-building"></i><span>HR-workspace</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'company' }}" href="{{ url_for('companies.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span>Virksomheds-BI</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'creports' }}" href="{{ url_for('multitenant_reports.reports') }}"><i class="fa-solid fa-folder-open"></i><span>Virksomhedsrapporter</span></a></li>
+      </ul>
+      {% endif %}
+
+      <div class="fm-nav-label">Konto</div>
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if page == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil &amp; CV</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'settings' }}" href="{{ url_for('pages.settings') }}"><i class="fa-solid fa-sliders"></i><span>Indstillinger</span></a></li>
+      </ul>
+
+      {% if session.get('role') == 'admin' %}
+      <div class="fm-nav-label">Admin</div>
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if page == 'admin' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i><span>Adminpanel</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'acatalog' }}" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i><span>Katalogadmin</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'abot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i><span>Chatbot BI</span></a></li>
+      </ul>
+      {% endif %}
+    </div>
+
+    <div class="fm-side-foot">
+      {% if session.get('user') %}
+      <a class="fm-userchip" href="{{ url_for('pages.profile') }}" style="text-decoration:none">
+        <span class="fm-avatar">{{ _initials }}</span>
+        <span class="fm-userchip-tx">
+          <span class="fm-userchip-name">{{ _uname }}</span>
+          <span class="fm-userchip-meta">{{ _usermeta }}</span>
+        </span>
+        <i class="fa-solid fa-ellipsis-vertical"></i>
+      </a>
+      {% else %}
+      <a class="fm-userchip" href="{{ url_for('auth.login') }}" style="text-decoration:none">
+        <span class="fm-avatar"><i class="fa-solid fa-arrow-right-to-bracket"></i></span>
+        <span class="fm-userchip-tx">
+          <span class="fm-userchip-name">Log ind</span>
+          <span class="fm-userchip-meta">Ikke logget ind</span>
+        </span>
+      </a>
+      {% endif %}
+    </div>
+  </aside>
+
+  <div class="fm-main">
+    <header class="fm-top">
+      <button class="fm-icon-btn fm-menu-btn" data-side-open aria-label="Menu"><i class="fa-solid fa-bars"></i></button>
+      <div class="fm-top-titles">
+        <div class="fm-top-title">{% block topbar_title %}{% endblock %}</div>
+        <div class="fm-top-sub">{% block topbar_sub %}{% endblock %}</div>
+      </div>
+      <div class="fm-top-actions">
+        <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
+        <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot"></span></a>
+        {% if session.get('user') %}
+        <span class="fm-chip credits"><i class="fa-solid fa-coins"></i> {{ session.get('credits', 0) }}</span>
+        <a class="fm-icon-btn" href="{{ url_for('auth.logout') }}" aria-label="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
+        {% else %}
+        <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>
+        {% endif %}
+      </div>
+    </header>
+
+    <main class="fm-content">
+      {% block flashes %}
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+      <div class="fm-wrap" style="padding-bottom:0">
+        {% for category, message in messages %}
+        <div class="fm-flash fm-flash-{{ 'danger' if category in ['error','danger'] else category }}">
+          <i class="fa-solid {{ 'fa-circle-exclamation' if category in ['error','danger'] else 'fa-circle-check' }}"></i>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      </div>
+      {% endif %}
+      {% endwith %}
+      {% endblock %}
+
+      {% block content %}{% endblock %}
+    </main>
+
+    <footer class="fm-foot">
+      <span>© 2026 {{ platform_name }} · Adaptiv lærings- og HR-platform</span>
+      <span>
+        <a href="{{ url_for('pages.support') }}">Support</a> ·
+        <a href="{{ url_for('pages.privacy') }}">Fortrolighed</a> ·
+        <a href="{{ url_for('pages.terms') }}">Vilkår</a>
+      </span>
+    </footer>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=8"></script>
+{% block extra_scripts %}{% endblock %}
+</body>
+</html>

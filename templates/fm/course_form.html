@@ -1,0 +1,22 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Opret internt kursus{% endblock %}
+{% block topbar_sub %}Tilføj et forløb til virksomhedens katalog.{% endblock %}
+{% block extra_head %}
+<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='internal_courses') }}">Interne kurser</a><i class="fa-solid fa-chevron-right"></i><span>Opret</span></div>
+  <div style="max-width:760px;margin:0 auto"><div class="fm-card"><div class="fm-card-body">
+  <div class="form-grid"><div class="fm-field full"><label>Kursustitel</label><input class="fm-input" placeholder="fx Nordi Onboarding"/></div>
+  <div class="fm-field"><label>Kategori</label><select class="fm-select"><option>Intern</option><option>Obligatorisk</option><option>Onboarding</option></select></div>
+  <div class="fm-field"><label>Varighed</label><input class="fm-input" placeholder="fx 2 timer"/></div>
+  <div class="fm-field"><label>Format</label><select class="fm-select"><option>Online · selvstudie</option><option>Fysisk</option><option>Hybrid</option></select></div>
+  <div class="fm-field"><label>Ansvarlig</label><input class="fm-input" value="Mette Krogh"/></div>
+  <div class="fm-field full"><label>Beskrivelse</label><textarea class="fm-textarea" placeholder="Hvad lærer medarbejderen?"></textarea></div></div>
+  <div class="trow" style="border-top:1px solid var(--fm-line);margin-top:8px;border-bottom:0"><div><div style="font-size:14px;font-weight:600">Obligatorisk for nye medarbejdere</div><div style="font-size:12.5px;color:var(--fm-ink-2);margin-top:2px">Tilføjes automatisk til onboarding</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+  </div></div></div>
+</div>
+{% endblock %}

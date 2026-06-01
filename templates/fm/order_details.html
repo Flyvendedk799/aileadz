@@ -1,0 +1,18 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Ordre #FM-2048{% endblock %}
+{% block topbar_sub %}Scrum Master CSM · Sara Lind{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.showcase', page='approvals') }}">Ordrer</a><i class="fa-solid fa-chevron-right"></i><span>#FM-2048</span></div>
+  <div class="split"><div class="stack">
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursusdetaljer</h3><span class="status-pill amber" style="margin-left:auto;height:26px">Afventer godkendelse</span></div>
+    <div class="fm-card-body"><div class="info-list"><div class="kv"><span class="k">Kursus</span><span class="v">Scrum Master CSM</span></div><div class="kv"><span class="k">Leverandør</span><span class="v">Mannaz</span></div><div class="kv"><span class="k">Hold</span><span class="v">3. sep 2026 · Aarhus</span></div><div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">11.200 kr</span></div><div class="kv"><span class="k">Kreditter</span><span class="v">14</span></div></div></div></div>
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-timeline"></i></span><h3>Ordreforløb</h3></div><div class="fm-card-body"><div class="timeline"><div class="tl-item "><div class="tl-time">12. maj · 14:02</div><div class="tl-title">Bestilt</div><div class="tl-desc">Sara Lind bestilte kurset</div></div><div class="tl-item "><div class="tl-time">12. maj · 14:02</div><div class="tl-title">Afventer godkendelse</div><div class="tl-desc">Sendt til HR-manager</div></div><div class="tl-item "><div class="tl-time">12. maj · 16:30</div><div class="tl-title">Godkendt</div><div class="tl-desc">Godkendt af Mette Krogh</div></div><div class="tl-item "><div class="tl-time">13. maj · 09:10</div><div class="tl-title">Tilmeldt leverandør</div><div class="tl-desc">Bekræftet af Mannaz</div></div><div class="tl-item muted"><div class="tl-time">3. sep 2026</div><div class="tl-title">Gennemføres</div><div class="tl-desc">Holdstart</div></div></div></div></div>
+  </div><div class="stack">
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Medarbejder</h3></div><div class="fm-card-body"><a href="{{ url_for('futurematch.showcase', page='employee_details') }}" class="row-item" style="text-decoration:none;border:0;padding:0"><span class="ra" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">SL</span><div class="rt"><div class="rn">Sara Lind</div><div class="rm">Product Owner · Produkt</div></div><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></a></div></div>
+    <div class="fm-card"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:10px">Handling påkrævet</div><button class="btn btn-primary" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-check"></i> Godkend ordre</button><button class="btn btn-ghost" style="width:100%">Afvis ordre</button></div></div>
+  </div></div>
+</div>
+{% endblock %}

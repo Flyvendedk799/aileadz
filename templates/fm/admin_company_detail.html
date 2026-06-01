@@ -1,0 +1,12 @@
+{% extends "fm_base.html" %}
+{% block page_id %}{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Nordi A/S{% endblock %}
+{% block topbar_sub %}Tenant · Enterprise · oprettet mar 2024.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('companies.admin_companies_list') }}">Virksomheder</a><i class="fa-solid fa-chevron-right"></i><span>Nordi A/S</span></div>
+  <section class="detail-hero" data-reveal><div class="detail-mark av">NA</div><div class="detail-info"><div class="detail-kick">Enterprise tenant</div><h1 class="detail-title">Nordi A/S</h1><p class="detail-sub">248 medarbejdere · white-label aktiv · SSO via Microsoft. CVR 12345678.</p><div class="detail-tags"><span class="fm-badge teal dot">Aktiv</span><span class="fm-badge indigo">Enterprise</span><span class="fm-badge">White-label</span></div></div></section>
+  <div class="kpi-row"><div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">248</div><div class="kd">231 aktive</div></div><div class="kpi-tile"><div class="kl">Kreditter</div><div class="kv tnum">420</div><div class="kd">fornyes 1. jun</div></div><div class="kpi-tile"><div class="kl">Ordrer (md.)</div><div class="kv tnum">37</div><div class="kd">31% konvertering</div></div><div class="kpi-tile"><div class="kl">MRR</div><div class="kv tnum">28.400</div><div class="kd">kr/md.</div></div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,143 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}HR-workspace{% endblock %}
+{% block topbar_sub %}Nordi A/S · medarbejdere, kompetencer, læring og AI-aktivitet.{% endblock %}
+{% block extra_head %}
+<style>
+  .hr-tabs { display: flex; gap: 4px; padding: 4px; border-radius: var(--r-ctrl); background: var(--fm-surface-3); border: 1px solid var(--fm-line); width: max-content; margin-bottom: 22px; overflow-x: auto; max-width: 100%; }
+  .hr-tab { height: 34px; padding: 0 14px; border-radius: 8px; border: none; background: transparent; color: var(--fm-ink-2); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: var(--t); display: inline-flex; align-items: center; gap: 7px; }
+  .hr-tab i { font-size: 12px; }
+  .hr-tab.active { background: var(--fm-surface); color: var(--fm-primary); box-shadow: var(--sh-xs); }
+
+  .hr-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
+  .hr-kpi { display: flex; gap: 14px; padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); }
+  .hr-kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
+  .hr-kpi .ic { width: 46px; height: 46px; flex: 0 0 46px; border-radius: 13px; display: grid; place-items: center; font-size: 18px; }
+  .hr-kpi.teal .ic { background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .hr-kpi.green .ic { background: color-mix(in srgb,var(--fm-success) 14%,transparent); color: var(--fm-success); }
+  .hr-kpi.indigo .ic { background: color-mix(in srgb,var(--fm-indigo) 13%,transparent); color: var(--fm-indigo); }
+  .hr-kpi.clay .ic { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  .hr-kpi .lab { font-size: 12.5px; color: var(--fm-ink-2); font-weight: 600; }
+  .hr-kpi .val { font-family: var(--ff-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .hr-kpi .det { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 3px; }
+
+  .signal-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
+  .signal { padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); }
+  .signal .lab { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .signal .val { font-family: var(--ff-display); font-size: 22px; font-weight: 700; margin: 4px 0; }
+  .signal .det { font-size: 11.5px; color: var(--fm-ink-2); margin-bottom: 10px; line-height: 1.4; }
+
+  .hr-cols { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; margin-bottom: 18px; }
+  .stat-mini { display: flex; align-items: center; justify-content: space-between; padding: 12px 0; border-bottom: 1px solid var(--fm-line); }
+  .stat-mini:last-child { border-bottom: 0; }
+  .dept-row { padding: 14px 0; border-bottom: 1px solid var(--fm-line); }
+  .dept-row:last-child { border-bottom: 0; padding-bottom: 0; }
+  .banner { display: flex; align-items: center; gap: 14px; padding: 16px 18px; border-radius: var(--r-card); border: 1px solid color-mix(in srgb,var(--fm-warning) 35%,var(--fm-line)); background: color-mix(in srgb,var(--fm-warning) 8%,var(--fm-surface)); box-shadow: var(--sh-xs); margin-bottom: 18px; }
+  .banner .bic { width: 42px; height: 42px; flex: 0 0 42px; border-radius: 12px; display: grid; place-items: center; background: color-mix(in srgb,var(--fm-warning) 18%,transparent); color: var(--fm-warning); font-size: 17px; }
+  .skill-tiles { display: grid; grid-template-columns: repeat(6,1fr); gap: 12px; }
+  .skill-tile { text-align: center; padding: 14px 10px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
+  .skill-tile strong { font-size: 12.5px; display: block; margin-bottom: 8px; }
+  .dots { display: flex; gap: 4px; justify-content: center; margin-bottom: 6px; }
+  .dots span { width: 7px; height: 7px; border-radius: 999px; background: var(--fm-line-2); }
+  .dots span.on { background: var(--fm-primary); }
+  .skill-tile small { font-size: 10.5px; color: var(--fm-ink-3); }
+  @media (max-width: 1200px) { .hr-kpis, .signal-strip { grid-template-columns: repeat(2,1fr); } .hr-cols { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(3,1fr); } }
+  @media (max-width: 680px) { .hr-kpis, .signal-strip { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(2,1fr); } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+        <div class="hr-tabs">
+          <a class="hr-tab active" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
+          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
+          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
+          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
+          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a>
+          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
+          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
+        </div>
+
+        <!-- KPIs -->
+        <section class="hr-kpis">
+          <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">248</div><div class="det">231 aktive · 8 nye (30 d)</div></div></article>
+          <article class="hr-kpi green" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift</div><div class="val tnum">68%</div><div class="det">412 gennemført · 96 i gang</div></div></article>
+          <article class="hr-kpi indigo" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer</div><div class="val tnum">37</div><div class="det">29 gennemført · 7 afventer</div></div></article>
+          <article class="hr-kpi clay" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelses-ROI</div><div class="val tnum">284k</div><div class="det">31% konvertering · 1.204 samtaler</div></div></article>
+        </section>
+
+        <!-- Signals -->
+        <section class="signal-strip">
+          <div class="signal" data-reveal data-d="1"><div class="lab">Aktiv base</div><div class="val tnum">93%</div><div class="det">231 aktive af 248</div><div class="fm-prog"><span style="width:93%"></span></div></div>
+          <div class="signal" data-reveal data-d="2"><div class="lab">Kompetencedækning</div><div class="val tnum">76%</div><div class="det">188 med registrerede kompetencer</div><div class="fm-prog"><span style="width:76%"></span></div></div>
+          <div class="signal" data-reveal data-d="3"><div class="lab">Læringsdeltagelse</div><div class="val tnum">64%</div><div class="det">159 medarbejdere med kurser</div><div class="fm-prog"><span style="width:64%"></span></div></div>
+          <div class="signal" data-reveal data-d="4"><div class="lab">AI-engagement</div><div class="val tnum">58%</div><div class="det">144 bruger assistenten</div><div class="fm-prog"><span style="width:58%"></span></div></div>
+        </section>
+
+        <!-- Approvals banner -->
+        <div class="banner" data-reveal data-d="1">
+          <span class="bic"><i class="fa-solid fa-clipboard-check"></i></span>
+          <div style="flex:1">
+            <div style="font-weight:700;color:var(--fm-ink)">7 ordrer afventer godkendelse</div>
+            <div style="font-size:12.5px;color:var(--fm-ink-2)">Medarbejdere har bestilt kurser der kræver din godkendelse.</div>
+          </div>
+          <button class="btn btn-clay btn-sm">Se godkendelser <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+
+        <!-- Orders table + sidebar -->
+        <div class="hr-cols">
+          <div class="fm-table-wrap" data-reveal data-d="1">
+            <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+              <div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-cart-shopping"></i></span><h3 style="font-size:15px;font-weight:700">Kursusordrer</h3></div>
+              <a href="#" class="fm-badge teal">Se alle</a>
+            </div>
+            <table class="fm-table">
+              <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kursus</th><th>Pris</th><th>Status</th></tr></thead>
+              <tbody>
+                <tr><td><div class="fm-cell-user"><span class="fm-avatar">JV</span><div><div style="font-weight:650">Jonas Vester</div><div class="muted" style="font-size:11.5px">jonas@nordi.dk</div></div></div></td><td><span class="fm-badge">Udvikling</span></td><td>Projektledelse Praktisk</td><td class="mono">8.900</td><td><span class="fm-badge green dot">Gennemført</span></td></tr>
+                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">SL</span><div><div style="font-weight:650">Sara Lind</div><div class="muted" style="font-size:11.5px">sara@nordi.dk</div></div></div></td><td><span class="fm-badge">Produkt</span></td><td>Scrum Master CSM</td><td class="mono">11.200</td><td><span class="fm-badge amber dot">Afventer godk.</span></td></tr>
+                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">AK</span><div><div style="font-weight:650">Anders Kjær</div><div class="muted" style="font-size:11.5px">anders@nordi.dk</div></div></div></td><td><span class="fm-badge">Salg</span></td><td>B2B Salg & Forhandling</td><td class="mono">7.100</td><td><span class="fm-badge teal dot">Godkendt</span></td></tr>
+                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,#8a55a0,var(--fm-primary))">ML</span><div><div style="font-weight:650">Mia Lund</div><div class="muted" style="font-size:11.5px">mia@nordi.dk</div></div></div></td><td><span class="fm-badge">HR</span></td><td>GDPR i Praksis</td><td class="mono">3.200</td><td><span class="fm-badge green dot">Gennemført</span></td></tr>
+                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,#c8973a,var(--fm-clay))">TP</span><div><div style="font-weight:650">Thomas Poulsen</div><div class="muted" style="font-size:11.5px">thomas@nordi.dk</div></div></div></td><td><span class="fm-badge">IT</span></td><td>Azure Fundamentals AZ-900</td><td class="mono">4.800</td><td><span class="fm-badge red dot">Afvist</span></td></tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="fm-grid" style="gap:16px">
+            <div class="fm-card" data-reveal data-d="2">
+              <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Afdelingsperformance</h3></div>
+              <div class="fm-card-body" style="padding-top:8px">
+                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">Udvikling</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">62 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-success)">91%</span></div><div class="fm-prog thin"><span style="width:91%;background:var(--fm-success)"></span></div></div>
+                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">Salg</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">48 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-info)">74%</span></div><div class="fm-prog thin"><span style="width:74%;background:var(--fm-info)"></span></div></div>
+                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">Produkt</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">31 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-warning)">58%</span></div><div class="fm-prog thin"><span style="width:58%;background:var(--fm-warning)"></span></div></div>
+                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">HR</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">12 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-success)">88%</span></div><div class="fm-prog thin"><span style="width:88%;background:var(--fm-success)"></span></div></div>
+              </div>
+            </div>
+            <div class="fm-card" data-reveal data-d="3">
+              <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Seneste AI-samtaler</h3></div>
+              <div class="fm-card-body" style="padding-top:6px">
+                <div class="stat-mini"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">Jonas Vester</span></div><span class="fm-badge">8 beskeder</span></div>
+                <div class="stat-mini"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">Sara Lind</span></div><span class="fm-badge">14 beskeder</span></div>
+                <div class="stat-mini"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">Mia Lund</span></div><span class="fm-badge">5 beskeder</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Skills -->
+        <div class="fm-card" data-reveal data-d="1">
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3><span class="fm-badge teal" style="margin-left:auto">3,8/5 gns.</span></div>
+          <div class="fm-card-body">
+            <div class="skill-tiles">
+              <div class="skill-tile"><strong>Projektledelse</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div><small>42 medarb.</small></div>
+              <div class="skill-tile"><strong>Excel / Data</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div><small>61 medarb.</small></div>
+              <div class="skill-tile"><strong>Ledelse</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div><small>28 medarb.</small></div>
+              <div class="skill-tile"><strong>GDPR / Jura</strong><div class="dots"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div><small>19 medarb.</small></div>
+              <div class="skill-tile"><strong>Salg</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div><small>34 medarb.</small></div>
+              <div class="skill-tile"><strong>Cloud / IT</strong><div class="dots"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div><small>23 medarb.</small></div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+{% endblock %}

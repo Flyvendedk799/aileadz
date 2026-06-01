@@ -6,7 +6,7 @@ pages_bp = Blueprint('pages', __name__, template_folder='templates')
 
 @pages_bp.route('/about')
 def about():
-    return render_template('about.html')
+    return render_template('fm/about.html')
 
 @pages_bp.route('/contact')
 def contact():
@@ -14,22 +14,22 @@ def contact():
 
 @pages_bp.route('/support')
 def support():
-    return render_template('support.html')
+    return render_template('fm/support.html')
 
 @pages_bp.route('/privacy')
 def privacy():
-    return render_template('privacy.html')
+    return render_template('fm/privacy.html')
 
 @pages_bp.route('/terms')
 def terms():
-    return render_template('terms.html')
+    return render_template('fm/terms.html')
 
 @pages_bp.route('/notifications')
 def notifications():
     if 'user' not in session:
         flash("Log ind for at se notifikationer.", "danger")
         return redirect(url_for('auth.login'))
-    return render_template('notifications.html')
+    return render_template('fm/notifications.html')
 
 @pages_bp.route('/analytics')
 def analytics():
@@ -81,7 +81,7 @@ def analytics():
         current_app.logger.error("Error fetching user credits: %s", e)
         current_credits = 0
     
-    return render_template('analytics.html',
+    return render_template('fm/analytics.html',
                            labels=sorted_dates,
                            usage=usage_values,
                            total_used=total_credits_used,
@@ -188,10 +188,10 @@ def settings():
         
         return redirect(url_for('pages.settings'))
     
-    return render_template('indstillinger.html', user=user_data)
+    return render_template('fm/settings.html', user=user_data)
 
 
 
 @pages_bp.route('/profile')
 def profile():
-    return render_template('profile.html')
+    return render_template('fm/my_profile.html')

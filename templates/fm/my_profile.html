@@ -1,0 +1,238 @@
+{% extends "fm_base.html" %}
+{% block page_id %}profile{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Profil &amp; CV{% endblock %}
+{% block topbar_sub %}Din kompetenceprofil — jo mere udfyldt, jo bedre anbefalinger.{% endblock %}
+{% block extra_head %}
+<style>
+  /* level palette (progression heat) */
+  :root { --lv-begynder: var(--fm-info); --lv-mellem: var(--fm-primary); --lv-avanceret: var(--fm-gold); --lv-ekspert: var(--fm-clay); }
+
+  /* hero */
+  .cv-hero { display: grid; grid-template-columns: 1fr auto; gap: 28px; align-items: center; padding: 30px 32px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; margin-bottom: 16px; }
+  .cv-hero::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(70% 130% at 100% 0%, var(--fm-primary-tint), transparent 55%), radial-gradient(60% 90% at 0% 100%, var(--fm-clay-tint), transparent 55%); opacity: .8; }
+  .cv-hero > * { position: relative; }
+  .cv-id { display: flex; gap: 20px; align-items: center; }
+  .cv-av { width: 92px; height: 92px; flex: 0 0 92px; border-radius: 26px; display: grid; place-items: center; font-family: var(--ff-display); font-size: 36px; font-weight: 700; color: #fff; background: linear-gradient(140deg, var(--fm-indigo), var(--fm-primary)); box-shadow: var(--sh-glow); }
+  .cv-id h1 { font-size: clamp(24px,2.8vw,32px); letter-spacing: -.03em; line-height: 1.05; }
+  .cv-headline { color: var(--fm-ink-2); font-size: 15px; margin-top: 5px; line-height: 1.4; }
+  .cv-meta { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+  .cv-actions { display: flex; gap: 8px; margin-top: 14px; flex-wrap: wrap; }
+
+  /* completeness ring + breakdown */
+  .cv-complete { display: flex; gap: 20px; align-items: center; }
+  .ring-big { width: 130px; height: 130px; flex: 0 0 130px; border-radius: 999px; display: grid; place-items: center; background: conic-gradient(var(--fm-primary) calc(var(--p,72)*1%), var(--fm-surface-3) 0); transition: background .9s var(--ease); }
+  .ring-big > div { width: 102px; height: 102px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; text-align: center; }
+  .ring-big .pct { font-family: var(--ff-display); font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+  .ring-big .lab { font-size: 10px; color: var(--fm-ink-3); margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; font-family: var(--ff-mono); }
+  .breakdown { display: flex; flex-direction: column; gap: 9px; min-width: 190px; }
+  .bd-row { display: grid; grid-template-columns: 16px 1fr auto; gap: 9px; align-items: center; font-size: 12.5px; }
+  .bd-row i { font-size: 11px; }
+  .bd-row .bd-bar { height: 5px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; }
+  .bd-row .bd-bar span { display: block; height: 100%; border-radius: 999px; background: var(--fm-primary); }
+  .bd-row .bd-v { font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); }
+  .bd-row.ok i { color: var(--fm-success); } .bd-row.ok .bd-bar span { background: var(--fm-success); }
+
+  /* stat band */
+  .cv-stats { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 18px; }
+  .cv-stat { padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); }
+  .cv-stat .v { font-family: var(--ff-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
+  .cv-stat .l { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 5px; }
+  .cv-stat .v.accent { color: var(--fm-primary); }
+
+  /* competency layout */
+  .comp-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 16px; margin-bottom: 18px; align-items: stretch; }
+  .radar-legend { display: flex; gap: 16px; justify-content: center; margin-top: 6px; }
+  .radar-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fm-ink-2); }
+  .radar-legend i { width: 12px; height: 4px; border-radius: 2px; }
+
+  /* proficiency matrix */
+  .lv-group { margin-bottom: 16px; }
+  .lv-group:last-child { margin-bottom: 0; }
+  .lv-head { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
+  .lv-dot { width: 9px; height: 9px; border-radius: 999px; }
+  .lv-name { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; font-weight: 600; }
+  .lv-line { flex: 1; height: 1px; background: var(--fm-line); }
+  .lv-count { font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); }
+  .sk-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+  .sk { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 12px; border-radius: var(--r-pill); border: 1px solid var(--fm-line); background: var(--fm-surface-2); font-size: 13px; font-weight: 600; transition: var(--t); animation: pop .25s var(--ease) both; }
+  @keyframes pop { from { transform: scale(.96); } to { transform: scale(1); } }
+  .sk:hover { border-color: var(--fm-line-2); transform: translateY(-1px); box-shadow: var(--sh-xs); }
+  .sk .d { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 8px; }
+  .sk .x { width: 20px; height: 20px; border: none; background: transparent; color: var(--fm-ink-3); border-radius: 6px; display: grid; place-items: center; opacity: 0; transition: var(--t); cursor: pointer; }
+  .sk:hover .x { opacity: 1; }
+  .sk .x:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
+  .sk-add { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-pill); border: 1px dashed var(--fm-line-2); background: transparent; color: var(--fm-primary); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--t); }
+  .sk-add:hover { background: var(--fm-primary-tint); border-color: var(--fm-primary); }
+
+  .add-skill { display: none; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 14px; padding: 14px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
+  .add-skill.show { display: flex; animation: fmReveal .3s var(--ease) both; }
+
+  /* competency progression bars */
+  .prog-skill { margin-bottom: 15px; }
+  .prog-skill:last-child { margin-bottom: 0; }
+  .prog-skill .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
+  .prog-skill .nm { font-size: 13.5px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
+  .prog-skill .trend { font-size: 11px; font-weight: 700; color: var(--fm-success); display: inline-flex; align-items: center; gap: 3px; }
+  .prog-skill .track { height: 9px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; position: relative; }
+  .prog-skill .track span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--fm-primary), var(--fm-primary-300)); }
+  .prog-skill .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--fm-clay); }
+
+  /* timeline */
+  .cv-timeline { position: relative; padding-left: 28px; }
+  .cv-timeline::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: linear-gradient(to bottom, var(--fm-primary), var(--fm-primary-300), transparent); }
+  .tlx { position: relative; padding: 0 0 18px; }
+  .tlx:last-child { padding-bottom: 0; }
+  .tlx::before { content: ""; position: absolute; left: -23px; top: 4px; width: 13px; height: 13px; border-radius: 999px; background: var(--fm-surface); border: 2.5px solid var(--fm-primary); }
+  .tlx.current::before { background: var(--fm-success); border-color: var(--fm-success); box-shadow: 0 0 0 4px color-mix(in srgb,var(--fm-success) 18%,transparent); }
+  .tlx-card { padding: 14px 16px; border-radius: var(--r-md); border: 1px solid var(--fm-line); background: var(--fm-surface-2); transition: var(--t); }
+  .tlx-card:hover { border-color: var(--fm-line-2); box-shadow: var(--sh-xs); }
+  .tlx-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+  .tlx-top > div:first-child { flex: 1; min-width: 0; }
+  .tlx-period { flex: 0 0 auto; }
+  .tlx-title { font-size: 14.5px; font-weight: 700; }
+  .tlx-sub { font-size: 13px; color: var(--fm-ink-2); margin-top: 1px; }
+  .tlx-period { font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); white-space: nowrap; }
+  .tlx-dur { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600; color: var(--fm-primary); background: var(--fm-primary-tint); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
+  .tlx-desc { font-size: 13px; color: var(--fm-ink-2); margin-top: 8px; line-height: 1.55; }
+
+  /* education + cert cards */
+  .edu-card { display: flex; gap: 13px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
+  .edu-ic { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 11px; display: grid; place-items: center; font-size: 15px; background: color-mix(in srgb,var(--fm-gold) 16%,transparent); color: var(--fm-gold); }
+  .cert-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); position: relative; overflow: hidden; }
+  .cert-card::after { content: ""; position: absolute; top: -20px; right: -20px; width: 70px; height: 70px; border-radius: 999px; background: var(--fm-primary-tint); opacity: .6; }
+  .cert-card > * { position: relative; }
+  .cert-ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 16px; background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .cert-card.gold .cert-ic { background: color-mix(in srgb,var(--fm-gold) 18%,transparent); color: var(--fm-gold); }
+  .cert-card.gold::after { background: color-mix(in srgb,var(--fm-gold) 14%,transparent); }
+
+  /* AI nudge */
+  .ai-nudge { display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-radius: var(--r-card); border: 1px solid var(--fm-primary-300); background: linear-gradient(100deg, var(--fm-primary-tint), transparent 70%), var(--fm-surface); box-shadow: var(--sh-sm); margin-bottom: 18px; }
+  .ai-nudge .ai-ic { width: 48px; height: 48px; flex: 0 0 48px; border-radius: 14px; display: grid; place-items: center; font-size: 19px; color: #fff; background: linear-gradient(140deg, var(--fm-primary), var(--fm-primary-700)); box-shadow: var(--sh-glow); }
+  [data-theme="dark"] .ai-nudge .ai-ic { color: #06201d; }
+
+  /* toast */
+  .toasts { position: fixed; top: 16px; right: 16px; z-index: 200; display: flex; flex-direction: column; gap: 9px; }
+  .toast { display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-radius: 12px; background: var(--fm-surface); border: 1px solid var(--fm-line); border-left: 3px solid var(--fm-success); box-shadow: var(--sh-md); font-size: 13px; font-weight: 600; animation: fmReveal .3s var(--ease) both; }
+  .toast i { color: var(--fm-success); }
+
+  @media (max-width: 1080px){ .cv-hero { grid-template-columns: 1fr; } .comp-grid { grid-template-columns: 1fr; } .cv-stats { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 560px){ .cv-stats { grid-template-columns: 1fr; } .cv-id { flex-direction: column; text-align: center; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+
+        <!-- Hero -->
+        <section class="cv-hero" data-reveal>
+          <div class="cv-id">
+            <span class="cv-av">JV</span>
+            <div>
+              <h1>Jonas Vester</h1>
+              <div class="cv-headline">Senior Developer · projektledelse &amp; agil udvikling</div>
+              <div class="cv-meta">
+                <span class="fm-badge"><i class="fa-solid fa-building"></i> Udvikling</span>
+                <span class="fm-badge"><i class="fa-solid fa-location-dot"></i> København</span>
+                <span class="fm-badge teal dot">Aktiv</span>
+              </div>
+              <div class="cv-actions">
+                <button class="btn btn-soft btn-sm" onclick="openAdd()"><i class="fa-solid fa-plus"></i> Tilføj kompetence</button>
+                <button class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Rediger profil</button>
+              </div>
+            </div>
+          </div>
+          <div class="cv-complete">
+            <div class="ring-big" id="ringBig" style="--p:72"><div><div><span class="pct" id="ringPct">72%</span><div class="lab">Udfyldt</div></div></div></div>
+            <div class="breakdown">
+              <div class="bd-row ok"><i class="fa-solid fa-circle-check"></i><div class="bd-bar"><span style="width:100%"></span></div><span class="bd-v">Profil</span></div>
+              <div class="bd-row ok"><i class="fa-solid fa-circle-check"></i><div class="bd-bar"><span style="width:100%"></span></div><span class="bd-v">Kompetencer</span></div>
+              <div class="bd-row"><i class="fa-solid fa-circle-half-stroke" style="color:var(--fm-warning)"></i><div class="bd-bar"><span style="width:60%"></span></div><span class="bd-v">Erfaring</span></div>
+              <div class="bd-row ok"><i class="fa-solid fa-circle-check"></i><div class="bd-bar"><span style="width:100%"></span></div><span class="bd-v">Uddannelse</span></div>
+              <div class="bd-row"><i class="fa-regular fa-circle" style="color:var(--fm-ink-3)"></i><div class="bd-bar"><span style="width:30%"></span></div><span class="bd-v">Mål</span></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Stats -->
+        <section class="cv-stats">
+          <div class="cv-stat" data-reveal data-d="1"><div class="v accent tnum" id="statSkills">9</div><div class="l">Kompetencer</div></div>
+          <div class="cv-stat" data-reveal data-d="2"><div class="v tnum">7</div><div class="l">Års erfaring</div></div>
+          <div class="cv-stat" data-reveal data-d="3"><div class="v tnum">3</div><div class="l">Stillinger</div></div>
+          <div class="cv-stat" data-reveal data-d="4"><div class="v tnum">4</div><div class="l">Kurser</div></div>
+          <div class="cv-stat" data-reveal data-d="5"><div class="v tnum">2</div><div class="l">Certifikater</div></div>
+        </section>
+
+        <!-- AI nudge -->
+        <div class="ai-nudge" data-reveal>
+          <span class="ai-ic"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+          <div style="flex:1"><div style="font-weight:700;font-size:15px">Din profil mangler 2 ting for et perfekt match</div><div style="font-size:13px;color:var(--fm-ink-2);margin-top:2px">Tilføj din seneste erfaring og et karrieremål — så finder AI’en endnu skarpere kurser til dig.</div></div>
+          <a href="{{ url_for('futurematch.chat') }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+
+        <!-- Competency: radar + progression -->
+        <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-radar"></i> Kompetenceindsigt</span><h2 class="fm-section-title">Dit niveau mod dine mål</h2></div></div>
+        <div class="comp-grid">
+          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-area"></i></span><h3>Kompetenceradar</h3></div>
+            <div class="fm-card-body"><div style="height:300px"><canvas id="radar"></canvas></div>
+              <div class="radar-legend"><span><i style="background:var(--fm-primary)"></i> Dit niveau</span><span><i style="background:var(--fm-clay)"></i> Mål</span></div>
+            </div>
+          </div>
+          <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-arrow-trend-up"></i></span><h3>Top-kompetencer &amp; udvikling</h3></div>
+            <div class="fm-card-body">
+              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-ekspert)"></span>Projektledelse</span><span class="trend"><i class="fa-solid fa-arrow-up"></i> +1 niveau</span></div><div class="track"><span style="width:90%"></span><div class="target" style="left:100%"></div></div></div>
+              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-avanceret)"></span>Agil / Scrum</span><span class="trend"><i class="fa-solid fa-arrow-up"></i> i gang</span></div><div class="track"><span style="width:75%"></span><div class="target" style="left:90%"></div></div></div>
+              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-mellem)"></span>Dataanalyse</span><span class="trend" style="color:var(--fm-ink-3)">stabil</span></div><div class="track"><span style="width:58%"></span><div class="target" style="left:80%"></div></div></div>
+              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-mellem)"></span>Kommunikation</span><span class="trend"><i class="fa-solid fa-arrow-up"></i> +12%</span></div><div class="track"><span style="width:68%"></span><div class="target" style="left:85%"></div></div></div>
+              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-begynder)"></span>Ledelse</span><span class="trend" style="color:var(--fm-clay)">mål sat</span></div><div class="track"><span style="width:45%"></span><div class="target" style="left:80%"></div></div></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Proficiency matrix -->
+        <div class="fm-card" data-reveal><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">9 i alt</span></div>
+          <div class="fm-card-body">
+            <div id="skillMatrix"></div>
+            <div class="add-skill" id="addSkill">
+              <div class="fm-field" style="flex:2;margin:0;min-width:180px"><label>Kompetence</label><input class="fm-input" id="skName" placeholder="fx Power BI, Forhandling…" /></div>
+              <div class="fm-field" style="flex:1;margin:0;min-width:140px"><label>Niveau</label><select class="fm-select" id="skLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="avanceret">Avanceret</option><option value="ekspert">Ekspert</option></select></div>
+              <button class="btn btn-primary" onclick="addSkill()">Tilføj</button>
+              <button class="btn btn-ghost" onclick="openAdd(false)">Annullér</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Career + education -->
+        <div class="split" style="margin-top:18px">
+          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="btn btn-ghost btn-sm" style="margin-left:auto"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card-body">
+              <div class="cv-timeline">
+                <div class="tlx current"><div class="tlx-card"><div class="tlx-top"><div><div class="tlx-title">Senior Developer</div><div class="tlx-sub">Nordi A/S · Udvikling</div></div><span class="tlx-period">2021 – nu</span></div><span class="tlx-dur">5 år</span><div class="tlx-desc">Tech lead på agile teams, ansvarlig for arkitektur og mentoring af juniorer.</div></div></div>
+                <div class="tlx"><div class="tlx-card"><div class="tlx-top"><div><div class="tlx-title">Software Developer</div><div class="tlx-sub">Trifork</div></div><span class="tlx-period">2019 – 2021</span></div><span class="tlx-dur">2 år</span><div class="tlx-desc">Fuldstack-udvikling på kundeprojekter i finanssektoren.</div></div></div>
+                <div class="tlx"><div class="tlx-card"><div class="tlx-top"><div><div class="tlx-title">Junior Developer</div><div class="tlx-sub">IT Minds</div></div><span class="tlx-period">2018 – 2019</span></div><span class="tlx-dur">1 år</span></div></div>
+              </div>
+            </div>
+          </div>
+          <div class="stack">
+            <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3></div>
+              <div class="fm-card-body" style="display:flex;flex-direction:column;gap:10px">
+                <div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-user-graduate"></i></span><div><div style="font-weight:700;font-size:14px">Cand.polyt. i Softwareteknologi</div><div style="font-size:12.5px;color:var(--fm-ink-2)">DTU · 2018</div></div></div>
+                <div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-book"></i></span><div><div style="font-weight:700;font-size:14px">Datamatiker</div><div style="font-size:12.5px;color:var(--fm-ink-2)">KEA · 2015</div></div></div>
+              </div>
+            </div>
+            <div class="fm-card" data-reveal data-d="3"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
+              <div class="fm-card-body"><p style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">Blive certificeret projektleder og tage skridtet mod en team lead-rolle inden for 2 år.</p><button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</button></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Certifications / completed courses -->
+        <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser &amp; certifikater</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>
+        <div class="fm-grid" style="grid-template-columns:repeat(4,1fr)">
+          <div class="cert-card gold" data-reveal data-d="1"><span class="cert-ic"><i class="fa-solid fa-certificate"></i></span><div><div style="font-weight:700;font-size:14px">PRINCE2 Foundation</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">Confex · 2024</div></div><span class="fm-badge amber" style="align-self:flex-start"><i class="fa-solid fa-shield"></i> Certificeret</span></div>
+          <div class="cert-card" data-reveal data-d="2"><span class="cert-ic"><i class="fa-solid fa-diagram-project"></i></span><div><div style="font-weight:700;font-size:14px">Projektledelse Praktisk</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">Teknologisk Institut · 2024</div></div><span class="fm-badge green" style="align-self:flex-start"><i class="fa-solid fa-check"></i> Gennemført</span></div>
+          <div class="cert-card gold" data-reveal data-d="3"><span class="cert-ic"><i class="fa-solid fa-certificate"></i></span><div><div style="font-weight:700;font-size:14px">Scrum Fundamentals</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">IBC · 2023</div></div><span class="fm-badge amber" style="align-self:flex-start"><i class="fa-solid fa-shield"></i> Certificeret</span></div>
+          <div class="cert-card" data-reveal data-d="4"><span class="cert-ic"><i class="fa-solid fa-table-cells"></i></span><div><div style="font-weight:700;font-size:14px">Excel Grundkursus</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">Mannaz · 2023</div></div><span class="fm-badge green" style="align-self:flex-start"><i class="fa-solid fa-check"></i> Gennemført</span></div>
+        </div>
+
+      </div>
+{% endblock %}

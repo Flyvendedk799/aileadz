@@ -1,0 +1,16 @@
+{% extends "fm_base.html" %}
+{% block page_id %}company{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Opret virksomhed{% endblock %}
+{% block topbar_sub %}Onboard en ny tenant på Futurematch.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div style="max-width:760px;margin:0 auto"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsoplysninger</h3></div><div class="fm-card-body">
+  <div class="form-grid"><div class="fm-field full"><label>Virksomhedsnavn</label><input class="fm-input" placeholder="fx Nordi A/S"/></div>
+  <div class="fm-field"><label>CVR</label><input class="fm-input" placeholder="12345678"/></div><div class="fm-field"><label>Antal medarbejdere</label><input class="fm-input" type="number" placeholder="250"/></div>
+  <div class="fm-field full"><label>HR-manager e-mail</label><input class="fm-input" type="email" placeholder="hr@virksomhed.dk"/></div>
+  <div class="fm-field"><label>Plan</label><select class="fm-select"><option>Enterprise</option><option>Business</option><option>Starter</option></select></div>
+  <div class="fm-field"><label>White-label</label><select class="fm-select"><option>Ja</option><option>Nej</option></select></div></div>
+  </div></div></div>
+</div>
+{% endblock %}

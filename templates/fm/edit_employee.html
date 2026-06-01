@@ -2,18 +2,75 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Redigér medarbejder{% endblock %}
-{% block topbar_sub %}Sara Lind · Produkt-afdelingen.{% endblock %}
+{% block topbar_sub %}{{ employee.full_name or employee.username }} · {{ employee.department or 'medarbejder' }}.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.showcase', page='employee_details') }}">Sara Lind</a><i class="fa-solid fa-chevron-right"></i><span>Redigér</span></div>
-  <div style="max-width:720px;margin:0 auto"><div class="fm-card"><div class="fm-card-body">
-  <div class="form-grid"><div class="fm-field"><label>Fornavn</label><input class="fm-input" value="Sara"/></div><div class="fm-field"><label>Efternavn</label><input class="fm-input" value="Lind"/></div>
-  <div class="fm-field full"><label>E-mail</label><input class="fm-input" type="email" value="sara@nordi.dk"/></div>
-  <div class="fm-field"><label>Afdeling</label><select class="fm-select"><option>Produkt</option><option>Udvikling</option><option>Salg</option><option>HR</option></select></div>
-  <div class="fm-field"><label>Stilling</label><input class="fm-input" value="Product Owner"/></div>
-  <div class="fm-field"><label>Rolle</label><select class="fm-select"><option>Medarbejder</option><option>Afdelingsleder</option></select></div>
-  <div class="fm-field"><label>Status</label><select class="fm-select"><option>Aktiv</option><option>Inaktiv</option></select></div></div>
-  <div style="margin-top:8px;padding-top:16px;border-top:1px solid var(--fm-line)"><button class="btn btn-ghost btn-sm" style="color:var(--fm-danger);border-color:color-mix(in srgb,var(--fm-danger) 30%,var(--fm-line))"><i class="fa-solid fa-user-slash"></i> Deaktivér medarbejder</button></div>
-  </div></div></div>
+<div class="crumb"><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>{{ employee.full_name or employee.username }}</span></div>
+<div style="max-width:760px;margin:0 auto">
+  <form method="POST" action="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user-pen"></i></span><h3>Redigér medarbejder</h3></div><div class="fm-card-body">
+    <div class="split">
+      <div class="stack">
+        <div class="fm-eyebrow"><i class="fa-solid fa-id-card"></i> Personoplysninger</div>
+        <div class="fm-field"><label>Fulde navn</label><input type="text" class="fm-input" value="{{ employee.full_name or employee.username or '' }}" disabled><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Navn kan kun ændres af brugeren selv.</div></div>
+        <div class="fm-field"><label>Email</label><input type="email" class="fm-input" value="{{ employee.email or '' }}" disabled></div>
+        <div class="fm-field"><label>Medarbejder-ID</label><input type="text" class="fm-input" name="employee_id" value="{{ employee.employee_id or '' }}"></div>
+        <div class="fm-field"><label>Ansættelsesdato</label><input type="text" class="fm-input" value="{{ employee.hire_date or 'Ikke angivet' }}" disabled></div>
+      </div>
+      <div class="stack">
+        <div class="fm-eyebrow clay"><i class="fa-solid fa-briefcase"></i> Arbejdsinformation</div>
+        <div class="fm-field"><label>Afdeling *</label>
+          <select class="fm-select" name="department" required>
+            <option value="">Vælg afdeling</option>
+            {% for dept in departments %}<option value="{{ dept }}" {% if employee.department == dept %}selected{% endif %}>{{ dept }}</option>{% endfor %}
+          </select>
+        </div>
+        <div class="fm-field"><label>Jobtitel</label><input type="text" class="fm-input" name="job_title" value="{{ employee.job_title or '' }}"></div>
+        <div class="fm-field"><label>Systemrolle *</label>
+          <select class="fm-select" name="role" required>
+            <option value="employee" {% if employee.role == 'employee' %}selected{% endif %}>Medarbejder</option>
+            <option value="department_head" {% if employee.role == 'department_head' %}selected{% endif %}>Afdelingsleder</option>
+            <option value="hr_manager" {% if employee.role == 'hr_manager' %}selected{% endif %}>HR Manager</option>
+            {% if session.get('company_role') == 'company_admin' %}<option value="company_admin" {% if employee.role == 'company_admin' %}selected{% endif %}>Virksomhedsadmin</option>{% endif %}
+          </select>
+        </div>
+        <div class="form-grid">
+          <div class="fm-field"><label>Ansættelsestype</label>
+            <select class="fm-select" name="employment_type">
+              <option value="full_time" {% if employee.employment_type == 'full_time' %}selected{% endif %}>Fuldtid</option>
+              <option value="part_time" {% if employee.employment_type == 'part_time' %}selected{% endif %}>Deltid</option>
+              <option value="contract" {% if employee.employment_type == 'contract' %}selected{% endif %}>Kontrakt</option>
+              <option value="intern" {% if employee.employment_type == 'intern' %}selected{% endif %}>Praktikant</option>
+            </select>
+          </div>
+          <div class="fm-field"><label>Status</label>
+            <select class="fm-select" name="status">
+              <option value="active" {% if employee.status == 'active' %}selected{% endif %}>Aktiv</option>
+              <option value="inactive" {% if employee.status == 'inactive' %}selected{% endif %}>Inaktiv</option>
+              <option value="on_leave" {% if employee.status == 'on_leave' %}selected{% endif %}>Orlov</option>
+            </select>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {% if employee.total_chatbot_queries or employee.total_courses_completed %}
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--fm-line)">
+      <div class="fm-eyebrow" style="margin-bottom:10px"><i class="fa-solid fa-chart-simple"></i> Aktivitetsoversigt</div>
+      <div class="kpi-row">
+        <div class="kpi-tile"><div class="kl">Chatbot-henvendelser</div><div class="kv tnum">{{ employee.total_chatbot_queries or 0 }}</div></div>
+        <div class="kpi-tile"><div class="kl">Kurser gennemført</div><div class="kv tnum">{{ employee.total_courses_completed or 0 }}</div></div>
+        <div class="kpi-tile"><div class="kl">Seneste aktivitet</div><div class="kv" style="font-size:15px">{{ employee.last_chatbot_interaction or 'Ingen' }}</div></div>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="fm-flex" style="justify-content:space-between;margin-top:16px">
+      <a href="{{ url_for('companies.employees') }}" class="btn btn-ghost"><i class="fa-solid fa-arrow-left"></i> Annuller</a>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem ændringer</button>
+    </div>
+  </div></div>
+  </form>
+</div>
 </div>
 {% endblock %}

@@ -2,7 +2,7 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}HR-workspace{% endblock %}
-{% block topbar_sub %}Nordi A/S · medarbejdere, kompetencer, læring og AI-aktivitet.{% endblock %}
+{% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · medarbejdere, kompetencer, læring og AI-aktivitet.{% endblock %}
 {% block extra_head %}
 <style>
   .hr-tabs { display: flex; gap: 4px; padding: 4px; border-radius: var(--r-ctrl); background: var(--fm-surface-3); border: 1px solid var(--fm-line); width: max-content; margin-bottom: 22px; overflow-x: auto; max-width: 100%; }
@@ -50,55 +50,73 @@
 <div class="fm-wrap">
         <div class="hr-tabs">
           <a class="hr-tab active" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
-          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
-          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
-          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
-          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a>
-          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
-          <a class="hr-tab" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
+          <a class="hr-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
+          <a class="hr-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
+          <a class="hr-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
+          <a class="hr-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a>
+          <a class="hr-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
+          <a class="hr-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
         </div>
 
+        {% set m = hr_metrics or {} %}
+        {% set lm = learning_metrics or {} %}
         <!-- KPIs -->
         <section class="hr-kpis">
-          <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">248</div><div class="det">231 aktive · 8 nye (30 d)</div></div></article>
-          <article class="hr-kpi green" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift</div><div class="val tnum">68%</div><div class="det">412 gennemført · 96 i gang</div></div></article>
-          <article class="hr-kpi indigo" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer</div><div class="val tnum">37</div><div class="det">29 gennemført · 7 afventer</div></div></article>
-          <article class="hr-kpi clay" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelses-ROI</div><div class="val tnum">284k</div><div class="det">31% konvertering · 1.204 samtaler</div></div></article>
+          <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">{{ m.total_employees or 0 }}</div><div class="det">{{ m.active_employees or 0 }} aktive · {{ m.new_hires_30_days or 0 }} nye (30 d)</div></div></article>
+          <article class="hr-kpi green" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift</div><div class="val tnum">{{ completion_rate or 0 }}%</div><div class="det">{{ lm.completed_courses or 0 }} gennemført · {{ lm.in_progress_courses or 0 }} i gang</div></div></article>
+          <article class="hr-kpi indigo" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer</div><div class="val tnum">{{ lm.total_enrollments or 0 }}</div><div class="det">{{ completed_orders_count or 0 }} gennemført · {{ pending_orders_count or 0 }} afventer</div></div></article>
+          <article class="hr-kpi clay" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelses-ROI</div><div class="val tnum">{{ '{:,.0f}'.format(roi_total_spend or 0) }}</div><div class="det">{{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></article>
         </section>
 
+        {% set dh = dashboard_health or {} %}
         <!-- Signals -->
         <section class="signal-strip">
-          <div class="signal" data-reveal data-d="1"><div class="lab">Aktiv base</div><div class="val tnum">93%</div><div class="det">231 aktive af 248</div><div class="fm-prog"><span style="width:93%"></span></div></div>
-          <div class="signal" data-reveal data-d="2"><div class="lab">Kompetencedækning</div><div class="val tnum">76%</div><div class="det">188 med registrerede kompetencer</div><div class="fm-prog"><span style="width:76%"></span></div></div>
-          <div class="signal" data-reveal data-d="3"><div class="lab">Læringsdeltagelse</div><div class="val tnum">64%</div><div class="det">159 medarbejdere med kurser</div><div class="fm-prog"><span style="width:64%"></span></div></div>
-          <div class="signal" data-reveal data-d="4"><div class="lab">AI-engagement</div><div class="val tnum">58%</div><div class="det">144 bruger assistenten</div><div class="fm-prog"><span style="width:58%"></span></div></div>
+          <div class="signal" data-reveal data-d="1"><div class="lab">Aktiv base</div><div class="val tnum">{{ dh.active_employee_rate or 0 }}%</div><div class="det">{{ m.active_employees or 0 }} aktive af {{ m.total_employees or 0 }}</div><div class="fm-prog"><span style="width:{{ dh.active_employee_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="2"><div class="lab">Kompetencedækning</div><div class="val tnum">{{ dh.skills_coverage_rate or 0 }}%</div><div class="det">{{ (skills_summary.employees_with_skills if skills_summary else 0) }} med registrerede kompetencer</div><div class="fm-prog"><span style="width:{{ dh.skills_coverage_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="3"><div class="lab">Læringsdeltagelse</div><div class="val tnum">{{ training_participation_rate or 0 }}%</div><div class="det">{{ lm.employees_with_training or 0 }} medarbejdere med kurser</div><div class="fm-prog"><span style="width:{{ training_participation_rate or 0 }}%"></span></div></div>
+          <div class="signal" data-reveal data-d="4"><div class="lab">AI-engagement</div><div class="val tnum">{{ engagement_rate or 0 }}%</div><div class="det">{{ (engagement_metrics.employees_using_chatbot if engagement_metrics else 0) }} bruger assistenten</div><div class="fm-prog"><span style="width:{{ engagement_rate or 0 }}%"></span></div></div>
         </section>
 
         <!-- Approvals banner -->
+        {% if pending_approvals_count and pending_approvals_count > 0 %}
         <div class="banner" data-reveal data-d="1">
           <span class="bic"><i class="fa-solid fa-clipboard-check"></i></span>
           <div style="flex:1">
-            <div style="font-weight:700;color:var(--fm-ink)">7 ordrer afventer godkendelse</div>
+            <div style="font-weight:700;color:var(--fm-ink)">{{ pending_approvals_count }} ordrer afventer godkendelse</div>
             <div style="font-size:12.5px;color:var(--fm-ink-2)">Medarbejdere har bestilt kurser der kræver din godkendelse.</div>
           </div>
-          <button class="btn btn-clay btn-sm">Se godkendelser <i class="fa-solid fa-arrow-right"></i></button>
+          <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-clay btn-sm">Se godkendelser <i class="fa-solid fa-arrow-right"></i></a>
         </div>
+        {% endif %}
 
         <!-- Orders table + sidebar -->
         <div class="hr-cols">
           <div class="fm-table-wrap" data-reveal data-d="1">
             <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
               <div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-cart-shopping"></i></span><h3 style="font-size:15px;font-weight:700">Kursusordrer</h3></div>
-              <a href="#" class="fm-badge teal">Se alle</a>
+              <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="fm-badge teal">Se alle</a>
             </div>
             <table class="fm-table">
               <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kursus</th><th>Pris</th><th>Status</th></tr></thead>
               <tbody>
-                <tr><td><div class="fm-cell-user"><span class="fm-avatar">JV</span><div><div style="font-weight:650">Jonas Vester</div><div class="muted" style="font-size:11.5px">jonas@nordi.dk</div></div></div></td><td><span class="fm-badge">Udvikling</span></td><td>Projektledelse Praktisk</td><td class="mono">8.900</td><td><span class="fm-badge green dot">Gennemført</span></td></tr>
-                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">SL</span><div><div style="font-weight:650">Sara Lind</div><div class="muted" style="font-size:11.5px">sara@nordi.dk</div></div></div></td><td><span class="fm-badge">Produkt</span></td><td>Scrum Master CSM</td><td class="mono">11.200</td><td><span class="fm-badge amber dot">Afventer godk.</span></td></tr>
-                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">AK</span><div><div style="font-weight:650">Anders Kjær</div><div class="muted" style="font-size:11.5px">anders@nordi.dk</div></div></div></td><td><span class="fm-badge">Salg</span></td><td>B2B Salg & Forhandling</td><td class="mono">7.100</td><td><span class="fm-badge teal dot">Godkendt</span></td></tr>
-                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,#8a55a0,var(--fm-primary))">ML</span><div><div style="font-weight:650">Mia Lund</div><div class="muted" style="font-size:11.5px">mia@nordi.dk</div></div></div></td><td><span class="fm-badge">HR</span></td><td>GDPR i Praksis</td><td class="mono">3.200</td><td><span class="fm-badge green dot">Gennemført</span></td></tr>
-                <tr><td><div class="fm-cell-user"><span class="fm-avatar" style="background:linear-gradient(140deg,#c8973a,var(--fm-clay))">TP</span><div><div style="font-weight:650">Thomas Poulsen</div><div class="muted" style="font-size:11.5px">thomas@nordi.dk</div></div></div></td><td><span class="fm-badge">IT</span></td><td>Azure Fundamentals AZ-900</td><td class="mono">4.800</td><td><span class="fm-badge red dot">Afvist</span></td></tr>
+                {% for o in (recent_orders or [])[:8] %}
+                {% set st = o.status %}
+                <tr>
+                  <td><div class="fm-cell-user"><span class="fm-avatar">{{ (o.user_name or o.username or '?')[:2]|upper }}</span><div><div style="font-weight:650">{{ o.user_name or o.username or 'N/A' }}</div><div class="muted" style="font-size:11.5px">{{ o.user_email or '' }}</div></div></div></td>
+                  <td><span class="fm-badge">{{ o.department or '—' }}</span></td>
+                  <td>{{ o.product_title }}</td>
+                  <td class="mono">{{ o.price }}</td>
+                  <td>
+                    {% if st == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
+                    {% elif st in ['pending','pending_approval'] %}<span class="fm-badge amber dot">Afventer</span>
+                    {% elif st == 'approved' %}<span class="fm-badge teal dot">Godkendt</span>
+                    {% elif st == 'rejected' %}<span class="fm-badge red dot">Afvist</span>
+                    {% else %}<span class="fm-badge">{{ st }}</span>{% endif %}
+                  </td>
+                </tr>
+                {% else %}
+                <tr><td colspan="5" class="muted" style="text-align:center;padding:20px">Ingen ordrer endnu.</td></tr>
+                {% endfor %}
               </tbody>
             </table>
           </div>
@@ -107,34 +125,39 @@
             <div class="fm-card" data-reveal data-d="2">
               <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Afdelingsperformance</h3></div>
               <div class="fm-card-body" style="padding-top:8px">
-                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">Udvikling</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">62 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-success)">91%</span></div><div class="fm-prog thin"><span style="width:91%;background:var(--fm-success)"></span></div></div>
-                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">Salg</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">48 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-info)">74%</span></div><div class="fm-prog thin"><span style="width:74%;background:var(--fm-info)"></span></div></div>
-                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">Produkt</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">31 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-warning)">58%</span></div><div class="fm-prog thin"><span style="width:58%;background:var(--fm-warning)"></span></div></div>
-                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">HR</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">12 medarbejdere</div></div><span style="font-weight:700;color:var(--fm-success)">88%</span></div><div class="fm-prog thin"><span style="width:88%;background:var(--fm-success)"></span></div></div>
+                {% for d in (department_performance or [])[:6] %}
+                {% set rate = (d.completion_rate or 0)|float %}
+                <div class="dept-row"><div class="fm-spread" style="margin-bottom:8px"><div><strong style="font-size:13.5px">{{ d.department or '—' }}</strong><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">{{ d.employee_count or 0 }} medarbejdere</div></div><span style="font-weight:700;color:{{ 'var(--fm-success)' if rate >= 80 else ('var(--fm-info)' if rate >= 60 else 'var(--fm-warning)') }}">{{ rate|round(0)|int }}%</span></div><div class="fm-prog thin"><span style="width:{{ rate }}%;background:{{ 'var(--fm-success)' if rate >= 80 else ('var(--fm-info)' if rate >= 60 else 'var(--fm-warning)') }}"></span></div></div>
+                {% else %}
+                <div class="muted" style="font-size:12.5px">Ingen afdelingsdata.</div>
+                {% endfor %}
               </div>
             </div>
             <div class="fm-card" data-reveal data-d="3">
               <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Seneste AI-samtaler</h3></div>
               <div class="fm-card-body" style="padding-top:6px">
-                <div class="stat-mini"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">Jonas Vester</span></div><span class="fm-badge">8 beskeder</span></div>
-                <div class="stat-mini"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">Sara Lind</span></div><span class="fm-badge">14 beskeder</span></div>
-                <div class="stat-mini"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">Mia Lund</span></div><span class="fm-badge">5 beskeder</span></div>
+                {% for s in (recent_sessions or [])[:5] %}
+                <a class="stat-mini" style="text-decoration:none;color:inherit" href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=s.session_id) }}"><div class="fm-flex fm-ac fm-gap8"><i class="fa-solid fa-circle-user" style="color:var(--fm-ink-3)"></i><span style="font-size:13px;font-weight:600">{{ s.username or 'Ukendt' }}</span></div><span class="fm-badge">{{ s.query_count or 0 }} beskeder</span></a>
+                {% else %}
+                <div class="muted" style="font-size:12.5px">Ingen samtaler endnu.</div>
+                {% endfor %}
               </div>
             </div>
           </div>
         </div>
 
         <!-- Skills -->
+        {% set ss = skills_summary or {} %}
         <div class="fm-card" data-reveal data-d="1">
-          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3><span class="fm-badge teal" style="margin-left:auto">3,8/5 gns.</span></div>
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3>{% if dh.avg_top_skill_level %}<span class="fm-badge teal" style="margin-left:auto">{{ dh.avg_top_skill_level }}/4 gns.</span>{% endif %}</div>
           <div class="fm-card-body">
             <div class="skill-tiles">
-              <div class="skill-tile"><strong>Projektledelse</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div><small>42 medarb.</small></div>
-              <div class="skill-tile"><strong>Excel / Data</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div><small>61 medarb.</small></div>
-              <div class="skill-tile"><strong>Ledelse</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span></span></div><small>28 medarb.</small></div>
-              <div class="skill-tile"><strong>GDPR / Jura</strong><div class="dots"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div><small>19 medarb.</small></div>
-              <div class="skill-tile"><strong>Salg</strong><div class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span></span><span></span></div><small>34 medarb.</small></div>
-              <div class="skill-tile"><strong>Cloud / IT</strong><div class="dots"><span class="on"></span><span class="on"></span><span></span><span></span><span></span></div><small>23 medarb.</small></div>
+              {% for sk in (ss.top_skills or [])[:6] %}
+              {% set lvl = (sk.avg_level or 0)|float|round(0)|int %}
+              <div class="skill-tile"><strong>{{ sk.skill_name }}</strong><div class="dots">{% for i in range(1,6) %}<span class="{{ 'on' if i <= lvl }}"></span>{% endfor %}</div><small>{{ sk.employee_count or 0 }} medarb.</small></div>
+              {% else %}
+              <div class="muted" style="font-size:12.5px">Ingen kompetencedata registreret endnu.</div>
+              {% endfor %}
             </div>
           </div>
         </div>

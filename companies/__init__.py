@@ -170,15 +170,15 @@ def create_companies_blueprint():
             # Validation
             if not company_name:
                 flash("Virksomhedsnavn er påkrævet.", "danger")
-                return render_template('companies/register.html')
+                return render_template('fm/company_register.html')
 
             if hr_mode == 'new' and not all([hr_name, hr_username, hr_email, hr_password]):
                 flash("Udfyld venligst alle felter for HR-manageren (navn, brugernavn, e-mail, password).", "danger")
-                return render_template('companies/register.html')
+                return render_template('fm/company_register.html')
 
             if hr_mode == 'existing' and not existing_user_id:
                 flash("Vælg venligst en eksisterende bruger.", "danger")
-                return render_template('companies/register.html')
+                return render_template('fm/company_register.html')
 
             # Generate company slug
             company_slug = ''.join(c.lower() if c.isalnum() else '-' for c in company_name)
@@ -228,7 +228,7 @@ def create_companies_blueprint():
                     if not user_row:
                         flash("Brugeren blev ikke fundet.", "danger")
                         cur.close()
-                        return render_template('companies/register.html')
+                        return render_template('fm/company_register.html')
                     user_id = user_row['id']
                     hr_name = user_row['username']
                     hr_email = user_row['email']
@@ -238,7 +238,7 @@ def create_companies_blueprint():
                     if cur.fetchone():
                         flash("En bruger med dette brugernavn eller e-mail eksisterer allerede. Brug 'Eksisterende bruger' i stedet.", "danger")
                         cur.close()
-                        return render_template('companies/register.html')
+                        return render_template('fm/company_register.html')
 
                     # Use the password provided by admin
                     generated_password = hr_password
@@ -303,7 +303,7 @@ def create_companies_blueprint():
 
                 # Show success with credentials if new user was created
                 if generated_password:
-                    return render_template('companies/register_success.html',
+                    return render_template('fm/register_success.html',
                         company_name=company_name,
                         company_slug=company_slug,
                         hr_name=hr_name,
@@ -312,7 +312,7 @@ def create_companies_blueprint():
                         is_new_user=True
                     )
                 else:
-                    return render_template('companies/register_success.html',
+                    return render_template('fm/register_success.html',
                         company_name=company_name,
                         company_slug=company_slug,
                         hr_name=hr_name,
@@ -325,9 +325,9 @@ def create_companies_blueprint():
                 flash("Der opstod en fejl under oprettelsen. Prøv venligst igen.", "danger")
                 if 'cur' in locals():
                     cur.close()
-                return render_template('companies/register.html')
+                return render_template('fm/company_register.html')
 
-        return render_template('companies/register.html')
+        return render_template('fm/company_register.html')
 
     @companies_bp.route('/dashboard')
     def dashboard():
@@ -387,7 +387,7 @@ def create_companies_blueprint():
             
             cur.close()
             
-            return render_template('companies/employees.html',
+            return render_template('fm/employees.html',
                                  company=company,
                                  employees=employees,
                                  departments=departments,
@@ -426,7 +426,7 @@ def create_companies_blueprint():
             # Validation
             if not all([full_name, username, email, password, department, job_title]):
                 flash("Udfyld venligst alle paakraevede felter.", "danger")
-                return render_template('companies/add_employee.html', company=company, departments=[])
+                return render_template('fm/add_employee.html', company=company, departments=[])
             
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -445,7 +445,7 @@ def create_companies_blueprint():
                     if cur.fetchone():
                         flash("This user is already part of your company.", "warning")
                         cur.close()
-                        return render_template('companies/add_employee.html', company=company)
+                        return render_template('fm/add_employee.html', company=company)
                 else:
                     # Create new user
                     hashed_password = generate_password_hash(password)
@@ -526,7 +526,7 @@ def create_companies_blueprint():
         except Exception as e:
             current_app.logger.error(f"Error loading departments: {e}")
         
-        return render_template('companies/add_employee.html', company=company, departments=departments, active_hr_page='employees')
+        return render_template('fm/add_employee.html', company=company, departments=departments, active_hr_page='employees')
 
     @companies_bp.route('/employees/<int:user_id>/edit', methods=['GET', 'POST'])
     def edit_employee(user_id):
@@ -596,7 +596,7 @@ def create_companies_blueprint():
             
             cur.close()
             
-            return render_template('companies/edit_employee.html',
+            return render_template('fm/edit_employee.html',
                                  company=company, employee=employee, departments=departments,
                                  active_hr_page='employees')
             
@@ -685,7 +685,7 @@ def create_companies_blueprint():
 
             cur.close()
 
-            return render_template('companies/analytics.html',
+            return render_template('fm/company_analytics.html',
                 company=company, period=period, days=days,
                 emp_stats=emp_stats, order_stats=order_stats,
                 completion_rate=completion_rate, chat_stats=chat_stats,
@@ -750,7 +750,7 @@ def create_companies_blueprint():
         except Exception:
             pass
 
-        return render_template('companies/settings.html', company=company, settings=settings)
+        return render_template('fm/company_settings.html', company=company, settings=settings)
 
     @companies_bp.route('/admin')
     def admin_companies_list():
@@ -783,7 +783,7 @@ def create_companies_blueprint():
         except Exception as e:
             current_app.logger.error(f"admin_companies_list: {e}")
         return render_template(
-            'admin/companies.html',
+            'fm/admin_companies.html',
             companies=companies,
             acting_company_id=session.get('admin_acting_company_id'),
         )
@@ -864,7 +864,7 @@ def create_companies_blueprint():
             pass
 
         return render_template(
-            'admin/company_detail.html',
+            'fm/admin_company_detail.html',
             company=company,
             features=features,
             custom_branding=bool(features.get('custom_branding')),
@@ -978,7 +978,7 @@ def create_companies_blueprint():
 
         live_branding = get_branding(company_id)
         return render_template(
-            'companies/branding.html',
+            'fm/branding.html',
             company=company,
             settings=settings,
             branding=live_branding,

@@ -27,57 +27,131 @@
         <div class="fm-section-head" style="margin-top:0">
           <div><span class="fm-eyebrow"><i class="fa-solid fa-chart-line"></i> Personlig analyse</span><h2 class="fm-section-title">Kredit- og aktivitetsanalyse</h2></div>
           <div class="fm-flex fm-gap8">
-            <span class="fm-chip credits"><i class="fa-solid fa-calendar-day"></i> 30 dage</span>
+            <a href="{{ url_for('reports.reports') }}" class="fm-chip" style="text-decoration:none"><i class="fa-solid fa-file-lines"></i> Rapporter</a>
+            <a href="{{ url_for('dashboard.dashboard') }}" class="fm-chip" style="text-decoration:none"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
           </div>
         </div>
 
         <section class="an-kpis">
-          <article class="an-kpi" data-reveal data-d="1"><div class="lab">Forbrugt</div><div class="val tnum">1.284</div><div class="det">Samlet kreditforbrug</div></article>
-          <article class="an-kpi" data-reveal data-d="2"><div class="lab">Tilgængeligt</div><div class="val tnum">420</div><div class="det"><span class="fm-badge green dot">Sund saldo</span></div></article>
-          <article class="an-kpi" data-reveal data-d="3"><div class="lab">Total base</div><div class="val tnum">1.704</div><div class="det">Forbrugt plus saldo</div></article>
-          <article class="an-kpi" data-reveal data-d="4"><div class="lab">Dagligt snit</div><div class="val tnum">42,8</div><div class="det"><span class="trend up" style="color:var(--fm-success);font-weight:700"><i class="fa-solid fa-arrow-up"></i> 6%</span> mod sidste md.</div></article>
-          <article class="an-kpi" data-reveal data-d="5"><div class="lab">Peak</div><div class="val tnum">96</div><div class="det">14. maj 2026</div></article>
+          <article class="an-kpi" data-reveal data-d="1"><div class="lab">Forbrugt</div><div class="val tnum">{{ total_used or 0 }}</div><div class="det">Samlet kreditforbrug</div></article>
+          <article class="an-kpi" data-reveal data-d="2"><div class="lab">Tilgængeligt</div><div class="val tnum">{{ current_credits or 0 }}</div><div class="det"><span class="fm-badge green dot">Aktuel saldo</span></div></article>
+          <article class="an-kpi" data-reveal data-d="3"><div class="lab">Total base</div><div class="val tnum">{{ (total_used or 0) + (current_credits or 0) }}</div><div class="det">Forbrugt plus saldo</div></article>
+          <article class="an-kpi" data-reveal data-d="4"><div class="lab">Dagligt snit</div><div class="val tnum">{{ (average_usage or 0) | round(2) }}</div><div class="det">Baseret på aktive dage</div></article>
+          <article class="an-kpi" data-reveal data-d="5"><div class="lab">Peak</div><div class="val tnum">{{ peak_usage or 0 }}</div><div class="det">{{ peak_day if peak_day else 'Ingen historik endnu' }}</div></article>
         </section>
 
         <section class="an-charts">
           <div class="chart-card" data-reveal data-d="1">
             <div class="chart-head">
               <div><h3>Forbrug over tid</h3><p>Daglig kreditaktivitet sorteret kronologisk.</p></div>
-              <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-regular fa-calendar"></i> 30 dage</span>
+              <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-regular fa-calendar"></i> {{ labels|length if labels else 0 }} dage</span>
             </div>
             <div class="chart-box"><canvas id="lineChart"></canvas></div>
           </div>
           <div class="chart-card" data-reveal data-d="2">
             <div class="chart-head">
               <div><h3>Seneste 7 dage</h3><p>Hurtig sammenligning af de nyeste dage.</p></div>
-              <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-solid fa-bolt"></i> 287</span>
+              <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-solid fa-bolt"></i> {{ last7_usage|sum if last7_usage else 0 }}</span>
             </div>
             <div class="chart-box"><canvas id="barChart"></canvas></div>
           </div>
         </section>
 
-        <section class="an-charts" style="grid-template-columns:1fr 1.5fr">
-          <div class="chart-card" data-reveal data-d="1">
-            <div class="chart-head"><div><h3>Forbrug pr. funktion</h3><p>Hvor kreditterne bruges.</p></div></div>
-            <div class="chart-box"><canvas id="doughnut"></canvas></div>
+        <div class="fm-table-wrap" data-reveal>
+          <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+            <div><h3 style="font-size:15px;font-weight:700">Detaljeret kreditforbrug</h3><div class="fm-section-sub">{{ transactions|length if transactions else 0 }} transaktioner</div></div>
+            <label class="fm-search" style="width:220px;height:36px"><i class="fa-solid fa-magnifying-glass"></i><input id="transactionSearch" type="search" placeholder="Søg transaktioner" /></label>
           </div>
-          <div class="fm-table-wrap" data-reveal data-d="2">
-            <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
-              <div><h3 style="font-size:15px;font-weight:700">Detaljeret kreditforbrug</h3><div class="fm-section-sub">38 transaktioner</div></div>
-              <label class="fm-search" style="width:220px;height:36px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg transaktioner" /></label>
-            </div>
-            <table class="fm-table">
-              <thead><tr><th>Dato</th><th>Kreditter</th><th>Beskrivelse</th></tr></thead>
-              <tbody>
-                <tr><td class="mono muted">2026-05-28 14:02</td><td><span class="credit-pill">12</span></td><td>AI kursusmatch · projektledelse</td></tr>
-                <tr><td class="mono muted">2026-05-28 09:41</td><td><span class="credit-pill">8</span></td><td>Rapportgenerering · ROI</td></tr>
-                <tr><td class="mono muted">2026-05-27 16:18</td><td><span class="credit-pill">24</span></td><td>Bulk-match · 6 medarbejdere</td></tr>
-                <tr><td class="mono muted">2026-05-27 11:05</td><td><span class="credit-pill">5</span></td><td>Kompetencegab-analyse</td></tr>
-                <tr><td class="mono muted">2026-05-26 13:52</td><td><span class="credit-pill">16</span></td><td>AI kursusmatch · Excel</td></tr>
-                <tr><td class="mono muted">2026-05-26 08:30</td><td><span class="credit-pill">3</span></td><td>Eksport · CSV</td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
+          <table class="fm-table" id="transactionsTable">
+            <thead><tr><th>Dato</th><th>Kreditter</th><th>Beskrivelse</th></tr></thead>
+            <tbody>
+              {% for transaction in transactions %}
+              <tr>
+                <td class="mono muted">{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') if transaction.timestamp else '' }}</td>
+                <td><span class="credit-pill">{{ transaction.credits_used }}</span></td>
+                <td>{{ transaction.description }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="muted" style="text-align:center;padding:32px">Ingen kredittransaktioner endnu.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
       </div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const rootStyles = getComputedStyle(document.documentElement);
+    const primary = (rootStyles.getPropertyValue('--fm-primary') || '').trim() || '#0b6b63';
+    const secondary = (rootStyles.getPropertyValue('--fm-indigo') || '').trim() || '#2563eb';
+    const textMuted = (rootStyles.getPropertyValue('--fm-ink-3') || '').trim() || '#64748b';
+    const border = (rootStyles.getPropertyValue('--fm-line') || '').trim() || 'rgba(148,163,184,.25)';
+
+    const labels = {{ labels|tojson }};
+    const usage = {{ usage|tojson }};
+    const last7Labels = {{ last7_labels|tojson }};
+    const last7Usage = {{ last7_usage|tojson }};
+
+    if (window.Chart) {
+      Chart.defaults.color = textMuted;
+      Chart.defaults.borderColor = border;
+
+      const sharedOptions = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 }
+        },
+        scales: {
+          x: { grid: { display: false } },
+          y: { beginAtZero: true, ticks: { precision: 0 } }
+        }
+      };
+
+      const lineCanvas = document.getElementById('lineChart');
+      if (lineCanvas) {
+        new Chart(lineCanvas, {
+          type: 'line',
+          data: {
+            labels: labels,
+            datasets: [{
+              label: 'Kreditter', data: usage,
+              borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .12)',
+              fill: true, tension: .35, pointRadius: 3, pointHoverRadius: 5,
+              pointBackgroundColor: primary, borderWidth: 2
+            }]
+          },
+          options: sharedOptions
+        });
+      }
+
+      const barCanvas = document.getElementById('barChart');
+      if (barCanvas) {
+        new Chart(barCanvas, {
+          type: 'bar',
+          data: {
+            labels: last7Labels,
+            datasets: [{ label: 'Kreditter', data: last7Usage, backgroundColor: secondary, borderRadius: 7, maxBarThickness: 42 }]
+          },
+          options: sharedOptions
+        });
+      }
+    }
+
+    const search = document.getElementById('transactionSearch');
+    const table = document.getElementById('transactionsTable');
+    if (search && table) {
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      search.addEventListener('input', function () {
+        const value = this.value.toLowerCase().trim();
+        rows.forEach(function (row) {
+          row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none';
+        });
+      });
+    }
+  })();
+</script>
 {% endblock %}

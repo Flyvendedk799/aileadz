@@ -83,7 +83,7 @@ def reports():
     # Prepare daily details for the table
     daily_details = [{'date': date, 'credits_used': daily_usage[date]} for date in sorted_dates]
     
-    return render_template('reports.html',
+    return render_template('fm/reports.html',
                            app_usage=app_usage_summary,
                            total_used=total_credits_used,
                            current_credits=current_credits,

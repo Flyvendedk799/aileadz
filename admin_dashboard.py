@@ -159,7 +159,7 @@ def admin_home():
 
     cur.close()
 
-    return render_template('admin_dashboard.html',
+    return render_template('fm/admin_dashboard.html',
                            total_users=total_users,
                            total_admins=total_admins,
                            active_users_7d=active_users_7d,
@@ -202,7 +202,7 @@ def credits():
             flash("Fejl ved tildeling af kreditter.", "danger")
         return redirect(url_for('admin_dashboard.credits'))
 
-    return render_template('admin_credits.html')
+    return render_template('fm/admin_credits.html')
 
 
 @admin_dashboard_bp.route('/users')
@@ -233,7 +233,7 @@ def user_list():
         """)
         users = cur.fetchall()
     cur.close()
-    return render_template('admin_users.html', users=users)
+    return render_template('fm/admin_users.html', users=users)
 
 
 @admin_dashboard_bp.route('/users/<int:user_id>/role', methods=['POST'])
@@ -287,7 +287,7 @@ def admin_catalog():
     import_drafts = catalog.list_import_drafts()[:10]
     ai_jobs = catalog.list_ai_category_jobs()[:10]
     return render_template(
-        'admin_catalog.html',
+        'fm/admin_catalog.html',
         stats=stats,
         categories=categories,
         vendors=vendors,
@@ -326,7 +326,7 @@ def admin_catalog_import_preview(job_id):
         flash("Importkladde ikke fundet.", "warning")
         return redirect(url_for('admin_dashboard.admin_catalog'))
     products = [catalog.normalize_product(product, overrides={}) for product in draft.get('products', [])[:200]]
-    return render_template('admin_catalog_import_preview.html', draft=draft, products=products)
+    return render_template('fm/admin_catalog_import_preview.html', draft=draft, products=products)
 
 
 @admin_dashboard_bp.route('/catalog/import/<job_id>/confirm', methods=['POST'])
@@ -391,7 +391,7 @@ def admin_catalog_ai_preview(job_id):
         flash("AI-kategoriseringsjob ikke fundet.", "warning")
         return redirect(url_for('admin_dashboard.admin_catalog'))
     diff = catalog.ai_category_diff(job)
-    return render_template('admin_catalog_ai_preview.html', job=job, diff=diff)
+    return render_template('fm/admin_catalog_ai_preview.html', job=job, diff=diff)
 
 
 @admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/confirm', methods=['POST'])

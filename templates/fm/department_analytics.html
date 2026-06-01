@@ -2,11 +2,39 @@
 {% block page_id %}creports{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Afdelingsanalyse{% endblock %}
-{% block topbar_sub %}Udvikling · læring, aktivitet og ordrer.{% endblock %}
+{% block topbar_sub %}{{ department_name }} · læring, aktivitet og ordrer.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='mt_dashboard') }}">Virksomhedsrapporter</a><i class="fa-solid fa-chevron-right"></i><span>Udvikling</span></div>
-  <div class="kpi-row"><div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">62</div><div class="kd">59 aktive</div></div><div class="kpi-tile"><div class="kl">Gennemførelse</div><div class="kv tnum">91%</div><div class="kd">bedst i org.</div></div><div class="kpi-tile"><div class="kl">Ordrer</div><div class="kv tnum">14</div><div class="kd">denne md.</div></div><div class="kpi-tile"><div class="kl">Budget brugt</div><div class="kv tnum">74%</div><div class="kd">312k af 420k</div></div></div>
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Aktivitet pr. måned</h3></div><div class="fm-card-body"><div class="barset"><div class="bar"><div class="fill" style="height:44%"></div><div class="bl">Jan</div></div><div class="bar"><div class="fill" style="height:67%"></div><div class="bl">Feb</div></div><div class="bar"><div class="fill" style="height:56%"></div><div class="bl">Mar</div></div><div class="bar"><div class="fill" style="height:83%"></div><div class="bl">Apr</div></div><div class="bar"><div class="fill" style="height:78%"></div><div class="bl">Maj</div></div><div class="bar"><div class="fill" style="height:100%"></div><div class="bl">Jun</div></div></div></div></div>
+<div class="crumb"><a href="{{ url_for('multitenant_reports.reports') }}">Virksomhedsrapporter</a><i class="fa-solid fa-chevron-right"></i><span>{{ department_name }}</span></div>
+
+<div class="kpi-row">
+  <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ dept_stats.total_employees or 0 }}</div><div class="kd">{{ dept_stats.active_employees or 0 }} aktive</div></div>
+  <div class="kpi-tile"><div class="kl">Kursusordrer</div><div class="kv tnum">{{ dept_stats.total_course_orders or 0 }}</div><div class="kd">{{ dept_stats.completed_courses or 0 }} gennemført</div></div>
+  <div class="kpi-tile"><div class="kl">Investering</div><div class="kv tnum">{{ "%.0f"|format(dept_stats.total_investment or 0) }}</div><div class="kd">kr i alt</div></div>
+  <div class="kpi-tile"><div class="kl">Chatbot</div><div class="kv tnum">{{ dept_stats.total_chatbot_interactions or 0 }}</div><div class="kd">interaktioner</div></div>
+</div>
+
+<div class="fm-table-wrap">
+  <div class="fm-card-head" style="padding:14px 18px"><span class="fm-ch-icon"><i class="fa-solid fa-users"></i></span><h3>Medarbejdere i {{ department_name }}</h3></div>
+  {% if dept_employees %}
+  <table class="fm-table">
+    <thead><tr><th>Medarbejder</th><th>Stilling</th><th>Rolle</th><th>Tilmeldt</th><th>Gennemført</th><th>Chatbot</th></tr></thead>
+    <tbody>
+      {% for emp in dept_employees %}
+      <tr>
+        <td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">{{ (emp.username[0]|upper) if emp.username else 'U' }}</span><div style="font-weight:650">{{ emp.username }}</div></div></td>
+        <td>{{ emp.job_title or '—' }}</td>
+        <td><span class="fm-badge">{{ emp.role }}</span></td>
+        <td class="mono">{{ emp.courses_enrolled or 0 }}</td>
+        <td class="mono">{{ emp.courses_completed or 0 }}</td>
+        <td class="mono">{{ emp.total_chatbot_queries or 0 }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="text-align:center;padding:40px 18px;color:var(--fm-ink-3)"><p style="margin:0">Ingen medarbejdere i denne afdeling.</p></div>
+  {% endif %}
+</div>
 </div>
 {% endblock %}

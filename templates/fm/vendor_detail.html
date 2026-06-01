@@ -1,37 +1,74 @@
 {% extends "fm_base.html" %}
 {% block page_id %}catalog{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Teknologisk Institut{% endblock %}
-{% block topbar_sub %}Kursusudbyder · 42 kurser{% endblock %}
+{% block topbar_title %}{{ vendor.name if vendor else (page_title or 'Leverandør') }}{% endblock %}
+{% block topbar_sub %}Kursusudbyder · {{ vendor.course_count if vendor else (pagination.total if pagination else 0) }} kurser{% endblock %}
+{% block extra_head %}
+<style>
+  .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); text-decoration: none; color: inherit; padding: 16px; gap: 11px; }
+  .ccard:hover { transform: translateY(-3px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
+  .ccard h3 { font-size: 15px; font-weight: 700; letter-spacing: -.015em; line-height: 1.25; }
+  .ccard .ccprice { font-weight: 700; color: var(--fm-primary); }
+  .ccard .ccmeta { display: flex; gap: 6px; flex-wrap: wrap; margin-top: auto; }
+  .cat-pager { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 28px; }
+  .cat-pager .pg-info { font-size: 13px; color: var(--fm-ink-2); }
+  .cat-pager .btn.disabled { opacity: .45; pointer-events: none; }
+  @media (max-width: 1100px) { .cat-grid { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 680px) { .cat-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('catalog.vendor_index') }}">Leverandører</a><i class="fa-solid fa-chevron-right"></i><span>Teknologisk Institut</span></div>
+  <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('catalog.vendor_index') }}">Leverandører</a><i class="fa-solid fa-chevron-right"></i><span>{{ vendor.name if vendor else 'Leverandør' }}</span></div>
+
   <section class="detail-hero" data-reveal>
-    <div class="detail-mark av" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">TI</div>
-    <div class="detail-info"><div class="detail-kick">Kursusudbyder</div><h1 class="detail-title">Teknologisk Institut</h1>
-    <p class="detail-sub">En af Danmarks førende udbydere af videreuddannelse inden for teknik, ledelse og projektarbejde — med både fysiske og online forløb.</p>
-    <div class="detail-tags"><span class="fm-badge amber"><i class="fa-solid fa-star"></i> 4,7 (1.840)</span><span class="fm-badge teal">Aftalepartner</span><span class="fm-badge">42 kurser</span></div></div>
+    <div class="detail-mark av" style="background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700))">{{ ((vendor.profile.short_name if vendor and vendor.profile else None) or (vendor.name if vendor else 'LV'))[:2]|upper }}</div>
+    <div class="detail-info">
+      <div class="detail-kick">Kursusudbyder</div>
+      <h1 class="detail-title">{{ vendor.name if vendor else (page_title or 'Leverandør') }}</h1>
+      <p class="detail-sub">{% if vendor and vendor.profile and vendor.profile.reputation %}{{ vendor.profile.reputation }}{% else %}{{ vendor.course_count if vendor else (pagination.total if pagination else 0) }} kurser fra denne leverandør i Futurematch-kataloget.{% endif %}</p>
+      <div class="detail-tags">
+        <span class="fm-badge teal">{{ vendor.course_count if vendor else (pagination.total if pagination else 0) }} kurser</span>
+        {% if vendor and vendor.price_label %}<span class="fm-badge">fra {{ vendor.price_label }}</span>{% endif %}
+        {% for category in (vendor.categories[:3] if vendor and vendor.categories else []) %}<span class="fm-badge">{{ category }}</span>{% endfor %}
+      </div>
+      {% if vendor and vendor.profile and vendor.profile.best_for %}<p class="detail-sub" style="margin-top:10px">{{ vendor.profile.best_for }}</p>{% endif %}
+    </div>
   </section>
-  <div class="kpi-row k3" style="margin-bottom:22px"><div class="kpi-tile"><div class="kl">Kurser</div><div class="kv tnum">42</div><div class="kd">På tværs af 6 kategorier</div></div><div class="kpi-tile"><div class="kl">Gns. bedømmelse</div><div class="kv tnum">4,7</div><div class="kd">1.840 anmeldelser</div></div><div class="kpi-tile"><div class="kl">Bestilt hos Nordi</div><div class="kv tnum">18</div><div class="kd">Seneste 12 måneder</div></div></div>
-  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-graduation-cap"></i> Udbyderens katalog</span><h2 class="fm-section-title">Kurser fra Teknologisk Institut</h2></div></div>
-  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)"><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="fm-card" style="text-decoration:none;padding:16px;display:flex;flex-direction:column;gap:11px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-diagram-project"></i></span><span class="mono" style="font-weight:700;color:var(--fm-primary)">8.900 kr</span></div>
-<h3 style="font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.25">Projektledelse Praktisk</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto"><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>3 dage</span><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-location-dot" style="font-size:10px;color:var(--fm-ink-3)"></i>København</span></div></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="fm-card" style="text-decoration:none;padding:16px;display:flex;flex-direction:column;gap:11px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-gauge-high"></i></span><span class="mono" style="font-weight:700;color:var(--fm-primary)">14.500 kr</span></div>
-<h3 style="font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.25">Lean Six Sigma Green Belt</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto"><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>5 dage</span><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-certificate" style="font-size:10px;color:var(--fm-ink-3)"></i>Certifikat</span></div></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="fm-card" style="text-decoration:none;padding:16px;display:flex;flex-direction:column;gap:11px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-gears"></i></span><span class="mono" style="font-weight:700;color:var(--fm-primary)">9.800 kr</span></div>
-<h3 style="font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.25">Teknisk Projektledelse</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto"><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>3 dage</span><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-display" style="font-size:10px;color:var(--fm-ink-3)"></i>Online</span></div></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="fm-card" style="text-decoration:none;padding:16px;display:flex;flex-direction:column;gap:11px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-triangle-exclamation"></i></span><span class="mono" style="font-weight:700;color:var(--fm-primary)">6.200 kr</span></div>
-<h3 style="font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.25">Risikostyring i Projekter</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto"><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>2 dage</span></div></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="fm-card" style="text-decoration:none;padding:16px;display:flex;flex-direction:column;gap:11px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-people-group"></i></span><span class="mono" style="font-weight:700;color:var(--fm-primary)">5.900 kr</span></div>
-<h3 style="font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.25">Stakeholder Management</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto"><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>2 dage</span><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-display" style="font-size:10px;color:var(--fm-ink-3)"></i>Online</span></div></a><a href="{{ url_for('futurematch.showcase', page='product_detail') }}" class="fm-card" style="text-decoration:none;padding:16px;display:flex;flex-direction:column;gap:11px;transition:transform var(--t),box-shadow var(--t)" onmouseover="this.style.transform='translateY(-3px)';this.style.boxShadow='var(--sh-md)'" onmouseout="this.style.transform='';this.style.boxShadow=''">
-<div class="fm-spread"><span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-layer-group"></i></span><span class="mono" style="font-weight:700;color:var(--fm-primary)">12.400 kr</span></div>
-<h3 style="font-size:15px;font-weight:700;letter-spacing:-.015em;line-height:1.25">Porteføljestyring</h3>
-<div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:auto"><span style="display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2)"><i class="fa-solid fa-clock" style="font-size:10px;color:var(--fm-ink-3)"></i>4 dage</span></div></a></div>
+
+  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-graduation-cap"></i> Udbyderens katalog</span><h2 class="fm-section-title">Kurser fra {{ vendor.name if vendor else 'leverandøren' }}</h2></div></div>
+
+  {% if products %}
+  <div class="fm-grid cat-grid">
+    {% for product in products %}
+    <a href="{{ url_for('catalog.product_detail', handle=product.handle) }}" class="fm-card ccard" data-reveal>
+      <div class="fm-spread">
+        <span style="width:40px;height:40px;border-radius:11px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:15px"><i class="fa-solid fa-graduation-cap"></i></span>
+        <span class="mono ccprice">{{ product.price_label }}</span>
+      </div>
+      <h3>{{ product.title }}</h3>
+      <div class="ccmeta">
+        {% for category in product.categories[:2] %}<span class="fm-badge">{{ category }}</span>{% endfor %}
+        {% if product.format %}<span class="fm-badge">{{ product.format }}</span>{% endif %}
+      </div>
+    </a>
+    {% endfor %}
+  </div>
+
+  {% if pagination and pagination.total_pages > 1 %}
+  <nav class="cat-pager" aria-label="Pagination">
+    <a class="btn btn-ghost {{ '' if pagination.has_prev else 'disabled' }}" href="{{ pagination_urls.prev if pagination_urls else '#' }}"><i class="fa-solid fa-arrow-left"></i> Forrige</a>
+    <span class="pg-info">Side {{ pagination.page }} af {{ pagination.total_pages }}</span>
+    <a class="btn btn-ghost {{ '' if pagination.has_next else 'disabled' }}" href="{{ pagination_urls.next if pagination_urls else '#' }}">Næste <i class="fa-solid fa-arrow-right"></i></a>
+  </nav>
+  {% endif %}
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-2)">
+    <i class="fa-solid fa-magnifying-glass fa-2x" style="color:var(--fm-ink-3);margin-bottom:12px"></i>
+    <h3>Ingen kurser fra denne leverandør</h3>
+    <a class="btn btn-primary" href="{{ url_for('catalog.vendor_index') }}" style="margin-top:14px">Alle leverandører</a>
+  </div>
+  {% endif %}
 </div>
 {% endblock %}

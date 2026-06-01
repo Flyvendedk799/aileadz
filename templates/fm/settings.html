@@ -7,7 +7,7 @@
 <style>
   .set-wrap { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: 220px 1fr; gap: 22px; align-items: start; }
   .set-nav { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 2px; }
-  .set-nav a { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--r-ctrl); color: var(--fm-ink-2); font-size: 14px; font-weight: 600; transition: var(--t); }
+  .set-nav a { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--r-ctrl); color: var(--fm-ink-2); font-size: 14px; font-weight: 600; transition: var(--t); text-decoration: none; }
   .set-nav a i { width: 16px; text-align: center; color: var(--fm-ink-3); }
   .set-nav a:hover { background: var(--fm-surface-3); color: var(--fm-ink); }
   .set-nav a.active { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
@@ -21,6 +21,12 @@
   .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px; background: #fff; transition: var(--t); box-shadow: var(--sh-xs); }
   .sw.on { background: var(--fm-primary); }
   .sw.on::after { transform: translateX(20px); }
+  /* native checkbox styled like a switch toggle for the live email-notifications field */
+  .sw-input { position: absolute; opacity: 0; width: 46px; height: 26px; margin: 0; cursor: pointer; }
+  .sw-wrap { position: relative; width: 46px; height: 26px; flex: 0 0 46px; }
+  .sw-wrap .sw { pointer-events: none; position: absolute; inset: 0; }
+  .sw-input:checked + .sw { background: var(--fm-primary); }
+  .sw-input:checked + .sw::after { transform: translateX(20px); }
   @media (max-width: 820px) { .set-wrap { grid-template-columns: 1fr; } .set-nav { position: static; flex-direction: row; overflow-x: auto; } .set-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -29,55 +35,67 @@
         <nav class="set-nav" data-reveal>
           <a class="active" href="#konto"><i class="fa-solid fa-user"></i> Konto</a>
           <a href="#sikkerhed"><i class="fa-solid fa-lock"></i> Sikkerhed</a>
-          <a href="#notif"><i class="fa-solid fa-bell"></i> Notifikationer</a>
+          {% if session.get('role') == 'admin' %}
+          <a href="#admin"><i class="fa-solid fa-shield-halved"></i> Admin</a>
+          {% endif %}
           <a href="#udseende"><i class="fa-solid fa-palette"></i> Udseende</a>
-          <a href="#fakturering"><i class="fa-solid fa-credit-card"></i> Fakturering</a>
         </nav>
 
         <div class="fm-grid" style="gap:16px">
+          <!-- Profile / account form (live) -->
           <div class="fm-card" id="konto" data-reveal data-d="1">
-            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Kontooplysninger</h3></div>
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Profiloplysninger</h3></div>
             <div class="fm-card-body">
-              <div class="set-row">
-                <div class="fm-field"><label>Fornavn</label><input class="fm-input" value="Mette" /></div>
-                <div class="fm-field"><label>Efternavn</label><input class="fm-input" value="Krogh" /></div>
-              </div>
-              <div class="fm-field"><label>E-mail</label><input class="fm-input" type="email" value="mette@nordi.dk" /></div>
-              <div class="set-row">
-                <div class="fm-field"><label>Stilling</label><input class="fm-input" value="HR-manager" /></div>
-                <div class="fm-field"><label>Sprog</label><select class="fm-select"><option>Dansk</option><option>English</option></select></div>
-              </div>
-              <div class="fm-mb0" style="margin-top:4px"><button class="btn btn-soft btn-sm"><i class="fa-solid fa-floppy-disk"></i> Gem kontooplysninger</button></div>
+              <form action="{{ url_for('pages.settings') }}" method="POST">
+                <input type="hidden" name="update_profile" value="1">
+                <div class="set-row">
+                  <div class="fm-field"><label>Brugernavn</label><input class="fm-input" type="text" name="username" value="{{ user.username or session.get('user') or '' }}" readonly></div>
+                  <div class="fm-field"><label>E-mail</label><input class="fm-input" type="email" name="email" value="{{ user.email or '' }}" required></div>
+                </div>
+                <div class="toggle-row">
+                  <div><div class="t">Modtag email notifikationer</div><div class="d">Få vigtige opdateringer og beskeder på e-mail.</div></div>
+                  <label class="sw-wrap">
+                    <input class="sw-input" type="checkbox" name="email_notifications" {% if user.email_notifications %}checked{% endif %}>
+                    <span class="sw"></span>
+                  </label>
+                </div>
+                <div class="fm-mb0" style="margin-top:8px"><button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> Gem profiloplysninger</button></div>
+              </form>
             </div>
           </div>
 
+          <!-- Password change form (live) -->
           <div class="fm-card" id="sikkerhed" data-reveal data-d="2">
-            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-lock"></i></span><h3>Sikkerhed</h3></div>
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-lock"></i></span><h3>Kodeordsændring</h3></div>
             <div class="fm-card-body">
-              <div class="set-row">
-                <div class="fm-field"><label>Nuværende adgangskode</label><input class="fm-input" type="password" value="********" /></div>
-                <div class="fm-field"><label>Ny adgangskode</label><input class="fm-input" type="password" placeholder="Mindst 10 tegn" /></div>
-              </div>
-              <div class="toggle-row"><div><div class="t">To-faktor-godkendelse</div><div class="d">Ekstra sikkerhed ved login med engangskode.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-              <div class="toggle-row"><div><div class="t">Login-notifikationer</div><div class="d">Få besked ved nye logins fra ukendte enheder.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+              <form action="{{ url_for('pages.settings') }}" method="POST">
+                <input type="hidden" name="update_password" value="1">
+                <div class="fm-field"><label>Nuværende kodeord</label><input class="fm-input" type="password" name="current_password" placeholder="Indtast nuværende kodeord" required></div>
+                <div class="set-row">
+                  <div class="fm-field"><label>Nyt kodeord</label><input class="fm-input" type="password" name="new_password" placeholder="Indtast nyt kodeord" required></div>
+                  <div class="fm-field"><label>Bekræft nyt kodeord</label><input class="fm-input" type="password" name="confirm_password" placeholder="Bekræft nyt kodeord" required></div>
+                </div>
+                <div class="fm-mb0" style="margin-top:8px"><button type="submit" class="btn btn-soft btn-sm"><i class="fa-solid fa-key"></i> Ændr kodeord</button></div>
+              </form>
             </div>
           </div>
 
-          <div class="fm-card" id="notif" data-reveal data-d="3">
-            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bell"></i></span><h3>Notifikationer</h3></div>
+          {% if session.get('role') == 'admin' %}
+          <div class="fm-card" id="admin" data-reveal data-d="3">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield-halved"></i></span><h3>Admin</h3></div>
             <div class="fm-card-body">
-              <div class="toggle-row"><div><div class="t">Godkendelsesanmodninger</div><div class="d">Når en medarbejder beder om godkendelse.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-              <div class="toggle-row"><div><div class="t">Gennemførte kurser</div><div class="d">Når en medarbejder gennemfører et kursus.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
-              <div class="toggle-row"><div><div class="t">Ugentligt sammendrag</div><div class="d">Mandags-overblik over læring og forbrug.</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div>
-              <div class="toggle-row"><div><div class="t">Produktnyheder</div><div class="d">Nye funktioner og opdateringer.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+              <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+                <a href="{{ url_for('admin_dashboard.credits') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-coins"></i> Tildel kreditter</a>
+                <a href="{{ url_for('admin_notifications.notifications_dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-bullhorn"></i> Admin notifikationer</a>
+              </div>
             </div>
           </div>
+          {% endif %}
 
           <div class="fm-card" id="udseende" data-reveal data-d="4">
             <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-palette"></i></span><h3>Udseende</h3></div>
             <div class="fm-card-body">
               <div class="toggle-row"><div><div class="t">Mørkt tema</div><div class="d">Skift mellem lyst og mørkt udseende.</div></div><button class="sw" data-theme-toggle onclick="this.classList.toggle('on')"></button></div>
-              <div class="toggle-row"><div><div class="t">Kompakt visning</div><div class="d">Tættere afstand i tabeller og lister.</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div>
             </div>
           </div>
         </div>

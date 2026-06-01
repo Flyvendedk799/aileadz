@@ -1,10 +1,160 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Katalogadministration{% endblock %}
-{% block topbar_sub %}248 kurser · import, AI-berigelse og publicering.{% endblock %}
+{% block page_id %}acatalog{% endblock %}
+{% block title %}Katalogadmin{% endblock %}
+{% block topbar_title %}Katalogadmin{% endblock %}
+{% block topbar_sub %}Importer CSV, styr leverandører og kategorisér kataloget med AI-kladdetrin.{% endblock %}
+{% block extra_head %}
+<style>
+  .cat-split { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+  .cat-progress { height: 8px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; margin-top: 14px; display: none; }
+  .cat-progress > div { height: 100%; width: 0%; background: var(--fm-primary); transition: width .2s ease; }
+  .cat-log { font-size: 12.5px; color: var(--fm-ink-3); min-height: 20px; margin-top: 8px; }
+  .cat-link-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--fm-line); text-decoration: none; color: inherit; }
+  .cat-link-row:last-child { border-bottom: 0; }
+  @media (max-width: 900px) { .cat-split { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a><a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a><a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a><a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a><a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='admin_chatbot') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='notifications_admin') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a></div><div class="fm-table-wrap"><div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line)"><label class="fm-search" style="width:280px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg kursus…"/></label></div><table class="fm-table"><thead><tr><th>Kursus</th><th>Leverandør</th><th>Kategori</th><th>Pris</th><th>Status</th><th></th></tr></thead><tbody><tr><td style="font-weight:650">Projektledelse Praktisk</td><td class="muted">Teknologisk Institut</td><td><span class="fm-badge">Projektledelse</span></td><td class="mono">8.900 kr</td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Publiceret</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-pen"></i></button></td></tr><tr><td style="font-weight:650">Excel for Analytikere</td><td class="muted">Mannaz</td><td><span class="fm-badge">IT & Data</span></td><td class="mono">5.400 kr</td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Publiceret</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-pen"></i></button></td></tr><tr><td style="font-weight:650">Leadership Essentials</td><td class="muted">CBS Executive</td><td><span class="fm-badge">Ledelse</span></td><td class="mono">12.500 kr</td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Publiceret</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-pen"></i></button></td></tr><tr><td style="font-weight:650">Service Design</td><td class="muted">CBS Executive</td><td><span class="fm-badge">Produkt</span></td><td class="mono">12.500 kr</td><td><span class="status-pill amber" style="height:24px;font-size:11.5px">Kladde</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-pen"></i></button></td></tr><tr><td style="font-weight:650">Azure Administrator</td><td class="muted">Microsoft</td><td><span class="fm-badge">IT & Data</span></td><td class="mono">9.400 kr</td><td><span class="status-pill amber" style="height:24px;font-size:11.5px">Afventer</span></td><td style="text-align:right"><button class="fm-icon-btn" style="width:32px;height:32px"><i class="fa-solid fa-pen"></i></button></td></tr></tbody></table></div>
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+    <a class="pg-tab" href="{{ url_for('catalog.catalog_index') }}" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> Offentligt katalog</a>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="kl">Produkter</div><div class="kv tnum">{{ stats.products }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Kategorier</div><div class="kv tnum">{{ stats.categories }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-building"></i></span><div><div class="kl">Leverandører</div><div class="kv tnum">{{ stats.vendors }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-file-csv"></i></span><div><div class="kl">CSV-produkter</div><div class="kv tnum">{{ stats.csv_products }}</div></div></div>
+  </div>
+
+  <div class="cat-split" style="margin-bottom:16px">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-csv"></i></span><h3>CSV import</h3></div>
+      <div class="fm-card-body">
+        <p style="color:var(--fm-ink-2);font-size:13px;line-height:1.5;margin-bottom:14px">Upload en CSV for at oprette en kladde. Intet skrives til kataloget før du bekræfter previewet.</p>
+        <form method="POST" action="{{ url_for('admin_dashboard.admin_catalog_import') }}" enctype="multipart/form-data" style="display:flex;gap:10px;flex-wrap:wrap;align-items:center">
+          <input class="fm-input" style="flex:1;min-width:200px" type="file" name="catalog_csv" accept=".csv,text/csv" required>
+          <button class="btn btn-primary" type="submit"><i class="fa-solid fa-upload"></i> Preview CSV</button>
+        </form>
+      </div>
+    </div>
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span><h3>AI-kategorisering</h3></div>
+      <div class="fm-card-body">
+        <p style="color:var(--fm-ink-2);font-size:13px;line-height:1.5;margin-bottom:14px">Kører en batchvis AI-kladderecategorisering. Du ser hvor meget der ændres og kan gennemgå linjerne før confirm.</p>
+        <button class="btn btn-primary" type="button" id="aiStartBtn"><i class="fa-solid fa-play"></i> Start AI-kategorisering</button>
+        <div class="cat-progress" id="aiProgressWrap"><div id="aiProgress"></div></div>
+        <div class="cat-log" id="aiLog"></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cat-split" style="margin-bottom:16px">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Seneste CSV-kladder</h3></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if import_drafts %}
+        {% for draft in import_drafts %}
+        <a class="cat-link-row" href="{{ url_for('admin_dashboard.admin_catalog_import_preview', job_id=draft.job_id) }}">
+          <span><span style="font-weight:600">{{ draft.filename or draft.job_id }}</span><br><span class="muted" style="font-size:11.5px">{{ draft.created_at }}</span></span>
+          <span class="fm-badge {{ 'teal' if draft.status == 'confirmed' else 'amber' }}">{{ draft.status }}</span>
+        </a>
+        {% endfor %}
+        {% else %}
+        <p class="muted">Ingen CSV-kladder endnu.</p>
+        {% endif %}
+      </div>
+    </div>
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Seneste AI-jobs</h3></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if ai_jobs %}
+        {% for job in ai_jobs %}
+        <a class="cat-link-row" href="{{ url_for('admin_dashboard.admin_catalog_ai_preview', job_id=job.job_id) }}">
+          <span><span style="font-weight:600">{{ job.job_id }}</span><br><span class="muted" style="font-size:11.5px">{{ job.processed or 0 }} / {{ job.total or 0 }} behandlet</span></span>
+          <span class="fm-badge {{ 'teal' if job.status == 'confirmed' else 'indigo' if job.status == 'complete' else 'amber' }}">{{ job.status }}</span>
+        </a>
+        {% endfor %}
+        {% else %}
+        <p class="muted">Ingen AI-jobs endnu.</p>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="cat-split">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Top kategorier</h3></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
+          <table class="fm-table">
+            <tbody>
+              {% for category in categories[:20] %}
+              <tr><td><a href="{{ url_for('catalog.category_detail', slug=category.slug) }}" target="_blank">{{ category.name }}</a></td><td style="text-align:right">{{ category.count }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Top leverandører</h3></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
+          <table class="fm-table">
+            <tbody>
+              {% for vendor in vendors[:20] %}
+              <tr><td><a href="{{ url_for('catalog.vendor_detail', slug=vendor.slug) }}" target="_blank">{{ vendor.name }}</a></td><td style="text-align:right">{{ vendor.course_count }}</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+  const aiBtn = document.getElementById('aiStartBtn');
+  const aiLog = document.getElementById('aiLog');
+  const aiProgressWrap = document.getElementById('aiProgressWrap');
+  const aiProgress = document.getElementById('aiProgress');
+
+  async function processAiJob(jobId, total) {
+    aiProgressWrap.style.display = 'block';
+    let status = 'draft';
+    let processed = 0;
+    while (status !== 'complete') {
+      const response = await fetch(`/admin/catalog/ai-categorize/${jobId}/batch`, { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.message || 'AI batch failed');
+      status = data.status;
+      processed = data.processed || 0;
+      const pct = total ? Math.round((processed / total) * 100) : 100;
+      aiProgress.style.width = pct + '%';
+      aiLog.textContent = `${processed} / ${total} behandlet. ${data.changed_count || 0} forslag ændrer kategori.`;
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+    window.location.href = `/admin/catalog/ai-categorize/${jobId}`;
+  }
+
+  aiBtn.addEventListener('click', async () => {
+    aiBtn.disabled = true;
+    aiLog.textContent = 'Starter AI-kategorisering...';
+    try {
+      const response = await fetch("{{ url_for('admin_dashboard.admin_catalog_ai_start') }}", { method: 'POST' });
+      const data = await response.json();
+      if (!data.success) throw new Error(data.message || 'Kunne ikke starte job');
+      await processAiJob(data.job_id, data.total);
+    } catch (error) {
+      aiLog.textContent = error.message;
+      aiBtn.disabled = false;
+    }
+  });
+</script>
 {% endblock %}

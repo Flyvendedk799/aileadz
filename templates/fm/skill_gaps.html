@@ -5,11 +5,149 @@
 {% block topbar_sub %}Dækning, topkompetencer og kritiske gab.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='skill_gaps') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='roi') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='suppliers') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
-  <div class="kpi-row"><div class="kpi-tile"><div class="kl">Unikke kompetencer</div><div class="kv tnum">47</div><div class="kd">registreret i alt</div></div><div class="kpi-tile"><div class="kl">Dækning</div><div class="kv tnum">76%</div><div class="kd">188 medarbejdere</div></div><div class="kpi-tile"><div class="kl">Gns. niveau</div><div class="kv tnum">3,8</div><div class="kd">af 5 mulige</div></div><div class="kpi-tile"><div class="kl">Kritiske gab</div><div class="kv tnum" style="color:var(--fm-danger)">5</div><div class="kd">kræver handling</div></div></div>
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+
+  {% set sd = skill_dashboard or {} %}
+  <div class="fm-flex fm-gap8" style="margin-bottom:14px;justify-content:flex-end;flex-wrap:wrap">
+    <button class="btn btn-ghost btn-sm" onclick="openModal('assignSkillModal')"><i class="fa-solid fa-user-plus"></i> Tildel</button>
+    <button class="btn btn-primary btn-sm" onclick="openModal('addTargetModal')"><i class="fa-solid fa-plus"></i> Nyt mål</button>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-tile"><div class="kl">Unikke kompetencer</div><div class="kv tnum">{{ skill_list|length }}</div><div class="kd">registreret i alt</div></div>
+    <div class="kpi-tile"><div class="kl">Dækning</div><div class="kv tnum">{{ sd.coverage_rate|default(0) }}%</div><div class="kd">{{ sd.employees_with_skills|default(0) }} af {{ sd.total_active_employees|default(0) }} medarb.</div></div>
+    <div class="kpi-tile"><div class="kl">Gns. niveau</div><div class="kv tnum">{{ sd.avg_skill_level|default(0) }}</div><div class="kd">af 5 mulige</div></div>
+    <div class="kpi-tile"><div class="kl">Kritiske gab</div><div class="kv tnum" style="color:var(--fm-danger)">{{ critical_gaps }}</div><div class="kd">{{ met_targets }} mål opfyldt</div></div>
+  </div>
+
+  <!-- Top skills -->
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-star"></i> Stærkeste områder</span><h2 class="fm-section-title">Topkompetencer i virksomheden</h2></div></div>
-  <div class="fm-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:8px"><div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">Projektledelse</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class=""></span></span></div><small style="font-size:11px;color:var(--fm-ink-3)">42 medarbejdere</small></div><div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">Excel / Data</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class=""></span><span class=""></span></span></div><small style="font-size:11px;color:var(--fm-ink-3)">61 medarbejdere</small></div><div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">Ledelse</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class="on"></span><span class=""></span></span></div><small style="font-size:11px;color:var(--fm-ink-3)">28 medarbejdere</small></div><div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">GDPR / Jura</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots"><span class="on"></span><span class="on"></span><span class=""></span><span class=""></span><span class=""></span></span></div><small style="font-size:11px;color:var(--fm-ink-3)">19 medarbejdere</small></div><div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">Salg</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots"><span class="on"></span><span class="on"></span><span class="on"></span><span class=""></span><span class=""></span></span></div><small style="font-size:11px;color:var(--fm-ink-3)">34 medarbejdere</small></div><div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">Cloud / IT</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots"><span class="on"></span><span class="on"></span><span class=""></span><span class=""></span><span class=""></span></span></div><small style="font-size:11px;color:var(--fm-ink-3)">23 medarbejdere</small></div></div>
+  <div class="fm-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:8px">
+    {% for skill in skill_list[:6] %}
+    {% set lvl = (skill.avg_level or 0)|float|round(0)|int %}
+    <div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">{{ skill.skill_name }}</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots">{% for i in range(1,6) %}<span class="{{ 'on' if i <= lvl }}"></span>{% endfor %}</span></div><small style="font-size:11px;color:var(--fm-ink-3)">{{ skill.count }} medarbejdere</small></div>
+    {% else %}
+    <div class="fm-card" style="padding:16px;grid-column:1/-1;color:var(--fm-ink-3);font-size:13px">Ingen kompetencer registreret endnu.</div>
+    {% endfor %}
+  </div>
+
+  <!-- Critical gaps from heatmap -->
   <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span><h3 style="font-size:15px;font-weight:700">Kritiske kompetencegab</h3></div></div>
-  <table class="fm-table"><thead><tr><th>Kompetence</th><th>Målniveau</th><th>Gns. niveau</th><th>Gab</th><th></th></tr></thead><tbody><tr><td style="font-weight:650">Cloud / Azure</td><td><span class="fm-badge teal">Mål 4</span></td><td><span class="fm-badge amber">2 gns.</span></td><td><span class="fm-badge red">−2</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td></tr><tr><td style="font-weight:650">Dataanalyse</td><td><span class="fm-badge teal">Mål 4</span></td><td><span class="fm-badge amber">2 gns.</span></td><td><span class="fm-badge red">−2</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td></tr><tr><td style="font-weight:650">Forhandling</td><td><span class="fm-badge teal">Mål 3</span></td><td><span class="fm-badge amber">2 gns.</span></td><td><span class="fm-badge red">−1</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td></tr><tr><td style="font-weight:650">Engelsk forretning</td><td><span class="fm-badge teal">Mål 4</span></td><td><span class="fm-badge amber">3 gns.</span></td><td><span class="fm-badge red">−1</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td></tr><tr><td style="font-weight:650">Cybersikkerhed</td><td><span class="fm-badge teal">Mål 3</span></td><td><span class="fm-badge red">1 gns.</span></td><td><span class="fm-badge red">−2</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td></tr></tbody></table></div>
+  <table class="fm-table"><thead><tr><th>Kompetence</th><th>Afdeling</th><th>Målniveau</th><th>Gns. niveau</th><th>Gab</th><th></th></tr></thead><tbody>
+    {% set ns = namespace(found=false) %}
+    {% for dept, skills in (heatmap or {}).items() %}
+      {% for skill_name, data in skills.items() %}
+        {% if data.status in ['red','yellow'] %}
+        {% set ns.found = true %}
+        <tr>
+          <td style="font-weight:650">{{ skill_name }}</td>
+          <td><span class="fm-badge">{{ dept }}</span></td>
+          <td><span class="fm-badge teal">Mål {{ data.target_level }}</span></td>
+          <td><span class="fm-badge {{ 'red' if (data.avg_current or 0)|float < 2 else 'amber' }}">{{ data.avg_current }} gns.</span></td>
+          <td><span class="fm-badge {{ 'red' if data.status == 'red' else 'amber' }}">−{{ data.gap }}</span></td>
+          <td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td>
+        </tr>
+        {% endif %}
+      {% endfor %}
+    {% endfor %}
+    {% if not ns.found %}
+    <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen kritiske gab — alle mål er opfyldt eller endnu ikke defineret.</td></tr>
+    {% endif %}
+  </tbody></table></div>
+
+  <!-- Targets management -->
+  <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-bullseye"></i></span><h3 style="font-size:15px;font-weight:700">Kompetencemål ({{ targets|length }})</h3></div></div>
+  <table class="fm-table"><thead><tr><th>Kompetence</th><th>Afdeling</th><th>Målniveau</th><th>Prioritet</th><th></th></tr></thead><tbody>
+    {% for t in targets %}
+    <tr>
+      <td style="font-weight:650">{{ t.skill_name }}</td>
+      <td><span class="fm-badge">{{ t.department or 'Alle afdelinger' }}</span></td>
+      <td><span class="fm-badge teal">Mål {{ t.target_level }}/5</span></td>
+      <td>{% if t.priority == 'high' %}<span class="fm-badge red">Høj</span>{% elif t.priority == 'medium' %}<span class="fm-badge amber">Medium</span>{% else %}<span class="fm-badge green">Lav</span>{% endif %}</td>
+      <td style="text-align:right"><div class="fm-flex fm-gap8" style="justify-content:flex-end">
+        <button class="fm-icon-btn" style="width:32px;height:32px" onclick="editTarget('{{ t.skill_name|e }}','{{ (t.department or '')|e }}',{{ t.target_level }},'{{ t.priority }}')"><i class="fa-solid fa-pen"></i></button>
+        <form method="POST" action="{{ url_for('hr_dashboard.delete_skill_target', target_id=t.id) }}" onsubmit="return confirm('Slet dette mål?')"><button type="submit" class="fm-icon-btn" style="width:32px;height:32px;color:var(--fm-danger)"><i class="fa-solid fa-trash"></i></button></form>
+      </div></td>
+    </tr>
+    {% else %}
+    <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen kompetencemål sat endnu.</td></tr>
+    {% endfor %}
+  </tbody></table></div>
 </div>
+
+<!-- Add/Edit Target Modal -->
+<div id="addTargetModal" class="sg-modal" style="display:none">
+  <div class="fm-card" style="max-width:460px;width:90%;padding:22px">
+    <h3 id="targetModalTitle" style="font-size:17px;font-weight:700;margin-bottom:14px">Tilføj kompetencemål</h3>
+    <label class="fm-field"><span>Afdeling</span><select class="fm-input" id="targetDept"><option value="">Alle afdelinger</option>{% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></label>
+    <label class="fm-field"><span>Kompetence *</span><input type="text" class="fm-input" id="targetSkill" list="skillNamesList" placeholder="Indtast eller vælg kompetence..." autocomplete="off"></label>
+    <label class="fm-field"><span>Målniveau: <strong id="levelDisplay">3</strong></span><input type="range" id="targetLevel" min="1" max="5" value="3" oninput="document.getElementById('levelDisplay').textContent=this.value"></label>
+    <label class="fm-field"><span>Prioritet</span><select class="fm-input" id="targetPriority"><option value="low">Lav</option><option value="medium" selected>Medium</option><option value="high">Høj</option></select></label>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="closeModal('addTargetModal')">Annuller</button><button class="btn btn-primary btn-sm" onclick="saveTarget()"><i class="fa-solid fa-floppy-disk"></i> Gem mål</button></div>
+  </div>
+</div>
+
+<!-- Assign Skill Modal -->
+<div id="assignSkillModal" class="sg-modal" style="display:none">
+  <div class="fm-card" style="max-width:460px;width:90%;padding:22px">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Tildel kompetence</h3>
+    <label class="fm-field"><span>Vælg kompetence *</span><input type="text" class="fm-input" id="assignSkillName" list="skillNamesList" placeholder="f.eks. Python, ITIL..." autocomplete="off"></label>
+    <label class="fm-field"><span>Niveau: <strong id="assignLevelDisplay">2</strong></span><input type="range" id="assignLevel" min="1" max="5" value="2" oninput="document.getElementById('assignLevelDisplay').textContent=this.value"></label>
+    <label class="fm-field"><span>Tildel til afdeling</span><select class="fm-input" id="assignDept"><option value="">-- Vælg --</option>{% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></label>
+    <div style="font-size:12px;color:var(--fm-ink-3);margin-top:6px">Dette opdaterer niveauet for alle medarbejdere i den valgte afdeling.</div>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="closeModal('assignSkillModal')">Luk</button><button class="btn btn-primary btn-sm" onclick="assignSkill()"><i class="fa-solid fa-check"></i> Udfør tildeling</button></div>
+  </div>
+</div>
+
+<datalist id="skillNamesList">{% for s in all_skill_names %}<option value="{{ s }}">{% endfor %}</datalist>
+{% endblock %}
+{% block extra_head %}
+<style>.sg-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;display:flex;align-items:center;justify-content:center}</style>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function openModal(id){
+  if(id==='addTargetModal'){
+    document.getElementById('targetModalTitle').textContent='Tilføj kompetencemål';
+    document.getElementById('targetSkill').value='';
+    document.getElementById('targetDept').value='';
+    document.getElementById('targetLevel').value=3;
+    document.getElementById('levelDisplay').textContent='3';
+    document.getElementById('targetPriority').value='medium';
+  }
+  document.getElementById(id).style.display='flex';
+}
+function closeModal(id){ document.getElementById(id).style.display='none'; }
+function editTarget(skill, dept, level, priority){
+  document.getElementById('targetModalTitle').textContent='Rediger kompetencemål';
+  document.getElementById('targetSkill').value=skill;
+  document.getElementById('targetDept').value=dept;
+  document.getElementById('targetLevel').value=level;
+  document.getElementById('levelDisplay').textContent=level;
+  document.getElementById('targetPriority').value=priority;
+  document.getElementById('addTargetModal').style.display='flex';
+}
+function saveTarget(){
+  var data = {
+    department: document.getElementById('targetDept').value,
+    skill_name: document.getElementById('targetSkill').value.trim(),
+    target_level: parseInt(document.getElementById('targetLevel').value),
+    priority: document.getElementById('targetPriority').value
+  };
+  if(!data.skill_name){ alert('Angiv kompetencenavn.'); return; }
+  fetch('{{ url_for("hr_dashboard.save_skill_target") }}', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
+  }).then(r=>r.json()).then(d=>{ if(d.success) location.reload(); else alert('Fejl: '+d.message); });
+}
+function assignSkill(){
+  var skill=document.getElementById('assignSkillName').value.trim();
+  var level=parseInt(document.getElementById('assignLevel').value);
+  var dept=document.getElementById('assignDept').value;
+  if(!skill){ alert('Angiv kompetencenavn.'); return; }
+  if(!dept){ alert('Vælg en afdeling.'); return; }
+  fetch('{{ url_for("hr_dashboard.assign_employee_skill") }}', {
+    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({skill_name:skill, level:level, department:dept})
+  }).then(r=>r.json()).then(d=>{ if(d.success){ alert(d.message); location.reload(); } else alert('Fejl: '+(d.message||'Ukendt fejl')); });
+}
+</script>
 {% endblock %}

@@ -3,14 +3,400 @@
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Opret virksomhed{% endblock %}
 {% block topbar_sub %}Onboard en ny tenant på Futurematch.{% endblock %}
+{% block extra_head %}
+<style>
+  .reg-wrap { max-width: 760px; margin: 0 auto; }
+  .step-indicator { display: flex; gap: 0; margin-bottom: 22px; }
+  .step-item { flex: 1; text-align: center; padding: 11px 6px; border-bottom: 3px solid var(--fm-line); color: var(--fm-ink-3); font-size: 12.5px; font-weight: 700; transition: var(--t); }
+  .step-item.active { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .step-item.done { border-color: var(--fm-success); color: var(--fm-success); }
+  .step-section { display: none; }
+  .step-section.active { display: block; }
+  .feature-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .feature-item { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fm-ink-2); }
+  .feature-item i { color: var(--fm-success); }
+  .validation-hint { font-size: 12px; color: var(--fm-ink-3); margin-top: 3px; }
+  .validation-hint.error { color: var(--fm-danger); }
+  .hr-mode-card { border: 2px solid var(--fm-line); border-radius: 12px; padding: 16px; cursor: pointer; transition: var(--t); margin-bottom: 14px; }
+  .hr-mode-card:hover { border-color: var(--fm-primary); }
+  .hr-mode-card.selected { border-color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .hr-mode-card .mode-header { display: flex; align-items: center; gap: 10px; margin-bottom: 6px; }
+  .hr-mode-card .mode-header i { font-size: 17px; color: var(--fm-primary); }
+  .hr-mode-card .mode-header h6 { margin: 0; font-weight: 700; font-size: 14px; }
+  .hr-mode-card p { margin: 0; font-size: 12.5px; color: var(--fm-ink-2); }
+  .hr-fields { display: none; margin-top: 14px; }
+  .hr-fields.active { display: block; }
+  .search-results { position: absolute; z-index: 10; background: var(--fm-surface); border: 1px solid var(--fm-line); border-radius: 10px; width: 100%; max-height: 200px; overflow-y: auto; box-shadow: var(--sh-md); }
+  .search-results .search-item { padding: 9px 12px; cursor: pointer; border-bottom: 1px solid var(--fm-line); }
+  .search-results .search-item:hover { background: var(--fm-primary-tint); }
+  .search-results .search-item .name { font-weight: 700; font-size: 13.5px; }
+  .search-results .search-item .email { font-size: 12px; color: var(--fm-ink-3); }
+  .selected-user-badge { display: flex; align-items: center; gap: 8px; padding: 9px 12px; background: color-mix(in srgb, var(--fm-success) 12%, transparent); border-radius: 10px; margin-top: 8px; font-size: 13px; }
+  .selected-user-badge .remove { cursor: pointer; color: var(--fm-danger); margin-left: auto; }
+  .form-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  @media (max-width: 640px) { .form-row2, .feature-grid { grid-template-columns: 1fr; } }
+  .reg-input { display: flex; }
+  .reg-input .fm-input { border-radius: 10px 0 0 10px; }
+  .reg-input .btn { border-radius: 0 10px 10px 0; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div style="max-width:760px;margin:0 auto"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsoplysninger</h3></div><div class="fm-card-body">
-  <div class="form-grid"><div class="fm-field full"><label>Virksomhedsnavn</label><input class="fm-input" placeholder="fx Nordi A/S"/></div>
-  <div class="fm-field"><label>CVR</label><input class="fm-input" placeholder="12345678"/></div><div class="fm-field"><label>Antal medarbejdere</label><input class="fm-input" type="number" placeholder="250"/></div>
-  <div class="fm-field full"><label>HR-manager e-mail</label><input class="fm-input" type="email" placeholder="hr@virksomhed.dk"/></div>
-  <div class="fm-field"><label>Plan</label><select class="fm-select"><option>Enterprise</option><option>Business</option><option>Starter</option></select></div>
-  <div class="fm-field"><label>White-label</label><select class="fm-select"><option>Ja</option><option>Nej</option></select></div></div>
-  </div></div></div>
+<div class="reg-wrap">
+  <div class="step-indicator">
+    <div class="step-item active" id="step-ind-1">1. Virksomhed</div>
+    <div class="step-item" id="step-ind-2">2. HR-manager</div>
+    <div class="step-item" id="step-ind-3">3. Bekræft</div>
+  </div>
+
+  <div class="fm-card"><div class="fm-card-body">
+    <form method="POST" id="registerForm" action="{{ url_for('companies.register_company') }}" novalidate>
+
+      <!-- STEP 1 -->
+      <div class="step-section active" id="step-1">
+        <div class="fm-card-head" style="padding:0 0 14px 0;border:0"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsoplysninger</h3></div>
+        <div class="fm-field full">
+          <label>Virksomhedsnavn *</label>
+          <input type="text" class="fm-input" name="company_name" id="company_name" required placeholder="F.eks. Acme Danmark A/S">
+          <div class="validation-hint" id="company_name_hint"></div>
+        </div>
+        <div class="form-row2">
+          <div class="fm-field">
+            <label>Branche</label>
+            <select class="fm-select" name="industry" id="industry" onchange="toggleCustomIndustry(this)">
+              <option value="">Vælg branche</option>
+              <option value="technology">IT & Teknologi</option>
+              <option value="finance">Finans & Forsikring</option>
+              <option value="healthcare">Sundhed & Pharma</option>
+              <option value="manufacturing">Produktion & Industri</option>
+              <option value="retail">Detail & E-handel</option>
+              <option value="consulting">Rådgivning & Konsulentvirksomhed</option>
+              <option value="education">Uddannelse</option>
+              <option value="public_sector">Offentlig sektor</option>
+              <option value="logistics">Transport & Logistik</option>
+              <option value="construction">Byggeri & Anlæg</option>
+              <option value="energy">Energi & Forsyning</option>
+              <option value="media">Medier & Kommunikation</option>
+              <option value="other">Andet</option>
+            </select>
+            <input type="text" class="fm-input" name="industry_custom" id="industry_custom" placeholder="Skriv jeres branche..." style="display:none;margin-top:8px;">
+          </div>
+          <div class="fm-field">
+            <label>Antal medarbejdere</label>
+            <select class="fm-select" name="company_size" id="company_size">
+              <option value="1-10">1-10</option>
+              <option value="11-50" selected>11-50</option>
+              <option value="51-200">51-200</option>
+              <option value="201-500">201-500</option>
+              <option value="501-1000">501-1.000</option>
+              <option value="1000+">1.000+</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row2">
+          <div class="fm-field">
+            <label>By</label>
+            <input type="text" class="fm-input" name="city" placeholder="F.eks. København">
+          </div>
+          <div class="fm-field">
+            <label>Virksomhedsdomæne</label>
+            <input type="text" class="fm-input" name="company_domain" placeholder="firma.dk">
+            <div class="validation-hint">Bruges til at matche medarbejdere automatisk</div>
+          </div>
+        </div>
+        <input type="hidden" name="country" value="Denmark">
+        <div class="fm-flex" style="justify-content:flex-end;margin-top:6px">
+          <button type="button" class="btn btn-primary" onclick="goStep(2)">Næste <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+      </div>
+
+      <!-- STEP 2 -->
+      <div class="step-section" id="step-2">
+        <div class="fm-card-head" style="padding:0 0 6px 0;border:0"><span class="fm-ch-icon"><i class="fa-solid fa-user-tie"></i></span><h3>Tildel HR-manager</h3></div>
+        <p style="color:var(--fm-ink-2);font-size:13px;margin:0 0 14px">HR-manageren styrer virksomheden, tilføjer medarbejdere og har adgang til dashboards og rapporter.</p>
+
+        <input type="hidden" name="hr_mode" id="hr_mode" value="new">
+
+        <div class="hr-mode-card selected" id="mode-new" onclick="selectMode('new')">
+          <div class="mode-header"><i class="fa-solid fa-user-plus"></i><h6>Opret ny bruger</h6></div>
+          <p>Opret en ny brugerkonto som HR-manager. Login-oplysninger vises efter oprettelse.</p>
+        </div>
+
+        <div class="hr-fields active" id="fields-new">
+          <div class="form-row2">
+            <div class="fm-field">
+              <label>Fulde navn *</label>
+              <input type="text" class="fm-input" name="hr_name" id="hr_name" placeholder="F.eks. Mette Hansen">
+            </div>
+            <div class="fm-field">
+              <label>Brugernavn *</label>
+              <input type="text" class="fm-input" name="hr_username" id="hr_username" placeholder="F.eks. mette.hansen">
+              <div class="validation-hint">Bruges til login</div>
+            </div>
+          </div>
+          <div class="form-row2">
+            <div class="fm-field">
+              <label>E-mail *</label>
+              <input type="email" class="fm-input" name="hr_email" id="hr_email" placeholder="mette@firma.dk">
+              <div class="validation-hint" id="email_hint"></div>
+            </div>
+            <div class="fm-field">
+              <label>Jobtitel</label>
+              <input type="text" class="fm-input" name="job_title" id="job_title" placeholder="F.eks. HR-chef">
+            </div>
+          </div>
+          <div class="form-row2">
+            <div class="fm-field">
+              <label>Password *</label>
+              <div class="reg-input">
+                <input type="text" class="fm-input" name="hr_password" id="hr_password_field">
+                <button type="button" class="btn btn-ghost" onclick="generateHRPassword()"><i class="fa-solid fa-dice"></i></button>
+              </div>
+              <div class="validation-hint">Klik terningen for at generere. Del det med HR-manageren.</div>
+            </div>
+            <div class="fm-field">
+              <label>Telefon</label>
+              <input type="tel" class="fm-input" name="hr_phone" placeholder="+45 12 34 56 78">
+            </div>
+          </div>
+        </div>
+
+        <div class="hr-mode-card" id="mode-existing" onclick="selectMode('existing')">
+          <div class="mode-header"><i class="fa-solid fa-user-check"></i><h6>Tildel eksisterende bruger</h6></div>
+          <p>Søg efter en eksisterende bruger og tildel dem som HR-manager.</p>
+        </div>
+
+        <div class="hr-fields" id="fields-existing">
+          <div class="fm-field" style="position:relative">
+            <label>Søg bruger *</label>
+            <input type="text" class="fm-input" id="user_search" placeholder="Skriv navn eller e-mail..." autocomplete="off">
+            <input type="hidden" name="existing_user_id" id="existing_user_id">
+            <div class="search-results" id="searchResults" style="display:none;"></div>
+            <div id="selectedUser" style="display:none;"></div>
+          </div>
+        </div>
+
+        <div class="fm-flex" style="justify-content:space-between;margin-top:6px">
+          <button type="button" class="btn btn-ghost" onclick="goStep(1)"><i class="fa-solid fa-arrow-left"></i> Tilbage</button>
+          <button type="button" class="btn btn-primary" onclick="goStep(3)">Næste <i class="fa-solid fa-arrow-right"></i></button>
+        </div>
+      </div>
+
+      <!-- STEP 3 -->
+      <div class="step-section" id="step-3">
+        <div class="fm-card-head" style="padding:0 0 14px 0;border:0"><span class="fm-ch-icon"><i class="fa-solid fa-circle-check"></i></span><h3>Bekræft og opret</h3></div>
+
+        <div class="fm-card" style="background:var(--fm-surface-2);margin-bottom:14px"><div class="fm-card-body">
+          <div class="form-row2">
+            <div>
+              <div class="fm-eyebrow"><i class="fa-solid fa-building"></i> Virksomhed</div>
+              <p style="margin:6px 0 0" id="confirm-company"></p>
+              <p style="margin:2px 0 0;font-size:12.5px;color:var(--fm-ink-3)" id="confirm-industry"></p>
+              <p style="margin:2px 0 0;font-size:12.5px;color:var(--fm-ink-3)" id="confirm-size"></p>
+            </div>
+            <div>
+              <div class="fm-eyebrow clay"><i class="fa-solid fa-user-tie"></i> HR-manager</div>
+              <p style="margin:6px 0 0" id="confirm-name"></p>
+              <p style="margin:2px 0 0;font-size:12.5px;color:var(--fm-ink-3)" id="confirm-email"></p>
+              <p style="margin:2px 0 0;font-size:12.5px;color:var(--fm-ink-3)" id="confirm-mode"></p>
+            </div>
+          </div>
+        </div></div>
+
+        <div class="fm-card" style="border-color:color-mix(in srgb,var(--fm-success) 30%,var(--fm-line));margin-bottom:14px"><div class="fm-card-body">
+          <div style="font-weight:700;color:var(--fm-success);margin-bottom:10px">30 dages gratis prøveperiode inkluderer:</div>
+          <div class="feature-grid">
+            <div class="feature-item"><i class="fa-solid fa-check"></i> Op til 50 medarbejdere</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> AI kursusrådgiver (chatbot)</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> HR analytics dashboard</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> Kompetencegab-analyse</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> Afdelingsbudgetter</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> Godkendelsesworkflows</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> ROI-rapportering</div>
+            <div class="feature-item"><i class="fa-solid fa-check"></i> Dataeksport (CSV/JSON)</div>
+          </div>
+        </div></div>
+
+        <label class="fm-flex fm-gap8" style="align-items:center;margin-bottom:16px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="terms" name="terms" required>
+          <span>Jeg accepterer handelsbetingelserne og privatlivspolitikken</span>
+        </label>
+
+        <div class="fm-flex" style="justify-content:space-between">
+          <button type="button" class="btn btn-ghost" onclick="goStep(2)"><i class="fa-solid fa-arrow-left"></i> Tilbage</button>
+          <button type="submit" class="btn btn-primary" id="submitBtn"><i class="fa-solid fa-rocket"></i> Opret virksomhed</button>
+        </div>
+      </div>
+    </form>
+  </div></div>
 </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+let currentStep = 1;
+let selectedMode = 'new';
+let selectedUserData = null;
+
+function selectMode(mode) {
+    selectedMode = mode;
+    document.getElementById('hr_mode').value = mode;
+    document.querySelectorAll('.hr-mode-card').forEach(c => c.classList.remove('selected'));
+    document.getElementById('mode-' + mode).classList.add('selected');
+    document.querySelectorAll('.hr-fields').forEach(f => f.classList.remove('active'));
+    document.getElementById('fields-' + mode).classList.add('active');
+}
+
+function goStep(step) {
+    if (step > currentStep) {
+        if (currentStep === 1 && !document.getElementById('company_name').value.trim()) {
+            document.getElementById('company_name_hint').textContent = 'Virksomhedsnavn er påkrævet';
+            document.getElementById('company_name_hint').classList.add('error');
+            document.getElementById('company_name').focus();
+            return;
+        }
+        if (currentStep === 2) {
+            if (selectedMode === 'new') {
+                const name = document.getElementById('hr_name').value.trim();
+                const uname = document.getElementById('hr_username').value.trim();
+                const email = document.getElementById('hr_email').value.trim();
+                const pw = document.getElementById('hr_password_field').value.trim();
+                if (!name || !uname || !email || !pw) {
+                    alert('Udfyld venligst alle påkrævede felter for HR-manageren.');
+                    return;
+                }
+                if (!email.includes('@')) {
+                    document.getElementById('email_hint').textContent = 'Indtast en gyldig e-mail';
+                    document.getElementById('email_hint').classList.add('error');
+                    document.getElementById('hr_email').focus();
+                    return;
+                }
+            } else {
+                if (!document.getElementById('existing_user_id').value) {
+                    alert('Vælg venligst en bruger fra søgeresultaterne.');
+                    return;
+                }
+            }
+        }
+    }
+
+    if (step === 3) {
+        document.getElementById('confirm-company').textContent = document.getElementById('company_name').value;
+        const ind = document.getElementById('industry');
+        document.getElementById('confirm-industry').textContent = ind.options[ind.selectedIndex].text !== 'Vælg branche' ? ind.options[ind.selectedIndex].text : '';
+        const sz = document.getElementById('company_size');
+        document.getElementById('confirm-size').textContent = sz.value + ' medarbejdere';
+
+        if (selectedMode === 'new') {
+            document.getElementById('confirm-name').textContent = document.getElementById('hr_name').value;
+            document.getElementById('confirm-email').textContent = document.getElementById('hr_email').value;
+            document.getElementById('confirm-mode').textContent = '(Ny bruger: ' + document.getElementById('hr_username').value + ')';
+        } else if (selectedUserData) {
+            document.getElementById('confirm-name').textContent = selectedUserData.username;
+            document.getElementById('confirm-email').textContent = selectedUserData.email;
+            document.getElementById('confirm-mode').textContent = '(Eksisterende bruger)';
+        }
+    }
+
+    document.querySelectorAll('.step-section').forEach(s => s.classList.remove('active'));
+    document.getElementById('step-' + step).classList.add('active');
+    document.querySelectorAll('.step-item').forEach((el, i) => {
+        el.classList.remove('active', 'done');
+        if (i + 1 < step) el.classList.add('done');
+        if (i + 1 === step) el.classList.add('active');
+    });
+    currentStep = step;
+    window.scrollTo({top: 0, behavior: 'smooth'});
+}
+
+let searchTimeout;
+document.getElementById('user_search').addEventListener('input', function() {
+    clearTimeout(searchTimeout);
+    const q = this.value.trim();
+    const resultsDiv = document.getElementById('searchResults');
+    if (q.length < 2) { resultsDiv.style.display = 'none'; return; }
+    searchTimeout = setTimeout(() => {
+        fetch('{{ url_for("companies.search_users") }}?q=' + encodeURIComponent(q))
+            .then(r => r.json())
+            .then(users => {
+                if (!users.length) {
+                    resultsDiv.innerHTML = '<div class="search-item"><span style="color:var(--fm-ink-3)">Ingen brugere fundet</span></div>';
+                } else {
+                    resultsDiv.innerHTML = users.map(u =>
+                        `<div class="search-item" onclick="pickUser(${u.id}, '${u.username.replace(/'/g, "\\'")}', '${u.email.replace(/'/g, "\\'")}')">
+                            <div class="name">${u.username}</div>
+                            <div class="email">${u.email}</div>
+                        </div>`
+                    ).join('');
+                }
+                resultsDiv.style.display = 'block';
+            });
+    }, 300);
+});
+
+function pickUser(id, name, email) {
+    selectedUserData = {id, username: name, email};
+    document.getElementById('existing_user_id').value = id;
+    document.getElementById('searchResults').style.display = 'none';
+    document.getElementById('user_search').value = '';
+    document.getElementById('selectedUser').style.display = 'block';
+    document.getElementById('selectedUser').innerHTML =
+        `<div class="selected-user-badge">
+            <i class="fa-solid fa-user-check" style="color:var(--fm-success)"></i>
+            <div><strong>${name}</strong><br><small style="color:var(--fm-ink-3)">${email}</small></div>
+            <span class="remove" onclick="clearUser()"><i class="fa-solid fa-times"></i></span>
+        </div>`;
+}
+
+function clearUser() {
+    selectedUserData = null;
+    document.getElementById('existing_user_id').value = '';
+    document.getElementById('selectedUser').style.display = 'none';
+    document.getElementById('selectedUser').innerHTML = '';
+}
+
+document.addEventListener('click', function(e) {
+    if (!e.target.closest('#user_search') && !e.target.closest('#searchResults')) {
+        document.getElementById('searchResults').style.display = 'none';
+    }
+});
+
+function generateHRPassword() {
+    const chars = 'abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+    let pw = '';
+    for (let i = 0; i < 12; i++) pw += chars[Math.floor(Math.random() * chars.length)];
+    document.getElementById('hr_password_field').value = pw;
+}
+generateHRPassword();
+
+function toggleCustomIndustry(sel) {
+    const customField = document.getElementById('industry_custom');
+    if (sel.value === 'other') { customField.style.display = 'block'; customField.focus(); }
+    else { customField.style.display = 'none'; customField.value = ''; }
+}
+
+(function() {
+    const nameField = document.getElementById('hr_name');
+    const ufield = document.getElementById('hr_username');
+    let userEdited = false;
+    ufield.addEventListener('input', function() { userEdited = true; });
+    function autoSuggest(name) {
+        return name.trim().toLowerCase()
+            .replace(/[æ]/g, 'ae').replace(/[ø]/g, 'oe').replace(/[å]/g, 'aa')
+            .replace(/[^a-z0-9\s.-]/g, '').split(/\s+/).filter(p => p).join('.');
+    }
+    nameField.addEventListener('input', function() { if (!userEdited) ufield.value = autoSuggest(this.value); });
+})();
+
+document.getElementById('registerForm').addEventListener('submit', function(e) {
+    const btn = document.getElementById('submitBtn');
+    if (!document.getElementById('terms').checked) {
+        e.preventDefault();
+        alert('Accepter venligst handelsbetingelserne.');
+        return;
+    }
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Opretter...';
+});
+</script>
 {% endblock %}

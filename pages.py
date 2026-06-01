@@ -10,7 +10,8 @@ def about():
 
 @pages_bp.route('/contact')
 def contact():
-    return render_template('contact.html')
+    # No dedicated contact page in the Futurematch design; support covers it.
+    return render_template('fm/support.html')
 
 @pages_bp.route('/support')
 def support():
@@ -194,4 +195,4 @@ def settings():
 
 @pages_bp.route('/profile')
 def profile():
-    return render_template('fm/my_profile.html')
+    return render_template('fm/my_profile.html', username=session.get('user'))

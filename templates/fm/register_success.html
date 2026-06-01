@@ -3,11 +3,78 @@
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomhed oprettet{% endblock %}
 {% block topbar_sub %}Onboarding er klar.{% endblock %}
+{% block extra_head %}
+<style>
+  .succ-wrap { max-width: 600px; margin: 0 auto; }
+  .credentials-box { background: #16161f; color: #e0e0e0; border-radius: 14px; padding: 18px; font-family: var(--ff-mono); position: relative; }
+  .credentials-box .label { color: #8a8a99; font-size: 11px; margin-bottom: 2px; text-transform: uppercase; letter-spacing: .05em; }
+  .credentials-box .value { color: #fff; font-size: 15px; font-weight: 600; margin-bottom: 12px; word-break: break-all; }
+  .credentials-box .value:last-child { margin-bottom: 0; }
+  .copy-btn { position: absolute; top: 14px; right: 14px; background: var(--fm-primary); color: #fff; border: none; border-radius: 8px; padding: 6px 12px; font-size: 12px; cursor: pointer; font-family: var(--ff-sans); }
+  .step-num { display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 999px; background: var(--fm-primary); color: #fff; font-size: 12px; font-weight: 700; flex: 0 0 24px; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div style="max-width:560px;margin:8vh auto 0;text-align:center"><div style="width:72px;height:72px;border-radius:22px;margin:0 auto 22px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success);font-size:30px"><i class="fa-solid fa-circle-check"></i></div>
-  <h1 style="font-size:30px;letter-spacing:-.03em">Nordi A/S er oprettet</h1>
-  <p style="color:var(--fm-ink-2);font-size:15px;margin:10px 0 28px;line-height:1.6">HR-manageren har modtaget en invitation. I kan nu tilføje medarbejdere, sætte budgetter og aktivere branding.</p>
-  <div class="fm-flex fm-gap8" style="justify-content:center"><a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-primary"><i class="fa-solid fa-building"></i> Åbn workspace</a><a href="{{ url_for('futurematch.showcase', page='branding') }}" class="btn btn-ghost"><i class="fa-solid fa-palette"></i> Sæt branding</a></div></div>
+<div class="succ-wrap">
+  <div style="text-align:center;margin-bottom:24px">
+    <div style="width:72px;height:72px;border-radius:22px;margin:0 auto 18px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success);font-size:30px"><i class="fa-solid fa-circle-check"></i></div>
+    <h1 style="font-size:28px;letter-spacing:-.03em">{{ company_name }} er oprettet</h1>
+    <p style="color:var(--fm-ink-2);font-size:14px;margin:8px 0 0"><strong>{{ hr_name }}</strong> er nu HR-manager.</p>
+  </div>
+
+  {% if is_new_user %}
+  <div class="fm-card" style="border-color:color-mix(in srgb,var(--fm-warning) 35%,var(--fm-line));margin-bottom:18px"><div class="fm-card-body">
+    <div class="fm-flex fm-gap8" style="align-items:center;margin-bottom:10px;color:var(--fm-warning);font-weight:700"><i class="fa-solid fa-triangle-exclamation"></i> Vigtigt: Gem disse login-oplysninger</div>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 14px">Disse oplysninger vises kun denne ene gang. Del dem sikkert med HR-manageren. HR-manageren kan ændre adgangskoden efter første login.</p>
+    <div class="credentials-box" id="credentialsBox">
+      <button class="copy-btn" onclick="copyCredentials()"><i class="fa-solid fa-copy"></i> Kopier</button>
+      <div class="label">E-mail</div>
+      <div class="value" id="cred-email">{{ hr_email }}</div>
+      <div class="label">Adgangskode</div>
+      <div class="value" id="cred-password">{{ hr_password }}</div>
+      <div class="label">Login-side</div>
+      <div class="value">{{ request.host_url.rstrip('/') }}/login/{{ company_slug }}</div>
+    </div>
+  </div></div>
+  {% else %}
+  <div class="fm-card" style="margin-bottom:18px"><div class="fm-card-body">
+    <div class="fm-flex fm-gap8" style="align-items:flex-start">
+      <i class="fa-solid fa-user-check" style="color:var(--fm-success);font-size:20px;margin-top:2px"></i>
+      <div>
+        <div style="font-weight:700">{{ hr_name }} er nu HR-manager</div>
+        <p style="color:var(--fm-ink-2);font-size:12.5px;margin:4px 0 0">{{ hr_email }} kan logge ind med sin eksisterende konto og får automatisk adgang til virksomhedens dashboards og medarbejderstyring.</p>
+      </div>
+    </div>
+  </div></div>
+  {% endif %}
+
+  <div class="fm-card" style="margin-bottom:18px"><div class="fm-card-body">
+    <div style="font-weight:700;margin-bottom:12px">Hvad sker der nu?</div>
+    <div class="fm-flex fm-gap8" style="align-items:flex-start;margin-bottom:10px"><span class="step-num">1</span><span style="font-size:13px">HR-manageren logger ind og får adgang til virksomhedens dashboard</span></div>
+    <div class="fm-flex fm-gap8" style="align-items:flex-start;margin-bottom:10px"><span class="step-num">2</span><span style="font-size:13px">HR-manageren tilføjer medarbejdere og opretter afdelinger</span></div>
+    <div class="fm-flex fm-gap8" style="align-items:flex-start"><span class="step-num">3</span><span style="font-size:13px">Medarbejdere får adgang til kurser, chatbot og læringsværktøjer</span></div>
+  </div></div>
+
+  <div class="fm-flex fm-gap8" style="justify-content:center">
+    <a href="{{ url_for('companies.register_company') }}" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Opret endnu en virksomhed</a>
+    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-ghost"><i class="fa-solid fa-building"></i> Til dashboard</a>
+  </div>
 </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function copyCredentials() {
+    const email = document.getElementById('cred-email').textContent;
+    const pw = document.getElementById('cred-password').textContent;
+    const loginUrl = '{{ request.host_url.rstrip("/") }}/login/{{ company_slug }}';
+    const text = `E-mail: ${email}\nAdgangskode: ${pw}\nLogin: ${loginUrl}`;
+    navigator.clipboard.writeText(text).then(() => {
+        const btn = document.querySelector('.copy-btn');
+        btn.innerHTML = '<i class="fa-solid fa-check"></i> Kopieret!';
+        setTimeout(() => { btn.innerHTML = '<i class="fa-solid fa-copy"></i> Kopier'; }, 2000);
+    });
+}
+</script>
 {% endblock %}

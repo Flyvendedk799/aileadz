@@ -121,77 +121,52 @@
 </style>
 {% endblock %}
 {% block content %}
+{% set _u = username or session.get('user') or 'Gæst' %}
 <div class="fm-wrap">
+        <div class="toasts" id="toasts"></div>
 
         <!-- Hero -->
         <section class="cv-hero" data-reveal>
           <div class="cv-id">
-            <span class="cv-av">JV</span>
+            <span class="cv-av">{{ (_u[:2] | upper) if _u else 'FM' }}</span>
             <div>
-              <h1>Jonas Vester</h1>
-              <div class="cv-headline">Senior Developer · projektledelse &amp; agil udvikling</div>
-              <div class="cv-meta">
-                <span class="fm-badge"><i class="fa-solid fa-building"></i> Udvikling</span>
-                <span class="fm-badge"><i class="fa-solid fa-location-dot"></i> København</span>
+              <h1>{{ _u }}</h1>
+              <div class="cv-headline" id="cvHeadline">Indlæser profil…</div>
+              <div class="cv-meta" id="cvMeta">
                 <span class="fm-badge teal dot">Aktiv</span>
               </div>
               <div class="cv-actions">
                 <button class="btn btn-soft btn-sm" onclick="openAdd()"><i class="fa-solid fa-plus"></i> Tilføj kompetence</button>
-                <button class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Rediger profil</button>
+                <a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Opdater via AI</a>
               </div>
             </div>
           </div>
           <div class="cv-complete">
-            <div class="ring-big" id="ringBig" style="--p:72"><div><div><span class="pct" id="ringPct">72%</span><div class="lab">Udfyldt</div></div></div></div>
-            <div class="breakdown">
-              <div class="bd-row ok"><i class="fa-solid fa-circle-check"></i><div class="bd-bar"><span style="width:100%"></span></div><span class="bd-v">Profil</span></div>
-              <div class="bd-row ok"><i class="fa-solid fa-circle-check"></i><div class="bd-bar"><span style="width:100%"></span></div><span class="bd-v">Kompetencer</span></div>
-              <div class="bd-row"><i class="fa-solid fa-circle-half-stroke" style="color:var(--fm-warning)"></i><div class="bd-bar"><span style="width:60%"></span></div><span class="bd-v">Erfaring</span></div>
-              <div class="bd-row ok"><i class="fa-solid fa-circle-check"></i><div class="bd-bar"><span style="width:100%"></span></div><span class="bd-v">Uddannelse</span></div>
-              <div class="bd-row"><i class="fa-regular fa-circle" style="color:var(--fm-ink-3)"></i><div class="bd-bar"><span style="width:30%"></span></div><span class="bd-v">Mål</span></div>
-            </div>
+            <div class="ring-big" id="ringBig" style="--p:0"><div><div><span class="pct" id="ringPct">0%</span><div class="lab">Udfyldt</div></div></div></div>
+            <div class="breakdown" id="cvBreakdown"></div>
           </div>
         </section>
 
         <!-- Stats -->
         <section class="cv-stats">
-          <div class="cv-stat" data-reveal data-d="1"><div class="v accent tnum" id="statSkills">9</div><div class="l">Kompetencer</div></div>
-          <div class="cv-stat" data-reveal data-d="2"><div class="v tnum">7</div><div class="l">Års erfaring</div></div>
-          <div class="cv-stat" data-reveal data-d="3"><div class="v tnum">3</div><div class="l">Stillinger</div></div>
-          <div class="cv-stat" data-reveal data-d="4"><div class="v tnum">4</div><div class="l">Kurser</div></div>
-          <div class="cv-stat" data-reveal data-d="5"><div class="v tnum">2</div><div class="l">Certifikater</div></div>
+          <div class="cv-stat" data-reveal data-d="1"><div class="v accent tnum" id="statSkills">0</div><div class="l">Kompetencer</div></div>
+          <div class="cv-stat" data-reveal data-d="2"><div class="v tnum" id="statYears">0</div><div class="l">Års erfaring</div></div>
+          <div class="cv-stat" data-reveal data-d="3"><div class="v tnum" id="statRoles">0</div><div class="l">Stillinger</div></div>
+          <div class="cv-stat" data-reveal data-d="4"><div class="v tnum" id="statCourses">0</div><div class="l">Kurser</div></div>
+          <div class="cv-stat" data-reveal data-d="5"><div class="v tnum" id="statEdu">0</div><div class="l">Uddannelser</div></div>
         </section>
 
         <!-- AI nudge -->
         <div class="ai-nudge" data-reveal>
           <span class="ai-ic"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
-          <div style="flex:1"><div style="font-weight:700;font-size:15px">Din profil mangler 2 ting for et perfekt match</div><div style="font-size:13px;color:var(--fm-ink-2);margin-top:2px">Tilføj din seneste erfaring og et karrieremål — så finder AI’en endnu skarpere kurser til dig.</div></div>
+          <div style="flex:1"><div style="font-weight:700;font-size:15px">Få et skarpere kursusmatch</div><div style="font-size:13px;color:var(--fm-ink-2);margin-top:2px">Jo mere udfyldt din profil er, jo bedre finder AI’en relevante kurser til dig.</div></div>
           <a href="{{ url_for('futurematch.chat') }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
         </div>
 
-        <!-- Competency: radar + progression -->
-        <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-radar"></i> Kompetenceindsigt</span><h2 class="fm-section-title">Dit niveau mod dine mål</h2></div></div>
-        <div class="comp-grid">
-          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-area"></i></span><h3>Kompetenceradar</h3></div>
-            <div class="fm-card-body"><div style="height:300px"><canvas id="radar"></canvas></div>
-              <div class="radar-legend"><span><i style="background:var(--fm-primary)"></i> Dit niveau</span><span><i style="background:var(--fm-clay)"></i> Mål</span></div>
-            </div>
-          </div>
-          <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-arrow-trend-up"></i></span><h3>Top-kompetencer &amp; udvikling</h3></div>
-            <div class="fm-card-body">
-              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-ekspert)"></span>Projektledelse</span><span class="trend"><i class="fa-solid fa-arrow-up"></i> +1 niveau</span></div><div class="track"><span style="width:90%"></span><div class="target" style="left:100%"></div></div></div>
-              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-avanceret)"></span>Agil / Scrum</span><span class="trend"><i class="fa-solid fa-arrow-up"></i> i gang</span></div><div class="track"><span style="width:75%"></span><div class="target" style="left:90%"></div></div></div>
-              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-mellem)"></span>Dataanalyse</span><span class="trend" style="color:var(--fm-ink-3)">stabil</span></div><div class="track"><span style="width:58%"></span><div class="target" style="left:80%"></div></div></div>
-              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-mellem)"></span>Kommunikation</span><span class="trend"><i class="fa-solid fa-arrow-up"></i> +12%</span></div><div class="track"><span style="width:68%"></span><div class="target" style="left:85%"></div></div></div>
-              <div class="prog-skill"><div class="top"><span class="nm"><span class="d" style="width:8px;height:8px;border-radius:999px;background:var(--lv-begynder)"></span>Ledelse</span><span class="trend" style="color:var(--fm-clay)">mål sat</span></div><div class="track"><span style="width:45%"></span><div class="target" style="left:80%"></div></div></div>
-            </div>
-          </div>
-        </div>
-
         <!-- Proficiency matrix -->
-        <div class="fm-card" data-reveal><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">9 i alt</span></div>
+        <div class="fm-card" data-reveal><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span></div>
           <div class="fm-card-body">
-            <div id="skillMatrix"></div>
+            <div id="skillMatrix"><div class="muted" style="font-size:13px;padding:8px 0">Indlæser…</div></div>
             <div class="add-skill" id="addSkill">
               <div class="fm-field" style="flex:2;margin:0;min-width:180px"><label>Kompetence</label><input class="fm-input" id="skName" placeholder="fx Power BI, Forhandling…" /></div>
               <div class="fm-field" style="flex:1;margin:0;min-width:140px"><label>Niveau</label><select class="fm-select" id="skLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="avanceret">Avanceret</option><option value="ekspert">Ekspert</option></select></div>
@@ -203,36 +178,213 @@
 
         <!-- Career + education -->
         <div class="split" style="margin-top:18px">
-          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="btn btn-ghost btn-sm" style="margin-left:auto"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3></div>
             <div class="fm-card-body">
-              <div class="cv-timeline">
-                <div class="tlx current"><div class="tlx-card"><div class="tlx-top"><div><div class="tlx-title">Senior Developer</div><div class="tlx-sub">Nordi A/S · Udvikling</div></div><span class="tlx-period">2021 – nu</span></div><span class="tlx-dur">5 år</span><div class="tlx-desc">Tech lead på agile teams, ansvarlig for arkitektur og mentoring af juniorer.</div></div></div>
-                <div class="tlx"><div class="tlx-card"><div class="tlx-top"><div><div class="tlx-title">Software Developer</div><div class="tlx-sub">Trifork</div></div><span class="tlx-period">2019 – 2021</span></div><span class="tlx-dur">2 år</span><div class="tlx-desc">Fuldstack-udvikling på kundeprojekter i finanssektoren.</div></div></div>
-                <div class="tlx"><div class="tlx-card"><div class="tlx-top"><div><div class="tlx-title">Junior Developer</div><div class="tlx-sub">IT Minds</div></div><span class="tlx-period">2018 – 2019</span></div><span class="tlx-dur">1 år</span></div></div>
-              </div>
+              <div class="cv-timeline" id="expList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
             </div>
           </div>
           <div class="stack">
             <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3></div>
-              <div class="fm-card-body" style="display:flex;flex-direction:column;gap:10px">
-                <div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-user-graduate"></i></span><div><div style="font-weight:700;font-size:14px">Cand.polyt. i Softwareteknologi</div><div style="font-size:12.5px;color:var(--fm-ink-2)">DTU · 2018</div></div></div>
-                <div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-book"></i></span><div><div style="font-weight:700;font-size:14px">Datamatiker</div><div style="font-size:12.5px;color:var(--fm-ink-2)">KEA · 2015</div></div></div>
-              </div>
+              <div class="fm-card-body" id="eduList" style="display:flex;flex-direction:column;gap:10px"><div class="muted" style="font-size:13px">Indlæser…</div></div>
             </div>
             <div class="fm-card" data-reveal data-d="3"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
-              <div class="fm-card-body"><p style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">Blive certificeret projektleder og tage skridtet mod en team lead-rolle inden for 2 år.</p><button class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</button></div>
+              <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.chat') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</a></div>
             </div>
           </div>
         </div>
 
         <!-- Certifications / completed courses -->
         <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser &amp; certifikater</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>
-        <div class="fm-grid" style="grid-template-columns:repeat(4,1fr)">
-          <div class="cert-card gold" data-reveal data-d="1"><span class="cert-ic"><i class="fa-solid fa-certificate"></i></span><div><div style="font-weight:700;font-size:14px">PRINCE2 Foundation</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">Confex · 2024</div></div><span class="fm-badge amber" style="align-self:flex-start"><i class="fa-solid fa-shield"></i> Certificeret</span></div>
-          <div class="cert-card" data-reveal data-d="2"><span class="cert-ic"><i class="fa-solid fa-diagram-project"></i></span><div><div style="font-weight:700;font-size:14px">Projektledelse Praktisk</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">Teknologisk Institut · 2024</div></div><span class="fm-badge green" style="align-self:flex-start"><i class="fa-solid fa-check"></i> Gennemført</span></div>
-          <div class="cert-card gold" data-reveal data-d="3"><span class="cert-ic"><i class="fa-solid fa-certificate"></i></span><div><div style="font-weight:700;font-size:14px">Scrum Fundamentals</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">IBC · 2023</div></div><span class="fm-badge amber" style="align-self:flex-start"><i class="fa-solid fa-shield"></i> Certificeret</span></div>
-          <div class="cert-card" data-reveal data-d="4"><span class="cert-ic"><i class="fa-solid fa-table-cells"></i></span><div><div style="font-weight:700;font-size:14px">Excel Grundkursus</div><div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">Mannaz · 2023</div></div><span class="fm-badge green" style="align-self:flex-start"><i class="fa-solid fa-check"></i> Gennemført</span></div>
-        </div>
+        <div class="fm-grid" id="courseList" style="grid-template-columns:repeat(4,1fr)"><div class="muted" style="font-size:13px">Indlæser…</div></div>
 
       </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+  (function () {
+    const LEVEL_LABELS = { begynder: 'Begynder', mellem: 'Mellem', avanceret: 'Avanceret', ekspert: 'Ekspert' };
+    const LEVEL_VARS = { begynder: 'var(--lv-begynder)', mellem: 'var(--lv-mellem)', avanceret: 'var(--lv-avanceret)', ekspert: 'var(--lv-ekspert)' };
+    const LEVEL_ORDER = ['ekspert', 'avanceret', 'mellem', 'begynder'];
+
+    function esc(s) {
+      const d = document.createElement('div');
+      d.appendChild(document.createTextNode(s == null ? '' : String(s)));
+      return d.innerHTML;
+    }
+
+    function toast(msg, ok) {
+      const c = document.getElementById('toasts');
+      const t = document.createElement('div');
+      t.className = 'toast';
+      if (ok === false) t.style.borderLeftColor = 'var(--fm-danger)';
+      t.innerHTML = '<i class="fa-solid ' + (ok === false ? 'fa-circle-exclamation' : 'fa-circle-check') + '"></i> ' + esc(msg);
+      c.appendChild(t);
+      setTimeout(() => { t.style.opacity = '0'; t.style.transition = 'opacity .3s'; setTimeout(() => t.remove(), 300); }, 3000);
+    }
+
+    let _profile = null;
+
+    function api(url, opts) {
+      return fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts || {})).then(r => r.json());
+    }
+
+    function renderSkills(skills) {
+      const wrap = document.getElementById('skillMatrix');
+      const badge = document.getElementById('skBadge');
+      document.getElementById('statSkills').textContent = skills.length;
+      badge.textContent = skills.length + ' i alt';
+      if (!skills.length) {
+        wrap.innerHTML = '<div class="muted" style="font-size:13px;padding:8px 0">Ingen kompetencer endnu. Tilføj din første ovenfor.</div>';
+        return;
+      }
+      const byLevel = {};
+      skills.forEach(s => { (byLevel[s.level] = byLevel[s.level] || []).push(s); });
+      let html = '';
+      LEVEL_ORDER.forEach(lvl => {
+        const group = byLevel[lvl];
+        if (!group || !group.length) return;
+        html += '<div class="lv-group"><div class="lv-head"><span class="lv-dot" style="background:' + LEVEL_VARS[lvl] + '"></span>' +
+          '<span class="lv-name">' + esc(LEVEL_LABELS[lvl] || lvl) + '</span><span class="lv-line"></span><span class="lv-count">' + group.length + '</span></div><div class="sk-wrap">';
+        group.forEach(s => {
+          html += '<span class="sk"><span class="d" style="background:' + LEVEL_VARS[lvl] + '"></span>' + esc(s.name) +
+            '<button class="x" title="Fjern" onclick="removeSkill(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')"><i class="fa-solid fa-xmark"></i></button></span>';
+        });
+        html += '</div></div>';
+      });
+      wrap.innerHTML = html;
+    }
+
+    function renderExperience(exp) {
+      const list = document.getElementById('expList');
+      document.getElementById('statRoles').textContent = exp.length;
+      let years = 0;
+      exp.forEach(e => {
+        const start = e.start_year || null;
+        const end = e.is_current ? new Date().getFullYear() : (e.end_year || null);
+        if (start && end && end >= start) years += (end - start);
+      });
+      document.getElementById('statYears').textContent = years;
+      if (!exp.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen erfaring tilføjet endnu.</div>'; return; }
+      list.innerHTML = exp.map(e => {
+        const period = (e.start_year || '?') + ' – ' + (e.is_current ? 'nu' : (e.end_year || '?'));
+        const dur = (e.start_year && (e.is_current || e.end_year)) ? ((e.is_current ? new Date().getFullYear() : e.end_year) - e.start_year) : null;
+        return '<div class="tlx ' + (e.is_current ? 'current' : '') + '"><div class="tlx-card"><div class="tlx-top">' +
+          '<div><div class="tlx-title">' + esc(e.title) + '</div><div class="tlx-sub">' + esc(e.company || '') + '</div></div>' +
+          '<span class="tlx-period">' + esc(period) + '</span></div>' +
+          (dur != null ? '<span class="tlx-dur">' + dur + ' år</span>' : '') +
+          (e.description ? '<div class="tlx-desc">' + esc(e.description) + '</div>' : '') +
+          '</div></div>';
+      }).join('');
+    }
+
+    function renderEducation(edu) {
+      const list = document.getElementById('eduList');
+      document.getElementById('statEdu').textContent = edu.length;
+      if (!edu.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen uddannelse tilføjet endnu.</div>'; return; }
+      list.innerHTML = edu.map(e =>
+        '<div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-user-graduate"></i></span>' +
+        '<div><div style="font-weight:700;font-size:14px">' + esc(e.degree) + '</div>' +
+        '<div style="font-size:12.5px;color:var(--fm-ink-2)">' + esc(e.institution || '') + (e.year_completed ? ' · ' + esc(e.year_completed) : '') + '</div></div></div>'
+      ).join('');
+    }
+
+    function renderCourses(courses) {
+      const list = document.getElementById('courseList');
+      document.getElementById('statCourses').textContent = courses.length;
+      if (!courses.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen gennemførte kurser endnu.</div>'; return; }
+      list.innerHTML = courses.map((c, i) => {
+        const cert = c.certificate_note && c.certificate_note.trim();
+        const gold = cert ? ' gold' : '';
+        const badge = cert
+          ? '<span class="fm-badge amber" style="align-self:flex-start"><i class="fa-solid fa-shield"></i> Certificeret</span>'
+          : '<span class="fm-badge green" style="align-self:flex-start"><i class="fa-solid fa-check"></i> Gennemført</span>';
+        const sub = [c.vendor, c.completed_date].filter(Boolean).map(esc).join(' · ');
+        return '<div class="cert-card' + gold + '" data-reveal data-d="' + ((i % 4) + 1) + '"><span class="cert-ic"><i class="fa-solid fa-' + (cert ? 'certificate' : 'diagram-project') + '"></i></span>' +
+          '<div><div style="font-weight:700;font-size:14px">' + esc(c.title) + '</div>' +
+          '<div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">' + sub + '</div></div>' + badge + '</div>';
+      }).join('');
+    }
+
+    function renderHeader(p) {
+      const headline = document.getElementById('cvHeadline');
+      headline.textContent = p.headline ? p.headline : 'Tilføj en overskrift via AI-assistenten.';
+      const meta = document.getElementById('cvMeta');
+      let chips = '';
+      if (p.preferred_location) chips += '<span class="fm-badge"><i class="fa-solid fa-location-dot"></i> ' + esc(p.preferred_location) + '</span>';
+      chips += '<span class="fm-badge teal dot">Aktiv</span>';
+      meta.innerHTML = chips;
+      document.getElementById('cvGoals').textContent = p.goals ? p.goals : 'Intet karrieremål sat endnu.';
+    }
+
+    function renderCompleteness(p) {
+      const sections = [
+        { key: 'Profil', done: !!(p.headline || p.bio) },
+        { key: 'Kompetencer', done: (p.skills || []).length > 0 },
+        { key: 'Erfaring', done: (p.experience || []).length > 0 },
+        { key: 'Uddannelse', done: (p.education || []).length > 0 },
+        { key: 'Mål', done: !!p.goals }
+      ];
+      const doneCount = sections.filter(s => s.done).length;
+      const pct = Math.round((doneCount / sections.length) * 100);
+      const ring = document.getElementById('ringBig');
+      ring.style.setProperty('--p', pct);
+      document.getElementById('ringPct').textContent = pct + '%';
+      document.getElementById('cvBreakdown').innerHTML = sections.map(s =>
+        '<div class="bd-row ' + (s.done ? 'ok' : '') + '">' +
+        '<i class="fa-' + (s.done ? 'solid fa-circle-check' : 'regular fa-circle') + '"' + (s.done ? '' : ' style="color:var(--fm-ink-3)"') + '></i>' +
+        '<div class="bd-bar"><span style="width:' + (s.done ? 100 : 25) + '%"></span></div>' +
+        '<span class="bd-v">' + esc(s.key) + '</span></div>'
+      ).join('');
+    }
+
+    function paint(p) {
+      _profile = p;
+      renderHeader(p);
+      renderSkills(p.skills || []);
+      renderExperience(p.experience || []);
+      renderEducation(p.education || []);
+      renderCourses(p.completed_courses || []);
+      renderCompleteness(p);
+    }
+
+    function load() {
+      api('/api/profile/full').then(data => {
+        if (data && data.success && data.profile) {
+          paint(data.profile);
+        } else {
+          document.getElementById('cvHeadline').textContent = 'Kunne ikke indlæse profildata.';
+        }
+      }).catch(() => {
+        document.getElementById('cvHeadline').textContent = 'Kunne ikke indlæse profildata.';
+      });
+    }
+
+    window.openAdd = function (show) {
+      const box = document.getElementById('addSkill');
+      if (show === false) { box.classList.remove('show'); return; }
+      box.classList.toggle('show');
+      if (box.classList.contains('show')) { const i = document.getElementById('skName'); if (i) i.focus(); }
+    };
+
+    window.addSkill = function () {
+      const name = (document.getElementById('skName').value || '').trim();
+      const level = document.getElementById('skLevel').value;
+      if (!name) { toast('Angiv en kompetence.', false); return; }
+      api('/api/profile/skills', { method: 'POST', body: JSON.stringify({ skill_name: name, skill_level: level }) })
+        .then(d => {
+          if (d && d.success !== false) { document.getElementById('skName').value = ''; openAdd(false); toast('Kompetence tilføjet.'); load(); }
+          else { toast((d && d.error) || 'Kunne ikke tilføje.', false); }
+        })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.removeSkill = function (name) {
+      api('/api/profile/skills', { method: 'DELETE', body: JSON.stringify({ skill_name: name }) })
+        .then(d => { if (d && d.success !== false) { toast('Kompetence fjernet.'); load(); } else { toast((d && d.error) || 'Kunne ikke fjerne.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    load();
+  })();
+</script>
 {% endblock %}

@@ -84,7 +84,7 @@ def _render_catalog_list(template, **context):
 @catalog_bp.route("/catalog")
 def catalog_index():
     return _render_catalog_list(
-        "catalog/index.html",
+        "fm/catalog.html",
         page_title="Kursuskatalog",
         page_subtitle="Sog, filtrer og ga direkte til kurser uden at bruge AI-assistenten.",
     )
@@ -97,7 +97,7 @@ def product_detail(handle):
         return render_template("catalog/not_found.html", handle=handle), 404
     supplier_state = _supplier_state(product["vendor"])
     return render_template(
-        "catalog/product_detail.html",
+        "fm/product_detail.html",
         product=product,
         related_products=catalog.get_related_products(product),
         supplier_state=supplier_state,
@@ -166,7 +166,7 @@ def request_product(handle):
 
 @catalog_bp.route("/categories")
 def category_index():
-    return render_template("catalog/categories.html", categories=catalog.get_categories())
+    return render_template("fm/categories.html", categories=catalog.get_categories())
 
 
 @catalog_bp.route("/categories/<slug>")
@@ -176,7 +176,7 @@ def category_detail(slug):
         return render_template("catalog/not_found.html", handle=slug, kind="category"), 404
     filters = _query_filters({"category": slug})
     return _render_catalog_list(
-        "catalog/category_detail.html",
+        "fm/category_detail.html",
         filters=filters,
         category=category,
         page_title=category["name"],
@@ -186,7 +186,7 @@ def category_detail(slug):
 
 @catalog_bp.route("/vendors")
 def vendor_index():
-    return render_template("catalog/vendors.html", vendors=catalog.get_vendors())
+    return render_template("fm/vendors.html", vendors=catalog.get_vendors())
 
 
 @catalog_bp.route("/vendors/<slug>")
@@ -196,7 +196,7 @@ def vendor_detail(slug):
         return render_template("catalog/not_found.html", handle=slug, kind="vendor"), 404
     filters = _query_filters({"vendor": slug})
     return _render_catalog_list(
-        "catalog/vendor_detail.html",
+        "fm/vendor_detail.html",
         filters=filters,
         vendor=vendor,
         page_title=vendor["name"],

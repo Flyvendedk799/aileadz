@@ -1,50 +1,125 @@
 {% extends "fm_base.html" %}
 {% block page_id %}reports{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Rapporter{% endblock %}
 {% block topbar_title %}Rapporter{% endblock %}
-{% block topbar_sub %}Historik, aktivitet og eksportklare rapporter.{% endblock %}
+{% block topbar_sub %}Overblik over kreditforbrug, app-aktivitet og historiske transaktioner.{% endblock %}
 {% block extra_head %}
 <style>
-  .rep-grid { display: grid; grid-template-columns: repeat(3,1fr); gap: 16px; margin-bottom: 24px; }
-  .rep-card { padding: 20px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); cursor: pointer; display: flex; flex-direction: column; gap: 14px; }
-  .rep-card:hover { transform: translateY(-3px); box-shadow: var(--sh-md); }
-  .rep-top { display: flex; align-items: center; justify-content: space-between; }
-  .rep-ic { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-size: 17px; background: var(--fm-primary-tint); color: var(--fm-primary); }
-  .rep-card h3 { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
-  .rep-card p { font-size: 13px; color: var(--fm-ink-2); line-height: 1.5; margin-top: 4px; }
-  .rep-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 12px; border-top: 1px solid var(--fm-line); font-size: 12px; color: var(--fm-ink-3); }
-  .rep-foot .mono { font-family: var(--ff-mono); }
-  @media (max-width: 1000px) { .rep-grid { grid-template-columns: repeat(2,1fr); } }
-  @media (max-width: 640px) { .rep-grid { grid-template-columns: 1fr; } }
+  .rp-charts { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-top: 16px; }
+  .rp-chart-card { padding: 18px; min-height: 340px; display: flex; flex-direction: column; }
+  .rp-chart-card h3 { font-size: 15px; font-weight: 700; margin-bottom: 12px; }
+  .rp-chart-wrap { position: relative; flex: 1; min-height: 240px; }
+  .rp-tables { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 16px; align-items: start; }
+  @media (max-width: 1000px) { .rp-charts, .rp-tables { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-        <div class="fm-section-head" style="margin-top:0">
-          <div><span class="fm-eyebrow"><i class="fa-solid fa-folder-open"></i> Genererede rapporter</span><h2 class="fm-section-title">Seneste rapporter</h2></div>
-          <label class="fm-search" style="width:260px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg rapporter" /></label>
-        </div>
+  <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Total kreditter forbrugt</div><div class="kv tnum">{{ total_used }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-wallet"></i></span><div><div class="kl">Tilgængelige kreditter</div><div class="kv tnum">{{ current_credits }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-share-nodes"></i></span><div><div class="kl">Social exposure</div><div class="kv tnum">{{ total_impressions }}</div><div class="kd">{{ total_followers }} følgere</div></div></div>
+  </div>
+  <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:14px">
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-gauge"></i></span><div><div class="kl">Gns. dagligt forbrug</div><div class="kv tnum">{{ average_usage | round(2) }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-arrow-trend-up"></i></span><div><div class="kl">Maks. dagligt forbrug</div><div class="kv tnum">{{ peak_usage }}</div><div class="kd">På {{ peak_day }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-grip"></i></span><div><div class="kl">App usage</div>
+      {% if app_usage %}
+      <div style="font-size:12.5px;color:var(--fm-ink-2);margin-top:4px">
+        {% for app, usage in app_usage.items() %}<div class="fm-spread" style="padding:2px 0"><span>{{ app }}</span><strong>{{ usage }}</strong></div>{% endfor %}
+      </div>
+      {% else %}<div class="kv tnum" style="font-size:18px">Ingen data</div>{% endif %}
+    </div></div>
+  </div>
 
-        <section class="rep-grid">
-          <article class="rep-card" data-reveal data-d="1"><div class="rep-top"><span class="rep-ic"><i class="fa-solid fa-chart-pie"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Uddannelses-ROI Q2</h3><p>Omsætning, konvertering og effekt af kursusforbrug på tværs af afdelinger.</p></div><div class="rep-foot"><span class="mono">28. maj 2026</span><span><i class="fa-solid fa-file-pdf"></i> PDF · 14 sider</span></div></article>
-          <article class="rep-card" data-reveal data-d="2"><div class="rep-top"><span class="rep-ic" style="background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-robot"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Chatbot-indsigt maj</h3><p>Samtaler, populære emner og produktvisninger fra AI-assistenten.</p></div><div class="rep-foot"><span class="mono">26. maj 2026</span><span><i class="fa-solid fa-file-csv"></i> CSV · 1.204 rækker</span></div></article>
-          <article class="rep-card" data-reveal data-d="3"><div class="rep-top"><span class="rep-ic" style="background:var(--fm-clay-tint);color:var(--fm-clay)"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge amber dot">Genererer</span></div><div><h3>Læringsfremdrift uge 21</h3><p>Gennemførelse, igangværende kurser og deltagelse pr. medarbejder.</p></div><div class="rep-foot"><span class="mono">I gang…</span><span><i class="fa-solid fa-spinner"></i> 68%</span></div></article>
-          <article class="rep-card" data-reveal data-d="4"><div class="rep-top"><span class="rep-ic" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-coins"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Kreditforbrug maj</h3><p>Forbrug pr. funktion, daglige snit og transaktionshistorik.</p></div><div class="rep-foot"><span class="mono">24. maj 2026</span><span><i class="fa-solid fa-file-excel"></i> XLSX</span></div></article>
-          <article class="rep-card" data-reveal data-d="5"><div class="rep-top"><span class="rep-ic"><i class="fa-solid fa-brain"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Kompetencegab-analyse</h3><p>Kritiske gab, måltal og dækning på tværs af kompetenceområder.</p></div><div class="rep-foot"><span class="mono">21. maj 2026</span><span><i class="fa-solid fa-file-pdf"></i> PDF · 9 sider</span></div></article>
-          <article class="rep-card" data-reveal data-d="6"><div class="rep-top"><span class="rep-ic" style="background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-cart-shopping"></i></span><span class="fm-badge green dot">Klar</span></div><div><h3>Ordreoversigt Q2</h3><p>Alle kursusordrer med status, pris og godkendelsesflow.</p></div><div class="rep-foot"><span class="mono">18. maj 2026</span><span><i class="fa-solid fa-file-csv"></i> CSV · 37 rækker</span></div></article>
-        </section>
+  <div class="rp-charts">
+    <div class="fm-card rp-chart-card">
+      <h3><i class="fa-solid fa-chart-line"></i> Dagligt kreditforbrug</h3>
+      <div class="rp-chart-wrap"><canvas id="usageChart"></canvas></div>
+    </div>
+    <div class="fm-card rp-chart-card">
+      <h3><i class="fa-solid fa-chart-column"></i> Sidste 7 dage</h3>
+      <div class="rp-chart-wrap"><canvas id="last7Chart"></canvas></div>
+    </div>
+  </div>
 
-        <div class="fm-table-wrap" data-reveal>
-          <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Aktivitetslog</h3><a href="#" class="fm-badge teal">Eksportér alt</a></div>
+  <div class="rp-tables">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-calendar-day"></i></span><h3>Dagligt kreditforbrug</h3></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
           <table class="fm-table">
-            <thead><tr><th>Tidspunkt</th><th>Rapport</th><th>Type</th><th>Udløst af</th><th>Status</th></tr></thead>
+            <thead><tr><th>Dato</th><th style="text-align:right">Kreditter forbrugt</th></tr></thead>
             <tbody>
-              <tr><td class="mono muted">28/5 14:02</td><td>Uddannelses-ROI Q2</td><td><span class="fm-badge">PDF</span></td><td>Mette Krogh</td><td><span class="fm-badge green dot">Færdig</span></td></tr>
-              <tr><td class="mono muted">26/5 09:30</td><td>Chatbot-indsigt maj</td><td><span class="fm-badge">CSV</span></td><td>Automatisk</td><td><span class="fm-badge green dot">Færdig</span></td></tr>
-              <tr><td class="mono muted">24/5 16:40</td><td>Kreditforbrug maj</td><td><span class="fm-badge">XLSX</span></td><td>Mette Krogh</td><td><span class="fm-badge green dot">Færdig</span></td></tr>
-              <tr><td class="mono muted">22/5 11:05</td><td>Læringsfremdrift uge 21</td><td><span class="fm-badge">PDF</span></td><td>Automatisk</td><td><span class="fm-badge amber dot">Genererer</span></td></tr>
+              {% for detail in daily_details %}
+              <tr><td>{{ detail.date }}</td><td style="text-align:right">{{ detail.credits_used }}</td></tr>
+              {% else %}
+              <tr><td colspan="2" class="muted" style="text-align:center;padding:20px">Ingen data endnu.</td></tr>
+              {% endfor %}
             </tbody>
           </table>
         </div>
       </div>
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-receipt"></i></span><h3>Detaljerede kredittransaktioner</h3></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
+          <table class="fm-table">
+            <thead><tr><th>Dato</th><th>Kreditter</th><th>Beskrivelse</th></tr></thead>
+            <tbody>
+              {% for transaction in credit_records %}
+              <tr>
+                <td>{{ transaction.timestamp.strftime('%Y-%m-%d %H:%M:%S') if transaction.timestamp else '' }}</td>
+                <td>{{ transaction.credits_used }}</td>
+                <td class="muted">{{ transaction.description }}</td>
+              </tr>
+              {% else %}
+              <tr><td colspan="3" class="muted" style="text-align:center;padding:20px">Ingen transaktioner endnu.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const styles = getComputedStyle(document.documentElement);
+    const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
+    const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
+    const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
+    Chart.defaults.color = muted;
+    Chart.defaults.borderColor = border;
+
+    const usageEl = document.getElementById('usageChart');
+    if (usageEl) {
+      new Chart(usageEl.getContext('2d'), {
+        type: 'line',
+        data: {
+          labels: {{ chart_labels|tojson }},
+          datasets: [{ label: 'Dagligt kreditforbrug', data: {{ chart_data|tojson }}, fill: true, borderColor: primary, backgroundColor: 'rgba(15,118,110,.1)', tension: 0.3 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+      });
+    }
+
+    const last7El = document.getElementById('last7Chart');
+    if (last7El) {
+      new Chart(last7El.getContext('2d'), {
+        type: 'bar',
+        data: {
+          labels: {{ last7_labels|tojson }},
+          datasets: [{ label: 'Kreditter (sidste 7 dage)', data: {{ last7_usage|tojson }}, backgroundColor: primary, borderRadius: 6 }]
+        },
+        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
+      });
+    }
+  })();
+</script>
 {% endblock %}

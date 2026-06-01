@@ -2,9 +2,54 @@
 {% block page_id %}{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomheder{% endblock %}
-{% block topbar_sub %}32 tenants på platformen.{% endblock %}
+{% block topbar_sub %}{{ companies|length }} tenants på platformen.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a><a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a><a class="pg-tab active" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a><a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='admin_chatbot') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='notifications_admin') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a></div><div class="fm-table-wrap"><div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line)"><label class="fm-search" style="width:280px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg virksomhed…"/></label></div><table class="fm-table"><thead><tr><th>Virksomhed</th><th>Medarbejdere</th><th>Plan</th><th>Status</th><th></th></tr></thead><tbody><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">NA</span><div style="font-weight:650">Nordi A/S</div></div></td><td class="mono">248</td><td><span class="fm-badge indigo">Enterprise</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='admin_company_detail') }}" class="btn btn-ghost btn-sm">Detaljer</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">VW</span><div style="font-weight:650">Vestas Wind</div></div></td><td class="mono">1240</td><td><span class="fm-badge indigo">Enterprise</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='admin_company_detail') }}" class="btn btn-ghost btn-sm">Detaljer</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,#8a55a0,var(--fm-primary))">CO</span><div style="font-weight:650">Coloplast</div></div></td><td class="mono">890</td><td><span class="fm-badge ">Business</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='admin_company_detail') }}" class="btn btn-ghost btn-sm">Detaljer</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,#c8973a,var(--fm-clay))">OR</span><div style="font-weight:650">Ørsted</div></div></td><td class="mono">610</td><td><span class="fm-badge indigo">Enterprise</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='admin_company_detail') }}" class="btn btn-ghost btn-sm">Detaljer</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">GF</span><div style="font-weight:650">Grundfos</div></div></td><td class="mono">420</td><td><span class="fm-badge ">Business</span></td><td><span class="status-pill amber" style="height:24px;font-size:11.5px">Prøve</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='admin_company_detail') }}" class="btn btn-ghost btn-sm">Detaljer</a></td></tr><tr><td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-clay),#a94c2c)">NN</span><div style="font-weight:650">Novo Nordisk</div></div></td><td class="mono">2100</td><td><span class="fm-badge indigo">Enterprise</span></td><td><span class="status-pill green" style="height:24px;font-size:11.5px">Aktiv</span></td><td style="text-align:right"><a href="{{ url_for('futurematch.showcase', page='admin_company_detail') }}" class="btn btn-ghost btn-sm">Detaljer</a></td></tr></tbody></table></div>
+<div class="pg-subnav">
+  <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a>
+  <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+  <a class="pg-tab active" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
+  <a class="pg-tab" href="{{ url_for('companies.register_company') }}"><i class="fa-solid fa-plus"></i> Opret virksomhed</a>
 </div>
+
+<div class="fm-spread" style="margin-bottom:14px">
+  <div></div>
+  <a href="{{ url_for('companies.register_company') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Opret virksomhed</a>
+</div>
+
+<div class="fm-table-wrap">
+  <div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line)"><label class="fm-search" style="width:280px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="coSearch" placeholder="Søg virksomhed…" onkeyup="filterCo()"/></label></div>
+  {% if companies %}
+  <table class="fm-table">
+    <thead><tr><th>Virksomhed</th><th>Slug</th><th>Medarbejdere</th><th>Branding</th><th>White-label</th><th>Plan</th><th></th></tr></thead>
+    <tbody>
+      {% for c in companies %}
+      <tr class="co-row {% if acting_company_id == c.id %}is-active{% endif %}" data-name="{{ c.company_name|lower }}">
+        <td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">{{ (c.company_name[:2]|upper) if c.company_name else '??' }}</span><div><div style="font-weight:650"><a href="{{ url_for('companies.admin_company_detail', company_id=c.id) }}" style="text-decoration:none;color:inherit">{{ c.company_name }}</a></div><div class="muted" style="font-size:11.5px">{{ c.industry or '—' }}</div></div></div></td>
+        <td><span class="mono" style="font-size:12px">{{ c.company_slug or '—' }}</span></td>
+        <td class="mono">{{ c.employee_count or 0 }}</td>
+        <td>{% if c.custom_branding %}<span class="fm-badge green dot">Aktiv</span>{% else %}<span class="fm-badge">Off</span>{% endif %}</td>
+        <td>{% if c.enable_white_label %}<span class="fm-badge indigo">On</span>{% else %}<span class="fm-badge">Off</span>{% endif %}</td>
+        <td><span class="fm-badge teal">{{ c.subscription_plan or 'trial' }}</span></td>
+        <td style="text-align:right"><a href="{{ url_for('companies.admin_company_detail', company_id=c.id) }}" class="btn btn-ghost btn-sm">Admin</a></td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <div style="text-align:center;padding:48px 18px;color:var(--fm-ink-3)">
+    <p>Ingen virksomheder endnu.</p>
+    <a href="{{ url_for('companies.register_company') }}" class="btn btn-primary btn-sm">Opret første virksomhed</a>
+  </div>
+  {% endif %}
+</div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function filterCo() {
+  const q = document.getElementById('coSearch').value.toLowerCase();
+  document.querySelectorAll('.co-row').forEach(r => { r.style.display = (!q || r.dataset.name.includes(q)) ? '' : 'none'; });
+}
+</script>
 {% endblock %}

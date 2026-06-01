@@ -1,0 +1,87 @@
+<!DOCTYPE html>
+<html lang="da" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Futurematch — Opret konto</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=13" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=13" />
+<style>
+  body { background: var(--fm-bg); }
+  .auth { display: grid; grid-template-columns: 1.05fr 1fr; min-height: 100vh; }
+  .auth-brand { position: relative; overflow: hidden; padding: 48px 56px; display: flex; flex-direction: column; color: #eaf3f1;
+    background: radial-gradient(120% 100% at 0% 0%, #0e7a70, transparent 55%), linear-gradient(160deg, #0a564f, #06302c 70%, #0a3a35); }
+  .auth-brand > * { position: relative; }
+  .ab-logo { display: flex; align-items: center; gap: 12px; }
+  .ab-mark { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-family: var(--ff-display); font-weight: 800; font-size: 19px; color: #052420; background: linear-gradient(140deg, #4fe0ce, #2bb6a6 70%, var(--fm-clay)); box-shadow: 0 12px 30px rgba(0,0,0,.3); }
+  .ab-name { font-family: var(--ff-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+  .ab-sub { font-size: 11.5px; color: rgba(234,243,241,.6); }
+  .ab-mid { margin-top: auto; }
+  .ab-eyebrow { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #6fe3d3; margin-bottom: 18px; }
+  .ab-head { font-family: var(--ff-display); font-size: clamp(30px,3.4vw,44px); font-weight: 700; letter-spacing: -.03em; line-height: 1.06; color: #fff; max-width: 16ch; }
+  .ab-list { margin-top: 26px; display: flex; flex-direction: column; gap: 12px; font-size: 14.5px; color: rgba(234,243,241,.85); }
+  .ab-list i { color: #6fe3d3; margin-right: 8px; }
+  .ab-foot { margin-top: 40px; font-size: 12px; color: rgba(234,243,241,.5); }
+  .auth-form { display: flex; align-items: center; justify-content: center; padding: 40px; position: relative; }
+  .form-card { width: 100%; max-width: 420px; }
+  .fc-head { margin-bottom: 24px; }
+  .fc-kick { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--fm-primary); margin-bottom: 10px; }
+  .fc-head h1 { font-size: 30px; letter-spacing: -.03em; }
+  .fc-head p { color: var(--fm-ink-2); font-size: 14.5px; margin-top: 6px; }
+  .iw { position: relative; }
+  .iw > i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--fm-ink-3); font-size: 14px; }
+  .iw .fm-input { padding-left: 42px; }
+  .fc-foot { text-align: center; margin-top: 22px; font-size: 13.5px; color: var(--fm-ink-2); }
+  .fc-foot a { color: var(--fm-primary); font-weight: 650; }
+  .top-toggle { position: absolute; top: 24px; right: 28px; }
+  @media (max-width: 900px) { .auth { grid-template-columns: 1fr; } .auth-brand { display: none; } }
+</style>
+</head>
+<body>
+<div class="auth">
+  <div class="auth-brand">
+    <div class="ab-logo"><span class="ab-mark">F</span><span><div class="ab-name">Futurematch</div><div class="ab-sub">Læring &amp; HR</div></span></div>
+    <div class="ab-mid">
+      <div class="ab-eyebrow">Kom i gang på minutter</div>
+      <h2 class="ab-head">Skab en konto og find den rette læring.</h2>
+      <div class="ab-list">
+        <div><i class="fa-solid fa-check"></i> AI-drevet kursusmatch</div>
+        <div><i class="fa-solid fa-check"></i> 248 kurser fra 32 leverandører</div>
+        <div><i class="fa-solid fa-check"></i> Personlige anbefalinger fra din profil</div>
+      </div>
+    </div>
+    <div class="ab-foot">© 2026 Futurematch · ISO 27001 · GDPR-compliant</div>
+  </div>
+  <div class="auth-form">
+    <button class="fm-theme top-toggle" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
+    <div class="form-card">
+      <div class="fc-head"><div class="fc-kick">Futurematch</div><h1>Opret konto</h1><p>Det tager under et minut.</p></div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+        <div class="fm-flash fm-flash-{{ 'danger' if category in ['error','danger'] else category }}">
+          <i class="fa-solid {{ 'fa-circle-exclamation' if category in ['error','danger'] else 'fa-circle-check' }}"></i>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('auth.register', tenant=tenant_slug) if tenant_slug else url_for('auth.register') }}">
+        <div class="fm-field"><label>Brugernavn</label><div class="iw"><i class="fa-solid fa-user"></i><input class="fm-input" name="username" placeholder="mette.krogh" required /></div></div>
+        <div class="fm-field"><label>E-mail</label><div class="iw"><i class="fa-solid fa-envelope"></i><input class="fm-input" name="email" type="email" placeholder="navn@virksomhed.dk" required /></div></div>
+        <div class="fm-field"><label>Adgangskode</label><div class="iw"><i class="fa-solid fa-lock"></i><input class="fm-input" name="password" type="password" placeholder="Mindst 10 tegn" required /></div></div>
+        <button type="submit" class="btn btn-primary btn-lg" style="width:100%;margin-top:6px">Opret konto <i class="fa-solid fa-arrow-right"></i></button>
+      </form>
+      <div class="fc-foot">Har du allerede en konto? <a href="{{ url_for('auth.login') }}">Log ind</a></div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=8"></script>
+</body>
+</html>

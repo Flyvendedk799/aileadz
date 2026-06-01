@@ -1,0 +1,28 @@
+<!DOCTYPE html><html lang="da" data-theme="light"><head><title>Futurematch — Chat Widget</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}"/>
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}"/>
+<style>body{background:linear-gradient(180deg,#eef1ee,#e4e8e4);min-height:100vh;margin:0}
+.demo{max-width:1000px;margin:0 auto;padding:40px 24px}.fake{border:1px solid var(--fm-line);border-radius:16px;background:#fff;padding:30px;box-shadow:var(--sh-md);position:relative;min-height:520px;overflow:hidden}
+.fbar{height:12px;width:120px;background:var(--fm-surface-3);border-radius:6px;margin-bottom:14px}.fline{height:10px;background:var(--fm-surface-3);border-radius:6px;margin-bottom:10px}
+.wgt{position:absolute;right:24px;bottom:24px;width:340px;border-radius:18px;overflow:hidden;background:#0d110f;box-shadow:0 24px 60px rgba(0,0,0,.3);border:1px solid rgba(255,255,255,.1)}
+.wgt-h{display:flex;align-items:center;gap:10px;padding:14px 16px;border-bottom:1px solid rgba(255,255,255,.08)}
+.wgt-h .m{width:30px;height:30px;border-radius:9px;display:grid;place-items:center;color:#052420;font-family:var(--ff-display);font-weight:800;font-size:14px;background:linear-gradient(140deg,#2bb6a6,#239789)}
+.wgt-h .nm{color:#eef0ec;font-weight:700;font-size:14px}.wgt-h .st{color:#69726b;font-size:11px}
+.wgt-b{padding:16px;display:flex;flex-direction:column;gap:12px;background:#0a0d0c}
+.wb{background:#161c1a;border:1px solid rgba(255,255,255,.07);color:#d6dad4;padding:10px 13px;border-radius:13px 13px 13px 4px;font-size:13px;line-height:1.5;max-width:85%}
+.wu{align-self:flex-end;background:linear-gradient(165deg,#2bb6a6,#239789);color:#042320;padding:9px 13px;border-radius:13px 13px 4px 13px;font-size:13px;max-width:80%}
+.wgt-i{display:flex;gap:8px;padding:10px;border-top:1px solid rgba(255,255,255,.08);background:#0d110f}
+.wgt-i input{flex:1;border:1px solid rgba(255,255,255,.1);background:#161c1a;color:#eef0ec;border-radius:10px;padding:9px 12px;font-size:13px;font-family:inherit;outline:none}
+.wgt-i button{width:38px;border:none;border-radius:10px;background:linear-gradient(140deg,#2bb6a6,#239789);color:#042320;display:grid;place-items:center}
+</style></head><body><div class="demo">
+<div style="margin-bottom:18px"><span class="fm-eyebrow"><i class="fa-solid fa-code"></i> Indlejret widget</span><h1 style="font-size:26px;letter-spacing:-.03em;margin-top:6px">Sådan ser chat-widgetten ud på jeres intranet</h1></div>
+<div class="fake"><div class="fbar"></div><div class="fline" style="width:90%"></div><div class="fline" style="width:80%"></div><div class="fline" style="width:85%"></div><div class="fline" style="width:60%"></div>
+<div class="wgt"><div class="wgt-h"><span class="m">F</span><div><div class="nm">Kursusrådgiver</div><div class="st">● Online</div></div><a href="{{ url_for('futurematch.chat') }}" style="margin-left:auto;color:#69726b" title="Åbn fuld"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></a></div>
+<div class="wgt-b"><div class="wb">Hej! Hvad vil du gerne lære? 👋</div><div class="wu">Projektledelse til mit team</div><div class="wb">Godt — jeg har <strong style="color:#eef0ec">3 stærke match</strong>. Det mest populære er Projektledelse Praktisk (8.900 kr). Skal jeg vise dem?</div></div>
+<div class="wgt-i"><input placeholder="Skriv en besked…"/><button><i class="fa-solid fa-arrow-up"></i></button></div></div></div></div></body></html>

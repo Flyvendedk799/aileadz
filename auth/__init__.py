@@ -84,7 +84,7 @@ def login(slug=None):
             if tenant_slug:
                 return redirect(url_for('auth.login', slug=tenant_slug))
             return redirect(url_for('auth.login'))
-    return render_template('login.html', tenant_slug=tenant_slug)
+    return render_template('fm/login.html', tenant_slug=tenant_slug)
 
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
@@ -111,7 +111,7 @@ def register():
         if request.args.get('tenant'):
             return redirect(url_for('auth.login', slug=request.args.get('tenant')))
         return redirect(url_for('auth.login'))
-    return render_template('register.html', tenant_slug=request.args.get('tenant') or '')
+    return render_template('fm/register.html', tenant_slug=request.args.get('tenant') or '')
 
 @auth_bp.route('/logout')
 def logout():

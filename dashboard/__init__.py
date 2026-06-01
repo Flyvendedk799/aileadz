@@ -55,4 +55,4 @@ def _fetch_dashboard_kpis():
 
 @dashboard_bp.route('/dashboard')
 def dashboard():
-    return render_template('dashboard.html', kpis=_fetch_dashboard_kpis())
+    return render_template('fm/index.html', kpis=_fetch_dashboard_kpis())

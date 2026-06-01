@@ -1,0 +1,12 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Aftale · Teknologisk Institut{% endblock %}
+{% block topbar_sub %}Rammeaftale · aktiv til jan 2027.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='suppliers') }}">Leverandører</a><i class="fa-solid fa-chevron-right"></i><span>Teknologisk Institut</span></div>
+  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-signature"></i></span><h3>Aftalevilkår</h3><span class="status-pill green" style="margin-left:auto;height:26px">Aktiv</span></div><div class="fm-card-body"><div class="info-list"><div class="kv"><span class="k">Leverandør</span><span class="v">Teknologisk Institut</span></div><div class="kv"><span class="k">Rabat</span><span class="v"><span class="fm-badge teal">15%</span></span></div><div class="kv"><span class="k">Min. omsætning</span><span class="v">250.000 kr/år</span></div><div class="kv"><span class="k">Betalingsfrist</span><span class="v">30 dage</span></div><div class="kv"><span class="k">Gælder fra</span><span class="v">1. jan 2026</span></div><div class="kv"><span class="k">Fornyes</span><span class="v">1. jan 2027</span></div></div></div></div>
+  <div class="stack"><div class="kpi-tile"><div class="kl">Bestilt i år</div><div class="kv tnum">18</div><div class="kd">kurser via aftalen</div></div><div class="kpi-tile"><div class="kl">Sparet</div><div class="kv tnum" style="color:var(--fm-success)">31.400</div><div class="kd">kr via rabat</div></div></div></div>
+</div>
+{% endblock %}

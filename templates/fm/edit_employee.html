@@ -1,0 +1,19 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Redigér medarbejder{% endblock %}
+{% block topbar_sub %}Sara Lind · Produkt-afdelingen.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('futurematch.showcase', page='employee_details') }}">Sara Lind</a><i class="fa-solid fa-chevron-right"></i><span>Redigér</span></div>
+  <div style="max-width:720px;margin:0 auto"><div class="fm-card"><div class="fm-card-body">
+  <div class="form-grid"><div class="fm-field"><label>Fornavn</label><input class="fm-input" value="Sara"/></div><div class="fm-field"><label>Efternavn</label><input class="fm-input" value="Lind"/></div>
+  <div class="fm-field full"><label>E-mail</label><input class="fm-input" type="email" value="sara@nordi.dk"/></div>
+  <div class="fm-field"><label>Afdeling</label><select class="fm-select"><option>Produkt</option><option>Udvikling</option><option>Salg</option><option>HR</option></select></div>
+  <div class="fm-field"><label>Stilling</label><input class="fm-input" value="Product Owner"/></div>
+  <div class="fm-field"><label>Rolle</label><select class="fm-select"><option>Medarbejder</option><option>Afdelingsleder</option></select></div>
+  <div class="fm-field"><label>Status</label><select class="fm-select"><option>Aktiv</option><option>Inaktiv</option></select></div></div>
+  <div style="margin-top:8px;padding-top:16px;border-top:1px solid var(--fm-line)"><button class="btn btn-ghost btn-sm" style="color:var(--fm-danger);border-color:color-mix(in srgb,var(--fm-danger) 30%,var(--fm-line))"><i class="fa-solid fa-user-slash"></i> Deaktivér medarbejder</button></div>
+  </div></div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,85 @@
+{% extends "fm_base.html" %}
+{% block page_id %}settings{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Indstillinger{% endblock %}
+{% block topbar_sub %}Konto, e-mail, notifikationer og sikkerhed.{% endblock %}
+{% block extra_head %}
+<style>
+  .set-wrap { max-width: 980px; margin: 0 auto; display: grid; grid-template-columns: 220px 1fr; gap: 22px; align-items: start; }
+  .set-nav { position: sticky; top: 92px; display: flex; flex-direction: column; gap: 2px; }
+  .set-nav a { display: flex; align-items: center; gap: 11px; padding: 10px 12px; border-radius: var(--r-ctrl); color: var(--fm-ink-2); font-size: 14px; font-weight: 600; transition: var(--t); }
+  .set-nav a i { width: 16px; text-align: center; color: var(--fm-ink-3); }
+  .set-nav a:hover { background: var(--fm-surface-3); color: var(--fm-ink); }
+  .set-nav a.active { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
+  .set-nav a.active i { color: var(--fm-primary); }
+  .set-row { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+  .toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 15px 0; border-bottom: 1px solid var(--fm-line); }
+  .toggle-row:last-child { border-bottom: 0; }
+  .toggle-row .t { font-size: 14px; font-weight: 600; }
+  .toggle-row .d { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 2px; }
+  .sw { width: 46px; height: 26px; flex: 0 0 46px; border-radius: 999px; border: none; background: var(--fm-line-2); position: relative; cursor: pointer; transition: var(--t); }
+  .sw::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 999px; background: #fff; transition: var(--t); box-shadow: var(--sh-xs); }
+  .sw.on { background: var(--fm-primary); }
+  .sw.on::after { transform: translateX(20px); }
+  @media (max-width: 820px) { .set-wrap { grid-template-columns: 1fr; } .set-nav { position: static; flex-direction: row; overflow-x: auto; } .set-row { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="set-wrap">
+        <nav class="set-nav" data-reveal>
+          <a class="active" href="#konto"><i class="fa-solid fa-user"></i> Konto</a>
+          <a href="#sikkerhed"><i class="fa-solid fa-lock"></i> Sikkerhed</a>
+          <a href="#notif"><i class="fa-solid fa-bell"></i> Notifikationer</a>
+          <a href="#udseende"><i class="fa-solid fa-palette"></i> Udseende</a>
+          <a href="#fakturering"><i class="fa-solid fa-credit-card"></i> Fakturering</a>
+        </nav>
+
+        <div class="fm-grid" style="gap:16px">
+          <div class="fm-card" id="konto" data-reveal data-d="1">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span><h3>Kontooplysninger</h3></div>
+            <div class="fm-card-body">
+              <div class="set-row">
+                <div class="fm-field"><label>Fornavn</label><input class="fm-input" value="Mette" /></div>
+                <div class="fm-field"><label>Efternavn</label><input class="fm-input" value="Krogh" /></div>
+              </div>
+              <div class="fm-field"><label>E-mail</label><input class="fm-input" type="email" value="mette@nordi.dk" /></div>
+              <div class="set-row">
+                <div class="fm-field"><label>Stilling</label><input class="fm-input" value="HR-manager" /></div>
+                <div class="fm-field"><label>Sprog</label><select class="fm-select"><option>Dansk</option><option>English</option></select></div>
+              </div>
+              <div class="fm-mb0" style="margin-top:4px"><button class="btn btn-soft btn-sm"><i class="fa-solid fa-floppy-disk"></i> Gem kontooplysninger</button></div>
+            </div>
+          </div>
+
+          <div class="fm-card" id="sikkerhed" data-reveal data-d="2">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-lock"></i></span><h3>Sikkerhed</h3></div>
+            <div class="fm-card-body">
+              <div class="set-row">
+                <div class="fm-field"><label>Nuværende adgangskode</label><input class="fm-input" type="password" value="********" /></div>
+                <div class="fm-field"><label>Ny adgangskode</label><input class="fm-input" type="password" placeholder="Mindst 10 tegn" /></div>
+              </div>
+              <div class="toggle-row"><div><div class="t">To-faktor-godkendelse</div><div class="d">Ekstra sikkerhed ved login med engangskode.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+              <div class="toggle-row"><div><div class="t">Login-notifikationer</div><div class="d">Få besked ved nye logins fra ukendte enheder.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+            </div>
+          </div>
+
+          <div class="fm-card" id="notif" data-reveal data-d="3">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bell"></i></span><h3>Notifikationer</h3></div>
+            <div class="fm-card-body">
+              <div class="toggle-row"><div><div class="t">Godkendelsesanmodninger</div><div class="d">Når en medarbejder beder om godkendelse.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+              <div class="toggle-row"><div><div class="t">Gennemførte kurser</div><div class="d">Når en medarbejder gennemfører et kursus.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+              <div class="toggle-row"><div><div class="t">Ugentligt sammendrag</div><div class="d">Mandags-overblik over læring og forbrug.</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div>
+              <div class="toggle-row"><div><div class="t">Produktnyheder</div><div class="d">Nye funktioner og opdateringer.</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+            </div>
+          </div>
+
+          <div class="fm-card" id="udseende" data-reveal data-d="4">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-palette"></i></span><h3>Udseende</h3></div>
+            <div class="fm-card-body">
+              <div class="toggle-row"><div><div class="t">Mørkt tema</div><div class="d">Skift mellem lyst og mørkt udseende.</div></div><button class="sw" data-theme-toggle onclick="this.classList.toggle('on')"></button></div>
+              <div class="toggle-row"><div><div class="t">Kompakt visning</div><div class="d">Tættere afstand i tabeller og lister.</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div>
+            </div>
+          </div>
+        </div>
+      </div>
+{% endblock %}

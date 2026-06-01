@@ -1,0 +1,15 @@
+{% extends "fm_base.html" %}
+{% block page_id %}{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Send notifikation{% endblock %}
+{% block topbar_sub %}Udgiv en besked til brugere eller tenants.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a><a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a><a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a><a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='admin_chatbot') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='notifications_admin') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a></div><div style="max-width:760px"><div class="fm-card"><div class="fm-card-body">
+  <div class="fm-field"><label>Modtagere</label><select class="fm-select"><option>Alle brugere</option><option>Alle HR-managers</option><option>Specifik tenant…</option></select></div>
+  <div class="fm-field"><label>Titel</label><input class="fm-input" placeholder="fx Nyt kompetence-dashboard"/></div>
+  <div class="fm-field"><label>Besked</label><textarea class="fm-textarea" placeholder="Skriv din annoncering…"></textarea></div>
+  <div class="fm-field" style="margin-bottom:0"><label>Type</label><div class="seg"><button class="active">Info</button><button>Opdatering</button><button>Vigtigt</button></div></div>
+  </div></div></div>
+</div>
+{% endblock %}

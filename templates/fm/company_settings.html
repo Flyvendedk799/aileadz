@@ -1,0 +1,18 @@
+{% extends "fm_base.html" %}
+{% block page_id %}company{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Virksomhedsindstillinger{% endblock %}
+{% block topbar_sub %}Plan, adgang og politikker for Nordi A/S.{% endblock %}
+{% block extra_head %}
+<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}.swatch{width:38px;height:38px;border-radius:10px;border:2px solid var(--fm-line);cursor:pointer}.swatch.sel{border-color:var(--fm-primary);box-shadow:0 0 0 3px var(--fm-ring)}</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="split"><div class="stack"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Stamdata</h3></div><div class="fm-card-body"><div class="form-grid"><div class="fm-field"><label>Virksomhedsnavn</label><input class="fm-input" value="Nordi A/S"/></div><div class="fm-field"><label>CVR</label><input class="fm-input" value="12345678"/></div><div class="fm-field full"><label>Faktura-e-mail</label><input class="fm-input" value="faktura@nordi.dk"/></div></div></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield"></i></span><h3>Politikker</h3></div><div class="fm-card-body" style="padding-top:6px">
+  <div class="trow"><div><div class="t">Kræv godkendelse over 5.000 kr</div><div class="d">Ordrer sendes til HR</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+  <div class="trow"><div><div class="t">SSO påkrævet</div><div class="d">Login kun via Microsoft</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+  <div class="trow"><div><div class="t">Tillad selvbetjening</div><div class="d">Medarbejdere kan bestille selv</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div></div></div></div>
+  <div class="stack"><div class="fm-card"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:4px">Nuværende plan</div><div style="font-family:var(--ff-display);font-size:24px;font-weight:700">Enterprise</div><div style="font-size:12.5px;color:var(--fm-ink-2);margin:4px 0 14px">248 pladser · white-label · SSO</div><a href="{{ url_for('futurematch.showcase', page='billing') }}" class="btn btn-ghost btn-sm" style="width:100%">Administrér plan</a></div></div></div></div>
+</div>
+{% endblock %}

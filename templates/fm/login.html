@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="da" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Futurematch — Log ind</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=13" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=13" />
+<style>
+  body { background: var(--fm-bg); }
+  .auth { display: grid; grid-template-columns: 1.05fr 1fr; min-height: 100vh; }
+  .auth-brand { position: relative; overflow: hidden; padding: 48px 56px; display: flex; flex-direction: column; color: #eaf3f1;
+    background: radial-gradient(120% 100% at 0% 0%, #0e7a70, transparent 55%), linear-gradient(160deg, #0a564f, #06302c 70%, #0a3a35); }
+  .auth-brand::after { content:""; position:absolute; inset:0; opacity:.5; background-image: radial-gradient(rgba(255,255,255,.10) 0.8px, transparent 0.8px); background-size: 26px 26px; -webkit-mask-image: radial-gradient(120% 90% at 100% 100%, #000, transparent 60%); mask-image: radial-gradient(120% 90% at 100% 100%, #000, transparent 60%); }
+  .auth-brand > * { position: relative; }
+  .ab-logo { display: flex; align-items: center; gap: 12px; }
+  .ab-mark { width: 42px; height: 42px; border-radius: 12px; display: grid; place-items: center; font-family: var(--ff-display); font-weight: 800; font-size: 19px; color: #052420; background: linear-gradient(140deg, #4fe0ce, #2bb6a6 70%, var(--fm-clay)); box-shadow: 0 12px 30px rgba(0,0,0,.3); }
+  .ab-name { font-family: var(--ff-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em; color: #fff; }
+  .ab-sub { font-size: 11.5px; color: rgba(234,243,241,.6); }
+  .ab-mid { margin-top: auto; }
+  .ab-eyebrow { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .12em; text-transform: uppercase; color: #6fe3d3; margin-bottom: 18px; }
+  .ab-head { font-family: var(--ff-display); font-size: clamp(30px,3.4vw,44px); font-weight: 700; letter-spacing: -.03em; line-height: 1.06; color: #fff; max-width: 16ch; }
+  .ab-copy { margin-top: 16px; font-size: 15px; color: rgba(234,243,241,.78); max-width: 42ch; line-height: 1.6; }
+  .ab-stats { display: flex; gap: 36px; margin-top: 38px; }
+  .ab-stats .n { font-family: var(--ff-display); font-size: 26px; font-weight: 700; color: #fff; }
+  .ab-stats .l { font-size: 12px; color: rgba(234,243,241,.6); }
+  .ab-foot { margin-top: 40px; font-size: 12px; color: rgba(234,243,241,.5); }
+  .auth-form { display: flex; align-items: center; justify-content: center; padding: 40px; position: relative; }
+  .form-card { width: 100%; max-width: 400px; }
+  .fc-head { margin-bottom: 28px; }
+  .fc-kick { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .1em; text-transform: uppercase; color: var(--fm-primary); margin-bottom: 10px; }
+  .fc-head h1 { font-size: 30px; letter-spacing: -.03em; }
+  .fc-head p { color: var(--fm-ink-2); font-size: 14.5px; margin-top: 6px; }
+  .input-wrap { position: relative; }
+  .input-wrap > i { position: absolute; left: 14px; top: 50%; transform: translateY(-50%); color: var(--fm-ink-3); font-size: 14px; }
+  .input-wrap .fm-input { padding-left: 42px; }
+  .input-wrap .eye { position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: none; border: none; color: var(--fm-ink-3); cursor: pointer; padding: 6px; }
+  .input-wrap .eye:hover { color: var(--fm-primary); }
+  .form-row { display: flex; align-items: center; justify-content: space-between; margin: -4px 0 18px; }
+  .remember { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fm-ink-2); cursor: pointer; }
+  .remember input { width: 16px; height: 16px; accent-color: var(--fm-primary); }
+  .forgot { font-size: 13px; color: var(--fm-primary); font-weight: 600; }
+  .sso { display: flex; gap: 10px; margin-top: 14px; }
+  .sso-btn { flex: 1; height: 44px; border: 1px solid var(--fm-line); border-radius: var(--r-ctrl); background: var(--fm-surface); color: var(--fm-ink); font-weight: 600; font-size: 13.5px; display: inline-flex; align-items: center; justify-content: center; gap: 9px; cursor: pointer; transition: var(--t); text-decoration: none; }
+  .sso-btn:hover { border-color: var(--fm-line-2); }
+  .divider { display: flex; align-items: center; gap: 14px; margin: 24px 0; color: var(--fm-ink-3); font-size: 12px; font-family: var(--ff-mono); letter-spacing: .05em; }
+  .divider::before, .divider::after { content: ""; flex: 1; height: 1px; background: var(--fm-line); }
+  .fc-foot { text-align: center; margin-top: 26px; font-size: 13.5px; color: var(--fm-ink-2); }
+  .fc-foot a { color: var(--fm-primary); font-weight: 650; }
+  .top-toggle { position: absolute; top: 24px; right: 28px; }
+  @media (max-width: 900px) { .auth { grid-template-columns: 1fr; } .auth-brand { display: none; } }
+</style>
+</head>
+<body>
+<div class="auth">
+  <div class="auth-brand">
+    <div class="ab-logo">
+      <span class="ab-mark">F</span>
+      <span><div class="ab-name">Futurematch</div><div class="ab-sub">Læring &amp; HR</div></span>
+    </div>
+    <div class="ab-mid">
+      <div class="ab-eyebrow">Adaptiv lærings- og HR-platform</div>
+      <h2 class="ab-head">Den rette læring til de rette mennesker.</h2>
+      <p class="ab-copy">AI-drevet kursusmatch, HR-indsigt og rapporter — samlet i én rolig arbejdsflade, bygget til danske virksomheder.</p>
+      <div class="ab-stats">
+        <div><div class="n tnum">248</div><div class="l">Kurser</div></div>
+        <div><div class="n tnum">32</div><div class="l">Leverandører</div></div>
+        <div><div class="n tnum">1.2k+</div><div class="l">AI-samtaler / md.</div></div>
+      </div>
+    </div>
+    <div class="ab-foot">© 2026 Futurematch · ISO 27001 · GDPR-compliant</div>
+  </div>
+
+  <div class="auth-form">
+    <button class="fm-theme top-toggle" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
+    <div class="form-card">
+      <div class="fc-head">
+        <div class="fc-kick">Futurematch</div>
+        <h1>Velkommen tilbage</h1>
+        <p>Log ind for at fortsætte til dit workspace.</p>
+      </div>
+
+      {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        {% for category, message in messages %}
+        <div class="fm-flash fm-flash-{{ 'danger' if category in ['error','danger'] else category }}">
+          <i class="fa-solid {{ 'fa-circle-exclamation' if category in ['error','danger'] else 'fa-circle-check' }}"></i>
+          <span>{{ message }}</span>
+        </div>
+        {% endfor %}
+      {% endif %}
+      {% endwith %}
+
+      <form method="POST" action="{{ url_for('auth.login', slug=tenant_slug) if tenant_slug else url_for('auth.login') }}">
+        <div class="fm-field">
+          <label for="u">Brugernavn eller e-mail</label>
+          <div class="input-wrap"><i class="fa-solid fa-user"></i><input class="fm-input" id="u" name="username" type="text" placeholder="mette@nordi.dk" autocomplete="username" required /></div>
+        </div>
+        <div class="fm-field">
+          <label for="p">Adgangskode</label>
+          <div class="input-wrap"><i class="fa-solid fa-lock"></i><input class="fm-input" id="p" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required /><button type="button" class="eye" onclick="const p=document.getElementById('p');p.type=p.type==='password'?'text':'password';this.querySelector('i').classList.toggle('fa-eye');this.querySelector('i').classList.toggle('fa-eye-slash')"><i class="fa-solid fa-eye"></i></button></div>
+        </div>
+        <div class="form-row">
+          <label class="remember"><input type="checkbox" name="remember" checked /> Husk mig</label>
+          <a class="forgot" href="#">Glemt adgangskode?</a>
+        </div>
+        <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Log ind <i class="fa-solid fa-arrow-right"></i></button>
+      </form>
+
+      <div class="divider">ELLER</div>
+      <div class="sso">
+        <a class="sso-btn" href="#"><i class="fa-brands fa-microsoft" style="color:#2b7fc4"></i> Microsoft</a>
+        <a class="sso-btn" href="#"><i class="fa-solid fa-key" style="color:var(--fm-clay)"></i> SSO</a>
+      </div>
+
+      <div class="fc-foot">Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></div>
+    </div>
+  </div>
+</div>
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=8"></script>
+</body>
+</html>

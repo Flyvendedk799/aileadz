@@ -1,0 +1,25 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Chatbot-indstillinger{% endblock %}
+{% block topbar_sub %}Konfigurér AI-assistenten for dine medarbejdere.{% endblock %}
+{% block extra_head %}
+<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="split"><div class="stack">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sliders"></i></span><h3>Adfærd</h3></div><div class="fm-card-body">
+  <div class="fm-field"><label>Tone</label><select class="fm-select"><option>Professionel &amp; venlig</option><option>Kort &amp; konkret</option><option>Uddybende</option></select></div>
+  <div class="fm-field"><label>Kun kurser fra aftaleleverandører</label><select class="fm-select"><option>Ja — prioritér aftaler</option><option>Nej — vis alle</option></select></div>
+  <div class="fm-field" style="margin-bottom:0"><label>Velkomstbesked</label><textarea class="fm-textarea">Hej! Jeg hjælper dig med at finde det rette kursus. Hvad vil du lære?</textarea></div></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-toggle-on"></i></span><h3>Funktioner</h3></div><div class="fm-card-body" style="padding-top:6px">
+  <div class="trow"><div><div class="t">Foreslå kurser proaktivt</div><div class="d">Vis anbefalinger baseret på profil</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+  <div class="trow"><div><div class="t">Opdatér profil via chat</div><div class="d">Lad medarbejdere udfylde CV i samtalen</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+  <div class="trow"><div><div class="t">Kræv godkendelse ved bestilling</div><div class="d">Ordrer sendes til HR-manager</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div>
+  <div class="trow"><div><div class="t">Tillad gratis kurser uden godkendelse</div><div class="d">Spar godkendelsestrin</div></div><button class="sw" onclick="this.classList.toggle('on')"></button></div></div></div>
+  </div><div class="stack">
+  <div class="fm-card"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:6px">Forhåndsvisning</div><p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 12px">Sådan ser assistenten ud for dine medarbejdere.</p><a href="{{ url_for('futurematch.chat') }}" class="btn btn-soft" style="width:100%"><i class="fa-solid fa-comment-dots"></i> Åbn assistenten</a></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-code"></i></span><h3>Indlejring</h3></div><div class="fm-card-body"><p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 10px">Føj chatbotten til jeres intranet.</p><a href="{{ url_for('futurematch.showcase', page='widget_creator') }}" class="btn btn-ghost btn-sm" style="width:100%">Opret widget</a></div></div></div></div>
+</div>
+{% endblock %}

@@ -1,0 +1,96 @@
+{% extends "fm_base.html" %}
+{% block page_id %}profile{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Profil{% endblock %}
+{% block topbar_sub %}Profil, CV-data og personlige læringssignaler.{% endblock %}
+{% block extra_head %}
+<style>
+  .pf-wrap { max-width: 1040px; margin: 0 auto; }
+  .pf-hero { display: flex; gap: 22px; align-items: center; padding: 26px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; margin-bottom: 18px; }
+  .pf-hero::after { content:""; position:absolute; inset:0; background: radial-gradient(70% 130% at 100% 0%, var(--fm-primary-tint), transparent 55%); pointer-events:none; }
+  .pf-hero > * { position: relative; }
+  .pf-av { width: 88px; height: 88px; flex: 0 0 88px; border-radius: 24px; display: grid; place-items: center; font-family: var(--ff-display); font-size: 34px; font-weight: 700; color: #fff; background: linear-gradient(140deg, var(--fm-indigo), var(--fm-primary)); box-shadow: var(--sh-glow); }
+  .pf-info h1 { font-size: 26px; letter-spacing: -.03em; }
+  .pf-info .role { color: var(--fm-ink-2); font-size: 14.5px; margin-top: 2px; }
+  .pf-tags { display: flex; gap: 8px; margin-top: 12px; flex-wrap: wrap; }
+  .pf-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
+  .kv { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--fm-line); }
+  .kv:last-child { border-bottom: 0; }
+  .kv .k { font-size: 13px; color: var(--fm-ink-2); }
+  .kv .v { font-size: 13.5px; font-weight: 600; text-align: right; }
+  .chip-tag { display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: 999px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); font-size: 12.5px; font-weight: 600; color: var(--fm-ink-2); }
+  .skillbar { margin-bottom: 14px; }
+  .skillbar:last-child { margin-bottom: 0; }
+  .skillbar .top { display: flex; justify-content: space-between; font-size: 13px; margin-bottom: 6px; }
+  .skillbar .top b { font-weight: 650; }
+  @media (max-width: 900px) { .pf-grid { grid-template-columns: 1fr; } .pf-hero { flex-direction: column; text-align: center; align-items: center; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="pf-wrap">
+        <section class="pf-hero" data-reveal data-d="1">
+          <span class="pf-av">MK</span>
+          <div class="pf-info" style="flex:1">
+            <h1>Mette Krogh</h1>
+            <div class="role">HR-manager · Nordi A/S</div>
+            <div class="pf-tags">
+              <span class="chip-tag"><i class="fa-solid fa-envelope" style="color:var(--fm-ink-3)"></i> mette@nordi.dk</span>
+              <span class="chip-tag"><i class="fa-solid fa-location-dot" style="color:var(--fm-ink-3)"></i> København</span>
+              <span class="fm-badge teal dot">Aktiv</span>
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-family:var(--ff-display);font-size:30px;font-weight:700" class="tnum">420</div>
+            <div style="font-size:12px;color:var(--fm-ink-3)">kreditter</div>
+          </div>
+        </section>
+
+        <div class="pf-grid">
+          <div class="fm-grid" style="gap:16px">
+            <div class="fm-card" data-reveal data-d="2">
+              <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-id-card"></i></span><h3>Stamdata</h3></div>
+              <div class="fm-card-body" style="padding-top:6px">
+                <div class="kv"><span class="k">Fulde navn</span><span class="v">Mette Krogh</span></div>
+                <div class="kv"><span class="k">Stilling</span><span class="v">HR-manager</span></div>
+                <div class="kv"><span class="k">Afdeling</span><span class="v">HR</span></div>
+                <div class="kv"><span class="k">Virksomhed</span><span class="v">Nordi A/S</span></div>
+                <div class="kv"><span class="k">Medlem siden</span><span class="v">Mar 2024</span></div>
+                <div class="kv"><span class="k">Rolle</span><span class="v"><span class="fm-badge indigo">company_admin</span></span></div>
+              </div>
+            </div>
+            <div class="fm-card" data-reveal data-d="3">
+              <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-simple"></i></span><h3>Kompetencer</h3></div>
+              <div class="fm-card-body">
+                <div class="skillbar"><div class="top"><b>HR-strategi</b><span class="mono" style="color:var(--fm-ink-2)">4,5/5</span></div><div class="fm-prog"><span style="width:90%"></span></div></div>
+                <div class="skillbar"><div class="top"><b>Rekruttering</b><span class="mono" style="color:var(--fm-ink-2)">4,0/5</span></div><div class="fm-prog"><span style="width:80%"></span></div></div>
+                <div class="skillbar"><div class="top"><b>Dataanalyse</b><span class="mono" style="color:var(--fm-ink-2)">3,2/5</span></div><div class="fm-prog"><span style="width:64%"></span></div></div>
+                <div class="skillbar"><div class="top"><b>Forandringsledelse</b><span class="mono" style="color:var(--fm-ink-2)">3,8/5</span></div><div class="fm-prog"><span style="width:76%"></span></div></div>
+              </div>
+            </div>
+          </div>
+
+          <div class="fm-grid" style="gap:16px">
+            <div class="fm-card" data-reveal data-d="3">
+              <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-star"></i></span><h3>Foretrukne brands</h3></div>
+              <div class="fm-card-body">
+                <div class="fm-flex fm-wrap-w fm-gap8">
+                  <span class="chip-tag">Teknologisk Institut</span>
+                  <span class="chip-tag">Mannaz</span>
+                  <span class="chip-tag">CBS Executive</span>
+                  <span class="chip-tag">DJØF</span>
+                  <button class="chip-tag" style="cursor:pointer;color:var(--fm-primary);border-color:var(--fm-primary)"><i class="fa-solid fa-plus"></i> Tilføj</button>
+                </div>
+              </div>
+            </div>
+            <div class="fm-card" data-reveal data-d="4">
+              <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Seneste aktivitet</h3></div>
+              <div class="fm-card-body" style="padding-top:8px">
+                <div class="kv"><span class="k">Godkendte 3 ordrer</span><span class="v mono" style="color:var(--fm-ink-3);font-weight:500">2 t siden</span></div>
+                <div class="kv"><span class="k">Genererede ROI-rapport</span><span class="v mono" style="color:var(--fm-ink-3);font-weight:500">I går</span></div>
+                <div class="kv"><span class="k">Tilføjede 4 medarbejdere</span><span class="v mono" style="color:var(--fm-ink-3);font-weight:500">2 dage</span></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+{% endblock %}

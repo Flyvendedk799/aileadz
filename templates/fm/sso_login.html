@@ -1,0 +1,15 @@
+<!DOCTYPE html><html lang="da" data-theme="light"><head><title>Futurematch — SSO</title>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}"/>
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}"/>
+<style>body{background:linear-gradient(180deg,color-mix(in srgb,var(--fm-bg) 94%,#fff),var(--fm-bg));min-height:100vh;display:grid;place-items:center}.ssoc{width:100%;max-width:400px;padding:0 24px;text-align:center}</style></head><body>
+<div class="ssoc"><div style="width:54px;height:54px;border-radius:16px;margin:0 auto 22px;display:grid;place-items:center;color:#fff;font-family:var(--ff-display);font-weight:800;font-size:22px;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700) 70%,var(--fm-clay));box-shadow:var(--sh-glow)">F</div>
+<h1 style="font-size:26px;letter-spacing:-.03em">Log ind med SSO</h1><p style="color:var(--fm-ink-2);font-size:14.5px;margin:8px 0 26px">Brug din organisations single sign-on.</p>
+<div class="fm-card" style="padding:8px"><a href="{{ url_for('dashboard.dashboard') }}" class="btn btn-ghost btn-lg" style="width:100%;margin-bottom:8px"><i class="fa-brands fa-microsoft" style="color:#2b7fc4"></i> Fortsæt med Microsoft</a><a href="{{ url_for('dashboard.dashboard') }}" class="btn btn-ghost btn-lg" style="width:100%"><i class="fa-brands fa-google" style="color:#ea4335"></i> Fortsæt med Google</a></div>
+<p style="margin-top:20px;font-size:13px;color:var(--fm-ink-3)"><a href="{{ url_for('auth.login') }}" style="color:var(--fm-primary);font-weight:600">Log ind med adgangskode i stedet</a></p></div>
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}"></script></body></html>

@@ -1,0 +1,21 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Opret chatbot-widget{% endblock %}
+{% block topbar_sub %}Indlejr Futurematch-assistenten på jeres intranet.{% endblock %}
+{% block extra_head %}
+<style>.sw{width:46px;height:26px;flex:0 0 46px;border-radius:999px;border:none;background:var(--fm-line-2);position:relative;cursor:pointer;transition:var(--t)}.sw::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:999px;background:#fff;transition:var(--t);box-shadow:var(--sh-xs)}.sw.on{background:var(--fm-primary)}.sw.on::after{transform:translateX(20px)}.trow{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:15px 0;border-bottom:1px solid var(--fm-line)}.trow:last-child{border-bottom:0}.trow .t{font-size:14px;font-weight:600}.trow .d{font-size:12.5px;color:var(--fm-ink-2);margin-top:2px}</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="split"><div class="stack">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-paintbrush"></i></span><h3>Udseende</h3></div><div class="fm-card-body">
+  <div class="fm-field"><label>Knaptekst</label><input class="fm-input" value="Spørg om kurser"/></div>
+  <div class="form-grid"><div class="fm-field"><label>Placering</label><select class="fm-select"><option>Nederst højre</option><option>Nederst venstre</option></select></div><div class="fm-field"><label>Accentfarve</label><input class="fm-input" value="#0c6b62"/></div></div>
+  <div class="trow" style="border-bottom:0"><div><div class="t">Vis kun for indloggede</div><div class="d">Kræv SSO før chat</div></div><button class="sw on" onclick="this.classList.toggle('on')"></button></div></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-code"></i></span><h3>Indlejringskode</h3></div><div class="fm-card-body"><pre style="background:var(--fm-surface-3);border:1px solid var(--fm-line);border-radius:10px;padding:14px;font-family:var(--ff-mono);font-size:12px;color:var(--fm-ink-2);overflow-x:auto;margin:0"><code>&lt;script src="https://cdn.futurematch.dk/widget.js"
+  data-company="nordi"
+  data-color="#0c6b62"&gt;&lt;/script&gt;</code></pre></div></div></div>
+  <div class="fm-card" style="align-self:start"><div class="fm-card-body"><div style="font-weight:700;margin-bottom:10px">Forhåndsvisning</div><div style="position:relative;height:280px;border-radius:12px;background:var(--fm-surface-3);border:1px solid var(--fm-line);overflow:hidden"><div style="position:absolute;bottom:16px;right:16px;display:inline-flex;align-items:center;gap:9px;height:46px;padding:0 18px;border-radius:999px;background:linear-gradient(140deg,var(--fm-primary),var(--fm-primary-700));color:#fff;font-weight:650;box-shadow:var(--sh-glow)"><i class="fa-solid fa-comment-dots"></i> Spørg om kurser</div></div></div></div></div>
+</div>
+{% endblock %}

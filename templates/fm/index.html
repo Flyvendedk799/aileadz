@@ -1,0 +1,244 @@
+{% extends "fm_base.html" %}
+{% block page_id %}index{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Overblik{% endblock %}
+{% block topbar_sub %}Kursusmatch, HR-styring, rapporter og kontoarbejde samlet ét sted.{% endblock %}
+{% block extra_head %}
+<style>
+  /* Dashboard-specific */
+  .dash-hero { display: grid; grid-template-columns: minmax(0, 1.55fr) minmax(300px, 0.9fr); gap: 18px; margin-bottom: 26px; }
+  .hero-panel {
+    position: relative; overflow: hidden;
+    padding: 34px 36px; border-radius: var(--r-card);
+    border: 1px solid var(--fm-line); background: var(--fm-surface);
+    box-shadow: var(--sh-sm);
+  }
+  .hero-panel::before {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background:
+      radial-gradient(120% 90% at 100% 0%, color-mix(in srgb, var(--fm-primary) 12%, transparent), transparent 55%),
+      radial-gradient(90% 80% at 0% 100%, var(--fm-clay-tint), transparent 50%);
+    opacity: .8;
+  }
+  .hero-panel::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none; opacity: .5;
+    background-image: radial-gradient(var(--fm-line-2) 0.7px, transparent 0.7px);
+    background-size: 22px 22px;
+    -webkit-mask-image: radial-gradient(120% 100% at 100% 0%, #000, transparent 60%);
+            mask-image: radial-gradient(120% 100% at 100% 0%, #000, transparent 60%);
+  }
+  .hero-panel > * { position: relative; }
+  .hero-title { font-size: clamp(28px, 3.4vw, 42px); line-height: 1.04; margin: 16px 0 12px; max-width: 18ch; }
+  .hero-title em { font-style: normal; color: var(--fm-primary); }
+  .hero-copy { color: var(--fm-ink-2); font-size: 15px; max-width: 46ch; margin: 0 0 22px; }
+  .hero-actions { display: flex; gap: 10px; flex-wrap: wrap; }
+
+  .hero-aside { display: flex; flex-direction: column; gap: 14px; }
+  .status-card {
+    flex: 1; display: flex; flex-direction: column; justify-content: center;
+    padding: 16px 18px; border-radius: var(--r-md);
+    border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-xs);
+  }
+  .status-card .lab { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .status-card .val { font-family: var(--ff-display); font-size: 22px; font-weight: 700; letter-spacing: -.02em; margin-top: 3px; }
+  .status-card .note { font-size: 12px; color: var(--fm-ink-2); margin-top: 1px; }
+  .status-card .val.live::after { content: ""; display: inline-block; width: 8px; height: 8px; margin-left: 8px; border-radius: 999px; background: var(--fm-success); vertical-align: middle; box-shadow: 0 0 0 4px color-mix(in srgb, var(--fm-success) 18%, transparent); }
+
+  .kpi-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .kpi {
+    padding: 18px 18px 16px; border-radius: var(--r-card);
+    border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm);
+    transition: transform var(--t), box-shadow var(--t), border-color var(--t);
+  }
+  .kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
+  .kpi-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 14px; }
+  .kpi-ic { width: 36px; height: 36px; border-radius: 10px; display: grid; place-items: center; font-size: 15px; }
+  .kpi-ic.teal { background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .kpi-ic.clay { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  .kpi-ic.indigo { background: color-mix(in srgb, var(--fm-indigo) 13%, transparent); color: var(--fm-indigo); }
+  .kpi-ic.gold { background: color-mix(in srgb, var(--fm-gold) 16%, transparent); color: var(--fm-gold); }
+  .kpi-val { font-family: var(--ff-display); font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
+  .kpi-lab { font-size: 13px; color: var(--fm-ink-2); margin-top: 5px; }
+  .kpi-foot { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .trend { display: inline-flex; align-items: center; gap: 4px; font-size: 12px; font-weight: 700; }
+  .trend.up { color: var(--fm-success); } .trend.down { color: var(--fm-danger); }
+  .spark { margin-left: auto; }
+
+  .tool-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; }
+  .tool {
+    display: flex; flex-direction: column; gap: 14px;
+    padding: 18px; border-radius: var(--r-card);
+    border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm);
+    transition: transform var(--t), box-shadow var(--t), border-color var(--t);
+  }
+  .tool:hover { transform: translateY(-2px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
+  .tool-top { display: flex; align-items: center; justify-content: space-between; }
+  .tool-ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 16px; background: var(--fm-surface-3); color: var(--fm-ink-2); transition: var(--t); }
+  .tool:hover .tool-ic { background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .tool h3 { font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+  .tool p { font-size: 13px; color: var(--fm-ink-2); margin: 5px 0 0; line-height: 1.5; }
+  .tool-foot { display: flex; align-items: center; justify-content: space-between; margin-top: auto; padding-top: 4px; }
+  .tool-foot .tag { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .04em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .tool-arrow { width: 28px; height: 28px; border-radius: 8px; display: grid; place-items: center; color: var(--fm-ink-3); transition: var(--t); }
+  .tool:hover .tool-arrow { background: var(--fm-primary); color: #fff; transform: translateX(2px); }
+  [data-theme="dark"] .tool:hover .tool-arrow { color: #06201d; }
+
+  .side-col { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+  .act-item { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid var(--fm-line); }
+  .act-item:last-child { border-bottom: 0; padding-bottom: 0; }
+  .act-ic { width: 32px; height: 32px; flex: 0 0 32px; border-radius: 9px; display: grid; place-items: center; font-size: 12px; }
+  .act-tx { font-size: 13.5px; line-height: 1.45; }
+  .act-tx .who { font-weight: 700; }
+  .act-time { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 2px; font-family: var(--ff-mono); }
+  .mini-row { display: flex; align-items: center; justify-content: space-between; padding: 11px 0; border-bottom: 1px solid var(--fm-line); }
+  .mini-row:last-child { border-bottom: 0; }
+  .mini-row .nm { font-size: 13.5px; font-weight: 600; }
+  .mini-row .vv { font-family: var(--ff-mono); font-size: 13px; font-weight: 600; color: var(--fm-ink-2); }
+
+  @media (max-width: 1180px) { .kpi-grid, .tool-grid { grid-template-columns: repeat(2, 1fr); } .dash-hero { grid-template-columns: 1fr; } .side-col { grid-template-columns: 1fr; } }
+  @media (max-width: 720px) { .kpi-grid, .tool-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+
+        <!-- Hero -->
+        <section class="dash-hero">
+          <div class="hero-panel" data-reveal data-d="1">
+            <span class="fm-eyebrow"><i class="fa-solid fa-grip"></i> Futurematch workspace</span>
+            <h1 class="hero-title">Styr læring, mennesker og <em>indsigt</em> i én flade.</h1>
+            <p class="hero-copy">Gå direkte til kursuskatalog, HR-workspace, rapporter og godkendelser — uden unødig navigation. Bygget til hurtige beslutninger.</p>
+            <div class="hero-actions">
+              <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-primary"><i class="fa-solid fa-building"></i> Åbn HR-workspace</a>
+              <a href="{{ url_for('catalog.catalog_index') }}" class="btn btn-ghost"><i class="fa-solid fa-graduation-cap"></i> Kursuskatalog</a>
+              <a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost"><i class="fa-solid fa-comment-dots"></i> Spørg AI</a>
+            </div>
+          </div>
+          <div class="hero-aside">
+            <div class="status-card" data-reveal data-d="2">
+              <span class="lab">Session</span>
+              <span class="val live">{{ 'Aktiv' if session.get('user') else 'Gæst' }}</span>
+              <span class="note">{{ session.get('user', 'Ikke logget ind') }} · sidst set nu</span>
+            </div>
+            <div class="status-card" data-reveal data-d="3">
+              <span class="lab">Workspace</span>
+              <span class="val">{{ session.get('company_name', 'Futurematch') }}</span>
+              <span class="note">{{ (kpis.role_label if kpis else 'Bruger') }}{% if session.get('company_role') %} · {{ session.get('company_role') }}{% endif %}</span>
+            </div>
+            <div class="status-card" data-reveal data-d="4">
+              <span class="lab">Kreditter</span>
+              <span class="val tnum">{{ session.get('credits', 0) }}</span>
+              <span class="note">Opdateres automatisk</span>
+            </div>
+          </div>
+        </section>
+
+        <!-- KPIs -->
+        <div class="fm-section-head">
+          <div>
+            <span class="fm-eyebrow clay"><i class="fa-solid fa-bolt"></i> Denne uge</span>
+            <h2 class="fm-section-title">Nøgletal</h2>
+          </div>
+        </div>
+        <section class="kpi-grid">
+          <article class="kpi" data-reveal data-d="1">
+            <div class="kpi-top"><span class="kpi-ic clay"><i class="fa-solid fa-bell"></i></span><span class="fm-badge">Indbakke</span></div>
+            <div class="kpi-val tnum">{{ kpis.unread_notifications if kpis else 0 }}</div>
+            <div class="kpi-lab">Ulæste notifikationer</div>
+            <div class="kpi-foot"><span class="trend up"><i class="fa-solid fa-arrow-up"></i> 2 nye</span>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,20 12,17 24,18 36,10 48,12 60,6 74,8" stroke="var(--fm-clay)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </article>
+          <article class="kpi" data-reveal data-d="2">
+            <div class="kpi-top"><span class="kpi-ic teal"><i class="fa-solid fa-clipboard-check"></i></span><span class="fm-badge amber dot">Afventer</span></div>
+            <div class="kpi-val tnum">{{ (kpis.pending_approvals if kpis and kpis.pending_approvals is not none else 0) }}</div>
+            <div class="kpi-lab">Ordrer afventer godkendelse</div>
+            <div class="kpi-foot"><span class="trend down"><i class="fa-solid fa-arrow-down"></i> 3 vs. sidste uge</span>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,8 12,12 24,9 36,14 48,16 60,15 74,18" stroke="var(--fm-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </article>
+          <article class="kpi" data-reveal data-d="3">
+            <div class="kpi-top"><span class="kpi-ic indigo"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge indigo">Læring</span></div>
+            <div class="kpi-val tnum">68<span style="font-size:18px">%</span></div>
+            <div class="kpi-lab">Gennemførelsesrate</div>
+            <div class="kpi-foot"><span class="trend up"><i class="fa-solid fa-arrow-up"></i> 4,2%</span>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,18 12,16 24,14 36,15 48,10 60,9 74,5" stroke="var(--fm-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </article>
+          <article class="kpi" data-reveal data-d="4">
+            <div class="kpi-top"><span class="kpi-ic gold"><i class="fa-solid fa-coins"></i></span><span class="fm-badge">Forbrug</span></div>
+            <div class="kpi-val tnum">{{ session.get('credits', 0) }}</div>
+            <div class="kpi-lab">Tilgængelige kreditter</div>
+            <div class="kpi-foot"><span class="trend up"><i class="fa-solid fa-arrow-up"></i> +120 i går</span>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,16 12,14 24,15 36,11 48,12 60,8 74,6" stroke="var(--fm-gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+          </article>
+        </section>
+
+        <!-- Tools -->
+        <div class="fm-section-head">
+          <div>
+            <span class="fm-eyebrow"><i class="fa-solid fa-compass"></i> Genveje</span>
+            <h2 class="fm-section-title">Arbejd direkte</h2>
+          </div>
+          <label class="fm-search" style="width:280px">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="search" placeholder="Søg i værktøjer og rapporter" />
+          </label>
+        </div>
+        <section class="tool-grid">
+          <a href="{{ url_for('futurematch.chat') }}" class="tool" data-reveal data-d="1">
+            <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-comment-dots"></i></span><span class="fm-badge teal">Rådgiver</span></div>
+            <div><h3>Kursusrådgiver</h3><p>Find relevante kurser, sammenlign muligheder og gem præferencer.</p></div>
+            <div class="tool-foot"><span class="tag">Kursusmatch</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
+          </a>
+          <a href="{{ url_for('catalog.catalog_index') }}" class="tool" data-reveal data-d="2">
+            <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge">Katalog</span></div>
+            <div><h3>Kursuskatalog</h3><p>Gennemse produkter, kategorier og leverandører direkte.</p></div>
+            <div class="tool-foot"><span class="tag">Selvbetjening</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
+          </a>
+          <a href="{{ url_for('hr_dashboard.dashboard') }}" class="tool" data-reveal data-d="3">
+            <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-building"></i></span><span class="fm-badge">HR</span></div>
+            <div><h3>HR-workspace</h3><p>Medarbejdere, budgetter, godkendelser, forløb og kompetencegab.</p></div>
+            <div class="tool-foot"><span class="tag">Nordi A/S</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
+          </a>
+          <a href="{{ url_for('pages.analytics') }}" class="tool" data-reveal data-d="4">
+            <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-chart-simple"></i></span><span class="fm-badge indigo">Analyse</span></div>
+            <div><h3>Virksomhedsanalyse</h3><p>Følg aktivitet, konvertering og læringsstatus på tværs.</p></div>
+            <div class="tool-foot"><span class="tag">BI</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
+          </a>
+        </section>
+
+        <!-- Lower: activity + quick stats -->
+        <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-wave-square"></i> Lige nu</span><h2 class="fm-section-title">Seneste aktivitet</h2></div></div>
+        <section class="side-col">
+          <div class="fm-card" data-reveal data-d="1">
+            <div class="fm-card-body">
+              <div class="act-item">
+                <span class="act-ic" style="background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-check"></i></span>
+                <div><div class="act-tx"><span class="who">Jonas Vester</span> gennemførte <strong>Projektledelse Praktisk</strong></div><div class="act-time">12 min siden · Udvikling</div></div>
+              </div>
+              <div class="act-item">
+                <span class="act-ic" style="background:var(--fm-clay-tint);color:var(--fm-clay)"><i class="fa-solid fa-clipboard-check"></i></span>
+                <div><div class="act-tx"><span class="who">Sara Lind</span> anmodede om godkendelse til <strong>Scrum Master CSM</strong></div><div class="act-time">38 min siden · afventer dig</div></div>
+              </div>
+              <div class="act-item">
+                <span class="act-ic" style="background:color-mix(in srgb,var(--fm-indigo) 14%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-comment-dots"></i></span>
+                <div><div class="act-tx"><span class="who">12 medarbejdere</span> brugte AI-assistenten i dag</div><div class="act-time">1 t siden · 47 samtaler</div></div>
+              </div>
+              <div class="act-item">
+                <span class="act-ic" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-coins"></i></span>
+                <div><div class="act-tx">Kreditpulje genopfyldt med <strong>120 kreditter</strong></div><div class="act-time">I går 16:40 · automatisk</div></div>
+              </div>
+            </div>
+          </div>
+          <div class="fm-card" data-reveal data-d="2">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3></div>
+            <div class="fm-card-body" style="padding-top:6px">
+              <div class="mini-row"><span class="nm">Projektledelse Praktisk</span><span class="vv">38</span></div>
+              <div class="mini-row"><span class="nm">Excel for Analytikere</span><span class="vv">31</span></div>
+              <div class="mini-row"><span class="nm">Leadership Essentials</span><span class="vv">24</span></div>
+              <div class="mini-row"><span class="nm">GDPR i Praksis</span><span class="vv">19</span></div>
+              <div class="mini-row"><span class="nm">Scrum Master CSM</span><span class="vv">15</span></div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+{% endblock %}

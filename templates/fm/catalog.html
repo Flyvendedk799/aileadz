@@ -1,0 +1,86 @@
+{% extends "fm_base.html" %}
+{% block page_id %}catalog{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Kursuskatalog{% endblock %}
+{% block topbar_sub %}Find kurser, leverandører og kategorier direkte.{% endblock %}
+{% block extra_head %}
+<style>
+  .cat-hero { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 18px; align-items: end; padding: 26px 28px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); position: relative; overflow: hidden; margin-bottom: 22px; }
+  .cat-hero::after { content: ""; position: absolute; inset: 0; background: radial-gradient(80% 120% at 100% 0%, var(--fm-primary-tint), transparent 60%); pointer-events: none; }
+  .cat-hero > * { position: relative; }
+  .cat-hero h1 { font-size: clamp(24px,3vw,34px); letter-spacing: -.03em; margin: 10px 0 8px; }
+  .cat-hero p { color: var(--fm-ink-2); font-size: 14.5px; max-width: 54ch; }
+  .cat-stat { display: flex; gap: 26px; margin-top: 16px; }
+  .cat-stat .s .n { font-family: var(--ff-display); font-size: 22px; font-weight: 700; }
+  .cat-stat .s .l { font-size: 12px; color: var(--fm-ink-3); }
+
+  .cat-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 18px; }
+  .cat-chips { display: flex; gap: 8px; flex-wrap: wrap; }
+  .fchip { height: 36px; padding: 0 14px; border-radius: 999px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink-2); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--t); display: inline-flex; align-items: center; gap: 7px; }
+  .fchip:hover { border-color: var(--fm-line-2); color: var(--fm-ink); }
+  .fchip.active { background: var(--fm-primary); color: #fff; border-color: transparent; box-shadow: var(--sh-glow); }
+  [data-theme="dark"] .fchip.active { color: #06201d; }
+  .fchip .ct { font-family: var(--ff-mono); font-size: 11px; opacity: .7; }
+
+  .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+  .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); cursor: pointer; }
+  .ccard:hover { transform: translateY(-3px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
+  .ccard-media { height: 130px; display: grid; place-items: center; font-size: 30px; color: var(--fm-primary); background: linear-gradient(135deg, var(--fm-primary-tint), color-mix(in srgb, var(--fm-clay) 9%, transparent)); border-bottom: 1px solid var(--fm-line); position: relative; }
+  .ccard-media .save { position: absolute; top: 12px; right: 12px; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink-3); display: grid; place-items: center; font-size: 13px; transition: var(--t); }
+  .ccard-media .save:hover { color: var(--fm-clay); border-color: var(--fm-clay); }
+  .ccard-body { padding: 16px; display: flex; flex-direction: column; gap: 11px; flex: 1; }
+  .ccard-kick { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .ccard h3 { font-size: 16px; font-weight: 700; letter-spacing: -.02em; line-height: 1.25; }
+  .ccard .desc { font-size: 13px; color: var(--fm-ink-2); line-height: 1.5; }
+  .ccard-meta { display: flex; flex-wrap: wrap; gap: 6px; margin-top: auto; }
+  .cpill { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 9px; border-radius: 999px; background: var(--fm-surface-3); color: var(--fm-ink-2); font-size: 11.5px; font-weight: 600; }
+  .cpill i { font-size: 10px; color: var(--fm-ink-3); }
+  .ccard-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--fm-line); }
+  .ccard-price { font-family: var(--ff-display); font-size: 18px; font-weight: 700; color: var(--fm-ink); }
+  .ccard-price .from { font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); font-weight: 500; }
+  @media (max-width: 1100px) { .cat-grid { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 680px) { .cat-grid { grid-template-columns: 1fr; } .cat-hero { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+        <section class="cat-hero" data-reveal data-d="1">
+          <div>
+            <span class="fm-eyebrow"><i class="fa-solid fa-graduation-cap"></i> Futurematch katalog</span>
+            <h1>248 kurser fra 32 leverandører</h1>
+            <p>Kuraterede kurser, certificeringer og forløb — klar til at bestille til dig selv eller dit team.</p>
+            <div class="cat-stat">
+              <div class="s"><div class="n tnum">248</div><div class="l">Kurser</div></div>
+              <div class="s"><div class="n tnum">32</div><div class="l">Leverandører</div></div>
+              <div class="s"><div class="n tnum">14</div><div class="l">Kategorier</div></div>
+            </div>
+          </div>
+          <label class="fm-search" style="width:280px">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="search" id="catSearch" placeholder="Søg i katalog…" />
+          </label>
+        </section>
+
+        <div class="pg-subnav">
+          <a class="pg-tab active" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-grip"></i> Alle kurser</a>
+          <a class="pg-tab" href="{{ url_for('catalog.category_index') }}"><i class="fa-solid fa-shapes"></i> Kategorier</a>
+          <a class="pg-tab" href="{{ url_for('catalog.vendor_index') }}"><i class="fa-solid fa-building"></i> Leverandører</a>
+        </div>
+
+        <div class="cat-toolbar">
+          <div class="cat-chips" id="chips">
+            <button class="fchip active" data-cat="all">Alle <span class="ct">248</span></button>
+            <button class="fchip" data-cat="ledelse">Ledelse <span class="ct">42</span></button>
+            <button class="fchip" data-cat="it">IT &amp; Data <span class="ct">61</span></button>
+            <button class="fchip" data-cat="projekt">Projektledelse <span class="ct">28</span></button>
+            <button class="fchip" data-cat="hr">HR &amp; Jura <span class="ct">19</span></button>
+            <button class="fchip" data-cat="salg">Salg &amp; Marketing <span class="ct">34</span></button>
+          </div>
+          <div style="margin-left:auto" class="fm-flex fm-gap8">
+            <select class="fm-select" style="width:auto;height:36px;font-size:13px"><option>Sortér: Populære</option><option>Pris ↑</option><option>Pris ↓</option><option>Nyeste</option></select>
+          </div>
+        </div>
+
+        <section class="cat-grid" id="grid"></section>
+      </div>
+{% endblock %}

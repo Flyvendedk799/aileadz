@@ -1,0 +1,12 @@
+{% extends "fm_base.html" %}
+{% block page_id %}creports{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Ordre #FM-2048{% endblock %}
+{% block topbar_sub %}Virksomhedsordre · Scrum Master CSM.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='mt_dashboard') }}">Virksomhedsrapporter</a><i class="fa-solid fa-chevron-right"></i><span>#FM-2048</span></div>
+  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-receipt"></i></span><h3>Ordre</h3><span class="status-pill green" style="margin-left:auto;height:26px">Gennemført</span></div><div class="fm-card-body"><div class="info-list"><div class="kv"><span class="k">Kursus</span><span class="v">Scrum Master CSM</span></div><div class="kv"><span class="k">Medarbejder</span><span class="v">Sara Lind</span></div><div class="kv"><span class="k">Afdeling</span><span class="v">Produkt</span></div><div class="kv"><span class="k">Leverandør</span><span class="v">Mannaz</span></div><div class="kv"><span class="k">Pris</span><span class="v mono" style="color:var(--fm-primary)">11.200 kr</span></div><div class="kv"><span class="k">Dato</span><span class="v">12. maj 2026</span></div></div></div></div>
+  <div class="stack"><div class="kpi-tile"><div class="kl">Status</div><div class="kv" style="font-size:20px;color:var(--fm-success)">Gennemført</div><div class="kd">afsluttet 14. maj</div></div></div></div>
+</div>
+{% endblock %}

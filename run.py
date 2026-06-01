@@ -95,6 +95,7 @@ from enterprise_api import api_enterprise_bp
 from enterprise_sso import sso_bp
 from enterprise_company_settings import enterprise_settings_bp
 from multitenant_reports import multitenant_reports_bp
+from futurematch_ui import futurematch_bp
 
 logging.basicConfig(level=logging.INFO)
 
@@ -162,6 +163,7 @@ def create_app():
     app.register_blueprint(sso_bp)
     app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
+    app.register_blueprint(futurematch_bp)
 
     # Initialize white-label context processor
     try:

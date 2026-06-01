@@ -1,0 +1,19 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Tilføj medarbejder{% endblock %}
+{% block topbar_sub %}Opret en ny medarbejder i Nordi A/S.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('futurematch.showcase', page='employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>Tilføj</span></div>
+  <div style="max-width:720px;margin:0 auto"><div class="fm-card"><div class="fm-card-body">
+  <div class="form-grid"><div class="fm-field"><label>Fornavn</label><input class="fm-input" placeholder="fx Sara"/></div><div class="fm-field"><label>Efternavn</label><input class="fm-input" placeholder="fx Lind"/></div>
+  <div class="fm-field full"><label>E-mail</label><input class="fm-input" type="email" placeholder="navn@nordi.dk"/></div>
+  <div class="fm-field"><label>Afdeling</label><select class="fm-select"><option>Udvikling</option><option>Salg</option><option>Produkt</option><option>HR</option></select></div>
+  <div class="fm-field"><label>Stilling</label><input class="fm-input" placeholder="fx Product Owner"/></div>
+  <div class="fm-field"><label>Rolle</label><select class="fm-select"><option>Medarbejder</option><option>Afdelingsleder</option><option>HR-manager</option></select></div>
+  <div class="fm-field"><label>Startdato</label><input class="fm-input" type="date"/></div></div>
+  <div class="callout" style="margin-top:6px"><span class="ci"><i class="fa-solid fa-envelope"></i></span><div style="flex:1"><div style="font-weight:650">Send invitation</div><div style="font-size:12.5px;color:var(--fm-ink-2)">Medarbejderen får en e-mail med login og onboarding.</div></div></div>
+  </div></div></div>
+</div>
+{% endblock %}

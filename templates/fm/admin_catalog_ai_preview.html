@@ -1,0 +1,12 @@
+{% extends "fm_base.html" %}
+{% block page_id %}{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}AI-berigelse{% endblock %}
+{% block topbar_sub %}AI har genereret beskrivelser og tags — gennemgå før publicering.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+<div class="crumb"><a href="{{ url_for('admin_dashboard.admin_catalog') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i><span>AI-berigelse</span></div>
+  <div class="split"><div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-lines"></i></span><h3>Original</h3></div><div class="fm-card-body"><div style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6">Projektledelse kursus. 3 dage. København. Lær projektledelse.</div></div></div>
+  <div class="fm-card" style="border-color:var(--fm-primary-300)"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span><h3>AI-beriget</h3><span class="fm-badge teal" style="margin-left:auto">Forslag</span></div><div class="fm-card-body"><div style="font-size:13.5px;color:var(--fm-ink);line-height:1.7">Et intensivt 3-dages forløb der giver projektledere konkrete værktøjer til planlægning, interessenthåndtering og eksekvering — med øvelser baseret på egne projekter.</div><div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:12px"><span class="fm-badge teal">Projektledelse</span><span class="fm-badge teal">Certifikat</span><span class="fm-badge teal">Begynder</span></div></div></div></div>
+</div>
+{% endblock %}

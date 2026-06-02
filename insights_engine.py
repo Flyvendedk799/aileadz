@@ -290,55 +290,132 @@ def get_skill_gap_analysis(app, company_id, department=None):
         return heatmap
 
 
-def get_roi_metrics(app, company_id):
+# ---------------------------------------------------------------------------
+# Canonical ROI engine (roadmap value-4, Theme D/E).
+#
+# This is the SINGLE source of truth for training-ROI numbers. The HEADLINE /
+# CFO figures are GROUNDED in real data only:
+#   - total training investment  = SUM(course_orders.price), scoped by company_id
+#                                   + fiscal period (the order's created_at year)
+#   - completion counts / rates  = course_orders.completion_status
+#   - cost per completion        = real spend / real completions
+#   - budget utilisation         = department_budgets.spent vs .annual_budget
+#   - budget OVERRUN             = departments where spent > annual_budget
+#
+# The fabricated productivity multiplier (0.15 * rating) NEVER touches any
+# headline number. It lives ONLY inside metrics['scenario'] — a clearly
+# labelled, explicitly hypothetical projection that the template renders in a
+# separate "Estimeret scenarie — ikke faktiske tal" panel.
+#
+# enterprise_analytics.calculate_learning_roi delegates here, so there is one
+# computation and the two engines can never diverge.
+# ---------------------------------------------------------------------------
+
+# Hypothetical-only assumption: productivity gain per performance-rating point
+# above the 3.0 baseline. NOT a measured value — used solely for the labelled
+# scenario projection, never for a headline ROI figure.
+_SCENARIO_PRODUCTIVITY_PER_RATING = 0.15
+_SCENARIO_RATING_BASELINE = 3.0
+
+
+def get_roi_metrics(app, company_id, fiscal_year=None):
     """
-    Phase 3.3: Calculate training ROI metrics for a company.
+    Canonical training-ROI computation for a company (roadmap value-4).
+
+    All headline metrics are grounded in real data and scoped by company_id +
+    fiscal period. The only estimated/hypothetical content lives under the
+    clearly-labelled metrics['scenario'] key and is never mixed into a headline.
+
+    Args:
+        app:          Flask app (used for app_context()).
+        company_id:   tenant id — EVERY query is scoped by this.
+        fiscal_year:  fiscal period for spend/budget; defaults to current year.
+
+    Returns a dict that is safe-zero on empty data.
     """
     import MySQLdb.cursors
+    import datetime as _dt
+
+    if fiscal_year is None:
+        try:
+            fiscal_year = _dt.datetime.now().year
+        except Exception:
+            fiscal_year = 0
 
     with app.app_context():
         conn = app.mysql.connection
         cur = conn.cursor(MySQLdb.cursors.DictCursor)
 
         metrics = {
-            'total_training_spend': 0,
+            'fiscal_year': fiscal_year,
+            # --- real, grounded headline figures ---
+            'total_training_spend': 0.0,
             'employees_trained': 0,
             'courses_completed': 0,
+            'courses_total': 0,
+            'completion_rate': 0.0,
             'spend_per_employee': 0,
+            'cost_per_completion': 0,
             'courses_per_kr': 0,
             'avg_completion_days': 0,
             'department_roi': [],
+            # --- budget (real) ---
+            'budget_total': 0.0,
+            'budget_spent': 0.0,
+            'budget_remaining': 0.0,
+            'budget_utilization': 0.0,
+            'budget_overruns': [],
+            'has_data': False,
+            # --- hypothetical projection (explicitly NOT real) ---
+            'scenario': None,
         }
 
         try:
-            # Total spend
+            # ── Real spend / completions, scoped by company_id + fiscal year ──
             cur.execute("""
                 SELECT COALESCE(SUM(price), 0) AS total_spend,
                        COUNT(DISTINCT user_id) AS employees_trained,
-                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed
+                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) AS completed,
+                       COUNT(*) AS total_orders
                 FROM course_orders
-                WHERE company_id = %s AND status NOT IN ('cancelled', 'rejected')
-            """, (company_id,))
-            row = cur.fetchone()
-            metrics['total_training_spend'] = float(row['total_spend'] or 0)
-            metrics['employees_trained'] = row['employees_trained'] or 0
-            metrics['courses_completed'] = row['completed'] or 0
+                WHERE company_id = %s
+                  AND status NOT IN ('cancelled', 'rejected')
+                  AND YEAR(created_at) = %s
+            """, (company_id, fiscal_year))
+            row = cur.fetchone() or {}
+            metrics['total_training_spend'] = float(row.get('total_spend') or 0)
+            metrics['employees_trained'] = int(row.get('employees_trained') or 0)
+            metrics['courses_completed'] = int(row.get('completed') or 0)
+            metrics['courses_total'] = int(row.get('total_orders') or 0)
 
+            if metrics['courses_total'] > 0:
+                metrics['completion_rate'] = round(
+                    metrics['courses_completed'] / metrics['courses_total'] * 100, 1)
             if metrics['employees_trained'] > 0:
-                metrics['spend_per_employee'] = round(metrics['total_training_spend'] / metrics['employees_trained'])
+                metrics['spend_per_employee'] = round(
+                    metrics['total_training_spend'] / metrics['employees_trained'])
+            if metrics['courses_completed'] > 0:
+                metrics['cost_per_completion'] = round(
+                    metrics['total_training_spend'] / metrics['courses_completed'])
             if metrics['total_training_spend'] > 0:
-                metrics['courses_per_kr'] = round(metrics['courses_completed'] / (metrics['total_training_spend'] / 1000), 2)
+                metrics['courses_per_kr'] = round(
+                    metrics['courses_completed'] / (metrics['total_training_spend'] / 1000), 2)
 
-            # Avg time to completion
+            metrics['has_data'] = metrics['courses_total'] > 0 or metrics['total_training_spend'] > 0
+
+            # ── Avg time to completion (real) ──
             cur.execute("""
                 SELECT AVG(DATEDIFF(completion_date, created_at)) AS avg_days
                 FROM course_orders
-                WHERE company_id = %s AND completion_status = 'completed' AND completion_date IS NOT NULL
-            """, (company_id,))
-            row = cur.fetchone()
-            metrics['avg_completion_days'] = round(row['avg_days'] or 0, 1)
+                WHERE company_id = %s
+                  AND completion_status = 'completed'
+                  AND completion_date IS NOT NULL
+                  AND YEAR(created_at) = %s
+            """, (company_id, fiscal_year))
+            row = cur.fetchone() or {}
+            metrics['avg_completion_days'] = round(float(row.get('avg_days') or 0), 1)
 
-            # Department breakdown
+            # ── Department breakdown (real) ──
             cur.execute("""
                 SELECT co.department,
                        COALESCE(SUM(co.price), 0) AS dept_spend,
@@ -346,29 +423,120 @@ def get_roi_metrics(app, company_id):
                        COUNT(CASE WHEN co.completion_status = 'completed' THEN 1 END) AS dept_completed,
                        COUNT(*) AS dept_total
                 FROM course_orders co
-                WHERE co.company_id = %s AND co.department IS NOT NULL AND co.department != ''
-                AND co.status NOT IN ('cancelled', 'rejected')
+                WHERE co.company_id = %s
+                  AND co.department IS NOT NULL AND co.department != ''
+                  AND co.status NOT IN ('cancelled', 'rejected')
+                  AND YEAR(co.created_at) = %s
                 GROUP BY co.department
                 ORDER BY dept_spend DESC
-            """, (company_id,))
+            """, (company_id, fiscal_year))
             for r in cur.fetchall():
-                spend = float(r['dept_spend'] or 0)
-                completed = r['dept_completed'] or 0
-                total = r['dept_total'] or 0
+                spend = float(r.get('dept_spend') or 0)
+                completed = int(r.get('dept_completed') or 0)
+                total = int(r.get('dept_total') or 0)
                 metrics['department_roi'].append({
-                    'department': r['department'],
+                    'department': r.get('department'),
                     'spend': spend,
-                    'employees': r['dept_employees'] or 0,
+                    'employees': int(r.get('dept_employees') or 0),
                     'completed': completed,
                     'total_orders': total,
                     'completion_rate': round(completed / total * 100, 1) if total > 0 else 0,
                     'cost_per_completion': round(spend / completed) if completed > 0 else 0,
                 })
+
+            # ── Budget utilisation + OVERRUNS (real) ──
+            cur.execute("""
+                SELECT department,
+                       COALESCE(annual_budget, 0) AS annual_budget,
+                       COALESCE(spent, 0) AS spent
+                FROM department_budgets
+                WHERE company_id = %s AND fiscal_year = %s
+            """, (company_id, fiscal_year))
+            for b in cur.fetchall():
+                annual = float(b.get('annual_budget') or 0)
+                spent = float(b.get('spent') or 0)
+                metrics['budget_total'] += annual
+                metrics['budget_spent'] += spent
+                if spent > annual and annual > 0:
+                    metrics['budget_overruns'].append({
+                        'department': b.get('department'),
+                        'annual_budget': annual,
+                        'spent': spent,
+                        'overrun': round(spent - annual),
+                        'overrun_pct': round((spent - annual) / annual * 100, 1),
+                    })
+            metrics['budget_remaining'] = metrics['budget_total'] - metrics['budget_spent']
+            if metrics['budget_total'] > 0:
+                metrics['budget_utilization'] = round(
+                    metrics['budget_spent'] / metrics['budget_total'] * 100, 1)
+            metrics['budget_overruns'].sort(key=lambda x: x['overrun'], reverse=True)
+
+            # ── Hypothetical scenario projection (NOT real) ──────────────────
+            # Computed separately and explicitly flagged. The 0.15 multiplier
+            # lives ONLY here and never drives a headline number. The template
+            # renders this under "Estimeret scenarie — ikke faktiske tal".
+            metrics['scenario'] = _build_roi_scenario(cur, company_id, metrics['total_training_spend'])
+
         except Exception as e:
             logger.warning(f"ROI metrics error: {e}")
 
-        cur.close()
+        try:
+            cur.close()
+        except Exception:
+            pass
         return metrics
+
+
+def _build_roi_scenario(cur, company_id, total_investment):
+    """
+    Build the HYPOTHETICAL ROI projection (Theme E "estimeret scenarie").
+
+    This is the ONLY place the fabricated productivity multiplier lives. It is
+    never mixed into a real headline figure — the caller stores it under the
+    metrics['scenario'] key and the template labels it as a non-factual
+    projection with the assumption shown.
+
+    Returns None when there is no investment to project against (safe-zero).
+    """
+    investment = float(total_investment or 0)
+    if investment <= 0:
+        return None
+    try:
+        cur.execute("""
+            SELECT AVG(performance_rating) AS avg_rating
+            FROM company_users
+            WHERE company_id = %s AND status = 'active'
+              AND performance_rating IS NOT NULL
+        """, (company_id,))
+        row = cur.fetchone() or {}
+        avg_rating = row.get('avg_rating')
+    except Exception as e:
+        logger.warning(f"ROI scenario rating lookup error: {e}")
+        avg_rating = None
+
+    if avg_rating is None:
+        return None
+
+    avg_rating = float(avg_rating)
+    # Hypothetical only — clearly an assumption, not measured.
+    performance_improvement = (avg_rating - _SCENARIO_RATING_BASELINE) / _SCENARIO_RATING_BASELINE
+    estimated_productivity_gain = performance_improvement * _SCENARIO_PRODUCTIVITY_PER_RATING
+    estimated_value = investment * (1 + estimated_productivity_gain)
+    estimated_roi_pct = ((estimated_value - investment) / investment * 100) if investment > 0 else 0.0
+
+    return {
+        'is_estimate': True,
+        'avg_performance_rating': round(avg_rating, 2),
+        'baseline_rating': _SCENARIO_RATING_BASELINE,
+        'productivity_per_rating_point': _SCENARIO_PRODUCTIVITY_PER_RATING,
+        'estimated_productivity_gain_pct': round(estimated_productivity_gain * 100, 1),
+        'estimated_value_generated': round(estimated_value, 2),
+        'estimated_roi_percentage': round(estimated_roi_pct, 2),
+        'assumption_text': (
+            "Antagelse: {:.0f}% produktivitetsgevinst pr. point i "
+            "performance-rating over basislinjen {:.1f}."
+        ).format(_SCENARIO_PRODUCTIVITY_PER_RATING * 100, _SCENARIO_RATING_BASELINE),
+    }
 
 
 def get_predictive_data(app, company_id):

@@ -1,0 +1,197 @@
+{% extends "fm_base.html" %}
+{% block page_id %}freshness{% endblock %}
+{% block title %}Katalog-friskhed{% endblock %}
+{% block topbar_title %}Katalog-friskhed{% endblock %}
+{% block topbar_sub %}Leverandøraftaler der snart udløber og kurser med forældede holddatoer — så chatbotten aldrig anbefaler et kursus, der allerede har været afholdt.{% endblock %}
+{% block extra_head %}
+<style>
+  .fr-empty { padding: 44px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
+  .fr-empty i { font-size: 26px; display: block; margin-bottom: 10px; color: var(--fm-ink-3); opacity: .6; }
+  .fr-sec-empty { padding: 28px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
+  .fr-note { font-size: 12px; color: var(--fm-ink-3); margin: 4px 0 0; }
+  /* Status pills */
+  .fr-pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px;
+    font-size: 12px; font-weight: 650; white-space: nowrap; background: var(--fm-surface-3); color: var(--fm-ink-2); }
+  .fr-pill.soon { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  .fr-pill.expired { background: color-mix(in srgb, var(--fm-danger) 14%, transparent); color: var(--fm-danger); }
+  .fr-pill.stale { background: color-mix(in srgb, var(--fm-danger) 14%, transparent); color: var(--fm-danger); }
+  .fr-pill.warn { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  .fr-muted { color: var(--fm-ink-3); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Conversion-funnel</a>
+    <a class="pg-tab active" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-check"></i> Katalog-friskhed</a>
+  </div>
+
+  <!-- KPI row -->
+  <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:16px">
+    <div class="kpi-tile ico">
+      <span class="ki gold"><i class="fa-solid fa-handshake"></i></span>
+      <div><div class="kl">Aftaler der kræver handling</div><div class="kv tnum">{{ agreements|length }}</div>
+      <div class="kd">Udløber inden {{ within_days }} dage eller er allerede udløbet</div></div>
+    </div>
+    <div class="kpi-tile ico">
+      <span class="ki"><i class="fa-solid fa-triangle-exclamation"></i></span>
+      <div><div class="kl">Allerede udløbet</div>
+      <div class="kv tnum" style="color:var(--fm-danger)">{{ agreements|selectattr('is_expired')|list|length }}</div>
+      <div class="kd">Rabatter der ikke længere er aktive</div></div>
+    </div>
+    <div class="kpi-tile ico">
+      <span class="ki indigo"><i class="fa-solid fa-calendar-xmark"></i></span>
+      <div><div class="kl">Forældede kurser</div><div class="kv tnum">{{ courses|length }}</div>
+      <div class="kd">Seneste holddato er overskredet</div></div>
+    </div>
+  </div>
+
+  {% if not has_data %}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fr-empty">
+      <i class="fa-solid fa-calendar-check"></i>
+      Alt ser friskt ud. Ingen leverandøraftaler er ved at udløbe, og ingen kurser har forældede holddatoer
+      med en entydig årstal-dato. Når en aftale nærmer sig sin slutdato — eller et kursus får en holddato i
+      fortiden — dukker det op her.
+    </div>
+  </div>
+  {% else %}
+
+  <!-- Section 1: Expiring / expired supplier agreements (the reliable half) -->
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-handshake"></i></span>
+      <h3>Leverandøraftaler der udløber</h3>
+      <label class="fm-search" style="width:240px;margin-left:auto">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" placeholder="Søg leverandør" data-table-search="agreementsTable">
+      </label>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <p class="fr-note">Aktive rabataftaler med en konkret slutdato, der udløber inden {{ within_days }} dage eller allerede er udløbet. Forny dem, så de forhandlede rabatter ikke forsvinder fra kataloget.</p>
+      {% if agreements %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none;margin-top:8px">
+        <table class="fm-table" id="agreementsTable">
+          <thead>
+            <tr>
+              <th>Leverandør</th>
+              <th>Aftale</th>
+              <th>Reference</th>
+              <th>Gyldig til</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ag in agreements %}
+            <tr>
+              <td><strong>{{ ag.vendor_name }}</strong></td>
+              <td>{{ ag.agreement_name or '—' }}</td>
+              <td class="fr-muted">{{ ag.agreement_reference or '—' }}</td>
+              <td class="tnum">
+                {% if ag.valid_until %}{{ ag.valid_until.strftime('%d-%m-%Y') }}{% else %}—{% endif %}
+              </td>
+              <td>
+                {% if ag.is_expired %}
+                  <span class="fr-pill expired"><i class="fa-solid fa-circle-xmark"></i>
+                    Udløbet{% if ag.days_left is not none %} for {{ (-ag.days_left) }} dage siden{% endif %}</span>
+                {% else %}
+                  <span class="fr-pill soon"><i class="fa-solid fa-clock"></i>
+                    {% if ag.days_left is not none %}Udløber om {{ ag.days_left }} dage{% else %}Udløber snart{% endif %}</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="fr-sec-empty">
+        <i class="fa-solid fa-circle-check fr-muted" style="font-size:20px;display:block;margin-bottom:8px"></i>
+        Ingen leverandøraftaler udløber inden {{ within_days }} dage.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  <!-- Section 2: Stale-dated courses (the gated half) -->
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-calendar-xmark"></i></span>
+      <h3>Forældede kurser</h3>
+      <label class="fm-search" style="width:240px;margin-left:auto">
+        <i class="fa-solid fa-magnifying-glass"></i>
+        <input type="search" placeholder="Søg kursus eller leverandør" data-table-search="staleTable">
+      </label>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <p class="fr-note">Kurser hvis seneste holddato ligger i fortiden. For at undgå falske alarmer på de mange tvetydige danske datoer i kataloget tælles en dato kun som forældet, når den kan læses med et entydigt årstal.</p>
+      {% if courses %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none;margin-top:8px">
+        <table class="fm-table" id="staleTable">
+          <thead>
+            <tr>
+              <th>Kursus</th>
+              <th>Leverandør</th>
+              <th>Seneste holddato</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for c in courses %}
+            <tr>
+              <td><strong>{{ c.title }}</strong></td>
+              <td class="fr-muted">{{ c.vendor }}</td>
+              <td class="tnum">
+                {% if c.last_session_date %}{{ c.last_session_date.strftime('%d-%m-%Y') }}{% else %}—{% endif %}
+              </td>
+              <td>
+                {% if c.days_stale and c.days_stale > 180 %}
+                  <span class="fr-pill stale"><i class="fa-solid fa-circle-exclamation"></i> {{ c.days_stale }} dage forældet</span>
+                {% else %}
+                  <span class="fr-pill warn"><i class="fa-solid fa-clock-rotate-left"></i> {{ c.days_stale }} dage forældet</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if c.url %}
+                <a class="btn btn-soft btn-sm" href="{{ c.url }}" target="_blank" rel="noopener">
+                  <i class="fa-solid fa-up-right-from-square"></i> Se kursus
+                </a>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="fr-sec-empty">
+        <i class="fa-solid fa-circle-check fr-muted" style="font-size:20px;display:block;margin-bottom:8px"></i>
+        Ingen kurser med en entydig holddato i fortiden.
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+  (function () {
+    document.querySelectorAll('[data-table-search]').forEach(function (input) {
+      var table = document.getElementById(input.dataset.tableSearch);
+      if (!table) return;
+      var rows = Array.prototype.slice.call(table.querySelectorAll('tbody tr'));
+      input.addEventListener('input', function () {
+        var value = this.value.toLowerCase().trim();
+        rows.forEach(function (row) {
+          row.style.display = row.textContent.toLowerCase().indexOf(value) !== -1 ? '' : 'none';
+        });
+      });
+    });
+  })();
+</script>
+{% endblock %}

@@ -2,19 +2,65 @@
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Uddannelses-ROI{% endblock %}
-{% block topbar_sub %}Effekt og afkast af læringsinvesteringer.{% endblock %}
+{% block topbar_sub %}Effekt og afkast af læringsinvesteringer{% if fiscal_year %} · regnskabsår {{ fiscal_year }}{% endif %}.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
 <div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
 
   {% set r = roi or {} %}
+
+  {% if not r.has_data %}
+  <div class="fm-empty" style="text-align:center;padding:48px 16px;color:var(--fm-ink-3);margin-top:16px">
+    <div style="font-size:32px;margin-bottom:10px"><i class="fa-solid fa-chart-line" style="opacity:.4"></i></div>
+    <div style="font-weight:650;color:var(--fm-ink-2);margin-bottom:4px">Ingen ROI-data endnu</div>
+    <div style="font-size:13px">Der er ingen kursusordrer registreret for regnskabsår {{ r.fiscal_year or fiscal_year }}. ROI-tal vises, så snart medarbejdere har bestilt eller gennemført kurser.</div>
+  </div>
+  {% else %}
+
+  <!-- ===== REAL HEADLINE / CFO FIGURES (grounded in actual data) ===== -->
   <div class="kpi-row">
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Samlet uddannelsesudgift</div><div class="kv tnum">{{ '{:,.0f}'.format(r.total_training_spend|default(0)|float).replace(',','.') }}</div><div class="kd">kr</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Samlet uddannelsesudgift</div><div class="kv tnum">{{ '{:,.0f}'.format(r.total_training_spend|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.courses_total|default(0) }} ordrer</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Medarbejdere trænet</div><div class="kv tnum">{{ r.employees_trained|default(0) }}</div><div class="kd">{{ r.courses_completed|default(0) }} kurser gennemført</div></div></div>
-    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-user-tag"></i></span><div><div class="kl">Udgift pr. medarbejder</div><div class="kv tnum">{{ '{:,.0f}'.format(r.spend_per_employee|default(0)|float).replace(',','.') }}</div><div class="kd">kr</div></div></div>
-    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Gns. tid til færdiggørelse</div><div class="kv tnum">{{ r.avg_completion_days|default(0) }}</div><div class="kd">dage · {{ r.courses_per_kr|default(0) }} kurser/1.000 kr</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-percent"></i></span><div><div class="kl">Gennemførelsesrate</div><div class="kv tnum">{{ r.completion_rate|default(0) }}<span style="font-size:14px">%</span></div><div class="kd">{{ r.courses_completed|default(0) }} / {{ r.courses_total|default(0) }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Pris pr. gennemførelse</div><div class="kv tnum">{{ '{:,.0f}'.format(r.cost_per_completion|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.spend_per_employee|default(0) }} kr/medarbejder</div></div></div>
   </div>
 
+  <!-- ===== BUDGET UTILISATION (real) ===== -->
+  {% if r.budget_total and r.budget_total > 0 %}
+  {% set util = r.budget_utilization|default(0)|float %}
+  {% set util_col = 'var(--fm-danger)' if util > 100 else ('var(--fm-warning)' if util > 90 else 'var(--fm-success)') %}
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-wallet"></i></span><h3>Budgetudnyttelse ({{ r.fiscal_year or fiscal_year }})</h3></div>
+    <div class="fm-card-body" style="padding-top:8px">
+      <div class="fm-spread" style="margin-bottom:8px">
+        <span class="mono" style="font-size:12.5px;color:var(--fm-ink-2)">{{ '{:,.0f}'.format(r.budget_spent|default(0)|float).replace(',','.') }} kr brugt af {{ '{:,.0f}'.format(r.budget_total|default(0)|float).replace(',','.') }} kr</span>
+        <span class="fm-badge" style="background:color-mix(in srgb,{{ util_col }} 16%,transparent);color:{{ util_col }}">{{ util }}%</span>
+      </div>
+      <div class="fm-prog thin"><span style="width:{{ [util,100]|min }}%;background:{{ util_col }}"></span></div>
+      <div class="muted" style="font-size:12px;color:var(--fm-ink-3);margin-top:8px">{{ '{:,.0f}'.format(r.budget_remaining|default(0)|float).replace(',','.') }} kr resterende på tværs af afdelinger.</div>
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== BUDGET OVERRUN CALLOUT (real) ===== -->
+  {% if r.budget_overruns %}
+  <div class="fm-card" style="margin-top:16px;border:1px solid color-mix(in srgb,var(--fm-danger) 35%,transparent)">
+    <div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-danger) 14%,transparent);color:var(--fm-danger)"><i class="fa-solid fa-triangle-exclamation"></i></span><h3>Budgetoverskridelser</h3></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);margin-bottom:6px">{{ r.budget_overruns|length }} afdeling(er) har brugt mere end deres årsbudget.</div>
+      {% for o in r.budget_overruns %}
+      <div class="fm-spread" style="padding:10px 0;border-bottom:1px solid var(--fm-line)">
+        <div>
+          <div style="font-weight:650;font-size:13.5px">{{ o.department }}</div>
+          <div class="muted mono" style="font-size:11.5px;color:var(--fm-ink-3)">{{ '{:,.0f}'.format(o.spent|float).replace(',','.') }} kr brugt · budget {{ '{:,.0f}'.format(o.annual_budget|float).replace(',','.') }} kr</div>
+        </div>
+        <span class="fm-badge red">+{{ '{:,.0f}'.format(o.overrun|float).replace(',','.') }} kr ({{ o.overrun_pct }}%)</span>
+      </div>
+      {% endfor %}
+    </div>
+  </div>
+  {% endif %}
+
+  <!-- ===== DEPARTMENT BREAKDOWN (real) ===== -->
   {% if r.department_roi %}
   <div class="fm-table-wrap" style="margin-top:16px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">ROI pr. afdeling</h3></div>
   <table class="fm-table"><thead><tr><th>Afdeling</th><th>Udgift</th><th>Medarbejdere</th><th>Gennemført</th><th>Færdiggørelse</th><th>Pris pr. gennemførelse</th></tr></thead><tbody>
@@ -31,6 +77,32 @@
   </tbody></table></div>
   {% endif %}
 
+  <!-- ===== HYPOTHETICAL SCENARIO — explicitly NOT real figures ===== -->
+  {% if r.scenario and r.scenario.is_estimate %}
+  {% set s = r.scenario %}
+  <div class="fm-card" style="margin-top:16px;border:1px dashed color-mix(in srgb,var(--fm-ink-3) 55%,transparent);background:color-mix(in srgb,var(--fm-warning) 5%,transparent)">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-flask"></i></span>
+      <h3>Estimeret scenarie — ikke faktiske tal</h3>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="fm-badge" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning);margin-bottom:10px"><i class="fa-solid fa-circle-info" style="margin-right:5px"></i> Hypotetisk fremskrivning</div>
+      <p class="muted" style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px;line-height:1.5">
+        Nedenstående er en <strong>modelberegnet fremskrivning</strong> og ikke målte resultater. {{ s.assumption_text }}
+        Beregnet ud fra en gennemsnitlig performance-rating på {{ s.avg_performance_rating }}.
+      </p>
+      <div class="kpi-row" style="margin-top:4px">
+        <div class="kpi-tile"><div class="kl">Estimeret afkast (ROI)</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_roi_percentage }}<span style="font-size:14px">%</span></div><div class="kd">estimat</div></div>
+        <div class="kpi-tile"><div class="kl">Estimeret skabt værdi</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ '{:,.0f}'.format(s.estimated_value_generated|float).replace(',','.') }}</div><div class="kd">kr · estimat</div></div>
+        <div class="kpi-tile"><div class="kl">Antaget produktivitetsgevinst</div><div class="kv tnum" style="color:var(--fm-ink-2)">{{ s.estimated_productivity_gain_pct }}<span style="font-size:14px">%</span></div><div class="kd">antagelse</div></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% endif %}{# has_data #}
+
+  <!-- ===== PREDICTIVE SIGNALS (real) ===== -->
   <div class="split" style="margin-top:16px">
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-danger) 14%,transparent);color:var(--fm-danger)"><i class="fa-solid fa-user-clock"></i></span><h3>Churn-risiko (inaktive)</h3></div>
       <div class="fm-card-body" style="padding-top:6px">

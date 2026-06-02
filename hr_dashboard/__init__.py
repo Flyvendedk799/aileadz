@@ -1258,11 +1258,18 @@ def create_hr_dashboard_blueprint():
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
         try:
+            import datetime as _dt
+            try:
+                fiscal_year = int(request.args.get('year', _dt.datetime.now().year))
+            except (TypeError, ValueError):
+                fiscal_year = _dt.datetime.now().year
             from insights_engine import get_roi_metrics, get_predictive_data
-            roi = get_roi_metrics(current_app._get_current_object(), company['id'])
+            # Canonical ROI engine — single source of truth, real headline data.
+            roi = get_roi_metrics(current_app._get_current_object(), company['id'], fiscal_year)
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
             return render_template('fm/roi.html',
-                                   company=company, roi=roi, predictions=predictions)
+                                   company=company, roi=roi, predictions=predictions,
+                                   fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
             flash("Error loading ROI data.", "danger")

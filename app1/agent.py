@@ -11,7 +11,7 @@ import openai
 import time
 from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS, execute_tool, set_search_context
 from app1.memory_store import log_debug
-from . import render_multi_course_media, render_product_media
+from . import render_multi_course_media, render_product_media, serialize_course_cards
 from db_compat import close_flask_mysql_connection, refresh_flask_mysql_connection
 
 import uuid
@@ -1341,6 +1341,7 @@ def handle_agentic_ask(user_query, session):
             yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
 
             buffered_ui_html = []
+            buffered_course_cards = []   # structured course data for the Futurematch chat
             buffered_profile_events = []
             _tools_used = []          # Phase 1.1: track tool names
             _total_results = 0        # Phase 1.1: total search results
@@ -1733,6 +1734,7 @@ def handle_agentic_ask(user_query, session):
                     )
                     if raw_products:
                         buffered_ui_html.append(render_multi_course_media(raw_products))
+                        buffered_course_cards.append(serialize_course_cards(raw_products))
                         _track_shown_products(sid, tool_result_dict.get("results", []))
 
                 elif fn in ("get_course_details", "catalog_get_product"):
@@ -1746,6 +1748,7 @@ def handle_agentic_ask(user_query, session):
                     resolved = resolve_products_for_ui(single_handle=handle)
                     if resolved:
                         buffered_ui_html.append(render_product_media(resolved[0]))
+                        buffered_course_cards.append(serialize_course_cards([resolved[0]]))
 
                 elif fn == "update_user_profile":
                     tool_status = tool_result_dict.get("status", "")
@@ -1863,7 +1866,12 @@ def handle_agentic_ask(user_query, session):
                 yield f"data: {evt}\n\n"
 
             # ── Stream product cards AFTER text + profile events ──
-            for html_chunk in buffered_ui_html:
+            # Emit structured course_cards (Futurematch chat builder) first, then
+            # the pre-rendered product HTML (legacy app1 chat). Clients render one.
+            for idx, html_chunk in enumerate(buffered_ui_html):
+                cards = buffered_course_cards[idx] if idx < len(buffered_course_cards) else None
+                if cards:
+                    yield f"data: {json.dumps({'type': 'course_cards', 'items': cards}, ensure_ascii=False)}\n\n"
                 if html_chunk is not None:
                     yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
 

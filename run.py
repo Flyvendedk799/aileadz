@@ -138,6 +138,17 @@ def create_app():
             "Set the SECRET_KEY environment variable and rotate it for production."
         )
 
+    # Session cookie hardening. These are additive and don't invalidate existing
+    # sessions. SESSION_COOKIE_SECURE must stay False under SANDBOX=1 so the test
+    # harness (plain HTTP via Werkzeug test client + session_transaction) keeps
+    # working; in real production (no SANDBOX) it becomes True so the session
+    # cookie is only sent over HTTPS.
+    app.config.update({
+        'SESSION_COOKIE_HTTPONLY': True,
+        'SESSION_COOKIE_SAMESITE': 'Lax',
+        'SESSION_COOKIE_SECURE': (os.environ.get('SANDBOX') != '1'),
+    })
+
     # DB config is env-overridable (for the local sandbox / CI). When the env
     # vars are unset it falls back to the production PythonAnywhere database, so
     # production behaviour is unchanged.
@@ -184,6 +195,14 @@ def create_app():
     # Liveness/readiness probes (/healthz, /readyz)
     from health import health_bp
     app.register_blueprint(health_bp)
+
+    # Defensive HTTP response headers (nosniff, frame options, report-only CSP).
+    # Guarded so a failure here can never crash create_app().
+    try:
+        from security_headers import register_security_headers
+        register_security_headers(app)
+    except Exception as e:
+        logging.warning("Security headers integration skipped: %s", e)
 
     # Initialize white-label context processor
     try:

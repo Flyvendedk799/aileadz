@@ -14,6 +14,7 @@ import MySQLdb.cursors
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, send_file
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
+from auth_decorators import require_company_role
 try:
     import boto3
 except ImportError:
@@ -536,13 +537,13 @@ def get_company_context():
         return None
 
 @enterprise_settings_bp.route('/company-settings')
-@require_enterprise_access()
+@require_company_role('company_admin', 'hr_manager')
 def company_settings():
     """Redirect legacy enterprise settings to unified branding hub."""
     return redirect(url_for('companies.branding'))
 
 @enterprise_settings_bp.route('/company-settings', methods=['POST'])
-@require_enterprise_access()
+@require_company_role('company_admin', 'hr_manager')
 def update_company_settings():
     """Update enterprise company settings"""
     company = get_company_context()
@@ -687,7 +688,7 @@ def update_company_settings():
         return jsonify({'success': False, 'message': 'Internal server error'}), 500
 
 @enterprise_settings_bp.route('/apply-theme/<int:template_id>', methods=['POST'])
-@require_enterprise_access()
+@require_company_role('company_admin', 'hr_manager')
 def apply_theme_template(template_id):
     """Apply a theme template"""
     company = get_company_context()
@@ -702,7 +703,7 @@ def apply_theme_template(template_id):
         return jsonify({'success': False, 'message': 'Failed to apply theme'}), 500
 
 @enterprise_settings_bp.route('/preview-theme', methods=['POST'])
-@require_enterprise_access()
+@require_company_role('company_admin', 'hr_manager')
 def preview_theme():
     """Preview theme changes without saving"""
     try:
@@ -728,7 +729,7 @@ def preview_theme():
         return jsonify({'success': False, 'message': 'Preview failed'}), 500
 
 @enterprise_settings_bp.route('/export-settings')
-@require_enterprise_access()
+@require_company_role('company_admin', 'hr_manager')
 def export_settings():
     """Export company settings as JSON"""
     company = get_company_context()

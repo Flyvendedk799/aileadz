@@ -3,6 +3,7 @@ import db_compat  # noqa: F401
 import MySQLdb.cursors
 
 import catalog_service as catalog
+from auth_decorators import login_required
 
 
 catalog_bp = Blueprint("catalog", __name__, template_folder="templates")
@@ -105,6 +106,7 @@ def product_detail(handle):
 
 
 @catalog_bp.route("/products/<handle>/request", methods=["POST"])
+@login_required
 def request_product(handle):
     product = catalog.get_product(handle)
     if not product:

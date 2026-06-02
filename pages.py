@@ -1,6 +1,7 @@
 # pages.py
 from flask import Blueprint, render_template, session, current_app, redirect, url_for, flash, request
 import MySQLdb.cursors
+from auth_decorators import login_required
 
 pages_bp = Blueprint('pages', __name__, template_folder='templates')
 
@@ -26,17 +27,13 @@ def terms():
     return render_template('fm/terms.html')
 
 @pages_bp.route('/notifications')
+@login_required
 def notifications():
-    if 'user' not in session:
-        flash("Log ind for at se notifikationer.", "danger")
-        return redirect(url_for('auth.login'))
     return render_template('fm/notifications.html')
 
 @pages_bp.route('/analytics')
+@login_required
 def analytics():
-    if 'user' not in session:
-        flash("Please log in to view analytics.", "danger")
-        return redirect(url_for('auth.login'))
     username = session.get('user')
     
     import datetime
@@ -104,10 +101,8 @@ def analytics():
 
 
 @pages_bp.route('/indstillinger', methods=['GET', 'POST'])
+@login_required
 def settings():
-    if 'user' not in session:
-        flash('Please log in to access settings.', 'danger')
-        return redirect(url_for('auth.login'))
     username = session.get('user')
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)

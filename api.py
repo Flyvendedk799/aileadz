@@ -1,4 +1,5 @@
 from flask import Blueprint, jsonify, session, current_app, request
+from auth_decorators import login_required
 import json
 
 api_bp = Blueprint('api', __name__)
@@ -15,9 +16,8 @@ def get_credits():
     return jsonify({'credits': credits})
 
 @api_bp.route('/api/mark-notifications-read', methods=['POST'])
+@login_required
 def mark_notifications_read():
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     user_id = session.get('user')
     data = request.get_json()
     if data and data.get('mark_all'):
@@ -69,9 +69,8 @@ def unread_notifications_count():
 
 
 @api_bp.route('/api/notifications/<int:notification_id>/mark_read', methods=['POST'])
+@login_required
 def mark_notification_read(notification_id):
-    if 'user' not in session:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     user_id = session.get('user')
     try:
          mysql = current_app.mysql
@@ -93,10 +92,9 @@ def _require_login():
 
 
 @api_bp.route('/api/profile/full')
+@login_required
 def get_full_profile_api():
     username = session.get('user')
-    if not username:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     try:
         from app1.user_profile_db import get_full_profile, ensure_tables
         ensure_tables()
@@ -108,10 +106,9 @@ def get_full_profile_api():
 
 
 @api_bp.route('/api/profile/skills', methods=['GET', 'POST', 'DELETE'])
+@login_required
 def manage_skills_api():
     username = session.get('user')
-    if not username:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     try:
         from app1.user_profile_db import get_skills, add_skill, remove_skill, update_skill_level, ensure_tables
         ensure_tables()
@@ -141,10 +138,9 @@ def manage_skills_api():
 
 
 @api_bp.route('/api/profile/experience', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@login_required
 def manage_experience_api():
     username = session.get('user')
-    if not username:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     try:
         from app1.user_profile_db import get_experience, add_experience, remove_experience, update_experience, ensure_tables
         ensure_tables()
@@ -187,10 +183,9 @@ def manage_experience_api():
 
 
 @api_bp.route('/api/profile/education', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@login_required
 def manage_education_api():
     username = session.get('user')
-    if not username:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     try:
         from app1.user_profile_db import get_education, add_education, remove_education, update_education, ensure_tables
         ensure_tables()
@@ -231,10 +226,9 @@ def manage_education_api():
 
 
 @api_bp.route('/api/profile/courses', methods=['GET', 'POST', 'DELETE'])
+@login_required
 def manage_completed_courses_api():
     username = session.get('user')
-    if not username:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     try:
         from app1.user_profile_db import get_completed_courses, add_completed_course, remove_completed_course, ensure_tables
         ensure_tables()
@@ -268,10 +262,9 @@ def manage_completed_courses_api():
 
 
 @api_bp.route('/api/profile/summary', methods=['GET', 'POST'])
+@login_required
 def manage_profile_summary_api():
     username = session.get('user')
-    if not username:
-        return jsonify({'success': False, 'error': 'Not authenticated'}), 401
     try:
         from app1.user_profile_db import get_profile_summary, update_profile_summary, ensure_tables
         ensure_tables()

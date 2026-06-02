@@ -160,6 +160,9 @@
       card.querySelectorAll(".vbook").forEach((x) => { x.textContent = "Vælg"; x.style.background = ""; x.style.color = ""; });
       this.textContent = "Valgt ✓"; this.style.background = "var(--teal)"; this.style.color = "#042320";
     }));
+    // "Side" opens the real catalog product page when we have a handle.
+    const det = card.querySelector(".det");
+    if (det && c.handle) det.addEventListener("click", (e) => { e.stopPropagation(); window.open("/products/" + encodeURIComponent(c.handle), "_blank"); });
     return card;
   }
   function addCourses(body, list) {
@@ -471,6 +474,7 @@
     const reader = resp.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "", textEl = null, fullText = "", suggestions = null, done = false;
+    let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
 
     while (!done) {
       if (aborted) { try { reader.cancel(); } catch (e) {} break; }
@@ -494,8 +498,13 @@
           fullText += (data.content || "");
           textEl.innerHTML = md(fullText);
           down();
+        } else if (data.type === "course_cards") {
+          // Structured course data -> render with the native Futurematch courseCard design.
+          if (data.items && data.items.length) { cardsSeen++; addCourses(body, data.items); }
         } else if (data.type === "product") {
-          injectProductHtml(body, data.html);
+          // Fallback: only inject the legacy pre-rendered HTML if this batch had no course_cards.
+          productSeen++;
+          if (productSeen > cardsSeen) injectProductHtml(body, data.html);
         } else if (data.type === "suggestions") {
           suggestions = data.items || [];
         } else if (data.type === "notice") {

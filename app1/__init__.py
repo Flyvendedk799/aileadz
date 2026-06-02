@@ -494,6 +494,118 @@ def render_product_media(product):
     p = _apply_product_discount(p)
     return render_template_string(PRODUCT_MEDIA_TEMPLATE, product=p, get_short_description=get_short_description)
 
+
+# -------------- STRUCTURED COURSE-CARD DATA (Futurematch chat) --------------
+# The Futurematch chat (static/futurematch/assets/chat.js) builds course cards
+# with its own `courseCard()` design. We serialize products into the exact JS
+# object shape that builder expects so the cards render in the new design with
+# full interactivity. (The pre-rendered `product` HTML is still emitted for the
+# legacy app1 chat UI.)
+
+_COURSE_ICON_MAP = [
+    ("projekt", "fa-diagram-project"), ("scrum", "fa-bolt"), ("agil", "fa-bolt"),
+    ("excel", "fa-table-cells"), ("power bi", "fa-chart-line"), ("data", "fa-chart-line"),
+    ("analyse", "fa-chart-line"), ("ledel", "fa-users-gear"), ("leadership", "fa-users-gear"),
+    ("forandring", "fa-people-arrows"), ("hr", "fa-user-tie"), ("kommunik", "fa-comments"),
+    ("salg", "fa-handshake"), ("sprog", "fa-language"), ("engelsk", "fa-language"),
+    ("regnskab", "fa-calculator"), ("økonomi", "fa-calculator"), ("design", "fa-pen-nib"),
+    ("gdpr", "fa-shield-halved"), ("sikkerhed", "fa-shield-halved"), ("cloud", "fa-cloud"),
+    ("azure", "fa-cloud"), ("it", "fa-microchip"), ("programmer", "fa-code"),
+    ("kode", "fa-code"), ("markedsf", "fa-bullhorn"), ("jura", "fa-scale-balanced"),
+]
+
+
+def _course_card_icon(product):
+    text = " ".join(str(product.get(k) or "") for k in ("title", "product_type", "vendor")).lower()
+    for kw, icon in _COURSE_ICON_MAP:
+        if kw in text:
+            return icon
+    return "fa-graduation-cap"
+
+
+def _course_card_price(raw):
+    s = str(raw).strip() if raw is not None else ""
+    try:
+        v = float(s.replace(",", "."))
+    except (ValueError, TypeError):
+        v = -1
+    if s in ("", "None", "N/A") or v == 0:
+        return "Gratis"
+    if v < 0:
+        return "Pris på forespørgsel"
+    return _dkprice_filter(s) + " kr"
+
+
+def serialize_course_card(product):
+    """Map a backend product dict to the Futurematch courseCard() object shape."""
+    p = dict(product)
+    if not p.get("location"):
+        p["location"] = _extract_product_location(p)
+    try:
+        p = _apply_product_discount(p)
+    except Exception:
+        pass  # discount/agreement lookup unavailable — render at list price
+    variants = p.get("variants") or []
+    price_raw = variants[0].get("price") if variants else "0"
+
+    summary = ""
+    try:
+        summary = get_short_description(p) or ""
+    except Exception:
+        summary = ""
+    if len(summary) > 200:
+        summary = summary[:200].rstrip() + "…"
+
+    meta = []
+    nvar = len(variants)
+    meta.append(["fa-layer-group", ("%d hold" % nvar) if nvar != 1 else "1 hold"])
+    if p.get("location"):
+        meta.append(["fa-location-dot", str(p["location"])])
+    else:
+        meta.append(["fa-display", "Online"])
+    if p.get("_agreement_name"):
+        meta.append(["fa-tag", "Aftalepris"])
+
+    card_variants = []
+    for v in variants[:6]:
+        seats = v.get("inventory_quantity")
+        try:
+            seats = int(seats)
+        except (TypeError, ValueError):
+            seats = 99
+        card_variants.append({
+            "date": (v.get("option2") or "Dato efter aftale"),
+            "loc": (v.get("option1") or p.get("location") or "Online"),
+            "seats": seats,
+        })
+
+    card = {
+        "vendor": p.get("vendor") or "",
+        "icon": _course_card_icon(p),
+        "title": p.get("title") or "",
+        "price": _course_card_price(price_raw),
+        "summary": summary,
+        "meta": meta,
+        "variants": card_variants,
+        "handle": p.get("handle") or "",
+    }
+    if p.get("_original_price"):
+        card["old"] = _dkprice_filter(str(p["_original_price"])) + " kr"
+    if p.get("_agreement_name"):
+        card["agree"] = True
+    return card
+
+
+def serialize_course_cards(products):
+    """Serialize a list of product dicts, skipping any that fail."""
+    out = []
+    for prod in products or []:
+        try:
+            out.append(serialize_course_card(prod))
+        except Exception as exc:
+            print(f"[serialize_course_card] {exc}")
+    return out
+
 MULTIPLE_COURSES_TEMPLATE = """
 <div class="premium-course-stack">
   {% for course in courses %}

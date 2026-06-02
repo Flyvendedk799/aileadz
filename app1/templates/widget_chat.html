@@ -376,6 +376,66 @@
         const ASK_URL = '/app1/widget/{{ widget.widget_token }}/ask';
         let isSending = false;
 
+        // ── Dependency-free HTML sanitizer ──
+        // Agent/assistant HTML (markdown-rendered text, product cards, ui_card
+        // messages) is inserted via innerHTML and originates from the model, so
+        // it must be sanitized to neutralise XSS: drop dangerous elements,
+        // strip on* handlers + style/srcdoc, and block javascript:/data:text/html
+        // URLs — same allowlist approach as static/futurematch/assets/chat.js.
+        const esc = (s) => String(s == null ? '' : s)
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+        const FORBIDDEN_TAGS = new Set([
+            'script', 'style', 'iframe', 'object', 'embed', 'link', 'meta',
+            'base', 'form', 'noscript', 'template', 'frame', 'frameset', 'applet'
+        ]);
+        const URL_ATTRS = ['href', 'src', 'xlink:href', 'action', 'formaction', 'background', 'poster'];
+        const SAFE_URL = /^(?:https?:|mailto:|tel:|ftp:|\/|#|\.|data:image\/(?:png|jpe?g|gif|webp|svg\+xml|avif))/i;
+
+        function sanitizeNode(root) {
+            const all = root.querySelectorAll('*');
+            for (let i = all.length - 1; i >= 0; i--) {
+                const el = all[i];
+                const tag = (el.tagName || '').toLowerCase();
+                if (FORBIDDEN_TAGS.has(tag)) { el.remove(); continue; }
+                const attrs = Array.prototype.slice.call(el.attributes || []);
+                for (const attr of attrs) {
+                    const name = (attr.name || '').toLowerCase();
+                    const val = attr.value || '';
+                    if (name.startsWith('on')) { el.removeAttribute(attr.name); continue; }
+                    if (name === 'style') { el.removeAttribute(attr.name); continue; }
+                    if (name === 'srcdoc') { el.removeAttribute(attr.name); continue; }
+                    if (URL_ATTRS.indexOf(name) !== -1) {
+                        const normalized = val.replace(/[\x00-\x1f\x7f\s]+/g, '').toLowerCase();
+                        if (/^(?:javascript|vbscript):/i.test(normalized) || /^data:text\/html/i.test(normalized)) {
+                            el.removeAttribute(attr.name);
+                            continue;
+                        }
+                        if (normalized && !SAFE_URL.test(normalized) && !SAFE_URL.test(val.trim())) {
+                            el.removeAttribute(attr.name);
+                        }
+                    }
+                }
+            }
+            return root;
+        }
+
+        function sanitizeHtml(html) {
+            const str = String(html == null ? '' : html);
+            if (!str) return '';
+            if (window.DOMPurify && typeof window.DOMPurify.sanitize === 'function') {
+                try { return window.DOMPurify.sanitize(str, { FORBID_TAGS: ['style'] }); } catch (e) {}
+            }
+            try {
+                const tpl = document.createElement('template');
+                tpl.innerHTML = str;  // inert parse: no scripts run, no resources load
+                sanitizeNode(tpl.content);
+                return tpl.innerHTML;
+            } catch (e) {
+                return esc(str);
+            }
+        }
+
         // ── Auto-resize textarea ──
         function autoResize() {
             chatInput.style.height = 'auto';
@@ -530,7 +590,26 @@
                     body: JSON.stringify({ query: query })
                 });
 
-                if (!resp.ok) throw new Error('HTTP ' + resp.status);
+                if (!resp.ok) {
+                    // Surface the server's Danish message for origin/rate errors
+                    // (403/429) instead of a generic failure.
+                    if (resp.status === 429 || resp.status === 403) {
+                        let serverMsg = '';
+                        try { serverMsg = (await resp.json()).error || ''; } catch (e) {}
+                        if (typing.parentNode) typing.remove();
+                        const noticeBubble = document.createElement('div');
+                        noticeBubble.className = 'bot-bubble';
+                        noticeBubble.textContent = serverMsg ||
+                            (resp.status === 429
+                                ? 'For mange forespørgsler. Vent et øjeblik, og prøv igen.'
+                                : 'Denne widget er ikke tilladt på dette domæne.');
+                        botContent.appendChild(noticeBubble);
+                        scrollBottom();
+                        isSending = false;
+                        return;
+                    }
+                    throw new Error('HTTP ' + resp.status);
+                }
 
                 const reader = resp.body.getReader();
                 const decoder = new TextDecoder('utf-8');
@@ -582,20 +661,19 @@
                                 }
                                 fullText += data.content;
                                 const parsed = extractSuggestions(fullText);
-                                textEl.innerHTML = renderMarkdown(parsed.text);
+                                textEl.innerHTML = sanitizeHtml(renderMarkdown(parsed.text));
                                 scrollBottom();
                             } else if (data.type === 'product') {
                                 const cardWrap = document.createElement('div');
                                 cardWrap.className = 'product-card-container';
-                                cardWrap.innerHTML = data.html;
+                                cardWrap.innerHTML = sanitizeHtml(data.html);
                                 botContent.appendChild(cardWrap);
                                 scrollBottom();
                             } else if (data.type === 'ui_card') {
                                 // Render as simple info card (no save actions in widget)
                                 const card = document.createElement('div');
                                 card.className = 'ui-card-widget';
-                                const msg = (data.message || '').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-                                card.innerHTML = msg;
+                                card.innerHTML = sanitizeHtml(data.message || '');
                                 botContent.appendChild(card);
                                 scrollBottom();
                             }
@@ -609,7 +687,7 @@
                 if (fullText) {
                     const parsed = extractSuggestions(fullText);
                     if (textEl && parsed.suggestions.length > 0) {
-                        textEl.innerHTML = renderMarkdown(parsed.text);
+                        textEl.innerHTML = sanitizeHtml(renderMarkdown(parsed.text));
                         renderSuggestions(parsed.suggestions, botContent);
                     }
                 }

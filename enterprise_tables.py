@@ -599,6 +599,27 @@ def ensure_enterprise_tables(app):
                     INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Event Outbox (transactional integration-event outbox) ──
+                # The single durable store for integration events. emit_event()
+                # writes a 'pending' row (fast, network-free) and drain_outbox()
+                # later delivers it to company_webhooks subscriptions. Kept here
+                # so ensure_enterprise_tables creates it; event_bus also lazily
+                # ensures it. See event_bus.py for the authoritative copy.
+                """CREATE TABLE IF NOT EXISTS event_outbox (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    event_type VARCHAR(120) NOT NULL,
+                    payload TEXT,
+                    status ENUM('pending', 'delivered', 'failed') NOT NULL DEFAULT 'pending',
+                    attempts INT NOT NULL DEFAULT 0,
+                    last_error TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    delivered_at DATETIME NULL,
+                    INDEX idx_status (status),
+                    INDEX idx_company (company_id),
+                    INDEX idx_status_created (status, created_at)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company SSO Configs ──
                 """CREATE TABLE IF NOT EXISTS company_sso_configs (
                     id INT AUTO_INCREMENT PRIMARY KEY,

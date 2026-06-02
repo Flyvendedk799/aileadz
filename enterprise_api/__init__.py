@@ -11,9 +11,19 @@ import jwt
 import hashlib
 import time
 import logging
+import os
+import random
 from datetime import datetime, timedelta
 from functools import wraps
 import secrets
+
+# Integration event bus / outbox (guarded: must never crash boot if missing).
+# emit_event() records events durably instead of firing webhooks synchronously
+# inside the request; drain_outbox() delivers them out-of-band.
+try:
+    import event_bus
+except Exception:  # pragma: no cover - import-safety guard
+    event_bus = None
 
 try:
     import redis
@@ -1769,64 +1779,142 @@ def bulk_export():
 
 # ── Webhook firing helper ──
 def _fire_webhook(company_id, event_type, payload):
-    """Fire webhooks for a given event (best-effort, non-blocking)."""
+    """Record an integration event for delivery (non-blocking, durable).
+
+    Same signature and call sites as before, but the behaviour changed: instead
+    of synchronously resolving + POSTing to subscriber URLs inside the request
+    (which blocked the request and only ever ran on a fraction of order paths),
+    this now writes ONE durable 'pending' row to the event_outbox via
+    event_bus.emit_event(). Actual delivery to company_webhooks subscriptions
+    (with the same SSRF guard + signing) happens out-of-band in
+    event_bus.drain_outbox(), driven by:
+
+      * the OPS-GATED scheduled task -> POST /api/v1/_internal/drain-outbox, and
+      * a best-effort opportunistic drain on a fraction of API requests.
+
+    Guarded: never raises into the caller (an order must still succeed even if
+    the event cannot be recorded).
+    """
     try:
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT company_slug FROM companies WHERE id = %s", (company_id,))
-        co = cur.fetchone()
-        slug = co.get('company_slug') if co else None
-        cur.execute("""
-            SELECT id, url, secret FROM company_webhooks
-            WHERE company_id = %s AND is_active = 1
-        """, (company_id,))
-        webhooks = cur.fetchall()
-
-        for wh in webhooks:
-            events = wh.get('events', '[]')
-            if isinstance(events, str):
-                events = json.loads(events)
-            if event_type not in events and '*' not in events:
-                continue
-
-            # SSRF guard: never fetch a tenant-supplied URL that is not a
-            # public http/https endpoint. A rejected URL counts as a failed
-            # delivery and is logged, but never reaches the network.
-            target_url = wh.get('url')
-            if not _is_safe_webhook_url(target_url):
-                logging.warning(
-                    "enterprise_api: blocked unsafe webhook url for company %s (webhook %s)",
-                    company_id, wh.get('id'),
-                )
-                try:
-                    cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, failed_deliveries=failed_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
-                except Exception:
-                    pass
-                continue
-
-            try:
-                import hashlib, hmac, urllib.request
-                body = json.dumps({
-                    'event': event_type,
-                    'data': payload,
-                    'timestamp': datetime.now().isoformat(),
-                    'company_slug': slug,
-                }).encode()
-                sig = hmac.new(wh['secret'].encode(), body, hashlib.sha256).hexdigest()
-                req = urllib.request.Request(target_url, data=body,
-                    headers={
-                        'Content-Type': 'application/json',
-                        'X-Webhook-Signature': sig,
-                        'X-Company-Slug': slug or '',
-                    })
-                urllib.request.urlopen(req, timeout=5)
-                cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, successful_deliveries=successful_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
-            except Exception:
-                cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, failed_deliveries=failed_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
-
-        current_app.mysql.connection.commit()
-        cur.close()
+        if event_bus is not None:
+            event_bus.emit_event(company_id, event_type, payload)
+        else:
+            # event_bus failed to import — degrade safely. We deliberately do
+            # NOT fall back to synchronous delivery (that would re-introduce the
+            # request-blocking + SSRF-in-request behaviour we removed); the
+            # event is simply not recorded, which is logged for ops.
+            logging.warning(
+                "enterprise_api: event_bus unavailable; dropped event %s for company %s",
+                event_type, company_id,
+            )
     except Exception:
+        # Never let event recording break the originating request.
         pass
+
+
+# ── Outbox drain: scheduled (reliable) + opportunistic (best-effort) ─────────
+#
+# There is NO cron/Redis/Celery/job-runner on the host (PythonAnywhere). So the
+# outbox is drained two ways:
+#
+#   1. RELIABLE (OPS-GATED): a PythonAnywhere *scheduled task* calls
+#      POST /api/v1/_internal/drain-outbox with the shared secret in the
+#      X-Drain-Token header (matching env OUTBOX_DRAIN_TOKEN). This is the
+#      delivery path you can actually rely on, and it must be wired up by ops.
+#
+#   2. BEST-EFFORT: a tiny, time-boxed drain runs on a small fraction of API
+#      requests so events still flow with no job runner at all. This is NOT a
+#      substitute for (1): if the app gets no traffic, nothing drains.
+
+# Fraction of API requests that trigger an opportunistic drain (0.0–1.0).
+# Overridable via env for tuning without a code change.
+try:
+    _OUTBOX_OPPORTUNISTIC_FRACTION = float(os.getenv('OUTBOX_OPPORTUNISTIC_FRACTION', '0.05'))
+except Exception:
+    _OUTBOX_OPPORTUNISTIC_FRACTION = 0.05
+# Tiny batch + soft time budget so a request is never materially slowed.
+_OUTBOX_OPPORTUNISTIC_LIMIT = 5
+_OUTBOX_OPPORTUNISTIC_BUDGET_SECONDS = 2.0
+
+
+@api_enterprise_bp.before_app_request
+def _enterprise_api_opportunistic_drain():
+    """Best-effort outbox drain on a small fraction of requests.
+
+    Guarded + fractional + time-boxed so it never raises and never materially
+    slows the request. Skipped for the drain endpoint itself (that path already
+    drains) and when event_bus is unavailable. Documented limitation: this only
+    runs when there is traffic — reliable delivery needs the OPS-GATED scheduled
+    task hitting /api/v1/_internal/drain-outbox.
+    """
+    try:
+        if event_bus is None:
+            return
+        # Don't piggy-back a drain onto the explicit drain endpoint.
+        path = getattr(request, 'path', '') or ''
+        if path.endswith('/_internal/drain-outbox'):
+            return
+        # Only enterprise API paths, and only a small random fraction of them.
+        if not path.startswith('/api/v1/'):
+            return
+        if random.random() >= _OUTBOX_OPPORTUNISTIC_FRACTION:
+            return
+        event_bus.opportunistic_drain(
+            limit=_OUTBOX_OPPORTUNISTIC_LIMIT,
+            max_seconds=_OUTBOX_OPPORTUNISTIC_BUDGET_SECONDS,
+        )
+    except Exception:
+        # Opportunistic only — never block or fail a request because of it.
+        pass
+
+
+@api_enterprise_bp.route('/api/v1/_internal/drain-outbox', methods=['POST'])
+def drain_outbox_endpoint():
+    """Token-protected outbox drain (OPS-GATED).
+
+    Intended to be hit by a PythonAnywhere scheduled task for reliable
+    integration-event delivery. Auth is a shared secret compared in constant
+    time against env OUTBOX_DRAIN_TOKEN (header: X-Drain-Token, or
+    Authorization: Bearer <token>). If OUTBOX_DRAIN_TOKEN is unset the endpoint
+    is disabled (503) so an unconfigured deploy can't be drained anonymously.
+    """
+    expected = os.getenv('OUTBOX_DRAIN_TOKEN')
+    if not expected:
+        return jsonify({
+            'error': 'drain endpoint disabled',
+            'detail': 'OUTBOX_DRAIN_TOKEN is not configured on this host',
+        }), 503
+
+    provided = request.headers.get('X-Drain-Token', '')
+    if not provided:
+        auth = request.headers.get('Authorization', '')
+        if auth.lower().startswith('bearer '):
+            provided = auth[7:].strip()
+
+    # Constant-time comparison to avoid leaking the token via timing.
+    try:
+        import hmac as _hmac
+        ok = bool(provided) and _hmac.compare_digest(str(provided), str(expected))
+    except Exception:
+        ok = False
+    if not ok:
+        return jsonify({'error': 'unauthorized'}), 401
+
+    if event_bus is None:
+        return jsonify({'error': 'event_bus unavailable'}), 503
+
+    try:
+        limit = int(request.args.get('limit', 50))
+    except Exception:
+        limit = 50
+    limit = max(1, min(limit, 500))
+
+    try:
+        counts = event_bus.drain_outbox(limit=limit)
+        return jsonify({'status': 'ok', 'counts': counts}), 200
+    except Exception as e:
+        logging.warning("enterprise_api: drain-outbox endpoint failed: %s", e)
+        return jsonify({'error': 'drain failed'}), 500
 
 
 # Health check endpoint

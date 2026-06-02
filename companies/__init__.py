@@ -506,6 +506,31 @@ def create_companies_blueprint():
                 current_app.mysql.connection.commit()
                 cur.close()
 
+                # Best-effort branded welcome/invite email to the new employee.
+                # Guarded so a mail failure (or no backend at all) NEVER blocks
+                # the add — no-ops cleanly when MAIL_SERVER/MAIL_DEFAULT_SENDER
+                # are not configured (ops-gated).
+                try:
+                    from email_service import send_employee_welcome
+                    login_url = ''
+                    try:
+                        login_url = url_for('auth.login', _external=True)
+                    except Exception:
+                        login_url = ''
+                    send_employee_welcome(
+                        company,
+                        {
+                            'email': email,
+                            'name': full_name,
+                            'username': username,
+                        },
+                        login_url=login_url,
+                    )
+                except Exception as mail_err:
+                    current_app.logger.debug(
+                        f"Employee welcome email skipped: {mail_err}"
+                    )
+
                 flash(f"Employee '{username}' has been added successfully!", "success")
                 return redirect(url_for('companies.employees'))
                 

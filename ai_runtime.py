@@ -262,7 +262,8 @@ def prepare_messages_for_turn(
     compact = compact_messages_for_api(merged, aggressive=aggressive)
     if estimate_messages_tokens(compact) > tpm_budget():
         compact = compact_messages_for_api(merged, aggressive=True)
-    return compact
+    # Repair any tool/tool_calls pairing broken by trimming before it hits the API.
+    return _sanitize_tool_sequence(compact)
 
 
 def check_turn_token_budget(messages: List[Dict[str, Any]]) -> tuple:
@@ -481,6 +482,63 @@ def compact_messages_for_api(
                 msg["content"] = _truncate_text(str(msg.get("content") or ""), 600)
 
     return compacted
+
+
+def _sanitize_tool_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Guarantee a valid OpenAI tool-call sequence.
+
+    OpenAI rejects (400) any message with role ``tool`` that is not a direct
+    response to an immediately preceding assistant message whose ``tool_calls``
+    contains a matching ``tool_call_id``. History slicing / token-budget
+    trimming can orphan a tool message from its parent assistant call (the
+    classic "messages with role 'tool' must be a response to a preceding message
+    with 'tool_calls'" error). This pass drops orphaned tool messages and strips
+    unanswered tool_calls so the outgoing request is always well-formed.
+    """
+    if not messages:
+        return messages
+    out: List[Dict[str, Any]] = []
+    n = len(messages)
+    i = 0
+    while i < n:
+        msg = messages[i]
+        role = msg.get("role")
+        if role == "assistant" and msg.get("tool_calls"):
+            calls = [c for c in (msg.get("tool_calls") or [])
+                     if isinstance(c, dict) and c.get("id")]
+            call_ids = [c["id"] for c in calls]
+            # Collect the consecutive tool responses that immediately follow.
+            j = i + 1
+            answers: Dict[str, Dict[str, Any]] = {}
+            while j < n and messages[j].get("role") == "tool":
+                tcid = messages[j].get("tool_call_id")
+                if tcid in call_ids and tcid not in answers:
+                    answers[tcid] = messages[j]
+                j += 1
+            kept_calls = [c for c in calls if c["id"] in answers]
+            if kept_calls:
+                fixed = dict(msg)
+                fixed["tool_calls"] = kept_calls
+                out.append(fixed)
+                for cid in (c["id"] for c in kept_calls):
+                    out.append(answers[cid])
+            else:
+                # No surviving answers: keep the assistant turn only if it still
+                # carries real text content; otherwise drop the dangling call.
+                content = (msg.get("content") or "").strip()
+                if content:
+                    fixed = dict(msg)
+                    fixed.pop("tool_calls", None)
+                    out.append(fixed)
+            i = j
+            continue
+        if role == "tool":
+            # Orphaned tool message (no matching preceding assistant call) — drop.
+            i += 1
+            continue
+        out.append(msg)
+        i += 1
+    return out
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:

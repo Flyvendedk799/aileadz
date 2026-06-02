@@ -115,7 +115,7 @@
       </div>`).join("");
     card.innerHTML = `
       <div class="course-h">
-        <div class="course-thumb"><i class="fa-solid ${c.icon}"></i></div>
+        <div class="course-thumb${c.image ? " has-img" : ""}">${c.image ? `<img src="${esc(c.image)}" alt="${esc(c.title)}" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.replaceWith(Object.assign(document.createElement('i'),{className:'fa-solid ${c.icon}'}))">` : `<i class="fa-solid ${c.icon}"></i>`}</div>
         <div class="course-main">
           ${featured ? '<div class="course-featured-tag"><i class="fa-solid fa-wand-magic-sparkles"></i> Bedste match</div>' : ""}
           <div class="course-kick">${esc(c.vendor)}</div>

@@ -439,10 +439,41 @@ PRODUCT_MEDIA_TEMPLATE = """
 </div>
 """
 
+def _clean_variant_opt(value):
+    """Drop Shopify's 'Default Title' placeholder so it never reaches the UI."""
+    s = str(value).strip() if value is not None else ""
+    if s.lower() in ("default title", "default", "title"):
+        return ""
+    return s
+
+
+def _product_image_src(product):
+    """Best-effort primary image URL for a product."""
+    img = product.get("image")
+    if isinstance(img, dict) and img.get("src"):
+        return img["src"]
+    if isinstance(img, str) and img:
+        return img
+    for key in ("image_src", "featured_image", "thumbnail"):
+        val = product.get(key)
+        if isinstance(val, str) and val:
+            return val
+        if isinstance(val, dict) and val.get("src"):
+            return val["src"]
+    imgs = product.get("images")
+    if isinstance(imgs, list) and imgs:
+        first = imgs[0]
+        if isinstance(first, dict) and first.get("src"):
+            return first["src"]
+        if isinstance(first, str) and first:
+            return first
+    return ""
+
+
 def _extract_product_location(product):
     """Extract a display-friendly location string from variant option1 fields."""
     variants = product.get("variants") or []
-    raw_locs = [v.get("option1") for v in variants if v.get("option1")]
+    raw_locs = [v.get("option1") for v in variants if _clean_variant_opt(v.get("option1"))]
     if not raw_locs:
         return None
     # Try to extract city names from addresses
@@ -574,14 +605,15 @@ def serialize_course_card(product):
         except (TypeError, ValueError):
             seats = 99
         card_variants.append({
-            "date": (v.get("option2") or "Dato efter aftale"),
-            "loc": (v.get("option1") or p.get("location") or "Online"),
+            "date": (_clean_variant_opt(v.get("option2")) or "Efter aftale"),
+            "loc": (_clean_variant_opt(v.get("option1")) or p.get("location") or "Online"),
             "seats": seats,
         })
 
     card = {
         "vendor": p.get("vendor") or "",
         "icon": _course_card_icon(p),
+        "image": _product_image_src(p),
         "title": p.get("title") or "",
         "price": _course_card_price(price_raw),
         "summary": summary,

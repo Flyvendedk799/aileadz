@@ -82,9 +82,26 @@ def learning_goal_status(goal_id):
     return redirect(url_for('futurematch.learning_goals'))
 
 
+def _require_showcase_admin():
+    """Guard for the internal design gallery: login + platform-admin only.
+
+    Returns a redirect response if the request should be blocked, else None.
+    """
+    if not session.get('user'):
+        flash('Log ind for at se designgalleriet.', 'danger')
+        return redirect(url_for('auth.login'))
+    if session.get('role') != 'admin':
+        flash('Designgalleriet er kun tilgængeligt for administratorer.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+    return None
+
+
 @futurematch_bp.route('/ui')
 def showcase_index():
     """Gallery of every Futurematch design page (for review / navigation)."""
+    guard = _require_showcase_admin()
+    if guard is not None:
+        return guard
     pages = sorted(_fm_pages())
     return render_template('fm/_showcase_index.html', pages=pages)
 
@@ -92,6 +109,9 @@ def showcase_index():
 @futurematch_bp.route('/ui/<page>')
 def showcase(page):
     """Render any converted Futurematch page by name."""
+    guard = _require_showcase_admin()
+    if guard is not None:
+        return guard
     if page not in _fm_pages() or page.startswith('_'):
         abort(404)
     return render_template(f'fm/{page}.html')

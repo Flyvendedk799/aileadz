@@ -547,6 +547,31 @@ def _is_rate_limit_error(exc: Exception) -> bool:
     return "rate_limit" in name or "429" in text or "tokens per min" in text or "tpm" in text
 
 
+def _current_tenant_cache_scope() -> str:
+    """Best-effort tenant identifier for the active request.
+
+    Tool results for company-scoped tools (e.g. HR analytics) must never be
+    shared across tenants. The HR/employee executors read ``company_id`` from
+    the Flask session internally, but that id is not threaded down to the tool
+    cache key — so we resolve it here from the active request context.
+
+    Returns an empty string when there is no Flask request context (e.g. batch
+    jobs or background tasks) or when Flask is unavailable, so behaviour stays
+    unchanged in those paths and module import never fails on prod boot.
+    """
+    try:
+        from flask import has_request_context, session as flask_session  # lazy, optional
+
+        if not has_request_context():
+            return ""
+        company_id = flask_session.get("company_id")
+        if company_id in (None, ""):
+            return ""
+        return str(company_id)
+    except Exception:
+        return ""
+
+
 def _cache_tool_result(cache_key: str, ttl: int, output: str) -> None:
     if not cache_key or ttl <= 0:
         return
@@ -915,6 +940,7 @@ def _execute_one_tool(
     arguments: Dict[str, Any],
     username: Optional[str],
     session_id: Optional[str],
+    company_scope: Optional[str] = None,
 ) -> ToolCallResult:
     start = time.time()
     status = "ok"
@@ -922,9 +948,19 @@ def _execute_one_tool(
     ttl = tool_cache_ttl(name)
     cache_key = ""
     if ttl > 0:
+        # company_id keys the cache to the caller's tenant so company-scoped
+        # tool results (e.g. HR analytics) can never bleed across tenants.
+        # session_id (a per-login UUID) and username remain in the key so the
+        # same user keeps hitting the cache as before. company_scope is resolved
+        # once by the caller (in the request thread) and threaded in, because
+        # Flask's request context is not visible inside ThreadPoolExecutor
+        # workers; fall back to resolving it here for any direct caller.
+        if company_scope is None:
+            company_scope = _current_tenant_cache_scope()
         cache_key = _safe_json({
             "name": name,
             "arguments": arguments,
+            "company_id": company_scope or "",
             "username": username or "",
             "session_id": session_id or "",
         })
@@ -1001,6 +1037,10 @@ def _execute_tool_calls_parallel(
     serial_calls = [call for call in normalized if not is_parallel_safe(call["name"])]
     result_by_id: Dict[str, ToolCallResult] = {}
 
+    # Resolve the tenant cache scope once, here in the request thread, because
+    # Flask's request context is not visible inside ThreadPoolExecutor workers.
+    company_scope = _current_tenant_cache_scope()
+
     if len(parallel_calls) > 1:
         with ThreadPoolExecutor(max_workers=min(4, len(parallel_calls))) as pool:
             futures = {}
@@ -1013,6 +1053,7 @@ def _execute_tool_calls_parallel(
                     arguments=call["arguments"],
                     username=username,
                     session_id=session_id,
+                    company_scope=company_scope,
                 )] = call["id"]
             for future, call_id in futures.items():
                 result_by_id[call_id] = future.result()
@@ -1029,6 +1070,7 @@ def _execute_tool_calls_parallel(
             arguments=call["arguments"],
             username=username,
             session_id=session_id,
+            company_scope=company_scope,
         )
 
     return [result_by_id[call["id"]] for call in normalized if call["id"] in result_by_id]

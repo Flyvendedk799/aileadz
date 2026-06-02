@@ -1,0 +1,169 @@
+{% extends "fm_base.html" %}
+{% block page_id %}funnel{% endblock %}
+{% block title %}Conversion-funnel{% endblock %}
+{% block topbar_title %}Conversion-funnel{% endblock %}
+{% block topbar_sub %}Fra chatbot-session til ordre — søgning, produktvisning og conversion på tværs af platformen (seneste {{ days }} dage).{% endblock %}
+{% block extra_head %}
+<style>
+  .fn-charts { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  .fn-chart-card { padding: 18px; display: flex; flex-direction: column; }
+  .fn-chart-card h3 { font-size: 15px; font-weight: 700; margin: 0; }
+  .fn-chart-card p { font-size: 12.5px; color: var(--fm-ink-2); margin: 3px 0 12px; }
+  .fn-chart-wrap { position: relative; min-height: 280px; }
+
+  /* Funnel bars */
+  .funnel { display: flex; flex-direction: column; gap: 12px; padding: 8px 2px 4px; }
+  .funnel-step { display: grid; grid-template-columns: 160px 1fr; gap: 14px; align-items: center; }
+  .funnel-step .fn-label { font-size: 13px; font-weight: 650; color: var(--fm-ink-2); }
+  .funnel-step .fn-label small { display: block; font-weight: 500; font-size: 11.5px; color: var(--fm-ink-3); margin-top: 2px; }
+  .funnel-bar-track { position: relative; height: 46px; border-radius: 10px; background: var(--fm-surface-3); overflow: hidden; }
+  .funnel-bar-fill { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center; padding: 0 14px; min-width: 64px;
+    border-radius: 10px; color: #fff; font-weight: 700; font-size: 14px; white-space: nowrap;
+    background: linear-gradient(90deg, var(--fm-primary), color-mix(in srgb, var(--fm-primary) 60%, var(--fm-indigo))); }
+  .funnel-bar-fill.s2 { background: linear-gradient(90deg, var(--fm-indigo), color-mix(in srgb, var(--fm-indigo) 55%, var(--fm-primary))); }
+  .funnel-bar-fill.s3 { background: linear-gradient(90deg, #06b6d4, #0ea5e9); }
+  .funnel-bar-fill.s4 { background: linear-gradient(90deg, var(--fm-clay), #d97706); }
+  .funnel-bar-fill .fn-pct { margin-left: 10px; font-weight: 600; font-size: 12px; opacity: .9; }
+  .fn-rate-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+  .fn-rate { padding: 12px 14px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); }
+  .fn-rate .r-l { font-size: 11.5px; color: var(--fm-ink-3); text-transform: uppercase; letter-spacing: .03em; }
+  .fn-rate .r-v { font-size: 20px; font-weight: 800; margin-top: 4px; }
+  .bi-empty { padding: 44px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
+  .bi-empty i { font-size: 26px; display: block; margin-bottom: 10px; color: var(--fm-ink-3); opacity: .6; }
+  @media (max-width: 900px) {
+    .funnel-step { grid-template-columns: 1fr; gap: 6px; }
+    .fn-rate-row { grid-template-columns: repeat(2, 1fr); }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+    <a class="pg-tab active" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Conversion-funnel</a>
+  </div>
+
+  {% if not has_data %}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="bi-empty">
+      <i class="fa-solid fa-filter-circle-dollar"></i>
+      Ingen funnel-data endnu. Når brugere begynder at chatte, søge efter kurser og afgive ordrer,
+      bygges hele rejsen fra session til ordre op her.
+    </div>
+  </div>
+  {% else %}
+
+  <!-- KPI row -->
+  <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Sessioner</div><div class="kv tnum">{{ funnel.sessions }}</div><div class="kd">Unikke chatbot-samtaler</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-magnifying-glass"></i></span><div><div class="kl">Søgninger</div><div class="kv tnum">{{ funnel.searches }}</div><div class="kd">Sessioner med kursussøgning</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-eye"></i></span><div><div class="kl">Produkter vist</div><div class="kv tnum">{{ funnel.shown }}</div><div class="kd">Sessioner med anbefaling</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">Ordrer</div><div class="kv tnum">{{ funnel.ordered }}</div><div class="kd">Sessioner der konverterede</div></div></div>
+  </div>
+
+  <!-- Funnel bars -->
+  <div class="fm-card" style="margin-top:16px;padding:18px">
+    <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-filter"></i> Konverteringsrejse</h3>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 14px">Andel af sessioner der når hvert trin, beregnet i databasen over de seneste {{ funnel.days }} dage.</p>
+    {% set base = funnel.sessions if funnel.sessions else 1 %}
+    <div class="funnel">
+      <div class="funnel-step">
+        <div class="fn-label">Sessioner<small>Alle chatbot-samtaler</small></div>
+        <div class="funnel-bar-track"><div class="funnel-bar-fill" style="width:100%">{{ funnel.sessions }}</div></div>
+      </div>
+      <div class="funnel-step">
+        <div class="fn-label">Søgninger<small>Udløste en kursussøgning</small></div>
+        <div class="funnel-bar-track"><div class="funnel-bar-fill s2" style="width:{{ ((funnel.searches / base) * 100)|round(1) if funnel.sessions else 0 }}%">{{ funnel.searches }}<span class="fn-pct">{{ funnel.rate_search }}%</span></div></div>
+      </div>
+      <div class="funnel-step">
+        <div class="fn-label">Produkter vist<small>Chatbotten anbefalede kurser</small></div>
+        <div class="funnel-bar-track"><div class="funnel-bar-fill s3" style="width:{{ ((funnel.shown / base) * 100)|round(1) if funnel.sessions else 0 }}%">{{ funnel.shown }}<span class="fn-pct">{{ funnel.rate_shown }}% af søgninger</span></div></div>
+      </div>
+      <div class="funnel-step">
+        <div class="fn-label">Ordrer<small>Endte i en ordre</small></div>
+        <div class="funnel-bar-track"><div class="funnel-bar-fill s4" style="width:{{ ((funnel.ordered / base) * 100)|round(1) if funnel.sessions else 0 }}%">{{ funnel.ordered }}<span class="fn-pct">{{ funnel.rate_ordered }}% af visninger</span></div></div>
+      </div>
+    </div>
+
+    <div class="fn-rate-row">
+      <div class="fn-rate"><div class="r-l">Session → Søgning</div><div class="r-v tnum">{{ funnel.rate_search }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Søgning → Visning</div><div class="r-v tnum">{{ funnel.rate_shown }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Visning → Ordre</div><div class="r-v tnum">{{ funnel.rate_ordered }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Samlet conversion</div><div class="r-v tnum" style="color:var(--fm-primary)">{{ funnel.overall_rate }}%</div></div>
+    </div>
+  </div>
+
+  <!-- Daily volume chart -->
+  <div class="fn-charts" style="margin-top:16px">
+    <div class="fm-card fn-chart-card">
+      <h3><i class="fa-solid fa-chart-line"></i> Daglig samtalevolumen</h3>
+      <p>Antal interaktioner pr. dag de seneste {{ days }} dage.</p>
+      <div class="fn-chart-wrap"><canvas id="dailyVolumeChart"></canvas></div>
+    </div>
+  </div>
+
+  <!-- Top queries table -->
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-ranking-star"></i></span><h3>Mest stillede spørgsmål</h3>
+      <label class="fm-search" style="width:240px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg spørgsmål" data-table-search="topQueriesTable"></label></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if top_queries %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="topQueriesTable">
+        <thead><tr><th>#</th><th>Spørgsmål</th><th>Antal</th></tr></thead>
+        <tbody>{% for q in top_queries %}
+          <tr><td>{{ loop.index }}</td><td>{{ q.query }}</td><td class="tnum">{{ q.count }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}<div class="bi-empty">Populære spørgsmål samles her, når chatbotten får mere trafik.</div>{% endif %}
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const dailyCanvas = document.getElementById('dailyVolumeChart');
+    if (!dailyCanvas || typeof Chart === 'undefined') {
+      // Still wire up table search even if the chart can't render.
+    } else {
+      const styles = getComputedStyle(document.documentElement);
+      const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
+      const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
+      const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
+      Chart.defaults.color = muted;
+      Chart.defaults.borderColor = border;
+      new Chart(dailyCanvas, {
+        type: 'line',
+        data: {
+          labels: {{ daily_labels | tojson | safe }},
+          datasets: [{
+            label: 'Interaktioner',
+            data: {{ daily_data | tojson | safe }},
+            borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .1)',
+            fill: true, tension: .35, pointRadius: 2, pointBackgroundColor: primary, borderWidth: 2
+          }]
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: false }, tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 } },
+          scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+        }
+      });
+    }
+
+    document.querySelectorAll('[data-table-search]').forEach(function (input) {
+      const table = document.getElementById(input.dataset.tableSearch);
+      if (!table) return;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      input.addEventListener('input', function () {
+        const value = this.value.toLowerCase().trim();
+        rows.forEach(function (row) { row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none'; });
+      });
+    });
+  })();
+</script>
+{% endblock %}

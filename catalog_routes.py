@@ -60,9 +60,29 @@ def _supplier_state(vendor_name):
     return {"known": False, "is_active": True, "notes": ""}
 
 
+def _company_discount_for(vendor_name):
+    """Resolve the active negotiated agreement for a single vendor for the
+    logged-in company. Returns None for anonymous / non-company users or when no
+    valid agreement exists (so templates fall back to the list price)."""
+    company_id = session.get("company_id")
+    if not company_id or not vendor_name:
+        return None
+    try:
+        discount_map = catalog.get_company_discount_map(company_id)
+        return discount_map.get((vendor_name or "").lower())
+    except Exception as exc:
+        current_app.logger.warning("Company discount lookup failed: %s", exc)
+        return None
+
+
 def _render_catalog_list(template, **context):
     filters = context.pop("filters", _query_filters())
-    result = catalog.search_products(filters=filters, page=_page(), per_page=24)
+    result = catalog.search_products(
+        filters=filters,
+        page=_page(),
+        per_page=24,
+        company_id=session.get("company_id"),
+    )
     prev_args = request.args.to_dict()
     prev_args["page"] = max(result["page"] - 1, 1)
     next_args = request.args.to_dict()
@@ -97,10 +117,19 @@ def product_detail(handle):
     if not product:
         return render_template("catalog/not_found.html", handle=handle), 404
     supplier_state = _supplier_state(product["vendor"])
+    # Compute-on-read negotiated price for logged-in company users; no session
+    # company -> product is returned unchanged (list price).
+    agreement = _company_discount_for(product["vendor"])
+    if agreement:
+        product = catalog.decorate_product_with_discount(product, agreement)
+    related_products = catalog.decorate_products_with_discounts(
+        catalog.get_related_products(product),
+        company_id=session.get("company_id"),
+    )
     return render_template(
         "fm/product_detail.html",
         product=product,
-        related_products=catalog.get_related_products(product),
+        related_products=related_products,
         supplier_state=supplier_state,
     )
 

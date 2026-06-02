@@ -836,6 +836,112 @@ def _demote_completed_results(compact, completed_titles, completed_handles):
     return fresh + done
 
 
+_PROFILE_GOAL_STOPWORDS = {
+    "og", "i", "at", "er", "en", "et", "den", "det", "de", "til", "på", "med",
+    "for", "af", "fra", "som", "om", "kan", "har", "vil", "der", "ikke", "sig",
+    "var", "ved", "så", "også", "efter", "eller", "blive", "bedre", "lære",
+    "lære", "mere", "min", "mine", "mit", "jeg", "vi", "du", "the", "and", "to",
+    "of", "a", "in", "inden", "indenfor", "vil", "gerne", "skal", "være",
+}
+
+
+def _goal_keywords(text, limit=8):
+    """Extract topical keywords from a free-text goal/learning-goal string.
+
+    Lowercases, splits on non-alphanumeric, drops stop words and very short
+    tokens. Mirrors how analyze_skill_gaps / the RAG tokenizer think about
+    topical terms. Returns a list (order preserved, deduped)."""
+    if not text:
+        return []
+    toks = re.findall(r"[a-zæøå0-9]+", str(text).lower())
+    out = []
+    seen = set()
+    for t in toks:
+        if len(t) <= 2 or t in _PROFILE_GOAL_STOPWORDS:
+            continue
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(t)
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _profile_boost_from_profile(profile):
+    """Build a profile_boost dict from an already-loaded profile dict.
+
+    Returns None when there is nothing to boost/demote, so callers can pass the
+    result straight to hybrid_rank_products (None → legacy behaviour).
+
+    target_terms = desired/target skills + learning-goal keywords + skill-gap
+    terms (skills the learner has at a low level and therefore wants to grow,
+    mirroring how analyze_skill_gaps reasons about gaps).
+    """
+    if not profile:
+        return None
+
+    target_terms = set()
+
+    # 1) Skill-gap terms: skills held at begynder/mellem level are growth areas
+    #    (target above current) — exactly the skills the learner wants to lift.
+    for s in profile.get("skills", []) or []:
+        name = (s.get("name") or "").strip().lower()
+        if not name:
+            continue
+        if s.get("level") in ("begynder", "mellem"):
+            target_terms.add(name)
+            # also add individual keywords from multi-word skill names
+            for kw in _goal_keywords(name, limit=4):
+                target_terms.add(kw)
+
+    # 2) Free-text learning goals (profile summary "goals")
+    for kw in _goal_keywords(profile.get("goals", ""), limit=8):
+        target_terms.add(kw)
+
+    # 3) Active development goals (learning_goals with status "aktiv")
+    for g in profile.get("learning_goals", []) or []:
+        if g.get("status") != "aktiv":
+            continue
+        for kw in _goal_keywords(g.get("title", ""), limit=6):
+            target_terms.add(kw)
+
+    # Completed courses → demotion keys
+    completed = profile.get("completed_courses", []) or []
+    completed_titles = {c["title"].lower() for c in completed if c.get("title")}
+    completed_handles = {
+        c.get("handle", "").lower() for c in completed if c.get("handle")
+    }
+
+    if not target_terms and not completed_titles and not completed_handles:
+        return None
+
+    return {
+        "target_terms": target_terms,
+        "completed_handles": completed_handles,
+        "completed_titles": completed_titles,
+    }
+
+
+def _build_profile_boost(username):
+    """Fetch the logged-in user's profile and build a profile_boost dict for
+    app1.rag.hybrid_rank_products.
+
+    Returns None for anonymous users or on any error/empty profile, so the
+    ranking falls back to the exact legacy (profile-agnostic) behaviour and
+    anonymous users are completely unaffected.
+    """
+    if not username:
+        return None
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        ensure_tables()
+        profile = get_full_profile(username) or {}
+    except Exception:
+        return None
+    return _profile_boost_from_profile(profile)
+
+
 def _execute_catalog_search(args, username=None):
     filters = {
         "q": args.get("query") or "",
@@ -852,6 +958,7 @@ def _execute_catalog_search(args, username=None):
     products = []
     confidence = "medium"
     completed_titles, completed_handles = _completed_course_keys(username)
+    profile_boost = _build_profile_boost(username)
 
     result = catalog.search_products(filters=filters, page=1, per_page=max(1, min(limit, 8)))
     products = [
@@ -872,6 +979,17 @@ def _execute_catalog_search(args, username=None):
         if isinstance(detailed, dict) and "error" not in detailed:
             confidence = detailed.get("confidence", confidence)
             rag_products = _filter_blocked_vendors(detailed.get("products", []))
+            # Profile-conditioned re-rank for logged-in users: boost products
+            # matching the learner's target skills/goals and demote completed
+            # courses. profile_boost is None for anonymous users → no-op.
+            if profile_boost and rag_products:
+                try:
+                    rag_products = hybrid_rank_products(
+                        rag_products, query, load_augmented_products(),
+                        limit=len(rag_products), profile_boost=profile_boost,
+                    )
+                except Exception:
+                    pass  # fall back to the semantic order on any failure
             if rag_products:
                 compact = [_extract_compact_fields(p) for p in rag_products[:limit]]
                 compact = _demote_completed_results(compact, completed_titles, completed_handles)
@@ -1809,6 +1927,21 @@ def _execute_recommend_for_profile(args, username):
             return json.dumps({"status": "error", "message": detailed["message"]})
 
         results = detailed.get("products", [])
+
+        # Profile-conditioned re-rank: boost products matching the learner's
+        # target skills/goals (reuses the profile already fetched above; no
+        # extra DB round-trip). profile_boost is None when there is nothing to
+        # boost → legacy semantic order is preserved. Completed courses are then
+        # filtered out below (the recommend tool only surfaces NEW courses).
+        profile_boost = _profile_boost_from_profile(profile)
+        if profile_boost and results:
+            try:
+                results = hybrid_rank_products(
+                    results, search_query, load_augmented_products(),
+                    limit=len(results), profile_boost=profile_boost,
+                )
+            except Exception:
+                pass  # fall back to the semantic order on any failure
 
         # Filter out completed courses
         completed_titles = {c["title"].lower() for c in profile.get("completed_courses", [])}

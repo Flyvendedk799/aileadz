@@ -37,6 +37,11 @@
   .cpill i { font-size: 10px; color: var(--fm-ink-3); }
   .ccard-foot { display: flex; align-items: center; justify-content: space-between; padding-top: 12px; border-top: 1px solid var(--fm-line); }
   .ccard-price { font-family: var(--ff-display); font-size: 18px; font-weight: 700; color: var(--fm-ink); }
+  .ccard-price-deal { display: flex; flex-direction: column; gap: 1px; }
+  .ccard-price-deal .deal-now { font-family: var(--ff-display); font-size: 18px; font-weight: 700; color: var(--fm-primary); }
+  .ccard-price-deal .deal-was { font-size: 11.5px; color: var(--fm-ink-3); text-decoration: line-through; }
+  .deal-badge { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 8px; border-radius: 999px; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 11px; font-weight: 700; letter-spacing: .01em; margin-top: 6px; }
+  .deal-badge i { font-size: 9.5px; }
 
   .cat-empty { text-align: center; padding: 60px 20px; color: var(--fm-ink-2); }
   .cat-empty i { color: var(--fm-ink-3); margin-bottom: 14px; }
@@ -147,9 +152,17 @@
                 <span class="cpill">{{ category }}</span>
                 {% endfor %}
                 {% if product.format %}<span class="cpill"><i class="fa-solid fa-display"></i>{{ product.format }}</span>{% endif %}
+                {% if product.has_agreement %}<span class="deal-badge"><i class="fa-solid fa-handshake"></i>Aftalepris{% if product.discount_label %} {{ product.discount_label }}{% endif %}</span>{% endif %}
               </div>
               <div class="ccard-foot">
+                {% if product.has_agreement and product.discounted_price_label %}
+                <span class="ccard-price-deal">
+                  <span class="deal-now">{{ product.discounted_price_label }}</span>
+                  <span class="deal-was">{{ product.original_price_label or product.price_label }}</span>
+                </span>
+                {% else %}
                 <span class="ccard-price">{{ product.price_label }}</span>
+                {% endif %}
                 <span class="cpill">{{ product.variants|length }} variant{{ '' if product.variants|length == 1 else 'er' }}</span>
               </div>
             </div>

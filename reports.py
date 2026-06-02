@@ -2,15 +2,14 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash,
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
+from auth_decorators import login_required
 
 reports_bp = Blueprint('reports', __name__, template_folder='templates')
 
 @reports_bp.route('')
 @reports_bp.route('/')
+@login_required
 def reports():
-    if 'user' not in session:
-        flash("Please log in to view reports.", "danger")
-        return redirect(url_for('auth.login'))
     username = session.get('user')
     
     # Fetch AI app usage from app_usage table

@@ -11,6 +11,7 @@ import secrets
 import string
 from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
+from auth_decorators import require_role, require_company_role
 from branding_service import (
     get_branding,
     has_custom_branding_feature,
@@ -139,11 +140,9 @@ def create_companies_blueprint():
             return jsonify([])
 
     @companies_bp.route('/register', methods=['GET', 'POST'])
+    @require_role('admin')
     def register_company():
         """Company registration — super admin only. Creates company + assigns HR manager."""
-        if 'user' not in session or session.get('role') != 'admin':
-            flash("Kun administratorer kan oprette virksomheder.", "danger")
-            return redirect(url_for('auth.login'))
         if request.method == 'POST':
             # Company details
             company_name = request.form.get('company_name', '').strip()
@@ -753,11 +752,9 @@ def create_companies_blueprint():
         return render_template('fm/company_settings.html', company=company, settings=settings)
 
     @companies_bp.route('/admin')
+    @require_role('admin')
     def admin_companies_list():
         """Platform admin: list all tenants with quick controls."""
-        auth_check = require_platform_admin()
-        if auth_check:
-            return auth_check
         companies = []
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -789,12 +786,9 @@ def create_companies_blueprint():
         )
 
     @companies_bp.route('/admin/<int:company_id>', methods=['GET', 'POST'])
+    @require_role('admin')
     def admin_company_detail(company_id):
         """Platform admin: tenant settings and feature toggles."""
-        auth_check = require_platform_admin()
-        if auth_check:
-            return auth_check
-
         company = get_company_by_id(company_id)
         if not company:
             flash("Virksomhed ikke fundet.", "danger")
@@ -875,12 +869,9 @@ def create_companies_blueprint():
 
     @companies_bp.route('/branding', methods=['GET', 'POST'])
     @companies_bp.route('/branding/<int:company_id>', methods=['GET', 'POST'])
+    @require_company_role('company_admin', 'hr_manager')
     def branding(company_id=None):
         """Unified branding hub for HR admins."""
-        auth_check = require_branding_access()
-        if auth_check:
-            return auth_check
-
         resolved_id = _resolve_branding_company_id(company_id)
         company = get_company_by_id(resolved_id) if session.get('role') == 'admin' and resolved_id else get_company_context()
         if not company and resolved_id:
@@ -990,11 +981,9 @@ def create_companies_blueprint():
         )
 
     @companies_bp.route('/branding/toggle-feature', methods=['POST'])
+    @require_role('admin')
     def toggle_branding_feature():
         """Platform admin: enable/disable custom_branding for a tenant."""
-        if session.get('role') != 'admin':
-            flash("Kun platform-administratorer kan ændre branding-adgang.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
         company_id = request.form.get('company_id', type=int)
         enabled = request.form.get('enabled') == '1'
         if company_id and set_custom_branding_feature(company_id, enabled):

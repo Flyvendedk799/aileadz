@@ -5,6 +5,7 @@ Replaces the single-tenant reports.py with company-scoped analytics
 """
 
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
+from auth_decorators import require_company
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
@@ -53,15 +54,12 @@ def create_multitenant_reports_blueprint():
 
     @multitenant_reports_bp.route('')
     @multitenant_reports_bp.route('/')
+    @require_company
     def reports():
         """
         Company-specific reports dashboard
         Shows analytics scoped to the user's company only
         """
-        auth_check = require_company_access()
-        if auth_check:
-            return auth_check
-        
         company = get_company_context()
         if not company:
             flash("Company information not found.", "danger")
@@ -453,14 +451,11 @@ def create_multitenant_reports_blueprint():
         )
 
     @multitenant_reports_bp.route('/order/<order_id>')
+    @require_company
     def order_detail(order_id):
         """
         Company-scoped order details
         """
-        auth_check = require_company_access()
-        if auth_check:
-            return auth_check
-        
         company = get_company_context()
         if not company:
             flash("Company information not found.", "danger")
@@ -495,15 +490,12 @@ def create_multitenant_reports_blueprint():
             return redirect(url_for('multitenant_reports.reports'))
 
     @multitenant_reports_bp.route('/order/<order_id>/update', methods=['POST'])
+    @require_company
     def update_order_status(order_id):
         """
         Update order status (company-scoped)
         Only HR managers and company admins can update orders
         """
-        auth_check = require_company_access()
-        if auth_check:
-            return auth_check
-        
         company = get_company_context()
         if not company:
             return jsonify({'success': False, 'message': 'Company not found'}), 404
@@ -579,14 +571,11 @@ def create_multitenant_reports_blueprint():
             return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
 
     @multitenant_reports_bp.route('/analytics/export')
+    @require_company
     def export_analytics():
         """
         Export company-specific analytics data as JSON
         """
-        auth_check = require_company_access()
-        if auth_check:
-            return auth_check
-        
         company = get_company_context()
         if not company:
             return jsonify({'error': 'Company not found'}), 404
@@ -613,14 +602,11 @@ def create_multitenant_reports_blueprint():
         return response
 
     @multitenant_reports_bp.route('/department/<department_name>')
+    @require_company
     def department_analytics(department_name):
         """
         Department-specific analytics within the company
         """
-        auth_check = require_company_access()
-        if auth_check:
-            return auth_check
-        
         company = get_company_context()
         if not company:
             flash("Company information not found.", "danger")

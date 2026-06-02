@@ -4,6 +4,7 @@ import logging
 import json
 from datetime import datetime, timedelta
 import catalog_service as catalog
+from auth_decorators import require_role
 
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__, template_folder='templates')
 
@@ -27,10 +28,8 @@ def require_admin():
 
 @admin_dashboard_bp.route('')
 @admin_dashboard_bp.route('/')
+@require_role('admin')
 def admin_home():
-    check = require_admin()
-    if check:
-        return check
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     users_has_created_at = _column_exists(cur, 'users', 'created_at')
 
@@ -181,11 +180,8 @@ def admin_home():
 
 
 @admin_dashboard_bp.route('/credits', methods=['GET', 'POST'])
+@require_role('admin')
 def credits():
-    check = require_admin()
-    if check:
-        return check
-
     if request.method == 'POST':
         target_user = request.form.get('target_user')
         credit_amount = request.form.get('credit_amount')
@@ -210,10 +206,8 @@ def credits():
 
 
 @admin_dashboard_bp.route('/users')
+@require_role('admin')
 def user_list():
-    check = require_admin()
-    if check:
-        return check
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     users_has_created_at = _column_exists(cur, 'users', 'created_at')
     try:
@@ -241,10 +235,8 @@ def user_list():
 
 
 @admin_dashboard_bp.route('/users/<int:user_id>/role', methods=['POST'])
+@require_role('admin')
 def update_user_role(user_id):
-    check = require_admin()
-    if check:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     new_role = request.json.get('role')
     if new_role not in ('user', 'admin'):
         return jsonify({'success': False, 'message': 'Invalid role'}), 400
@@ -260,10 +252,8 @@ def update_user_role(user_id):
 
 
 @admin_dashboard_bp.route('/users/<int:user_id>/credits', methods=['POST'])
+@require_role('admin')
 def update_user_credits(user_id):
-    check = require_admin()
-    if check:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     amount = request.json.get('amount', 0)
     try:
         amount = int(amount)
@@ -281,10 +271,8 @@ def update_user_credits(user_id):
 
 
 @admin_dashboard_bp.route('/catalog')
+@require_role('admin')
 def admin_catalog():
-    check = require_admin()
-    if check:
-        return check
     stats = catalog.catalog_stats()
     categories = catalog.get_categories()[:80]
     vendors = catalog.get_vendors()[:80]
@@ -301,10 +289,8 @@ def admin_catalog():
 
 
 @admin_dashboard_bp.route('/catalog/import', methods=['POST'])
+@require_role('admin')
 def admin_catalog_import():
-    check = require_admin()
-    if check:
-        return check
     upload = request.files.get('catalog_csv')
     if not upload or not upload.filename:
         flash("Vaelg en CSV-fil.", "danger")
@@ -321,10 +307,8 @@ def admin_catalog_import():
 
 
 @admin_dashboard_bp.route('/catalog/import/<job_id>')
+@require_role('admin')
 def admin_catalog_import_preview(job_id):
-    check = require_admin()
-    if check:
-        return check
     draft = catalog.get_import_draft(job_id)
     if not draft:
         flash("Importkladde ikke fundet.", "warning")
@@ -334,10 +318,8 @@ def admin_catalog_import_preview(job_id):
 
 
 @admin_dashboard_bp.route('/catalog/import/<job_id>/confirm', methods=['POST'])
+@require_role('admin')
 def admin_catalog_import_confirm(job_id):
-    check = require_admin()
-    if check:
-        return check
     draft = catalog.confirm_import_draft(job_id)
     if not draft:
         flash("Importkladde ikke fundet.", "warning")
@@ -347,29 +329,23 @@ def admin_catalog_import_confirm(job_id):
 
 
 @admin_dashboard_bp.route('/catalog/import/<job_id>/cancel', methods=['POST'])
+@require_role('admin')
 def admin_catalog_import_cancel(job_id):
-    check = require_admin()
-    if check:
-        return check
     catalog.delete_import_draft(job_id)
     flash("Importkladde slettet.", "info")
     return redirect(url_for('admin_dashboard.admin_catalog'))
 
 
 @admin_dashboard_bp.route('/catalog/ai-categorize/start', methods=['POST'])
+@require_role('admin')
 def admin_catalog_ai_start():
-    check = require_admin()
-    if check:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     job = catalog.create_ai_category_job(created_by=session.get('user', ''))
     return jsonify({'success': True, 'job_id': job['job_id'], 'total': job['total']})
 
 
 @admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/batch', methods=['POST'])
+@require_role('admin')
 def admin_catalog_ai_batch(job_id):
-    check = require_admin()
-    if check:
-        return jsonify({'success': False, 'message': 'Unauthorized'}), 403
     job = catalog.process_ai_category_batch(job_id, batch_size=8)
     if not job:
         return jsonify({'success': False, 'message': 'Job not found'}), 404
@@ -386,10 +362,8 @@ def admin_catalog_ai_batch(job_id):
 
 
 @admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>')
+@require_role('admin')
 def admin_catalog_ai_preview(job_id):
-    check = require_admin()
-    if check:
-        return check
     job = catalog.get_ai_category_job(job_id)
     if not job:
         flash("AI-kategoriseringsjob ikke fundet.", "warning")
@@ -399,10 +373,8 @@ def admin_catalog_ai_preview(job_id):
 
 
 @admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/confirm', methods=['POST'])
+@require_role('admin')
 def admin_catalog_ai_confirm(job_id):
-    check = require_admin()
-    if check:
-        return check
     job = catalog.confirm_ai_category_job(job_id)
     if not job:
         flash("AI-kategoriseringsjob ikke fundet.", "warning")
@@ -412,10 +384,8 @@ def admin_catalog_ai_confirm(job_id):
 
 
 @admin_dashboard_bp.route('/catalog/ai-categorize/<job_id>/cancel', methods=['POST'])
+@require_role('admin')
 def admin_catalog_ai_cancel(job_id):
-    check = require_admin()
-    if check:
-        return check
     catalog.delete_ai_category_job(job_id)
     flash("AI-kategoriseringsjob slettet.", "info")
     return redirect(url_for('admin_dashboard.admin_catalog'))

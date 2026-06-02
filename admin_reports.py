@@ -5,15 +5,14 @@ import datetime
 import json
 import logging
 
+from auth_decorators import require_role
+
 admin_reports_bp = Blueprint('admin_reports', __name__, template_folder='templates')
 
 
 @admin_reports_bp.route('/admin/chatbot-dashboard')
+@require_role('admin')
 def chatbot_dashboard():
-    if 'user' not in session or session.get('role') != 'admin':
-        flash("Adgang naegtet.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
-
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     # --- KPI metrics ---
@@ -387,11 +386,8 @@ def chatbot_dashboard():
 
 
 @admin_reports_bp.route('/admin/ai-cost')
+@require_role('admin')
 def ai_cost_dashboard():
-    if 'user' not in session or session.get('role') != 'admin':
-        flash("Adgang naegtet.", "danger")
-        return redirect(url_for('dashboard.dashboard'))
-
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
     # --- Agent run KPIs (last 30 days) ---

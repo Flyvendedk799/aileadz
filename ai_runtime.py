@@ -1165,7 +1165,23 @@ def run_chat_agent(
             source_messages.append(tool_msg)
         current_tool_choice = "auto"
     else:
-        final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
+        # Loop exhausted its tool iterations without the model producing a final
+        # answer. Force one more completion WITHOUT tools so the user gets a real
+        # response (summarising the tool results) instead of a generic error.
+        final_text = ""
+        try:
+            forced = client.chat.completions.create(
+                model=model,
+                messages=prepare_messages_for_turn(source_messages),
+                stream=False,
+                max_tokens=max_output_tokens(),
+                temperature=0.4,
+            )
+            final_text = (forced.choices[0].message.content or "").strip()
+        except Exception as exc:
+            print(f"[Agent forced-final error] {exc}")
+        if not final_text:
+            final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
 
     return AgentRunResult(
         text=final_text,
@@ -1272,7 +1288,22 @@ def run_responses_agent(
         input_items = outputs
         tool_choice = "auto"
     else:
-        final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
+        # Force a final answer without tools so the user gets a real response
+        # instead of a generic failure (see run_chat_agent).
+        final_text = ""
+        try:
+            forced = client.chat.completions.create(
+                model=model,
+                messages=prepare_messages_for_turn(source_messages),
+                stream=False,
+                max_tokens=max_output_tokens(),
+                temperature=0.4,
+            )
+            final_text = (forced.choices[0].message.content or "").strip()
+        except Exception as exc:
+            print(f"[Agent forced-final error] {exc}")
+        if not final_text:
+            final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
 
     return AgentRunResult(
         text=final_text,

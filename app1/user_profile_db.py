@@ -490,7 +490,7 @@ def save_conversation_history(username, session_id, messages):
     if row:
         cur.execute(
             "UPDATE conversation_history SET messages = %s, title = %s WHERE id = %s",
-            (_json.dumps(saved, ensure_ascii=False), title, row[0])
+            (_json.dumps(saved, ensure_ascii=False), title, row["id"])
         )
     else:
         cur.execute(

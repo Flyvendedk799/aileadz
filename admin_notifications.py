@@ -2,6 +2,68 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import os
 from werkzeug.utils import secure_filename
 
+# --- HTML sanitization for admin-supplied notification content (stored-XSS hardening) ---
+# Admin broadcast fields are stored as HTML in the `notifications.message` column and may
+# later be rendered with |safe. Sanitize on WRITE so every consumer is safe.
+# bleach is optional: if it is unavailable we fall back to fully escaping the input
+# (markupsafe.escape) — we NEVER store raw, unsanitized admin HTML.
+try:
+    import bleach as _bleach
+    _HAS_BLEACH = True
+except Exception as _bleach_exc:  # pragma: no cover - degrade gracefully, never crash boot
+    _bleach = None
+    _HAS_BLEACH = False
+
+# Always-available escaping fallback.
+try:
+    from markupsafe import escape as _ms_escape
+except Exception:  # pragma: no cover - extremely defensive
+    from flask import escape as _ms_escape  # type: ignore
+
+# Allowlist of safe inline-formatting tags for notification body text.
+_NOTIF_ALLOWED_TAGS = [
+    'a', 'b', 'strong', 'i', 'em', 'u', 'br', 'p', 'span',
+    'ul', 'ol', 'li', 'h2', 'h3', 'h4', 'blockquote',
+]
+_NOTIF_ALLOWED_ATTRS = {
+    'a': ['href', 'title', 'target', 'rel'],
+    'span': ['style'],
+    'p': ['style'],
+}
+# Only allow safe link protocols; this strips javascript:, data:, vbscript:, etc.
+_NOTIF_ALLOWED_PROTOCOLS = ['http', 'https', 'mailto', 'tel']
+
+
+def _sanitize_notification_html(value):
+    """Sanitize a single admin-supplied notification field.
+
+    Returns a string safe to store and later render. Uses bleach when available
+    (allowlisted formatting tags, safe link protocols, event handlers / <script>
+    stripped). When bleach is missing, fully HTML-escapes the value instead so
+    nothing executable is ever persisted.
+    """
+    if value is None:
+        return ''
+    text = value if isinstance(value, str) else str(value)
+    if _HAS_BLEACH:
+        try:
+            return _bleach.clean(
+                text,
+                tags=_NOTIF_ALLOWED_TAGS,
+                attributes=_NOTIF_ALLOWED_ATTRS,
+                protocols=_NOTIF_ALLOWED_PROTOCOLS,
+                strip=True,
+            )
+        except Exception as exc:  # pragma: no cover - never store raw on failure
+            try:
+                current_app.logger.warning("bleach sanitize failed, escaping instead: %s", exc)
+            except Exception:
+                pass
+            return str(_ms_escape(text))
+    # No bleach available: escape so stored content can never execute.
+    return str(_ms_escape(text))
+
+
 admin_notifications_bp = Blueprint('admin_notifications', __name__, template_folder='templates')
 
 @admin_notifications_bp.route('/notifications', methods=['GET', 'POST'])
@@ -12,11 +74,15 @@ def notifications_dashboard():
         return redirect(url_for('pages.notifications'))
     
     if request.method == 'POST':
-        title = request.form.get('title')
-        subtitle = request.form.get('subtitle', '')
-        description = request.form.get('description', '')
-        
-        # Combine fields into one formatted HTML message
+        # Sanitize all admin-supplied content on WRITE so stored notifications
+        # cannot carry stored-XSS payloads (<script>, onerror=, javascript: URLs)
+        # into any consumer that later renders them with |safe.
+        title = _sanitize_notification_html(request.form.get('title'))
+        subtitle = _sanitize_notification_html(request.form.get('subtitle', ''))
+        description = _sanitize_notification_html(request.form.get('description', ''))
+
+        # Combine fields into one formatted HTML message. The wrapping tags are
+        # app-controlled/trusted; the interpolated values are already sanitized above.
         formatted_message = "<div style='text-align: center;'>";
         formatted_message += f"<h2>{title}</h2>";
         if subtitle:

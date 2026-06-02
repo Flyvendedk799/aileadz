@@ -10,6 +10,7 @@ import json
 import jwt
 import hashlib
 import time
+import logging
 from datetime import datetime, timedelta
 from functools import wraps
 import secrets
@@ -19,7 +20,197 @@ try:
 except ImportError:
     redis = None
 
+# Stdlib only — used by the SSRF guard for webhook delivery.
+try:
+    import socket
+    import ipaddress
+    from urllib.parse import urlparse
+except Exception:  # pragma: no cover - stdlib is always present
+    socket = None
+    ipaddress = None
+    urlparse = None
+
 api_enterprise_bp = Blueprint('api_enterprise', __name__)
+
+# Per-minute rate limit fallback when an API key has no explicit hourly limit
+# configured (kept conservative; existing per-hour semantics still honoured).
+DEFAULT_RATE_LIMIT_PER_MINUTE = 120
+# Conservative auth-lockout policy: only triggers on repeated bad keys.
+AUTH_LOCKOUT_THRESHOLD = 10
+AUTH_LOCKOUT_WINDOW_SECONDS = 300
+
+
+def _hash_api_key(api_key):
+    """Return a stable sha256 hex digest of a raw API key, or None."""
+    if not api_key:
+        return None
+    try:
+        return hashlib.sha256(api_key.encode('utf-8')).hexdigest()
+    except Exception:
+        return None
+
+
+def _column_exists(cur, table_name, column_name):
+    """True if column exists. Degrades to False (never raises) on inspect error."""
+    try:
+        cur.execute(f"SHOW COLUMNS FROM `{table_name}` LIKE %s", (column_name,))
+        return cur.fetchone() is not None
+    except Exception as e:
+        logging.warning("enterprise_api: could not inspect column %s.%s: %s", table_name, column_name, e)
+        return False
+
+
+def _ensure_security_schema():
+    """Idempotently add the key_hash column + rate-limit/lockout tables.
+
+    Fully guarded: any failure logs a warning and degrades. Never crashes boot
+    and never breaks a request — the calling code falls back to legacy behaviour.
+    """
+    try:
+        conn = current_app.mysql.connection
+        if not conn:
+            return False
+        cur = conn.cursor()
+        # 1) Additive key_hash column on existing api keys table.
+        try:
+            if not _column_exists(cur, 'company_api_keys', 'key_hash'):
+                cur.execute(
+                    "ALTER TABLE company_api_keys ADD COLUMN key_hash VARCHAR(64) NULL"
+                )
+                try:
+                    cur.execute(
+                        "ALTER TABLE company_api_keys ADD INDEX idx_company_api_keys_key_hash (key_hash)"
+                    )
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.warning("enterprise_api: could not add key_hash column: %s", e)
+        # 2) Durable rate-limit counter table (per key, per window).
+        try:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_rate_limit_counters (
+                    api_key_id BIGINT NOT NULL,
+                    window_start BIGINT NOT NULL,
+                    request_count INT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (api_key_id, window_start)
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning("enterprise_api: could not create api_rate_limit_counters: %s", e)
+        # 3) Auth failure / lockout tracking table.
+        try:
+            cur.execute(
+                """
+                CREATE TABLE IF NOT EXISTS api_auth_attempts (
+                    key_hash VARCHAR(64) NOT NULL,
+                    failed_count INT NOT NULL DEFAULT 0,
+                    first_failed_at BIGINT NOT NULL DEFAULT 0,
+                    last_failed_at BIGINT NOT NULL DEFAULT 0,
+                    PRIMARY KEY (key_hash)
+                )
+                """
+            )
+        except Exception as e:
+            logging.warning("enterprise_api: could not create api_auth_attempts: %s", e)
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            cur.close()
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        logging.warning("enterprise_api: security schema ensure failed: %s", e)
+        return False
+
+
+# Process-level flag: once the security schema is confirmed in place we skip
+# the (cheap but non-free) SHOW COLUMNS / ALTER probes on subsequent requests.
+# Stays False if the ensure ever fails so it is retried later.
+_SECURITY_SCHEMA_READY = False
+
+
+# Ensure schema (idempotent), matching the codebase's before_request
+# CREATE-IF-NOT-EXISTS convention. Guarded so a failure here never blocks the
+# request; retried on the next request until it succeeds once.
+@api_enterprise_bp.before_app_request
+def _enterprise_api_ensure_schema():
+    global _SECURITY_SCHEMA_READY
+    try:
+        if _SECURITY_SCHEMA_READY:
+            return
+        if _ensure_security_schema():
+            _SECURITY_SCHEMA_READY = True
+    except Exception:
+        # Leave the flag False so we retry on a later request.
+        pass
+
+
+def _is_safe_webhook_url(url):
+    """SSRF guard: only allow http/https to public, resolvable hosts.
+
+    Rejects non-http(s) schemes and any host that resolves to a private,
+    loopback, link-local, reserved, multicast or unspecified address. Fails
+    CLOSED (returns False) on any resolution or parse error.
+    """
+    if not url or socket is None or ipaddress is None or urlparse is None:
+        return False
+    try:
+        parsed = urlparse(url)
+    except Exception:
+        return False
+
+    scheme = (parsed.scheme or '').lower()
+    if scheme not in ('http', 'https'):
+        return False
+
+    hostname = parsed.hostname
+    if not hostname:
+        return False
+
+    # Resolve every address the host maps to; reject if ANY is unsafe.
+    try:
+        addr_infos = socket.getaddrinfo(hostname, None)
+    except Exception:
+        # Resolution failed -> reject (fail closed).
+        return False
+
+    if not addr_infos:
+        return False
+
+    for info in addr_infos:
+        sockaddr = info[4]
+        ip_str = sockaddr[0]
+        try:
+            ip = ipaddress.ip_address(ip_str)
+        except Exception:
+            return False
+        if (
+            ip.is_private
+            or ip.is_loopback
+            or ip.is_link_local
+            or ip.is_reserved
+            or ip.is_multicast
+            or ip.is_unspecified
+        ):
+            return False
+        # Reject IPv4-mapped / 6to4 / Teredo wrappers around private space too.
+        try:
+            if getattr(ip, 'ipv4_mapped', None) is not None:
+                mapped = ip.ipv4_mapped
+                if (
+                    mapped.is_private or mapped.is_loopback or mapped.is_link_local
+                    or mapped.is_reserved or mapped.is_multicast or mapped.is_unspecified
+                ):
+                    return False
+        except Exception:
+            return False
+
+    return True
 
 # Redis client for rate limiting (fallback to in-memory if Redis not available)
 try:
@@ -37,71 +228,308 @@ class APIManager:
     def __init__(self):
         self.rate_limits = {}  # In-memory fallback
     
+    def _is_locked_out(self, key_hash):
+        """Return True if this key_hash is currently in lockout from repeated
+        failed auths. Fails OPEN (returns False) on any DB/schema error."""
+        if not key_hash:
+            return False
+        try:
+            conn = current_app.mysql.connection
+            if not conn:
+                return False
+            cur = conn.cursor(MySQLdb.cursors.DictCursor)
+            try:
+                cur.execute(
+                    "SELECT failed_count, last_failed_at FROM api_auth_attempts WHERE key_hash = %s",
+                    (key_hash,),
+                )
+                row = cur.fetchone()
+            finally:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            if not row:
+                return False
+            now = int(time.time())
+            last = int(row.get('last_failed_at') or 0)
+            failed = int(row.get('failed_count') or 0)
+            # Lockout only while inside the cooldown window.
+            if failed >= AUTH_LOCKOUT_THRESHOLD and (now - last) < AUTH_LOCKOUT_WINDOW_SECONDS:
+                return True
+            return False
+        except Exception as e:
+            logging.warning("enterprise_api: lockout check failed (failing open): %s", e)
+            return False
+
+    def _record_auth_failure(self, key_hash):
+        """Increment the failed-attempt counter for a key_hash. Best-effort."""
+        if not key_hash:
+            return
+        try:
+            conn = current_app.mysql.connection
+            if not conn:
+                return
+            now = int(time.time())
+            cur = conn.cursor()
+            try:
+                # Reset the counter if the previous window has expired, otherwise increment.
+                cur.execute(
+                    """
+                    INSERT INTO api_auth_attempts (key_hash, failed_count, first_failed_at, last_failed_at)
+                    VALUES (%s, 1, %s, %s)
+                    ON DUPLICATE KEY UPDATE
+                        failed_count = IF(%s - last_failed_at >= %s, 1, failed_count + 1),
+                        first_failed_at = IF(%s - last_failed_at >= %s, %s, first_failed_at),
+                        last_failed_at = %s
+                    """,
+                    (
+                        key_hash, now, now,
+                        now, AUTH_LOCKOUT_WINDOW_SECONDS,
+                        now, AUTH_LOCKOUT_WINDOW_SECONDS, now,
+                        now,
+                    ),
+                )
+                conn.commit()
+            finally:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.warning("enterprise_api: could not record auth failure: %s", e)
+
+    def _reset_auth_failures(self, key_hash):
+        """Clear the failed-attempt counter on a successful auth. Best-effort."""
+        if not key_hash:
+            return
+        try:
+            conn = current_app.mysql.connection
+            if not conn:
+                return
+            cur = conn.cursor()
+            try:
+                cur.execute("DELETE FROM api_auth_attempts WHERE key_hash = %s", (key_hash,))
+                conn.commit()
+            finally:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
+    def _backfill_key_hash(self, api_key_id, key_hash):
+        """Opportunistically populate key_hash for a legacy plaintext row."""
+        if not api_key_id or not key_hash:
+            return
+        try:
+            conn = current_app.mysql.connection
+            if not conn:
+                return
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    "UPDATE company_api_keys SET key_hash = %s WHERE id = %s AND (key_hash IS NULL OR key_hash = '')",
+                    (key_hash, api_key_id),
+                )
+                conn.commit()
+            finally:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+        except Exception as e:
+            logging.warning("enterprise_api: key_hash backfill failed: %s", e)
+
     def authenticate_api_request(self, api_key):
-        """Authenticate API request using API key"""
+        """Authenticate API request using API key.
+
+        Transitional hashing: compares against sha256(key_hash) first; if the
+        row is a legacy plaintext-only row, accepts the plaintext match and
+        opportunistically backfills key_hash. Tracks consecutive failures for a
+        conservative lockout. Never breaks existing keys in flight.
+        """
         try:
             conn = current_app.mysql.connection
             if not conn:
                 return None, "Database connection failed"
 
+            key_hash = _hash_api_key(api_key)
+
+            # Conservative lockout: reject if this key has too many recent
+            # consecutive failures. Fails OPEN on any error.
+            if self._is_locked_out(key_hash):
+                return None, "Too many failed attempts. Try again later."
+
             cur = conn.cursor(MySQLdb.cursors.DictCursor)
-            cur.execute("""
-                SELECT ak.*, c.company_name, c.status as company_status
-                FROM company_api_keys ak
-                JOIN companies c ON ak.company_id = c.id
-                WHERE ak.api_key = %s AND ak.is_active = 1
-                AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
-            """, (api_key,))
-            
-            api_key_data = cur.fetchone()
-            cur.close()
-            
+            api_key_data = None
+            has_key_hash_col = _column_exists(cur, 'company_api_keys', 'key_hash')
+
+            # Prefer hash-based lookup when the column exists.
+            if has_key_hash_col and key_hash:
+                try:
+                    cur.execute("""
+                        SELECT ak.*, c.company_name, c.status as company_status
+                        FROM company_api_keys ak
+                        JOIN companies c ON ak.company_id = c.id
+                        WHERE ak.key_hash = %s AND ak.is_active = 1
+                        AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
+                    """, (key_hash,))
+                    api_key_data = cur.fetchone()
+                except Exception as e:
+                    logging.warning("enterprise_api: hash lookup failed, falling back: %s", e)
+                    api_key_data = None
+
+            # Legacy / transition path: match on plaintext api_key column.
+            backfill_needed = False
             if not api_key_data:
+                try:
+                    cur.execute("""
+                        SELECT ak.*, c.company_name, c.status as company_status
+                        FROM company_api_keys ak
+                        JOIN companies c ON ak.company_id = c.id
+                        WHERE ak.api_key = %s AND ak.is_active = 1
+                        AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
+                    """, (api_key,))
+                    api_key_data = cur.fetchone()
+                    if api_key_data and has_key_hash_col:
+                        # Legacy plaintext row with empty hash -> backfill.
+                        if not api_key_data.get('key_hash'):
+                            backfill_needed = True
+                except Exception as e:
+                    logging.warning("enterprise_api: legacy key lookup failed: %s", e)
+                    api_key_data = None
+
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+            if not api_key_data:
+                # Record the failure for lockout accounting.
+                self._record_auth_failure(key_hash)
                 return None, "Invalid or expired API key"
-            
+
             if api_key_data['company_status'] != 'active':
                 return None, "Company account is not active"
-            
+
+            # Successful auth: clear failure counter, backfill hash if needed.
+            self._reset_auth_failures(key_hash)
+            if backfill_needed:
+                self._backfill_key_hash(api_key_data['id'], key_hash)
+
             # Update usage statistics
             self.update_api_usage(api_key_data['id'])
-            
+
             return api_key_data, None
         except Exception as e:
             return None, f"Authentication error: {str(e)}"
-    
+
     def check_rate_limit(self, api_key_id, rate_limit_per_hour):
-        """Check if API request is within rate limits"""
-        current_hour = int(time.time() // 3600)
-        key = f"api_rate_limit:{api_key_id}:{current_hour}"
-        
-        if redis_client:
-            try:
-                current_count = redis_client.get(key)
-                if current_count is None:
-                    redis_client.setex(key, 3600, 1)
-                    return True, 1
-                
-                current_count = int(current_count)
-                if current_count >= rate_limit_per_hour:
-                    return False, current_count
-                
-                redis_client.incr(key)
-                return True, current_count + 1
-            except:
-                pass
-        
-        # Fallback to in-memory rate limiting
-        if key not in self.rate_limits:
-            self.rate_limits[key] = {'count': 1, 'expires': time.time() + 3600}
+        """Check if API request is within rate limits.
+
+        Durable, multi-worker-safe rate limiting backed by a MySQL counter
+        table (INSERT ... ON DUPLICATE KEY UPDATE). Honours the existing
+        per-hour limit semantics AND enforces a configurable per-minute cap.
+        Fails OPEN (allows the request) on any DB error so a transient DB
+        problem never blocks legitimate traffic.
+        """
+        try:
+            limit_per_hour = int(rate_limit_per_hour or 0)
+        except (TypeError, ValueError):
+            limit_per_hour = 0
+
+        # Per-minute ceiling. When an hourly limit is configured we keep the
+        # EXISTING semantics intact: the authoritative cap stays the per-hour
+        # limit, so the per-minute window is set equal to it and never rejects
+        # traffic the old code would have allowed (no new throttling of current
+        # integrations). The configurable per-minute default only applies to
+        # keys that have NO hourly limit set, where previously there was no
+        # durable protection at all.
+        if limit_per_hour > 0:
+            per_minute_limit = limit_per_hour
+        else:
+            per_minute_limit = DEFAULT_RATE_LIMIT_PER_MINUTE
+
+        now = time.time()
+        hour_window = int(now // 3600)
+        minute_window = int(now // 60)
+
+        # --- Durable MySQL-backed counters ---
+        try:
+            conn = current_app.mysql.connection
+            if conn:
+                cur = conn.cursor()
+                try:
+                    # Per-minute counter.
+                    cur.execute(
+                        """
+                        INSERT INTO api_rate_limit_counters (api_key_id, window_start, request_count)
+                        VALUES (%s, %s, 1)
+                        ON DUPLICATE KEY UPDATE request_count = request_count + 1
+                        """,
+                        (api_key_id, minute_window),
+                    )
+                    cur.execute(
+                        "SELECT request_count FROM api_rate_limit_counters WHERE api_key_id = %s AND window_start = %s",
+                        (api_key_id, minute_window),
+                    )
+                    minute_row = cur.fetchone()
+                    minute_count = int(minute_row[0]) if minute_row else 1
+
+                    # Per-hour counter (preserves original semantics/headers).
+                    hour_key = -(hour_window + 1)  # disjoint key space from minute windows
+                    cur.execute(
+                        """
+                        INSERT INTO api_rate_limit_counters (api_key_id, window_start, request_count)
+                        VALUES (%s, %s, 1)
+                        ON DUPLICATE KEY UPDATE request_count = request_count + 1
+                        """,
+                        (api_key_id, hour_key),
+                    )
+                    cur.execute(
+                        "SELECT request_count FROM api_rate_limit_counters WHERE api_key_id = %s AND window_start = %s",
+                        (api_key_id, hour_key),
+                    )
+                    hour_row = cur.fetchone()
+                    hour_count = int(hour_row[0]) if hour_row else 1
+
+                    conn.commit()
+                finally:
+                    try:
+                        cur.close()
+                    except Exception:
+                        pass
+
+                # Best-effort cleanup of stale windows (cheap, ignored on error).
+                try:
+                    cur2 = conn.cursor()
+                    cur2.execute(
+                        "DELETE FROM api_rate_limit_counters WHERE api_key_id = %s AND window_start >= 0 AND window_start < %s",
+                        (api_key_id, minute_window - 5),
+                    )
+                    conn.commit()
+                    cur2.close()
+                except Exception:
+                    pass
+
+                if minute_count > per_minute_limit:
+                    return False, minute_count
+                if limit_per_hour > 0 and hour_count > limit_per_hour:
+                    return False, hour_count
+                return True, hour_count if limit_per_hour > 0 else minute_count
+        except Exception as e:
+            logging.warning("enterprise_api: durable rate-limit failed (failing open): %s", e)
+
+        # --- Fail-open in-memory fallback (only if DB path errored) ---
+        key = f"api_rate_limit:{api_key_id}:{hour_window}"
+        fallback_limit = limit_per_hour if limit_per_hour > 0 else (DEFAULT_RATE_LIMIT_PER_MINUTE * 60)
+        if key not in self.rate_limits or now > self.rate_limits[key]['expires']:
+            self.rate_limits[key] = {'count': 1, 'expires': now + 3600}
             return True, 1
-        
-        if time.time() > self.rate_limits[key]['expires']:
-            self.rate_limits[key] = {'count': 1, 'expires': time.time() + 3600}
-            return True, 1
-        
-        if self.rate_limits[key]['count'] >= rate_limit_per_hour:
+        if self.rate_limits[key]['count'] >= fallback_limit:
             return False, self.rate_limits[key]['count']
-        
         self.rate_limits[key]['count'] += 1
         return True, self.rate_limits[key]['count']
     
@@ -648,7 +1076,14 @@ def create_webhook():
         for field in required_fields:
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
-        
+
+        # SSRF guard at creation: reject non-public / non-http(s) targets up front.
+        if not _is_safe_webhook_url(data.get('url')):
+            return jsonify({
+                'error': 'Ugyldig webhook-URL',
+                'message': 'Webhook-URL skal vaere en offentlig http(s)-adresse.'
+            }), 400
+
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
         cur.execute("""
@@ -725,39 +1160,65 @@ def create_api_key():
             if field not in data:
                 return jsonify({'error': f'Missing required field: {field}'}), 400
         
-        # Generate API key
+        # Generate API key (raw key is returned to the caller ONCE below).
         api_key = f"ak_{secrets.token_hex(32)}"
-        
+        key_hash = _hash_api_key(api_key)
+
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-        cur.execute("""
-            INSERT INTO company_api_keys (
-                company_id, key_name, api_key, permissions,
-                rate_limit_per_hour, expires_at, is_active, created_at, created_by
-            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-        """, (
-            g.company_id,
-            data['key_name'],
-            api_key,
-            json.dumps(data['permissions']),
-            data.get('rate_limit_per_hour', 1000),
-            data.get('expires_at'),
-            True,
-            datetime.now(),
-            g.api_key_data['created_by']
-        ))
-        
+        # Store the sha256 hash when the column is available; keep writing the
+        # plaintext api_key column too so legacy reads stay backward-compatible.
+        store_hash = bool(key_hash) and _column_exists(cur, 'company_api_keys', 'key_hash')
+
+        if store_hash:
+            cur.execute("""
+                INSERT INTO company_api_keys (
+                    company_id, key_name, api_key, key_hash, permissions,
+                    rate_limit_per_hour, expires_at, is_active, created_at, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                g.company_id,
+                data['key_name'],
+                api_key,
+                key_hash,
+                json.dumps(data['permissions']),
+                data.get('rate_limit_per_hour', 1000),
+                data.get('expires_at'),
+                True,
+                datetime.now(),
+                g.api_key_data['created_by']
+            ))
+        else:
+            cur.execute("""
+                INSERT INTO company_api_keys (
+                    company_id, key_name, api_key, permissions,
+                    rate_limit_per_hour, expires_at, is_active, created_at, created_by
+                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                g.company_id,
+                data['key_name'],
+                api_key,
+                json.dumps(data['permissions']),
+                data.get('rate_limit_per_hour', 1000),
+                data.get('expires_at'),
+                True,
+                datetime.now(),
+                g.api_key_data['created_by']
+            ))
+
         api_key_id = cur.lastrowid
         current_app.mysql.connection.commit()
         cur.close()
-        
+
         return jsonify({
             'success': True,
             'message': 'API key created successfully',
             'data': {
                 'id': api_key_id,
                 'api_key': api_key,
-                'key_name': data['key_name']
+                'key_name': data['key_name'],
+                # The raw key is shown ONCE here; store it securely now.
+                'note': 'Gem denne API-noegle nu. Den vises kun denne ene gang.'
             }
         }), 201
     except Exception as e:
@@ -1230,6 +1691,22 @@ def _fire_webhook(company_id, event_type, payload):
                 events = json.loads(events)
             if event_type not in events and '*' not in events:
                 continue
+
+            # SSRF guard: never fetch a tenant-supplied URL that is not a
+            # public http/https endpoint. A rejected URL counts as a failed
+            # delivery and is logged, but never reaches the network.
+            target_url = wh.get('url')
+            if not _is_safe_webhook_url(target_url):
+                logging.warning(
+                    "enterprise_api: blocked unsafe webhook url for company %s (webhook %s)",
+                    company_id, wh.get('id'),
+                )
+                try:
+                    cur.execute("UPDATE company_webhooks SET total_deliveries=total_deliveries+1, failed_deliveries=failed_deliveries+1, last_delivery_at=NOW() WHERE id=%s", (wh['id'],))
+                except Exception:
+                    pass
+                continue
+
             try:
                 import hashlib, hmac, urllib.request
                 body = json.dumps({
@@ -1239,7 +1716,7 @@ def _fire_webhook(company_id, event_type, payload):
                     'company_slug': slug,
                 }).encode()
                 sig = hmac.new(wh['secret'].encode(), body, hashlib.sha256).hexdigest()
-                req = urllib.request.Request(wh['url'], data=body,
+                req = urllib.request.Request(target_url, data=body,
                     headers={
                         'Content-Type': 'application/json',
                         'X-Webhook-Signature': sig,

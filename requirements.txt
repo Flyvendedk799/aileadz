@@ -1,10 +1,38 @@
+# Core web framework + DB / infra
 Flask>=3.1,<4
 PyMySQL>=1.1,<2
 sshtunnel>=0.4,<0.5
 openai>=2,<3
 requests>=2.32,<3
 python-dotenv>=1,<2
+
+# Fuzzy matching
 fuzzywuzzy>=0.18,<0.19
 python-Levenshtein>=0.27,<0.28
-numpy>=1.26,<2
-pandas>=2.2,<3
+
+# Numerics
+numpy>=1.26,<3
+pandas>=2.2,<4
+
+# --- Wave-1 security / hardening deps (imported guarded by app code) ---
+# HTML sanitisation of user-supplied input (admin_notifications.py).
+bleach>=6.1,<7
+# XXE-safe XML parsing for attacker-controlled SAML payloads (enterprise_sso).
+defusedxml>=0.7,<0.8
+# Fernet encryption-at-rest for SSO client secrets (enterprise_sso).
+cryptography>=42,<49
+
+# --- Enterprise subsystem deps (imported by enterprise_* blueprints) ---
+# PyJWT provides the top-level ``import jwt`` in enterprise_api/enterprise_sso;
+# this is boot-critical because those blueprints are registered unguarded in
+# run.py and the import is NOT wrapped, so a missing PyJWT hard-crashes boot.
+PyJWT>=2.8,<3
+# scikit-learn: ML analytics + vector/semantic catalog search (enterprise_analytics).
+scikit-learn>=1.3,<2
+# plotly: analytics chart generation (enterprise_analytics).
+plotly>=5.18,<7
+# redis: optional distributed rate-limit backend (enterprise_api); falls back
+# to in-process limiting when absent, but pinned so deploys are reproducible.
+redis>=5,<7
+# ldap3: LDAP / Active Directory SSO bind (enterprise_sso).
+ldap3>=2.9,<3

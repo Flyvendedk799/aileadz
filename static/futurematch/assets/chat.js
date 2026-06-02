@@ -5,8 +5,88 @@
 (function () {
   "use strict";
   const $ = (s, r = document) => r.querySelector(s);
-  const esc = (s) => String(s == null ? "" : s).replace(/</g, "&lt;").replace(/>/g, "&gt;");
-  const md = (t) => (window.marked ? window.marked.parse(t) : esc(t).replace(/\n/g, "<br>"));
+  const esc = (s) => String(s == null ? "" : s)
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  // Icon/CSS-class values are also interpolated into an inline onerror JS string,
+  // so they must be restricted to a safe token charset (no quotes/brackets) to
+  // prevent breakout. Falls back to a neutral icon when empty/invalid.
+  const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
+
+  /* ---------------- HTML sanitizer ----------------
+     Agent/assistant content (markdown-rendered chunks, profile_update messages,
+     and the legacy pre-rendered product HTML) is inserted via innerHTML. Since
+     that content originates from the model, sanitize it to neutralise stored
+     XSS: drop dangerous elements (script/style/iframe/object/embed/...), strip
+     on* event-handler attributes and javascript:/data-executable URLs, while
+     preserving the normal formatting (headings, lists, links, code, images,
+     tables) that marked produces. Dependency-free and offline-safe; if a
+     trusted sanitizer (DOMPurify) is already loaded we prefer it. */
+  const FORBIDDEN_TAGS = new Set([
+    "script", "style", "iframe", "object", "embed", "link", "meta", "base",
+    "form", "noscript", "template", "frame", "frameset", "applet",
+  ]);
+  const URL_ATTRS = ["href", "src", "xlink:href", "action", "formaction", "background", "poster"];
+  const SAFE_URL = /^(?:https?:|mailto:|tel:|ftp:|\/|#|\.|data:image\/(?:png|jpe?g|gif|webp|svg\+xml|avif))/i;
+
+  function sanitizeNode(root) {
+    // Walk the whole subtree; collect nodes first so removal during iteration is safe.
+    const all = root.querySelectorAll("*");
+    for (let i = all.length - 1; i >= 0; i--) {
+      const el = all[i];
+      const tag = (el.tagName || "").toLowerCase();
+      if (FORBIDDEN_TAGS.has(tag)) { el.remove(); continue; }
+      // Copy attribute list because we mutate it while iterating.
+      const attrs = Array.prototype.slice.call(el.attributes || []);
+      for (const attr of attrs) {
+        const name = (attr.name || "").toLowerCase();
+        const val = attr.value || "";
+        // Strip all inline event handlers (onclick, onerror, onload, ...).
+        if (name.startsWith("on")) { el.removeAttribute(attr.name); continue; }
+        // Block style attributes to avoid expression()/url(javascript:) vectors.
+        if (name === "style") { el.removeAttribute(attr.name); continue; }
+        // srcdoc on a (forbidden) iframe would be gone, but strip defensively.
+        if (name === "srcdoc") { el.removeAttribute(attr.name); continue; }
+        // Validate URL-bearing attributes; remove anything that isn't an allowlisted scheme.
+        if (URL_ATTRS.indexOf(name) !== -1) {
+          // Strip whitespace + control chars (NUL..0x1F, 0x7F) so tricks like
+          // "java\tscript:" / "java\nscript:" can't smuggle a bad scheme past the check.
+          const normalized = val.replace(/[\x00-\x1f\x7f\s]+/g, "").toLowerCase();
+          if (/^(?:javascript|vbscript):/i.test(normalized) || /^data:text\/html/i.test(normalized)) {
+            el.removeAttribute(attr.name);
+            continue;
+          }
+          // If there's a value and it's neither an allowlisted scheme nor a safe
+          // relative/anchor form, drop the attribute.
+          if (normalized && !SAFE_URL.test(normalized) && !SAFE_URL.test(val.trim())) {
+            el.removeAttribute(attr.name);
+          }
+        }
+      }
+    }
+    return root;
+  }
+
+  function sanitizeHtml(html) {
+    const str = String(html == null ? "" : html);
+    if (!str) return "";
+    // Prefer a trusted sanitizer if one is present on the page.
+    if (window.DOMPurify && typeof window.DOMPurify.sanitize === "function") {
+      try { return window.DOMPurify.sanitize(str, { FORBID_TAGS: ["style"] }); } catch (e) { /* fall through */ }
+    }
+    let tpl;
+    try {
+      tpl = document.createElement("template");
+      tpl.innerHTML = str;                 // inert parse: no scripts run, no resources load
+      sanitizeNode(tpl.content);
+      return tpl.innerHTML;
+    } catch (e) {
+      // As a last resort, fall back to text-only (escaped) rendering.
+      return esc(str);
+    }
+  }
+
+  const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).replace(/\n/g, "<br>"));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
   const thread = $("#thread");
@@ -90,23 +170,23 @@
   function courseCard(c, featured) {
     const card = document.createElement("div");
     card.className = "course" + (featured ? " featured" : "");
-    const meta = c.meta.map((m) => `<span class="cpill${m[2] ? " rating" : ""}"><i class="fa-solid ${m[0]}"></i>${m[1]}</span>`).join("");
+    const meta = c.meta.map((m) => `<span class="cpill${m[2] ? " rating" : ""}"><i class="fa-solid ${icon(m[0])}"></i>${esc(m[1])}</span>`).join("");
     const variants = (c.variants || []).map((v) => `
       <div class="variant">
-        <div class="vdate"><i class="fa-solid fa-calendar-day"></i>${v.date}</div>
-        <div class="vloc">${v.loc}</div>
+        <div class="vdate"><i class="fa-solid fa-calendar-day"></i>${esc(v.date)}</div>
+        <div class="vloc">${esc(v.loc)}</div>
         <div class="vseats${v.seats <= 3 ? " low" : ""}">${v.seats <= 3 ? v.seats + " pladser" : "Ledig"}</div>
         <button class="vbook">Vælg</button>
       </div>`).join("");
     card.innerHTML = `
       <div class="course-h">
-        <div class="course-thumb${c.image ? " has-img" : ""}">${c.image ? `<img src="${esc(c.image)}" alt="${esc(c.title)}" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.replaceWith(Object.assign(document.createElement('i'),{className:'fa-solid ${c.icon}'}))">` : `<i class="fa-solid ${c.icon}"></i>`}</div>
+        <div class="course-thumb${c.image ? " has-img" : ""}">${c.image ? `<img src="${esc(c.image)}" alt="${esc(c.title)}" loading="lazy" onerror="this.parentNode.classList.remove('has-img');this.replaceWith(Object.assign(document.createElement('i'),{className:'fa-solid ${icon(c.icon)}'}))">` : `<i class="fa-solid ${icon(c.icon)}"></i>`}</div>
         <div class="course-main">
           ${featured ? '<div class="course-featured-tag"><i class="fa-solid fa-wand-magic-sparkles"></i> Bedste match</div>' : ""}
           <div class="course-kick">${esc(c.vendor)}</div>
           <div class="course-title">${esc(c.title)}</div>
         </div>
-        <div class="course-price">${c.old ? `<span class="old">${c.old}</span>` : ""}<span class="p">${c.price}</span>${c.agree ? '<span class="agree">Aftalepris</span>' : ""}</div>
+        <div class="course-price">${c.old ? `<span class="old">${esc(c.old)}</span>` : ""}<span class="p">${esc(c.price)}</span>${c.agree ? '<span class="agree">Aftalepris</span>' : ""}</div>
         <div class="course-chev">${chevDown}</div>
       </div>
       <div class="course-meta">${meta}</div>
@@ -370,7 +450,7 @@
     let cards = body.querySelector(".cards");
     if (!cards) { cards = document.createElement("div"); cards.className = "cards"; body.appendChild(cards); }
     const wrap = document.createElement("div");
-    wrap.innerHTML = html;
+    wrap.innerHTML = sanitizeHtml(html);
     cards.appendChild(wrap);
     down();
   }

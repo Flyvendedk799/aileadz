@@ -1,0 +1,89 @@
+{% extends "fm_base.html" %}
+{% block page_id %}team{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Mit team{% endblock %}
+{% block topbar_sub %}Dine direkte referencer, deres læring og ordrer, der venter på din godkendelse.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
+    <a class="pg-tab active" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-people-group"></i> Mit team</a>
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a>
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-shield-halved"></i> Compliance</a>
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.bulk_assign_form') }}"><i class="fa-solid fa-route"></i> Tildel forløb</a>
+  </div>
+
+  {% set s = summary or {} %}
+  <div class="kpi-row">
+    <div class="kpi-tile"><div class="kl">Teamstørrelse</div><div class="kv tnum">{{ s.team_size|default(0) }}</div><div class="kd">direkte referencer</div></div>
+    <div class="kpi-tile"><div class="kl">Gns. fremdrift</div><div class="kv tnum">{{ s.avg_progress|default(0) }}%</div><div class="kd">på tværs af teamet</div></div>
+    <div class="kpi-tile"><div class="kl">Afventer min godkendelse</div><div class="kv tnum" style="color:var(--fm-warning)">{{ s.pending_approvals|default(0) }}</div><div class="kd">ordrer</div></div>
+    <div class="kpi-tile"><div class="kl">Kompetencegab</div><div class="kv tnum" style="color:var(--fm-danger)">{{ s.with_gaps|default(0) }}</div><div class="kd">medarb. under mål</div></div>
+  </div>
+
+  {% if reports %}
+  <!-- Direct reports -->
+  <div class="fm-table-wrap">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-people-group"></i></span>
+        <h3 style="font-size:15px;font-weight:700">Mine medarbejdere ({{ reports|length }})</h3>
+      </div>
+      <a href="{{ url_for('hr_dashboard.bulk_assign_form') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-route"></i> Tildel forløb</a>
+    </div>
+    <table class="fm-table">
+      <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Fuldførte kurser</th><th>Fremdrift</th><th>Kompetencegab</th><th>Afventer godk.</th></tr></thead>
+      <tbody>
+        {% for r in reports %}
+        {% set prog = (r.avg_progress or 0)|float|round(0)|int %}
+        <tr>
+          <td style="font-weight:650">{{ r.name }}{% if r.job_title %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ r.job_title }}</div>{% endif %}</td>
+          <td><span class="fm-badge">{{ r.department or '—' }}</span></td>
+          <td class="tnum">{{ r.courses_completed or 0 }} / {{ r.courses_enrolled or 0 }}</td>
+          <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [prog,100]|min }}%;background:var(--fm-primary)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ prog }}%</span></td>
+          <td>{% if (r.skill_gaps or 0) > 0 %}<span class="fm-badge amber">{{ r.skill_gaps }} gab</span>{% else %}<span class="fm-badge green">Ingen</span>{% endif %}</td>
+          <td>{% if (r.orders_pending_approval or 0) > 0 %}<span class="fm-badge amber">{{ r.orders_pending_approval }}</span>{% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Orders awaiting MY approval -->
+  <div class="fm-table-wrap" style="margin-top:24px">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-clipboard-check"></i></span>
+        <h3 style="font-size:15px;font-weight:700">Ordrer der afventer min godkendelse</h3>
+      </div>
+      <span class="fm-badge {{ 'amber' if pending_for_me else '' }}">{{ pending_for_me|length }}</span>
+    </div>
+    <table class="fm-table">
+      <thead><tr><th>Medarbejder</th><th>Kursus</th><th>Pris</th><th>Anmodet</th><th></th></tr></thead>
+      <tbody>
+        {% for a in pending_for_me %}
+        <tr>
+          <td style="font-weight:650">{{ a.requester_name }}{% if a.requester_department %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ a.requester_department }}</div>{% endif %}</td>
+          <td>{{ a.product_title or '—' }}</td>
+          <td class="mono">{{ '{:,.0f}'.format((a.price or 0)|float).replace(',','.') }} kr</td>
+          <td style="font-size:12px;color:var(--fm-ink-2)">{{ a.requested_at }}</td>
+          <td style="text-align:right"><a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-gavel"></i> Behandl</a></td>
+        </tr>
+        {% else %}
+        <tr><td colspan="5" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen ordrer afventer din godkendelse.</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+
+  {% else %}
+  <!-- Empty state: manages nobody -->
+  <div class="fm-card" style="padding:48px 24px;text-align:center;margin-top:8px">
+    <i class="fa-solid fa-people-group" style="font-size:34px;color:var(--fm-ink-3);margin-bottom:14px;display:block"></i>
+    <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">Du har ingen direkte referencer endnu</h3>
+    <p style="color:var(--fm-ink-2);max-width:460px;margin:0 auto 16px">Når medarbejdere får dig sat som deres nærmeste leder, vises deres læring, kompetencegab og godkendelser her.</p>
+    <a href="{{ url_for('hr_dashboard.employee_progress') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-users"></i> Se alle medarbejdere</a>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

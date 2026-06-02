@@ -3841,6 +3841,504 @@ def create_hr_dashboard_blueprint():
 
         return redirect(url_for('hr_dashboard.widget_creator'))
 
+    # ══════════════════════════════════════════════════════════════════
+    # Feature 1: Manager Team Cockpit (activates company_users.manager_user_id)
+    # ══════════════════════════════════════════════════════════════════
+    @hr_dashboard_bp.route('/team')
+    def team_cockpit():
+        """Manager view: the logged-in user's direct reports + orders awaiting
+        MY approval. A direct report is a company_users row whose
+        manager_user_id == my users.id (session user_id)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhedsoplysninger ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        manager_id = session.get('user_id')
+        reports = []
+        pending_for_me = []
+        summary = {'team_size': 0, 'avg_progress': 0, 'pending_approvals': 0,
+                   'total_completed': 0, 'with_gaps': 0}
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Direct reports + learning snapshot (company-scoped, manager-scoped).
+            cur.execute("""
+                SELECT
+                    cu.user_id,
+                    COALESCE(cu.full_name, u.username) AS name,
+                    u.username,
+                    cu.department, cu.job_title, cu.status,
+                    COUNT(DISTINCT co.id) AS courses_enrolled,
+                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) AS courses_completed,
+                    COUNT(DISTINCT CASE WHEN co.status = 'pending_approval' THEN co.id END) AS orders_pending_approval,
+                    COALESCE(AVG(elp.progress_percentage), 0) AS avg_progress
+                FROM company_users cu
+                JOIN users u ON cu.user_id = u.id
+                LEFT JOIN course_orders co
+                    ON cu.user_id = co.user_id AND cu.company_id = co.company_id
+                LEFT JOIN employee_learning_progress elp
+                    ON cu.user_id = elp.user_id AND cu.company_id = elp.company_id
+                WHERE cu.company_id = %s AND cu.manager_user_id = %s
+                GROUP BY cu.user_id, name, u.username, cu.department, cu.job_title, cu.status
+                ORDER BY name
+            """, (company['id'], manager_id))
+            reports = cur.fetchall() or []
+
+            report_ids = [r['user_id'] for r in reports if r.get('user_id')]
+
+            # Skill-gap snapshot per report: count skills below target level.
+            gaps_by_user = {}
+            if report_ids:
+                placeholders = ','.join(['%s'] * len(report_ids))
+                cur.execute(f"""
+                    SELECT esm.employee_id AS user_id,
+                           COUNT(*) AS gap_count
+                    FROM employee_skills_matrix esm
+                    WHERE esm.company_id = %s
+                      AND esm.employee_id IN ({placeholders})
+                      AND esm.target_level > 0
+                      AND COALESCE(esm.current_level, 0) < esm.target_level
+                    GROUP BY esm.employee_id
+                """, tuple([company['id']] + report_ids))
+                for row in cur.fetchall() or []:
+                    gaps_by_user[row['user_id']] = int(row['gap_count'] or 0)
+
+            for r in reports:
+                r['skill_gaps'] = gaps_by_user.get(r['user_id'], 0)
+
+            # Orders awaiting MY approval: pending order_approvals where the
+            # requester's manager_user_id == me (manager-of-record approvals).
+            cur.execute("""
+                SELECT oa.id AS approval_id, oa.order_id, oa.status, oa.requested_at,
+                       co.product_title, co.price, co.department,
+                       COALESCE(reqcu.full_name, requ.username) AS requester_name,
+                       reqcu.department AS requester_department
+                FROM order_approvals oa
+                JOIN course_orders co ON oa.order_id = co.order_id
+                JOIN company_users reqcu
+                    ON oa.requester_user_id = reqcu.user_id AND oa.company_id = reqcu.company_id
+                JOIN users requ ON oa.requester_user_id = requ.id
+                WHERE oa.company_id = %s
+                  AND oa.status = 'pending'
+                  AND reqcu.manager_user_id = %s
+                ORDER BY oa.requested_at DESC
+                LIMIT 50
+            """, (company['id'], manager_id))
+            pending_for_me = cur.fetchall() or []
+            cur.close()
+
+            # Summary KPIs.
+            summary['team_size'] = len(reports)
+            summary['pending_approvals'] = len(pending_for_me)
+            summary['total_completed'] = sum(int(r.get('courses_completed') or 0) for r in reports)
+            summary['with_gaps'] = sum(1 for r in reports if (r.get('skill_gaps') or 0) > 0)
+            if reports:
+                summary['avg_progress'] = round(
+                    sum(float(r.get('avg_progress') or 0) for r in reports) / len(reports), 1)
+        except Exception as e:
+            current_app.logger.error(f"Error loading team cockpit: {e}")
+            flash("Fejl ved indlaesning af teamoverblik.", "danger")
+            reports, pending_for_me = [], []
+
+        return render_template('fm/team_cockpit.html',
+                               company=company,
+                               reports=reports,
+                               pending_for_me=pending_for_me,
+                               summary=summary,
+                               active_hr_page='team')
+
+    # ══════════════════════════════════════════════════════════════════
+    # Feature 2: Compliance Requirement Matrix (read-only derived status)
+    # ══════════════════════════════════════════════════════════════════
+    @hr_dashboard_bp.route('/compliance')
+    def compliance_matrix():
+        """Read compliance_requirements (company-scoped) and DERIVE per-employee
+        status (compliant / expiring / overdue) from completed courses within the
+        recurrence window. Nothing is stored; status is computed at read time."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhedsoplysninger ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        matrix = []
+        departments = []
+        roles = []
+        totals = {'requirements': 0, 'compliant': 0, 'expiring': 0, 'overdue': 0}
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Requirements for this company.
+            cur.execute("""
+                SELECT id, title, category, applies_to_department, applies_to_role,
+                       required_course_handle, recurrence_months, is_statutory, created_at
+                FROM compliance_requirements
+                WHERE company_id = %s
+                ORDER BY is_statutory DESC, category, title
+            """, (company['id'],))
+            requirements = cur.fetchall() or []
+
+            # All active employees with the fields needed to scope a requirement.
+            cur.execute("""
+                SELECT cu.user_id,
+                       COALESCE(cu.full_name, u.username) AS name,
+                       u.username, cu.department, cu.role, cu.job_title
+                FROM company_users cu
+                JOIN users u ON cu.user_id = u.id
+                WHERE cu.company_id = %s AND cu.status = 'active'
+                ORDER BY name
+            """, (company['id'],))
+            employees = cur.fetchall() or []
+
+            # Build a per-user completion index from course_orders (the schema's
+            # primary derivation source). Each entry: (handle, title, category, completed_at).
+            # course_orders has no category column, so category is matched via title/handle.
+            cur.execute("""
+                SELECT co.user_id,
+                       LOWER(COALESCE(co.product_handle, '')) AS handle,
+                       LOWER(COALESCE(co.product_title, '')) AS title,
+                       COALESCE(co.completion_date, co.updated_at, co.created_at) AS completed_at
+                FROM course_orders co
+                WHERE co.company_id = %s AND co.completion_status = 'completed'
+            """, (company['id'],))
+            completions = cur.fetchall() or []
+
+            # Optional secondary source: user_completed_courses (per the contract),
+            # tolerated if the table exists; ignored otherwise.
+            try:
+                cur.execute("""
+                    SELECT cu.user_id,
+                           LOWER(COALESCE(ucc.course_handle, '')) AS handle,
+                           LOWER(COALESCE(ucc.course_title, '')) AS title,
+                           ucc.completed_at AS completed_at
+                    FROM user_completed_courses ucc
+                    JOIN company_users cu
+                        ON ucc.user_id = cu.user_id AND cu.company_id = %s
+                    WHERE cu.status = 'active'
+                """, (company['id'],))
+                completions += (cur.fetchall() or [])
+            except Exception:
+                # Table may not exist on this tenant; course_orders is sufficient.
+                pass
+            cur.close()
+
+            # Index completions by user_id.
+            comp_by_user = defaultdict(list)
+            for c in completions:
+                comp_by_user[c['user_id']].append(c)
+
+            now = datetime.now()
+
+            def _matches(req, emp):
+                dept = req.get('applies_to_department')
+                role = req.get('applies_to_role')
+                if dept and (emp.get('department') or '') != dept:
+                    return False
+                if role and (emp.get('role') or '') != role:
+                    return False
+                return True
+
+            def _status_for(req, emp):
+                """Return 'compliant' | 'expiring' | 'overdue' for one (req, emp)."""
+                handle = (req.get('required_course_handle') or '').strip().lower()
+                category = (req.get('category') or '').strip().lower()
+                recurrence = int(req.get('recurrence_months') or 0)
+
+                # Find the most recent matching completion.
+                best = None
+                for c in comp_by_user.get(emp['user_id'], []):
+                    matched = False
+                    if handle and (handle == c['handle'] or handle in c['title']):
+                        matched = True
+                    elif not handle and category and (
+                            category in c['title'] or category in c['handle']):
+                        matched = True
+                    if not matched:
+                        continue
+                    when = c.get('completed_at')
+                    if when is None:
+                        continue
+                    if not isinstance(when, datetime):
+                        try:
+                            when = datetime.combine(when, datetime.min.time())
+                        except Exception:
+                            continue
+                    if best is None or when > best:
+                        best = when
+
+                if best is None:
+                    return 'overdue'  # missing == overdue per the contract
+                if recurrence <= 0:
+                    return 'compliant'  # one-time, never expires
+                expiry = best + timedelta(days=recurrence * 30)
+                if expiry < now:
+                    return 'overdue'
+                if (expiry - now).days < 60:
+                    return 'expiring'
+                return 'compliant'
+
+            for req in requirements:
+                applicable = [e for e in employees if _matches(req, e)]
+                row = {
+                    'requirement': req,
+                    'applicable': len(applicable),
+                    'compliant': 0, 'expiring': 0, 'overdue': 0,
+                    'employees': [],
+                }
+                for emp in applicable:
+                    st = _status_for(req, emp)
+                    row[st] += 1
+                    row['employees'].append({
+                        'user_id': emp['user_id'],
+                        'name': emp['name'],
+                        'department': emp.get('department'),
+                        'status': st,
+                    })
+                # Compliance rate for the requirement.
+                row['rate'] = round((row['compliant'] / row['applicable'] * 100), 0) if row['applicable'] else 0
+                matrix.append(row)
+                totals['compliant'] += row['compliant']
+                totals['expiring'] += row['expiring']
+                totals['overdue'] += row['overdue']
+
+            totals['requirements'] = len(requirements)
+            departments = sorted({(e.get('department') or '') for e in employees if e.get('department')})
+            roles = sorted({(e.get('role') or '') for e in employees if e.get('role')})
+        except Exception as e:
+            current_app.logger.error(f"Error loading compliance matrix: {e}")
+            flash("Fejl ved indlaesning af compliance-matrix.", "danger")
+            matrix, totals = [], {'requirements': 0, 'compliant': 0, 'expiring': 0, 'overdue': 0}
+
+        return render_template('fm/compliance.html',
+                               company=company,
+                               matrix=matrix,
+                               totals=totals,
+                               departments=departments,
+                               roles=roles,
+                               active_hr_page='compliance')
+
+    @hr_dashboard_bp.route('/compliance/add', methods=['POST'])
+    def add_compliance_requirement():
+        """Seed a compliance requirement so HR can build the matrix."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhedsoplysninger ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        title = (request.form.get('title') or '').strip()
+        category = (request.form.get('category') or '').strip()
+        dept = (request.form.get('applies_to_department') or '').strip() or None
+        role = (request.form.get('applies_to_role') or '').strip() or None
+        handle = (request.form.get('required_course_handle') or '').strip() or None
+        try:
+            recurrence = int(request.form.get('recurrence_months') or 0)
+        except (ValueError, TypeError):
+            recurrence = 0
+        if recurrence < 0:
+            recurrence = 0
+        is_statutory = 1 if request.form.get('is_statutory') in ('1', 'on', 'true', 'ja') else 0
+
+        if not title:
+            flash("Titel paa kravet er paakraevet.", "warning")
+            return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("""
+                INSERT INTO compliance_requirements
+                    (company_id, title, category, applies_to_department, applies_to_role,
+                     required_course_handle, recurrence_months, is_statutory)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            """, (company['id'], title[:255], category[:100] if category else None,
+                  dept, role, handle, recurrence, is_statutory))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"Compliance-krav '{title}' tilfoejet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error adding compliance requirement: {e}")
+            flash("Fejl ved oprettelse af compliance-krav.", "danger")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    # ══════════════════════════════════════════════════════════════════
+    # Feature 3: HR Bulk-Assign Learning Path + Nudge
+    # ══════════════════════════════════════════════════════════════════
+    @hr_dashboard_bp.route('/assign-path', methods=['GET'])
+    def bulk_assign_form():
+        """Form: pick a learning path + multiple employees to assign + nudge."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhedsoplysninger ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        paths = []
+        employees = []
+        departments = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT id, path_name, path_category, difficulty_level
+                FROM learning_paths
+                WHERE company_id = %s AND is_active = 1
+                ORDER BY path_name
+            """, (company['id'],))
+            paths = cur.fetchall() or []
+
+            cur.execute("""
+                SELECT cu.user_id,
+                       COALESCE(cu.full_name, u.username) AS name,
+                       u.username, cu.department, cu.job_title
+                FROM company_users cu
+                JOIN users u ON cu.user_id = u.id
+                WHERE cu.company_id = %s AND cu.status = 'active'
+                ORDER BY cu.department, name
+            """, (company['id'],))
+            employees = cur.fetchall() or []
+            cur.close()
+            departments = sorted({(e.get('department') or '') for e in employees if e.get('department')})
+        except Exception as e:
+            current_app.logger.error(f"Error loading bulk-assign form: {e}")
+            flash("Fejl ved indlaesning af tildelingsformular.", "danger")
+
+        return render_template('fm/bulk_assign.html',
+                               company=company,
+                               paths=paths,
+                               employees=employees,
+                               departments=departments,
+                               active_hr_page='assign_path')
+
+    @hr_dashboard_bp.route('/assign-path', methods=['POST'])
+    def bulk_assign_path():
+        """Assign one learning_path to many employees: insert
+        employee_learning_progress rows (mirroring assign_learning_path) and
+        create a nudge notification for each assigned employee. Requires a Danish
+        confirmation (confirm='ja'). Single commit; partial-failure tolerant."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhedsoplysninger ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        confirm = (request.form.get('confirm') or '').strip().lower()
+        if confirm != 'ja':
+            flash("Bekraeft tildelingen ved at skrive 'ja' i bekraeftelsesfeltet.", "warning")
+            return redirect(url_for('hr_dashboard.bulk_assign_form'))
+
+        try:
+            path_id = int(request.form.get('path_id') or 0)
+        except (ValueError, TypeError):
+            path_id = 0
+        if not path_id:
+            flash("Vaelg et laeringsforloeb.", "warning")
+            return redirect(url_for('hr_dashboard.bulk_assign_form'))
+
+        # Parse employee_ids[] (multi-select / checkboxes).
+        raw_ids = request.form.getlist('employee_ids[]') or request.form.getlist('employee_ids')
+        employee_ids = []
+        for v in raw_ids:
+            try:
+                employee_ids.append(int(v))
+            except (ValueError, TypeError):
+                continue
+        employee_ids = list(dict.fromkeys(employee_ids))  # de-dupe, keep order
+
+        if not employee_ids:
+            flash("Vaelg mindst en medarbejder.", "warning")
+            return redirect(url_for('hr_dashboard.bulk_assign_form'))
+
+        due_date = request.form.get('due_date') or None
+        assigned = 0
+        skipped = 0
+        nudged = 0
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+            # Validate the path belongs to this company.
+            cur.execute("""
+                SELECT id, path_name FROM learning_paths
+                WHERE id = %s AND company_id = %s
+            """, (path_id, company['id']))
+            path = cur.fetchone()
+            if not path:
+                cur.close()
+                flash("Laeringsforloeb ikke fundet.", "danger")
+                return redirect(url_for('hr_dashboard.bulk_assign_form'))
+            path_name = path['path_name']
+
+            # Restrict to employees that actually belong to this company (isolation).
+            placeholders = ','.join(['%s'] * len(employee_ids))
+            cur.execute(f"""
+                SELECT user_id FROM company_users
+                WHERE company_id = %s AND status = 'active'
+                  AND user_id IN ({placeholders})
+            """, tuple([company['id']] + employee_ids))
+            valid_ids = [r['user_id'] for r in (cur.fetchall() or [])]
+
+            sender_id = session.get('user_id')
+            for uid in valid_ids:
+                try:
+                    # Skip if already enrolled in this path.
+                    cur.execute("""
+                        SELECT id FROM employee_learning_progress
+                        WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
+                    """, (uid, company['id'], path_id))
+                    if cur.fetchone():
+                        skipped += 1
+                        continue
+                    cur.execute("""
+                        INSERT INTO employee_learning_progress
+                            (user_id, company_id, learning_path_id, status,
+                             progress_percentage, due_date, started_at)
+                        VALUES (%s, %s, %s, 'not_started', 0, %s, NOW())
+                    """, (uid, company['id'], path_id, due_date))
+                    assigned += 1
+
+                    # Nudge: per-employee notification (mirrors notify code shape).
+                    try:
+                        cur.execute("""
+                            INSERT INTO company_notifications
+                                (company_id, recipient_user_id, sender_user_id,
+                                 target_roles, title, message, is_urgent, is_read)
+                            VALUES (%s, %s, %s, NULL, %s, %s, 0, 0)
+                        """, (company['id'], uid, sender_id,
+                              "Nyt laeringsforloeb tildelt"[:255],
+                              f"Du er blevet tildelt laeringsforloebet '{path_name}'. "
+                              f"Log ind og kom i gang." +
+                              (f" Frist: {due_date}." if due_date else "")))
+                        nudged += 1
+                    except Exception as ne:
+                        # Notification failure must not abort the assignment.
+                        current_app.logger.warning(f"Bulk-assign nudge skipped for user {uid}: {ne}")
+                except Exception as ie:
+                    current_app.logger.warning(f"Bulk-assign skipped user {uid}: {ie}")
+                    continue
+
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash(f"{assigned} medarbejder(e) tildelt '{path_name}' "
+                  f"({nudged} notificeret, {skipped} allerede tilmeldt).", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error in bulk-assign learning path: {e}")
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
+            flash("Fejl ved bulk-tildeling af laeringsforloeb.", "danger")
+        return redirect(url_for('hr_dashboard.bulk_assign_form'))
+
     return hr_dashboard_bp
 
 # Create the blueprint instance

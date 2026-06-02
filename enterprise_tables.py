@@ -863,6 +863,23 @@ def ensure_enterprise_tables(app):
                     INDEX idx_session (session_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Compliance Requirements (statutory / mandatory training rules) ──
+                # Status is DERIVED read-only elsewhere (completed course within the
+                # recurrence window); this table stores ONLY the requirement definition.
+                """CREATE TABLE IF NOT EXISTS compliance_requirements (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    title VARCHAR(255) NOT NULL,
+                    category VARCHAR(100),
+                    applies_to_department VARCHAR(100) NULL,
+                    applies_to_role VARCHAR(50) NULL,
+                    required_course_handle VARCHAR(255) NULL,
+                    recurrence_months INT DEFAULT 0,
+                    is_statutory TINYINT(1) DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_company (company_id)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company Widget Settings (embeddable chatbot widget) ──
                 """CREATE TABLE IF NOT EXISTS company_widget_settings (
                     id INT AUTO_INCREMENT PRIMARY KEY,

@@ -20,6 +20,14 @@ try:
 except ImportError:
     redis = None
 
+# Seat / subscription governance (guarded: must never crash boot if missing).
+# seat_governance.can_add_employee FAILS OPEN internally, so a None module here
+# simply means no seat enforcement (legacy behaviour) rather than a hard error.
+try:
+    import seat_governance
+except Exception:  # pragma: no cover - import-safety guard
+    seat_governance = None
+
 # Stdlib only — used by the SSRF guard for webhook delivery.
 try:
     import socket
@@ -832,7 +840,23 @@ def create_employee():
         
         if cur.fetchone():
             return jsonify({'error': 'Employee with this email already exists'}), 409
-        
+
+        # Seat / trial governance: block the add when the company is out of seats
+        # or its trial has expired. Guarded + fail-open inside seat_governance,
+        # so a glitch never wrongly blocks a legitimate add.
+        if seat_governance is not None:
+            try:
+                ok, reason = seat_governance.can_add_employee(g.company_id)
+            except Exception:
+                ok, reason = True, None
+            if not ok:
+                cur.close()
+                code = 'trial_expired' if (reason and 'prøveperiode' in reason) else 'seat_limit'
+                return jsonify({
+                    'error': code,
+                    'message': reason or 'Kan ikke tilføje flere medarbejdere.'
+                }), 403
+
         # Create employee
         cur.execute("""
             INSERT INTO company_users (
@@ -1485,6 +1509,28 @@ def bulk_import_employees():
         skipped = 0
         errors = []
 
+        # Seat / trial governance. Establish how many seats are available up
+        # front, then consume the budget as we create. Guarded + fail-open:
+        # if seat_governance is unavailable or errors, seats_remaining stays
+        # None which means "do not enforce" (legacy behaviour, never 500s).
+        seats_remaining = None
+        seat_skipped = 0
+        seat_limit_reason = None
+        if seat_governance is not None:
+            try:
+                status = seat_governance.trial_status(g.company_id)
+                if status.get('expired'):
+                    # Trial expired: nothing can be added. Preserve the existing
+                    # JSON shape; report every row as skipped-for-seat.
+                    seats_remaining = 0
+                    seat_limit_reason = 'trial_expired'
+                else:
+                    left = status.get('seats_left')
+                    if isinstance(left, int):
+                        seats_remaining = max(left, 0)
+            except Exception:
+                seats_remaining = None  # fail open -> no enforcement
+
         for i, emp in enumerate(employees):
             if not emp.get('email') or not emp.get('full_name'):
                 errors.append(f"Row {i+1}: missing email or full_name")
@@ -1496,6 +1542,15 @@ def bulk_import_employees():
                         (g.company_id, emp['email']))
             if cur.fetchone():
                 skipped += 1
+                continue
+
+            # Stop adding once the seat budget is exhausted. Remaining valid
+            # rows are counted as seat-skipped rather than failing the request.
+            if seats_remaining is not None and seats_remaining <= 0:
+                seat_skipped += 1
+                skipped += 1
+                if seat_limit_reason is None:
+                    seat_limit_reason = 'seat_limit'
                 continue
 
             cur.execute("""
@@ -1510,6 +1565,8 @@ def bulk_import_employees():
                 emp.get('employment_type', 'full_time'), emp.get('phone', ''),
             ))
             created += 1
+            if seats_remaining is not None:
+                seats_remaining -= 1
 
             # Fire webhook per employee
             _fire_webhook(g.company_id, 'employee.added', {'email': emp['email'], 'name': emp['full_name']})
@@ -1525,11 +1582,30 @@ def bulk_import_employees():
         current_app.mysql.connection.commit()
         cur.close()
 
-        return jsonify({
+        result = {
             'success': True,
             'created': created, 'skipped': skipped,
             'errors': errors[:20]
-        })
+        }
+        # Surface seat governance outcome without breaking the existing shape.
+        if seat_skipped or seat_limit_reason:
+            result['seat_skipped'] = seat_skipped
+            if seat_limit_reason == 'trial_expired':
+                result['seat_limit'] = 'trial_expired'
+                result['message'] = (
+                    'Din prøveperiode er udløbet. %d medarbejder(e) blev ikke '
+                    'tilføjet. Opgradér dit abonnement.' % seat_skipped
+                ) if seat_skipped else (
+                    'Din prøveperiode er udløbet. Opgradér dit abonnement for at '
+                    'tilføje medarbejdere.'
+                )
+            elif seat_skipped:
+                result['seat_limit'] = 'seat_limit'
+                result['message'] = (
+                    'Pladsgrænsen er nået. %d medarbejder(e) blev ikke tilføjet. '
+                    'Opgradér dit abonnement for flere pladser.' % seat_skipped
+                )
+        return jsonify(result)
     except Exception as e:
         return jsonify({'error': f'Bulk import failed: {str(e)}'}), 500
 

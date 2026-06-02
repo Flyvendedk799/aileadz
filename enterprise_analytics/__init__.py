@@ -341,10 +341,31 @@ class AdvancedAnalytics:
                         'roles': {}
                     }
                 
-                # Convert skill levels to numeric
-                level_map = {'novice': 1, 'beginner': 2, 'intermediate': 3, 'advanced': 4, 'expert': 5}
-                current_numeric = level_map.get(current_level, 1)
-                target_numeric = level_map.get(target_level, 3)
+                # Convert skill levels to numeric. employee_skills_matrix.current_level
+                # and company_skill_targets.target_level are INT columns (1..5), so an
+                # int must pass through unchanged — mapping it through a string-keyed
+                # table (level_map.get(3, default)) always returned the default and
+                # corrupted every gap. Map strings (EN + Danish labels) only once.
+                # Danish 4-level canonical scale (matches hr_tools.SKILL_LEVEL_MAP and
+                # hr_dashboard): begynder/mellem/avanceret/ekspert = 1..4.
+                level_map = {
+                    'begynder': 1, 'mellem': 2, 'oevet': 2, 'øvet': 2, 'erfaren': 3,
+                    'avanceret': 3, 'ekspert': 4,
+                    'novice': 1, 'beginner': 2, 'intermediate': 3, 'advanced': 4, 'expert': 4,
+                }
+
+                def _to_level(v, default):
+                    if isinstance(v, bool):
+                        return default
+                    if isinstance(v, (int, float)):
+                        return max(0, min(5, int(v)))
+                    try:
+                        return max(0, min(5, int(float(str(v).strip()))))
+                    except (TypeError, ValueError):
+                        return level_map.get(str(v).strip().lower(), default)
+
+                current_numeric = _to_level(current_level, 1)
+                target_numeric = _to_level(target_level, 3)
                 
                 skill_analysis[dept][skill]['employees'] += 1
                 skill_analysis[dept][skill]['avg_current_level'] += current_numeric

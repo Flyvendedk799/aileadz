@@ -1,0 +1,129 @@
+{% extends "fm_base.html" %}
+{% block page_id %}compliance{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Compliance{% endblock %}
+{% block topbar_sub %}Lovpligtige og interne krav · status udledes automatisk fra gennemførte kurser.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-people-group"></i> Mit team</a>
+    <a class="pg-tab active" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-shield-halved"></i> Compliance</a>
+    <a class="pg-tab" href="{{ url_for('hr_dashboard.bulk_assign_form') }}"><i class="fa-solid fa-route"></i> Tildel forløb</a>
+  </div>
+
+  {% set t = totals or {} %}
+  <div class="fm-flex fm-gap8" style="margin-bottom:14px;justify-content:flex-end">
+    <button class="btn btn-primary btn-sm" onclick="openComplianceModal()"><i class="fa-solid fa-plus"></i> Tilføj krav</button>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-tile"><div class="kl">Krav</div><div class="kv tnum">{{ t.requirements|default(0) }}</div><div class="kd">definerede</div></div>
+    <div class="kpi-tile"><div class="kl">Opfyldt</div><div class="kv tnum" style="color:var(--fm-success)">{{ t.compliant|default(0) }}</div><div class="kd">medarb.-krav</div></div>
+    <div class="kpi-tile"><div class="kl">Udløber snart</div><div class="kv tnum" style="color:var(--fm-warning)">{{ t.expiring|default(0) }}</div><div class="kd">&lt; 60 dage</div></div>
+    <div class="kpi-tile"><div class="kl">Mangler / udløbet</div><div class="kv tnum" style="color:var(--fm-danger)">{{ t.overdue|default(0) }}</div><div class="kd">kræver handling</div></div>
+  </div>
+
+  {% if matrix %}
+  <div class="fm-table-wrap">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <h3 style="font-size:15px;font-weight:700">Compliance-matrix</h3>
+      <span class="fm-badge">{{ matrix|length }} krav</span>
+    </div>
+    <table class="fm-table">
+      <thead><tr><th>Krav</th><th>Gælder</th><th>Opfyldt</th><th>Udløber</th><th>Mangler</th><th>Opfyldelse</th><th></th></tr></thead>
+      <tbody>
+        {% for row in matrix %}
+        {% set req = row.requirement %}
+        {% set rate = (row.rate or 0)|int %}
+        {% set barcol = 'var(--fm-success)' if rate >= 90 else ('var(--fm-warning)' if rate >= 60 else 'var(--fm-danger)') %}
+        <tr>
+          <td style="font-weight:650">
+            {{ req.title }}
+            {% if req.is_statutory %}<span class="fm-badge red" style="margin-left:6px">Lovpligtig</span>{% endif %}
+            <div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">
+              {{ req.category or 'Uden kategori' }}{% if req.recurrence_months and req.recurrence_months > 0 %} · gentages hver {{ req.recurrence_months }} mdr.{% else %} · engangskrav{% endif %}
+            </div>
+          </td>
+          <td>
+            {% if req.applies_to_department %}<span class="fm-badge">{{ req.applies_to_department }}</span>{% else %}<span class="fm-badge teal">Alle afd.</span>{% endif %}
+            {% if req.applies_to_role %}<span class="fm-badge" style="margin-left:4px">{{ req.applies_to_role }}</span>{% endif %}
+            <div style="font-size:11px;color:var(--fm-ink-3);margin-top:2px">{{ row.applicable }} medarb.</div>
+          </td>
+          <td><span class="fm-badge green">{{ row.compliant }}</span></td>
+          <td>{% if row.expiring > 0 %}<span class="fm-badge amber">{{ row.expiring }}</span>{% else %}<span style="color:var(--fm-ink-3)">0</span>{% endif %}</td>
+          <td>{% if row.overdue > 0 %}<span class="fm-badge red">{{ row.overdue }}</span>{% else %}<span style="color:var(--fm-ink-3)">0</span>{% endif %}</td>
+          <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [rate,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ rate }}%</span></td>
+          <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="toggleDrill({{ loop.index0 }})"><i class="fa-solid fa-list-ul"></i> Detaljer</button></td>
+        </tr>
+        <tr id="drill-{{ loop.index0 }}" style="display:none">
+          <td colspan="7" style="background:var(--fm-bg-2, rgba(0,0,0,.02));padding:14px 18px">
+            {% if row.employees %}
+            <div class="fm-flex" style="flex-wrap:wrap;gap:8px">
+              {% for emp in row.employees %}
+              {% set cls = 'green' if emp.status == 'compliant' else ('amber' if emp.status == 'expiring' else 'red') %}
+              {% set lbl = 'Opfyldt' if emp.status == 'compliant' else ('Udløber' if emp.status == 'expiring' else 'Mangler') %}
+              <span class="fm-badge {{ cls }}" title="{{ emp.department or '' }}">{{ emp.name }} · {{ lbl }}</span>
+              {% endfor %}
+            </div>
+            {% else %}
+            <span style="color:var(--fm-ink-3);font-size:13px">Ingen medarbejdere er omfattet af dette krav.</span>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <!-- Empty state -->
+  <div class="fm-card" style="padding:48px 24px;text-align:center;margin-top:8px">
+    <i class="fa-solid fa-shield-halved" style="font-size:34px;color:var(--fm-ink-3);margin-bottom:14px;display:block"></i>
+    <h3 style="font-size:18px;font-weight:700;margin-bottom:8px">Ingen compliance-krav endnu</h3>
+    <p style="color:var(--fm-ink-2);max-width:480px;margin:0 auto 16px">Tilføj jeres lovpligtige og interne krav (f.eks. GDPR, arbejdsmiljø, brandsikkerhed). Status beregnes automatisk ud fra medarbejdernes gennemførte kurser.</p>
+    <button class="btn btn-primary btn-sm" onclick="openComplianceModal()"><i class="fa-solid fa-plus"></i> Tilføj krav</button>
+  </div>
+  {% endif %}
+</div>
+
+<!-- Add requirement modal -->
+<div id="complianceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+  <div class="fm-card" style="max-width:520px;width:92%;padding:22px;max-height:90vh;overflow:auto">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Tilføj compliance-krav</h3>
+    <form method="POST" action="{{ url_for('hr_dashboard.add_compliance_requirement') }}">
+      <label class="fm-field"><span>Titel *</span><input type="text" name="title" class="fm-input" required placeholder="f.eks. GDPR-grunduddannelse"></label>
+      <label class="fm-field"><span>Kategori</span><input type="text" name="category" class="fm-input" placeholder="f.eks. Databeskyttelse"></label>
+      <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+        <label class="fm-field" style="flex:1;min-width:180px"><span>Afdeling (tom = alle)</span>
+          <select name="applies_to_department" class="fm-input">
+            <option value="">Alle afdelinger</option>
+            {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+          </select>
+        </label>
+        <label class="fm-field" style="flex:1;min-width:180px"><span>Rolle (tom = alle)</span>
+          <select name="applies_to_role" class="fm-input">
+            <option value="">Alle roller</option>
+            {% for r in roles %}<option value="{{ r }}">{{ r }}</option>{% endfor %}
+          </select>
+        </label>
+      </div>
+      <label class="fm-field"><span>Påkrævet kursus-handle (valgfrit)</span><input type="text" name="required_course_handle" class="fm-input" placeholder="f.eks. gdpr-basis"></label>
+      <div class="fm-flex fm-gap8" style="flex-wrap:wrap;align-items:flex-end">
+        <label class="fm-field" style="flex:1;min-width:180px"><span>Gentages hver (måneder, 0 = engangs)</span><input type="number" name="recurrence_months" class="fm-input" value="0" min="0" step="1"></label>
+        <label class="fm-field" style="flex:1;min-width:180px;display:flex;flex-direction:row;align-items:center;gap:8px"><input type="checkbox" name="is_statutory" value="1" style="width:auto"><span style="margin:0">Lovpligtigt krav</span></label>
+      </div>
+      <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closeComplianceModal()">Annuller</button>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-floppy-disk"></i> Gem krav</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function openComplianceModal(){ document.getElementById('complianceModal').style.display='flex'; }
+function closeComplianceModal(){ document.getElementById('complianceModal').style.display='none'; }
+function toggleDrill(i){ var el=document.getElementById('drill-'+i); if(el){ el.style.display = (el.style.display==='none'?'table-row':'none'); } }
+</script>
+{% endblock %}

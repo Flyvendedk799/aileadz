@@ -15,8 +15,9 @@ def _mail_configured() -> bool:
     return bool(os.getenv('MAIL_SERVER') or current_app.config.get('MAIL_SERVER'))
 
 
-def render_branded_email(template_name: str, branding: dict, **context) -> str:
-    """Render a branded HTML email body."""
+def render_branded_email(template_name: str, branding: Optional[dict] = None, **context) -> str:
+    """Render a branded HTML email body. Safe when branding is missing/None."""
+    branding = branding or {}
     templates = {
         'welcome': """
 <!DOCTYPE html>
@@ -68,24 +69,135 @@ def render_branded_email(template_name: str, branding: dict, **context) -> str:
     return render_template_string(body_tpl, **ctx)
 
 
+def _default_sender() -> str:
+    """Resolve the configured default sender address (env wins, then config)."""
+    return (
+        os.getenv('MAIL_DEFAULT_SENDER')
+        or current_app.config.get('MAIL_DEFAULT_SENDER')
+        or ''
+    )
+
+
+def _ensure_email_log_table(conn) -> bool:
+    """Idempotently create the email_log table. Best-effort; never raises."""
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS email_log (
+                id INT AUTO_INCREMENT PRIMARY KEY,
+                company_id INT NULL,
+                to_email VARCHAR(255) NULL,
+                template VARCHAR(64) NULL,
+                status VARCHAR(32) NULL,
+                error TEXT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        conn.commit()
+        cur.close()
+        return True
+    except Exception as e:  # pragma: no cover - defensive
+        try:
+            current_app.logger.debug("email_log table ensure failed: %s", e)
+        except Exception:
+            pass
+        return False
+
+
+def _record_email_attempt(
+    to_email: str,
+    template_name: str,
+    status: str,
+    *,
+    company_id=None,
+    error: Optional[str] = None,
+) -> None:
+    """Persist an email attempt into email_log. Fully guarded — never raises."""
+    try:
+        conn = getattr(current_app, 'mysql', None)
+        conn = getattr(conn, 'connection', None) if conn is not None else None
+        if conn is None:
+            return
+        if not _ensure_email_log_table(conn):
+            return
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO email_log (company_id, to_email, template, status, error, created_at)
+            VALUES (%s, %s, %s, %s, %s, NOW())
+            """,
+            (
+                company_id,
+                (to_email or '')[:255],
+                (template_name or '')[:64],
+                (status or '')[:32],
+                (error or None),
+            ),
+        )
+        conn.commit()
+        cur.close()
+    except Exception as e:  # pragma: no cover - defensive
+        try:
+            current_app.logger.debug("email_log insert failed: %s", e)
+        except Exception:
+            pass
+
+
 def send_branded_email(
     to_email: str,
     subject: str,
     template_name: str,
-    branding: dict,
+    branding: Optional[dict] = None,
     *,
     reply_to: Optional[str] = None,
+    company_id=None,
     **context,
 ) -> bool:
-    """Send a branded email. Returns True on success."""
-    html = render_branded_email(template_name, branding, **context)
-    from_name = branding.get('company_name', 'Futurematch')
-    reply = reply_to or branding.get('support_email') or os.getenv('MAIL_DEFAULT_SENDER', 'noreply@futurematch.dk')
+    """Send a branded email. Returns True on success, False on no-op/failure.
 
-    if not _mail_configured():
-        current_app.logger.info(
+    Best-effort by design: if no mail backend is configured this returns
+    False quietly (logged at debug) and NEVER raises. Each attempt is recorded
+    in email_log (guarded).
+    """
+    branding = branding or {}
+
+    # No recipient -> nothing to do.
+    if not to_email:
+        try:
+            current_app.logger.debug("send_branded_email: no recipient, skipping")
+        except Exception:
+            pass
+        return False
+
+    # Render is safe even when branding is empty (render_branded_email
+    # applies defaults for every key).
+    try:
+        html = render_branded_email(template_name, branding, **context)
+    except Exception as e:
+        try:
+            current_app.logger.debug("send_branded_email: render failed: %s", e)
+        except Exception:
+            pass
+        _record_email_attempt(
+            to_email, template_name, 'error', company_id=company_id,
+            error=f"render: {e}",
+        )
+        return False
+
+    from_name = branding.get('company_name') or 'Futurematch'
+    default_sender = _default_sender()
+    reply = reply_to or branding.get('support_email') or default_sender or None
+
+    # Ops-gate: need both a server and a default sender to actually send.
+    if not _mail_configured() or not default_sender:
+        current_app.logger.debug(
             "Email (not sent — MAIL not configured): to=%s subject=%s from_name=%s",
             to_email, subject, from_name,
+        )
+        _record_email_attempt(
+            to_email, template_name, 'skipped_no_backend', company_id=company_id,
         )
         return False
 
@@ -96,11 +208,121 @@ def send_branded_email(
             subject=subject,
             recipients=[to_email],
             html=html,
-            sender=(from_name, current_app.config.get('MAIL_DEFAULT_SENDER')),
+            sender=(from_name, default_sender),
             reply_to=reply,
         )
         mail.send(msg)
+        _record_email_attempt(
+            to_email, template_name, 'sent', company_id=company_id,
+        )
         return True
     except Exception as e:
-        current_app.logger.error(f"send_branded_email failed: {e}")
+        try:
+            current_app.logger.error(f"send_branded_email failed: {e}")
+        except Exception:
+            pass
+        _record_email_attempt(
+            to_email, template_name, 'error', company_id=company_id, error=str(e),
+        )
+        return False
+
+
+def _resolve_branding(company_id) -> dict:
+    """Best-effort branding lookup for a company. Never raises; returns {} on miss."""
+    if not company_id:
+        return {}
+    try:
+        from branding_service import get_branding
+        return get_branding(company_id) or {}
+    except Exception as e:  # pragma: no cover - defensive
+        try:
+            current_app.logger.debug("_resolve_branding failed: %s", e)
+        except Exception:
+            pass
+        return {}
+
+
+def send_order_confirmation(order: dict, *, branding: Optional[dict] = None,
+                            company_id=None) -> bool:
+    """Best-effort order-confirmation email. Guarded; never raises.
+
+    Accepts the in-memory order dict used by order_handler (keys: order_id,
+    product{title,...}, user{email,...}). Resolves branding from the company
+    when not supplied.
+    """
+    try:
+        order = order or {}
+        user = order.get('user') or {}
+        product = order.get('product') or {}
+        to_email = user.get('email') or ''
+        if not to_email:
+            return False
+
+        if branding is None:
+            branding = _resolve_branding(company_id)
+
+        company_name = (branding or {}).get('company_name') or 'Futurematch'
+        return send_branded_email(
+            to_email,
+            f"Ordrebekræftelse – {company_name}",
+            'order_confirmation',
+            branding or {},
+            company_id=company_id,
+            company_name=company_name,
+            recipient_name=user.get('name', ''),
+            product_title=product.get('title', ''),
+            order_id=order.get('order_id', ''),
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        try:
+            current_app.logger.debug("send_order_confirmation failed: %s", e)
+        except Exception:
+            pass
+        return False
+
+
+def send_employee_welcome(company: Optional[dict], employee: dict, *,
+                          login_url: str = '', branding: Optional[dict] = None) -> bool:
+    """Best-effort welcome/invite email to a newly added employee. Never raises.
+
+    `company` may be the company row dict (with an 'id'); `employee` carries
+    at least 'email' and optionally 'name'/'username'.
+    """
+    try:
+        company = company or {}
+        employee = employee or {}
+        to_email = employee.get('email') or ''
+        if not to_email:
+            return False
+
+        company_id = company.get('id') or company.get('company_id')
+        if branding is None:
+            branding = _resolve_branding(company_id)
+
+        company_name = (
+            (branding or {}).get('company_name')
+            or company.get('company_name')
+            or 'Futurematch'
+        )
+        recipient_name = (
+            employee.get('name')
+            or employee.get('full_name')
+            or employee.get('username')
+            or ''
+        )
+        return send_branded_email(
+            to_email,
+            f"Velkommen til {company_name}",
+            'welcome',
+            branding or {},
+            company_id=company_id,
+            company_name=company_name,
+            recipient_name=recipient_name,
+            login_url=login_url or os.getenv('APP_BASE_URL', ''),
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        try:
+            current_app.logger.debug("send_employee_welcome failed: %s", e)
+        except Exception:
+            pass
         return False

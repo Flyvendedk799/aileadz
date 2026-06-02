@@ -82,6 +82,11 @@ class OrderHandler:
             self._store_order_in_db(order)
             order_id = order.get('order_id', order_id)
 
+            # Best-effort branded order-confirmation email. Guarded so that a
+            # mail backend failure (or no backend at all) NEVER affects the
+            # order result — mirrors the webhook best-effort pattern.
+            self._send_confirmation_email(order)
+
             return {
                 'success': True,
                 'order_id': order_id,
@@ -165,7 +170,36 @@ class OrderHandler:
 
         except Exception as e:
             logger.error(f"Error storing order in database: {e}")
-    
+
+    def _send_confirmation_email(self, order: Dict) -> None:
+        """Best-effort branded order-confirmation email.
+
+        Fully guarded: any failure (import, branding lookup, no mail backend)
+        is swallowed so the order flow is never affected. No-ops cleanly when
+        no mail backend is configured (ops-gated: MAIL_SERVER/MAIL_DEFAULT_SENDER).
+        """
+        try:
+            to_email = (order.get('user') or {}).get('email', '')
+            if not to_email:
+                return
+
+            try:
+                from email_service import send_order_confirmation
+            except Exception as imp_err:
+                logger.debug(f"email_service import failed: {imp_err}")
+                return
+
+            # Resolve company branding when we have a company context.
+            company_id = None
+            try:
+                company_id = session.get('company_id')
+            except Exception:
+                company_id = None
+
+            send_order_confirmation(order, company_id=company_id)
+        except Exception as e:
+            logger.debug(f"Order confirmation email skipped: {e}")
+
     def _generate_payment_instructions(self, order: Dict) -> Dict:
         """Generate payment instructions for the order"""
         price = order['product']['price']

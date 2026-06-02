@@ -8,6 +8,10 @@ import os
 import re
 import uuid
 import datetime
+import hmac
+import hashlib
+import time
+from urllib.parse import urlparse
 
 # Try to import fuzzywuzzy; if not installed, raise a clear error.
 try:
@@ -1431,6 +1435,248 @@ def nudges():
     return jsonify({"nudges": nudge_list[:3]})
 
 
+# ---------------------------------------------------------------------------
+# Public lead-gen chat widget hardening (value-4)
+# ---------------------------------------------------------------------------
+# The /widget/<token>/ask endpoint is public + unauthenticated and calls the AI
+# (budget burn risk) and renders model output (XSS surface). The helpers below
+# add: (1) origin binding against the widget's stored allowed-domains allowlist
+# (plus an optional HMAC origin token if the config row carries a secret), and
+# (2) a durable per-(token,IP) rate cap reusing the Wave-1 MySQL counter pattern.
+# All helpers are boot-safe and fail-open on DB error so a legitimate embed is
+# never broken by an infra hiccup, while normal abuse is still capped.
+
+# Per-window request caps for the public widget ask endpoint.
+_WIDGET_RATE_PER_MIN = 20
+_WIDGET_RATE_PER_HOUR = 200
+
+# Process-level flag: once the durable counter table exists we skip the
+# CREATE-IF-NOT-EXISTS probe on subsequent requests. Stays False on failure so
+# it is retried later (matches the codebase's schema-ensure convention).
+_WIDGET_RATE_SCHEMA_READY = False
+
+
+def _widget_client_ip():
+    """Best-effort client IP for rate-keying. Honours X-Forwarded-For (we sit
+    behind PythonAnywhere's proxy) but only trusts the left-most hop and caps
+    length so a hostile header can't bloat the rate key."""
+    xff = request.headers.get('X-Forwarded-For', '') or ''
+    if xff:
+        ip = xff.split(',')[0].strip()
+        if ip:
+            return ip[:45]
+    return (request.remote_addr or 'unknown')[:45]
+
+
+def _widget_origin_host():
+    """Resolve the requesting page's host from Origin, falling back to Referer.
+    Returns a lower-cased bare host (no scheme/port) or '' when unknown."""
+    candidate = request.headers.get('Origin', '') or request.headers.get('Referer', '')
+    if not candidate:
+        return ''
+    try:
+        netloc = urlparse(candidate).netloc or urlparse('//' + candidate).netloc
+    except Exception:
+        return ''
+    host = (netloc or '').lower()
+    # Strip credentials + port if present.
+    if '@' in host:
+        host = host.rsplit('@', 1)[-1]
+    if host.startswith('[') and ']' in host:
+        host = host[1:host.index(']')]  # IPv6 literal
+    elif ':' in host:
+        host = host.split(':', 1)[0]
+    return host.strip()
+
+
+def _widget_allowed_hosts(widget):
+    """Normalised allowlist of bare hosts from the widget's allowed_domains."""
+    allowed = widget.get('allowed_domains') if widget else None
+    if not allowed or not isinstance(allowed, str):
+        return []
+    hosts = []
+    for raw in allowed.split(','):
+        d = (raw or '').strip().lower()
+        if not d:
+            continue
+        # Accept either a bare host or a full URL in the config.
+        if '://' in d:
+            try:
+                d = urlparse(d).netloc or d
+            except Exception:
+                pass
+        if d.startswith('www.'):
+            d = d[4:]
+        if ':' in d:
+            d = d.split(':', 1)[0]
+        if d:
+            hosts.append(d)
+    return hosts
+
+
+def _widget_host_allowed(req_host, allowed_hosts):
+    """True if req_host matches an allowed host (exact or subdomain)."""
+    if not req_host:
+        return False
+    rh = req_host[4:] if req_host.startswith('www.') else req_host
+    for a in allowed_hosts:
+        if rh == a or rh.endswith('.' + a):
+            return True
+    return False
+
+
+def _widget_hmac_valid(widget, req_host):
+    """Optional HMAC origin-token check. Activates only when the widget config
+    row carries a secret (additive `widget_secret`/`hmac_secret` column) AND the
+    request supplies an X-Widget-Signature header. Returns True when a valid
+    signature over the bare host is present; False otherwise. When no secret is
+    configured this returns None so the caller falls back to the allowlist."""
+    secret = None
+    for col in ('widget_secret', 'hmac_secret', 'widget_hmac_secret'):
+        v = widget.get(col) if widget else None
+        if v:
+            secret = str(v)
+            break
+    if not secret:
+        return None  # no HMAC configured -> caller uses allowlist
+    sig = (request.headers.get('X-Widget-Signature', '') or '').strip()
+    if not sig:
+        return False
+    try:
+        expected = hmac.new(secret.encode('utf-8'),
+                            (req_host or '').encode('utf-8'),
+                            hashlib.sha256).hexdigest()
+        return hmac.compare_digest(expected, sig.lower())
+    except Exception:
+        return False
+
+
+def _ensure_widget_rate_schema():
+    """Idempotently create the durable per-(token,IP) rate-limit counter table.
+    Mirrors the Wave-1 api_rate_limit_counters pattern. Boot-safe; returns True
+    once the table is confirmed present."""
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS widget_ask_rate_counters (
+                widget_token VARCHAR(64) NOT NULL,
+                client_ip VARCHAR(45) NOT NULL,
+                window_start BIGINT NOT NULL,
+                request_count INT NOT NULL DEFAULT 0,
+                PRIMARY KEY (widget_token, client_ip, window_start)
+            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
+            """
+        )
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            cur.close()
+        except Exception:
+            pass
+        return True
+    except Exception as e:
+        logging.warning("widget rate schema ensure failed: %s", e)
+        try:
+            db_compat.refresh_flask_mysql_connection(current_app.mysql)
+        except Exception:
+            pass
+        return False
+
+
+def _widget_rate_exceeded(token, client_ip):
+    """Durable rate cap for the public ask endpoint. Increments per-minute and
+    per-hour counters for (token, ip) and returns True if either cap is now
+    exceeded. Fails OPEN (returns False) on any DB error so a legitimate embed
+    is never blocked by infra trouble — but caps normal abuse / budget burn."""
+    global _WIDGET_RATE_SCHEMA_READY
+    try:
+        if not _WIDGET_RATE_SCHEMA_READY:
+            if _ensure_widget_rate_schema():
+                _WIDGET_RATE_SCHEMA_READY = True
+            else:
+                return False  # fail open: can't enforce without the table
+
+        now = int(time.time())
+        minute_window = now - (now % 60)
+        hour_window = now - (now % 3600)
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+
+        exceeded = False
+        for window_start, cap in ((minute_window, _WIDGET_RATE_PER_MIN),
+                                  (hour_window, _WIDGET_RATE_PER_HOUR)):
+            cur.execute(
+                """
+                INSERT INTO widget_ask_rate_counters
+                    (widget_token, client_ip, window_start, request_count)
+                VALUES (%s, %s, %s, 1)
+                ON DUPLICATE KEY UPDATE request_count = request_count + 1
+                """,
+                (token[:64], client_ip[:45], window_start),
+            )
+            cur.execute(
+                """
+                SELECT request_count FROM widget_ask_rate_counters
+                WHERE widget_token = %s AND client_ip = %s AND window_start = %s
+                """,
+                (token[:64], client_ip[:45], window_start),
+            )
+            row = cur.fetchone()
+            count = 0
+            if row:
+                # DictCursor is the default; tolerate tuple cursors too.
+                count = row.get('request_count') if isinstance(row, dict) else row[0]
+            if count and count > cap:
+                exceeded = True
+
+        # Opportunistic cleanup of old rows (best-effort, ignore failures).
+        try:
+            cur.execute(
+                "DELETE FROM widget_ask_rate_counters WHERE window_start < %s",
+                (hour_window - 3600,),
+            )
+        except Exception:
+            pass
+
+        try:
+            conn.commit()
+        except Exception:
+            pass
+        try:
+            cur.close()
+        except Exception:
+            pass
+        return exceeded
+    except Exception as e:
+        logging.warning("widget rate check failed (fail-open): %s", e)
+        try:
+            db_compat.refresh_flask_mysql_connection(current_app.mysql)
+        except Exception:
+            pass
+        return False  # fail open
+
+
+def _widget_cors_headers(resp, req_host, allowed_hosts):
+    """Set CORS headers ONLY for an allowed origin. We never emit a wildcard so
+    a spoofed/unknown origin gets no cross-origin grant."""
+    try:
+        origin = request.headers.get('Origin', '')
+        if origin and req_host and _widget_host_allowed(req_host, allowed_hosts):
+            resp.headers['Access-Control-Allow-Origin'] = origin
+            resp.headers['Vary'] = 'Origin'
+            resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature'
+            resp.headers['Access-Control-Allow-Credentials'] = 'true'
+            resp.headers['Access-Control-Max-Age'] = '600'
+    except Exception:
+        pass
+    return resp
+
+
 @app1_bp.route("/widget/<token>")
 def widget_embed(token):
     """Serve embeddable chat widget for external websites"""
@@ -1465,9 +1711,13 @@ def widget_embed(token):
     return render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
 
 
-@app1_bp.route("/widget/<token>/ask", methods=["POST"])
+@app1_bp.route("/widget/<token>/ask", methods=["POST", "OPTIONS"])
 def widget_ask(token):
-    """Handle chat messages from embedded widget — no login required"""
+    """Handle chat messages from embedded widget — no login required.
+
+    Hardened (value-4): origin-bound (allowlist + optional HMAC), durable
+    per-(token, IP) rate cap to stop AI-budget burn, and CORS headers emitted
+    ONLY for the widget's allowed origin. Response shape is unchanged."""
     import MySQLdb.cursors
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute("""
@@ -1481,6 +1731,42 @@ def widget_ask(token):
 
     if not widget:
         return jsonify({"error": "Widget not found"}), 404
+
+    allowed_hosts = _widget_allowed_hosts(widget)
+    req_host = _widget_origin_host()
+
+    # CORS preflight: answer with the per-origin grant (or a bare 204 for
+    # disallowed origins) so legitimate cross-origin embeds keep working.
+    if request.method == "OPTIONS":
+        resp = current_app.make_default_options_response()
+        return _widget_cors_headers(resp, req_host, allowed_hosts)
+
+    # ── 1) ORIGIN BINDING ────────────────────────────────────────────────
+    # Prefer an HMAC origin token when the config row carries a secret;
+    # otherwise enforce the stored allowed-domains allowlist. A widget with no
+    # allowlist configured stays open (backward-compatible) but is still
+    # rate-capped below.
+    hmac_result = _widget_hmac_valid(widget, req_host)
+    if hmac_result is True:
+        pass  # valid signed origin token
+    elif hmac_result is False:
+        return jsonify({"error": "Ugyldig oprindelse. Anmodningen blev afvist."}), 403
+    elif allowed_hosts:
+        # No HMAC configured -> allowlist enforcement.
+        if not _widget_host_allowed(req_host, allowed_hosts):
+            return jsonify({
+                "error": "Denne widget er ikke tilladt på dette domæne."
+            }), 403
+
+    # ── 2) RATE CAP (per token + client IP) ──────────────────────────────
+    client_ip = _widget_client_ip()
+    if _widget_rate_exceeded(token, client_ip):
+        resp = jsonify({
+            "error": "For mange forespørgsler. Vent et øjeblik, og prøv igen."
+        })
+        resp.status_code = 429
+        resp.headers['Retry-After'] = '60'
+        return _widget_cors_headers(resp, req_host, allowed_hosts)
 
     data = request.get_json(silent=True) or {}
     user_query = (data.get("query") or "").strip()
@@ -1502,7 +1788,7 @@ def widget_ask(token):
     response = handle_agentic_ask(user_query, session)
     response.headers['X-Accel-Buffering'] = 'no'
     response.headers['Cache-Control'] = 'no-cache'
-    return response
+    return _widget_cors_headers(response, req_host, allowed_hosts)
 
 
 @app1_bp.route("/widget/<token>/loader.js")

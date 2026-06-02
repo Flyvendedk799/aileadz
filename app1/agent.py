@@ -1049,6 +1049,7 @@ def handle_agentic_ask(user_query, session):
             # 7.0: Company-specific chatbot context — inject custom instructions + employee info
             company_id = session.get("company_id")
             if company_id:
+                cur = None
                 try:
                     cur = current_app.mysql.connection.cursor()
                     company_context_parts = []
@@ -1063,11 +1064,11 @@ def handle_agentic_ask(user_query, session):
                     co_mode = 'both'
                     co_show_int = 1
                     if row:
-                        co_mode = row[0] or 'both'
-                        co_weight = row[1] or 50
-                        co_instructions = row[2]
-                        co_show_ext = row[3]
-                        co_show_int = row[4] if row[4] is not None else 1
+                        co_mode = row['chatbot_course_mode'] or 'both'
+                        co_weight = row['chatbot_internal_weight'] or 50
+                        co_instructions = row['chatbot_custom_instructions']
+                        co_show_ext = row['chatbot_show_external']
+                        co_show_int = row['chatbot_show_internal'] if row['chatbot_show_internal'] is not None else 1
 
                         if co_mode == 'internal_only':
                             company_context_parts.append(
@@ -1099,7 +1100,7 @@ def handle_agentic_ask(user_query, session):
                         if internal_courses:
                             course_list = []
                             for ic in internal_courses:
-                                title, cat, desc, fmt, dur, diff = ic
+                                title, cat, fmt, dur = ic['title'], ic['category'], ic['format'], ic['duration_hours']
                                 parts = [title]
                                 if cat:
                                     parts.append(f"({cat})")
@@ -1123,7 +1124,11 @@ def handle_agentic_ask(user_query, session):
                     )
                     emp_row = cur.fetchone()
                     if emp_row:
-                        emp_name, emp_email, emp_phone, emp_dept, emp_title = emp_row
+                        emp_name = emp_row['full_name']
+                        emp_email = emp_row['email']
+                        emp_phone = emp_row['phone']
+                        emp_dept = emp_row['department']
+                        emp_title = emp_row['job_title']
                         emp_parts = []
                         if emp_name:
                             emp_parts.append(f"Navn: {emp_name}")
@@ -1149,8 +1154,21 @@ def handle_agentic_ask(user_query, session):
                                        + "\n\n".join(company_context_parts)
                         })
                     cur.close()
+                    cur = None
                 except Exception as e:
                     print(f"[Company Context Error] {e}")
+                    # Roll back + close so a failed query doesn't corrupt the
+                    # connection for the profile/conversation queries that follow.
+                    try:
+                        current_app.mysql.connection.rollback()
+                    except Exception:
+                        pass
+                finally:
+                    if cur is not None:
+                        try:
+                            cur.close()
+                        except Exception:
+                            pass
 
             # Restore saved conversation messages for logged-in users
             try:
@@ -1908,8 +1926,13 @@ def handle_agentic_ask(user_query, session):
             if verbose:
                 print(f"[Agent Warning] Verbose response ({response_len} chars) after tool calls in session {sid}")
 
-            # Smart failure recovery: when tool calls returned 0 results
-            if had_tool_calls and not buffered_ui_html:
+            # Smart failure recovery: only when a course-search/recommendation tool
+            # returned 0 cards. Skip for category/vendor-list/profile/learning-path
+            # tools that legitimately don't emit course cards (so we don't append a
+            # misleading "no courses found" to those answers).
+            _SEARCH_TOOLS = {"catalog_search", "search_courses", "filter_courses",
+                             "recommend_for_profile", "catalog_compare_products"}
+            if had_tool_calls and not buffered_ui_html and any(t in _SEARCH_TOOLS for t in _tools_used):
                 if "ingen" not in full_text.lower():
                     no_results_msg = "\n\n*Jeg fandt desværre ingen kurser der matchede. Prøv eventuelt at omformulere din søgning.*"
                     yield f"data: {json.dumps({'type': 'chunk', 'content': no_results_msg})}\n\n"

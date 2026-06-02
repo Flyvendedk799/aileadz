@@ -156,14 +156,20 @@ def _strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
 
 def _normalize_chat_tool(tool: Dict[str, Any]) -> Dict[str, Any]:
     fn = deepcopy(tool.get("function") or tool)
-    params = _strict_schema(fn.get("parameters") or {"type": "object", "properties": {}, "required": []})
+    # Tools may opt out of strict mode (e.g. polymorphic-payload tools like
+    # update_user_profile, where _strict_schema would force every `data` field
+    # required / additionalProperties:false and the model is left only able to
+    # send an empty object).
+    is_strict = bool(fn.get("strict", True))
+    raw_params = fn.get("parameters") or {"type": "object", "properties": {}, "required": []}
+    params = _strict_schema(raw_params) if is_strict else raw_params
     return {
         "type": "function",
         "function": {
             "name": fn["name"],
             "description": fn.get("description", ""),
             "parameters": params,
-            "strict": True,
+            "strict": is_strict,
         },
     }
 

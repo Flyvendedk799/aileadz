@@ -633,6 +633,14 @@ def update_company_settings():
                     if not is_valid:
                         return jsonify({'success': False, 'message': f'{field}: {message}'}), 400
                     
+                    # Capture size before processing consumes the file stream.
+                    try:
+                        file.seek(0, 2)
+                        _file_size = file.tell()
+                        file.seek(0)
+                    except Exception:
+                        _file_size = 0
+
                     # Process file
                     try:
                         processed_assets = settings_manager.process_brand_asset(file, field, company['id'])
@@ -656,7 +664,7 @@ def update_company_settings():
                         """, (
                             company['id'], field, file.filename,
                             processed_assets.get('original', ''),
-                            len(file.read()), file.content_type
+                            _file_size, file.content_type
                         ))
                         
                         current_app.mysql.connection.commit()

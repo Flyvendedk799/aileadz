@@ -278,7 +278,15 @@ def handle_hr_ask(user_query, flask_session):
             print(f"[HR Agent Error] {e}")
             import traceback
             traceback.print_exc()
-            yield f"data: {json.dumps({'type': 'error', 'content': user_facing_error_message(e)})}\n\n"
+            # Resolve the message helper defensively: if the failure happened
+            # before the in-try `from ai_runtime import ...` ran, the name would
+            # be unbound and raise NameError out of the generator.
+            try:
+                from ai_runtime import user_facing_error_message as _ufem
+                _err_msg = _ufem(e)
+            except Exception:
+                _err_msg = "Der opstod en fejl. Prøv venligst igen."
+            yield f"data: {json.dumps({'type': 'error', 'content': _err_msg})}\n\n"
             yield f"data: {json.dumps({'type': 'done'})}\n\n"
         finally:
             close_flask_mysql_connection()

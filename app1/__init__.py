@@ -1462,7 +1462,7 @@ def widget_embed(token):
     branding = get_branding(widget['cid'])
     widget['tenant_logo'] = branding.get('logo_url') or branding.get('company_logo')
 
-    return render_template('app1/widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
+    return render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
 
 
 @app1_bp.route("/widget/<token>/ask", methods=["POST"])
@@ -1496,10 +1496,10 @@ def widget_ask(token):
     session['session_id'] = widget_session_id
 
     from app1.agent import handle_agentic_ask
-    response = Response(
-        stream_with_context(handle_agentic_ask(user_query, session)),
-        mimetype="text/event-stream"
-    )
+    # handle_agentic_ask already returns a fully-built streaming Response — do not
+    # re-wrap it in Response(stream_with_context(...)) (that double-wrap raises
+    # TypeError at WSGI iteration). Just ensure the widget streaming headers are set.
+    response = handle_agentic_ask(user_query, session)
     response.headers['X-Accel-Buffering'] = 'no'
     response.headers['Cache-Control'] = 'no-cache'
     return response

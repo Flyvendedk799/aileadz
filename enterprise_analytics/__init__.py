@@ -42,10 +42,10 @@ class AdvancedAnalytics:
 
             # Get employee data
             cur.execute("""
-                SELECT id, full_name, email, job_title, department, role,
+                SELECT id, user_id, full_name, email, job_title, department, role,
                        hire_date, performance_rating, total_learning_hours,
                        courses_completed, last_active_at, status
-                FROM company_users 
+                FROM company_users
                 WHERE company_id = %s AND status = 'active'
             """, (company_id,))
             employees = cur.fetchall()
@@ -107,7 +107,7 @@ class AdvancedAnalytics:
             # Create feature matrix
             features = []
             for emp in employee_data:
-                emp_learning = [l for l in learning_data if l['user_id'] == emp['id']]
+                emp_learning = [l for l in learning_data if l['user_id'] == emp['user_id']]
                 
                 # Calculate features
                 total_courses = len(emp_learning)
@@ -405,7 +405,7 @@ class AdvancedAnalytics:
             cur.execute("""
                 SELECT cu.id, elp.content_name, elp.final_score
                 FROM company_users cu
-                JOIN employee_learning_progress elp ON cu.id = elp.user_id
+                JOIN employee_learning_progress elp ON cu.user_id = elp.user_id
                 WHERE cu.company_id = %s 
                 AND cu.id != %s
                 AND (cu.role = %s OR cu.department = %s)

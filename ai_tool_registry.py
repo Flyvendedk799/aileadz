@@ -271,7 +271,7 @@ def get_employee_tool_selection(
             continue
         if meta.company_required and not company_id:
             continue
-        if meta.side_effect and name != "create_course_order" and not _explicit_order_confirmation(query):
+        if meta.side_effect and name not in ("create_course_order", "update_user_profile") and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)
 

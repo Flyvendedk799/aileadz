@@ -119,8 +119,8 @@ def logout():
     flash('Logged out successfully.', 'success')
     return redirect(url_for('auth.login'))
 
-@auth_bp.route('/profile')
-def profile():
+@auth_bp.route('/brands')
+def brands():
     if 'user' not in session:
         flash('Please log in to access your profile.', 'danger')
         return redirect(url_for('auth.login'))
@@ -194,7 +194,7 @@ def update_brand(brand_id):
         flash("Brand opdateret.", "success")
     except Exception as e:
         flash("Fejl ved opdatering af brand: " + str(e), "danger")
-    return redirect(url_for('auth.profile'))
+    return redirect(url_for('auth.brands'))
 
 @auth_bp.route("/add_brand", methods=["GET", "POST"])
 def add_brand():
@@ -236,5 +236,5 @@ def add_brand():
             flash("Brand tilføjet.", "success")
         except Exception as e:
             flash("Fejl ved tilføjelse af brand: " + str(e), "danger")
-        return redirect(url_for('auth.profile'))
+        return redirect(url_for('auth.brands'))
     return render_template("add_brand.html")

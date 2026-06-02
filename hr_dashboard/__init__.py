@@ -2060,7 +2060,7 @@ def create_hr_dashboard_blueprint():
             
             cur.close()
             
-            return render_template('hr_dashboard/notifications.html',
+            return render_template('fm/notifications.html',
                                  company=company,
                                  notifications=notifications)
             
@@ -3150,7 +3150,7 @@ def create_hr_dashboard_blueprint():
                     request.form.get('skill_tags', '').strip(),
                     request.form.get('difficulty_level', 'beginner'),
                     1 if request.form.get('is_mandatory') else 0,
-                    1 if request.form.get('is_active', '1') != '0' else 0,
+                    1 if request.form.get('is_active') == '1' else 0,
                     request.form.get('external_url', '').strip() or None,
                     session.get('user_id')
                 ))
@@ -3228,7 +3228,7 @@ def create_hr_dashboard_blueprint():
                     request.form.get('skill_tags', '').strip(),
                     request.form.get('difficulty_level', 'beginner'),
                     1 if request.form.get('is_mandatory') else 0,
-                    1 if request.form.get('is_active', '1') != '0' else 0,
+                    1 if request.form.get('is_active') == '1' else 0,
                     request.form.get('external_url', '').strip() or None,
                     course_id, company['id']
                 ))

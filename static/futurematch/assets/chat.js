@@ -45,7 +45,7 @@
     t.className = "toast";
     t.innerHTML = `<div class="toast-ic">${ic[section] || ic.summary}</div>
       <div class="toast-body"><div class="toast-msg">${esc(msg)}</div>
-        <a class="toast-link" href="profile.html" target="_blank">Vis i profil <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+        <a class="toast-link" href="/profile" target="_blank">Vis i profil <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
       <button class="toast-x" aria-label="Luk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
     t.querySelector(".toast-x").onclick = () => dismissToast(t);
     toastStack.appendChild(t);
@@ -316,6 +316,18 @@
         <button class="p-chat">${BOT}Svar i chat</button>
         <button class="p-no">Nej tak</button>
       </div>`;
+    // Show the agent's pre-filled values so the user can see and edit them.
+    if (opts.prefilled) {
+      card.querySelectorAll("[data-name]").forEach((el) => {
+        const pv = opts.prefilled[el.getAttribute("data-name")];
+        if (pv == null || pv === "") return;
+        if (el.tagName === "SELECT") {
+          let matched = false;
+          el.querySelectorAll("option").forEach((o) => { if (o.value === String(pv) || o.textContent === String(pv)) { o.selected = true; matched = true; } });
+          if (!matched) { const o = document.createElement("option"); o.textContent = String(pv); o.selected = true; el.appendChild(o); }
+        } else { el.value = String(pv); }
+      });
+    }
     card.querySelector(".p-save").onclick = async function () {
       const values = {};
       card.querySelectorAll("[data-name]").forEach((i) => { const v = (i.value || "").trim(); if (v) values[i.getAttribute("data-name")] = v; });

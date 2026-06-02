@@ -1,0 +1,82 @@
+{% extends "fm_base.html" %}
+{% block page_id %}company{% endblock %}
+{% block title %}SSO-konfiguration{% endblock %}
+{% block topbar_title %}Single Sign-On{% endblock %}
+{% block topbar_sub %}Konfigurer SAML/OAuth-login for din virksomhed.{% endblock %}
+
+{% block extra_head %}
+<style>
+  .sso-grid { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1fr); gap: 18px; align-items: start; }
+  @media (max-width: 900px) { .sso-grid { grid-template-columns: 1fr; } }
+  .sso-list .sso-row { display:flex; align-items:center; justify-content:space-between; padding:12px 0; border-bottom:1px solid var(--fm-line); }
+  .sso-list .sso-row:last-child { border-bottom:0; }
+  .sso-form .fm-field { margin-bottom: 14px; }
+  .sso-form textarea.fm-input { min-height: 110px; font-family: var(--ff-mono); font-size: 12.5px; }
+  .sso-switch { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--fm-ink-2); }
+  .sso-switch input { width:18px; height:18px; accent-color: var(--fm-primary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  <div class="sso-grid">
+    <section class="fm-card" style="padding:20px 22px">
+      <div class="fm-eyebrow"><i class="fa-solid fa-key"></i> Aktive udbydere</div>
+      <h2 class="fm-section-title" style="margin:4px 0 12px">Konfigurerede SSO-udbydere</h2>
+      <div class="sso-list">
+        {% if sso_configs %}
+          {% for cfg in sso_configs %}
+          <div class="sso-row">
+            <div>
+              <div style="font-weight:650">{{ cfg.provider_name or cfg.provider or 'Udbyder' }}</div>
+              <div style="font-size:12.5px;color:var(--fm-ink-3)">{{ cfg.provider }}</div>
+            </div>
+            <span class="fm-badge {{ 'success' if cfg.is_enabled else '' }}">
+              {{ 'Aktiveret' if cfg.is_enabled else 'Deaktiveret' }}
+            </span>
+          </div>
+          {% endfor %}
+        {% else %}
+          <p style="color:var(--fm-ink-3);font-size:14px;margin:0">Ingen SSO-udbydere konfigureret endnu.</p>
+        {% endif %}
+      </div>
+    </section>
+
+    <section class="fm-card sso-form" style="padding:20px 22px">
+      <div class="fm-eyebrow clay"><i class="fa-solid fa-plus"></i> Tilføj / opdater</div>
+      <h2 class="fm-section-title" style="margin:4px 0 14px">SSO-indstillinger</h2>
+      <form method="POST" action="{{ url_for('sso.save_sso_config', company_id=company_id) }}">
+        <div class="fm-field">
+          <label>Udbyder</label>
+          <select class="fm-input" name="provider" required>
+            <option value="saml">SAML 2.0</option>
+            <option value="oauth">OAuth 2.0 / OIDC</option>
+            <option value="azure">Microsoft Azure AD</option>
+            <option value="google">Google Workspace</option>
+          </select>
+        </div>
+        <div class="fm-field">
+          <label>Visningsnavn</label>
+          <input class="fm-input" name="provider_name" placeholder="F.eks. Nordi Azure AD" required>
+        </div>
+        <div class="fm-field">
+          <label>SSO-URL (login endpoint)</label>
+          <input class="fm-input" name="sso_url" type="url" placeholder="https://login.microsoftonline.com/...">
+        </div>
+        <div class="fm-field">
+          <label>Issuer / Entity ID</label>
+          <input class="fm-input" name="issuer" placeholder="https://sts.windows.net/...">
+        </div>
+        <div class="fm-field">
+          <label>X.509-certifikat</label>
+          <textarea class="fm-input" name="certificate" placeholder="-----BEGIN CERTIFICATE-----"></textarea>
+        </div>
+        <div class="fm-field">
+          <label class="sso-switch"><input type="checkbox" name="is_enabled"> Aktivér SSO for denne virksomhed</label>
+        </div>
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem konfiguration</button>
+      </form>
+    </section>
+  </div>
+</div>
+{% endblock %}

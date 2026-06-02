@@ -444,7 +444,11 @@ def sso_config(company_id):
     if session.get('company_role') != 'company_admin':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard.dashboard'))
-    
+    # Tenant isolation: admins may only view their own company's SSO config.
+    if session.get('company_id') != company_id:
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard.dashboard'))
+
     # Get existing SSO configurations
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -456,7 +460,7 @@ def sso_config(company_id):
         sso_configs = cur.fetchall()
         cur.close()
         
-        return render_template('sso_config.html', 
+        return render_template('fm/sso_config.html',
                              company_id=company_id,
                              sso_configs=sso_configs)
     except Exception as e:
@@ -469,7 +473,11 @@ def save_sso_config(company_id):
     if session.get('company_role') != 'company_admin':
         flash('Access denied', 'error')
         return redirect(url_for('dashboard.dashboard'))
-    
+    # Tenant isolation: admins may only modify their own company's SSO config.
+    if session.get('company_id') != company_id:
+        flash('Access denied', 'error')
+        return redirect(url_for('dashboard.dashboard'))
+
     provider = request.form.get('provider')
     provider_name = request.form.get('provider_name')
     is_enabled = request.form.get('is_enabled') == 'on'

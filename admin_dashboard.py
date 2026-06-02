@@ -59,7 +59,7 @@ def admin_home():
     # New users this month
     new_users_month = 0
     if users_has_created_at:
-        cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_FORMAT(NOW(), '%%Y-%%m-01')")
+        cur.execute("SELECT COUNT(*) AS cnt FROM users WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')")
         new_users_month = _cnt()
 
     total_companies = 0
@@ -85,7 +85,7 @@ def admin_home():
     try:
         cur.execute("""
             SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS rev
-            FROM course_orders WHERE created_at >= DATE_FORMAT(NOW(), '%%Y-%%m-01')
+            FROM course_orders WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
         """)
         row = cur.fetchone()
         orders_this_month = row['cnt']

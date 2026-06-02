@@ -446,9 +446,10 @@ def warm_catalog():
 
 
 def get_product(handle):
-    if _CACHE["by_handle"] is None:
-        get_products()
-    return _CACHE["by_handle"].get(handle)
+    # Delegate to get_products() so the file-signature check runs and detail-page
+    # lookups stay consistent with the list/search pages (avoids stale by_handle).
+    get_products()
+    return (_CACHE["by_handle"] or {}).get(handle)
 
 
 def get_categories(products=None):

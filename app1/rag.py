@@ -966,7 +966,10 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
         return filtered_products[:limit]
 
     query_tokens = _tokenize(query)
-    core_query_tokens, _ = _expand_query_tokens(query_tokens)
+    # Use the true topical/core tokens for the BM25 confidence gate (matching
+    # semantic_search_courses_detailed); the synonym-expanded set is recomputed
+    # separately below for scoring.
+    core_query_tokens = _core_query_tokens(query_tokens)
 
     # Build index mapping from filtered products to their global indices
     handle_to_product = {p.get("handle"): p for p in filtered_products}

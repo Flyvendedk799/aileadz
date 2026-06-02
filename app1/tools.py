@@ -1487,7 +1487,19 @@ def _execute_update_user_profile(args, username):
         elif action == "add_experience":
             title = data.get("title", "").strip()
             if not title:
-                return json.dumps({"status": "error", "message": "title mangler."})
+                # Incomplete — show an input form (prefilled) instead of erroring.
+                return json.dumps({
+                    "status": "ui_card", "ui_type": "form", "section": "experience",
+                    "message": "Udfyld din erfaring, så gemmer jeg den på din profil:",
+                    "save_action": "add_experience",
+                    "prefilled": {k: v for k, v in data.items() if v},
+                    "fields": [
+                        {"name": "title", "label": "Stilling / titel", "type": "text", "placeholder": "F.eks. Projektleder"},
+                        {"name": "company", "label": "Virksomhed", "type": "text", "placeholder": "F.eks. Nordi A/S"},
+                        {"name": "start_year", "label": "Startår", "type": "number", "placeholder": "2020"},
+                        {"name": "end_year", "label": "Slutår (tom = nuværende)", "type": "number", "placeholder": "2024"},
+                    ],
+                })
             # Validate year range
             start_yr = data.get("start_year")
             end_yr = data.get("end_year")
@@ -1520,7 +1532,19 @@ def _execute_update_user_profile(args, username):
         elif action == "add_education":
             degree = data.get("degree", "").strip()
             if not degree:
-                return json.dumps({"status": "error", "message": "degree mangler."})
+                # Incomplete — show an input form (prefilled) instead of erroring so
+                # the user can add the education from a card.
+                return json.dumps({
+                    "status": "ui_card", "ui_type": "form", "section": "education",
+                    "message": "Udfyld din uddannelse, så gemmer jeg den på din profil:",
+                    "save_action": "add_education",
+                    "prefilled": {k: v for k, v in data.items() if v},
+                    "fields": [
+                        {"name": "degree", "label": "Uddannelse / grad", "type": "text", "placeholder": "F.eks. HA, Cand.merc., Diplom"},
+                        {"name": "institution", "label": "Institution", "type": "text", "placeholder": "F.eks. CBS"},
+                        {"name": "year_completed", "label": "Afsluttet år", "type": "number", "placeholder": "2020"},
+                    ],
+                })
             institution = data.get("institution", "").strip()
             try:
                 existing = db.get_education(username)

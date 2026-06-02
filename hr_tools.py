@@ -9,6 +9,62 @@ from flask import current_app, session
 from datetime import datetime, timedelta
 
 
+# ── Skill-level normalization ──
+#
+# Two sources of truth for an employee's skill proficiency exist:
+#   1) employee_skills_matrix.current_level / company_skill_targets.target_level
+#      — INTEGER columns (1..5), HR-managed.
+#   2) user_skills.skill_level — a Danish STRING ENUM
+#      ('begynder','mellem','avanceret','ekspert'), self-reported via the chatbot
+#      profile.
+#
+# The historical bug: skill-gap analytics ran the matrix's INT level through a
+# string->int map (e.g. {'begynder':1,...}.get(current_level, 2)). Because
+# current_level is already an int, .get(2, 2) ALWAYS returns the default, so
+# every gap collapsed to the same wrong baseline. The fix is to normalize ONCE,
+# at read/merge time, and NEVER re-map a value that is already numeric.
+SKILL_LEVEL_MAP = {
+    'begynder': 1,
+    'mellem': 2,
+    'avanceret': 3,
+    'ekspert': 4,
+}
+
+
+def _skill_level_to_int(value, default=0):
+    """Normalize a skill level (string label OR already-int) to an int.
+
+    Idempotent guard against the gap bug: if the value is ALREADY numeric it is
+    returned unchanged (clamped to 0..5) — the string map is applied ONLY to
+    string labels, exactly once.
+
+    Regression contract (the bug this guards against):
+        _skill_level_to_int(3)          == 3      # int passes through unchanged
+        _skill_level_to_int('avanceret') == 3      # string mapped once
+        _skill_level_to_int('begynder')  == 1
+        # the bug was: SKILL_LEVEL_MAP.get(3, default) -> default (WRONG)
+    """
+    if value is None:
+        return default
+    # Already numeric (the common matrix case) — never re-map through the string
+    # table, just coerce/clamp.
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, (int, float)):
+        try:
+            return max(0, min(5, int(value)))
+        except (TypeError, ValueError):
+            return default
+    # String labels: a pure numeric string ("3") is still a number; a Danish
+    # label goes through the canonical map exactly once.
+    text = str(value).strip().lower()
+    if not text:
+        return default
+    if text.isdigit():
+        return max(0, min(5, int(text)))
+    return SKILL_LEVEL_MAP.get(text, default)
+
+
 # ── HR-specific OpenAI tool definitions ──
 
 HR_TOOLS = [
@@ -229,6 +285,33 @@ HR_TOOLS.extend([
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_compliance_status",
+            "description": (
+                "Vis virksomhedens overholdelses-/compliance-status for lovpligtige og obligatoriske "
+                "kurser (fx arbejdsmiljø, GDPR, ISO, certificeringer). For hvert krav vises hvor mange "
+                "berørte medarbejdere der er compliant, snart udløber (recertificering), eller mangler/er "
+                "forfaldne. Brug dette ved spørgsmål om compliance, overholdelse, certificering, "
+                "recertificering eller lovpligtig uddannelse."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {
+                        "type": "string",
+                        "description": "Afdeling at filtrere på. Tom for hele virksomheden."
+                    },
+                    "only_gaps": {
+                        "type": "boolean",
+                        "description": "Hvis sand: vis kun krav med forfaldne/manglende eller snart udløbende medarbejdere. Standard falsk."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
 ])
 
 
@@ -335,31 +418,79 @@ def _execute_get_company_skill_gaps(args):
         WHERE cu.status = 'active' {emp_dept_clause}
     """, tuple(emp_params))
     skills = cur.fetchall()
+
+    # Build gap analysis. Skill levels are INTEGERS in employee_skills_matrix —
+    # _skill_level_to_int is idempotent on ints (it passes them through), so it
+    # is safe here and also defends against any accidental string contamination.
+    # skill_map: (department, lower(skill_name)) -> {username: level}
+    # We key by (department, username, skill) so the same skill is not double
+    # counted when it appears in both the HR matrix and the chatbot profile;
+    # the HR-managed matrix value wins over the self-reported one.
+    skill_map = {}
+
+    def _add_level(department, username, skill_name, level_int):
+        if not skill_name:
+            return
+        key = (department or 'Alle', skill_name.strip().lower())
+        bucket = skill_map.setdefault(key, {})
+        # First writer wins per (skill, employee). The matrix is loaded first, so
+        # HR-managed levels take precedence over self-reported chatbot levels.
+        bucket.setdefault(username, level_int)
+
+    for s in skills:
+        _add_level(
+            s['department'],
+            s['username'],
+            s['skill_name'],
+            _skill_level_to_int(s['current_level']),
+        )
+
+    # Merge self-reported chatbot profile skills (user_skills, STRING levels).
+    # Without this, an employee who recorded "Python: ekspert" via the chatbot
+    # is invisible to the HR gap board and counted as level 0 — inflating gaps.
+    # The string label is mapped to an int exactly once, here at read time.
+    try:
+        us_dept_clause = "AND cu.department = %s" if department else ""
+        us_params = [company_id]
+        if department:
+            us_params.append(department)
+        cur.execute(f"""
+            SELECT cu.department, u.username, usk.skill_name, usk.skill_level
+            FROM user_skills usk
+            JOIN users u ON usk.username = u.username
+            JOIN company_users cu ON cu.user_id = u.id AND cu.company_id = %s
+            WHERE cu.status = 'active' {us_dept_clause}
+        """, tuple(us_params))
+        for s in cur.fetchall():
+            _add_level(
+                s['department'],
+                s['username'],
+                s['skill_name'],
+                _skill_level_to_int(s['skill_level']),
+            )
+    except Exception as exc:
+        # user_skills may not exist for every tenant; degrade to matrix-only.
+        print(f"[HR_TOOLS][skill_gaps] user_skills merge skipped: {exc}")
+
     cur.close()
 
-    # Build gap analysis
-    skill_map = {}
-    for s in skills:
-        key = (s['department'] or 'Alle', s['skill_name'])
-        if key not in skill_map:
-            skill_map[key] = []
-        skill_map[key].append({"username": s['username'], "level": s['current_level']})
-
+    # Map target skill name (lowercased) -> levels for matching the merged map.
     gaps = []
     for t in targets:
         dept = t['department'] or 'Alle'
-        key = (dept, t['skill_name'])
-        employees = skill_map.get(key, [])
-        avg_level = round(sum(e['level'] for e in employees) / len(employees), 1) if employees else 0
-        gap = round(t['target_level'] - avg_level, 1)
+        key = (dept, (t['skill_name'] or '').strip().lower())
+        levels = list(skill_map.get(key, {}).values())
+        avg_level = round(sum(levels) / len(levels), 1) if levels else 0
+        target_level = _skill_level_to_int(t['target_level'])
+        gap = round(target_level - avg_level, 1)
         gaps.append({
             "department": dept,
             "skill": t['skill_name'],
-            "target": t['target_level'],
+            "target": target_level,
             "avg_current": avg_level,
             "gap": gap,
             "priority": t['priority'],
-            "employees_assessed": len(employees),
+            "employees_assessed": len(levels),
             "critical": gap >= 2
         })
 
@@ -904,6 +1035,256 @@ def _execute_hr_get_ai_usage_risks(args):
     }, default=str)
 
 
+def _parse_completion_dt(value):
+    """Best-effort parse of a completion timestamp (DATETIME or free-text VARCHAR)."""
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    text = str(value).strip()
+    if not text:
+        return None
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d", "%d-%m-%Y", "%d/%m/%Y", "%Y/%m/%d"):
+        try:
+            return datetime.strptime(text[:len(fmt) + 9], fmt)
+        except (ValueError, TypeError):
+            continue
+    # Try the leading date portion (handles "2026-01-15T..." etc.)
+    try:
+        return datetime.strptime(text[:10], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return None
+
+
+def _execute_get_compliance_status(args):
+    """Derive (read-only) compliance status per requirement for the company.
+
+    For each compliance_requirements row we find the applicable active employees
+    (filtered by applies_to_department / applies_to_role, NULL = all), then derive
+    each employee's state from their completed courses:
+        compliant  — has a matching completion still inside the recurrence window
+        expiring   — compliant but < 60 days from expiry (recurrence-based)
+        overdue    — had a matching completion but it expired
+        missing    — no matching completion at all
+    Completions come from course_orders (completion_status='completed') and the
+    employee profile table user_completed_courses, matched by required_course_handle,
+    or by title/category text when no handle is set. Nothing is stored — pure read.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    department = (args.get('department') or '').strip()
+    only_gaps = bool(args.get('only_gaps'))
+    EXPIRING_DAYS = 60
+    now = datetime.now()
+
+    cur = _get_cursor()
+
+    # 1) Requirements for this company (optionally narrowed to a department:
+    #    a requirement applies to the department if it targets that department or
+    #    all departments (NULL/empty)).
+    req_clause = ""
+    req_params = [company_id]
+    if department:
+        req_clause = "AND (cr.applies_to_department = %s OR cr.applies_to_department IS NULL OR cr.applies_to_department = '')"
+        req_params.append(department)
+    try:
+        cur.execute(f"""
+            SELECT cr.id, cr.title, cr.category, cr.applies_to_department,
+                   cr.applies_to_role, cr.required_course_handle,
+                   cr.recurrence_months, cr.is_statutory
+            FROM compliance_requirements cr
+            WHERE cr.company_id = %s {req_clause}
+            ORDER BY cr.is_statutory DESC, cr.title
+        """, tuple(req_params))
+        requirements = cur.fetchall()
+    except Exception as exc:
+        cur.close()
+        # Table may not exist yet on this tenant — safe-empty.
+        print(f"[HR_TOOLS][compliance] requirements query failed: {exc}")
+        return json.dumps({
+            "message": "Ingen compliance-krav fundet endnu.",
+            "requirements": [],
+            "overall_compliance_pct": 0,
+            "total_requirements": 0,
+        }, default=str)
+
+    if not requirements:
+        cur.close()
+        return json.dumps({
+            "message": "Ingen compliance-krav defineret endnu. Opret lovpligtige/obligatoriske kurser for at spore overholdelse.",
+            "requirements": [],
+            "overall_compliance_pct": 0,
+            "total_requirements": 0,
+        }, default=str)
+
+    # 2) Active employees for this company (id + username + dept + role).
+    emp_dept_clause = "AND cu.department = %s" if department else ""
+    emp_params = [company_id]
+    if department:
+        emp_params.append(department)
+    cur.execute(f"""
+        SELECT u.id AS user_id, u.username, cu.department, cu.role
+        FROM company_users cu
+        JOIN users u ON cu.user_id = u.id
+        WHERE cu.company_id = %s AND cu.status = 'active' {emp_dept_clause}
+    """, tuple(emp_params))
+    employees = cur.fetchall()
+
+    # 3) Completed courses, keyed by employee, from both sources. Each entry is
+    #    (handle_lower, title_lower, completed_dt|None).
+    completions_by_user = {}   # user_id -> list
+    completions_by_username = {}  # username -> list
+
+    try:
+        cur.execute("""
+            SELECT user_id, username, product_handle, product_title, completion_date
+            FROM course_orders
+            WHERE company_id = %s AND completion_status = 'completed'
+        """, (company_id,))
+        for r in cur.fetchall():
+            entry = (
+                (r.get('product_handle') or '').strip().lower(),
+                (r.get('product_title') or '').strip().lower(),
+                _parse_completion_dt(r.get('completion_date')),
+            )
+            if r.get('user_id') is not None:
+                completions_by_user.setdefault(r['user_id'], []).append(entry)
+            if r.get('username'):
+                completions_by_username.setdefault(r['username'], []).append(entry)
+    except Exception as exc:
+        print(f"[HR_TOOLS][compliance] course_orders query skipped: {exc}")
+
+    usernames = [e['username'] for e in employees if e.get('username')]
+    if usernames:
+        try:
+            placeholders = ",".join(["%s"] * len(usernames))
+            cur.execute(f"""
+                SELECT username, course_handle, course_title, completed_date
+                FROM user_completed_courses
+                WHERE username IN ({placeholders})
+            """, tuple(usernames))
+            for r in cur.fetchall():
+                entry = (
+                    (r.get('course_handle') or '').strip().lower(),
+                    (r.get('course_title') or '').strip().lower(),
+                    _parse_completion_dt(r.get('completed_date')),
+                )
+                completions_by_username.setdefault(r['username'], []).append(entry)
+        except Exception as exc:
+            print(f"[HR_TOOLS][compliance] user_completed_courses query skipped: {exc}")
+
+    cur.close()
+
+    def _applies(emp, req):
+        dep = req.get('applies_to_department')
+        if dep and (emp.get('department') or '') != dep:
+            return False
+        role = req.get('applies_to_role')
+        if role and (emp.get('role') or '') != role:
+            return False
+        return True
+
+    def _matches(entry, req_handle, req_title, req_category):
+        handle, title, _dt = entry
+        if req_handle:
+            return handle == req_handle
+        # No required handle: match on the requirement title or category text.
+        needle = req_title or req_category
+        if not needle:
+            return False
+        return bool((title and needle in title) or (req_category and req_category in title))
+
+    def _employee_state(emp, req):
+        req_handle = (req.get('required_course_handle') or '').strip().lower()
+        req_title = (req.get('title') or '').strip().lower()
+        req_category = (req.get('category') or '').strip().lower()
+        recurrence = int(req.get('recurrence_months') or 0)
+
+        entries = []
+        if emp.get('user_id') is not None:
+            entries.extend(completions_by_user.get(emp['user_id'], []))
+        if emp.get('username'):
+            entries.extend(completions_by_username.get(emp['username'], []))
+
+        matched = [e for e in entries if _matches(e, req_handle, req_title, req_category)]
+        if not matched:
+            return "missing"
+
+        # One-time requirement (recurrence 0 = never expires): any completion ok.
+        if recurrence <= 0:
+            return "compliant"
+
+        # Find the most recent completion with a parseable date.
+        dated = [e[2] for e in matched if e[2] is not None]
+        if not dated:
+            # Completed but we cannot date it — treat as compliant (conservative:
+            # don't manufacture an overdue we cannot prove).
+            return "compliant"
+        latest = max(dated)
+        # Expiry = completion + recurrence_months (approx 30.4 days/month).
+        expiry = latest + timedelta(days=int(recurrence * 30.44))
+        days_left = (expiry - now).days
+        if days_left < 0:
+            return "overdue"
+        if days_left <= EXPIRING_DAYS:
+            return "expiring"
+        return "compliant"
+
+    per_requirement = []
+    total_applicable = 0
+    total_compliant = 0
+    for req in requirements:
+        applicable = [e for e in employees if _applies(e, req)]
+        counts = {"compliant": 0, "expiring": 0, "overdue": 0, "missing": 0}
+        for emp in applicable:
+            counts[_employee_state(emp, req)] += 1
+
+        n = len(applicable)
+        # "expiring" still counts as compliant-but-due-for-renewal for the % view.
+        compliant_n = counts["compliant"] + counts["expiring"]
+        total_applicable += n
+        total_compliant += compliant_n
+        pct = round(compliant_n / n * 100, 1) if n else 0.0
+        has_gap = (counts["overdue"] + counts["missing"] + counts["expiring"]) > 0
+
+        per_requirement.append({
+            "id": req.get('id'),
+            "title": req.get('title'),
+            "category": req.get('category'),
+            "is_statutory": bool(req.get('is_statutory')),
+            "applies_to_department": req.get('applies_to_department') or "Alle afdelinger",
+            "applies_to_role": req.get('applies_to_role') or "Alle roller",
+            "recurrence_months": int(req.get('recurrence_months') or 0),
+            "applicable_employees": n,
+            "compliant": counts["compliant"],
+            "expiring": counts["expiring"],
+            "overdue": counts["overdue"],
+            "missing": counts["missing"],
+            "compliance_pct": pct,
+            "has_gap": has_gap,
+        })
+
+    if only_gaps:
+        per_requirement = [r for r in per_requirement if r["has_gap"]]
+
+    overall_pct = round(total_compliant / total_applicable * 100, 1) if total_applicable else 0.0
+
+    return json.dumps({
+        "department": department or "Alle",
+        "total_requirements": len(requirements),
+        "shown_requirements": len(per_requirement),
+        "overall_compliance_pct": overall_pct,
+        "statutory_requirements": sum(1 for r in requirements if r.get('is_statutory')),
+        "requirements": per_requirement,
+        "summary_da": (
+            f"{overall_pct}% samlet overholdelse på tværs af {len(requirements)} krav."
+            if total_applicable else "Ingen berørte medarbejdere for de definerede krav endnu."
+        ),
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -927,6 +1308,7 @@ def execute_hr_tool(tool_call):
         "hr_recommend_training_plan": _execute_hr_recommend_training_plan,
         "hr_get_supplier_coverage": _execute_hr_get_supplier_coverage,
         "hr_get_ai_usage_risks": _execute_hr_get_ai_usage_risks,
+        "get_compliance_status": _execute_get_compliance_status,
     }
 
     fn = router.get(name)

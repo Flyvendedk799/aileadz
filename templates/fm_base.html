@@ -91,6 +91,8 @@
       <div class="fm-nav-label">Virksomhed</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'hr' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-building"></i><span>HR-workspace</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i><span>Mit team</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i><span>Compliance</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'company' }}" href="{{ url_for('companies.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span>Virksomheds-BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'creports' }}" href="{{ url_for('multitenant_reports.reports') }}"><i class="fa-solid fa-folder-open"></i><span>Virksomhedsrapporter</span></a></li>
       </ul>

@@ -116,6 +116,7 @@ _HR_META = {
     "hr_recommend_training_plan": ToolMeta("hr_recommend_training_plan", "hr", company_required=True, cache_ttl=120, toolset_tags=("plan", "catalog")),
     "hr_get_supplier_coverage": ToolMeta("hr_get_supplier_coverage", "hr", company_required=True, cache_ttl=120, toolset_tags=("supplier", "catalog")),
     "hr_get_ai_usage_risks": ToolMeta("hr_get_ai_usage_risks", "hr", company_required=True, cache_ttl=120, toolset_tags=("usage", "risk")),
+    "get_compliance_status": ToolMeta("get_compliance_status", "hr", company_required=True, cache_ttl=120, toolset_tags=("compliance",)),
 }
 
 
@@ -331,6 +332,9 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
         forced_tool = "hr_get_supplier_coverage"
     if _has_any(query, ("chatbot", "ai", "brug", "usage", "risiko", "dårlige", "daarlige")):
         names.update({"get_chatbot_usage_stats", "hr_get_ai_usage_risks"})
+    if _has_any(query, ("compliance", "overholdelse", "certificering", "recertificering", "lovpligtig", "obligatorisk", "arbejdsmiljø", "arbejdsmiljo", "gdpr-kursus")):
+        names.add("get_compliance_status")
+        forced_tool = "get_compliance_status"
 
     selected = []
     for name in sorted(names):

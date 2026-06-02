@@ -81,6 +81,17 @@ _TABLES_SQL = [
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_user_updated (username, updated_at DESC)
     )""",
+    """CREATE TABLE IF NOT EXISTS user_learning_goals (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        description TEXT DEFAULT NULL,
+        target_date VARCHAR(50) DEFAULT NULL,
+        status ENUM('aktiv','fuldfoert','paa_pause') DEFAULT 'aktiv',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_username (username)
+    )""",
 ]
 
 
@@ -333,6 +344,78 @@ def update_profile_summary(username, **fields):
     return True
 
 
+# ── Learning Goals CRUD ──
+
+_GOAL_STATUSES = ("aktiv", "fuldfoert", "paa_pause")
+
+
+def get_learning_goals(username):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, title, description, target_date, status, created_at, updated_at "
+        "FROM user_learning_goals WHERE username = %s "
+        "ORDER BY (status = 'aktiv') DESC, updated_at DESC",
+        (username,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return list(rows)
+
+
+def add_learning_goal(username, title, description="", target_date=None):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_learning_goals (username, title, description, target_date, status) "
+        "VALUES (%s, %s, %s, %s, 'aktiv')",
+        (username, title.strip()[:255], (description or "").strip() or None,
+         (target_date or "").strip()[:50] or None)
+    )
+    goal_id = cur.lastrowid
+    current_app.mysql.connection.commit()
+    cur.close()
+    return goal_id
+
+
+def update_learning_goal(username, goal_id, **fields):
+    allowed = {"title", "description", "target_date", "status"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if "status" in updates and updates["status"] not in _GOAL_STATUSES:
+        updates.pop("status")
+    if not updates:
+        return False
+    sets = ", ".join(f"{k} = %s" for k in updates)
+    vals = list(updates.values()) + [username, goal_id]
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(f"UPDATE user_learning_goals SET {sets} WHERE username = %s AND id = %s", tuple(vals))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def delete_learning_goal(username, goal_id):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM user_learning_goals WHERE username = %s AND id = %s", (username, goal_id))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def format_goals_for_ai(goals):
+    """Compact text of active goals for the AI system context."""
+    active = [g for g in (goals or []) if g.get("status") == "aktiv"]
+    if not active:
+        return ""
+    bits = []
+    for g in active[:6]:
+        s = g["title"]
+        if g.get("target_date"):
+            s += f" (inden {g['target_date']})"
+        bits.append(s)
+    return "Aktive udviklingsmål: " + "; ".join(bits)
+
+
 # ── Full Profile Snapshot (for AI context) ──
 
 def get_full_profile(username):
@@ -342,9 +425,18 @@ def get_full_profile(username):
     experience = get_experience(username)
     education = get_education(username)
     courses = get_completed_courses(username)
+    try:
+        goals = get_learning_goals(username)
+    except Exception:
+        goals = []
 
     return {
         "username": username,
+        "learning_goals": [
+            {"id": g["id"], "title": g["title"], "description": g.get("description") or "",
+             "target_date": g.get("target_date") or "", "status": g["status"]}
+            for g in goals
+        ],
         "headline": profile.get("headline", ""),
         "bio": profile.get("bio", ""),
         "goals": profile.get("goals", ""),
@@ -384,6 +476,10 @@ def format_profile_for_ai(profile_data):
         parts.append(f"Bio: {profile_data['bio'][:200]}")
     if profile_data.get("goals"):
         parts.append(f"Mål: {profile_data['goals'][:200]}")
+    active_goals = [g for g in profile_data.get("learning_goals", []) if g.get("status") == "aktiv"]
+    if active_goals:
+        gstrs = [g["title"] + (f" (inden {g['target_date']})" if g.get("target_date") else "") for g in active_goals[:6]]
+        parts.append("Aktive udviklingsmål: " + "; ".join(gstrs))
     if profile_data.get("preferred_location"):
         parts.append(f"Foretrukken lokation: {profile_data['preferred_location']}")
     if profile_data.get("preferred_format"):

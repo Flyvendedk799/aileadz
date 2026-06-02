@@ -152,6 +152,7 @@ VÆRKTØJER:
 - catalog_compare_products: Sammenlign 2-4 produkter fra kataloget.
 - check_course_readiness / prepare_course_order / create_course_order: Bestillingsflow.
 - get_user_profile / update_user_profile / request_user_input: Profil og CV-opdateringer.
+- set_learning_goal / get_learning_goals / update_learning_goal: Opret, vis og opdatér brugerens udviklingsmål (markér som fuldført, sæt på pause, slet). Bekræft altid kort når et mål er oprettet/opdateret, og foreslå relevante kurser til målet.
 - recommend_for_profile / suggest_learning_path: Personaliserede anbefalinger (login).
 - analyze_skill_gaps / get_department_budget / check_order_approval_status: Virksomhedskontekst.
 
@@ -1450,7 +1451,7 @@ def handle_agentic_ask(user_query, session):
                 guidance_parts.append(f"SAMTALEFASE: {stage} — {stage_hint}")
             guidance_parts.append(f"INTENT: {intent}")
             if logged_in_user:
-                guidance_parts.append(f"LOGGET IND SOM: {logged_in_user} — du har adgang til profil-værktøjer (get_user_profile, update_user_profile, recommend_for_profile). Brug dem til personalisering og proaktiv profilopdatering.")
+                guidance_parts.append(f"LOGGET IND SOM: {logged_in_user} — du har adgang til profil- og målværktøjer (get_user_profile, update_user_profile, set_learning_goal, get_learning_goals, update_learning_goal, recommend_for_profile). Du KAN oprette, vise, fuldføre og slette brugerens udviklingsmål — gør det når brugeren beder om det, og bekræft kort bagefter.")
 
                 # Phase 5B: Auto-inject profile preferences as search defaults
                 if db_profile_text:

@@ -1,0 +1,132 @@
+{% extends "fm_base.html" %}
+{% block page_id %}timeline{% endblock %}
+{% block title %}Min tidslinje{% endblock %}
+{% block topbar_title %}Min tidslinje{% endblock %}
+{% block topbar_sub %}Følg dine kurser fra bestilling til gennemførelse — status, godkendelse og deadlines ét sted.{% endblock %}
+
+{% block topbar_actions %}
+<a class="btn" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a>
+{% endblock %}
+
+{% block extra_head %}
+<style>
+  .tl-kpis { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 24px; }
+  @media (max-width: 760px) { .tl-kpis { grid-template-columns: repeat(2, 1fr); } }
+  .tl-kpi { padding: 16px 18px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-xs); }
+  .tl-kpi .l { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .tl-kpi .v { font-family: var(--ff-display); font-size: 26px; font-weight: 700; margin-top: 2px; }
+  .tl-kpi.alert .v { color: var(--fm-danger); }
+
+  .timeline { position: relative; margin: 8px 0 0; padding-left: 30px; }
+  .timeline::before { content: ""; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px; background: var(--fm-line); border-radius: 2px; }
+  .tl-item { position: relative; padding: 0 0 22px 0; }
+  .tl-item:last-child { padding-bottom: 0; }
+  .tl-dot { position: absolute; left: -30px; top: 4px; width: 20px; height: 20px; border-radius: 999px; background: var(--fm-surface); border: 2px solid var(--fm-line-2); display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--fm-ink-3); z-index: 1; }
+  .tl-item[data-state="godkendt"] .tl-dot { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .tl-item[data-state="gennemfoert"] .tl-dot { border-color: var(--fm-success); color: var(--fm-success); }
+  .tl-item[data-state="afventer_godkendelse"] .tl-dot,
+  .tl-item[data-state="afventer"] .tl-dot { border-color: var(--fm-warning); color: var(--fm-warning); }
+  .tl-item[data-state="afvist"] .tl-dot,
+  .tl-item[data-state="annulleret"] .tl-dot { border-color: var(--fm-danger); color: var(--fm-danger); }
+  .tl-item.overdue .tl-dot { border-color: var(--fm-danger); color: var(--fm-danger); }
+
+  .tl-card { padding: 16px 18px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); }
+  .tl-item.overdue .tl-card { border-color: color-mix(in srgb, var(--fm-danger) 45%, var(--fm-line)); }
+  .tl-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .tl-title { font-family: var(--ff-display); font-size: 16px; font-weight: 700; letter-spacing: -.01em; line-height: 1.3; }
+  .tl-badges { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .tl-meta { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 10px; font-size: 12.5px; color: var(--fm-ink-3); font-family: var(--ff-mono); }
+  .tl-meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .tl-meta .deadline.overdue { color: var(--fm-danger); font-weight: 600; }
+  .tl-overdue-flag { display: inline-flex; align-items: center; gap: 6px; margin-top: 10px; padding: 5px 10px; border-radius: var(--r-ctrl); background: color-mix(in srgb, var(--fm-danger) 12%, transparent); color: var(--fm-danger); font-size: 12px; font-weight: 600; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+
+  {% set state_badge = {
+    'gennemfoert': 'green',
+    'godkendt': 'teal',
+    'afventer_godkendelse': 'amber',
+    'afventer': 'amber',
+    'annulleret': 'red',
+    'afvist': 'red'
+  } %}
+  {% set state_icon = {
+    'gennemfoert': 'fa-circle-check',
+    'godkendt': 'fa-circle-play',
+    'afventer_godkendelse': 'fa-hourglass-half',
+    'afventer': 'fa-clock',
+    'annulleret': 'fa-circle-xmark',
+    'afvist': 'fa-ban'
+  } %}
+
+  {% if load_error %}
+  <div class="fm-card" style="padding:16px 18px; margin-bottom:18px; border-color: color-mix(in srgb, var(--fm-warning) 40%, var(--fm-line))">
+    <span class="fm-eyebrow"><i class="fa-solid fa-triangle-exclamation"></i> Bemærk</span>
+    <p style="margin:6px 0 0; color:var(--fm-ink-2); font-size:13.5px">Vi kunne ikke hente din tidslinje lige nu. Prøv igen om et øjeblik.</p>
+  </div>
+  {% endif %}
+
+  {% if items %}
+  <section class="tl-kpis">
+    <div class="tl-kpi"><div class="l">Kurser i alt</div><div class="v tnum">{{ summary.total }}</div></div>
+    <div class="tl-kpi"><div class="l">Afventer</div><div class="v tnum">{{ summary.afventer }}</div></div>
+    <div class="tl-kpi"><div class="l">Aktive</div><div class="v tnum">{{ summary.aktive }}</div></div>
+    <div class="tl-kpi{{ ' alert' if summary.overdue }}"><div class="l">Overskredet</div><div class="v tnum">{{ summary.overdue }}</div></div>
+  </section>
+
+  <div class="fm-section-head">
+    <div><span class="fm-eyebrow"><i class="fa-solid fa-timeline"></i> Forløb</span><h2 class="fm-section-title">Dine kurser</h2></div>
+  </div>
+
+  <div class="timeline">
+    {% for it in items %}
+    <article class="tl-item{{ ' overdue' if it.overdue }}" data-state="{{ it.state }}">
+      <span class="tl-dot"><i class="fa-solid {{ state_icon.get(it.state, 'fa-clock') }}"></i></span>
+      <div class="tl-card">
+        <div class="tl-head">
+          <div class="tl-title">{{ it.title }}</div>
+          <div class="tl-badges">
+            <span class="fm-badge {{ state_badge.get(it.state, 'amber') }} dot">{{ it.status_label }}</span>
+            {% if it.approval_label and it.approval_status != it.status %}
+            <span class="fm-badge indigo"><i class="fa-solid fa-user-check"></i> {{ it.approval_label }}</span>
+            {% endif %}
+          </div>
+        </div>
+
+        <div class="tl-meta">
+          {% if it.created_at %}
+          <span><i class="fa-solid fa-calendar-plus"></i> Bestilt {{ it.created_at.strftime('%d.%m.%Y') }}</span>
+          {% endif %}
+          {% if it.deadline %}
+          <span class="deadline{{ ' overdue' if it.overdue }}"><i class="fa-solid fa-flag-checkered"></i> Frist {{ it.deadline.strftime('%d.%m.%Y') }}</span>
+          {% endif %}
+          {% if it.completion_date %}
+          <span><i class="fa-solid fa-circle-check"></i> Gennemført {{ it.completion_date.strftime('%d.%m.%Y') }}</span>
+          {% endif %}
+          {% if it.price is not none %}
+          <span><i class="fa-solid fa-tag"></i> {{ '{:,.0f}'.format(it.price).replace(',', '.') }} kr.</span>
+          {% endif %}
+        </div>
+
+        {% if it.overdue %}
+        <div class="tl-overdue-flag"><i class="fa-solid fa-triangle-exclamation"></i> Fristen er overskredet</div>
+        {% endif %}
+      </div>
+    </article>
+    {% endfor %}
+  </div>
+
+  {% else %}
+  <div class="fm-card" style="padding:48px; text-align:center; color:var(--fm-ink-3)">
+    <i class="fa-solid fa-timeline" style="font-size:28px; opacity:.5"></i>
+    <p style="margin:14px 0 4px; font-family:var(--ff-display); font-size:17px; font-weight:700; color:var(--fm-ink)">Du har ingen kurser endnu</p>
+    <p style="margin:0 0 16px; font-size:13.5px">Når du bestiller et kursus, kan du følge status, godkendelse og deadline her.</p>
+    <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kursuskataloget</a>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

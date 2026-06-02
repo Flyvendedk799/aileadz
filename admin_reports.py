@@ -14,6 +14,14 @@ try:
 except Exception:  # pragma: no cover - defensive boot guard
     report_query = None
 
+# Boot-safe import of the catalog-freshness monitor (Theme E/D quick win).
+# Its functions never raise, but the import itself is still guarded so a syntax
+# or import-time problem can never crash blueprint registration / create_app.
+try:
+    import catalog_freshness
+except Exception:  # pragma: no cover - defensive boot guard
+    catalog_freshness = None
+
 admin_reports_bp = Blueprint('admin_reports', __name__, template_folder='templates')
 
 
@@ -632,5 +640,46 @@ def conversion_funnel():
         daily_data=daily.get('data', []),
         top_queries=queries,
         days=days,
+        has_data=has_data,
+    )
+
+
+@admin_reports_bp.route('/admin/catalog-freshness')
+@require_role('admin')
+def catalog_freshness_dashboard():
+    """Catalog freshness monitor (Theme E/D quick win).
+
+    Two read-only signals that stop the chatbot recommending courses that have
+    already happened and turn supplier-agreement lapses into HR nudges:
+
+      * Expiring / expired supplier agreements (the reliable half) — platform
+        wide here (``company_id=None``), so an admin sees lapses across tenants.
+      * Stale-dated courses (the gated half) — only courses whose latest session
+        date parses with an explicit year and is in the past.
+
+    Everything is wrapped so a freshness/catalog failure renders a clean empty
+    state instead of a 500.
+    """
+    agreements = []
+    courses = []
+    within_days = 30
+    has_data = False
+
+    try:
+        if catalog_freshness is not None:
+            agreements = catalog_freshness.expiring_agreements(None, within_days) or []
+            courses = catalog_freshness.stale_courses() or []
+            has_data = bool(agreements or courses)
+    except Exception:
+        # Fall through to the empty-state defaults defined above.
+        agreements = []
+        courses = []
+        has_data = False
+
+    return render_template(
+        'fm/freshness.html',
+        agreements=agreements,
+        courses=courses,
+        within_days=within_days,
         has_data=has_data,
     )

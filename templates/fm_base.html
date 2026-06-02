@@ -101,6 +101,7 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil &amp; CV</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'goals' }}" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i><span>Udviklingsmål</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Min tidslinje</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'settings' }}" href="{{ url_for('pages.settings') }}"><i class="fa-solid fa-sliders"></i><span>Indstillinger</span></a></li>
       </ul>
 
@@ -112,6 +113,7 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'abot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i><span>Chatbot BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'aicost' }}" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span>AI-omkostninger</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'funnel' }}" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter"></i><span>Konverteringstragt</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'freshness' }}" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-xmark"></i><span>Katalogfriskhed</span></a></li>
       </ul>
       {% endif %}
     </div>

@@ -608,41 +608,48 @@ def get_department_performance(company_id):
 
 @analytics_bp.route('/analytics/api/learning-roi/<int:company_id>')
 def calculate_learning_roi(company_id):
-    """Calculate ROI on learning investments"""
+    """
+    Calculate ROI on learning investments.
+
+    Thin delegator to the canonical ROI engine
+    (insights_engine.get_roi_metrics) so there is ONE source of truth and the
+    two engines can never diverge. The fabricated 0.15 productivity multiplier
+    no longer lives here — it is confined to the canonical engine's clearly
+    labelled, hypothetical metrics['scenario'] block.
+
+    The legacy response shape is preserved for existing API consumers:
+        total_investment, current_avg_performance, employees_trained,
+        avg_course_score, estimated_roi_percentage, estimated_value_generated
+    Headline keys (total_investment, employees_trained) are now grounded in
+    real course_orders / department spend; the estimate keys are explicitly
+    derived from the labelled scenario and are non-factual projections.
+    """
     if session.get('company_id') != company_id:
         return jsonify({'error': 'Unauthorized'}), 401
-    
-    try:
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-        # Get learning costs and performance improvements
-        cur.execute("""
-            SELECT 
-                SUM(cd.learning_budget_per_employee * c.current_employee_count) as total_investment,
-                AVG(cu.performance_rating) as current_avg_performance,
-                COUNT(DISTINCT elp.user_id) as employees_trained,
-                AVG(elp.final_score) as avg_course_score
-            FROM companies c
-            LEFT JOIN company_departments cd ON c.id = cd.company_id
-            LEFT JOIN company_users cu ON c.id = cu.company_id
-            LEFT JOIN employee_learning_progress elp ON c.id = elp.company_id
-            WHERE c.id = %s AND cu.status = 'active'
-        """, (company_id,))
-        
-        roi_data = cur.fetchone()
-        
-        # Calculate estimated ROI (simplified calculation)
-        if roi_data and roi_data['total_investment']:
-            performance_improvement = (roi_data['current_avg_performance'] - 3.0) / 3.0  # Baseline 3.0
-            estimated_productivity_gain = performance_improvement * 0.15  # 15% productivity per rating point
-            estimated_value = roi_data['total_investment'] * (1 + estimated_productivity_gain)
-            roi_percentage = (estimated_value - roi_data['total_investment']) / roi_data['total_investment'] * 100
-            
-            roi_data['estimated_roi_percentage'] = round(roi_percentage, 2)
-            roi_data['estimated_value_generated'] = round(estimated_value, 2)
-        
-        cur.close()
-        
+    try:
+        # Delegate to the single canonical computation.
+        try:
+            from insights_engine import get_roi_metrics
+        except Exception:
+            from ..insights_engine import get_roi_metrics  # pragma: no cover
+
+        metrics = get_roi_metrics(current_app._get_current_object(), company_id) or {}
+        scenario = metrics.get('scenario') or {}
+
+        roi_data = {
+            # Real, grounded headline figures.
+            'total_investment': round(float(metrics.get('total_training_spend') or 0), 2),
+            'employees_trained': int(metrics.get('employees_trained') or 0),
+            # Carried from the labelled scenario (rating-based, hypothetical).
+            'current_avg_performance': scenario.get('avg_performance_rating'),
+            'avg_course_score': scenario.get('avg_performance_rating'),
+        }
+        # Estimate keys come ONLY from the explicitly-hypothetical scenario.
+        if scenario:
+            roi_data['estimated_roi_percentage'] = scenario.get('estimated_roi_percentage')
+            roi_data['estimated_value_generated'] = scenario.get('estimated_value_generated')
+
         return jsonify({
             'success': True,
             'data': roi_data

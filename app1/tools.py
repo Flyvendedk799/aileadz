@@ -1393,11 +1393,37 @@ PROFILE_TOOLS = [
                     },
                     "data": {
                         "type": "object",
-                        "description": "Data for the action. For add_skill: {skill_name, skill_level?}. For remove_skill: {skill_name}. For update_skill_level: {skill_name, skill_level}. For add_experience: {title, company?, start_year?, end_year?, is_current?, description?}. For remove_experience: {id}. For update_experience: {id, title?, company?, start_year?, end_year?, is_current?, description?}. For add_education: {degree, institution?, year_completed?}. For remove_education: {id}. For update_education: {id, degree?, institution?, year_completed?, description?}. For add_course: {course_title, course_handle?, vendor?, completed_date?}. For remove_course: {course_title}. For update_course: {course_title, vendor?, completed_date?, certificate_note?}. For update_summary: {headline?, bio?, goals?, preferred_location?, preferred_format?, budget_range?}."
+                        "description": "Fields for the action — include ONLY the relevant ones. add_skill: skill_name (required), skill_level. add_experience: title (required), company, start_year, end_year, is_current, description. add_education: degree (required), institution, year_completed. add_course: course_title (required), vendor, completed_date. update_summary: headline, bio, goals, preferred_location, preferred_format, budget_range. remove_*/update_*: include id or the name/title.",
+                        "properties": {
+                            "skill_name": {"type": "string"},
+                            "skill_level": {"type": "string", "enum": ["begynder", "mellem", "avanceret", "ekspert"]},
+                            "title": {"type": "string"},
+                            "company": {"type": "string"},
+                            "start_year": {"type": "string"},
+                            "end_year": {"type": "string"},
+                            "is_current": {"type": "boolean"},
+                            "description": {"type": "string"},
+                            "degree": {"type": "string"},
+                            "institution": {"type": "string"},
+                            "year_completed": {"type": "string"},
+                            "course_title": {"type": "string"},
+                            "course_handle": {"type": "string"},
+                            "vendor": {"type": "string"},
+                            "completed_date": {"type": "string"},
+                            "certificate_note": {"type": "string"},
+                            "id": {"type": "integer"},
+                            "headline": {"type": "string"},
+                            "bio": {"type": "string"},
+                            "goals": {"type": "string"},
+                            "preferred_location": {"type": "string"},
+                            "preferred_format": {"type": "string"},
+                            "budget_range": {"type": "string"}
+                        }
                     }
                 },
                 "required": ["action", "data"]
-            }
+            },
+            "strict": False
         }
     }
 ]
@@ -1843,7 +1869,8 @@ PROFILE_TOOLS.append({
                 }
             },
             "required": ["ui_type", "message", "section", "save_action"]
-        }
+        },
+        "strict": False
     }
 })
 

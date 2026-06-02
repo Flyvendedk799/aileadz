@@ -90,10 +90,18 @@ _tables_ensured = False
 def ensure_tables():
     """Create tables if they don't exist. Cached after first success (Phase 2C)."""
     global _tables_ensured
+    # Always verify/heal the request connection FIRST, even when the table
+    # creation is cached. flask_mysqldb hands back the same connection object for
+    # the whole request even if its socket died mid-request, so callers (profile
+    # load + every profile tool executor) rely on this to recover a dead
+    # connection rather than failing with InterfaceError(0, '').
+    try:
+        refresh_flask_mysql_connection(current_app.mysql)
+    except Exception:
+        pass
     if _tables_ensured:
         return
     try:
-        refresh_flask_mysql_connection(current_app.mysql)
         cur = current_app.mysql.connection.cursor()
         for i, sql in enumerate(_TABLES_SQL):
             try:

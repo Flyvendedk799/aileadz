@@ -135,12 +135,14 @@
   function dismissToast(t) { if (!t.parentNode) return; t.classList.add("out"); setTimeout(() => t.remove(), 300); }
 
   /* ---------------- profile ring ---------------- */
-  let ringScore = 62;
+  // Starts at 0 (neutral) until the real profile completeness loads. Never a fake number.
+  let ringScore = 0;
   function setRing(score) {
-    ringScore = Math.min(100, score);
+    ringScore = Math.max(0, Math.min(100, Math.round(score) || 0));
     const C = 2 * Math.PI * 15.5;
-    $("#ringFg").setAttribute("stroke-dasharray", (C * ringScore / 100) + " " + C);
-    $("#ringPct").textContent = ringScore + "%";
+    const fg = $("#ringFg"), pct = $("#ringPct");
+    if (fg) fg.setAttribute("stroke-dasharray", (C * ringScore / 100) + " " + C);
+    if (pct) pct.textContent = ringScore + "%";
   }
 
   /* ---------------- message builders ---------------- */
@@ -343,7 +345,8 @@
       card.querySelector(".p-no").remove();
       card.querySelector(".pcard-msg").innerHTML = '<span class="q" style="color:var(--green)">✓ Gemt</span> ' + esc(opts.message);
       toast(opts.toast || "Profil opdateret", opts.section);
-      setRing(Math.min(100, ringScore + (opts.bump || 8)));
+      // Re-sync the ring from the real profile rather than guessing a bump.
+      refreshRing();
       collapseToPill(card, opts.label || "Profil opdateret", false);
     };
     card.querySelector(".p-no").onclick = function () {
@@ -405,7 +408,8 @@
       card.querySelector(".p-no").remove();
       card.querySelectorAll("input,select").forEach((i) => { i.disabled = true; i.style.opacity = ".6"; });
       toast(opts.toast || "Profil opdateret", opts.section);
-      setRing(Math.min(100, ringScore + (opts.bump || 10)));
+      // Re-sync the ring from the real profile rather than guessing a bump.
+      refreshRing();
       collapseToPill(card, opts.label || "Tilføjet", false);
     };
     card.querySelector(".p-no").onclick = function () {
@@ -603,38 +607,157 @@
   function newChat() { attached = []; renderRef(); welcome(); refreshConv(); input.value = ""; toggleSend(); }
   window.fmNewChat = newChat;
 
-  /* ---------------- conversation list ---------------- */
-  const CONVS = [
-    { id: 1, t: "Projektledelse til 4 medarbejdere", g: "today", active: true },
-    { id: 2, t: "Excel-kurser for analytikere", g: "today" },
-    { id: 3, t: "Leadership-forløb Q3", g: "today" },
-    { id: 4, t: "GDPR compliance hold", g: "yesterday" },
-    { id: 5, t: "Scrum Master certificering", g: "yesterday" },
-    { id: 6, t: "Onboarding-pakke til nye", g: "older" },
-  ];
-  function refreshConv() {
+  /* ---------------- conversation list ----------------
+     Real history from GET /app1/conversations. No fabricated rows: an empty or
+     failed fetch renders a neutral empty state, never placeholder samples. */
+  const convIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+  const delIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
+  let CONVS = [];
+  let activeConvId = null;
+
+  // Group a conversation by its updated_at into "today" / "yesterday" / "older".
+  function convGroup(iso) {
+    if (!iso) return "older";
+    const d = new Date(iso);
+    if (isNaN(d.getTime())) return "older";
+    const now = new Date();
+    const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+    const dayMs = 86400000;
+    const diff = startOfDay(now) - startOfDay(d);
+    if (diff <= 0) return "today";
+    if (diff <= dayMs) return "yesterday";
+    return "older";
+  }
+
+  function renderConv() {
     const list = $("#convList");
+    if (!list) return;
+    if (!CONVS.length) {
+      // Neutral empty state — no fake conversations. Styled inline (no chat.css dep)
+      // to match the muted rail labels.
+      list.innerHTML = `<div class="conv-empty" style="padding:12px 9px;font-size:12px;color:var(--ink-4)">Ingen samtaler endnu</div>`;
+      return;
+    }
     const groups = [["today", "I dag"], ["yesterday", "I går"], ["older", "Ældre"]];
     list.innerHTML = groups.map(([k, lab]) => {
-      const items = CONVS.filter((c) => c.g === k);
+      const items = CONVS.filter((c) => convGroup(c.updated_at) === k);
       if (!items.length) return "";
-      return `<div class="conv-date">${lab}</div>` + items.map((c) => `
-        <div class="conv${c.active ? " active" : ""}" data-id="${c.id}">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
-          <span>${esc(c.t)}</span>
-          <button class="conv-del" data-id="${c.id}" title="Slet"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg></button>
+      return `<div class="conv-date">${esc(lab)}</div>` + items.map((c) => `
+        <div class="conv${c.id == activeConvId ? " active" : ""}" data-id="${esc(c.id)}">
+          ${convIcon}
+          <span>${esc(c.title || "Samtale")}</span>
+          <button class="conv-del" data-id="${esc(c.id)}" title="Slet">${delIcon}</button>
         </div>`).join("");
     }).join("");
     list.querySelectorAll(".conv").forEach((el) => el.onclick = () => {
-      CONVS.forEach((c) => c.active = false);
-      const c = CONVS.find((x) => x.id == el.dataset.id); if (c) c.active = true;
-      refreshConv(); if (window.innerWidth <= 860) rail.classList.remove("open");
+      activeConvId = el.dataset.id;
+      renderConv();
+      if (window.innerWidth <= 860) rail.classList.remove("open");
     });
     list.querySelectorAll(".conv-del").forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
-      const i = CONVS.findIndex((c) => c.id == b.dataset.id);
-      if (i > -1) CONVS.splice(i, 1); refreshConv();
+      const id = b.dataset.id;
+      // Optimistic removal; persist deletion to the real backend.
+      CONVS = CONVS.filter((c) => String(c.id) !== String(id));
+      if (String(activeConvId) === String(id)) activeConvId = null;
+      renderConv();
+      fetch("/app1/conversations/" + encodeURIComponent(id), {
+        method: "DELETE",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      }).catch(() => {});
     });
+  }
+
+  async function refreshConv() {
+    try {
+      const resp = await fetch("/app1/conversations", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!resp.ok) { CONVS = []; renderConv(); return; }
+      const data = await resp.json();
+      CONVS = Array.isArray(data && data.conversations) ? data.conversations : [];
+    } catch (e) {
+      CONVS = [];
+    }
+    renderConv();
+  }
+
+  /* ---------------- real profile completeness ----------------
+     Drives the ring from GET /api/profile/full instead of a hardcoded number.
+     Completeness = fraction of the five learner-profile sections that have any
+     real content: skills, experience, education, completed courses, goals.
+     Anonymous / 401 / fetch failure -> ring stays hidden, never a fake %. */
+  let profileLoaded = false;
+  function computeCompleteness(p) {
+    if (!p || typeof p !== "object") return 0;
+    const arr = (x) => (Array.isArray(x) ? x.length : 0);
+    const sections = [
+      arr(p.skills) > 0,
+      arr(p.experience) > 0,
+      arr(p.education) > 0,
+      arr(p.completed_courses) > 0,
+      // "Goals" is populated if there are learning goals OR a free-text goal/bio.
+      (arr(p.learning_goals) > 0) || !!(p.goals && String(p.goals).trim()),
+    ];
+    const filled = sections.filter(Boolean).length;
+    return Math.round((filled / sections.length) * 100);
+  }
+
+  async function loadProfile() {
+    const widget = $(".ring-widget");
+    try {
+      const resp = await fetch("/api/profile/full", {
+        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!resp.ok) throw new Error("profile " + resp.status);
+      const data = await resp.json();
+      if (!data || !data.success || !data.profile) throw new Error("profile_shape");
+      profileLoaded = true;
+      setRing(computeCompleteness(data.profile));
+      if (widget) widget.style.display = "";
+    } catch (e) {
+      // Anonymous / failed: hide the ring widget rather than show a fake number.
+      profileLoaded = false;
+      if (widget) widget.style.display = "none";
+    }
+  }
+
+  // Re-sync the ring from the live profile after a save (used by profile cards).
+  // Only re-fetches when the profile loaded successfully in the first place.
+  function refreshRing() { if (profileLoaded) loadProfile(); }
+
+  /* ---------------- real nudge banner ----------------
+     Banner text/link come from the first item of GET /app1/nudges. No nudges
+     (or anonymous / failure) -> banner stays hidden, never a fabricated nudge. */
+  function showNudge(text, url) {
+    const nudge = $("#nudge"), link = $("#nudgeLink");
+    if (!nudge || !link) return;
+    link.textContent = text;
+    const safeUrl = (url && /^(?:https?:|\/)/i.test(String(url))) ? String(url) : "";
+    link.dataset.url = safeUrl;
+    nudge.classList.add("show");
+  }
+  function hideNudge() { const n = $("#nudge"); if (n) n.classList.remove("show"); }
+
+  async function loadNudges() {
+    try {
+      const resp = await fetch("/app1/nudges", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!resp.ok) { hideNudge(); return; }
+      const data = await resp.json();
+      const list = (data && Array.isArray(data.nudges)) ? data.nudges : [];
+      const first = list[0];
+      const text = first && (first.text || first.message);
+      if (!text) { hideNudge(); return; }
+      showNudge(String(text), first.action_url || first.link || "");
+    } catch (e) {
+      hideNudge();
+    }
   }
 
   /* ---------------- sidebar / nudge / misc ---------------- */
@@ -642,14 +765,20 @@
   $("#menuBtn").onclick = () => rail.classList.add("open");
   $("#overlay").onclick = () => rail.classList.remove("open");
   document.querySelectorAll("[data-new]").forEach((b) => b.onclick = newChat);
-  $("#nudgeX").onclick = () => $("#nudge").classList.remove("show");
-  $("#nudgeLink").onclick = (e) => { e.preventDefault(); $("#nudge").classList.remove("show"); ask("Hvad mangler min profil?"); };
+  $("#nudgeX").onclick = () => hideNudge();
+  $("#nudgeLink").onclick = (e) => {
+    e.preventDefault();
+    hideNudge();
+    const url = e.currentTarget.dataset.url;
+    if (url) { window.location.href = url; return; }
+    ask("Hvad mangler min profil?");
+  };
 
   /* ---------------- init ---------------- */
-  setRing(62);
   refreshConv();
   welcome();
   renderRef();
-  setTimeout(() => $("#nudge").classList.add("show"), 1400);
+  loadProfile();
+  loadNudges();
   input.focus();
 })();

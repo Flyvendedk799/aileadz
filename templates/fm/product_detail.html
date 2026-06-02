@@ -18,6 +18,12 @@
   .grid-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
   .grid-meta .gm strong { display: block; font-size: 13px; }
   .grid-meta .gm span { font-size: 13px; color: var(--fm-ink-2); }
+  .deal-badge { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 11.5px; font-weight: 700; }
+  .deal-badge i { font-size: 10px; }
+  .deal-was { font-size: 14px; color: var(--fm-ink-3); text-decoration: line-through; }
+  .deal-now { font-family: var(--ff-display); font-size: 30px; font-weight: 700; letter-spacing: -.03em; color: var(--fm-primary); }
+  .agreement-note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; line-height: 1.4; border-radius: var(--r-sm); background: var(--fm-primary-tint); color: var(--fm-ink-2); font-size: 12.5px; }
+  .agreement-note i { color: var(--fm-primary); margin-top: 2px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -81,7 +87,9 @@
           <tr>
             <td><div style="display:flex;align-items:center;gap:8px;font-weight:650"><i class="fa-solid fa-calendar-day" style="color:var(--fm-ink-3);font-size:12px"></i>{{ variant.date or 'Dato efter aftale' }}</div></td>
             <td class="muted">{{ variant.location or variant.city or 'Online/efter aftale' }}</td>
-            <td class="mono" style="color:var(--fm-primary);font-weight:700">{{ variant.price_label or product.price_label }}</td>
+            <td class="mono" style="color:var(--fm-primary);font-weight:700">
+              {% if variant.discounted_price_label %}{{ variant.discounted_price_label }} <span class="deal-was" style="font-size:12px">{{ variant.price_label or product.price_label }}</span>{% else %}{{ variant.price_label or product.price_label }}{% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody></table>
@@ -92,9 +100,29 @@
     <div class="stack">
       <div class="fm-card"><div class="fm-card-body">
         <div class="fm-flex" style="align-items:baseline;gap:8px">
+          {% if product and product.has_agreement and product.discounted_price_label %}
+          <span class="deal-now">{{ product.discounted_price_label }}</span>
+          <span class="deal-was">{{ product.original_price_label or product.price_label }}</span>
+          {% else %}
           <span style="font-family:var(--ff-display);font-size:30px;font-weight:700;letter-spacing:-.03em">{{ product.price_label if product else 'Pris på forespørgsel' }}</span>
+          {% endif %}
           <span style="margin-left:auto" class="fm-badge">{{ (product.variants|length) if product else 0 }} variant{{ '' if product and product.variants|length == 1 else 'er' }}</span>
         </div>
+
+        {% if product and product.has_agreement %}
+        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
+          <span class="deal-badge"><i class="fa-solid fa-handshake"></i>Aftalepris{% if product.discount_label %} {{ product.discount_label }}{% endif %}</span>
+        </div>
+        {% if product.agreement and (product.agreement.agreement_name or product.agreement.valid_until) %}
+        <div class="agreement-note">
+          <i class="fa-solid fa-file-signature"></i>
+          <span>
+            {% if product.agreement.agreement_name %}Aftale: {{ product.agreement.agreement_name }}{% endif %}
+            {% if product.agreement.valid_until %}{% if product.agreement.agreement_name %} · {% endif %}Gælder til {{ product.agreement.valid_until }}{% endif %}
+          </span>
+        </div>
+        {% endif %}
+        {% endif %}
 
         {% if supplier_state and not supplier_state.is_active %}
         <div class="status-pill amber" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;padding:10px 12px;line-height:1.4">
@@ -112,7 +140,12 @@
               <span>
                 <strong>{{ variant.date or 'Dato efter aftale' }}</strong><br>
                 <span class="muted" style="font-size:12.5px">{{ variant.location or variant.city or 'Online/efter aftale' }}</span><br>
+                {% if variant.discounted_price_label %}
+                <span style="font-size:12.5px;color:var(--fm-primary);font-weight:700">{{ variant.discounted_price_label }}</span>
+                <span class="deal-was" style="font-size:11.5px">{{ variant.price_label or product.price_label }}</span>
+                {% else %}
                 <span style="font-size:12.5px">{{ variant.price_label or product.price_label }}</span>
+                {% endif %}
               </span>
             </label>
             {% endfor %}
@@ -156,8 +189,8 @@
           {% for related in related_products %}
           <a href="{{ url_for('catalog.product_detail', handle=related.handle) }}" class="row-item" style="text-decoration:none">
             <span class="ra soft"><i class="fa-solid fa-graduation-cap"></i></span>
-            <div class="rt"><div class="rn">{{ related.title }}</div><div class="rm">{{ related.vendor }}</div></div>
-            <span class="mono" style="font-weight:700;color:var(--fm-primary)">{{ related.price_label }}</span>
+            <div class="rt"><div class="rn">{{ related.title }}</div><div class="rm">{{ related.vendor }}{% if related.has_agreement %} · <span style="color:var(--fm-primary);font-weight:700">Aftalepris</span>{% endif %}</div></div>
+            <span class="mono" style="font-weight:700;color:var(--fm-primary)">{{ related.discounted_price_label if related.has_agreement and related.discounted_price_label else related.price_label }}</span>
           </a>
           {% endfor %}
         </div>

@@ -111,6 +111,7 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'acatalog' }}" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i><span>Katalogadmin</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'abot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i><span>Chatbot BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'aicost' }}" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span>AI-omkostninger</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'funnel' }}" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter"></i><span>Konverteringstragt</span></a></li>
       </ul>
       {% endif %}
     </div>

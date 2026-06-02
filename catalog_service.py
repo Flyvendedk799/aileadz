@@ -544,7 +544,179 @@ def product_search_text(product):
     return " ".join(pieces).lower()
 
 
-def search_products(filters=None, page=1, per_page=24):
+def get_company_discount_map(company_id):
+    """Return {vendor_name_lower: agreement_dict} for currently-valid, active
+    negotiated supplier agreements for a company.
+
+    Reads company_supplier_agreements (enterprise schema). Fully guarded: any
+    missing app context, DB error, or absent company_id yields an empty map so
+    callers fall back to list prices. Compute-on-read only; never mutates catalog.
+    """
+    if not company_id or not has_app_context():
+        return {}
+    try:
+        import MySQLdb.cursors
+    except Exception:
+        return {}
+    discounts = {}
+    try:
+        mysql = current_app.mysql
+        try:
+            import db_compat
+
+            db_compat.refresh_flask_mysql_connection(mysql)
+        except Exception:
+            pass
+        cur = mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT vendor_name, discount_type, discount_value,
+                   agreement_name, agreement_reference, valid_until, min_participants
+            FROM company_supplier_agreements
+            WHERE company_id = %s AND is_active = 1
+              AND (valid_from IS NULL OR valid_from <= CURDATE())
+              AND (valid_until IS NULL OR valid_until >= CURDATE())
+            """,
+            (company_id,),
+        )
+        for row in cur.fetchall():
+            vendor = (row.get("vendor_name") or "").strip()
+            if not vendor:
+                continue
+            try:
+                value = float(row.get("discount_value")) if row.get("discount_value") is not None else 0.0
+            except (TypeError, ValueError):
+                value = 0.0
+            discounts[vendor.lower()] = {
+                "vendor_name": vendor,
+                "discount_type": (row.get("discount_type") or "percentage"),
+                "discount_value": value,
+                "agreement_name": row.get("agreement_name") or "",
+                "agreement_reference": row.get("agreement_reference") or "",
+                "valid_until": row.get("valid_until"),
+                "min_participants": row.get("min_participants"),
+            }
+        cur.close()
+    except Exception as exc:
+        try:
+            current_app.logger.warning("Company discount lookup failed: %s", exc)
+        except Exception:
+            pass
+        return {}
+    return discounts
+
+
+def apply_discount_to_price(price, agreement):
+    """Compute the effective price for a single list price given an agreement.
+
+    Returns None when no meaningful discount applies (so callers keep the list
+    price). Supports percentage / fixed_amount / fixed_price discount types.
+    """
+    if agreement is None or price is None:
+        return None
+    try:
+        list_price = float(price)
+    except (TypeError, ValueError):
+        return None
+    if list_price <= 0:
+        return None
+    dtype = (agreement.get("discount_type") or "percentage").lower()
+    try:
+        value = float(agreement.get("discount_value") or 0)
+    except (TypeError, ValueError):
+        value = 0.0
+    if dtype == "percentage":
+        if value <= 0:
+            return None
+        pct = min(value, 100.0)
+        effective = list_price * (1 - pct / 100.0)
+    elif dtype == "fixed_amount":
+        if value <= 0:
+            return None
+        effective = list_price - value
+    elif dtype == "fixed_price":
+        if value <= 0 or value >= list_price:
+            return None
+        effective = value
+    else:
+        return None
+    effective = max(round(effective, 2), 0.0)
+    if effective >= list_price:
+        return None
+    return effective
+
+
+def decorate_product_with_discount(product, agreement):
+    """Return a shallow copy of a normalized product enriched with negotiated
+    pricing fields for the current company. Never mutates the cached product.
+
+    Adds (when an agreement actually lowers the price):
+      has_agreement, agreement, discount_percent, discount_label,
+      original_price_min, discounted_price_min, discounted_price_label,
+      and per-variant discounted_price / discounted_price_label.
+    """
+    if not agreement:
+        return product
+    effective_min = apply_discount_to_price(product.get("price_min"), agreement)
+    discounted_variants = []
+    any_variant_discount = False
+    for variant in product.get("variants") or []:
+        eff = apply_discount_to_price(variant.get("price"), agreement)
+        if eff is not None:
+            any_variant_discount = True
+            new_variant = dict(variant)
+            new_variant["discounted_price"] = eff
+            new_variant["discounted_price_label"] = format_price(eff)
+            discounted_variants.append(new_variant)
+        else:
+            discounted_variants.append(variant)
+    if effective_min is None and not any_variant_discount:
+        return product
+
+    decorated = dict(product)
+    decorated["variants"] = discounted_variants
+    decorated["has_agreement"] = True
+    decorated["agreement"] = agreement
+
+    dtype = (agreement.get("discount_type") or "percentage").lower()
+    if dtype == "percentage" and agreement.get("discount_value"):
+        try:
+            pct = int(round(float(agreement.get("discount_value"))))
+            decorated["discount_percent"] = pct
+            decorated["discount_label"] = f"-{pct}%"
+        except (TypeError, ValueError):
+            decorated["discount_label"] = "Aftalepris"
+    else:
+        decorated["discount_label"] = "Aftalepris"
+
+    if effective_min is not None:
+        decorated["original_price_min"] = product.get("price_min")
+        decorated["original_price_label"] = product.get("price_label")
+        decorated["discounted_price_min"] = effective_min
+        decorated["discounted_price_label"] = format_price(effective_min)
+    return decorated
+
+
+def decorate_products_with_discounts(products, company_id=None, discount_map=None):
+    """Apply company negotiated discounts to a list of products (compute-on-read).
+
+    For anonymous / non-company users (no company_id and no map) the products are
+    returned unchanged so list prices are preserved. Backward-compatible.
+    """
+    if discount_map is None:
+        if not company_id:
+            return products
+        discount_map = get_company_discount_map(company_id)
+    if not discount_map:
+        return products
+    decorated = []
+    for product in products:
+        agreement = discount_map.get((product.get("vendor") or "").lower())
+        decorated.append(decorate_product_with_discount(product, agreement) if agreement else product)
+    return decorated
+
+
+def search_products(filters=None, page=1, per_page=24, company_id=None):
     filters = filters or {}
     q = (filters.get("q") or "").strip().lower()
     category_slug = filters.get("category") or ""
@@ -605,8 +777,13 @@ def search_products(filters=None, page=1, per_page=24):
     start = (page - 1) * per_page
     end = start + per_page
     total_pages = max((total + per_page - 1) // per_page, 1)
+    page_products = matched[start:end]
+    # Compute-on-read negotiated discounts for logged-in company users only.
+    # Anonymous / non-company callers (company_id falsy) get list prices unchanged.
+    if company_id:
+        page_products = decorate_products_with_discounts(page_products, company_id=company_id)
     return {
-        "products": matched[start:end],
+        "products": page_products,
         "total": total,
         "page": page,
         "per_page": per_page,

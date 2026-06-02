@@ -957,13 +957,118 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     return result
 
 
-def hybrid_rank_products(filtered_products, query, all_products, limit=5):
+def _normalize_profile_boost(profile_boost):
+    """Normalize a raw profile_boost dict into lowercased sets.
+
+    Returns None when profile_boost is falsy (keeps the legacy code path
+    byte-for-byte identical). Otherwise returns a dict with three sets:
+      - target_terms: lowercased skill/goal/skill-gap keywords the learner wants
+      - completed_handles: lowercased product handles already completed
+      - completed_titles: lowercased product titles already completed
+    Robust to list/set/str inputs and missing keys.
+    """
+    if not profile_boost:
+        return None
+
+    def _to_lower_set(value):
+        if not value:
+            return set()
+        if isinstance(value, str):
+            value = [value]
+        out = set()
+        for item in value:
+            if item is None:
+                continue
+            s = str(item).strip().lower()
+            if s:
+                out.add(s)
+        return out
+
+    return {
+        "target_terms": _to_lower_set(profile_boost.get("target_terms")),
+        "completed_handles": _to_lower_set(profile_boost.get("completed_handles")),
+        "completed_titles": _to_lower_set(profile_boost.get("completed_titles")),
+    }
+
+
+def _profile_score_adjustment(product, norm_boost):
+    """Compute a multiplicative factor for a product given a normalized profile_boost.
+
+    Returns 1.0 (no change) when norm_boost is None — preserving the exact
+    legacy score. Otherwise:
+      - BOOST: each distinct target term found in the product's
+        title/tags/skills/category/primary_topic multiplies the score up
+        (capped, moderate). A matching term adds +0.18 to the multiplier,
+        capped at +0.54 (i.e. up to ~1.54x) so relevant matches rise but a
+        single strong lexical winner is not overwhelmed.
+      - DEMOTE: products whose handle or title is in completed_* are pushed
+        down (multiplier 0.05) so they sort to the very end without being
+        removed.
+    Returns (factor, matched_terms, is_completed).
+    """
+    if norm_boost is None:
+        return 1.0, [], False
+
+    handle = str(product.get("handle", "") or "").lower()
+    title_lower = str(product.get("title", "") or "").lower()
+
+    # Demotion check first — completed courses go last regardless of match.
+    is_completed = (
+        (handle and handle in norm_boost["completed_handles"])
+        or (title_lower and title_lower in norm_boost["completed_titles"])
+    )
+
+    matched_terms = []
+    target_terms = norm_boost["target_terms"]
+    if target_terms:
+        # Build a haystack of the product's most signalling fields.
+        haystack_parts = [title_lower]
+        haystack_parts.append(str(product.get("product_type", "") or "").lower())
+        primary_topic = str(
+            (product.get("structured_metadata") or {}).get("primary_topic", "") or ""
+        ).lower()
+        if primary_topic:
+            haystack_parts.append(primary_topic)
+        tags = product.get("tags", [])
+        if isinstance(tags, str):
+            tags = [t.strip() for t in tags.split(",")]
+        for tag in tags or []:
+            haystack_parts.append(str(tag or "").lower())
+        # structured skills, when present
+        for skill in (product.get("structured_metadata") or {}).get("skills", []) or []:
+            haystack_parts.append(str(skill or "").lower())
+        haystack = " ".join(p for p in haystack_parts if p)
+
+        for term in target_terms:
+            if term and term in haystack:
+                matched_terms.append(term)
+
+    factor = 1.0
+    if matched_terms:
+        factor += min(len(matched_terms) * 0.18, 0.54)
+    if is_completed:
+        factor *= 0.05  # strong demotion, never deletion
+
+    return factor, matched_terms, is_completed
+
+
+def hybrid_rank_products(filtered_products, query, all_products, limit=5, profile_boost=None):
     """
     Rank a pre-filtered set of products using hybrid search.
     Used by filter_courses when a query is also provided.
+
+    profile_boost (optional): dict like
+        {"target_terms": set/list of lowercased skill/goal keywords,
+         "completed_handles": set, "completed_titles": set}
+    When provided, products matching the learner's target terms are boosted
+    and completed courses are demoted (pushed to the end, not removed).
+    When None (default) the ranking is byte-for-byte the legacy behaviour, so
+    anonymous users and any existing callers are completely unaffected.
     """
     if not query or not filtered_products:
         return filtered_products[:limit]
+
+    norm_boost = _normalize_profile_boost(profile_boost)
 
     query_tokens = _tokenize(query)
     # Use the true topical/core tokens for the BM25 confidence gate (matching
@@ -1038,6 +1143,21 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5):
         rrf[handle] += 1.0 / (k + rank + 1)
     for rank, (handle, _) in enumerate(bm25_scored):
         rrf[handle] += 1.0 / (k + rank + 1)
+
+    # ── Profile-conditioned re-weighting (Theme C, value-5) ──
+    # Only runs for logged-in callers that supplied profile_boost. When
+    # norm_boost is None this loop is skipped entirely, so the legacy ordering
+    # is preserved byte-for-byte.
+    if norm_boost is not None:
+        adjusted = {}
+        for handle, base_rrf in rrf.items():
+            product = handle_to_product.get(handle)
+            if product is None:
+                adjusted[handle] = base_rrf
+                continue
+            factor, _matched, _completed = _profile_score_adjustment(product, norm_boost)
+            adjusted[handle] = base_rrf * factor
+        rrf = adjusted
 
     ranked_handles = sorted(rrf.items(), key=lambda x: x[1], reverse=True)
     return [handle_to_product[h] for h, _ in ranked_handles[:limit] if h in handle_to_product]

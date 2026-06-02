@@ -7,6 +7,13 @@ import logging
 
 from auth_decorators import require_role
 
+# Boot-safe import of the central reporting layer. Guarded so a problem in
+# report_query can never crash create_app / blueprint import.
+try:
+    import report_query
+except Exception:  # pragma: no cover - defensive boot guard
+    report_query = None
+
 admin_reports_bp = Blueprint('admin_reports', __name__, template_folder='templates')
 
 
@@ -585,3 +592,45 @@ def ai_cost_dashboard():
                            daily_run_labels=daily_run_labels,
                            daily_run_data=daily_run_data,
                            recent_runs=recent_runs)
+
+
+@admin_reports_bp.route('/admin/conversion-funnel')
+@require_role('admin')
+def conversion_funnel():
+    """Platform-wide conversion-funnel dashboard.
+
+    Reads exclusively through the central ReportQuery layer
+    (``report_query``), which runs real tenant-safe SQL aggregation. Here we
+    pass ``company_id=None`` for the platform-wide view (admin/super-admin).
+    Everything is wrapped so a reporting failure renders a clean empty state
+    instead of a 500.
+    """
+    days = 30
+    funnel = {
+        'sessions': 0, 'searches': 0, 'shown': 0, 'ordered': 0,
+        'rate_search': 0.0, 'rate_shown': 0.0, 'rate_ordered': 0.0,
+        'overall_rate': 0.0, 'days': days, 'company_id': None,
+    }
+    daily = {'labels': [], 'data': []}
+    queries = []
+    has_data = False
+
+    try:
+        if report_query is not None:
+            funnel = report_query.conversion_funnel(None, days)
+            daily = report_query.daily_volume(None, days)
+            queries = report_query.top_queries(None, days, 12)
+            has_data = bool(funnel.get('sessions'))
+    except Exception:
+        # Fall through to the empty state defaults defined above.
+        pass
+
+    return render_template(
+        'fm/funnel.html',
+        funnel=funnel,
+        daily_labels=daily.get('labels', []),
+        daily_data=daily.get('data', []),
+        top_queries=queries,
+        days=days,
+        has_data=has_data,
+    )

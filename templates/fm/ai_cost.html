@@ -1,0 +1,242 @@
+{% extends "fm_base.html" %}
+{% block page_id %}aicost{% endblock %}
+{% block title %}AI-omkostninger{% endblock %}
+{% block topbar_title %}AI-omkostninger & latency{% endblock %}
+{% block topbar_sub %}Telemetri for AI-agentkørsler og værktøjskald de seneste 30 dage: tokens, latency, fallback og modelfordeling.{% endblock %}
+{% block extra_head %}
+<style>
+  .ai-charts { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; }
+  .ai-charts-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+  .ai-chart-card { padding: 18px; min-height: 360px; display: flex; flex-direction: column; }
+  .ai-chart-card h3 { font-size: 15px; font-weight: 700; }
+  .ai-chart-card p { font-size: 12.5px; color: var(--fm-ink-2); margin: 3px 0 12px; }
+  .ai-chart-wrap { position: relative; flex: 1; min-height: 260px; }
+  .ai-tables { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; margin-top: 16px; }
+  .ai-empty { padding: 36px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
+  .st-badge { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px; font-size: 12px; font-weight: 650; text-transform: capitalize; background: var(--fm-surface-3); color: var(--fm-ink-2); }
+  .st-badge.ok, .st-badge.success, .st-badge.completed { background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .st-badge.error, .st-badge.failed, .st-badge.timeout { background: color-mix(in srgb, var(--fm-danger) 14%, transparent); color: var(--fm-danger); }
+  .st-badge.fallback { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  @media (max-width: 1100px) { .ai-charts, .ai-charts-3, .ai-tables { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+    <a class="pg-tab active" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> AI-omkostninger</a>
+  </div>
+
+  {% if total_runs == 0 %}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="ai-empty">
+      <i class="fa-solid fa-gauge-high" style="font-size:28px;opacity:.4;display:block;margin-bottom:10px"></i>
+      Ingen AI-kørsler registreret endnu. Telemetri vises her, så snart AI-assistenten begynder at logge agentkørsler.
+    </div>
+  </div>
+  {% endif %}
+
+  <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-play"></i></span><div><div class="kl">Kørsler</div><div class="kv tnum">{{ total_runs }}</div><div class="kd">Seneste 30 dage</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Tokens i alt</div><div class="kv tnum">{{ total_tokens }}</div><div class="kd">Input + output</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-calculator"></i></span><div><div class="kl">Gns. tokens</div><div class="kv tnum">{{ avg_tokens }}</div><div class="kd">Pr. kørsel</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-gauge-high"></i></span><div><div class="kl">Gns. latency</div><div class="kv tnum">{{ avg_latency }}ms</div><div class="kd">Pr. kørsel</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-stopwatch"></i></span><div><div class="kl">P95 latency</div><div class="kv tnum">{{ p95_latency }}ms</div><div class="kd">95. percentil</div></div></div>
+  </div>
+  <div class="kpi-row" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
+    <div class="kpi-tile ico"><span class="ki {{ 'gold' if fallback_rate > 0 else 'green' }}"><i class="fa-solid fa-shuffle"></i></span><div><div class="kl">Fallback-rate</div><div class="kv tnum">{{ fallback_rate }}%</div><div class="kd">{{ fallback_count }} kørsler</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-arrow-down-to-bracket"></i></span><div><div class="kl">Input-tokens</div><div class="kv tnum">{{ total_input_tokens }}</div><div class="kd">Samlet</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-arrow-up-from-bracket"></i></span><div><div class="kl">Output-tokens</div><div class="kv tnum">{{ total_output_tokens }}</div><div class="kd">Samlet</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-database"></i></span><div><div class="kl">Cached-tokens</div><div class="kv tnum">{{ total_cached_tokens }}</div><div class="kd">Genbrugt fra cache</div></div></div>
+    <div class="kpi-tile ico"><span class="ki {{ 'gold' if failed_count > 0 else 'green' }}"><i class="fa-solid fa-triangle-exclamation"></i></span><div><div class="kl">Fejlede</div><div class="kv tnum">{{ failed_count }}</div><div class="kd">Ikke-OK status</div></div></div>
+  </div>
+
+  <div class="ai-charts" style="margin-top:16px">
+    <div class="fm-card ai-chart-card">
+      <h3><i class="fa-solid fa-chart-line"></i> Daglig kørselsvolumen</h3>
+      <p>Antal AI-agentkørsler de seneste 30 dage.</p>
+      <div class="ai-chart-wrap">
+        {% if daily_run_data %}<canvas id="dailyRunChart"></canvas>{% else %}<div class="ai-empty">Ingen kørsler i perioden.</div>{% endif %}
+      </div>
+    </div>
+    <div class="fm-card ai-chart-card">
+      <h3><i class="fa-solid fa-microchip"></i> Modelfordeling</h3>
+      <p>Hvilke modeller står for kørslerne.</p>
+      <div class="ai-chart-wrap">
+        {% if model_split %}<canvas id="modelChart"></canvas>{% else %}<div class="ai-empty">Ingen modeldata.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="ai-charts-3">
+    <div class="fm-card ai-chart-card">
+      <h3><i class="fa-solid fa-sitemap"></i> Agent-scope</h3>
+      <p>Fordeling pr. agentkontekst.</p>
+      <div class="ai-chart-wrap">
+        {% if scope_split %}<canvas id="scopeChart"></canvas>{% else %}<div class="ai-empty">Ingen scope-data.</div>{% endif %}
+      </div>
+    </div>
+    <div class="fm-card ai-chart-card">
+      <h3><i class="fa-solid fa-screwdriver-wrench"></i> Top værktøjer (kald)</h3>
+      <p>Mest brugte værktøjer efter antal kald.</p>
+      <div class="ai-chart-wrap">
+        {% if top_tools_by_count %}<canvas id="toolCountChart"></canvas>{% else %}<div class="ai-empty">Ingen værktøjsdata.</div>{% endif %}
+      </div>
+    </div>
+    <div class="fm-card ai-chart-card">
+      <h3><i class="fa-solid fa-hourglass-half"></i> Langsomste værktøjer</h3>
+      <p>Gns. latency (min. 3 kald).</p>
+      <div class="ai-chart-wrap">
+        {% if top_tools_by_latency %}<canvas id="toolLatencyChart"></canvas>{% else %}<div class="ai-empty">Ingen latency-data.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="ai-tables">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-screwdriver-wrench"></i></span><h3>Top værktøjer efter kald</h3>
+        <label class="fm-search" style="width:200px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="toolCountTable"></label></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if top_tools_by_count %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="toolCountTable">
+          <thead><tr><th>Værktøj</th><th>Kald</th><th>Gns. latency</th><th>Fejl</th></tr></thead>
+          <tbody>{% for tool in top_tools_by_count %}
+            <tr>
+              <td>{{ tool.tool_name }}</td>
+              <td>{{ tool.call_count }}</td>
+              <td>{{ tool.avg_latency }}ms</td>
+              <td>{% if tool.error_count > 0 %}<span class="st-badge error">{{ tool.error_count }}</span>{% else %}0{% endif %}</td>
+            </tr>
+          {% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="ai-empty">Værktøjskald vises her, når AI-assistenten begynder at kalde værktøjer.</div>{% endif %}
+      </div>
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-hourglass-half"></i></span><h3>Langsomste værktøjer</h3>
+        <label class="fm-search" style="width:200px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="toolLatencyTable"></label></div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if top_tools_by_latency %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="toolLatencyTable">
+          <thead><tr><th>Værktøj</th><th>Gns. latency</th><th>Kald</th></tr></thead>
+          <tbody>{% for tool in top_tools_by_latency %}
+            <tr><td>{{ tool.tool_name }}</td><td>{{ tool.avg_latency }}ms</td><td>{{ tool.call_count }}</td></tr>
+          {% endfor %}</tbody>
+        </table></div>
+        {% else %}<div class="ai-empty">Latency-data vises her, når der er mindst 3 kald pr. værktøj.</div>{% endif %}
+      </div>
+    </div>
+  </div>
+
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Seneste kørsler</h3>
+      <label class="fm-search" style="width:240px;margin-left:auto"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg kørsler" data-table-search="recentRunsTable"></label></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if recent_runs %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="recentRunsTable">
+        <thead><tr><th>Run</th><th>Scope</th><th>Model</th><th>Status</th><th>Latency</th><th>Tokens</th><th>Bruger</th><th>Tidspunkt</th></tr></thead>
+        <tbody>{% for run in recent_runs %}
+          <tr>
+            <td>{{ run.run_id_short }}</td>
+            <td>{{ run.agent_scope or '—' }}</td>
+            <td>{{ run.model or '—' }}</td>
+            <td>
+              <span class="st-badge {{ run.status or '' }}">{{ run.status or 'ukendt' }}</span>
+              {% if run.has_fallback %}<span class="st-badge fallback" title="{{ run.fallback_reason }}">fallback</span>{% endif %}
+            </td>
+            <td>{{ run.latency_ms if run.latency_ms is not none else '—' }}{% if run.latency_ms is not none %}ms{% endif %}</td>
+            <td>{{ run.total_tokens }}</td>
+            <td>{{ run.username or '—' }}</td>
+            <td>{{ run.created_at_fmt }}</td>
+          </tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% else %}<div class="ai-empty">Kørselshistorik vises her, når AI-assistenten logger agentkørsler.</div>{% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+  (function () {
+    const styles = getComputedStyle(document.documentElement);
+    const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
+    const secondary = styles.getPropertyValue('--fm-indigo').trim() || '#2563eb';
+    const accent = styles.getPropertyValue('--fm-clay').trim() || '#f59e0b';
+    const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
+    const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
+    const palette = [primary, secondary, accent, '#10b981', '#06b6d4', '#64748b', '#ef4444', '#8b5cf6'];
+
+    Chart.defaults.color = muted;
+    Chart.defaults.borderColor = border;
+
+    const shared = {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { position: 'bottom', labels: { boxWidth: 10, usePointStyle: true } },
+        tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 }
+      },
+      scales: { x: { grid: { display: false } }, y: { beginAtZero: true, ticks: { precision: 0 } } }
+    };
+
+    function entries(o) { return Object.entries(o || {}); }
+    function doughnut(id, dataObject) {
+      const canvas = document.getElementById(id);
+      if (!canvas) return;
+      const e = entries(dataObject);
+      if (!e.length) return;
+      new Chart(canvas, {
+        type: 'doughnut',
+        data: { labels: e.map(([l]) => l), datasets: [{ data: e.map(([, v]) => v), backgroundColor: palette, borderWidth: 0 }] },
+        options: { responsive: true, maintainAspectRatio: false, cutout: '64%', plugins: shared.plugins }
+      });
+    }
+    function barChart(id, dataArray, labelKey, valueKey, label, color) {
+      const canvas = document.getElementById(id);
+      if (!canvas || !dataArray.length) return;
+      new Chart(canvas, {
+        type: 'bar',
+        data: { labels: dataArray.map(d => d[labelKey]), datasets: [{ label: label, data: dataArray.map(d => d[valueKey]), backgroundColor: color, borderRadius: 8, maxBarThickness: 36 }] },
+        options: { ...shared, indexAxis: 'y' }
+      });
+    }
+
+    const dailyCanvas = document.getElementById('dailyRunChart');
+    if (dailyCanvas) {
+      new Chart(dailyCanvas, {
+        type: 'line',
+        data: {
+          labels: {{ daily_run_labels | tojson | safe }},
+          datasets: [{
+            label: 'Kørsler',
+            data: {{ daily_run_data | tojson | safe }},
+            borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .1)',
+            fill: true, tension: .35, pointRadius: 3, pointBackgroundColor: primary, borderWidth: 2
+          }]
+        },
+        options: shared
+      });
+    }
+
+    doughnut('modelChart', {{ model_split | tojson | safe }});
+    doughnut('scopeChart', {{ scope_split | tojson | safe }});
+
+    barChart('toolCountChart', {{ top_tools_by_count | tojson | safe }}, 'tool_name', 'call_count', 'Kald', primary);
+    barChart('toolLatencyChart', {{ top_tools_by_latency | tojson | safe }}, 'tool_name', 'avg_latency', 'Gns. latency (ms)', accent);
+
+    document.querySelectorAll('[data-table-search]').forEach(function (input) {
+      const table = document.getElementById(input.dataset.tableSearch);
+      if (!table) return;
+      const rows = Array.from(table.querySelectorAll('tbody tr'));
+      input.addEventListener('input', function () {
+        const value = this.value.toLowerCase().trim();
+        rows.forEach(function (row) { row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none'; });
+      });
+    });
+  })();
+</script>
+{% endblock %}

@@ -9,3 +9,6 @@ static/uploads/
 *.db-shm
 *.db-wal
 *.json
+
+# Confidential internal roadmap — enumerates security weaknesses; keep out of the public repo
+docs/PLATFORM_ROADMAP.md

@@ -606,21 +606,32 @@ def _execute_search_courses_for_team(args):
     try:
         from app1.rag import hybrid_rank_products, load_augmented_products
         products = load_augmented_products()
-        results = hybrid_rank_products(query, products, top_n=limit)
+        # hybrid_rank_products signature: (filtered_products, query, all_products, limit)
+        # For a global team-course search there is no pre-filter, so the filtered
+        # set is the full product list and all_products is that same list.
+        results = hybrid_rank_products(products, query, products, limit=limit)
         courses = []
-        for r in results:
-            p = r if isinstance(r, dict) else r
+        for p in results:
+            if not isinstance(p, dict):
+                continue
+            tags = p.get("tags", [])
             courses.append({
                 "title": p.get("title", ""),
                 "handle": p.get("handle", ""),
                 "vendor": p.get("vendor", ""),
                 "price": p.get("price", ""),
                 "product_type": p.get("product_type", ""),
-                "tags": p.get("tags", [])[:5] if isinstance(p.get("tags"), list) else [],
+                "tags": tags[:5] if isinstance(tags, list) else [],
             })
         return json.dumps({"query": query, "results": courses, "count": len(courses)}, default=str)
     except Exception as e:
-        return json.dumps({"error": f"Soegefejl: {str(e)}"})
+        # Don't silently swallow: this is a flagship HR workflow. Log loudly so
+        # the real failure shows up in server logs, but still return a safe,
+        # shape-consistent empty result so the agent/UI doesn't break.
+        import traceback
+        print(f"[HR_TOOLS][search_courses_for_team] ERROR for query={query!r}: {e}")
+        traceback.print_exc()
+        return json.dumps({"query": query, "results": [], "count": 0, "error": f"Soegefejl: {str(e)}"}, default=str)
 
 
 def _execute_get_chatbot_usage_stats(args):

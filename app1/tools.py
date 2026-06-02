@@ -796,7 +796,47 @@ def _find_catalog_product(handle="", title=""):
     return None
 
 
-def _execute_catalog_search(args):
+def _completed_course_keys(username):
+    """Return (titles, handles) sets of courses the user has already completed.
+
+    Mirrors the completed-course extraction in _execute_recommend_for_profile.
+    Fully guarded: returns empty sets for anonymous users or on any error, so
+    search behaviour is unchanged when profile data is unavailable.
+    """
+    if not username:
+        return set(), set()
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        ensure_tables()
+        profile = get_full_profile(username) or {}
+        completed = profile.get("completed_courses", []) or []
+        titles = {c["title"].lower() for c in completed if c.get("title")}
+        handles = {c.get("handle", "").lower() for c in completed if c.get("handle")}
+        return titles, handles
+    except Exception:
+        return set(), set()
+
+
+def _demote_completed_results(compact, completed_titles, completed_handles):
+    """Move already-completed courses to the end of the result list and mark
+    them with already_completed=True. Preserves relative order within each
+    group. No-op when there are no completed courses or no results."""
+    if not compact or (not completed_titles and not completed_handles):
+        return compact
+    fresh = []
+    done = []
+    for r in compact:
+        title_lower = (r.get("title") or "").lower()
+        handle_lower = (r.get("handle") or "").lower()
+        if title_lower in completed_titles or handle_lower in completed_handles:
+            r["already_completed"] = True
+            done.append(r)
+        else:
+            fresh.append(r)
+    return fresh + done
+
+
+def _execute_catalog_search(args, username=None):
     filters = {
         "q": args.get("query") or "",
         "category": _resolve_category_slug(args.get("category") or ""),
@@ -811,6 +851,7 @@ def _execute_catalog_search(args):
     query = (args.get("query") or "").strip()
     products = []
     confidence = "medium"
+    completed_titles, completed_handles = _completed_course_keys(username)
 
     result = catalog.search_products(filters=filters, page=1, per_page=max(1, min(limit, 8)))
     products = [
@@ -833,6 +874,7 @@ def _execute_catalog_search(args):
             rag_products = _filter_blocked_vendors(detailed.get("products", []))
             if rag_products:
                 compact = [_extract_compact_fields(p) for p in rag_products[:limit]]
+                compact = _demote_completed_results(compact, completed_titles, completed_handles)
                 debug = detailed.get("debug") or {}
                 return _model_tool_json(
                     status="success",
@@ -847,6 +889,7 @@ def _execute_catalog_search(args):
                 )
 
     compact = [_catalog_compact_fields(p) for p in products[:limit]]
+    compact = _demote_completed_results(compact, completed_titles, completed_handles)
     return _model_tool_json(
         status="success" if compact else "no_results",
         count=len(compact),
@@ -2477,7 +2520,7 @@ def execute_tool(tool_call, username=None, session_id=None):
 
     try:
         if function_name == "catalog_search":
-            return _execute_catalog_search(args)
+            return _execute_catalog_search(args, username)
         elif function_name == "catalog_get_product":
             return _execute_catalog_get_product(args)
         elif function_name == "catalog_get_category":

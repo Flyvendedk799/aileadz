@@ -128,8 +128,16 @@ def _mark_enterprise_sync_done():
 
 def create_app():
     app = Flask(__name__, template_folder='templates')
-    app.secret_key = 'your_secret_key_here'
-    
+    # Secret key is env-overridable. The hardcoded value is kept as a fallback so
+    # production keeps working when SECRET_KEY is unset, but we warn loudly so it
+    # gets set + rotated. The warning is suppressed inside the sandbox.
+    app.secret_key = os.environ.get('SECRET_KEY') or 'your_secret_key_here'
+    if not os.environ.get('SECRET_KEY') and os.environ.get('SANDBOX') != '1':
+        logging.warning(
+            "SECRET_KEY is not set; falling back to an insecure default secret key. "
+            "Set the SECRET_KEY environment variable and rotate it for production."
+        )
+
     # DB config is env-overridable (for the local sandbox / CI). When the env
     # vars are unset it falls back to the production PythonAnywhere database, so
     # production behaviour is unchanged.
@@ -172,6 +180,10 @@ def create_app():
     app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
+
+    # Liveness/readiness probes (/healthz, /readyz)
+    from health import health_bp
+    app.register_blueprint(health_bp)
 
     # Initialize white-label context processor
     try:

@@ -16,7 +16,7 @@ except ImportError:
     raise ImportError("Please install fuzzywuzzy (pip install fuzzywuzzy) or consider using RapidFuzz.")
 
 app = Flask(__name__)
-app.secret_key = "supersecretkey"  # For production, use a secure and unpredictable key.
+app.secret_key = os.environ.get('SECRET_KEY') or "supersecretkey"  # Env-overridable; fallback kept so prod doesn't break.
 
 app1_bp = Blueprint('app1', __name__, template_folder='templates')
 

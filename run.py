@@ -138,7 +138,10 @@ def create_app():
         'MYSQL_USER': os.environ.get('MYSQL_USER', 'TobiasMastek'),
         'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD', 'Jht89ryu1!'),
         'MYSQL_DB': os.environ.get('MYSQL_DB', 'TobiasMastek$AiLead'),
-        'MYSQL_CURSORCLASS': 'DictCursor'
+        'MYSQL_CURSORCLASS': 'DictCursor',
+        # utf8mb4 so 4-byte chars (emoji etc.) don't 1366 on insert. flask_mysqldb
+        # otherwise defaults the connection charset to 3-byte utf8.
+        'MYSQL_CHARSET': 'utf8mb4',
     })
     if os.environ.get('MYSQL_PORT'):
         app.config['MYSQL_PORT'] = int(os.environ['MYSQL_PORT'])

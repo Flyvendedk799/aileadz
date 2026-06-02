@@ -7,6 +7,12 @@ from flask import Blueprint, request, jsonify, session, current_app
 import logging
 from .order_handler import order_handler, create_order_from_chatbot, store_user_info_for_order, get_order_status_for_chatbot
 
+try:
+    from auth_decorators import login_required
+except Exception:  # pragma: no cover - boot-safe: never crash blueprint import
+    def login_required(view):
+        return view
+
 logger = logging.getLogger(__name__)
 
 # Create blueprint
@@ -41,6 +47,7 @@ def store_user_info():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 @order_routes_bp.route('/create_order', methods=['POST'])
+@login_required
 def create_order():
     """Create a new order from chatbot"""
     try:
@@ -92,11 +99,58 @@ def create_order():
 
 @order_routes_bp.route('/order_status/<order_id>', methods=['GET'])
 def get_order_status(order_id):
-    """Get order status"""
+    """Get order status — ownership-gated (anti-IDOR / no PII leak).
+
+    Returns 404 (NOT 403, to avoid enumeration) when the caller does not own
+    the order and is not a same-company manager. Legacy anonymous orders
+    (NULL company_id) remain retrievable by the existing flow.
+    """
     try:
-        result = get_order_status_for_chatbot(order_id)
-        return jsonify(result)
-        
+        try:
+            from order_service import get_order, OrderContext
+        except Exception as imp_err:
+            logger.error(f"order_service import failed: {imp_err}")
+            return jsonify({'success': False, 'error': 'Service unavailable'}), 500
+
+        ctx = OrderContext.from_session(source='web')
+        row = get_order(ctx, order_id)
+        if not row:
+            return jsonify({
+                'success': False,
+                'message': f'Jeg kunne ikke finde en ordre med nummer {str(order_id)[:8]}'
+            }), 404
+
+        status = row.get('status', '')
+        status_text = order_handler.order_statuses.get(status, status)
+        message = (
+            "\n**Ordre status:**\n"
+            f"Ordre nummer: {str(row.get('order_id', ''))[:8]}\n"
+            f"Status: {status_text}\n"
+            f"Kursus: {row.get('product_title', '')}\n"
+        )
+        if row.get('variant_date'):
+            message += f"Dato: {row.get('variant_date')}\n"
+        if row.get('variant_location'):
+            message += f"Sted: {row.get('variant_location')}\n"
+
+        return jsonify({
+            'success': True,
+            'message': message,
+            'order': {
+                'order_id': row.get('order_id', ''),
+                'status': status,
+                'product': {
+                    'handle': row.get('product_handle', ''),
+                    'title': row.get('product_title', ''),
+                    'price': float(row['price']) if row.get('price') else 0.0,
+                },
+                'variant': {
+                    'date': row.get('variant_date', ''),
+                    'location': row.get('variant_location', ''),
+                },
+            }
+        })
+
     except Exception as e:
         logger.error(f"Error getting order status: {e}")
         return jsonify({
@@ -182,31 +236,37 @@ def process_order_query():
         }), 500
 
 @order_routes_bp.route('/cancel_order/<order_id>', methods=['POST'])
+@login_required
 def cancel_order(order_id):
-    """Cancel an order"""
+    """Cancel an order — ownership-gated, exactly-once budget refund."""
     try:
-        # Check if user has permission to cancel this order
-        user = session.get('user')
-        if not user:
-            return jsonify({
-                'success': False,
-                'error': 'Authentication required'
-            }), 401
-        
-        # Update order status
-        success = order_handler.update_order_status(order_id, 'cancelled')
-        
-        if success:
+        try:
+            from order_service import cancel_order as _svc_cancel_order, OrderContext
+        except Exception as imp_err:
+            logger.error(f"order_service import failed: {imp_err}")
+            return jsonify({'success': False, 'error': 'Service unavailable'}), 500
+
+        ctx = OrderContext.from_session(source='web')
+        result = _svc_cancel_order(ctx, order_id)
+
+        if result.get('success'):
             return jsonify({
                 'success': True,
                 'message': 'Order cancelled successfully'
             })
-        else:
+
+        # Anti-enumeration: not-found / not-owned both surface as 404.
+        if result.get('error') == 'not_found':
             return jsonify({
                 'success': False,
-                'error': 'Failed to cancel order'
-            }), 500
-            
+                'error': 'Order not found'
+            }), 404
+
+        return jsonify({
+            'success': False,
+            'error': 'Failed to cancel order'
+        }), 500
+
     except Exception as e:
         logger.error(f"Error cancelling order: {e}")
         return jsonify({

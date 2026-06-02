@@ -332,6 +332,7 @@ def ensure_enterprise_tables(app):
                     variant_date VARCHAR(100),
                     variant_location VARCHAR(255),
                     status VARCHAR(30) DEFAULT 'pending',
+                    budget_charged TINYINT(1) NOT NULL DEFAULT 0,
                     completion_status VARCHAR(30),
                     completion_date DATETIME,
                     completion_deadline DATETIME,

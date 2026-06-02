@@ -621,7 +621,27 @@ def create_hr_dashboard_blueprint():
             if not cur.fetchone():
                 cur.close()
                 return jsonify({'success': False, 'message': 'Order not found or access denied'}), 404
-            
+
+            # Budget-affecting transitions (approve charges, cancel/reject refunds)
+            # go through the single order_service so the EXACTLY-ONCE budget charge/
+            # refund (keyed on budget_charged + the order's own fiscal year) is the
+            # one source of truth. set_status reads the order's CURRENT status, so it
+            # must run BEFORE the status/payment overlay below. The overlay then just
+            # re-asserts the same status and sets the payment_status columns.
+            if new_status in ('approved', 'cancelled', 'rejected'):
+                try:
+                    import order_service
+                    _ctx = order_service.OrderContext(
+                        company_id=company['id'],
+                        user_id=session.get('user_id'),
+                        username=session.get('user'),
+                        company_role=session.get('company_role') or 'hr_manager',
+                        source='hr',
+                    )
+                    order_service.set_status(_ctx, order_id, new_status)
+                except Exception as _se:
+                    current_app.logger.warning("order_service.set_status (order update) failed: %s", _se)
+
             # Update the order status + payment tracking
             if new_status == 'paid':
                 cur.execute("""
@@ -823,36 +843,40 @@ def create_hr_dashboard_blueprint():
                 cur.close()
                 return jsonify({'success': False, 'message': 'Approval not found or already decided'}), 404
 
-            # Update approval
+            # Update approval row (+ record approver on the order for the approve case).
             cur.execute("""
                 UPDATE order_approvals
                 SET status = %s, notes = %s, approver_user_id = %s, decided_at = NOW()
                 WHERE id = %s
             """, (decision, notes, session.get('user_id'), approval_id))
-
-            # Update order status accordingly
             if decision == 'approved':
                 cur.execute("""
-                    UPDATE course_orders SET status = 'pending', approved_by = %s, updated_at = NOW()
+                    UPDATE course_orders SET approved_by = %s, updated_at = NOW()
                     WHERE order_id = %s
                 """, (session.get('user_id'), approval['order_id']))
-            else:
-                cur.execute("""
-                    UPDATE course_orders SET status = 'rejected', updated_at = NOW()
-                    WHERE order_id = %s
-                """, (approval['order_id'],))
-                # Refund budget if rejected
-                if approval.get('price') and float(approval['price']) > 0 and approval.get('department'):
-                    import datetime as _dt
-                    fiscal_year = _dt.datetime.now().year
-                    cur.execute("""
-                        UPDATE department_budgets
-                        SET spent = GREATEST(0, spent - %s)
-                        WHERE company_id = %s AND department = %s AND fiscal_year = %s
-                    """, (float(approval['price']), company['id'], approval['department'], fiscal_year))
 
             current_app.mysql.connection.commit()
             cur.close()
+
+            # Authoritative order-status transition + EXACTLY-ONCE budget side
+            # effect goes through the single order_service (NOT raw SQL here).
+            # Approve: pending_approval -> 'pending' charges the budget once.
+            # Reject: -> 'rejected' refunds only if previously charged, using the
+            # order's OWN fiscal year (fixes the phantom-refund + wrong-year bug).
+            try:
+                import order_service
+                ctx = order_service.OrderContext(
+                    company_id=company['id'],
+                    user_id=session.get('user_id'),
+                    username=session.get('user'),
+                    company_role=session.get('company_role') or 'hr_manager',
+                    department=approval.get('department'),
+                    source='hr',
+                )
+                target_status = 'pending' if decision == 'approved' else 'rejected'
+                order_service.set_status(ctx, approval['order_id'], target_status)
+            except Exception as se:
+                current_app.logger.warning("order_service.set_status (approval) failed: %s", se)
 
             return jsonify({
                 'success': True,

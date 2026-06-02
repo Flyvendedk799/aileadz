@@ -48,8 +48,8 @@
 
     <div class="r-foot">
       <div class="user">
-        <span class="av">MK</span>
-        <span class="r-hide"><div class="nm">Mette Krogh</div><div class="mt"><a href="{{ url_for('dashboard.dashboard') }}">Log ud</a> · 420 kreditter</div></span>
+        <span class="av">{{ (session.get('user') or '?')[:2]|upper }}</span>
+        <span class="r-hide"><div class="nm">{{ session.get('user') or 'Gæst' }}</div><div class="mt"><a href="{{ url_for('auth.logout') }}">Log ud</a> · {{ session.get('credits', 0) }} kreditter</div></span>
       </div>
     </div>
   </aside>

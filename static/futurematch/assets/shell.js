@@ -20,7 +20,7 @@
       { id: "creports",  label: "Virksomhedsrapporter", icon: "fa-folder-open", href: "company_reports.html" },
     ]},
     { group: "Konto", items: [
-      { id: "notifications", label: "Notifikationer", icon: "fa-bell",      href: "notifications.html", badge: 3 },
+      { id: "notifications", label: "Notifikationer", icon: "fa-bell",      href: "notifications.html" },
       { id: "profile",   label: "Profil & CV",     icon: "fa-id-card",       href: "my_profile.html" },
       { id: "settings",  label: "Indstillinger",   icon: "fa-sliders",       href: "settings.html" },
     ]},
@@ -31,10 +31,11 @@
     ]},
   ];
 
-  // Per-page user identity (defaults to the HR-manager persona)
+  // Per-page user identity (server-rendered shell supplies the real user; these
+  // are neutral fallbacks for the legacy client-built sidebar).
   const USERS = {
-    manager:  { initials: "MK", name: "Mette Krogh",  meta: "HR-manager · Nordi A/S" },
-    employee: { initials: "JV", name: "Jonas Vester",  meta: "Udvikling · Nordi A/S" },
+    manager:  { initials: "", name: "", meta: "" },
+    employee: { initials: "", name: "", meta: "" },
   };
 
   function el(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; }

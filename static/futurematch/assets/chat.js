@@ -242,7 +242,20 @@
   }
 
   /* ---------------- profile confirm card ---------------- */
-  function profileConfirm(body, opts) {
+  // Persist a proposed profile update to the real app1 backend.
+  async function saveProfileUpdate(action, data) {
+    const resp = await fetch("/app1/confirm_profile_update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: action, data: data || {} }),
+    });
+    if (!resp.ok) throw new Error("save_failed");
+    const r = await resp.json();
+    if (!r || r.status !== "success") throw new Error((r && r.message) || "save_failed");
+    return r;
+  }
+
+  function profileConfirm(body, opts, onSave) {
     const card = document.createElement("div");
     card.className = "pcard";
     card.innerHTML = `
@@ -255,7 +268,12 @@
         <button class="p-chat">${BOT}Svar i chat</button>
         <button class="p-no">Nej tak</button>
       </div>`;
-    card.querySelector(".p-save").onclick = function () {
+    card.querySelector(".p-save").onclick = async function () {
+      if (onSave) {
+        const old = this.textContent; this.disabled = true; this.textContent = "…";
+        try { await onSave(); }
+        catch (e) { this.disabled = false; this.textContent = "Prøv igen"; setTimeout(() => { this.textContent = old; }, 1800); return; }
+      }
       this.classList.add("done"); this.textContent = "Gemt ✓"; this.disabled = true;
       card.querySelector(".p-no").remove();
       card.querySelector(".pcard-msg").innerHTML = '<span class="q" style="color:var(--green)">✓ Gemt</span> ' + esc(opts.message);
@@ -277,7 +295,7 @@
   }
 
   /* ---------------- UI card (form) ---------------- */
-  function uiCard(body, opts) {
+  function uiCard(body, opts, onSave) {
     const card = document.createElement("div");
     card.className = "pcard ui";
     const fields = opts.fields.map((f) => {
@@ -298,7 +316,14 @@
         <button class="p-chat">${BOT}Svar i chat</button>
         <button class="p-no">Nej tak</button>
       </div>`;
-    card.querySelector(".p-save").onclick = function () {
+    card.querySelector(".p-save").onclick = async function () {
+      const values = {};
+      card.querySelectorAll("[data-name]").forEach((i) => { const v = (i.value || "").trim(); if (v) values[i.getAttribute("data-name")] = v; });
+      if (onSave) {
+        const old = this.textContent; this.disabled = true; this.textContent = "…";
+        try { await onSave(values); }
+        catch (e) { this.disabled = false; this.textContent = "Prøv igen"; setTimeout(() => { this.textContent = old; }, 1800); return; }
+      }
       this.classList.add("done"); this.textContent = "Gemt ✓"; this.disabled = true;
       card.querySelector(".p-no").remove();
       card.querySelectorAll("input,select").forEach((i) => { i.disabled = true; i.style.opacity = ".6"; });
@@ -512,19 +537,27 @@
           note.className = "md"; note.style.opacity = ".7"; note.style.fontStyle = "italic";
           note.textContent = data.content || "";
           body.appendChild(note); down();
-        } else if (data.type === "profile_update" || data.type === "profile_confirm_request") {
-          // Render the assistant's profile note as plain text so nothing is lost.
+        } else if (data.type === "profile_update") {
           const note = document.createElement("div");
           note.className = "md";
           note.innerHTML = md(data.message || "Profil opdateret");
           body.appendChild(note); down();
+        } else if (data.type === "profile_confirm_request") {
+          // Proposed profile change -> native confirm card, wired to the real save.
+          const conf = data.confirm || {};
+          const tags = (conf.data && typeof conf.data === "object")
+            ? Object.values(conf.data).filter(Boolean).map(String) : [];
+          profileConfirm(body, { section: data.section, message: data.message || "", tags: tags, section_label: data.section },
+            conf.action ? () => saveProfileUpdate(conf.action, conf.data || {}) : null);
         } else if (data.type === "ui_card") {
-          if (data.message) {
-            const note = document.createElement("div");
-            note.className = "md";
-            note.innerHTML = md(data.message);
-            body.appendChild(note); down();
-          }
+          // Form card -> native uiCard design, wired to the real save endpoint.
+          const fields = (data.fields || []).map((f) => ({
+            name: f.name, label: f.label, type: f.type,
+            ph: f.placeholder || f.ph, hint: f.hint, options: f.options || [],
+          }));
+          const prefilled = data.prefilled || {};
+          uiCard(body, { section: data.section, message: data.message || "", fields: fields, prefilled: prefilled },
+            data.save_action ? (values) => saveProfileUpdate(data.save_action, Object.assign({}, prefilled, values)) : null);
         }
       }
     }

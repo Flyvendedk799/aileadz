@@ -130,14 +130,19 @@ def create_app():
     app = Flask(__name__, template_folder='templates')
     app.secret_key = 'your_secret_key_here'
     
+    # DB config is env-overridable (for the local sandbox / CI). When the env
+    # vars are unset it falls back to the production PythonAnywhere database, so
+    # production behaviour is unchanged.
     app.config.update({
-        'MYSQL_HOST': 'TobiasMastek.mysql.pythonanywhere-services.com',
-        'MYSQL_USER': 'TobiasMastek',
-        'MYSQL_PASSWORD': 'Jht89ryu1!',
-        'MYSQL_DB': 'TobiasMastek$AiLead',
+        'MYSQL_HOST': os.environ.get('MYSQL_HOST', 'TobiasMastek.mysql.pythonanywhere-services.com'),
+        'MYSQL_USER': os.environ.get('MYSQL_USER', 'TobiasMastek'),
+        'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD', 'Jht89ryu1!'),
+        'MYSQL_DB': os.environ.get('MYSQL_DB', 'TobiasMastek$AiLead'),
         'MYSQL_CURSORCLASS': 'DictCursor'
     })
-    
+    if os.environ.get('MYSQL_PORT'):
+        app.config['MYSQL_PORT'] = int(os.environ['MYSQL_PORT'])
+
     mysql = MySQL(app)
     app.mysql = mysql
 

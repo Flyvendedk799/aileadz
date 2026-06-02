@@ -1,0 +1,31 @@
+# Local sandbox database for the Futurematch / aileadz app.
+# Brings up an isolated MySQL 8 instance on 127.0.0.1:3307 (separate from prod).
+#   ./sandbox.sh up      -> start MySQL
+#   ./sandbox.sh init    -> create schema + seed a test login
+#   ./sandbox.sh run     -> run the app against this DB (http://127.0.0.1:5001)
+services:
+  db:
+    image: mysql:8.0
+    container_name: fm_sandbox_db
+    command:
+      - --default-authentication-plugin=mysql_native_password
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: futurematch_sandbox
+      MYSQL_USER: fm
+      MYSQL_PASSWORD: fm
+    ports:
+      - "3307:3306"
+    volumes:
+      - fm_sandbox_data:/var/lib/mysql
+      - ./init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "127.0.0.1", "-uroot", "-prootpw"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+volumes:
+  fm_sandbox_data:

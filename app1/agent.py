@@ -1765,6 +1765,18 @@ def handle_agentic_ask(user_query, session):
                             'message': tool_result_dict.get('message', 'Profil opdateret'),
                             'section': tool_result_dict.get('section', '')
                         }))
+                    elif tool_status == "ui_card":
+                        # Incomplete profile data -> show an input form to collect it.
+                        buffered_profile_events.append(json.dumps({
+                            'type': 'ui_card',
+                            'ui_type': tool_result_dict.get('ui_type', 'form'),
+                            'message': tool_result_dict.get('message', ''),
+                            'section': tool_result_dict.get('section', ''),
+                            'save_action': tool_result_dict.get('save_action', ''),
+                            'prefilled': tool_result_dict.get('prefilled', {}),
+                            'fields': tool_result_dict.get('fields', []),
+                            'choices': tool_result_dict.get('choices', []),
+                        }))
 
                 elif fn == "request_user_input":
                     if tool_result_dict.get("status") == "ui_card":

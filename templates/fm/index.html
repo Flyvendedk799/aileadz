@@ -145,28 +145,28 @@
             <div class="kpi-top"><span class="kpi-ic clay"><i class="fa-solid fa-bell"></i></span><span class="fm-badge">Indbakke</span></div>
             <div class="kpi-val tnum">{{ kpis.unread_notifications if kpis else 0 }}</div>
             <div class="kpi-lab">Ulæste notifikationer</div>
-            <div class="kpi-foot"><span class="trend up"><i class="fa-solid fa-arrow-up"></i> 2 nye</span>
+            <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,20 12,17 24,18 36,10 48,12 60,6 74,8" stroke="var(--fm-clay)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
           <article class="kpi" data-reveal data-d="2">
             <div class="kpi-top"><span class="kpi-ic teal"><i class="fa-solid fa-clipboard-check"></i></span><span class="fm-badge amber dot">Afventer</span></div>
             <div class="kpi-val tnum">{{ (kpis.pending_approvals if kpis and kpis.pending_approvals is not none else 0) }}</div>
             <div class="kpi-lab">Ordrer afventer godkendelse</div>
-            <div class="kpi-foot"><span class="trend down"><i class="fa-solid fa-arrow-down"></i> 3 vs. sidste uge</span>
+            <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,8 12,12 24,9 36,14 48,16 60,15 74,18" stroke="var(--fm-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
           <article class="kpi" data-reveal data-d="3">
             <div class="kpi-top"><span class="kpi-ic indigo"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge indigo">Læring</span></div>
-            <div class="kpi-val tnum">68<span style="font-size:18px">%</span></div>
-            <div class="kpi-lab">Gennemførelsesrate</div>
-            <div class="kpi-foot"><span class="trend up"><i class="fa-solid fa-arrow-up"></i> 4,2%</span>
+            <div class="kpi-val tnum">{{ (kpis.catalog_tools if kpis and kpis.catalog_tools is not none else 0) }}</div>
+            <div class="kpi-lab">Kursusordrer i alt</div>
+            <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,18 12,16 24,14 36,15 48,10 60,9 74,5" stroke="var(--fm-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
           <article class="kpi" data-reveal data-d="4">
             <div class="kpi-top"><span class="kpi-ic gold"><i class="fa-solid fa-coins"></i></span><span class="fm-badge">Forbrug</span></div>
             <div class="kpi-val tnum">{{ session.get('credits', 0) }}</div>
             <div class="kpi-lab">Tilgængelige kreditter</div>
-            <div class="kpi-foot"><span class="trend up"><i class="fa-solid fa-arrow-up"></i> +120 i går</span>
+            <div class="kpi-foot">
               <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,16 12,14 24,15 36,11 48,12 60,8 74,6" stroke="var(--fm-gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
         </section>
@@ -196,7 +196,7 @@
           <a href="{{ url_for('hr_dashboard.dashboard') }}" class="tool" data-reveal data-d="3">
             <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-building"></i></span><span class="fm-badge">HR</span></div>
             <div><h3>HR-workspace</h3><p>Medarbejdere, budgetter, godkendelser, forløb og kompetencegab.</p></div>
-            <div class="tool-foot"><span class="tag">Nordi A/S</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
+            <div class="tool-foot"><span class="tag">{{ session.get('company_name', 'Virksomhed') }}</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
           </a>
           <a href="{{ url_for('pages.analytics') }}" class="tool" data-reveal data-d="4">
             <div class="tool-top"><span class="tool-ic"><i class="fa-solid fa-chart-simple"></i></span><span class="fm-badge indigo">Analyse</span></div>
@@ -210,32 +210,18 @@
         <section class="side-col">
           <div class="fm-card" data-reveal data-d="1">
             <div class="fm-card-body">
-              <div class="act-item">
-                <span class="act-ic" style="background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-check"></i></span>
-                <div><div class="act-tx"><span class="who">Jonas Vester</span> gennemførte <strong>Projektledelse Praktisk</strong></div><div class="act-time">12 min siden · Udvikling</div></div>
-              </div>
-              <div class="act-item">
-                <span class="act-ic" style="background:var(--fm-clay-tint);color:var(--fm-clay)"><i class="fa-solid fa-clipboard-check"></i></span>
-                <div><div class="act-tx"><span class="who">Sara Lind</span> anmodede om godkendelse til <strong>Scrum Master CSM</strong></div><div class="act-time">38 min siden · afventer dig</div></div>
-              </div>
-              <div class="act-item">
-                <span class="act-ic" style="background:color-mix(in srgb,var(--fm-indigo) 14%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-comment-dots"></i></span>
-                <div><div class="act-tx"><span class="who">12 medarbejdere</span> brugte AI-assistenten i dag</div><div class="act-time">1 t siden · 47 samtaler</div></div>
-              </div>
-              <div class="act-item">
-                <span class="act-ic" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-coins"></i></span>
-                <div><div class="act-tx">Kreditpulje genopfyldt med <strong>120 kreditter</strong></div><div class="act-time">I går 16:40 · automatisk</div></div>
+              <div class="fm-empty" style="text-align:center;padding:28px 16px;color:var(--fm-ink-3)">
+                <i class="fa-solid fa-wave-square" style="font-size:20px;opacity:.6"></i>
+                <p style="margin-top:10px;font-size:13.5px">Ingen aktivitet endnu</p>
               </div>
             </div>
           </div>
           <div class="fm-card" data-reveal data-d="2">
             <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3></div>
             <div class="fm-card-body" style="padding-top:6px">
-              <div class="mini-row"><span class="nm">Projektledelse Praktisk</span><span class="vv">38</span></div>
-              <div class="mini-row"><span class="nm">Excel for Analytikere</span><span class="vv">31</span></div>
-              <div class="mini-row"><span class="nm">Leadership Essentials</span><span class="vv">24</span></div>
-              <div class="mini-row"><span class="nm">GDPR i Praksis</span><span class="vv">19</span></div>
-              <div class="mini-row"><span class="nm">Scrum Master CSM</span><span class="vv">15</span></div>
+              <div class="fm-empty" style="text-align:center;padding:24px 16px;color:var(--fm-ink-3)">
+                <p style="font-size:13.5px">Ingen data tilgængelig endnu</p>
+              </div>
             </div>
           </div>
         </section>

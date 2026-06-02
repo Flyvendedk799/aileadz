@@ -85,21 +85,6 @@
     body.appendChild(t); down();
     return t;
   }
-  async function streamMd(body, text) {
-    const el = document.createElement("div");
-    el.className = "md";
-    body.appendChild(el);
-    const tokens = text.split(/(\s+)/);
-    let acc = "";
-    for (let i = 0; i < tokens.length; i++) {
-      if (aborted) break;
-      acc += tokens[i];
-      el.innerHTML = md(acc);
-      if (i % 2 === 0) { down(); await sleep(16 + Math.random() * 22); }
-    }
-    el.innerHTML = md(text);
-    down();
-  }
 
   /* ---------------- course cards ---------------- */
   function courseCard(c, featured) {
@@ -370,104 +355,6 @@
     });
   }
 
-  /* ============================================================
-     SIMULATED AI — scenario router
-     ============================================================ */
-  const COURSES = {
-    projekt: [
-      { vendor: "Teknologisk Institut", icon: "fa-diagram-project", title: "Projektledelse Praktisk", price: "8.900 kr", old: "10.500 kr", agree: true, summary: "Et intensivt 3-dages forløb der giver projektledere konkrete værktøjer til planlægning, interessenthåndtering og eksekvering — med øvelser baseret på egne projekter.", meta: [["fa-clock", "3 dage"], ["fa-location-dot", "København"], ["fa-certificate", "Certifikat"], ["fa-star", "4,8", true]], variants: [{ date: "12. jun 2026", loc: "København K", seats: 8 }, { date: "3. sep 2026", loc: "Aarhus C", seats: 2 }, { date: "21. okt 2026", loc: "Online live", seats: 12 }] },
-      { vendor: "IBC Innovationsfabrikken", icon: "fa-bolt", title: "Agil Projektledelse & Scrum", price: "6.400 kr", summary: "Lær at arbejde agilt med backlog, sprints og ceremonier der faktisk fungerer i praksis. Velegnet til teams der vil levere hurtigere.", meta: [["fa-clock", "2 dage"], ["fa-display", "Online"], ["fa-users", "Holdundervisning"]], variants: [{ date: "18. jun 2026", loc: "Online live", seats: 15 }, { date: "9. sep 2026", loc: "Kolding", seats: 6 }] },
-      { vendor: "Mannaz", icon: "fa-toolbox", title: "Projektlederens Værktøjskasse", price: "11.200 kr", summary: "Det komplette forløb for erfarne projektledere der vil skærpe metoder, ledelse og forretningsforståelse.", meta: [["fa-clock", "4 dage"], ["fa-location-dot", "Frederiksberg"], ["fa-star", "4,6", true]], variants: [{ date: "25. aug 2026", loc: "Frederiksberg", seats: 4 }] },
-    ],
-    excel: [
-      { vendor: "Mannaz", icon: "fa-table-cells", title: "Excel for Analytikere", price: "5.400 kr", agree: true, summary: "Pivot-tabeller, Power Query og dashboards til datadrevne beslutninger. Hands-on med realistiske datasæt.", meta: [["fa-clock", "2 dage"], ["fa-display", "Online"], ["fa-certificate", "Bevis"]], variants: [{ date: "16. jun 2026", loc: "Online live", seats: 20 }, { date: "2. sep 2026", loc: "København", seats: 7 }] },
-      { vendor: "Smart Learning", icon: "fa-chart-line", title: "Dataanalyse med Power BI", price: "7.800 kr", summary: "Byg interaktive rapporter og modeller i Power BI fra grunden — perfekt opfølgning på Excel.", meta: [["fa-clock", "3 dage"], ["fa-display", "Online"], ["fa-star", "4,7", true]], variants: [{ date: "23. jun 2026", loc: "Online live", seats: 11 }] },
-    ],
-    gratis: [
-      { vendor: "Microsoft Learning", icon: "fa-cloud", title: "Azure Fundamentals (intro)", price: "Gratis", summary: "Gratis introduktionsmodul til cloud-begreber og Azure-services. Selvstudie i eget tempo.", meta: [["fa-clock", "4 timer"], ["fa-display", "Online"], ["fa-infinity", "Selvstudie"]], variants: [{ date: "Når som helst", loc: "Online · selvstudie", seats: 99 }] },
-      { vendor: "Futurematch Academy", icon: "fa-shield-halved", title: "GDPR Grundkursus", price: "Gratis", summary: "Få styr på de vigtigste GDPR-principper for medarbejdere. Inkluderer quiz og bevis.", meta: [["fa-clock", "1,5 time"], ["fa-display", "Online"], ["fa-certificate", "Bevis"]], variants: [{ date: "Når som helst", loc: "Online · selvstudie", seats: 99 }] },
-    ],
-    ledelse: [
-      { vendor: "CBS Executive", icon: "fa-users-gear", title: "Leadership Essentials", price: "12.500 kr", agree: true, summary: "Grundlæggende ledelse for nye og kommende ledere — selvindsigt, feedback og teamudvikling.", meta: [["fa-clock", "4 dage"], ["fa-location-dot", "Frederiksberg"], ["fa-star", "4,8", true]], variants: [{ date: "1. sep 2026", loc: "Frederiksberg", seats: 5 }, { date: "10. nov 2026", loc: "Aarhus", seats: 9 }] },
-      { vendor: "Mannaz", icon: "fa-people-arrows", title: "Forandringsledelse", price: "10.900 kr", summary: "Led mennesker gennem forandring med tillid og tempo. Praktiske modeller og cases.", meta: [["fa-clock", "3 dage"], ["fa-location-dot", "København"]], variants: [{ date: "15. sep 2026", loc: "København K", seats: 3 }] },
-    ],
-  };
-
-  const SCN = [
-    { test: /sammenlign|forskel|versus|\bvs\b/i, run: scnCompare },
-    { test: /tilføj.*(erfaring|uddannelse|stilling)|jobtitel|certificer|min stilling/i, run: scnUiCard },
-    { test: /opdater.*cv|min baggrund|jeg arbejder|har erfaring|erfaring med|min profil/i, run: scnProfile },
-    { test: /gratis|free/i, run: (b, q) => scnCourses(b, q, "gratis") },
-    { test: /excel|power ?bi|analytiker|dataanalyse/i, run: (b, q) => scnCourses(b, q, "excel") },
-    { test: /projekt|scrum|agil/i, run: (b, q) => scnCourses(b, q, "projekt") },
-    { test: /ledelse|leder|leadership|forandring/i, run: (b, q) => scnCourses(b, q, "ledelse") },
-    { test: /hej|hjælp|kan du|hvad kan|guide|kom i gang/i, run: scnHelp },
-  ];
-
-  async function scnCourses(body, q, key) {
-    const list = COURSES[key] || COURSES.projekt;
-    const intro = {
-      projekt: "Jeg har fundet **3 stærke match** til projektledelse, der passer til et hold og holder sig inden for et typisk afdelingsbudget. Teknologisk Institut er det mest komplette valg:",
-      excel: "Her er **2 oplagte forløb** til datadrevne roller. Start med Excel for Analytikere — den dækker det meste — og byg videre med Power BI:",
-      gratis: "Disse kurser er **helt gratis** og kan tages i eget tempo. Gode til onboarding og bred opkvalificering:",
-      ledelse: "Til lederudvikling anbefaler jeg disse **2 forløb**. Leadership Essentials passer bedst til nye ledere:",
-    }[key];
-    await streamMd(body, intro);
-    if (aborted) return;
-    await sleep(180);
-    addCourses(body, list);
-    addChips(body, ["Sammenlign de to billigste", "Kun online hold", "Tjek budget for Udvikling", "Hvad indgår i prisen?"]);
-  }
-
-  async function scnCompare(body) {
-    await streamMd(body, "Her er en **sammenligning** af de to mest populære projektledelseskurser:\n\n| | Projektledelse Praktisk | Agil Projektledelse |\n|---|---|---|\n| **Pris** | 8.900 kr | 6.400 kr |\n| **Varighed** | 3 dage | 2 dage |\n| **Format** | Fysisk + online | Online |\n| **Niveau** | Begynder–øvet | Alle |\n| **Certifikat** | Ja | Bevis |\n\nVælg **Praktisk** hvis I vil have et anerkendt certifikat og fysisk netværk — eller **Agil** hvis pris og fleksibilitet vejer tungest.");
-    if (aborted) return;
-    addChips(body, ["Vis begge kurser", "Hvilket passer til 4 personer?", "Book et infomøde"]);
-  }
-
-  async function scnProfile(body) {
-    await streamMd(body, "Tak — det hjælper mig med at give bedre anbefalinger. Det lyder som om du har erfaring med **projektledelse og teamledelse**. Vil du gemme det på din profil, så jeg kan tilpasse fremtidige forslag?");
-    if (aborted) return;
-    await sleep(150);
-    profileConfirm(body, {
-      section: "experience",
-      message: "Tilføj “Projektledelse” og “Teamledelse” til dine kompetencer.",
-      tags: ["Projektledelse", "Teamledelse"],
-      toast: "2 kompetencer tilføjet til din profil",
-      label: "Kompetencer tilføjet",
-      bump: 10,
-    });
-    addChips(body, ["Anbefal kurser ud fra min profil", "Tilføj min uddannelse", "Hvad mangler min profil?"]);
-  }
-
-  async function scnUiCard(body) {
-    await streamMd(body, "Godt — lad os tilføje det til din profil. Udfyld de felter du kender, så gemmer jeg det med det samme:");
-    if (aborted) return;
-    await sleep(150);
-    uiCard(body, {
-      section: "experience",
-      message: "Tilføj erhvervserfaring",
-      tags: ["Forudfyldt fra samtale"],
-      fields: [
-        { name: "title", label: "Stilling", ph: "fx Projektleder" },
-        { name: "company", label: "Virksomhed", ph: "fx Nordi A/S" },
-        { name: "start", label: "Startår", type: "number", ph: "2021" },
-        { name: "end", label: "Slutår", type: "number", ph: "Nu", hint: "Tom = stadig ansat" },
-        { name: "type", label: "Ansættelse", type: "select", options: ["Fuldtid", "Deltid", "Freelance", "Praktik"] },
-      ],
-      toast: "Erhvervserfaring gemt på din profil",
-      label: "Erfaring tilføjet",
-      bump: 12,
-    });
-  }
-
-  async function scnHelp(body) {
-    await streamMd(body, "Hej! Jeg er **Futurematch Kursusrådgiver**. Jeg kan hjælpe dig med at:\n\n- **Finde kurser** ud fra rolle, behov eller budget\n- **Sammenligne** muligheder side om side\n- **Bestille** til dig selv eller hele teamet\n- **Holde din profil opdateret**, så anbefalinger bliver skarpere\n\nHvad vil du starte med?");
-    if (aborted) return;
-    addChips(body, ["Vis populære kurser", "Projektledelse til 4 personer", "Gratis kurser", "Opdater mit CV"]);
-  }
-
-  function route(q) { const m = SCN.find((s) => s.test.test(q)); return m ? m.run : (b) => scnCourses(b, q, "projekt"); }
 
   /* ============================================================
      REAL AI — talks to app1's streaming /ask endpoint (SSE)
@@ -623,7 +510,7 @@
         <div class="w-eyebrow">Futurematch kursusrådgiver</div>
         <div class="w-title">Hvad skal dit team lære?</div>
         <div class="w-sub">Beskriv et behov, en rolle eller en kompetence — så finder jeg relevante kurser, sammenligner muligheder og foreslår hold.</div>
-        <div class="w-hint">Logget ind som <b>Mette Krogh</b> — anbefalinger tilpasses din profil</div>
+        <div class="w-hint">Anbefalinger tilpasses din profil</div>
         <div class="w-grid">
           <button class="w-card" data-q="Vis mig populære projektledelseskurser"><span class="ic"><i class="fa-solid fa-diagram-project"></i></span><span><div class="t">Populære kurser</div><div class="h">Se hvad andre vælger</div></span></button>
           <button class="w-card" data-q="Hvilke kurser er gratis?"><span class="ic"><i class="fa-solid fa-gift"></i></span><span><div class="t">Gratis kurser</div><div class="h">Kom i gang uden omkostninger</div></span></button>

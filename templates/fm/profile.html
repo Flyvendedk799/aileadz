@@ -27,20 +27,20 @@
 </style>
 {% endblock %}
 {% block content %}
+{% set _u = username or session.get('user') or 'Gæst' %}
 <div class="pf-wrap">
         <section class="pf-hero" data-reveal data-d="1">
-          <span class="pf-av">MK</span>
+          <span class="pf-av">{{ (_u[:2] | upper) if _u else 'FM' }}</span>
           <div class="pf-info" style="flex:1">
-            <h1>Mette Krogh</h1>
-            <div class="role">HR-manager · Nordi A/S</div>
+            <h1>{{ _u }}</h1>
+            <div class="role">{% if session.get('company_role') %}{{ session.get('company_role') }}{% endif %}{% if session.get('company_name') %}{% if session.get('company_role') %} · {% endif %}{{ session.get('company_name') }}{% endif %}</div>
             <div class="pf-tags">
-              <span class="chip-tag"><i class="fa-solid fa-envelope" style="color:var(--fm-ink-3)"></i> mette@nordi.dk</span>
-              <span class="chip-tag"><i class="fa-solid fa-location-dot" style="color:var(--fm-ink-3)"></i> København</span>
+              {% if session.get('email') %}<span class="chip-tag"><i class="fa-solid fa-envelope" style="color:var(--fm-ink-3)"></i> {{ session.get('email') }}</span>{% endif %}
               <span class="fm-badge teal dot">Aktiv</span>
             </div>
           </div>
           <div style="text-align:right">
-            <div style="font-family:var(--ff-display);font-size:30px;font-weight:700" class="tnum">420</div>
+            <div style="font-family:var(--ff-display);font-size:30px;font-weight:700" class="tnum">{{ session.get('credits', 0) }}</div>
             <div style="font-size:12px;color:var(--fm-ink-3)">kreditter</div>
           </div>
         </section>
@@ -50,21 +50,17 @@
             <div class="fm-card" data-reveal data-d="2">
               <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-id-card"></i></span><h3>Stamdata</h3></div>
               <div class="fm-card-body" style="padding-top:6px">
-                <div class="kv"><span class="k">Fulde navn</span><span class="v">Mette Krogh</span></div>
-                <div class="kv"><span class="k">Stilling</span><span class="v">HR-manager</span></div>
-                <div class="kv"><span class="k">Afdeling</span><span class="v">HR</span></div>
-                <div class="kv"><span class="k">Virksomhed</span><span class="v">Nordi A/S</span></div>
-                <div class="kv"><span class="k">Medlem siden</span><span class="v">Mar 2024</span></div>
-                <div class="kv"><span class="k">Rolle</span><span class="v"><span class="fm-badge indigo">company_admin</span></span></div>
+                <div class="kv"><span class="k">Brugernavn</span><span class="v">{{ _u }}</span></div>
+                {% if session.get('email') %}<div class="kv"><span class="k">E-mail</span><span class="v">{{ session.get('email') }}</span></div>{% endif %}
+                {% if session.get('company_role') %}<div class="kv"><span class="k">Stilling</span><span class="v">{{ session.get('company_role') }}</span></div>{% endif %}
+                {% if session.get('company_name') %}<div class="kv"><span class="k">Virksomhed</span><span class="v">{{ session.get('company_name') }}</span></div>{% endif %}
+                {% if session.get('role') %}<div class="kv"><span class="k">Rolle</span><span class="v"><span class="fm-badge indigo">{{ session.get('role') }}</span></span></div>{% endif %}
               </div>
             </div>
             <div class="fm-card" data-reveal data-d="3">
               <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-simple"></i></span><h3>Kompetencer</h3></div>
               <div class="fm-card-body">
-                <div class="skillbar"><div class="top"><b>HR-strategi</b><span class="mono" style="color:var(--fm-ink-2)">4,5/5</span></div><div class="fm-prog"><span style="width:90%"></span></div></div>
-                <div class="skillbar"><div class="top"><b>Rekruttering</b><span class="mono" style="color:var(--fm-ink-2)">4,0/5</span></div><div class="fm-prog"><span style="width:80%"></span></div></div>
-                <div class="skillbar"><div class="top"><b>Dataanalyse</b><span class="mono" style="color:var(--fm-ink-2)">3,2/5</span></div><div class="fm-prog"><span style="width:64%"></span></div></div>
-                <div class="skillbar"><div class="top"><b>Forandringsledelse</b><span class="mono" style="color:var(--fm-ink-2)">3,8/5</span></div><div class="fm-prog"><span style="width:76%"></span></div></div>
+                <div class="muted" style="font-size:13px;padding:8px 0">Ingen kompetencer registreret endnu.</div>
               </div>
             </div>
           </div>
@@ -74,10 +70,11 @@
               <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-star"></i></span><h3>Foretrukne brands</h3></div>
               <div class="fm-card-body">
                 <div class="fm-flex fm-wrap-w fm-gap8">
-                  <span class="chip-tag">Teknologisk Institut</span>
-                  <span class="chip-tag">Mannaz</span>
-                  <span class="chip-tag">CBS Executive</span>
-                  <span class="chip-tag">DJØF</span>
+                  {% for brand in (brands or []) %}
+                  <span class="chip-tag">{{ brand.brand_name if brand.brand_name is defined else brand }}</span>
+                  {% else %}
+                  <span class="muted" style="font-size:13px">Ingen foretrukne brands endnu.</span>
+                  {% endfor %}
                   <button class="chip-tag" style="cursor:pointer;color:var(--fm-primary);border-color:var(--fm-primary)"><i class="fa-solid fa-plus"></i> Tilføj</button>
                 </div>
               </div>
@@ -85,9 +82,7 @@
             <div class="fm-card" data-reveal data-d="4">
               <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Seneste aktivitet</h3></div>
               <div class="fm-card-body" style="padding-top:8px">
-                <div class="kv"><span class="k">Godkendte 3 ordrer</span><span class="v mono" style="color:var(--fm-ink-3);font-weight:500">2 t siden</span></div>
-                <div class="kv"><span class="k">Genererede ROI-rapport</span><span class="v mono" style="color:var(--fm-ink-3);font-weight:500">I går</span></div>
-                <div class="kv"><span class="k">Tilføjede 4 medarbejdere</span><span class="v mono" style="color:var(--fm-ink-3);font-weight:500">2 dage</span></div>
+                <div class="muted" style="font-size:13px;padding:8px 0">Ingen aktivitet endnu</div>
               </div>
             </div>
           </div>

@@ -76,9 +76,12 @@ class OrderHandler:
             # Log order creation
             logger.info(f"Order created: {order_id} for product: {product_data.get('title')}")
             
-            # Store order in database
+            # Store order in database via the authorized order_service.
+            # The service mutates order['order_id'] / order['status'] to the
+            # persisted values, so read them back to stay consistent.
             self._store_order_in_db(order)
-            
+            order_id = order.get('order_id', order_id)
+
             return {
                 'success': True,
                 'order_id': order_id,
@@ -110,95 +113,56 @@ class OrderHandler:
             return 0.0
     
     def _store_order_in_db(self, order: Dict):
-        """Store order in database"""
+        """Store order in database.
+
+        Delegates to the single authorized order_service.create_order so this
+        chatbot path shares the same authorization, budget-aware approval and
+        exactly-once budget charge as every other order path. The order dict
+        already has an order_id; we record the service's returned values back
+        onto the dict so callers (confirmation, status) stay consistent.
+        """
         try:
-            conn = current_app.mysql.connection
-            if not conn:
-                logger.warning("No database connection available")
-                return
+            from order_service import create_order as _svc_create_order, OrderContext
+        except Exception as imp_err:
+            logger.error(f"order_service import failed: {imp_err}")
+            return
 
-            cur = conn.cursor()
+        try:
+            ctx = OrderContext.from_session(source='chat')
+            result = _svc_create_order(
+                ctx,
+                product_handle=order['product'].get('handle', ''),
+                product_title=order['product'].get('title', ''),
+                price=order['product'].get('price', 0),
+                variant_date=order['variant'].get('date', ''),
+                variant_location=order['variant'].get('location', ''),
+                user_email=order['user'].get('email', ''),
+                user_name=order['user'].get('name', ''),
+                user_phone=order['user'].get('phone', ''),
+                status=order.get('status', 'pending'),
+                extra={
+                    'chatbot_session_id': session.get('session_id', ''),
+                    'chatbot_queries_before_order': session.get('_chatbot_query_count', 0),
+                    'recommended_by_tool': session.get('_last_recommending_tool', ''),
+                    'department': session.get('company_department', ''),
+                },
+            )
 
-            # Determine if enterprise approval is needed
-            company_id = session.get('company_id')
-            needs_approval = False
-            if company_id:
-                try:
-                    cur_check = conn.cursor(MySQLdb.cursors.DictCursor)
-                    role = session.get('company_role', 'employee')
-                    # Employees need approval; managers/admins don't
-                    if role in ('employee',):
-                        needs_approval = True
-                    cur_check.close()
-                except Exception:
-                    pass
+            if result.get('success'):
+                # Keep the in-memory order in sync with the persisted row so the
+                # session copy and confirmation reflect the authorized outcome.
+                order['order_id'] = result.get('order_id', order['order_id'])
+                order['status'] = result.get('status', order['status'])
+                if result.get('needs_approval'):
+                    order['needs_approval'] = True
+                if result.get('budget_warning'):
+                    order['budget_warning'] = result['budget_warning']
+            else:
+                logger.error(
+                    "order_service.create_order failed: %s",
+                    result.get('error') or result.get('message'),
+                )
 
-            initial_status = 'pending_approval' if needs_approval else order['status']
-
-            # Store in orders table
-            cur.execute("""
-                INSERT INTO course_orders
-                (order_id, company_id, user_id, username, product_handle, product_title, price,
-                 variant_date, variant_location, status, created_at, user_email, user_name, user_phone,
-                 chatbot_session_id, chatbot_queries_before_order, recommended_by_tool, department)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                order['order_id'],
-                company_id,
-                session.get('user_id'),
-                session.get('user', 'guest'),
-                order['product']['handle'],
-                order['product']['title'],
-                order['product']['price'],
-                order['variant'].get('date', ''),
-                order['variant'].get('location', ''),
-                initial_status,
-                order['timestamp'],
-                order['user'].get('email', ''),
-                order['user'].get('name', ''),
-                order['user'].get('phone', ''),
-                session.get('session_id', ''),
-                session.get('_chatbot_query_count', 0),
-                session.get('_last_recommending_tool', ''),
-                session.get('company_department', ''),
-            ))
-
-            # Phase 2.2: Create approval request for enterprise employees
-            if needs_approval and company_id:
-                try:
-                    cur.execute("""
-                        INSERT INTO order_approvals
-                        (order_id, company_id, requester_user_id, status)
-                        VALUES (%s, %s, %s, 'pending')
-                    """, (order['order_id'], company_id, session.get('user_id')))
-                except Exception as ap_err:
-                    logger.warning(f"Approval creation failed: {ap_err}")
-
-            # Phase 2.3: Check department budget
-            if company_id and order['product']['price'] and float(order['product']['price']) > 0:
-                dept = session.get('company_department', '')
-                if dept:
-                    try:
-                        import datetime as _dt
-                        fiscal_year = _dt.datetime.now().year
-                        cur_b = conn.cursor(MySQLdb.cursors.DictCursor)
-                        cur_b.execute("""
-                            SELECT id, annual_budget, spent FROM department_budgets
-                            WHERE company_id = %s AND department = %s AND fiscal_year = %s
-                        """, (company_id, dept, fiscal_year))
-                        budget_row = cur_b.fetchone()
-                        if budget_row:
-                            new_spent = float(budget_row['spent'] or 0) + float(order['product']['price'])
-                            cur_b.execute("""
-                                UPDATE department_budgets SET spent = %s WHERE id = %s
-                            """, (new_spent, budget_row['id']))
-                        cur_b.close()
-                    except Exception as bg_err:
-                        logger.warning(f"Budget update failed: {bg_err}")
-
-            conn.commit()
-            cur.close()
-            
         except Exception as e:
             logger.error(f"Error storing order in database: {e}")
     

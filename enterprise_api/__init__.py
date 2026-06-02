@@ -1425,25 +1425,31 @@ def create_order_api():
             if not data.get(f):
                 return jsonify({'error': f'Missing required field: {f}'}), 400
 
-        import uuid
-        order_id = str(uuid.uuid4())
-        cur = current_app.mysql.connection.cursor()
-        cur.execute("""
-            INSERT INTO course_orders
-            (order_id, company_id, product_handle, product_title, price, status,
-             user_email, user_name, user_phone, variant_date, variant_location,
-             department, created_at)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-        """, (
-            order_id, g.company_id,
-            data['product_handle'], data['product_title'],
-            data.get('price', 0), data.get('status', 'pending'),
-            data['user_email'], data['user_name'], data.get('user_phone', ''),
-            data.get('variant_date', ''), data.get('variant_location', ''),
-            data.get('department', ''),
-        ))
-        current_app.mysql.connection.commit()
-        cur.close()
+        # Route through the single authorized order_service so the API path no
+        # longer skips approvals/budgets. The API actor is treated as
+        # manager-level (company_admin), so budget-aware approval still applies.
+        from order_service import create_order as _svc_create_order, OrderContext
+        ctx = OrderContext.from_api_g(source='api')
+        ctx.department = (data.get('department') or '').strip() or None
+
+        result = _svc_create_order(
+            ctx,
+            product_handle=data['product_handle'],
+            product_title=data['product_title'],
+            price=data.get('price', 0),
+            variant_date=data.get('variant_date', ''),
+            variant_location=data.get('variant_location', ''),
+            user_email=data['user_email'],
+            user_name=data['user_name'],
+            user_phone=data.get('user_phone', ''),
+            status=data.get('status', 'pending'),
+            extra={'department': (data.get('department') or '')},
+        )
+
+        if not result.get('success'):
+            return jsonify({'error': 'Failed to create order'}), 500
+
+        order_id = result.get('order_id')
 
         # Fire webhook
         _fire_webhook(g.company_id, 'order.created', {'order_id': order_id, 'product': data['product_title']})
@@ -1545,7 +1551,12 @@ def bulk_enroll():
         if len(employee_ids) > 200:
             return jsonify({'error': 'Maximum 200 employees per bulk enroll'}), 400
 
-        import uuid
+        # Route every enrollment through the single authorized order_service so
+        # approvals/budgets are no longer skipped. The API actor is manager-
+        # level, but each order is attributed to the employee + their department
+        # so budget-aware approval applies per department.
+        from order_service import create_order as _svc_create_order, OrderContext
+
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         created_orders = []
 
@@ -1559,22 +1570,31 @@ def bulk_enroll():
             if not emp:
                 continue
 
-            order_id = str(uuid.uuid4())
-            cur.execute("""
-                INSERT INTO course_orders
-                (order_id, company_id, user_id, username, product_handle, product_title,
-                 price, status, user_email, user_name, department, variant_date, variant_location, created_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
-            """, (
-                order_id, g.company_id, emp['user_id'], emp['full_name'],
-                product_handle, product_title,
-                data.get('price', 0), data.get('status', 'pending'),
-                emp['email'], emp['full_name'], emp.get('department', ''),
-                data.get('variant_date', ''), data.get('variant_location', ''),
-            ))
-            created_orders.append({'order_id': order_id, 'employee': emp['full_name']})
+            ctx = OrderContext(
+                company_id=g.company_id,
+                user_id=emp.get('user_id'),
+                username=emp.get('full_name'),
+                company_role='company_admin',  # API actor; manager-level
+                department=emp.get('department', ''),
+                source='api',
+            )
+            result = _svc_create_order(
+                ctx,
+                product_handle=product_handle,
+                product_title=product_title,
+                price=data.get('price', 0),
+                variant_date=data.get('variant_date', ''),
+                variant_location=data.get('variant_location', ''),
+                user_email=emp.get('email', ''),
+                user_name=emp.get('full_name', ''),
+                user_phone='',
+                status=data.get('status', 'pending'),
+                extra={'department': emp.get('department', '')},
+            )
+            if result.get('success'):
+                created_orders.append({'order_id': result.get('order_id'),
+                                       'employee': emp['full_name']})
 
-        current_app.mysql.connection.commit()
         cur.close()
 
         if created_orders:

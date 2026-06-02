@@ -1917,6 +1917,117 @@ PROFILE_TOOLS.append({
 })
 
 
+# ── Learning Goals (Udviklingsmål) ──
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "set_learning_goal",
+        "description": "Opret et udviklingsmål for brugeren (f.eks. 'blive bedre til projektledelse', 'lære Power BI inden Q3'). Brug dette når brugeren udtrykker et lærings- eller karrieremål. Efter oprettelse kan du foreslå relevante kurser til målet med recommend_for_profile eller catalog_search.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Kort titel på målet, f.eks. 'Blive certificeret projektleder'."},
+                "description": {"type": "string", "description": "Valgfri uddybning af målet."},
+                "target_date": {"type": "string", "description": "Valgfri måldato/tidsramme som fritekst, f.eks. 'december 2026' eller 'Q3'."}
+            },
+            "required": ["title"]
+        },
+        "strict": False
+    }
+})
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "get_learning_goals",
+        "description": "Hent brugerens udviklingsmål og deres status. Brug dette når brugeren spørger om sine mål, fremskridt, eller hvad de arbejder hen imod.",
+        "parameters": {"type": "object", "properties": {}, "required": []}
+    }
+})
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "update_learning_goal",
+        "description": "Opdater et eksisterende udviklingsmål: markér som fuldført, sæt på pause, genaktivér, slet, eller ret titel/dato. Kald get_learning_goals først for at finde goal_id, hvis du ikke kender det.",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "goal_id": {"type": "integer", "description": "ID på målet (fra get_learning_goals)."},
+                "status": {"type": "string", "enum": ["aktiv", "fuldfoert", "paa_pause", "slet"], "description": "Ny status, eller 'slet' for at fjerne målet."},
+                "title": {"type": "string", "description": "Valgfri ny titel."},
+                "target_date": {"type": "string", "description": "Valgfri ny måldato."}
+            },
+            "required": ["goal_id"]
+        },
+        "strict": False
+    }
+})
+
+
+def _execute_set_learning_goal(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    title = (args.get("title") or "").strip()
+    if len(title) < 3:
+        return json.dumps({"status": "error", "message": "title mangler eller er for kort."})
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        gid = db.add_learning_goal(username, title, args.get("description", ""), args.get("target_date"))
+        return json.dumps({"status": "success", "section": "goals", "goal_id": gid,
+                           "message": f"Udviklingsmål oprettet: {title}"}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl ved oprettelse af mål: {e}"})
+
+
+def _execute_get_learning_goals(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        goals = db.get_learning_goals(username)
+        label = {"aktiv": "aktiv", "fuldfoert": "fuldført", "paa_pause": "på pause"}
+        items = [{"id": g["id"], "title": g["title"], "description": g.get("description") or "",
+                  "target_date": g.get("target_date") or "", "status": label.get(g["status"], g["status"])}
+                 for g in goals]
+        return json.dumps({"status": "success", "section": "goals", "count": len(items), "goals": items,
+                           "message": ("Ingen udviklingsmål oprettet endnu." if not items else f"{len(items)} udviklingsmål.")},
+                          ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl ved hentning af mål: {e}"})
+
+
+def _execute_update_learning_goal(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        gid = int(args.get("goal_id"))
+    except (TypeError, ValueError):
+        return json.dumps({"status": "error", "message": "goal_id mangler eller er ugyldigt."})
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        if args.get("status") == "slet":
+            ok = db.delete_learning_goal(username, gid)
+            return json.dumps({"status": "success" if ok else "not_found", "section": "goals",
+                               "message": "Mål slettet." if ok else "Målet blev ikke fundet."}, ensure_ascii=False)
+        fields = {}
+        if args.get("status") in ("aktiv", "fuldfoert", "paa_pause"):
+            fields["status"] = args["status"]
+        for k in ("title", "target_date", "description"):
+            if args.get(k):
+                fields[k] = str(args[k]).strip()
+        ok = db.update_learning_goal(username, gid, **fields)
+        return json.dumps({"status": "success" if ok else "not_found", "section": "goals",
+                           "message": "Mål opdateret." if ok else "Målet blev ikke fundet eller ingen ændringer."},
+                          ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl ved opdatering af mål: {e}"})
+
+
 def _execute_suggest_learning_path(args, username):
     """6.2: Build a sequenced learning path based on user profile and goals."""
     if not username:
@@ -2409,6 +2520,12 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_check_approval_status(args)
         elif function_name == "get_department_budget":
             return _execute_get_department_budget(args)
+        elif function_name == "set_learning_goal":
+            return _execute_set_learning_goal(args, username)
+        elif function_name == "get_learning_goals":
+            return _execute_get_learning_goals(args, username)
+        elif function_name == "update_learning_goal":
+            return _execute_update_learning_goal(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

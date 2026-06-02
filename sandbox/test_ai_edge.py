@@ -166,12 +166,33 @@ def scn_edge_inputs():
         check(f"edge: {name}", cond(r), ("flow_fail" if r["failed_flow"] else (r["error"] or r["text"][:60])))
 
 
+def scn_learning_goals():
+    print("\n## Multi-turn: learning goals (Udviklingsmål feature)")
+    try:
+        with app.app_context():
+            cur = app.mysql.connection.cursor()
+            cur.execute("DELETE FROM user_learning_goals WHERE username='test'")
+            app.mysql.connection.commit(); cur.close()
+    except Exception:
+        pass
+    c = fresh_client()
+    r1 = ask(c, "Saet et udviklingsmaal om at blive certificeret projektleder inden december 2026")
+    goals = sql("SELECT title, status FROM user_learning_goals WHERE username='test'")
+    check("goal created via chat (DB row)", r1["http"] == 200 and not r1["failed_flow"] and len(goals) >= 1, str([(g["title"][:24], g["status"]) for g in goals]))
+    r2 = ask(c, "Hvad er mine udviklingsmaal lige nu?")
+    check("goals retrieved", r2["http"] == 200 and not r2["failed_flow"] and not r2["error"] and len(r2["text"]) > 20, r2["text"][:70])
+    r3 = ask(c, "Markér mit maal om projektleder som fuldfoert")
+    done = sql("SELECT status FROM user_learning_goals WHERE username='test'")
+    check("goal marked completed (DB)", r3["http"] == 200 and any(g["status"] == "fuldfoert" for g in done), str([g["status"] for g in done]))
+
+
 def main():
     print("Warming RAG…")
     warm()
     scn_context_retention()
     scn_order_flow()
     scn_profile_lifecycle()
+    scn_learning_goals()
     scn_edge_inputs()
     passed = sum(1 for ok, _ in RESULTS if ok)
     print("\n" + "=" * 60)

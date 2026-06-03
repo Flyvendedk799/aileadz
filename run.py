@@ -200,6 +200,15 @@ def create_app():
     except Exception as e:
         logging.warning("SCIM provisioning integration skipped: %s", e)
 
+    # GDPR data-subject toolkit (export + erasure). Guarded so a failure here
+    # can never crash create_app(). Erase is platform-admin-only and gated by a
+    # dry-run preview + typed-username confirmation inside the blueprint.
+    try:
+        from gdpr_routes import gdpr_bp
+        app.register_blueprint(gdpr_bp)
+    except Exception as e:
+        logging.warning("GDPR data-subject toolkit skipped: %s", e)
+
     # Liveness/readiness probes (/healthz, /readyz)
     from health import health_bp
     app.register_blueprint(health_bp)

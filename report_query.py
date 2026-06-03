@@ -31,6 +31,14 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# k-anonymity helpers (roadmap value-4, Theme A/E). Guarded: if the module is
+# missing the reports still return — just without small-cohort suppression. A
+# missing k-anon import must NEVER crash a report or boot.
+try:
+    import kanon as _kanon
+except Exception:  # pragma: no cover - boot-safety guard
+    _kanon = None
+
 # Tools (logged in chatbot_interactions.tools_used) that represent a "search"
 # step in the funnel — i.e. the user asked something that triggered a lookup.
 _SEARCH_TOOLS = (
@@ -297,6 +305,15 @@ def top_queries(company_id=None, days=30, limit=10):
 
     Returns a list of ``{'query': str, 'count': int}`` ordered by count desc.
     Tenant-scoped when a ``company_id`` is given. Always safe; never raises.
+
+    k-anonymity (roadmap value-4): a verbatim ``query_text`` asked by fewer than
+    k DISTINCT people is effectively one person's exact wording — readable PII on
+    a "top queries" panel. We measure the distinct cohort behind each query with
+    ``COUNT(DISTINCT COALESCE(username, session_id))`` in SQL and suppress any
+    query whose cohort is below k. Overall volume metrics live in
+    ``daily_volume`` / ``conversion_funnel`` and are unaffected. The list shape
+    (``[{'query','count'}, ...]``) is unchanged — only sub-k rows are removed.
+    Guarded: if k-anon is unavailable the unsuppressed list is returned.
     """
     d = _days(days)
     lim = _int(limit, 10)
@@ -313,8 +330,12 @@ def top_queries(company_id=None, days=30, limit=10):
     try:
         scope_sql, scope_params = _scope(company_id)
         tenant_and = (' AND ' + scope_sql) if scope_sql else ''
+        # distinct_people: the size of the cohort that asked this exact query.
+        # COALESCE so a logged-out (NULL username) row still counts via session.
         sql = """
-            SELECT query_text AS query, COUNT(*) AS cnt
+            SELECT query_text AS query,
+                   COUNT(*) AS cnt,
+                   COUNT(DISTINCT COALESCE(username, session_id)) AS distinct_people
             FROM chatbot_interactions
             WHERE created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
               AND query_text IS NOT NULL AND query_text <> ''
@@ -326,10 +347,26 @@ def top_queries(company_id=None, days=30, limit=10):
         cur.execute(sql, (d,) + scope_params + (lim,))
         for r in cur.fetchall() or []:
             q = r.get('query') or ''
-            rows_out.append({'query': str(q)[:200], 'count': _int(r.get('cnt'))})
+            rows_out.append({
+                'query': str(q)[:200],
+                'count': _int(r.get('cnt')),
+                # internal cohort size for k-anon; stripped before returning.
+                '_distinct_people': _int(r.get('distinct_people')),
+            })
     except Exception as e:
         logger.warning("top_queries failed (company_id=%s): %s", company_id, e)
     finally:
         _close(cur)
+
+    # k-anon suppression on the distinct-people cohort, then strip the internal
+    # key so the returned shape stays exactly {'query','count'}.
+    if _kanon is not None and rows_out:
+        try:
+            rows_out, _note = _kanon.suppress_small_groups(rows_out, '_distinct_people')
+        except Exception:
+            pass
+    for row in rows_out:
+        if isinstance(row, dict):
+            row.pop('_distinct_people', None)
 
     return rows_out

@@ -26,6 +26,34 @@ except ImportError:
     _ML_AVAILABLE = False
     pd = np = go = plotly = None
 
+# k-anonymity helpers (roadmap value-4, Theme A/E). Guarded so that if the
+# module is missing the analytics still return — just without small-cohort
+# suppression. NEVER let a missing k-anon import crash create_app or a route.
+try:
+    import kanon as _kanon
+except Exception:  # pragma: no cover - boot-safety guard
+    try:
+        from .. import kanon as _kanon  # type: ignore
+    except Exception:
+        _kanon = None
+
+
+def _suppress(rows, count_key, label_key=None, merge=False):
+    """Apply k-anonymity suppression to a small-cohort breakdown if available.
+
+    Returns ``(rows, note_dict_or_None)``. If the k-anon helper is unavailable
+    or errors, the original ``rows`` come back unchanged with a ``None`` note so
+    callers degrade gracefully (unsuppressed but never crashing)."""
+    if _kanon is None or not rows:
+        return rows, None
+    try:
+        out, note = _kanon.suppress_small_groups(
+            rows, count_key, label_key=label_key, merge=merge)
+        return out, note
+    except Exception:
+        return rows, None
+
+
 analytics_bp = Blueprint('analytics', __name__)
 
 class AdvancedAnalytics:
@@ -384,10 +412,36 @@ class AdvancedAnalytics:
                     skill_analysis[dept][skill]['avg_current_level'] /= emp_count
                     skill_analysis[dept][skill]['avg_target_level'] /= emp_count
                     skill_analysis[dept][skill]['gap_score'] = (
-                        skill_analysis[dept][skill]['avg_target_level'] - 
+                        skill_analysis[dept][skill]['avg_target_level'] -
                         skill_analysis[dept][skill]['avg_current_level']
                     )
-            
+
+            # k-anonymity: a department whose largest skill cohort is still
+            # below k represents only a handful of (possibly a single) employees,
+            # so its per-skill breakdown would profile that individual. Drop
+            # those whole departments from the breakdown. Company-wide totals are
+            # computed elsewhere and remain unchanged. Guarded — if k-anon is
+            # unavailable the unsuppressed analysis is returned as before.
+            if _kanon is not None:
+                try:
+                    # One synthetic row per department carrying that department's
+                    # peak cohort size, so suppress_small_groups can decide.
+                    dept_rows = [
+                        {'department': dept,
+                         '_cohort': max((s['employees'] for s in skills.values()),
+                                        default=0)}
+                        for dept, skills in skill_analysis.items()
+                    ]
+                    kept, note = _kanon.suppress_small_groups(dept_rows, '_cohort')
+                    safe_depts = {r['department'] for r in kept if isinstance(r, dict)}
+                    if note and note.get('suppressed'):
+                        for dept in list(skill_analysis.keys()):
+                            if dept not in safe_depts:
+                                skill_analysis.pop(dept, None)
+                        skill_analysis['_anon_note'] = note.get('note_da')
+                except Exception:
+                    pass
+
             return skill_analysis
         except Exception as e:
             return None
@@ -619,11 +673,23 @@ def get_department_performance(company_id):
         
         dept_performance = cur.fetchall()
         cur.close()
-        
-        return jsonify({
+
+        # k-anonymity: a department with fewer than k active employees would
+        # expose an individual's performance / learning-hours as an "average"
+        # of one. Suppress those small departments from this per-department
+        # breakdown. The figures are already DB-side aggregates per department,
+        # so dropping a sub-k department leaks nothing. Guarded — returns the
+        # unsuppressed list if k-anon is unavailable.
+        dept_performance = list(dept_performance or [])
+        dept_performance, anon_note = _suppress(dept_performance, 'employee_count')
+
+        payload = {
             'success': True,
             'data': dept_performance
-        })
+        }
+        if anon_note:
+            payload['anon_note'] = anon_note.get('note_da')
+        return jsonify(payload)
     except Exception as e:
         return jsonify({'error': 'Failed to retrieve department performance'}), 500
 

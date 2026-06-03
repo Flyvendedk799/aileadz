@@ -95,6 +95,7 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i><span>Compliance</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'company' }}" href="{{ url_for('companies.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span>Virksomheds-BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'creports' }}" href="{{ url_for('multitenant_reports.reports') }}"><i class="fa-solid fa-folder-open"></i><span>Virksomhedsrapporter</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'webhooks' }}" href="{{ url_for('enterprise_settings.webhooks_page') }}"><i class="fa-solid fa-plug"></i><span>Webhooks</span></a></li>
       </ul>
       {% endif %}
 
@@ -104,6 +105,7 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil &amp; CV</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'goals' }}" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i><span>Udviklingsmål</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Min tidslinje</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>Upload CV</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'settings' }}" href="{{ url_for('pages.settings') }}"><i class="fa-solid fa-sliders"></i><span>Indstillinger</span></a></li>
       </ul>
 

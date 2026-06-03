@@ -1,0 +1,151 @@
+{% extends "fm_base.html" %}
+{% block page_id %}webhooks{% endblock %}
+{% block title %}Webhooks{% endblock %}
+{% block topbar_title %}Webhooks{% endblock %}
+{% block topbar_sub %}Send hændelser fra platformen til dine egne systemer i realtid.{% endblock %}
+
+{% block extra_head %}
+<style>
+  .wh-grid { display: grid; grid-template-columns: minmax(0,1.45fr) minmax(0,1fr); gap: 18px; align-items: start; }
+  @media (max-width: 1000px) { .wh-grid { grid-template-columns: 1fr; } }
+  .wh-url { font-family: var(--ff-mono, monospace); font-size: 12.5px; word-break: break-all; }
+  .wh-events { display:flex; flex-wrap:wrap; gap:6px; margin-top:4px; }
+  .wh-form .fm-field { margin-bottom: 14px; }
+  .wh-events-pick { display:grid; grid-template-columns: 1fr 1fr; gap:8px 14px; }
+  @media (max-width: 520px) { .wh-events-pick { grid-template-columns: 1fr; } }
+  .wh-check { display:flex; align-items:center; gap:8px; font-size:13.5px; color:var(--fm-ink-2); cursor:pointer; }
+  .wh-check input { width:16px; height:16px; accent-color: var(--fm-primary); }
+  .wh-switch { display:flex; align-items:center; gap:10px; font-size:14px; color:var(--fm-ink-2); }
+  .wh-switch input { width:18px; height:18px; accent-color: var(--fm-primary); }
+  .wh-actions { display:flex; gap:6px; justify-content:flex-end; white-space:nowrap; }
+  .wh-actions form { display:inline; margin:0; }
+  .wh-stats { font-size:12px; color:var(--fm-ink-3); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  <div class="wh-grid">
+
+    <!-- ── Webhook list ── -->
+    <section class="fm-card" style="padding:20px 22px">
+      <div class="fm-eyebrow"><i class="fa-solid fa-bolt"></i> Aktive integrationer</div>
+      <h2 class="fm-section-title" style="margin:4px 0 12px">Dine webhooks</h2>
+
+      {% if webhooks %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead>
+            <tr>
+              <th>URL &amp; hændelser</th>
+              <th style="text-align:center">Status</th>
+              <th>Oprettet</th>
+              <th style="text-align:right">Handlinger</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for wh in webhooks %}
+            <tr>
+              <td>
+                <div style="font-weight:650">{{ wh.name or '—' }}</div>
+                <div class="wh-url muted">{{ wh.url }}</div>
+                <div class="wh-events">
+                  {% for ev in wh.events_list %}
+                    <span class="fm-badge indigo">{{ ev }}</span>
+                  {% else %}
+                    <span class="muted" style="font-size:12px">Ingen hændelser valgt</span>
+                  {% endfor %}
+                </div>
+                <div class="wh-stats" style="margin-top:6px">
+                  {{ wh.successful_deliveries or 0 }}/{{ wh.total_deliveries or 0 }} leveret
+                  {% if wh.last_delivery_at %}· sidst {{ wh.last_delivery_at.strftime('%d/%m/%Y %H:%M') if wh.last_delivery_at.strftime is defined else wh.last_delivery_at }}{% endif %}
+                </div>
+              </td>
+              <td style="text-align:center">
+                {% if wh.is_active %}
+                  <span class="fm-badge green">Aktiv</span>
+                {% else %}
+                  <span class="fm-badge">Inaktiv</span>
+                {% endif %}
+              </td>
+              <td class="muted">
+                {{ wh.created_at.strftime('%d/%m/%Y') if wh.created_at and wh.created_at.strftime is defined else (wh.created_at or '—') }}
+              </td>
+              <td>
+                <div class="wh-actions">
+                  <form method="POST" action="{{ url_for('enterprise_settings.webhooks_test', webhook_id=wh.id) }}">
+                    <button type="submit" class="btn btn-ghost btn-sm" title="Send test-hændelse">
+                      <i class="fa-solid fa-paper-plane"></i>
+                    </button>
+                  </form>
+                  <form method="POST" action="{{ url_for('enterprise_settings.webhooks_toggle', webhook_id=wh.id) }}">
+                    <button type="submit" class="btn btn-soft btn-sm" title="{{ 'Deaktivér' if wh.is_active else 'Aktivér' }}">
+                      <i class="fa-solid {{ 'fa-toggle-on' if wh.is_active else 'fa-toggle-off' }}"></i>
+                    </button>
+                  </form>
+                  <form method="POST" action="{{ url_for('enterprise_settings.webhooks_delete', webhook_id=wh.id) }}"
+                        onsubmit="return confirm('Slet denne webhook permanent?');">
+                    <button type="submit" class="btn btn-ghost btn-sm" title="Slet">
+                      <i class="fa-solid fa-trash"></i>
+                    </button>
+                  </form>
+                </div>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <div class="fm-empty" style="text-align:center;padding:34px 16px;color:var(--fm-ink-3)">
+        <i class="fa-solid fa-bolt" style="font-size:22px;opacity:.6"></i>
+        <p style="margin-top:12px;font-size:14px">Du har ingen webhooks endnu.</p>
+        <p style="font-size:12.5px;margin-top:4px">Opret din første webhook for at modtage hændelser i dine egne systemer.</p>
+      </div>
+      {% endif %}
+    </section>
+
+    <!-- ── Create form ── -->
+    <section class="fm-card wh-form" style="padding:20px 22px">
+      <div class="fm-eyebrow clay"><i class="fa-solid fa-plus"></i> Ny webhook</div>
+      <h2 class="fm-section-title" style="margin:4px 0 14px">Opret webhook</h2>
+      <form method="POST" action="{{ url_for('enterprise_settings.webhooks_create') }}">
+        <div class="fm-field">
+          <label>Navn</label>
+          <input class="fm-input" name="name" placeholder="F.eks. CRM-synkronisering" maxlength="100">
+        </div>
+        <div class="fm-field">
+          <label>Endpoint-URL</label>
+          <input class="fm-input" name="url" type="url" required
+                 placeholder="https://eksempel.dk/webhooks/aileadz">
+          <div class="muted" style="font-size:12px;margin-top:5px">
+            Skal være en offentlig http(s)-adresse.
+          </div>
+        </div>
+        <div class="fm-field">
+          <label>Hændelser</label>
+          <div class="wh-events-pick">
+            {% for ev_name, ev_label in event_choices %}
+            <label class="wh-check">
+              <input type="checkbox" name="events" value="{{ ev_name }}"
+                     {{ 'checked' if ev_name != 'ping' else '' }}>
+              <span>{{ ev_label }} <span class="muted" style="font-size:11.5px">({{ ev_name }})</span></span>
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="fm-field">
+          <label class="wh-switch">
+            <input type="checkbox" name="is_active" checked>
+            Aktivér webhook med det samme
+          </label>
+        </div>
+        <button type="submit" class="btn btn-primary">
+          <i class="fa-solid fa-floppy-disk"></i> Opret webhook
+        </button>
+      </form>
+    </section>
+
+  </div>
+</div>
+{% endblock %}

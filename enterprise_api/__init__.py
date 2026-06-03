@@ -1927,52 +1927,722 @@ def health_check():
         'version': '1.0.0'
     })
 
-# API documentation endpoint
+# =====================================================
+# OPENAPI 3.0 SPEC + SELF-SERVICE DOCS
+# =====================================================
+#
+# A hand-built OpenAPI 3.0 document describing the REAL endpoints in this file
+# and a minimal, self-contained Swagger-UI page that renders it. Both routes are
+# public + read-only and intentionally contain NO secrets (the spec only names
+# the security schemes; it never embeds an actual API key). Boot-safe: pure
+# Python dict + jsonify, no new dependencies.
+
+# Human-readable description of every permission scope used by require_api_auth
+# across this file. Kept here so the spec and the legacy /docs JSON stay in sync.
+_API_SCOPE_DESCRIPTIONS = {
+    'read:company': 'Read company information',
+    'read:branding': 'Read company branding settings (colors, logo, slug)',
+    'read:employees': 'Read employee / roster data',
+    'write:employees': 'Create employees and bulk-import employees',
+    'read:learning': 'Read learning progress and training history',
+    'read:analytics': 'Read analytics (dashboard, overview, skills)',
+    'read:reports': 'Export reports and bulk data',
+    'read:orders': 'Read course orders',
+    'write:orders': 'Create orders and bulk-enroll employees',
+    'read:webhooks': 'Read webhook configurations',
+    'write:webhooks': 'Create webhooks',
+    'admin:all': 'Full administrative access (grants every scope)',
+}
+
+
+def _build_openapi_spec():
+    """Return a hand-built OpenAPI 3.0 document (plain dict) for this API.
+
+    Accurate to the routes/scopes actually defined in this file. Pure, no DB
+    access, no side effects — safe to call from a public endpoint.
+    """
+    # Reusable parameter + response fragments.
+    api_key_query_param = {
+        'name': 'api_key', 'in': 'query', 'required': False,
+        'description': 'API key (alternative to the X-API-Key header).',
+        'schema': {'type': 'string'},
+    }
+    page_param = {
+        'name': 'page', 'in': 'query', 'required': False,
+        'description': 'Page number (1-based).',
+        'schema': {'type': 'integer', 'minimum': 1, 'default': 1},
+    }
+    per_page_param = {
+        'name': 'per_page', 'in': 'query', 'required': False,
+        'description': 'Items per page (max 100).',
+        'schema': {'type': 'integer', 'minimum': 1, 'maximum': 100, 'default': 50},
+    }
+
+    def _err(desc):
+        return {'description': desc,
+                'content': {'application/json': {'schema': {'$ref': '#/components/schemas/Error'}}}}
+
+    common_errors = {
+        '401': _err('Missing or invalid API key.'),
+        '403': _err('Insufficient permissions for the required scope.'),
+        '429': _err('Rate limit exceeded.'),
+        '500': _err('Internal server error.'),
+    }
+
+    def _ok_object(extra_props=None):
+        props = {'success': {'type': 'boolean', 'example': True}}
+        if extra_props:
+            props.update(extra_props)
+        return {'description': 'Success',
+                'content': {'application/json': {'schema': {'type': 'object', 'properties': props}}}}
+
+    def _scoped(scope):
+        # Every apiKey-protected endpoint accepts the key via header OR query.
+        return [{'ApiKeyHeader': [scope], 'ApiKeyQuery': [scope]}]
+
+    paths = {
+        '/api/v1/company/branding': {
+            'get': {
+                'tags': ['Company'], 'summary': 'Get company branding',
+                'description': 'Public-safe branding payload (colors, logo, slug, widget token) for integrators.',
+                'security': _scoped('read:branding'),
+                'responses': {'200': _ok_object({'data': {'type': 'object'}}), **common_errors},
+            }
+        },
+        '/api/v1/company/info': {
+            'get': {
+                'tags': ['Company'], 'summary': 'Get company information',
+                'security': _scoped('read:company'),
+                'responses': {
+                    '200': _ok_object({'data': {'$ref': '#/components/schemas/Company'}}),
+                    '404': _err('Company not found.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/employees': {
+            'get': {
+                'tags': ['Employees'], 'summary': 'List employees',
+                'security': _scoped('read:employees'),
+                'parameters': [
+                    page_param, per_page_param,
+                    {'name': 'department', 'in': 'query', 'schema': {'type': 'string'}},
+                    {'name': 'role', 'in': 'query', 'schema': {'type': 'string'}},
+                    {'name': 'status', 'in': 'query',
+                     'schema': {'type': 'string', 'default': 'active'}},
+                ],
+                'responses': {
+                    '200': _ok_object({
+                        'data': {'type': 'array', 'items': {'$ref': '#/components/schemas/Employee'}},
+                        'pagination': {'$ref': '#/components/schemas/Pagination'},
+                    }), **common_errors,
+                },
+            },
+            'post': {
+                'tags': ['Employees'], 'summary': 'Create employee',
+                'security': _scoped('write:employees'),
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {
+                        'schema': {'$ref': '#/components/schemas/EmployeeCreate'}}},
+                },
+                'responses': {
+                    '201': _ok_object({'message': {'type': 'string'},
+                                       'data': {'$ref': '#/components/schemas/Employee'}}),
+                    '400': _err('Missing required field.'),
+                    '403': _err('Seat limit reached or trial expired (or insufficient permissions).'),
+                    '409': _err('Employee with this email already exists.'),
+                    **{k: v for k, v in common_errors.items() if k not in ('403',)},
+                },
+            },
+        },
+        '/api/v1/employees/{employee_id}': {
+            'get': {
+                'tags': ['Employees'], 'summary': 'Get employee details',
+                'security': _scoped('read:employees'),
+                'parameters': [{'name': 'employee_id', 'in': 'path', 'required': True,
+                                'schema': {'type': 'integer'}}],
+                'responses': {
+                    '200': _ok_object({'data': {'$ref': '#/components/schemas/Employee'}}),
+                    '404': _err('Employee not found.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/employees/{employee_id}/learning-progress': {
+            'get': {
+                'tags': ['Learning'], 'summary': 'Get employee learning progress',
+                'security': _scoped('read:learning'),
+                'parameters': [{'name': 'employee_id', 'in': 'path', 'required': True,
+                                'schema': {'type': 'integer'}}],
+                'responses': {
+                    '200': _ok_object({'data': {'type': 'array', 'items': {'type': 'object'}}}),
+                    '404': _err('Employee not found.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/employees/{employee_id}/training': {
+            'get': {
+                'tags': ['Learning'], 'summary': 'Get employee training history',
+                'description': 'Combined course orders + learning progress for one employee.',
+                'security': _scoped('read:learning'),
+                'parameters': [{'name': 'employee_id', 'in': 'path', 'required': True,
+                                'schema': {'type': 'integer'}}],
+                'responses': {
+                    '200': _ok_object({'data': {'type': 'object', 'properties': {
+                        'orders': {'type': 'array', 'items': {'$ref': '#/components/schemas/Order'}},
+                        'learning_progress': {'type': 'array', 'items': {'type': 'object'}},
+                    }}}),
+                    '404': _err('Employee not found.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/analytics/dashboard': {
+            'get': {
+                'tags': ['Analytics'], 'summary': 'Get dashboard analytics',
+                'description': 'Last 30 days of company analytics plus summary statistics.',
+                'security': _scoped('read:analytics'),
+                'responses': {'200': _ok_object({'data': {'type': 'object'}}), **common_errors},
+            }
+        },
+        '/api/v1/analytics/overview': {
+            'get': {
+                'tags': ['Analytics'], 'summary': 'Get KPIs overview',
+                'description': 'Headline KPIs: employees, training spend, engagement, budget.',
+                'security': _scoped('read:analytics'),
+                'responses': {'200': _ok_object({'data': {'type': 'object'}}), **common_errors},
+            }
+        },
+        '/api/v1/analytics/skills': {
+            'get': {
+                'tags': ['Analytics'], 'summary': 'Get skills matrix and targets',
+                'security': _scoped('read:analytics'),
+                'responses': {'200': _ok_object({'data': {'type': 'object'}}), **common_errors},
+            }
+        },
+        '/api/v1/reports/export': {
+            'get': {
+                'tags': ['Reports'], 'summary': 'Export a report',
+                'security': _scoped('read:reports'),
+                'parameters': [
+                    {'name': 'type', 'in': 'query',
+                     'description': 'Report type.',
+                     'schema': {'type': 'string', 'enum': ['employees', 'learning'],
+                                'default': 'employees'}},
+                    {'name': 'format', 'in': 'query',
+                     'schema': {'type': 'string', 'enum': ['json', 'csv'], 'default': 'json'}},
+                ],
+                'responses': {
+                    '200': _ok_object({'data': {}, 'format': {'type': 'string'}}),
+                    '400': _err('Invalid report type.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/orders': {
+            'get': {
+                'tags': ['Orders'], 'summary': 'List course orders',
+                'security': _scoped('read:orders'),
+                'parameters': [page_param, per_page_param,
+                               {'name': 'status', 'in': 'query', 'schema': {'type': 'string'}}],
+                'responses': {
+                    '200': _ok_object({
+                        'data': {'type': 'array', 'items': {'$ref': '#/components/schemas/Order'}},
+                        'pagination': {'$ref': '#/components/schemas/Pagination'},
+                    }), **common_errors,
+                },
+            },
+            'post': {
+                'tags': ['Orders'], 'summary': 'Create an order',
+                'description': 'Routed through the authorized order service, so approvals/budgets apply.',
+                'security': _scoped('write:orders'),
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {
+                        'schema': {'$ref': '#/components/schemas/OrderCreate'}}},
+                },
+                'responses': {
+                    '201': _ok_object({'message': {'type': 'string'},
+                                       'data': {'type': 'object',
+                                                'properties': {'order_id': {'type': 'integer'}}}}),
+                    '400': _err('Missing required field.'), **common_errors,
+                },
+            },
+        },
+        '/api/v1/webhooks': {
+            'get': {
+                'tags': ['Webhooks'], 'summary': 'List webhooks',
+                'security': _scoped('read:webhooks'),
+                'responses': {
+                    '200': _ok_object({'data': {'type': 'array',
+                                                'items': {'$ref': '#/components/schemas/Webhook'}}}),
+                    **common_errors,
+                },
+            },
+            'post': {
+                'tags': ['Webhooks'], 'summary': 'Create a webhook',
+                'description': 'URL must be a public http(s) address (SSRF-guarded). '
+                               'A signing secret is generated server-side.',
+                'security': _scoped('write:webhooks'),
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {
+                        'schema': {'$ref': '#/components/schemas/WebhookCreate'}}},
+                },
+                'responses': {
+                    '201': _ok_object({'message': {'type': 'string'},
+                                       'data': {'$ref': '#/components/schemas/Webhook'}}),
+                    '400': _err('Missing field or invalid/non-public webhook URL.'),
+                    **common_errors,
+                },
+            },
+        },
+        '/api/v1/admin/api-keys': {
+            'get': {
+                'tags': ['Admin'], 'summary': 'List API keys',
+                'description': 'Admin only. Returns key metadata; never the raw key.',
+                'security': _scoped('admin:all'),
+                'responses': {
+                    '200': _ok_object({'data': {'type': 'array', 'items': {'type': 'object'}}}),
+                    **common_errors,
+                },
+            },
+            'post': {
+                'tags': ['Admin'], 'summary': 'Create an API key',
+                'description': 'Admin only. The raw key is returned ONCE in the response and never again.',
+                'security': _scoped('admin:all'),
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {'schema': {
+                        'type': 'object', 'required': ['key_name', 'permissions'],
+                        'properties': {
+                            'key_name': {'type': 'string'},
+                            'permissions': {'type': 'array', 'items': {'type': 'string'},
+                                            'description': 'List of scopes (see securitySchemes).'},
+                            'rate_limit_per_hour': {'type': 'integer', 'default': 1000},
+                            'expires_at': {'type': 'string', 'format': 'date-time', 'nullable': True},
+                        }}}},
+                },
+                'responses': {
+                    '201': _ok_object({'message': {'type': 'string'}, 'data': {'type': 'object'}}),
+                    '400': _err('Missing required field.'), **common_errors,
+                },
+            },
+        },
+        '/api/v1/bulk/import-employees': {
+            'post': {
+                'tags': ['Bulk'], 'summary': 'Bulk import employees',
+                'description': 'Up to 500 employees per request. Seat/trial limits apply.',
+                'security': _scoped('write:employees'),
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {'schema': {
+                        'type': 'object', 'required': ['employees'],
+                        'properties': {'employees': {
+                            'type': 'array', 'maxItems': 500,
+                            'items': {'$ref': '#/components/schemas/EmployeeCreate'}}}}}},
+                },
+                'responses': {
+                    '200': _ok_object({'created': {'type': 'integer'},
+                                       'skipped': {'type': 'integer'},
+                                       'errors': {'type': 'array', 'items': {'type': 'string'}}}),
+                    '400': _err('No employees provided or over the 500 limit.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/bulk/enroll': {
+            'post': {
+                'tags': ['Bulk'], 'summary': 'Bulk enroll employees in a course',
+                'description': 'Up to 200 employees per request. Each enrollment is routed '
+                               'through the authorized order service.',
+                'security': _scoped('write:orders'),
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {'schema': {
+                        'type': 'object', 'required': ['employee_ids', 'product_handle'],
+                        'properties': {
+                            'employee_ids': {'type': 'array', 'maxItems': 200,
+                                             'items': {'type': 'integer'}},
+                            'product_handle': {'type': 'string'},
+                            'product_title': {'type': 'string'},
+                            'price': {'type': 'number', 'default': 0},
+                            'variant_date': {'type': 'string'},
+                            'variant_location': {'type': 'string'},
+                            'status': {'type': 'string', 'default': 'pending'},
+                        }}}},
+                },
+                'responses': {
+                    '200': _ok_object({'enrolled': {'type': 'integer'},
+                                       'orders': {'type': 'array', 'items': {'type': 'object'}}}),
+                    '400': _err('employee_ids and product_handle required, or over the 200 limit.'),
+                    **common_errors,
+                },
+            }
+        },
+        '/api/v1/bulk/export': {
+            'get': {
+                'tags': ['Bulk'], 'summary': 'Bulk export company data',
+                'security': _scoped('read:reports'),
+                'parameters': [
+                    {'name': 'type', 'in': 'query',
+                     'schema': {'type': 'string',
+                                'enum': ['employees', 'orders', 'training', 'chatbot_logs'],
+                                'default': 'employees'}},
+                    {'name': 'format', 'in': 'query',
+                     'schema': {'type': 'string', 'enum': ['json', 'csv'], 'default': 'json'}},
+                ],
+                'responses': {
+                    '200': {
+                        'description': 'Export payload (JSON object, or a CSV file when format=csv).',
+                        'content': {
+                            'application/json': {'schema': {'type': 'object'}},
+                            'text/csv': {'schema': {'type': 'string', 'format': 'binary'}},
+                        },
+                    },
+                    '400': _err('Invalid export type.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/health': {
+            'get': {
+                'tags': ['Meta'], 'summary': 'Health check',
+                'description': 'Public. No authentication required.',
+                'security': [],
+                'responses': {'200': {
+                    'description': 'Service is healthy.',
+                    'content': {'application/json': {'schema': {'type': 'object', 'properties': {
+                        'status': {'type': 'string', 'example': 'healthy'},
+                        'timestamp': {'type': 'string', 'format': 'date-time'},
+                        'version': {'type': 'string'},
+                    }}}},
+                }},
+            }
+        },
+        '/api/v1/openapi.json': {
+            'get': {
+                'tags': ['Meta'], 'summary': 'OpenAPI 3.0 specification',
+                'description': 'Public. This document.',
+                'security': [],
+                'responses': {'200': {'description': 'OpenAPI document.',
+                                      'content': {'application/json': {'schema': {'type': 'object'}}}}},
+            }
+        },
+        '/api/v1/docs': {
+            'get': {
+                'tags': ['Meta'], 'summary': 'Interactive API docs (Swagger UI)',
+                'description': 'Public HTML page. Append ?format=json (or send Accept: application/json) '
+                               'for the legacy machine-readable docs summary.',
+                'security': [],
+                'responses': {'200': {'description': 'Swagger UI HTML page (or JSON docs summary).'}},
+            }
+        },
+        '/api/v1/_internal/drain-outbox': {
+            'post': {
+                'tags': ['Internal'],
+                'summary': 'Drain the integration-event outbox (ops-gated)',
+                'description': 'Internal. Authenticated with a shared drain token, NOT an API key. '
+                               'Pass the token in the X-Drain-Token header or as a Bearer token. '
+                               'Disabled (503) when OUTBOX_DRAIN_TOKEN is not configured.',
+                'security': [{'DrainToken': []}, {'DrainBearer': []}],
+                'parameters': [{'name': 'limit', 'in': 'query', 'required': False,
+                                'schema': {'type': 'integer', 'minimum': 1, 'maximum': 500,
+                                           'default': 50}}],
+                'responses': {
+                    '200': {'description': 'Drained.',
+                            'content': {'application/json': {'schema': {'type': 'object', 'properties': {
+                                'status': {'type': 'string'}, 'counts': {'type': 'object'}}}}}},
+                    '401': _err('Missing or invalid drain token.'),
+                    '503': _err('Drain disabled (OUTBOX_DRAIN_TOKEN unset) or event bus unavailable.'),
+                    '500': _err('Drain failed.'),
+                },
+            }
+        },
+    }
+
+    return {
+        'openapi': '3.0.3',
+        'info': {
+            'title': 'aileadz Enterprise API',
+            'version': '1.0.0',
+            'description': (
+                'REST API for enterprise learning & development management. '
+                'Authenticate with an API key in the X-API-Key header (or the api_key query '
+                'parameter). Each key is granted one or more scopes; the admin:all scope grants '
+                'all of them. All data is scoped to the calling company. '
+                'Default rate limit: 1000 requests/hour, configurable per key.'
+            ),
+        },
+        'servers': [{'url': '/', 'description': 'This host'}],
+        'tags': [
+            {'name': 'Company'}, {'name': 'Employees'}, {'name': 'Learning'},
+            {'name': 'Analytics'}, {'name': 'Reports'}, {'name': 'Orders'},
+            {'name': 'Webhooks'}, {'name': 'Bulk'}, {'name': 'Admin'},
+            {'name': 'Meta'}, {'name': 'Internal'},
+        ],
+        'security': [{'ApiKeyHeader': []}, {'ApiKeyQuery': []}],
+        'components': {
+            'securitySchemes': {
+                'ApiKeyHeader': {
+                    'type': 'apiKey', 'in': 'header', 'name': 'X-API-Key',
+                    'description': 'API key in the X-API-Key request header.',
+                },
+                'ApiKeyQuery': {
+                    'type': 'apiKey', 'in': 'query', 'name': 'api_key',
+                    'description': 'API key as the api_key query parameter (alternative to the header).',
+                },
+                'DrainToken': {
+                    'type': 'apiKey', 'in': 'header', 'name': 'X-Drain-Token',
+                    'description': 'Internal-only shared secret for the outbox drain endpoint.',
+                },
+                'DrainBearer': {
+                    'type': 'http', 'scheme': 'bearer',
+                    'description': 'Internal-only drain token as a Bearer token (alternative to X-Drain-Token).',
+                },
+            },
+            'schemas': {
+                'Error': {
+                    'type': 'object',
+                    'properties': {
+                        'error': {'type': 'string'},
+                        'message': {'type': 'string'},
+                    },
+                },
+                'Pagination': {
+                    'type': 'object',
+                    'properties': {
+                        'page': {'type': 'integer'},
+                        'per_page': {'type': 'integer'},
+                        'total': {'type': 'integer'},
+                        'pages': {'type': 'integer'},
+                    },
+                },
+                'Company': {
+                    'type': 'object',
+                    'properties': {
+                        'id': {'type': 'integer'},
+                        'company_name': {'type': 'string'},
+                        'company_slug': {'type': 'string'},
+                        'industry': {'type': 'string'},
+                        'company_size': {'type': 'string'},
+                        'subscription_plan': {'type': 'string'},
+                        'current_employee_count': {'type': 'integer'},
+                        'max_employees': {'type': 'integer'},
+                        'status': {'type': 'string'},
+                        'created_at': {'type': 'string', 'format': 'date-time'},
+                    },
+                },
+                'Employee': {
+                    'type': 'object',
+                    'properties': {
+                        'id': {'type': 'integer'},
+                        'employee_id': {'type': 'string', 'nullable': True},
+                        'full_name': {'type': 'string'},
+                        'email': {'type': 'string', 'format': 'email'},
+                        'job_title': {'type': 'string', 'nullable': True},
+                        'department': {'type': 'string', 'nullable': True},
+                        'role': {'type': 'string'},
+                        'hire_date': {'type': 'string', 'format': 'date', 'nullable': True},
+                        'employment_type': {'type': 'string'},
+                        'status': {'type': 'string'},
+                    },
+                },
+                'EmployeeCreate': {
+                    'type': 'object',
+                    'required': ['full_name', 'email', 'role'],
+                    'properties': {
+                        'full_name': {'type': 'string'},
+                        'email': {'type': 'string', 'format': 'email'},
+                        'role': {'type': 'string'},
+                        'job_title': {'type': 'string'},
+                        'department': {'type': 'string'},
+                        'hire_date': {'type': 'string', 'format': 'date'},
+                        'employment_type': {'type': 'string', 'default': 'full_time'},
+                        'phone': {'type': 'string'},
+                    },
+                },
+                'Order': {
+                    'type': 'object',
+                    'properties': {
+                        'order_id': {'type': 'integer'},
+                        'product_handle': {'type': 'string'},
+                        'product_title': {'type': 'string'},
+                        'price': {'type': 'number'},
+                        'status': {'type': 'string'},
+                        'completion_status': {'type': 'string', 'nullable': True},
+                        'department': {'type': 'string', 'nullable': True},
+                        'user_name': {'type': 'string'},
+                        'user_email': {'type': 'string', 'format': 'email'},
+                        'created_at': {'type': 'string', 'format': 'date-time'},
+                    },
+                },
+                'OrderCreate': {
+                    'type': 'object',
+                    'required': ['product_handle', 'product_title', 'user_email', 'user_name'],
+                    'properties': {
+                        'product_handle': {'type': 'string'},
+                        'product_title': {'type': 'string'},
+                        'user_email': {'type': 'string', 'format': 'email'},
+                        'user_name': {'type': 'string'},
+                        'price': {'type': 'number', 'default': 0},
+                        'department': {'type': 'string'},
+                        'variant_date': {'type': 'string'},
+                        'variant_location': {'type': 'string'},
+                        'user_phone': {'type': 'string'},
+                        'status': {'type': 'string', 'default': 'pending'},
+                    },
+                },
+                'Webhook': {
+                    'type': 'object',
+                    'properties': {
+                        'id': {'type': 'integer'},
+                        'name': {'type': 'string'},
+                        'url': {'type': 'string', 'format': 'uri'},
+                        'events': {'type': 'array', 'items': {'type': 'string'}},
+                        'is_active': {'type': 'boolean'},
+                        'total_deliveries': {'type': 'integer'},
+                        'successful_deliveries': {'type': 'integer'},
+                        'failed_deliveries': {'type': 'integer'},
+                        'last_delivery_at': {'type': 'string', 'format': 'date-time', 'nullable': True},
+                        'created_at': {'type': 'string', 'format': 'date-time'},
+                    },
+                },
+                'WebhookCreate': {
+                    'type': 'object',
+                    'required': ['name', 'url', 'events'],
+                    'properties': {
+                        'name': {'type': 'string'},
+                        'url': {'type': 'string', 'format': 'uri',
+                                'description': 'Must be a public http(s) URL.'},
+                        'events': {'type': 'array', 'items': {'type': 'string'},
+                                   'example': ['order.created', 'employee.added']},
+                        'is_active': {'type': 'boolean', 'default': True},
+                        'retry_attempts': {'type': 'integer', 'default': 3},
+                        'timeout_seconds': {'type': 'integer', 'default': 30},
+                    },
+                },
+            },
+        },
+        'x-scopes': dict(_API_SCOPE_DESCRIPTIONS),
+        'paths': paths,
+    }
+
+
+@api_enterprise_bp.route('/api/v1/openapi.json')
+def openapi_spec():
+    """Public OpenAPI 3.0 document describing this API. No secrets, no auth."""
+    try:
+        return jsonify(_build_openapi_spec())
+    except Exception as e:
+        logging.warning("enterprise_api: failed to build OpenAPI spec: %s", e)
+        return jsonify({'error': 'Failed to build OpenAPI specification'}), 500
+
+
+# Minimal, self-contained Swagger-UI page. Loads swagger-ui assets from a CDN;
+# if the CDN is blocked/offline the <noscript> + visible fallback link still let
+# the reader reach the raw spec at /api/v1/openapi.json. No secrets embedded.
+_SWAGGER_UI_HTML = """<!DOCTYPE html>
+<html lang="da">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>aileadz Enterprise API - dokumentation</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui.css"/>
+  <style>
+    body { margin: 0; background: #fafafa; }
+    .api-fallback {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 720px; margin: 2rem auto; padding: 1rem 1.5rem;
+      border: 1px solid #e3e3e3; border-radius: 8px; background: #fff; color: #3b4151;
+    }
+    .api-fallback a { color: #4990e2; }
+  </style>
+</head>
+<body>
+  <div class="api-fallback">
+    <p>Hvis dokumentationen ikke indlaeses (offline eller CDN blokeret), kan du
+       hente specifikationen direkte:
+       <a href="/api/v1/openapi.json">/api/v1/openapi.json</a>.</p>
+    <noscript>JavaScript er deaktiveret. Aabn
+       <a href="/api/v1/openapi.json">/api/v1/openapi.json</a> for at se API-specifikationen.</noscript>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://cdn.jsdelivr.net/npm/swagger-ui-dist@5/swagger-ui-bundle.js" crossorigin></script>
+  <script>
+    window.addEventListener('load', function () {
+      try {
+        if (window.SwaggerUIBundle) {
+          window.ui = SwaggerUIBundle({
+            url: '/api/v1/openapi.json',
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            presets: [SwaggerUIBundle.presets.apis],
+            layout: 'BaseLayout'
+          });
+          var fb = document.querySelector('.api-fallback');
+          if (fb) { fb.style.display = 'none'; }
+        }
+      } catch (e) {
+        /* Leave the fallback link visible if Swagger UI fails to initialise. */
+      }
+    });
+  </script>
+</body>
+</html>"""
+
+
+# API documentation endpoint.
+# Default: serves the self-contained Swagger-UI HTML page (public, read-only).
+# Backward-compatible: callers that ask for JSON (?format=json or an
+# Accept: application/json header) still get the legacy machine-readable summary.
 @api_enterprise_bp.route('/api/v1/docs')
 def api_docs():
-    """API documentation"""
-    docs = {
-        'title': 'Enterprise Learning Platform API',
-        'version': '1.0.0',
-        'description': 'Comprehensive API for enterprise learning management',
-        'authentication': {
-            'type': 'API Key',
-            'header': 'X-API-Key',
-            'parameter': 'api_key'
-        },
-        'rate_limits': {
-            'default': '1000 requests per hour',
-            'configurable': 'Per API key'
-        },
-        'endpoints': {
-            'GET /api/v1/company/branding': 'Get company branding (colors, logo, slug)',
-            'GET /api/v1/company/info': 'Get company information',
-            'GET /api/v1/employees': 'List employees',
-            'POST /api/v1/employees': 'Create employee',
-            'GET /api/v1/employees/{id}': 'Get employee details',
-            'GET /api/v1/employees/{id}/learning-progress': 'Get learning progress',
-            'GET /api/v1/analytics/dashboard': 'Get dashboard analytics',
-            'GET /api/v1/reports/export': 'Export reports',
-            'GET /api/v1/webhooks': 'List webhooks',
-            'POST /api/v1/webhooks': 'Create webhook',
-            'GET /api/v1/admin/api-keys': 'List API keys (admin)',
-            'POST /api/v1/admin/api-keys': 'Create API key (admin)',
-            'GET /api/v1/health': 'Health check',
-            'GET /api/v1/docs': 'API documentation'
-        },
-        'permissions': {
-            'read:company': 'Read company information',
-            'read:branding': 'Read company branding settings',
-            'write:branding': 'Update company branding settings',
-            'read:employees': 'Read employee data',
-            'write:employees': 'Create/update employees',
-            'read:learning': 'Read learning progress',
-            'read:analytics': 'Read analytics data',
-            'read:reports': 'Export reports',
-            'read:webhooks': 'Read webhook configurations',
-            'write:webhooks': 'Create/update webhooks',
-            'admin:all': 'Full administrative access'
+    """Interactive Swagger-UI docs (HTML), or legacy JSON docs summary on request."""
+    wants_json = (
+        (request.args.get('format', '') or '').lower() == 'json'
+        or 'application/json' in (request.headers.get('Accept', '') or '').lower()
+    )
+    if wants_json:
+        docs = {
+            'title': 'aileadz Enterprise API',
+            'version': '1.0.0',
+            'description': 'Comprehensive API for enterprise learning management',
+            'openapi_spec': '/api/v1/openapi.json',
+            'interactive_docs': '/api/v1/docs',
+            'authentication': {
+                'type': 'API Key',
+                'header': 'X-API-Key',
+                'parameter': 'api_key'
+            },
+            'rate_limits': {
+                'default': '1000 requests per hour',
+                'configurable': 'Per API key'
+            },
+            'endpoints': {
+                'GET /api/v1/company/branding': 'Get company branding (colors, logo, slug)',
+                'GET /api/v1/company/info': 'Get company information',
+                'GET /api/v1/employees': 'List employees',
+                'POST /api/v1/employees': 'Create employee',
+                'GET /api/v1/employees/{id}': 'Get employee details',
+                'GET /api/v1/employees/{id}/learning-progress': 'Get learning progress',
+                'GET /api/v1/employees/{id}/training': 'Get training history',
+                'GET /api/v1/analytics/dashboard': 'Get dashboard analytics',
+                'GET /api/v1/analytics/overview': 'Get KPIs overview',
+                'GET /api/v1/analytics/skills': 'Get skills matrix',
+                'GET /api/v1/reports/export': 'Export reports',
+                'GET /api/v1/orders': 'List orders',
+                'POST /api/v1/orders': 'Create order',
+                'GET /api/v1/webhooks': 'List webhooks',
+                'POST /api/v1/webhooks': 'Create webhook',
+                'GET /api/v1/admin/api-keys': 'List API keys (admin)',
+                'POST /api/v1/admin/api-keys': 'Create API key (admin)',
+                'POST /api/v1/bulk/import-employees': 'Bulk import employees',
+                'POST /api/v1/bulk/enroll': 'Bulk enroll employees',
+                'GET /api/v1/bulk/export': 'Bulk export data',
+                'GET /api/v1/health': 'Health check',
+                'GET /api/v1/openapi.json': 'OpenAPI 3.0 specification',
+                'GET /api/v1/docs': 'API documentation'
+            },
+            'permissions': dict(_API_SCOPE_DESCRIPTIONS)
         }
-    }
-    
-    return jsonify(docs)
+        return jsonify(docs)
+
+    # Default: interactive Swagger-UI page.
+    from flask import Response
+    return Response(_SWAGGER_UI_HTML, mimetype='text/html')

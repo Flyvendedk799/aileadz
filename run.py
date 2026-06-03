@@ -192,6 +192,14 @@ def create_app():
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
 
+    # SCIM 2.0 provisioning/deprovisioning (enterprise SSO/HRIS). Guarded so a
+    # failure here can never crash create_app().
+    try:
+        from scim_api import scim_bp
+        app.register_blueprint(scim_bp)
+    except Exception as e:
+        logging.warning("SCIM provisioning integration skipped: %s", e)
+
     # Liveness/readiness probes (/healthz, /readyz)
     from health import health_bp
     app.register_blueprint(health_bp)

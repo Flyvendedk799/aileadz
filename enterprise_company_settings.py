@@ -745,3 +745,300 @@ def export_settings():
         'settings': {k: v for k, v in settings.items() if k not in ('brand_assets', 'custom_code')},
     }
     return jsonify(export_data)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Webhook management for HR / company admins
+#
+# Webhooks were previously API-only (enterprise_api), but the buyer is the HR
+# admin sitting in the dashboard. These routes expose the company's own
+# ``company_webhooks`` subscriptions with create / toggle / delete / send-test.
+# Every query is scoped to the session company's id (no FKs in this schema).
+# ─────────────────────────────────────────────────────────────────────────────
+
+# The integration events a webhook may subscribe to. Kept in sync with the
+# event names emitted by enterprise_api / event_bus. Each tuple is
+# (event_name, Danish description) for the UI.
+WEBHOOK_EVENT_CHOICES = [
+    ('order.created', 'Ordre oprettet'),
+    ('order.updated', 'Ordre opdateret'),
+    ('employee.added', 'Medarbejder tilføjet'),
+    ('employee.updated', 'Medarbejder opdateret'),
+    ('course.completed', 'Kursus gennemført'),
+    ('ping', 'Test / ping'),
+]
+_VALID_WEBHOOK_EVENTS = {name for name, _ in WEBHOOK_EVENT_CHOICES}
+
+
+def _is_valid_webhook_url(url):
+    """Validate a webhook URL: must be a non-empty http(s) URL.
+
+    Prefers enterprise_api's SSRF guard (rejects private/loopback hosts) when
+    importable; otherwise falls back to a basic scheme check so the form still
+    rejects obviously bad input. Never raises into the caller.
+    """
+    if not url or not isinstance(url, str):
+        return False
+    url = url.strip()
+    if len(url) > 500:
+        return False
+    # Prefer the hardened SSRF guard from enterprise_api when available.
+    try:
+        from enterprise_api import _is_safe_webhook_url
+        return bool(_is_safe_webhook_url(url))
+    except Exception:
+        pass
+    # Fallback: scheme-only check (reject non-http(s)).
+    lowered = url.lower()
+    return lowered.startswith('http://') or lowered.startswith('https://')
+
+
+def _parse_webhook_events(raw):
+    """Normalise a company_webhooks.events JSON value into a list of names."""
+    if raw is None:
+        return []
+    if isinstance(raw, (list, tuple)):
+        return [str(e) for e in raw]
+    if isinstance(raw, str):
+        raw = raw.strip()
+        if not raw:
+            return []
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, list):
+                return [str(e) for e in parsed]
+            if isinstance(parsed, str):
+                return [parsed]
+        except Exception:
+            # Legacy comma-separated storage.
+            return [e.strip() for e in raw.split(',') if e.strip()]
+    return []
+
+
+def _load_company_webhooks(company_id):
+    """Return the session company's webhook subscriptions (scoped by id)."""
+    rows = []
+    try:
+        conn = current_app.mysql.connection
+        if conn is None:
+            return rows
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT id, name, url, events, is_active, total_deliveries,
+                      successful_deliveries, failed_deliveries,
+                      last_delivery_at, created_at
+               FROM company_webhooks
+               WHERE company_id = %s
+               ORDER BY created_at DESC, id DESC""",
+            (company_id,),
+        )
+        for r in cur.fetchall():
+            r['events_list'] = _parse_webhook_events(r.get('events'))
+            rows.append(r)
+        cur.close()
+    except Exception as e:
+        current_app.logger.error(f"Failed to load company webhooks: {e}")
+    return rows
+
+
+@enterprise_settings_bp.route('/webhooks')
+@require_company_role('company_admin', 'hr_manager')
+def webhooks_page():
+    """List the session company's webhook subscriptions with management forms."""
+    company = get_company_context()
+    if not company:
+        flash('Virksomhed ikke fundet.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+
+    webhooks = _load_company_webhooks(company['id'])
+    return render_template(
+        'fm/webhooks.html',
+        company_id=company['id'],
+        company=company,
+        webhooks=webhooks,
+        event_choices=WEBHOOK_EVENT_CHOICES,
+    )
+
+
+@enterprise_settings_bp.route('/webhooks/create', methods=['POST'])
+@require_company_role('company_admin', 'hr_manager')
+def webhooks_create():
+    """Create a new webhook subscription for the session company."""
+    company = get_company_context()
+    if not company:
+        flash('Virksomhed ikke fundet.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+
+    company_id = company['id']
+    name = (request.form.get('name') or '').strip()[:100]
+    url = (request.form.get('url') or '').strip()
+    is_active = 1 if request.form.get('is_active') else 0
+    # Only accept events from the known catalog.
+    selected = [e for e in request.form.getlist('events') if e in _VALID_WEBHOOK_EVENTS]
+
+    if not _is_valid_webhook_url(url):
+        flash('Ugyldig URL. Brug en offentlig http(s)-adresse.', 'danger')
+        return redirect(url_for('enterprise_settings.webhooks_page'))
+
+    if not selected:
+        flash('Vælg mindst én hændelse, webhooken skal lytte på.', 'danger')
+        return redirect(url_for('enterprise_settings.webhooks_page'))
+
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """INSERT INTO company_webhooks
+                   (company_id, name, url, events, is_active, created_by)
+               VALUES (%s, %s, %s, %s, %s, %s)""",
+            (
+                company_id,
+                name or url[:100],
+                url[:500],
+                json.dumps(selected),
+                is_active,
+                session.get('user_id'),
+            ),
+        )
+        conn.commit()
+        cur.close()
+        flash('Webhook oprettet.', 'success')
+    except Exception as e:
+        current_app.logger.error(f"Failed to create webhook: {e}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        flash('Kunne ikke oprette webhook. Prøv igen.', 'danger')
+
+    return redirect(url_for('enterprise_settings.webhooks_page'))
+
+
+@enterprise_settings_bp.route('/webhooks/<int:webhook_id>/toggle', methods=['POST'])
+@require_company_role('company_admin', 'hr_manager')
+def webhooks_toggle(webhook_id):
+    """Activate / deactivate a webhook (scoped to the session company)."""
+    company = get_company_context()
+    if not company:
+        flash('Virksomhed ikke fundet.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+
+    company_id = company['id']
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        # Flip is_active only for a row owned by this company.
+        cur.execute(
+            """UPDATE company_webhooks
+               SET is_active = 1 - COALESCE(is_active, 0)
+               WHERE id = %s AND company_id = %s""",
+            (webhook_id, company_id),
+        )
+        affected = cur.rowcount
+        conn.commit()
+        cur.close()
+        if affected:
+            flash('Webhook-status opdateret.', 'success')
+        else:
+            flash('Webhook ikke fundet.', 'danger')
+    except Exception as e:
+        current_app.logger.error(f"Failed to toggle webhook {webhook_id}: {e}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        flash('Kunne ikke opdatere webhook.', 'danger')
+
+    return redirect(url_for('enterprise_settings.webhooks_page'))
+
+
+@enterprise_settings_bp.route('/webhooks/<int:webhook_id>/delete', methods=['POST'])
+@require_company_role('company_admin', 'hr_manager')
+def webhooks_delete(webhook_id):
+    """Delete a webhook subscription (scoped to the session company)."""
+    company = get_company_context()
+    if not company:
+        flash('Virksomhed ikke fundet.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+
+    company_id = company['id']
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            "DELETE FROM company_webhooks WHERE id = %s AND company_id = %s",
+            (webhook_id, company_id),
+        )
+        affected = cur.rowcount
+        conn.commit()
+        cur.close()
+        if affected:
+            flash('Webhook slettet.', 'success')
+        else:
+            flash('Webhook ikke fundet.', 'danger')
+    except Exception as e:
+        current_app.logger.error(f"Failed to delete webhook {webhook_id}: {e}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        flash('Kunne ikke slette webhook.', 'danger')
+
+    return redirect(url_for('enterprise_settings.webhooks_page'))
+
+
+@enterprise_settings_bp.route('/webhooks/<int:webhook_id>/test', methods=['POST'])
+@require_company_role('company_admin', 'hr_manager')
+def webhooks_test(webhook_id):
+    """Send a test 'ping' event for the session company via the event bus.
+
+    The event bus fans the event out to all of the company's active webhook
+    subscriptions, so this verifies the buyer's endpoints end-to-end.
+    """
+    company = get_company_context()
+    if not company:
+        flash('Virksomhed ikke fundet.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+
+    company_id = company['id']
+
+    # Confirm the webhook belongs to this company before emitting (scoping).
+    target = None
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            "SELECT id, url FROM company_webhooks WHERE id = %s AND company_id = %s",
+            (webhook_id, company_id),
+        )
+        target = cur.fetchone()
+        cur.close()
+    except Exception as e:
+        current_app.logger.error(f"Failed to look up webhook {webhook_id}: {e}")
+
+    if not target:
+        flash('Webhook ikke fundet.', 'danger')
+        return redirect(url_for('enterprise_settings.webhooks_page'))
+
+    # Guarded import: never crash the page if event_bus is unavailable.
+    try:
+        from event_bus import emit_event
+    except Exception as e:
+        current_app.logger.error(f"event_bus unavailable for test ping: {e}")
+        flash('Test kunne ikke sendes (event-bus utilgængelig).', 'danger')
+        return redirect(url_for('enterprise_settings.webhooks_page'))
+
+    try:
+        emit_event(company_id, 'ping', {
+            'message': 'Test-hændelse fra webhook-administrationen',
+            'webhook_id': webhook_id,
+            'company_id': company_id,
+            'triggered_by': session.get('user_id'),
+            'sent_at': datetime.now().isoformat(),
+        })
+        flash('Test-hændelse sendt. Den leveres til dine aktive webhooks.', 'success')
+    except Exception as e:
+        current_app.logger.error(f"Failed to emit test ping: {e}")
+        flash('Test kunne ikke sendes. Prøv igen.', 'danger')
+
+    return redirect(url_for('enterprise_settings.webhooks_page'))

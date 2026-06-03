@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="da" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Oversigt · Leverandorportal · Futurematch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=13" />
+  <style>
+    body { margin: 0; background: var(--fm-bg); color: var(--fm-ink); font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+    .vp-top { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--fm-surface, #fff);
+              border-bottom: 1px solid var(--fm-line); position: sticky; top: 0; z-index: 5; }
+    .vp-mark { width: 34px; height: 34px; border-radius: 9px; background: var(--fm-primary); color: #fff;
+               display: grid; place-items: center; font-weight: 800; }
+    .vp-top .name { font-weight: 800; font-size: 15px; }
+    .vp-top .who { margin-left: auto; font-size: 13px; color: var(--fm-ink-2); }
+    .vp-nav { display: flex; gap: 4px; padding: 10px 24px 0; background: var(--fm-surface, #fff); border-bottom: 1px solid var(--fm-line); }
+    .vp-nav a { padding: 9px 14px; font-size: 13.5px; font-weight: 700; color: var(--fm-ink-2); text-decoration: none;
+                border-bottom: 3px solid transparent; }
+    .vp-nav a.active { color: var(--fm-primary); border-color: var(--fm-primary); }
+    .vp-nav a:hover { color: var(--fm-primary); }
+    .vp-nav a.logout { margin-left: auto; color: var(--fm-ink-3); }
+    .vp-wrap { max-width: 1040px; margin: 0 auto; padding: 26px 24px 60px; }
+    .vp-h1 { font-family: 'Bricolage Grotesque', serif; font-size: 26px; font-weight: 700; margin: 0 0 4px; }
+    .vp-lead { color: var(--fm-ink-2); font-size: 14px; margin: 0 0 22px; }
+    .vp-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+    .vp-kpi { background: var(--fm-surface, #fff); border: 1px solid var(--fm-line); border-radius: 14px; padding: 18px; }
+    .vp-kpi .num { font-size: 30px; font-weight: 800; color: var(--fm-primary); line-height: 1; }
+    .vp-kpi .lbl { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 6px; }
+    .vp-card { background: var(--fm-surface, #fff); border: 1px solid var(--fm-line); border-radius: 14px; padding: 20px; margin-bottom: 22px; }
+    .vp-card h3 { font-size: 16px; margin: 0 0 14px; }
+    .vp-flash { padding: 11px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 16px; }
+    .vp-flash.danger { background: var(--fm-clay-tint); color: var(--fm-clay); }
+    .vp-flash.success { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
+    table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+    th, td { text-align: left; padding: 9px 8px; border-bottom: 1px solid var(--fm-line); }
+    th { color: var(--fm-ink-3); font-size: 11.5px; text-transform: uppercase; letter-spacing: .04em; }
+    .badge { display: inline-block; padding: 2px 9px; border-radius: 999px; font-size: 11.5px; font-weight: 700; }
+    .badge.pending { background: var(--fm-clay-tint); color: var(--fm-clay); }
+    .badge.approved { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
+    .badge.rejected { background: #f5dada; color: #a32a2a; }
+    .vp-empty { color: var(--fm-ink-3); font-size: 13.5px; padding: 14px 0; }
+    .vp-cta { display: inline-block; padding: 10px 16px; border-radius: 10px; background: var(--fm-primary); color: #fff;
+              font-weight: 700; font-size: 13.5px; text-decoration: none; }
+    @media (max-width: 720px) { .vp-kpis { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body data-page="vendor-dashboard">
+  <header class="vp-top">
+    <span class="vp-mark">F</span>
+    <span class="name">Leverandorportal</span>
+    <span class="who">{{ vendor_name }}</span>
+  </header>
+  <nav class="vp-nav">
+    <a href="{{ url_for('vendor.vendor_dashboard') }}" class="active">Oversigt</a>
+    <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
+    <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
+    <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
+  </nav>
+
+  <main class="vp-wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="vp-flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <h1 class="vp-h1">Velkommen, {{ vendor_name }}</h1>
+    <p class="vp-lead">Her kan du folge dit katalog og dine indsendelser.</p>
+
+    <div class="vp-kpis">
+      <div class="vp-kpi">
+        <div class="num">{{ kpis.course_count }}</div>
+        <div class="lbl">Antal kurser i kataloget</div>
+      </div>
+      <div class="vp-kpi">
+        <div class="num">{{ kpis.submission_count }}</div>
+        <div class="lbl">Indsendelser i alt</div>
+      </div>
+      <div class="vp-kpi">
+        <div class="num">{{ kpis.pending_count }}</div>
+        <div class="lbl">Afventer godkendelse</div>
+      </div>
+    </div>
+
+    <div class="vp-card">
+      <h3>Seneste indsendelser</h3>
+      {% if submissions %}
+      <table>
+        <thead>
+          <tr><th>Fil</th><th>Raekker</th><th>Status</th><th>Indsendt</th></tr>
+        </thead>
+        <tbody>
+          {% for s in submissions %}
+          <tr>
+            <td>{{ s.filename or '—' }}</td>
+            <td>{{ s.row_count if s.row_count is not none else '—' }}</td>
+            <td><span class="badge {{ s.status }}">
+              {% if s.status == 'approved' %}Godkendt{% elif s.status == 'rejected' %}Afvist{% else %}Afventer{% endif %}
+            </span></td>
+            <td>{{ s.created_at }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="vp-empty">Du har endnu ikke indsendt noget katalog.
+        <a class="vp-cta" href="{{ url_for('vendor.vendor_submit') }}" style="margin-left:8px;">Indsend katalog</a>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="vp-card">
+      <h3>Dit katalog ({{ products|length }})</h3>
+      {% if products %}
+      <table>
+        <thead>
+          <tr><th>Kursus</th><th>Type</th><th>Pris</th></tr>
+        </thead>
+        <tbody>
+          {% for p in products[:100] %}
+          <tr>
+            <td>{{ p.title }}</td>
+            <td>{{ p.product_type or '—' }}</td>
+            <td>{{ p.price_label or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+      {% else %}
+      <div class="vp-empty">Ingen kurser er knyttet til dig endnu. Indsend dit forste katalog for at komme i gang.</div>
+      {% endif %}
+    </div>
+  </main>
+</body>
+</html>

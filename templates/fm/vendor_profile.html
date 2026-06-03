@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="da" data-theme="light">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Profil · Leverandorportal · Futurematch</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=13" />
+  <style>
+    body { margin: 0; background: var(--fm-bg); color: var(--fm-ink); font-family: 'Hanken Grotesk', system-ui, sans-serif; }
+    .vp-top { display: flex; align-items: center; gap: 12px; padding: 14px 24px; background: var(--fm-surface, #fff);
+              border-bottom: 1px solid var(--fm-line); position: sticky; top: 0; z-index: 5; }
+    .vp-mark { width: 34px; height: 34px; border-radius: 9px; background: var(--fm-primary); color: #fff;
+               display: grid; place-items: center; font-weight: 800; }
+    .vp-top .name { font-weight: 800; font-size: 15px; }
+    .vp-top .who { margin-left: auto; font-size: 13px; color: var(--fm-ink-2); }
+    .vp-nav { display: flex; gap: 4px; padding: 10px 24px 0; background: var(--fm-surface, #fff); border-bottom: 1px solid var(--fm-line); }
+    .vp-nav a { padding: 9px 14px; font-size: 13.5px; font-weight: 700; color: var(--fm-ink-2); text-decoration: none; border-bottom: 3px solid transparent; }
+    .vp-nav a.active { color: var(--fm-primary); border-color: var(--fm-primary); }
+    .vp-nav a:hover { color: var(--fm-primary); }
+    .vp-nav a.logout { margin-left: auto; color: var(--fm-ink-3); }
+    .vp-wrap { max-width: 680px; margin: 0 auto; padding: 26px 24px 60px; }
+    .vp-h1 { font-family: 'Bricolage Grotesque', serif; font-size: 26px; font-weight: 700; margin: 0 0 4px; }
+    .vp-lead { color: var(--fm-ink-2); font-size: 14px; margin: 0 0 22px; }
+    .vp-card { background: var(--fm-surface, #fff); border: 1px solid var(--fm-line); border-radius: 14px; padding: 24px; }
+    .vp-meta { font-size: 12.5px; color: var(--fm-ink-3); margin-bottom: 18px; }
+    .vp-meta b { color: var(--fm-ink); }
+    .vp-field { margin-bottom: 18px; }
+    .vp-field label { display: block; font-size: 13px; font-weight: 700; margin-bottom: 6px; }
+    .vp-input, .vp-textarea { width: 100%; box-sizing: border-box; padding: 11px 13px; border: 1px solid var(--fm-line-2);
+                border-radius: 10px; font-size: 14px; background: var(--fm-bg); color: var(--fm-ink); font-family: inherit; }
+    .vp-textarea { min-height: 110px; resize: vertical; }
+    .vp-input:focus, .vp-textarea:focus { outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 3px var(--fm-primary-tint); }
+    .vp-btn { padding: 12px 22px; border: none; border-radius: 10px; background: var(--fm-primary); color: #fff;
+              font-weight: 700; font-size: 14px; cursor: pointer; }
+    .vp-btn:hover { filter: brightness(1.05); }
+    .vp-flash { padding: 11px 14px; border-radius: 10px; font-size: 13.5px; margin-bottom: 16px; }
+    .vp-flash.danger { background: var(--fm-clay-tint); color: var(--fm-clay); }
+    .vp-flash.success { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
+    .vp-hint { font-size: 12px; color: var(--fm-ink-3); margin-top: 5px; }
+  </style>
+</head>
+<body data-page="vendor-profile">
+  <header class="vp-top">
+    <span class="vp-mark">F</span>
+    <span class="name">Leverandorportal</span>
+    <span class="who">{{ vendor.vendor_name or '' }}</span>
+  </header>
+  <nav class="vp-nav">
+    <a href="{{ url_for('vendor.vendor_dashboard') }}">Oversigt</a>
+    <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
+    <a href="{{ url_for('vendor.vendor_profile') }}" class="active">Profil</a>
+    <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
+  </nav>
+
+  <main class="vp-wrap">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% for category, message in messages %}
+        <div class="vp-flash {{ category }}">{{ message }}</div>
+      {% endfor %}
+    {% endwith %}
+
+    <h1 class="vp-h1">Din profil</h1>
+    <p class="vp-lead">Opdater dine offentlige leverandoroplysninger.</p>
+
+    <div class="vp-card">
+      <div class="vp-meta">
+        Leverandor: <b>{{ vendor.vendor_name or '—' }}</b>
+        {% if vendor.status %} · Status: <b>{{ vendor.status }}</b>{% endif %}
+      </div>
+
+      <form method="POST" action="{{ url_for('vendor.vendor_profile') }}">
+        <div class="vp-field">
+          <label for="contact_email">Kontakt-e-mail</label>
+          <input class="vp-input" type="email" id="contact_email" name="contact_email"
+                 value="{{ vendor.contact_email or '' }}" required />
+        </div>
+        <div class="vp-field">
+          <label for="website">Hjemmeside</label>
+          <input class="vp-input" type="url" id="website" name="website"
+                 value="{{ vendor.website or '' }}" placeholder="https://..." />
+        </div>
+        <div class="vp-field">
+          <label for="logo_url">Logo-URL</label>
+          <input class="vp-input" type="url" id="logo_url" name="logo_url"
+                 value="{{ vendor.logo_url or '' }}" placeholder="https://.../logo.png" />
+          <div class="vp-hint">Link til dit logo (vises i kataloget).</div>
+        </div>
+        <div class="vp-field">
+          <label for="description">Beskrivelse</label>
+          <textarea class="vp-textarea" id="description" name="description"
+                    placeholder="Fortael om jeres kurser og ekspertise...">{{ vendor.description or '' }}</textarea>
+        </div>
+        <button class="vp-btn" type="submit">Gem aendringer</button>
+      </form>
+    </div>
+  </main>
+</body>
+</html>

@@ -922,6 +922,42 @@ def ensure_enterprise_tables(app):
                     INDEX idx_company (company_id),
                     INDEX idx_token (widget_token)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Vendors (supplier identity / accounts) ──
+                # Vendor accounts are ISOLATED from the main user/company auth.
+                # vendor_name matches the free-text 'vendor' string on products,
+                # so existing catalog rows can be linked to an account later.
+                """CREATE TABLE IF NOT EXISTS vendors (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    vendor_name VARCHAR(255) NOT NULL,
+                    slug VARCHAR(140) UNIQUE,
+                    contact_email VARCHAR(255) UNIQUE,
+                    password_hash VARCHAR(255),
+                    status ENUM('pending', 'active', 'suspended') DEFAULT 'pending',
+                    description TEXT,
+                    website VARCHAR(255),
+                    logo_url VARCHAR(500),
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_vendor_name (vendor_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Vendor Submissions (catalog import drafts uploaded by vendors) ──
+                # job_id ties back to a catalog_service import draft; admins review
+                # via the existing admin_catalog_import_preview/confirm flow.
+                """CREATE TABLE IF NOT EXISTS vendor_submissions (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    vendor_id INT NOT NULL,
+                    job_id VARCHAR(80),
+                    filename VARCHAR(255),
+                    row_count INT,
+                    status ENUM('pending', 'approved', 'rejected') DEFAULT 'pending',
+                    reviewed_by INT,
+                    reviewed_at DATETIME,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_vendor (vendor_id),
+                    INDEX idx_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
             ]
 
             for sql in tables:

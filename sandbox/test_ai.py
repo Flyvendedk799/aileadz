@@ -63,6 +63,25 @@ def parse_sse(body):
     return events
 
 
+def reset_test_profile():
+    """Make the suite IDEMPOTENT: the 'add skill' flow asserts a confirm-card
+    (profile_confirm_request), which the agent only proposes when the skill is
+    NOT already on the profile. Without this reset, the first run adds Python to
+    the 'test' user and every later run sees a duplicate and answers differently
+    (a profile_update, not a confirm card) -> a false failure. Clear what the
+    suite adds so each run starts from a known state."""
+    try:
+        with app.app_context():
+            from db_compat import refresh_flask_mysql_connection
+            refresh_flask_mysql_connection(app.mysql)
+            cur = app.mysql.connection.cursor()
+            cur.execute("DELETE FROM user_skills WHERE username='test' AND LOWER(skill_name)='python'")
+            app.mysql.connection.commit()
+            cur.close()
+    except Exception as e:
+        print(f"[reset_test_profile] skipped: {e}")
+
+
 def fresh_client():
     c = app.test_client()
     c.post("/login", data={"username": "test", "password": "test"})
@@ -147,6 +166,7 @@ def main():
         print(json.dumps(res, ensure_ascii=False, indent=2)[:3000])
         return
 
+    reset_test_profile()  # idempotency: start each run from a known profile state
     print(f"\nRunning {len(CASES)} AI flows against the sandbox…\n")
     results = []
     for label, query, expect in CASES:

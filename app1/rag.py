@@ -399,15 +399,47 @@ def _vector_search(query_vector, limit=20):
     return scored[:limit]
 
 
+def embed_skip_margin() -> float:
+    """Env-tunable confidence margin for skipping the query-embedding API call.
+
+    The BM25 top result must beat the runner-up by at least this multiplicative
+    factor before we trust lexical search alone and skip the (paid) embedding.
+    Lower = skip more aggressively (cheaper); higher = embed more often (safer).
+    Set to 0 (or AI_DISABLE_EMBED_SKIP=1) to ALWAYS embed (legacy behaviour with
+    no lexical short-circuit). Default 1.75 matches the previous hard-coded value.
+    """
+    if os.getenv("AI_DISABLE_EMBED_SKIP", "").strip().lower() in {"1", "true", "yes", "on"}:
+        return 0.0
+    try:
+        margin = float(os.getenv("AI_EMBED_SKIP_MARGIN", "1.75"))
+    except ValueError:
+        return 1.75
+    # A margin <= 1.0 would let *any* top result skip; treat that as "disable skip"
+    # unless the operator explicitly asked for it via the env (margin == 0).
+    if margin <= 0:
+        return 0.0
+    return margin
+
+
 def _bm25_confident_enough(core_query_tokens, bm25_ranked):
-    """Skip embedding API when lexical search already has a strong winner."""
+    """Skip embedding API when lexical search already has a strong winner.
+
+    Returns True (=> SKIP the embedding call, use BM25 directly) only when:
+      * there is a real top + runner-up to compare,
+      * the top score clears the env-tunable margin over the runner-up, and
+      * the top doc's title actually contains the core query terms.
+    Margin of 0 (AI_EMBED_SKIP_MARGIN=0 / AI_DISABLE_EMBED_SKIP=1) disables the
+    short-circuit entirely so the pipeline always embeds (reversible)."""
+    margin = embed_skip_margin()
+    if margin <= 0:  # skip disabled — always embed
+        return False
     if not core_query_tokens or len(bm25_ranked) < 2 or not _title_token_sets:
         return False
     top_idx, top_score = bm25_ranked[0]
     _, second_score = bm25_ranked[1]
     if top_score <= 0 or second_score <= 0:
         return False
-    if top_score < second_score * 1.75:
+    if top_score < second_score * margin:
         return False
     if top_idx >= len(_title_token_sets):
         return False
@@ -483,21 +515,42 @@ def cosine_similarity(v1, v2):
     return dot_product / (norm_a * norm_b)
 
 
-_embedding_cache = {}  # {lowered_query: (embedding, timestamp)}
-_EMBEDDING_CACHE_TTL = 3600  # 1 hour
-_EMBEDDING_CACHE_MAX = 1000  # Increased from 200 to reduce cache churn
+def _env_int(name: str, default: int, minimum: int = 1) -> int:
+    """Read a positive integer env var with a safe fallback (never crashes)."""
+    try:
+        return max(minimum, int(os.getenv(name, str(default))))
+    except (ValueError, TypeError):
+        return default
 
-# 5.3: Search result cache — avoids full pipeline for repeated queries
+
+_embedding_cache = {}  # {lowered_query: (embedding, timestamp)}
+# Embedding cache: a popular catalog has a heavy long-tail of repeated queries,
+# so a larger cache + longer TTL meaningfully raises the hit-rate. All env-tunable;
+# defaults are >= the previous hard-coded values so behaviour only improves.
+_EMBEDDING_CACHE_TTL = _env_int("AI_EMBEDDING_CACHE_TTL", 21600, minimum=1)  # 6h (was 1h)
+_EMBEDDING_CACHE_MAX = _env_int("AI_EMBEDDING_CACHE_MAX", 5000, minimum=1)   # was 1000
+
+# 5.3: Search result cache — avoids full pipeline (incl. embedding + rerank) for
+# repeated queries. Most catalog queries repeat ("ledelse", "scrum", ...), so a
+# bigger/longer cache is the single highest-leverage cost lever here.
 _search_cache = {}  # {cache_key: (result_dict, timestamp)}
-_SEARCH_CACHE_TTL = 900  # 15 minutes
-_SEARCH_CACHE_MAX = 100
+_SEARCH_CACHE_TTL = _env_int("AI_SEARCH_CACHE_TTL", 3600, minimum=1)  # 1h (was 15m)
+_SEARCH_CACHE_MAX = _env_int("AI_SEARCH_CACHE_MAX", 1000, minimum=1)  # was 100
 
 
 def embedding_model() -> str:
+    """Query-embedding model. Default is text-embedding-3-small — the cheapest
+    OpenAI embedding model (~5x cheaper than -3-large). Override with
+    AI_EMBEDDING_MODEL only if the catalog was embedded with a different model."""
     return os.getenv("AI_EMBEDDING_MODEL", "text-embedding-3-small")
 
 
 def embedding_dimensions() -> int:
+    """Embedding output dimensions. text-embedding-3-small supports Matryoshka
+    truncation, so lower dims = smaller payload = faster/cheaper search (and a
+    smaller in-memory vector matrix) at a modest recall cost. Env-tunable via
+    AI_EMBEDDING_DIMENSIONS; default 1024 is UNCHANGED. Floor of 256 keeps
+    cosine math meaningful. MUST match the dims the catalog was embedded with."""
     try:
         return max(256, int(os.getenv("AI_EMBEDDING_DIMENSIONS", "1024")))
     except ValueError:
@@ -509,10 +562,50 @@ def cross_encoder_mode() -> str:
 
 
 def cross_encoder_max_candidates() -> int:
+    """Cap how many candidates the gpt-4o-mini reranker scores in one call.
+
+    Honours the new AI_RERANK_MAX_CANDIDATES (preferred name) and falls back to
+    the legacy AI_RAG_CROSS_ENCODER_MAX_CANDIDATES for backward compatibility.
+    Fewer candidates => shorter prompt => cheaper rerank call. Default lowered
+    from 6 to 4 (the reranker only matters for the closely-bunched top few)."""
+    raw = os.getenv("AI_RERANK_MAX_CANDIDATES") or os.getenv("AI_RAG_CROSS_ENCODER_MAX_CANDIDATES") or "4"
     try:
-        return max(2, int(os.getenv("AI_RAG_CROSS_ENCODER_MAX_CANDIDATES", "6")))
-    except ValueError:
-        return 6
+        return max(2, int(raw))
+    except (ValueError, TypeError):
+        return 4
+
+
+def cross_encoder_ambiguity_margin() -> float:
+    """Env-tunable relative score gap below which the top candidates count as
+    'ambiguous' enough to justify a paid rerank.
+
+    The reranker is only worth its cost when the leader is NOT a clear winner.
+    If (top_score - second_score) / top_score >= this margin, the leader is
+    clear and we SKIP the rerank. Default 0.08 (8%). Set to 0 to fall back to
+    the legacy gate (rerank fires on any >=2 ambiguous-ish candidate set);
+    set very high to effectively force reranking whenever 'auto' allows it."""
+    try:
+        margin = float(os.getenv("AI_RERANK_AMBIGUITY_MARGIN", "0.08"))
+    except (ValueError, TypeError):
+        return 0.08
+    return max(0.0, margin)
+
+
+def _top_gap_is_clear(reranked, margin):
+    """True when the #1 candidate clearly beats #2 by >= margin (relative).
+
+    A clear winner means no rerank is needed. Defensive against missing/zero/
+    negative scores so it never raises inside the hot search path."""
+    if margin <= 0 or len(reranked) < 2:
+        return False
+    try:
+        top_score = reranked[0][1]
+        second_score = reranked[1][1]
+    except (IndexError, TypeError):
+        return False
+    if top_score is None or second_score is None or top_score <= 0:
+        return False
+    return (top_score - second_score) / top_score >= margin
 
 
 def warm_rag_index() -> int:
@@ -525,7 +618,9 @@ def warm_rag_index() -> int:
 
 def get_query_embedding(query_text):
     """Get the embedding vector for the user query, with caching.
-    Uses text-embedding-3-large with 1024 dimensions for better quality."""
+    Uses embedding_model() (default text-embedding-3-small, the cheapest) at
+    embedding_dimensions() (default 1024) — both env-tunable. Returns None on
+    any failure so the pipeline degrades gracefully to BM25-only."""
     cache_key = query_text.lower().strip()
     now = time.time()
 
@@ -610,6 +705,13 @@ def semantic_search_courses(query, limit=5, min_score=0.35, shown_handles=None, 
 
 
 def _should_run_cross_encoder(query, core_query_tokens, reranked, confidence, top_vector_score):
+    """Gate the (paid, gpt-4o-mini) cross-encoder rerank.
+
+    'auto' mode now only fires when the top candidates are GENUINELY AMBIGUOUS:
+    no clear vector winner, AND the #1/#2 retrieval scores are bunched within
+    the env-tunable ambiguity margin. A clear leader => skip the rerank entirely.
+    Reversible: AI_RERANK_AMBIGUITY_MARGIN=0 restores the legacy gate;
+    AI_RAG_CROSS_ENCODER=always/never override the heuristic completely."""
     mode = cross_encoder_mode()
     if mode in {"0", "false", "no", "off", "never"}:
         return False
@@ -621,7 +723,13 @@ def _should_run_cross_encoder(query, core_query_tokens, reranked, confidence, to
         return False
     if len(reranked) == 2 and confidence != "low":
         return False
-    return len(reranked) >= 2 and bool(core_query_tokens)
+    if not (len(reranked) >= 2 and bool(core_query_tokens)):
+        return False
+    # New ambiguity gate: a clear #1 winner means reranking can't change the
+    # answer, so don't pay for it. Only ambiguous (bunched) tops get reranked.
+    if _top_gap_is_clear(reranked, cross_encoder_ambiguity_margin()):
+        return False
+    return True
 
 
 def _crossencoder_rerank(query, candidates, products, limit=5):

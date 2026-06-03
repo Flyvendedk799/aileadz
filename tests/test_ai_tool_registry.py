@@ -20,6 +20,17 @@ def _assert_strict_object(testcase, schema):
         _assert_strict_object(testcase, schema["items"])
 
 
+# Tools that intentionally opt out of strict mode so the model can send
+# flexible/empty/polymorphic payloads (a deliberate fix). New strict-False
+# tools must be added here consciously, otherwise the schema check below fails.
+NON_STRICT_EMPLOYEE_TOOLS = {
+    "update_user_profile",
+    "request_user_input",
+    "set_learning_goal",
+    "update_learning_goal",
+}
+
+
 class AIToolRegistryTests(unittest.TestCase):
     def test_employee_tool_schemas_are_strict(self):
         tools, meta = get_employee_tool_selection(
@@ -31,8 +42,30 @@ class AIToolRegistryTests(unittest.TestCase):
         )
         self.assertTrue(meta["tool_names"])
         for tool in tools:
-            self.assertTrue(tool["function"].get("strict"))
-            _assert_strict_object(self, tool["function"]["parameters"])
+            # Every tool must be a well-formed function schema.
+            self.assertEqual(tool.get("type"), "function")
+            fn = tool["function"]
+            name = fn.get("name")
+            self.assertTrue(name, "tool is missing a function name")
+            params = fn.get("parameters")
+            self.assertIsInstance(params, dict)
+            self.assertEqual(params.get("type"), "object")
+            self.assertIsInstance(fn.get("strict"), bool)
+
+            if name in NON_STRICT_EMPLOYEE_TOOLS:
+                # Intentionally non-strict: schema is allowed to be flexible
+                # (no additionalProperties:false / full required-set guarantee).
+                self.assertFalse(
+                    fn["strict"],
+                    f"{name} is allowlisted as non-strict but reports strict=True",
+                )
+            else:
+                # All other tools must remain fully strict.
+                self.assertTrue(
+                    fn["strict"],
+                    f"{name} unexpectedly reports strict=False; allowlist it if intentional",
+                )
+                _assert_strict_object(self, params)
 
     def test_employee_router_selects_platform_specific_tools(self):
         tools, meta = get_employee_tool_selection(

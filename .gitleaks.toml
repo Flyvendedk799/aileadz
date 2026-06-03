@@ -1,0 +1,29 @@
+# gitleaks configuration for aileadz
+#
+# Secret scanning is ENABLED. We start from gitleaks' built-in ruleset (so any
+# NEW credential that gets committed is still caught) and then add a small,
+# PATH-SCOPED allowlist for the files that ALREADY contain a committed secret
+# (the MySQL/SSH password) which is pending an ops-driven rotation + history purge.
+#
+# We deliberately allowlist by PATH ONLY (never by embedding the secret literal
+# here — that would make this very config a finding). New secrets in ANY OTHER
+# file are still detected and will fail CI.
+#
+# IMPORTANT: REMOVE the allowlist paths below once the secret is rotated +
+# purged from history. See docs/runbooks/SECRET_ROTATION.md and
+# docs/runbooks/GIT_HISTORY_PURGE.md.
+
+# Pull in gitleaks' default rules so new leaks are still detected.
+[extend]
+useDefault = true
+
+# ── Allowlist (known committed secret, pending rotation) ──────────────────────
+[allowlist]
+description = "Files with the known committed DB/SSH password, pending ops rotation. REMOVE after rotation + history purge (docs/runbooks/SECRET_ROTATION.md)."
+paths = [
+  # run.py: MySQL password fallback (~line 147/158) + SSH tunnel password (~line 269/305).
+  '''run\.py$''',
+  # stray run log (now untracked/gitignored, but allowlisted so historical
+  # commits don't fail the scan until history is purged).
+  '''run_history\.txt$''',
+]

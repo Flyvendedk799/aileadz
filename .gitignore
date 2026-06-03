@@ -12,3 +12,6 @@ static/uploads/
 
 # Confidential internal roadmap — enumerates security weaknesses; keep out of the public repo
 docs/PLATFORM_ROADMAP.md
+
+# stray run log (contains old creds; untracked, pending history purge)
+run_history.txt

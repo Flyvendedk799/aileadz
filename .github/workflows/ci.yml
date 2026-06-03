@@ -1,0 +1,114 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ── Secret scanning ─────────────────────────────────────────────────────────
+  # Runs gitleaks with the repo's .gitleaks.toml (which extends the default rules
+  # and narrowly allowlists the known, pending-rotation secrets in run.py).
+  gitleaks:
+    name: Secret scan (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Run gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+          # No license needed for public repos / basic scanning.
+
+  # ── Tests + boot smoke ──────────────────────────────────────────────────────
+  test:
+    name: Boot smoke + pytest
+    runs-on: ubuntu-latest
+
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpw
+          MYSQL_DATABASE: futurematch_sandbox
+          MYSQL_USER: fm
+          MYSQL_PASSWORD: fm
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-interval=5s
+          --health-timeout=5s
+          --health-retries=30
+
+    env:
+      # Sandbox mode: relaxes prod-only guards (SECRET_KEY, secure cookies, …).
+      SANDBOX: "1"
+      # Point the app at the MySQL service container (mirrors sandbox/.env.sandbox).
+      MYSQL_HOST: "127.0.0.1"
+      MYSQL_PORT: "3307"
+      MYSQL_USER: "fm"
+      MYSQL_PASSWORD: "fm"
+      MYSQL_DB: "futurematch_sandbox"
+      # Force idempotent enterprise-table creation regardless of the sync-TTL stamp.
+      ENTERPRISE_TABLE_SYNC_FORCE: "1"
+      # Skip the slow import-time RAG warmup; it warms lazily on first chat call.
+      AI_WARMUP_ON_IMPORT: "0"
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+          # Test runner (not a runtime dependency, so keep it out of requirements.txt).
+          pip install pytest
+
+      - name: Wait for MySQL
+        run: |
+          for i in $(seq 1 30); do
+            if mysqladmin ping -h 127.0.0.1 -P 3307 -uroot -prootpw --silent; then
+              echo "MySQL is up"
+              exit 0
+            fi
+            echo "Waiting for MySQL... ($i/30)"
+            sleep 3
+          done
+          echo "MySQL did not become ready in time" >&2
+          exit 1
+
+      - name: Boot smoke test (create_app)
+        run: python -c "from run import create_app; create_app()"
+
+      - name: Run pytest suite
+        run: python -m pytest tests/ -q
+
+      - name: Readiness capability check (/readyz, best-effort)
+        continue-on-error: true
+        run: |
+          python - <<'PY'
+          from run import create_app
+          app = create_app()
+          client = app.test_client()
+          resp = client.get("/readyz")
+          print("GET /readyz ->", resp.status_code)
+          print(resp.get_data(as_text=True)[:2000])
+          PY

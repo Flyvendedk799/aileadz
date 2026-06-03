@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import MySQLdb.cursors
 import logging
 import json
+import re
 from datetime import datetime, timedelta
 import catalog_service as catalog
 from auth_decorators import require_role
@@ -324,6 +325,15 @@ def admin_catalog_import_confirm(job_id):
     if not draft:
         flash("Importkladde ikke fundet.", "warning")
     else:
+        # Bookkeeping: if this draft came from a vendor upload, flag the matching
+        # vendor_submissions row as approved. Best-effort, never blocks confirm.
+        try:
+            cur = current_app.mysql.connection.cursor()
+            _mark_submissions_approved_for_job(cur, job_id)
+            current_app.mysql.connection.commit()
+            cur.close()
+        except Exception as e:
+            logging.warning("Vendor submission approval bookkeeping failed for %s: %s", job_id, e)
         flash("CSV import er bekraeftet og kataloget er opdateret.", "success")
     return redirect(url_for('admin_dashboard.admin_catalog'))
 
@@ -389,6 +399,216 @@ def admin_catalog_ai_cancel(job_id):
     catalog.delete_ai_category_job(job_id)
     flash("AI-kategoriseringsjob slettet.", "info")
     return redirect(url_for('admin_dashboard.admin_catalog'))
+
+
+# ---------------------------------------------------------------------------
+# Vendor account management (platform-admin only)
+#
+# Vendors are an identity layer on top of the existing catalog 'vendor' string.
+# These routes let a platform admin create/suspend vendor accounts and review
+# the CSV submissions vendors upload (which flow through the EXISTING catalog
+# import draft -> confirm pipeline). Everything here is boot-safe: the vendors /
+# vendor_submissions tables and the vendor_auth helper are optional, so each
+# query is wrapped defensively and a missing table degrades to an empty list
+# rather than a 500.
+# ---------------------------------------------------------------------------
+
+def _vendor_course_counts():
+    """Map vendor_name (lower-cased) -> number of catalog products.
+
+    Catalog products are file-based and grouped by the 'vendor' string, so we
+    reuse catalog.get_vendors() to count courses per vendor name. Never raises.
+    """
+    counts = {}
+    try:
+        for vendor in catalog.get_vendors():
+            name = (vendor.get('name') or '').strip().lower()
+            if name:
+                counts[name] = vendor.get('course_count', 0)
+    except Exception as e:
+        logging.warning("Could not compute vendor course counts: %s", e)
+    return counts
+
+
+def _mark_submissions_approved_for_job(cur, job_id):
+    """Best-effort: flag any pending vendor_submissions for this import job_id as
+    approved when an admin confirms the draft. Safe if the table is absent."""
+    if not job_id:
+        return
+    try:
+        cur.execute(
+            """UPDATE vendor_submissions
+                   SET status = 'approved',
+                       reviewed_by = %s,
+                       reviewed_at = NOW()
+                 WHERE job_id = %s AND status = 'pending'""",
+            (session.get('user_id') or None, job_id),
+        )
+    except Exception as e:
+        logging.warning("Could not auto-approve vendor submissions for job %s: %s", job_id, e)
+
+
+@admin_dashboard_bp.route('/vendors')
+@require_role('admin')
+def admin_vendors():
+    """List vendor accounts (with catalog course counts) and pending submissions."""
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    vendors = []
+    try:
+        cur.execute("""
+            SELECT id, vendor_name, slug, contact_email, status,
+                   description, website, logo_url, created_at, updated_at
+            FROM vendors
+            ORDER BY vendor_name ASC
+        """)
+        vendors = cur.fetchall() or []
+    except Exception as e:
+        logging.warning("Could not load vendors (table may not exist yet): %s", e)
+
+    course_counts = _vendor_course_counts()
+    for vendor in vendors:
+        name = (vendor.get('vendor_name') or '').strip().lower()
+        vendor['course_count'] = course_counts.get(name, 0)
+
+    submissions = []
+    try:
+        cur.execute("""
+            SELECT vs.id, vs.vendor_id, vs.job_id, vs.filename, vs.row_count,
+                   vs.status, vs.reviewed_by, vs.reviewed_at, vs.created_at,
+                   v.vendor_name
+            FROM vendor_submissions vs
+            LEFT JOIN vendors v ON v.id = vs.vendor_id
+            ORDER BY (vs.status = 'pending') DESC, vs.created_at DESC
+            LIMIT 100
+        """)
+        submissions = cur.fetchall() or []
+    except Exception as e:
+        logging.warning("Could not load vendor submissions (table may not exist yet): %s", e)
+
+    pending_count = sum(1 for s in submissions if s.get('status') == 'pending')
+
+    cur.close()
+    return render_template(
+        'fm/admin_vendors.html',
+        vendors=vendors,
+        submissions=submissions,
+        pending_count=pending_count,
+    )
+
+
+@admin_dashboard_bp.route('/vendors/create', methods=['POST'])
+@require_role('admin')
+def admin_vendor_create():
+    """Create a vendor account with a hashed initial password."""
+    vendor_name = (request.form.get('vendor_name') or '').strip()
+    contact_email = (request.form.get('contact_email') or '').strip().lower()
+    password = request.form.get('password') or ''
+    status = (request.form.get('status') or 'active').strip()
+    description = (request.form.get('description') or '').strip() or None
+    website = (request.form.get('website') or '').strip() or None
+
+    if status not in ('pending', 'active', 'suspended'):
+        status = 'active'
+
+    if not vendor_name or not contact_email or not password:
+        flash("Udfyld leverandørnavn, e-mail og adgangskode.", "danger")
+        return redirect(url_for('admin_dashboard.admin_vendors'))
+
+    # Guarded import: vendor_auth is owned by a sibling module and is optional.
+    try:
+        import vendor_auth
+        password_hash = vendor_auth.hash_vendor_password(password)
+    except Exception as e:
+        logging.error("vendor_auth unavailable, cannot hash vendor password: %s", e)
+        flash("Leverandør-login er ikke tilgængeligt endnu. Prøv igen senere.", "danger")
+        return redirect(url_for('admin_dashboard.admin_vendors'))
+
+    # Build a unique-ish slug from the vendor name.
+    slug = re.sub(r'[^a-z0-9]+', '-', vendor_name.lower()).strip('-')[:140] or None
+
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute(
+            """INSERT INTO vendors
+                   (vendor_name, slug, contact_email, password_hash, status, description, website)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
+            (vendor_name, slug, contact_email, password_hash, status, description, website),
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+        flash(f"Leverandøren \"{vendor_name}\" er oprettet.", "success")
+    except Exception as e:
+        logging.error("Could not create vendor: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        msg = str(e).lower()
+        if 'duplicate' in msg or 'unique' in msg:
+            flash("En leverandør med denne e-mail eller slug findes allerede.", "danger")
+        elif "doesn't exist" in msg or 'no such table' in msg:
+            flash("Leverandørtabellen er ikke oprettet endnu.", "danger")
+        else:
+            flash("Leverandøren kunne ikke oprettes.", "danger")
+    return redirect(url_for('admin_dashboard.admin_vendors'))
+
+
+@admin_dashboard_bp.route('/vendors/<int:vendor_id>/status', methods=['POST'])
+@require_role('admin')
+def admin_vendor_status(vendor_id):
+    """Set a vendor account status to active or suspended."""
+    new_status = (request.form.get('status') or '').strip()
+    if new_status not in ('active', 'suspended', 'pending'):
+        flash("Ugyldig status.", "danger")
+        return redirect(url_for('admin_dashboard.admin_vendors'))
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute("UPDATE vendors SET status = %s WHERE id = %s", (new_status, vendor_id))
+        current_app.mysql.connection.commit()
+        cur.close()
+        flash(f"Leverandørstatus opdateret til {new_status}.", "success")
+    except Exception as e:
+        logging.error("Could not update vendor status: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        flash("Status kunne ikke opdateres.", "danger")
+    return redirect(url_for('admin_dashboard.admin_vendors'))
+
+
+@admin_dashboard_bp.route('/vendors/submission/<int:submission_id>/<action>', methods=['POST'])
+@require_role('admin')
+def admin_vendor_submission_action(submission_id, action):
+    """Mark a vendor submission approved or rejected (bookkeeping toggle).
+
+    Approval of the actual catalog data still happens through the existing
+    admin_catalog_import_confirm pipeline; this is the submission-status record.
+    """
+    if action not in ('approved', 'rejected'):
+        flash("Ugyldig handling.", "danger")
+        return redirect(url_for('admin_dashboard.admin_vendors'))
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute(
+            """UPDATE vendor_submissions
+                   SET status = %s, reviewed_by = %s, reviewed_at = NOW()
+                 WHERE id = %s""",
+            (action, session.get('user_id') or None, submission_id),
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+        label = "godkendt" if action == 'approved' else "afvist"
+        flash(f"Indsendelsen er {label}.", "success")
+    except Exception as e:
+        logging.error("Could not update vendor submission: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        flash("Indsendelsen kunne ikke opdateres.", "danger")
+    return redirect(url_for('admin_dashboard.admin_vendors'))
 
 
 @admin_dashboard_bp.route('/make-superadmin/<username>')

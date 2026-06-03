@@ -209,6 +209,15 @@ def create_app():
     except Exception as e:
         logging.warning("GDPR data-subject toolkit skipped: %s", e)
 
+    # Vendor self-service portal (/vendor). Isolated vendor sessions (never sets
+    # session['user'], so a vendor can never reach the main app). Guarded so a
+    # missing/broken vendor_portal or vendor_auth can never crash create_app().
+    try:
+        from vendor_portal import vendor_bp
+        app.register_blueprint(vendor_bp)
+    except Exception as e:
+        logging.warning("Vendor portal integration skipped: %s", e)
+
     # Liveness/readiness probes (/healthz, /readyz)
     from health import health_bp
     app.register_blueprint(health_bp)

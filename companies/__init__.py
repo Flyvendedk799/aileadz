@@ -721,6 +721,47 @@ def create_companies_blueprint():
             flash("Error loading analytics data.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
+    @companies_bp.route('/benchmarking')
+    def benchmarking_page():
+        """Cross-tenant industry benchmarking (anonymised peer cohort).
+
+        Mirrors the analytics route's auth + get_company_context pattern. The
+        company admin sees THEIR company's metrics next to the ANONYMISED peer
+        cohort. The benchmarking module enforces k-anonymity at the COMPANY
+        level: a cohort statistic is only computed when at least k distinct
+        tenant companies share the industry — otherwise no cohort numbers are
+        returned. The whole call is guarded; any failure renders a safe empty
+        state rather than 500-ing the dashboard.
+        """
+        auth_check = require_company_admin()
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            flash("Company information not found.", "danger")
+            return redirect(url_for('auth.login'))
+
+        # Default safe empty state in case the module is unavailable or errors.
+        data = {
+            'industry': company.get('industry'),
+            'company_size': company.get('company_size'),
+            'cohort_size': 0,
+            'k': 5,
+            'safe': False,
+            'metrics': [],
+            'overall_note': (
+                'Benchmarking er midlertidigt utilgængelig. Prøv igen senere.'
+            ),
+        }
+        try:
+            import benchmarking
+            data = benchmarking.benchmark(company['id'])
+        except Exception as e:
+            current_app.logger.error(f"Error loading benchmarking: {e}")
+
+        return render_template('fm/benchmarking.html', company=company, data=data)
+
     @companies_bp.route('/settings', methods=['GET', 'POST'])
     def settings():
         """Company settings management"""

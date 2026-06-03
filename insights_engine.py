@@ -9,6 +9,14 @@ from datetime import datetime, timedelta
 
 logger = logging.getLogger(__name__)
 
+# k-anonymity helpers (roadmap value-4, Theme A/E). Guarded: if the module is
+# missing the analytics still compute — just without small-cohort suppression.
+# A missing k-anon import must NEVER crash an insights/ROI call.
+try:
+    import kanon as _kanon
+except Exception:  # pragma: no cover - boot-safety guard
+    _kanon = None
+
 
 def generate_company_insights(app, company_id):
     """
@@ -44,16 +52,42 @@ def generate_company_insights(app, company_id):
 
         # --- 1. Trending topics by department ---
         dept_topics = {}
+        dept_users = {}
         for i in interactions:
             dept = i.get('department') or 'Unknown'
             qt = i.get('query_type') or 'general'
             if dept not in dept_topics:
                 dept_topics[dept] = {}
+                dept_users[dept] = set()
             dept_topics[dept][qt] = dept_topics[dept].get(qt, 0) + 1
+            # Track distinct people behind each department so a single-employee
+            # department isn't surfaced as a "trending" cohort. interactions rows
+            # don't carry username here, so fall back to session/depth as a
+            # cohort proxy where present.
+            uid = i.get('username') or i.get('user_id') or i.get('session_id')
+            if uid is not None:
+                dept_users[dept].add(uid)
+
+        # k-anonymity: only surface a department's trend if the department is a
+        # cohort of at least k people. When we cannot resolve distinct users
+        # (no per-row identity), fall back to the interaction volume as a
+        # conservative proxy. Guarded — without k-anon, behaviour is unchanged.
+        _kk = None
+        if _kanon is not None:
+            try:
+                _kk = _kanon.K_DEFAULT
+            except Exception:
+                _kk = None
 
         for dept, topics in dept_topics.items():
             if not topics:
                 continue
+            if _kk is not None:
+                distinct = len(dept_users.get(dept) or ())
+                cohort = distinct if distinct > 0 else sum(topics.values())
+                if cohort < _kk:
+                    # Sub-k department — skip to avoid profiling an individual.
+                    continue
             top_topic = max(topics, key=topics.get)
             count = topics[top_topic]
             if count >= 3:
@@ -287,6 +321,29 @@ def get_skill_gap_analysis(app, company_id, department=None):
                 else:
                     e['status'] = 'red'
 
+        # k-anonymity: a department whose largest measured skill cohort is below
+        # k represents only a handful of (possibly one) employees, so its skill
+        # heatmap would profile that individual. Suppress those departments. The
+        # 'All' bucket is a cross-department aggregate and is left intact when it
+        # is itself k-safe. Guarded — without k-anon the heatmap is unchanged.
+        if _kanon is not None and heatmap:
+            try:
+                dept_rows = [
+                    {'department': dept,
+                     '_cohort': max((s.get('employees', 0) for s in skills.values()),
+                                    default=0)}
+                    for dept, skills in heatmap.items()
+                ]
+                kept, note = _kanon.suppress_small_groups(dept_rows, '_cohort')
+                safe_depts = {r['department'] for r in kept if isinstance(r, dict)}
+                if note and note.get('suppressed'):
+                    for dept in list(heatmap.keys()):
+                        if dept not in safe_depts:
+                            heatmap.pop(dept, None)
+                    heatmap['_anon_note'] = note.get('note_da')
+            except Exception:
+                pass
+
         return heatmap
 
 
@@ -443,6 +500,22 @@ def get_roi_metrics(app, company_id, fiscal_year=None):
                     'completion_rate': round(completed / total * 100, 1) if total > 0 else 0,
                     'cost_per_completion': round(spend / completed) if completed > 0 else 0,
                 })
+
+            # k-anonymity: a department whose trained-employee count is below k
+            # would expose an individual's training spend / ROI. Suppress those
+            # rows from the per-department breakdown. The company-wide headline
+            # figures (total_training_spend, employees_trained, …) are computed
+            # separately above and stay intact. Guarded — if k-anon is missing,
+            # the unsuppressed breakdown is returned exactly as before.
+            if _kanon is not None and metrics['department_roi']:
+                try:
+                    kept, note = _kanon.suppress_small_groups(
+                        metrics['department_roi'], 'employees')
+                    metrics['department_roi'] = kept
+                    if note and note.get('suppressed'):
+                        metrics['department_roi_anon_note'] = note.get('note_da')
+                except Exception:
+                    pass
 
             # ── Budget utilisation + OVERRUNS (real) ──
             cur.execute("""

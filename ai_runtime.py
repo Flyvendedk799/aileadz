@@ -73,6 +73,114 @@ def runtime_mode() -> str:
     return os.getenv("AI_RUNTIME", "responses").lower().strip() or "responses"
 
 
+# --- Cost-aware model routing --------------------------------------------------
+# AI_MODEL_ROUTING picks how aggressively turns are pushed onto the cheap
+# fast_model() (gpt-4o-mini is ~15-25x cheaper than gpt-4o):
+#   * "quality"  -> legacy behaviour, identical to before this change (safe fallback).
+#   * "balanced" -> NEW DEFAULT. Final answers of clearly-simple intents and all
+#                   tool-deciding turns run on mini; only genuine multi-course
+#                   SYNTHESIS intents stay on gpt-4o.
+#   * "cost"     -> mini for everything except a tiny must-be-4o allowlist.
+# Reverse the whole feature with: AI_MODEL_ROUTING=quality
+_VALID_ROUTING_MODES = ("quality", "balanced", "cost")
+
+
+def model_routing_mode() -> str:
+    raw = (os.getenv("AI_MODEL_ROUTING", "balanced") or "balanced").lower().strip()
+    return raw if raw in _VALID_ROUTING_MODES else "balanced"
+
+
+# Intents whose FINAL answer is a simple lookup / restate and is safe on mini.
+# Names cover BOTH the employee classifier (_classify_intent_local) and the HR
+# classifier (_classify_hr_intent), plus the abstract names used in specs/tests.
+_SIMPLE_INTENTS = frozenset({
+    # employee agent
+    "chit_chat", "needs_clarification", "follow_up", "detail",
+    "discovery", "correction",
+    # hr agent
+    "general", "budget", "catalog",
+    # abstract / spec aliases
+    "greeting", "search", "status", "profile_get",
+    # NOTE: profile MUTATION intents (profile_update / profile_add) are deliberately
+    # NOT here — they must stay on the main model so the "show a confirm UI-card before
+    # changing the user's profile" UX (request_user_input -> profile_confirm_request)
+    # holds; the fast model tended to mutate the profile directly without confirming.
+})
+
+# Genuine multi-course SYNTHESIS intents that benefit from gpt-4o reasoning.
+_SYNTHESIS_INTENTS = frozenset({
+    # employee agent
+    "comparison", "team_buying", "profile_and_search", "buying",
+    # hr agent
+    "skills",
+    # abstract / spec aliases
+    "compare", "learning_path", "skill_gap", "recommend_for_profile",
+})
+
+# In "cost" mode, the only intents allowed to keep gpt-4o.
+_COST_MODE_QUALITY_ALLOWLIST = frozenset({
+    "comparison", "compare", "learning_path", "skill_gap",
+})
+
+# Profile MUTATION intents: keep these on the main model in every cost mode so the
+# "show a confirm UI-card before changing the user's profile" UX holds (the fast
+# model tended to mutate the profile directly instead of proposing a confirm card).
+_PROFILE_MUTATION_INTENTS = frozenset({"profile_update", "profile_add"})
+
+
+def _route_tier(
+    mode: str,
+    intent: str,
+    tool_count: int,
+    token_estimate: int,
+    prefer_quality: bool,
+) -> str:
+    """Pure, OpenAI-free routing decision -> returns "main" or "fast".
+
+    Callers map "main" -> main_model() (gpt-4o) and "fast" -> fast_model()
+    (gpt-4o-mini). Kept side-effect-free so it can be unit-tested with no
+    network / no API key. The live wrapper choose_turn_model() layers the
+    rate-limit cooldown short-circuit on top of this.
+    """
+    intent = (intent or "").strip()
+    mode = mode if mode in _VALID_ROUTING_MODES else "balanced"
+
+    # Guards that apply in EVERY mode (mirror legacy choose_turn_model).
+    # prefer_quality always wins -> 4o (callers set this for high-value flows).
+    if prefer_quality:
+        return "main"
+    # Huge prompts are cheaper and just as reliable on mini.
+    if token_estimate > int(tpm_budget() * 0.75):
+        return "fast"
+
+    # Profile mutations keep the confirm-first UX on the main model in every mode.
+    if intent in _PROFILE_MUTATION_INTENTS:
+        return "main"
+
+    if mode == "quality":
+        # EXACTLY the historical behaviour (regression-free fallback).
+        if tool_count == 0 and intent in {"chit_chat", "needs_clarification"}:
+            return "fast"
+        if intent in {"follow_up", "detail"} and token_estimate < 12000:
+            return "fast"
+        return "main"
+
+    if mode == "cost":
+        # Mini for everything except the small must-be-4o allowlist.
+        return "main" if intent in _COST_MODE_QUALITY_ALLOWLIST else "fast"
+
+    # mode == "balanced" (default)
+    # Reserve 4o for genuine multi-course synthesis; everything else -> mini.
+    if intent in _SYNTHESIS_INTENTS:
+        return "main"
+    if intent in _SIMPLE_INTENTS:
+        return "fast"
+    # Unknown intent: default to mini in balanced mode (cheap + reliable for
+    # tool-deciding and short answers); prefer_quality above still rescues the
+    # high-value flows that callers explicitly flag.
+    return "fast"
+
+
 def trace_sample_rate() -> float:
     try:
         return max(0.0, min(1.0, float(os.getenv("AI_TRACE_SAMPLE_RATE", "1"))))
@@ -101,6 +209,61 @@ def _safe_json(value: Any) -> str:
         return "{}"
 
 
+# --- PII redaction for persisted telemetry only --------------------------------
+# IMPORTANT: this is applied ONLY to data written into ai_agent_runs / ai_tool_runs.
+# The model always receives the original, un-redacted content; redaction here must
+# never affect what is sent to OpenAI or what the agent answers.
+import re as _re  # local alias so we never shadow a caller's `re`
+
+_EMAIL_RE = _re.compile(r"[A-Za-z0-9._%+\-]+@[A-Za-z0-9.\-]+\.[A-Za-z]{2,}")
+# Danish CPR (DDMMYY-XXXX, optional separator). Checked before phone numbers so a
+# 10-digit CPR isn't mistaken for a phone number.
+_CPR_RE = _re.compile(r"\b(\d{6})[-\s]?(\d{4})\b")
+# Danish phone numbers: optional +45 / 0045 prefix, then 8 digits (spaces allowed).
+_DK_PHONE_RE = _re.compile(
+    r"(?<!\d)(?:\+45[\s]?|0045[\s]?)?(?:\d[\s]?){8}(?!\d)"
+)
+# Long opaque tokens / secrets (API keys, bearer tokens, UUID-ish blobs).
+_TOKEN_RE = _re.compile(r"\b[A-Za-z0-9_\-]{24,}\b")
+# Obvious personal names: 2+ capitalised words in a row (e.g. "Anders Hansen").
+# Conservative on purpose — only collapses runs of TitleCase words.
+_NAME_RE = _re.compile(
+    r"\b([A-ZÆØÅ][a-zæøå]+)(\s+[A-ZÆØÅ][a-zæøå]+){1,3}\b"
+)
+_REDACT_MAX_CHARS = 8000
+
+
+def _redact_pii(text: Any) -> str:
+    """Mask emails, Danish phone/CPR numbers, secret-like tokens and names.
+
+    Best-effort and fully guarded: on any failure it returns a safe string so
+    telemetry logging is never broken by redaction. Order matters — emails,
+    CPR and tokens are masked before the looser phone/name heuristics so the
+    most specific patterns win.
+    """
+    try:
+        if text is None:
+            return ""
+        if not isinstance(text, str):
+            text = _safe_json(text)
+        if not text:
+            return text
+        if len(text) > _REDACT_MAX_CHARS:
+            text = text[:_REDACT_MAX_CHARS] + "…[truncated]"
+        text = _EMAIL_RE.sub("[email]", text)
+        text = _CPR_RE.sub("[cpr]", text)
+        text = _TOKEN_RE.sub("[token]", text)
+        text = _DK_PHONE_RE.sub("[phone]", text)
+        text = _NAME_RE.sub("[name]", text)
+        return text
+    except Exception:
+        # Never let redaction failure break telemetry; degrade to a marker.
+        try:
+            return "[redaction-error]" if text else ""
+        except Exception:
+            return "[redaction-error]"
+
+
 def max_api_input_tokens() -> int:
     try:
         return max(8000, int(os.getenv("AI_MAX_INPUT_TOKENS", "22000")))
@@ -113,6 +276,27 @@ def max_output_tokens() -> int:
         return max(120, int(os.getenv("AI_MAX_OUTPUT_TOKENS", "600")))
     except ValueError:
         return 600
+
+
+def max_output_tokens_for_turn(has_tools: bool) -> int:
+    """Output-token cap for a single turn.
+
+    Tool-deciding turns (the model is choosing WHICH tool to call) emit only a
+    short tool-call payload, so a tight cap avoids paying for over-generation
+    without ever truncating a real answer. Final-answer turns keep the full
+    max_output_tokens() budget. The tool-turn cap is env-tunable and is clamped
+    so it never exceeds the answer budget. Reverse by setting
+    AI_MAX_TOOL_TURN_OUTPUT_TOKENS equal to AI_MAX_OUTPUT_TOKENS.
+    """
+    answer_budget = max_output_tokens()
+    if not has_tools:
+        return answer_budget
+    try:
+        cap = int(os.getenv("AI_MAX_TOOL_TURN_OUTPUT_TOKENS", "320"))
+    except ValueError:
+        cap = 320
+    # Never below a safe floor, never above the answer budget.
+    return max(120, min(cap, answer_budget))
 
 
 def tpm_budget() -> int:
@@ -128,6 +312,126 @@ def rate_limit_retry_seconds() -> float:
         return max(0.0, float(os.getenv("AI_RATE_LIMIT_RETRY_SECONDS", "2.5")))
     except ValueError:
         return 2.5
+
+
+def rate_limit_backoff_cap_seconds() -> float:
+    """Upper bound for the exponential backoff between transient retries."""
+    try:
+        return max(0.0, float(os.getenv("AI_RATE_LIMIT_BACKOFF_CAP_SECONDS", "20")))
+    except ValueError:
+        return 20.0
+
+
+def _backoff_wait_seconds(attempt_index: int) -> float:
+    """Exponential backoff (base * 2^attempt) capped, for 429/transient retries.
+
+    ``attempt_index`` is 0-based: the first failed attempt waits ``base``, the
+    next ``base*2``, etc., never exceeding the configured cap. Returns the wait
+    in seconds; callers decide whether to sleep.
+    """
+    base = rate_limit_retry_seconds()
+    if base <= 0:
+        return 0.0
+    try:
+        idx = max(0, int(attempt_index))
+    except Exception:
+        idx = 0
+    # Cap the exponent so very long loops can't overflow into huge floats.
+    wait = base * (2 ** min(idx, 16))
+    return min(wait, rate_limit_backoff_cap_seconds())
+
+
+def max_tool_calls_per_run() -> int:
+    """Hard ceiling on total tool calls per agent run (runaway-loop guard)."""
+    try:
+        return max(1, int(os.getenv("AI_MAX_TOOL_CALLS", "12")))
+    except ValueError:
+        return 12
+
+
+def max_run_cost_usd() -> float:
+    """Approximate per-run USD cost ceiling (0 disables the guard)."""
+    try:
+        return max(0.0, float(os.getenv("AI_MAX_RUN_COST", "0")))
+    except ValueError:
+        return 0.0
+
+
+def max_run_tokens() -> int:
+    """Approximate per-run total-token ceiling (0 disables the guard)."""
+    try:
+        return max(0, int(os.getenv("AI_MAX_RUN_TOKENS", "0")))
+    except ValueError:
+        return 0
+
+
+def _approx_cost_usd(input_tokens: int, output_tokens: int) -> float:
+    """Rough USD estimate from token counts using configurable per-1K rates.
+
+    Defaults track gpt-4o pricing tiers; only used for the soft cost ceiling, so
+    precision is not important — it just needs to be monotonic in token use.
+    """
+    try:
+        in_rate = float(os.getenv("AI_COST_PER_1K_INPUT", "0.0025"))
+        out_rate = float(os.getenv("AI_COST_PER_1K_OUTPUT", "0.01"))
+    except ValueError:
+        in_rate, out_rate = 0.0025, 0.01
+    return (max(0, input_tokens) / 1000.0) * in_rate + (max(0, output_tokens) / 1000.0) * out_rate
+
+
+def _usage_run_cost(usage: Dict[str, Any]) -> Tuple[int, float]:
+    """Return (total_tokens, approx_usd_cost) for an accumulated usage dict."""
+    try:
+        input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
+        output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+    except Exception:
+        return 0, 0.0
+    total = input_tokens + output_tokens
+    return total, _approx_cost_usd(input_tokens, output_tokens)
+
+
+def _run_cost_exceeded(usage: Dict[str, Any]) -> bool:
+    """True when the accumulated run usage breaches the cost/token ceiling."""
+    cost_cap = max_run_cost_usd()
+    token_cap = max_run_tokens()
+    if cost_cap <= 0 and token_cap <= 0:
+        return False
+    total_tokens, cost = _usage_run_cost(usage)
+    if cost_cap > 0 and cost >= cost_cap:
+        return True
+    if token_cap > 0 and total_tokens >= token_cap:
+        return True
+    return False
+
+
+# Graceful Danish message reused when a run is stopped for being over budget.
+_OVER_BUDGET_DA = (
+    "Denne forespørgsel blev for omfattende til at fuldføre lige nu. "
+    "Prøv at stille et mere afgrænset spørgsmål — så får du et hurtigt og præcist svar."
+)
+
+
+def _accumulate_usage(total: Dict[str, Any], latest: Dict[str, Any]) -> Dict[str, Any]:
+    """Sum token counts across loop iterations for the per-run cost guard.
+
+    The single-iteration ``usage`` dict (used for telemetry) is intentionally
+    left as the last-iteration snapshot by callers; this separate accumulator is
+    only consulted by the cost ceiling so it never changes logged token values.
+    """
+    if not latest:
+        return total
+    for key in (
+        "input_tokens", "prompt_tokens",
+        "output_tokens", "completion_tokens",
+        "total_tokens",
+    ):
+        try:
+            val = int(latest.get(key) or 0)
+        except Exception:
+            val = 0
+        if val:
+            total[key] = int(total.get(key) or 0) + val
+    return total
 
 
 def rate_limit_cooldown_seconds() -> float:
@@ -212,7 +516,25 @@ def _strip_heavy_tool_payload(output: str, max_chars: int = 6000) -> str:
 
 
 def consolidate_system_layers(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Keep the static system prompt isolated for cache hits; merge dynamic layers."""
+    """Keep the static system prompt isolated for cache hits; merge dynamic layers.
+
+    Prompt-cache invariant (OpenAI auto-caches identical prompt PREFIXES >1024
+    tokens for a 50% input discount):
+
+      * messages[0] (the static system prompt: SYSTEM_CORE / HR_SYSTEM_PROMPT,
+        optionally tenant-name-swapped which is STABLE per tenant) is emitted
+        FIRST and verbatim, so it is byte-identical across every turn of a
+        session and across sessions of the same tenant -> it forms the cacheable
+        prefix.
+      * ALL per-turn / dynamic system layers (session context, playbook hints,
+        INTENT lines, length nudges, etc.) are merged into a SEPARATE
+        "[SESSION KONTEKST]" system message placed AFTER the static prefix, so a
+        changing dynamic token can never shift bytes inside the cached prefix.
+
+    Do NOT inject timestamps / uuids / random ids into messages[0]; put any such
+    dynamic content into a later (non-prefix) message instead. This function is
+    what enforces that split, so callers get cache hits for free.
+    """
     if not messages:
         return []
     static = messages[0] if messages[0].get("role") == "system" else None
@@ -325,18 +647,25 @@ def choose_turn_model(
     token_estimate: int = 0,
     prefer_quality: bool = False,
 ) -> str:
-    """Route easy turns to the fast model without sacrificing complex flows."""
+    """Route easy turns to the fast model without sacrificing complex flows.
+
+    Honours AI_MODEL_ROUTING (quality|balanced|cost) via the pure, testable
+    _route_tier() helper. The only runtime-only short-circuit kept here is the
+    rate-limit cooldown, which forces mini regardless of mode/intent so we shed
+    TPM pressure fast.
+    """
+    # Runtime guard (cannot live in the pure helper): under a 429 cooldown we
+    # always drop to mini to recover capacity. This wins over prefer_quality.
     if in_rate_limit_cooldown():
         return fast_model()
-    if prefer_quality and not in_rate_limit_cooldown():
-        return main_model()
-    if tool_count == 0 and intent in {"chit_chat", "needs_clarification"}:
-        return fast_model()
-    if token_estimate > int(tpm_budget() * 0.75):
-        return fast_model()
-    if intent in {"follow_up", "detail"} and token_estimate < 12000:
-        return fast_model()
-    return main_model()
+    tier = _route_tier(
+        model_routing_mode(),
+        intent,
+        tool_count,
+        token_estimate,
+        prefer_quality,
+    )
+    return fast_model() if tier == "fast" else main_model()
 
 
 def user_facing_error_message(exc: Exception) -> str:
@@ -595,25 +924,29 @@ def _chat_completion_with_resilience(
         (fast_model(), True),
     ]
     last_exc: Optional[Exception] = None
-    for attempt_model, aggressive in attempts:
+    for attempt_index, (attempt_model, aggressive) in enumerate(attempts):
         working = prepare_messages_for_turn(source_messages, aggressive=aggressive)
         kwargs: Dict[str, Any] = {
             "model": attempt_model,
             "messages": working,
             "stream": False,
-            "max_tokens": max_output_tokens(),
+            # Tool-deciding turns only emit a short tool-call payload; cap them
+            # tighter (env-tunable) so we don't pay for over-generation.
+            "max_tokens": max_output_tokens_for_turn(bool(tools)),
         }
         if tools:
             kwargs["tools"] = tools
             kwargs["tool_choice"] = chat_tool_choice(tool_choice)
         try:
+            # Timeout is enforced by the shared client (AI_OPENAI_TIMEOUT_SECONDS).
             return client.chat.completions.create(**kwargs), attempt_model, working
         except Exception as exc:
             last_exc = exc
             if not _is_rate_limit_error(exc):
                 raise
             _note_rate_limit_hit()
-            wait = rate_limit_retry_seconds()
+            # Exponential backoff (base * 2^attempt, capped) on 429/transient errors.
+            wait = _backoff_wait_seconds(attempt_index)
             if wait > 0:
                 time.sleep(wait)
     if last_exc:
@@ -659,7 +992,7 @@ def _responses_create_with_resilience(
         ]
 
     last_exc: Optional[Exception] = None
-    for attempt_model, payload_items, prev_id, _max_chars in attempts:
+    for attempt_index, (attempt_model, payload_items, prev_id, _max_chars) in enumerate(attempts):
         if is_continuation:
             payload = payload_items or []
             working = source_messages
@@ -672,7 +1005,9 @@ def _responses_create_with_resilience(
             "input": payload,
             "store": True,
             "stream": False,
-            "max_output_tokens": max_output_tokens(),
+            # Tool-deciding turns only emit a short tool-call payload; cap them
+            # tighter (env-tunable) so we don't pay for over-generation.
+            "max_output_tokens": max_output_tokens_for_turn(bool(response_tools)),
         }
         if response_tools:
             kwargs["tools"] = response_tools
@@ -683,13 +1018,15 @@ def _responses_create_with_resilience(
         if prev_id:
             kwargs["previous_response_id"] = prev_id
         try:
+            # Timeout is enforced by the shared client (AI_OPENAI_TIMEOUT_SECONDS).
             return client.responses.create(**kwargs), attempt_model, working, payload
         except Exception as exc:
             last_exc = exc
             if not _is_rate_limit_error(exc):
                 raise
             _note_rate_limit_hit()
-            wait = rate_limit_retry_seconds()
+            # Exponential backoff (base * 2^attempt, capped) on 429/transient errors.
+            wait = _backoff_wait_seconds(attempt_index)
             if wait > 0:
                 time.sleep(wait)
     if last_exc:
@@ -850,10 +1187,10 @@ def log_agent_run(
                 model,
                 prompt_version,
                 toolset_version,
-                ",".join(tool_names),
+                _redact_pii(",".join(tool_names)),
                 response_id,
                 status,
-                fallback_reason,
+                _redact_pii(fallback_reason),
                 latency_ms,
                 input_tokens,
                 output_tokens,
@@ -910,11 +1247,11 @@ def log_tool_run(
                 agent_scope,
                 result.name,
                 result.call_id,
-                _safe_json(result.arguments),
+                _redact_pii(_safe_json(result.arguments)),
                 result.status,
                 result.latency_ms,
                 result_count,
-                result.error,
+                _redact_pii(result.error),
             ),
         )
         mysql.connection.commit()
@@ -1133,6 +1470,47 @@ def _assistant_message_from_chat(message: Any) -> Dict[str, Any]:
     }
 
 
+def _tool_call_signature(name: str, arguments: Any) -> str:
+    """Stable fingerprint of a (tool, args) pair for repeat detection."""
+    try:
+        if isinstance(arguments, str):
+            args_repr = arguments
+        else:
+            args_repr = json.dumps(arguments, ensure_ascii=False, sort_keys=True, default=str)
+    except Exception:
+        args_repr = str(arguments)
+    return f"{name}::{args_repr}"
+
+
+def _forced_final_completion(
+    client: OpenAI,
+    *,
+    model: str,
+    source_messages: List[Dict[str, Any]],
+) -> str:
+    """Run one tool-less completion to summarise tool results into a real answer.
+
+    Shared by the loop-exhausted path and the circuit-breaker / cost-ceiling
+    early exits so guardrails reuse the exact existing forced-final behaviour
+    instead of introducing a new failure mode.
+    """
+    final_text = ""
+    try:
+        forced = client.chat.completions.create(
+            model=model,
+            messages=prepare_messages_for_turn(source_messages),
+            stream=False,
+            max_tokens=max_output_tokens(),
+            temperature=0.4,
+        )
+        final_text = (forced.choices[0].message.content or "").strip()
+    except Exception as exc:
+        print(f"[Agent forced-final error] {exc}")
+    if not final_text:
+        final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
+    return final_text
+
+
 def run_chat_agent(
     *,
     messages: List[Dict[str, Any]],
@@ -1156,6 +1534,12 @@ def run_chat_agent(
     current_tool_choice = tool_choice
     compaction_level = compaction_level_for_messages(messages)
     runtime_path = "chat"
+    # Runaway-loop / cost guardrails (do not affect happy-path outputs).
+    run_usage: Dict[str, Any] = {}
+    seen_signatures: set = set()
+    total_tool_calls = 0
+    tool_call_cap = max_tool_calls_per_run()
+    forced_final = False
 
     for _ in range(max_iterations):
         resp, model, _prepared = _chat_completion_with_resilience(
@@ -1165,7 +1549,9 @@ def run_chat_agent(
             tools=tools,
             tool_choice=current_tool_choice,
         )
-        usage = _usage_to_dict(getattr(resp, "usage", None)) or usage
+        iter_usage = _usage_to_dict(getattr(resp, "usage", None))
+        usage = iter_usage or usage
+        run_usage = _accumulate_usage(run_usage, iter_usage)
         msg = resp.choices[0].message
         calls = getattr(msg, "tool_calls", None) or []
         if not calls:
@@ -1187,6 +1573,24 @@ def run_chat_agent(
             break
         assistant_msg = _assistant_message_from_chat(msg)
         source_messages.append(assistant_msg)
+
+        # --- Circuit breaker: stop on repeated identical calls or call-cap ---
+        repeated = False
+        for call in calls:
+            fn = getattr(call, "function", None)
+            name = getattr(fn, "name", "") if fn is not None else ""
+            raw_args = getattr(fn, "arguments", "") if fn is not None else ""
+            sig = _tool_call_signature(name, raw_args)
+            if sig in seen_signatures:
+                repeated = True
+            seen_signatures.add(sig)
+        total_tool_calls += len(calls)
+        if repeated or total_tool_calls > tool_call_cap:
+            # Same (tool, args) twice OR too many tool calls this run: stop the
+            # loop and force a real final answer via the existing tool-less path.
+            forced_final = True
+            break
+
         executed = _execute_tool_calls_parallel(
             calls=calls,
             tools=tools,
@@ -1206,24 +1610,29 @@ def run_chat_agent(
             tool_messages.append(tool_msg)
             source_messages.append(tool_msg)
         current_tool_choice = "auto"
+
+        # --- Cost guard: stop if the run breaches the cost/token ceiling ---
+        if _run_cost_exceeded(run_usage):
+            final_text = _OVER_BUDGET_DA
+            return AgentRunResult(
+                text=final_text,
+                messages=source_messages + [{"role": "assistant", "content": final_text}],
+                tool_results=tool_results,
+                tool_messages=tool_messages,
+                runtime="chat",
+                usage=usage,
+                latency_ms=int((time.time() - start) * 1000),
+                compaction_level="over_budget",
+                runtime_path="chat-over-budget",
+            )
     else:
         # Loop exhausted its tool iterations without the model producing a final
         # answer. Force one more completion WITHOUT tools so the user gets a real
         # response (summarising the tool results) instead of a generic error.
-        final_text = ""
-        try:
-            forced = client.chat.completions.create(
-                model=model,
-                messages=prepare_messages_for_turn(source_messages),
-                stream=False,
-                max_tokens=max_output_tokens(),
-                temperature=0.4,
-            )
-            final_text = (forced.choices[0].message.content or "").strip()
-        except Exception as exc:
-            print(f"[Agent forced-final error] {exc}")
-        if not final_text:
-            final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
+        forced_final = True
+
+    if forced_final:
+        final_text = _forced_final_completion(client, model=model, source_messages=source_messages)
 
     return AgentRunResult(
         text=final_text,
@@ -1266,6 +1675,12 @@ def run_responses_agent(
     input_items: Optional[List[Dict[str, Any]]] = None
     compaction_level = compaction_level_for_messages(messages)
     runtime_path = "responses"
+    # Runaway-loop / cost guardrails (do not affect happy-path outputs).
+    run_usage: Dict[str, Any] = {}
+    seen_signatures: set = set()
+    total_tool_calls = 0
+    tool_call_cap = max_tool_calls_per_run()
+    forced_final = False
 
     for _ in range(max_iterations):
         resp, model, _prepared, input_items = _responses_create_with_resilience(
@@ -1281,7 +1696,9 @@ def run_responses_agent(
         raw_response = resp
         response_id = getattr(resp, "id", "") or response_id
         previous_response_id = response_id
-        usage = _usage_to_dict(getattr(resp, "usage", None)) or usage
+        iter_usage = _usage_to_dict(getattr(resp, "usage", None))
+        usage = iter_usage or usage
+        run_usage = _accumulate_usage(run_usage, iter_usage)
         calls = _response_tool_calls(resp)
         if not calls:
             if defer_final_stream:
@@ -1301,6 +1718,20 @@ def run_responses_agent(
                     runtime_path=runtime_path,
                 )
             final_text = _response_text(resp)
+            break
+
+        # --- Circuit breaker: stop on repeated identical calls or call-cap ---
+        repeated = False
+        for c in calls:
+            sig = _tool_call_signature(c.get("name", ""), c.get("arguments"))
+            if sig in seen_signatures:
+                repeated = True
+            seen_signatures.add(sig)
+        total_tool_calls += len(calls)
+        if repeated or total_tool_calls > tool_call_cap:
+            # Same (tool, args) twice OR too many tool calls this run: stop the
+            # loop and force a real final answer via the existing tool-less path.
+            forced_final = True
             break
 
         executed = _execute_tool_calls_parallel(
@@ -1329,23 +1760,30 @@ def run_responses_agent(
             })
         input_items = outputs
         tool_choice = "auto"
-    else:
-        # Force a final answer without tools so the user gets a real response
-        # instead of a generic failure (see run_chat_agent).
-        final_text = ""
-        try:
-            forced = client.chat.completions.create(
-                model=model,
-                messages=prepare_messages_for_turn(source_messages),
-                stream=False,
-                max_tokens=max_output_tokens(),
-                temperature=0.4,
+
+        # --- Cost guard: stop if the run breaches the cost/token ceiling ---
+        if _run_cost_exceeded(run_usage):
+            final_text = _OVER_BUDGET_DA
+            return AgentRunResult(
+                text=final_text,
+                messages=source_messages + [{"role": "assistant", "content": final_text}],
+                tool_results=tool_results,
+                tool_messages=tool_messages,
+                response_id=response_id,
+                runtime="responses",
+                usage=usage,
+                latency_ms=int((time.time() - start) * 1000),
+                raw_response=raw_response,
+                compaction_level="over_budget",
+                runtime_path="responses-over-budget",
             )
-            final_text = (forced.choices[0].message.content or "").strip()
-        except Exception as exc:
-            print(f"[Agent forced-final error] {exc}")
-        if not final_text:
-            final_text = "Jeg kunne ikke færdiggøre værktøjsflowet. Prøv at stille spørgsmålet lidt mere konkret."
+    else:
+        # Loop exhausted without a final answer: force a final response (see
+        # run_chat_agent) so the user gets a real reply, not a generic failure.
+        forced_final = True
+
+    if forced_final:
+        final_text = _forced_final_completion(client, model=model, source_messages=source_messages)
 
     return AgentRunResult(
         text=final_text,

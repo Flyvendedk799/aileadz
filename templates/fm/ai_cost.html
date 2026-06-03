@@ -52,6 +52,29 @@
     <div class="kpi-tile ico"><span class="ki {{ 'gold' if failed_count > 0 else 'green' }}"><i class="fa-solid fa-triangle-exclamation"></i></span><div><div class="kl">Fejlede</div><div class="kv tnum">{{ failed_count }}</div><div class="kd">Ikke-OK status</div></div></div>
   </div>
 
+  {% if cost_enabled %}
+  <div class="fm-card" style="margin-top:16px">
+    <h3 style="margin:0 0 4px">Estimeret omkostning (DKK)</h3>
+    <div class="kd" style="opacity:.7;margin-bottom:12px">Beregnet ud fra token-forbrug og listepriser{% if cost_note %} · {{ cost_note }}{% endif %}. Kun et skøn.</div>
+    <div class="kpi-row" style="grid-template-columns:repeat(3,1fr)">
+      <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omkostning (30 dage)</div><div class="kv tnum">{{ '%.2f'|format(cost_total_dkk) }} kr</div><div class="kd">≈ ${{ '%.2f'|format(cost_total_usd) }}</div></div></div>
+      <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-calendar"></i></span><div><div class="kl">Projiceret pr. måned</div><div class="kv tnum">{{ '%.0f'|format(cost_projected_monthly_dkk) }} kr</div><div class="kd">Lineær fremskrivning</div></div></div>
+      <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-money-bill-trend-up"></i></span><div><div class="kl">USD→DKK kurs</div><div class="kv tnum">{{ '%.1f'|format(cost_usd_dkk_rate) }}</div><div class="kd">AI_USD_DKK</div></div></div>
+    </div>
+    {% if cost_by_model_detail %}
+    <table class="fm-table" style="margin-top:14px">
+      <thead><tr><th>Model</th><th class="tnum">Kørsler</th><th class="tnum">DKK</th><th class="tnum">USD</th></tr></thead>
+      <tbody>
+      {% for m, det in cost_by_model_detail.items() %}
+        <tr><td>{{ m }}{% if not det.known %} <span class="fm-badge">ukendt pris</span>{% endif %}</td><td class="tnum">{{ det.run_count }}</td><td class="tnum">{{ '%.2f'|format(det.dkk) }}</td><td class="tnum">${{ '%.2f'|format(det.usd) }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if cost_unknown_models %}<div class="kd" style="opacity:.7;margin-top:8px">Ukendt pris for: {{ cost_unknown_models|join(', ') }} — opdatér prislisten i ai_cost_model.py.</div>{% endif %}
+  </div>
+  {% endif %}
+
   <div class="ai-charts" style="margin-top:16px">
     <div class="fm-card ai-chart-card">
       <h3><i class="fa-solid fa-chart-line"></i> Daglig kørselsvolumen</h3>

@@ -22,6 +22,15 @@ try:
 except Exception:  # pragma: no cover - defensive boot guard
     catalog_freshness = None
 
+# Boot-safe import of the pure AI cost model. Makes routing/retrieval savings
+# visible in DKK on the /admin/ai-cost cockpit. Guarded so a problem here can
+# never crash blueprint registration / create_app, and the dashboard still
+# renders without cost figures if it is missing.
+try:
+    import ai_cost_model
+except Exception:  # pragma: no cover - defensive boot guard
+    ai_cost_model = None
+
 admin_reports_bp = Blueprint('admin_reports', __name__, template_folder='templates')
 
 
@@ -579,6 +588,73 @@ def ai_cost_dashboard():
     except Exception:
         pass
 
+    # --- AI cost (DKK) for the 30-day period + monthly projection ---------
+    # Additive: turns the token counts already aggregated above into money via
+    # the pure ai_cost_model. Fully guarded so the dashboard still renders if
+    # the cost calc fails or ai_cost_model is unavailable. Reversible: set
+    # AI_COST_MODEL_ENABLED=0 to skip the cost block entirely.
+    period_days = 30
+    cost_enabled = False
+    cost_total_dkk = 0.0
+    cost_total_usd = 0.0
+    cost_projected_monthly_dkk = 0.0
+    cost_by_model = {}          # {model: dkk}
+    cost_by_model_detail = {}   # {model: {dkk, usd, run_count, known, ...}}
+    cost_unknown_models = []
+    cost_usd_dkk_rate = 0.0
+    cost_note = None
+
+    try:
+        if ai_cost_model is not None and ai_cost_model.cost_model_enabled():
+            cost_enabled = True
+            cost_usd_dkk_rate = ai_cost_model.usd_to_dkk_rate()
+
+            # Per-model token sums over the same 30-day window. The earlier
+            # model_split query only has counts; cost needs token totals.
+            cost_rows = []
+            try:
+                cur.execute("""
+                    SELECT COALESCE(NULLIF(model, ''), 'ukendt') AS model,
+                           COALESCE(SUM(input_tokens), 0)  AS input_tokens,
+                           COALESCE(SUM(output_tokens), 0) AS output_tokens,
+                           COALESCE(SUM(cached_tokens), 0) AS cached_tokens
+                    FROM ai_agent_runs
+                    WHERE created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
+                    GROUP BY COALESCE(NULLIF(model, ''), 'ukendt')
+                """)
+                cost_rows = list(cur.fetchall())
+            except Exception:
+                cost_rows = []
+
+            summary = ai_cost_model.summarize_runs(cost_rows)
+            cost_total_dkk = round(summary.get('total_dkk', 0.0), 2)
+            cost_total_usd = round(summary.get('total_usd', 0.0), 4)
+            cost_unknown_models = summary.get('unknown_models', []) or []
+
+            for model_name, b in (summary.get('by_model') or {}).items():
+                cost_by_model[model_name] = round(b.get('dkk', 0.0), 2)
+                cost_by_model_detail[model_name] = {
+                    'dkk': round(b.get('dkk', 0.0), 2),
+                    'usd': round(b.get('usd', 0.0), 4),
+                    'input_tokens': b.get('input_tokens', 0),
+                    'output_tokens': b.get('output_tokens', 0),
+                    'cached_tokens': b.get('cached_tokens', 0),
+                    'run_count': b.get('run_count', 0),
+                    'known': b.get('known', True),
+                }
+
+            cost_projected_monthly_dkk = round(
+                ai_cost_model.project_monthly_dkk(cost_total_dkk, period_days), 2
+            )
+            if cost_unknown_models:
+                cost_note = (
+                    "Prisoverslag mangler for: "
+                    + ", ".join(cost_unknown_models)
+                )
+    except Exception:
+        # Cost calc must never break the existing dashboard.
+        cost_enabled = False
+
     cur.close()
 
     return render_template('fm/ai_cost.html',
@@ -599,7 +675,18 @@ def ai_cost_dashboard():
                            top_tools_by_latency=top_tools_by_latency,
                            daily_run_labels=daily_run_labels,
                            daily_run_data=daily_run_data,
-                           recent_runs=recent_runs)
+                           recent_runs=recent_runs,
+                           # --- AI cost figures (additive; DKK) ---
+                           cost_enabled=cost_enabled,
+                           cost_period_days=period_days,
+                           cost_total_dkk=cost_total_dkk,
+                           cost_total_usd=cost_total_usd,
+                           cost_projected_monthly_dkk=cost_projected_monthly_dkk,
+                           cost_by_model=cost_by_model,
+                           cost_by_model_detail=cost_by_model_detail,
+                           cost_unknown_models=cost_unknown_models,
+                           cost_usd_dkk_rate=cost_usd_dkk_rate,
+                           cost_note=cost_note)
 
 
 @admin_reports_bp.route('/admin/conversion-funnel')

@@ -1,0 +1,131 @@
+{% extends "fm_base.html" %}
+{% block page_id %}benchmark{% endblock %}
+{% block title %}Branche-benchmark · Futurematch{% endblock %}
+{% block topbar_title %}Branche-benchmark{% endblock %}
+{% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }}{% if data.industry %} · branche: {{ data.industry }}{% endif %}{% endblock %}
+{% block extra_head %}
+<style>
+  .bm-intro { display:flex; align-items:flex-start; gap:12px; background:var(--fm-primary-tint); border:1px solid var(--fm-line); border-radius:var(--fm-radius, 12px); padding:14px 16px; margin-bottom:18px; }
+  .bm-intro i { color:var(--fm-primary); font-size:18px; margin-top:1px; }
+  .bm-intro .bm-anon { font-size:12px; color:var(--fm-ink-3); margin-top:4px; }
+  .bm-grid { display:grid; grid-template-columns:repeat(auto-fill, minmax(300px, 1fr)); gap:16px; }
+  .bm-metric-head { display:flex; align-items:center; gap:10px; }
+  .bm-metric-head h3 { margin:0; font-size:15px; }
+  .bm-vals { display:flex; gap:14px; align-items:flex-end; margin:14px 0 4px; flex-wrap:wrap; }
+  .bm-val { flex:1; min-width:110px; }
+  .bm-val .bm-cap { font-size:11.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--fm-ink-3); }
+  .bm-val .bm-num { font-size:26px; font-weight:800; line-height:1.1; margin-top:3px; }
+  .bm-val.you .bm-num { color:var(--fm-primary); }
+  .bm-val.cohort .bm-num { color:var(--fm-ink-2); }
+  .bm-unit { font-size:14px; font-weight:600; color:var(--fm-ink-3); margin-left:2px; }
+  .bm-bar-wrap { margin-top:14px; }
+  .bm-bar-cap { display:flex; justify-content:space-between; font-size:11.5px; color:var(--fm-ink-3); margin-bottom:5px; }
+  .bm-bar { position:relative; height:9px; border-radius:999px; background:var(--fm-line); overflow:hidden; }
+  .bm-bar > span { position:absolute; left:0; top:0; bottom:0; border-radius:999px; background:linear-gradient(90deg, var(--fm-primary), var(--fm-primary)); }
+  .bm-pct { font-size:12.5px; color:var(--fm-ink-2); margin-top:6px; }
+  .bm-pct b { color:var(--fm-primary); }
+  .bm-median { font-size:12px; color:var(--fm-ink-3); margin-top:8px; }
+  .bm-locked { display:flex; align-items:center; gap:9px; margin-top:14px; padding:11px 12px; border:1px dashed var(--fm-line); border-radius:10px; background:var(--fm-surface-2, rgba(0,0,0,.02)); }
+  .bm-locked i { color:var(--fm-ink-3); font-size:15px; }
+  .bm-locked span { font-size:12.5px; color:var(--fm-ink-3); line-height:1.4; }
+  .bm-empty { padding:44px 16px; text-align:center; color:var(--fm-ink-3); }
+  .bm-empty i { font-size:30px; opacity:.4; display:block; margin-bottom:12px; }
+  .bm-pos-tag { margin-left:auto; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+
+  <div class="bm-intro">
+    <i class="fa-solid fa-shield-halved"></i>
+    <div>
+      <div><strong>Hvordan klarer du dig vs. branchen?</strong> {{ data.overall_note }}</div>
+      <div class="bm-anon">
+        Anonymitet (k-anonymitet): sammenligningstal vises kun, når mindst k={{ data.k }} virksomheder deler din branche — vi viser aldrig en enkelt konkurrents tal, kun anonyme gennemsnit på tværs af hele kohorten.
+      </div>
+    </div>
+  </div>
+
+  {% if data.industry and data.cohort_size %}
+  <div class="fm-flex fm-gap8" style="align-items:center;margin-bottom:16px;flex-wrap:wrap">
+    <span class="fm-badge teal"><i class="fa-solid fa-industry"></i>&nbsp;{{ data.industry }}</span>
+    <span class="fm-badge">{{ data.cohort_size }} virksomhed{{ 'er' if data.cohort_size != 1 else '' }} i kohorten</span>
+    {% if data.safe %}
+      <span class="fm-badge teal"><i class="fa-solid fa-circle-check"></i>&nbsp;Anonym benchmarking aktiv</span>
+    {% else %}
+      <span class="fm-badge amber"><i class="fa-solid fa-lock"></i>&nbsp;Kohorten er for lille (k={{ data.k }})</span>
+    {% endif %}
+  </div>
+  {% endif %}
+
+  {% if data.metrics %}
+  <div class="bm-grid">
+    {% for m in data.metrics %}
+    <div class="fm-card">
+      <div class="fm-card-body">
+        <div class="bm-metric-head">
+          <span class="fm-ch-icon">
+            {% if m.key == 'spend_per_employee' %}<i class="fa-solid fa-sack-dollar"></i>
+            {% elif m.key == 'completion_rate' %}<i class="fa-solid fa-circle-check"></i>
+            {% elif m.key == 'courses_per_employee' %}<i class="fa-solid fa-graduation-cap"></i>
+            {% else %}<i class="fa-solid fa-robot"></i>{% endif %}
+          </span>
+          <h3>{{ m.label }}</h3>
+          {% if m.safe and m.your_percentile is not none %}
+            <span class="fm-badge {{ 'teal' if m.your_percentile >= 50 else 'amber' }} bm-pos-tag">{{ m.your_percentile|int }}. percentil</span>
+          {% endif %}
+        </div>
+
+        <div class="bm-vals">
+          <div class="bm-val you">
+            <div class="bm-cap">Din værdi</div>
+            <div class="bm-num">
+              {% if m.unit == 'kr' %}{{ "{:,.0f}".format(m.your_value).replace(",", ".") }}{% elif m.unit == '%' %}{{ "%.1f"|format(m.your_value) }}{% else %}{{ "%.1f"|format(m.your_value) }}{% endif %}<span class="bm-unit">{{ m.unit }}</span>
+            </div>
+          </div>
+          {% if m.safe and m.cohort_avg is not none %}
+          <div class="bm-val cohort">
+            <div class="bm-cap">Branchegennemsnit</div>
+            <div class="bm-num">
+              {% if m.unit == 'kr' %}{{ "{:,.0f}".format(m.cohort_avg).replace(",", ".") }}{% elif m.unit == '%' %}{{ "%.1f"|format(m.cohort_avg) }}{% else %}{{ "%.1f"|format(m.cohort_avg) }}{% endif %}<span class="bm-unit">{{ m.unit }}</span>
+            </div>
+          </div>
+          {% endif %}
+        </div>
+
+        {% if m.safe and m.your_percentile is not none %}
+          <div class="bm-bar-wrap">
+            <div class="bm-bar-cap"><span>Bund</span><span>Top i branchen</span></div>
+            <div class="bm-bar"><span style="width:{{ m.your_percentile|int }}%"></span></div>
+            <div class="bm-pct">
+              {% if m.your_percentile >= 50 %}
+                Du ligger i <b>top {{ (100 - m.your_percentile)|int }}%</b> af branchen.
+              {% else %}
+                Du ligger over <b>{{ m.your_percentile|int }}%</b> af branchen.
+              {% endif %}
+            </div>
+          </div>
+          {% if m.cohort_median is not none %}
+          <div class="bm-median"><i class="fa-solid fa-equals"></i>&nbsp;Median i branchen: {% if m.unit == 'kr' %}{{ "{:,.0f}".format(m.cohort_median).replace(",", ".") }}{% else %}{{ "%.1f"|format(m.cohort_median) }}{% endif %}{{ ' ' ~ m.unit if m.unit }}</div>
+          {% endif %}
+        {% else %}
+          <div class="bm-locked">
+            <i class="fa-solid fa-user-shield"></i>
+            <span>{{ m.note or 'For få virksomheder i branchen til anonym benchmarking endnu (kræver mindst k=' ~ data.k ~ ').' }}</span>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card"><div class="fm-card-body">
+    <div class="bm-empty">
+      <i class="fa-solid fa-chart-simple"></i>
+      <p style="margin:0">Ingen benchmarking-data endnu.</p>
+    </div>
+  </div></div>
+  {% endif %}
+
+</div>
+{% endblock %}

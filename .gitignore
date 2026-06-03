@@ -15,3 +15,7 @@ docs/PLATFORM_ROADMAP.md
 
 # stray run log (contains old creds; untracked, pending history purge)
 run_history.txt
+
+# AI eval run artifacts (regenerated; baseline established in-environment)
+ai_eval/last_run.json
+ai_eval/baseline.json

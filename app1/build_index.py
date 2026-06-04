@@ -6,6 +6,14 @@ import openai
 from dotenv import load_dotenv
 import time
 
+# Make the repo root importable so `from app1.rag import ...` resolves no matter
+# how this script is invoked (python3 app1/build_index.py OR python3 -m app1.build_index).
+# Without this, running it directly puts only app1/ on sys.path and the embedding
+# step crashed with "No module named 'app1'" (which is why the index never built).
+_REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _REPO_ROOT not in sys.path:
+    sys.path.insert(0, _REPO_ROOT)
+
 # Load environment variables (to get OPENAI_API_KEY)
 load_dotenv(os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'))
 
@@ -264,6 +272,19 @@ def generate_embedding(text):
         return None
 
 
+def _augment_one(product):
+    """Summary + structured metadata + embedding context for one product.
+    Runs in a worker thread (openai's module client is thread-safe). Embedding
+    itself is done later in batches. Returns the mutated product dict."""
+    summary = generate_summary(product)
+    product["ai_summary"] = summary
+    metadata = extract_structured_metadata(product)
+    if metadata:
+        product["structured_metadata"] = metadata
+    product["embedding_context"] = build_embedding_context(product, summary)
+    return product
+
+
 def main():
     skip_existing = "--skip-existing" in sys.argv
 
@@ -286,61 +307,63 @@ def main():
                 existing_data[handle] = p
         print(f"  Found {len(existing_data)} existing products with embeddings.")
 
-    print(f"Loaded {len(products)} products. Starting augmentation process...\n")
-    augmented_products = []
-    pending_embeddings = []  # (index_in_augmented, context_string)
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    workers = int(os.environ.get("BUILD_INDEX_WORKERS", "16"))
+    print(f"Loaded {len(products)} products. Augmenting with {workers} concurrent workers...\n")
 
-    for idx, product in enumerate(products, 1):
-        title = product.get("title", "Ukendt Titel")
+    # ── Phase 1: summary + metadata + embedding-context (CONCURRENT) ──
+    # This is the slow part (2 gpt-4o-mini calls/product). Running it one-at-a-time
+    # took ~2.5h; gpt-4o-mini's rate limits comfortably allow ~16 in flight, so we
+    # fan out and keep the original product order via an index-addressed list.
+    augmented_products = [None] * len(products)
+    todo = []
+    for idx, product in enumerate(products):
         handle = product.get("handle", "")
-        print(f"[{idx}/{len(products)}] Processing: {title.encode('ascii', errors='replace').decode()}")
-
-        # Skip if existing and --skip-existing
         if skip_existing and handle in existing_data:
-            print("  -> Skipping (already exists)")
-            augmented_products.append(existing_data[handle])
-            continue
+            augmented_products[idx] = existing_data[handle]
+        else:
+            todo.append(idx)
 
-        # 1. Generate Summary
-        summary = generate_summary(product)
-        product["ai_summary"] = summary
+    done, total = 0, len(todo)
+    with ThreadPoolExecutor(max_workers=workers) as ex:
+        futs = {ex.submit(_augment_one, products[i]): i for i in todo}
+        for fut in as_completed(futs):
+            i = futs[fut]
+            try:
+                augmented_products[i] = fut.result()
+            except Exception as e:  # never lose a product to one bad call
+                p = products[i]
+                p.setdefault("ai_summary", p.get("title", ""))
+                p["embedding_context"] = build_embedding_context(p, p.get("ai_summary", ""))
+                augmented_products[i] = p
+                print(f"  [warn] augment failed for {p.get('handle','?')}: {e}")
+            done += 1
+            if done % 100 == 0 or done == total:
+                print(f"  summaries+metadata: {done}/{total}")
 
-        # 1b. Extract structured metadata (4.2)
-        metadata = extract_structured_metadata(product)
-        if metadata:
-            product["structured_metadata"] = metadata
-            print(f"  -> Metadata: {json.dumps(metadata, ensure_ascii=False)[:120]}")
-
-        # 2. Build rich embedding context (now includes structured metadata)
-        context_string = build_embedding_context(product, summary)
-        product["embedding_context"] = context_string
-
-        # 3. Queue for batch embedding
-        augmented_products.append(product)
-        pending_embeddings.append((len(augmented_products) - 1, context_string))
-
-        # Process embeddings in batches
-        if len(pending_embeddings) >= BATCH_SIZE:
-            print(f"  -> Generating batch of {len(pending_embeddings)} embeddings...")
-            texts = [ctx for _, ctx in pending_embeddings]
-            embeddings = generate_embeddings_batch(texts)
-            for (aug_idx, _), emb in zip(pending_embeddings, embeddings):
-                if emb:
-                    augmented_products[aug_idx]["embedding"] = emb
-            pending_embeddings = []
-            time.sleep(0.5)  # Rate limit courtesy
-
-        # Sleep slightly between summary generations
-        time.sleep(0.3)
-
-    # Process remaining embeddings
-    if pending_embeddings:
-        print(f"\n  -> Generating final batch of {len(pending_embeddings)} embeddings...")
-        texts = [ctx for _, ctx in pending_embeddings]
-        embeddings = generate_embeddings_batch(texts)
-        for (aug_idx, _), emb in zip(pending_embeddings, embeddings):
+    # ── Phase 2: batch embeddings (cheap + fast) with checkpointing ──
+    pending = [
+        (i, augmented_products[i].get("embedding_context", ""))
+        for i in range(len(augmented_products))
+        if augmented_products[i] and not augmented_products[i].get("embedding")
+        and augmented_products[i].get("embedding_context")
+    ]
+    print(f"  embedding {len(pending)} products in batches of {BATCH_SIZE}...")
+    for b in range(0, len(pending), BATCH_SIZE):
+        chunk = pending[b:b + BATCH_SIZE]
+        embeddings = generate_embeddings_batch([ctx for _, ctx in chunk])
+        for (aug_idx, _), emb in zip(chunk, embeddings):
             if emb:
                 augmented_products[aug_idx]["embedding"] = emb
+        # Checkpoint after each batch so a crash loses at most one batch.
+        try:
+            with open(OUTPUT_FILE, "w", encoding="utf-8") as _ckpt:
+                json.dump([p for p in augmented_products if p], _ckpt, ensure_ascii=False)
+        except Exception as _ce:
+            print(f"  -> Checkpoint save failed (continuing): {_ce}")
+        print(f"  embedded {min(b + BATCH_SIZE, len(pending))}/{len(pending)}")
+
+    augmented_products = [p for p in augmented_products if p]
 
     # Save outputs
     with open(OUTPUT_FILE, "w", encoding="utf-8") as f:

@@ -267,18 +267,27 @@ def get_employee_tool_selection(
     if _has_any(query, ("budget", "råd", "raad", "resterende midler")):
         names.add("get_department_budget")
         forced_tool = "get_department_budget" if company_id else forced_tool
-    if _has_any(query, ("kompetencegab", "skill gap", "skills gap", "hvad skal jeg lære", "laere")):
+    if _has_any(query, ("kompetencegab", "skill gap", "skills gap", "hvad skal jeg lære", "laere",
+                        "hvad skal jeg lære for", "kompetencer mangler", "mangler jeg", "mangler kompetence",
+                        "for at blive", "for at arbejde med", "hvilke kompetencer", "blive bedre til")):
         names.add("analyze_skill_gaps")
+        # Upskilling/career questions ("hvad skal jeg lære for at blive X", "hvilke
+        # kompetencer mangler jeg for Y") are fundamentally course-discovery: the user
+        # wants concrete courses for the target topic, not just a gap analysis (which
+        # is often empty without profile data). Always offer the catalog search too.
+        names.add("catalog_search")
     if logged_in:
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, ("profil", "cv", "kompetence", "erfaring", "uddannelse")):
             names.update({"get_user_profile", "update_user_profile", "request_user_input"})
         if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt")):
-            names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path"})
+            # +catalog_search so a learning path is built from REAL courses on the topic
+            # (a path without surfaced courses isn't actionable).
+            names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path", "catalog_search"})
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, (
                 "mål", "maal", "udviklingsplan", "udviklingsmål", "udviklingsmaal", "blive bedre til",
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",
                 "lære at", "laere at", "sæt et mål", "saet et maal", "mit mål", "mine mål")):
-            names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile"})
+            names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile", "catalog_search"})
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
 

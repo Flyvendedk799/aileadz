@@ -20,7 +20,24 @@ PythonAnywhere **Scheduled Task** that POSTs the token-protected drain endpoint.
   (`enterprise_api/__init__.py:1908-1911`).
 - **Response:** `200 {"status":"ok","counts":{...}}` on success.
 
-## Setup
+## Option A (recommended): the `drain_worker.py` script — no token, no HTTP
+
+`drain_worker.py` calls `event_bus.drain_outbox()` directly in the app context, so
+there is no token to manage and no public endpoint to secure.
+
+- **Scheduled Task** (single-shot, runs then exits):
+  ```
+  cd ~/aileadz && python3 drain_worker.py --limit 200
+  ```
+- **Always-on Task** (paid; drains continuously, near-real-time):
+  ```
+  cd ~/aileadz && python3 drain_worker.py --loop --interval 60
+  ```
+  Use your virtualenv python if you have one (`~/.virtualenvs/<env>/bin/python3`).
+  DB connection comes from `run.py`'s config, so no extra env is needed. This is the
+  simplest setup — skip Option B unless you specifically want the HTTP endpoint.
+
+## Option B: the token-protected HTTP endpoint
 
 ### 1. Set the token env var
 

@@ -622,6 +622,156 @@ OPENAI_TOOLS.extend([
 ])
 
 
+# ── Course-journey tools (scoped to the logged-in user) ──
+OPENAI_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "get_my_course_status",
+            "description": (
+                "Vis status på den indloggede brugers egne kurser: status, gennemførelse, startdato, "
+                "frist (completion_deadline), pris og titel - med dage tilbage og et 'forsinket'-flag. "
+                "Brug når brugeren spørger 'hvor er mit kursus', 'er jeg forsinket', 'hvad mangler jeg', "
+                "'hvornår starter mit kursus', eller om deadlines/frister. Kun brugerens egne ordrer."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_negotiated_discount",
+            "description": (
+                "Slå brugerens VIRKSOMHEDS aktive aftalepris/firma-rabat op på et kursus hos en udbyder "
+                "(company_supplier_agreements). Returnerer original pris, rabat, slutpris og besparelse. "
+                "Brug ved 'hvad koster det med rabat', 'aftalepris', 'firma-rabat'. Scoped til brugerens virksomhed."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_handle": {"type": "string", "description": "Kursets handle (for at finde pris + udbyder)."},
+                    "vendor": {"type": "string", "description": "Udbyderens navn, hvis handle ikke kendes."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "check_course_prerequisites",
+            "description": (
+                "Hent et kursus' forudsætninger, sværhedsgrad, varighed (dage), certificering og målgruppe "
+                "fra katalogets strukturerede metadata. Brug ved 'forudsætninger', 'krav', 'hvad kræver dette', "
+                "'sværhedsgrad', 'er jeg klar til'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "handle": {"type": "string", "description": "Kursets eksakte handle."},
+                    "title": {"type": "string", "description": "Kursets titel, hvis handle ikke kendes."},
+                },
+                "required": ["handle"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_course_sequel",
+            "description": (
+                "Foreslå naturlige NÆSTE kurser efter et givet kursus, baseret på emne/certificering og næste "
+                "sværhedsgrad fra strukturerede metadata. Brug ved 'næste kursus', 'hvad nu', 'bygge videre', "
+                "'hvad efter dette'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "handle": {"type": "string", "description": "Det gennemførte/aktuelle kursus' handle."},
+                    "title": {"type": "string", "description": "Kursets titel, hvis handle ikke kendes."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "find_certification_path",
+            "description": (
+                "Find katalogkurser hvis certificering eller tags matcher en ønsket certificering (fx PMP, ITIL, "
+                "PRINCE2), ordnet efter sværhedsgrad, så de danner en vej mod certificeringen. Brug ved "
+                "'blive certificeret', 'certificering', 'cert', 'vej til PMP/ITIL/PRINCE2'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "certification": {"type": "string", "description": "Mål-certificering, fx 'PMP', 'ITIL', 'PRINCE2'."},
+                },
+                "required": ["certification"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "track_goal_progress",
+            "description": (
+                "Vis den indloggede brugers fremgang mod sine udviklingsmål (user_learning_goals) holdt op mod "
+                "gennemførte kurser - hvad er matchet og hvad mangler. Brug ved 'hvor langt er jeg', 'mit mål', "
+                "'mål-progress', 'mangler jeg'."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "add_to_calendar",
+            "description": (
+                "Lav en kalenderaftale (.ics) for et booket kursus, så brugeren kan tilføje det til Outlook/kalender. "
+                "Brug ved 'tilføj til kalender', 'kalender', '.ics', 'outlook'. Returnerer en .ics-fil eller "
+                "begivenhedsdetaljer som tekst."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string", "description": "Brugerens ordre-id for kurset, hvis kendt."},
+                    "handle": {"type": "string", "description": "Kursets handle (alternativ til order_id)."},
+                    "date": {"type": "string", "description": "Kursusdato (dansk eller ISO), hvis ikke fra ordren."},
+                    "location": {"type": "string", "description": "Lokation/by for kurset."},
+                    "title": {"type": "string", "description": "Kursustitel, hvis hverken order_id eller handle gives."},
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "mark_course_complete",
+            "description": (
+                "MUTATION: Markér et af brugerens kurser som gennemført. Kun når brugeren bekræfter tydeligt med 'ja'. "
+                "Opdaterer ordren, tilføjer kurset til brugerens gennemførte kurser og foreslår et næste kursus. "
+                "Brug ved 'jeg har gennemført', 'marker som færdig', 'fuldført kurset'. Kun brugerens egne kurser."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "handle": {"type": "string", "description": "Kursets handle."},
+                    "order_id": {"type": "string", "description": "Ordre-id for kurset (alternativ til handle)."},
+                    "confirm": {
+                        "type": "string",
+                        "description": "Brugerens eksplicitte danske bekræftelse, fx 'ja' eller 'bekræft'. Kræves for at gennemføre.",
+                    },
+                },
+                "required": ["confirm"],
+            },
+        },
+    },
+])
+
+
 # ── Tool Execution ──
 
 # Module-level state for contextual search (set by agent before tool execution)
@@ -2385,6 +2535,815 @@ def _execute_request_user_input(args, username):
     })
 
 
+# ── Course-journey tools (status, prerequisites, sequels, certification, goals, calendar) ──
+
+# Ordering for "next difficulty" reasoning in sequels / certification paths.
+_DIFFICULTY_ORDER = {"beginner": 0, "begynder": 0, "grundlæggende": 0,
+                     "intermediate": 1, "mellem": 1, "mellemniveau": 1,
+                     "advanced": 2, "avanceret": 2, "ekspert": 3}
+
+# Danish affirmatives accepted as an explicit confirmation for mutations.
+_DANISH_YES = {"ja", "ja tak", "jatak", "bekræft", "bekraeft", "ja bekræft",
+               "godkend", "fuldfør", "fuldfoer", "marker", "marker som færdig",
+               "gør det", "goer det", "ok", "okay", "yes", "confirm", "true"}
+
+
+def _is_danish_yes(value):
+    """True when the model passed an explicit Danish/known affirmative confirmation."""
+    if value is True:
+        return True
+    if not value:
+        return False
+    return str(value).strip().lower().strip(".!") in _DANISH_YES
+
+
+def _augmented_by_handle():
+    """Map handle -> augmented product dict (guarded; empty on failure)."""
+    out = {}
+    try:
+        for p in load_augmented_products() or []:
+            h = p.get("handle")
+            if h:
+                out[h] = p
+    except Exception:
+        pass
+    return out
+
+
+def _find_augmented_product(handle="", title=""):
+    """Resolve an augmented product by exact handle, then by case-insensitive title."""
+    handle = (handle or "").strip()
+    title = (title or "").strip()
+    try:
+        products = load_augmented_products() or []
+    except Exception:
+        products = []
+    if handle:
+        for p in products:
+            if p.get("handle") == handle:
+                return p
+    if title:
+        tl = title.lower()
+        for p in products:
+            if (p.get("title") or "").strip().lower() == tl:
+                return p
+        for p in products:
+            if tl in (p.get("title") or "").strip().lower():
+                return p
+    return None
+
+
+def _meta_topic_terms(meta, product):
+    """Build a set of lowercase topic/cert/tag terms describing a course."""
+    terms = set()
+    if not isinstance(meta, dict):
+        meta = {}
+    if meta.get("primary_topic"):
+        terms.add(str(meta["primary_topic"]).strip().lower())
+    if meta.get("certification"):
+        terms.add(str(meta["certification"]).strip().lower())
+    tags = product.get("tags") if isinstance(product, dict) else None
+    if isinstance(tags, str):
+        tags = [t.strip() for t in tags.split(",")]
+    for t in (tags or []):
+        tl = str(t).strip().lower()
+        if tl and tl not in _EXCLUDED_TAGS and not any(tl.startswith(p) for p in _EXCLUDED_TAG_PREFIXES):
+            terms.add(tl)
+    return {t for t in terms if t}
+
+
+def _course_summary_line(product, meta):
+    """Compact display dict for a single course in journey results."""
+    meta = meta or {}
+    variants = product.get("variants", []) if isinstance(product, dict) else []
+    out = {
+        "title": product.get("title"),
+        "handle": product.get("handle"),
+        "vendor": product.get("vendor"),
+        "price": _normalize_price(variants[0].get("price") if variants else None),
+    }
+    if meta.get("difficulty"):
+        out["difficulty"] = meta["difficulty"]
+    if meta.get("certification"):
+        out["certification"] = meta["certification"]
+    if meta.get("duration_days"):
+        out["duration_days"] = meta["duration_days"]
+    return out
+
+
+def _execute_get_my_course_status(args, username):
+    """Tool 1: The logged-in user's course_orders with days_left + overdue flag.
+
+    Scoped to the session user (username) and company. Read-only.
+    """
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind for at se dine kurser."}, ensure_ascii=False)
+    if not has_request_context():
+        return json.dumps({"status": "error", "message": "Kan ikke hente kursusstatus uden for en session."}, ensure_ascii=False)
+
+    company_id = flask_session.get("company_id")
+    user_id = flask_session.get("user_id")
+    try:
+        import db_compat  # noqa: F401
+        from db_compat import refresh_flask_mysql_connection
+        import MySQLdb.cursors
+        try:
+            refresh_flask_mysql_connection(app.mysql)
+        except Exception:
+            pass
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        # Scope to the session user; prefer user_id when present, else username.
+        where = "username = %s"
+        params = [username]
+        if user_id:
+            where = "(user_id = %s OR username = %s)"
+            params = [user_id, username]
+        if company_id:
+            where += " AND company_id = %s"
+            params.append(company_id)
+        cur.execute(
+            f"""
+            SELECT order_id, product_handle, product_title, status, completion_status,
+                   price, started_at, completion_deadline, completion_date
+            FROM course_orders
+            WHERE {where}
+            ORDER BY (completion_deadline IS NULL), completion_deadline ASC, created_at DESC
+            LIMIT 50
+            """,
+            tuple(params),
+        )
+        rows = cur.fetchall()
+        cur.close()
+    except Exception as e:
+        print(f"[get_my_course_status] DB error: {e}")
+        return json.dumps({"status": "error", "message": "Kunne ikke hente dine kurser lige nu."}, ensure_ascii=False)
+
+    today = datetime.date.today()
+    courses = []
+    overdue_count = 0
+    for r in rows:
+        completion_status = (r.get("completion_status") or "").lower()
+        is_done = completion_status == "completed"
+        deadline = r.get("completion_deadline")
+        days_left = None
+        overdue = False
+        if deadline and not is_done:
+            try:
+                d = deadline.date() if hasattr(deadline, "date") else datetime.date.fromisoformat(str(deadline)[:10])
+                days_left = (d - today).days
+                overdue = days_left < 0
+            except Exception:
+                days_left = None
+        if overdue:
+            overdue_count += 1
+        courses.append({
+            "order_id": r.get("order_id"),
+            "product_handle": r.get("product_handle"),
+            "product_title": r.get("product_title"),
+            "status": r.get("status"),
+            "completion_status": r.get("completion_status") or "ikke_startet",
+            "price": _normalize_price(r.get("price")),
+            "started_at": str(r.get("started_at"))[:10] if r.get("started_at") else None,
+            "completion_deadline": str(deadline)[:10] if deadline else None,
+            "completion_date": str(r.get("completion_date"))[:10] if r.get("completion_date") else None,
+            "days_left": days_left,
+            "overdue": overdue,
+            "completed": is_done,
+        })
+
+    active = [c for c in courses if not c["completed"]]
+    if not courses:
+        message = "Du har ingen kurser registreret endnu."
+    elif overdue_count:
+        message = f"Du har {overdue_count} forsinket kursus/kurser ud af {len(active)} aktive."
+    elif active:
+        message = f"Du har {len(active)} aktive kursus/kurser - ingen er forsinket."
+    else:
+        message = "Alle dine kurser er gennemført."
+
+    return json.dumps({
+        "status": "success",
+        "count": len(courses),
+        "active_count": len(active),
+        "overdue_count": overdue_count,
+        "courses": courses,
+        "message": message,
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_get_negotiated_discount(args, username):
+    """Tool 2: The user's COMPANY active negotiated discount on a course.
+
+    Scoped to the session company_id. Read-only.
+    """
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not has_request_context():
+        return json.dumps({"status": "error", "message": "Kan ikke slå rabat op uden for en session."}, ensure_ascii=False)
+    company_id = flask_session.get("company_id")
+    if not company_id:
+        return json.dumps({"status": "error", "message": "Aftalepriser er kun for virksomhedsbrugere."}, ensure_ascii=False)
+
+    handle = (args.get("product_handle") or "").strip()
+    vendor = (args.get("vendor") or "").strip()
+
+    product = _find_augmented_product(handle=handle) if handle else None
+    if product and not vendor:
+        vendor = product.get("vendor") or ""
+    variants = product.get("variants", []) if product else []
+    original_price_raw = variants[0].get("price") if variants else None
+
+    if not vendor:
+        return json.dumps({"status": "needs_info", "message": "Angiv kurset eller udbyderen, så jeg kan slå jeres aftalepris op."}, ensure_ascii=False)
+
+    try:
+        import db_compat  # noqa: F401
+        from db_compat import refresh_flask_mysql_connection
+        import MySQLdb.cursors
+        try:
+            refresh_flask_mysql_connection(app.mysql)
+        except Exception:
+            pass
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT vendor_name, discount_type, discount_value, agreement_name,
+                   valid_from, valid_until, min_participants
+            FROM company_supplier_agreements
+            WHERE company_id = %s AND vendor_name = %s AND is_active = 1
+              AND (valid_from IS NULL OR valid_from <= CURDATE())
+              AND (valid_until IS NULL OR valid_until >= CURDATE())
+            LIMIT 1
+            """,
+            (company_id, vendor),
+        )
+        row = cur.fetchone()
+        cur.close()
+    except Exception as e:
+        print(f"[get_negotiated_discount] DB error: {e}")
+        return json.dumps({"status": "error", "message": "Kunne ikke slå jeres aftalepris op lige nu."}, ensure_ascii=False)
+
+    if not row:
+        return json.dumps({
+            "status": "no_agreement",
+            "vendor": vendor,
+            "message": f"Jeres virksomhed har ingen aktiv aftalepris hos {vendor}.",
+        }, ensure_ascii=False)
+
+    discounted, original, agreement_name = (None, None, row.get("agreement_name", ""))
+    try:
+        if original_price_raw is not None:
+            o = float(original_price_raw)
+            if o > 0:
+                dtype = row.get("discount_type", "percentage")
+                dvalue = float(row.get("discount_value", 0) or 0)
+                if dtype == "percentage":
+                    discounted = round(o * (1 - dvalue / 100), 2)
+                elif dtype == "fixed_amount":
+                    discounted = round(max(0, o - dvalue), 2)
+                elif dtype == "fixed_price":
+                    discounted = round(dvalue, 2)
+                original = o
+    except (ValueError, TypeError):
+        discounted = None
+
+    result = {
+        "status": "success",
+        "vendor": vendor,
+        "agreement_name": agreement_name,
+        "discount_type": row.get("discount_type"),
+        "discount_value": float(row.get("discount_value", 0) or 0),
+        "valid_until": str(row.get("valid_until"))[:10] if row.get("valid_until") else None,
+        "min_participants": row.get("min_participants"),
+    }
+    if product:
+        result["product_title"] = product.get("title")
+        result["product_handle"] = product.get("handle")
+    if discounted is not None and original is not None:
+        savings = round(original - discounted, 2)
+        result.update({
+            "original_price": _normalize_price(original),
+            "final_price": _normalize_price(discounted),
+            "savings": _normalize_price(savings),
+            "discount": _normalize_price(savings),
+            "message": f"Med jeres aftale hos {vendor} betaler I {_normalize_price(discounted)} (sparer {_normalize_price(savings)}).",
+        })
+    else:
+        dv = result["discount_value"]
+        dt = result["discount_type"]
+        human = f"{dv:.0f}%" if dt == "percentage" else _normalize_price(dv)
+        result["message"] = f"Jeres aftale hos {vendor} giver {human} rabat. Angiv kurset for at se den endelige pris."
+    return json.dumps(result, ensure_ascii=False, default=str)
+
+
+def _execute_check_course_prerequisites(args):
+    """Tool 3: Prerequisites + difficulty/duration/cert/audience from the catalog."""
+    handle = (args.get("handle") or "").strip()
+    if not handle:
+        return json.dumps({"status": "needs_info", "message": "Angiv kursets handle."}, ensure_ascii=False)
+    product = _find_augmented_product(handle=handle, title=args.get("title", ""))
+    if not product:
+        return json.dumps({"status": "not_found", "message": f"Kunne ikke finde kursus '{handle}'."}, ensure_ascii=False)
+    meta = product.get("structured_metadata", {}) or {}
+    prerequisites = meta.get("prerequisites") or []
+    if isinstance(prerequisites, str):
+        prerequisites = [prerequisites]
+    target_audience = meta.get("target_audience") or []
+    if isinstance(target_audience, str):
+        target_audience = [target_audience]
+    has_prereq = bool(prerequisites)
+    return json.dumps({
+        "status": "success",
+        "title": product.get("title"),
+        "handle": product.get("handle"),
+        "vendor": product.get("vendor"),
+        "prerequisites": prerequisites,
+        "has_prerequisites": has_prereq,
+        "difficulty": meta.get("difficulty") or "",
+        "duration_days": meta.get("duration_days"),
+        "certification": meta.get("certification") or "",
+        "target_audience": target_audience,
+        "message": (
+            f"{product.get('title')} kræver: " + "; ".join(prerequisites)
+            if has_prereq else
+            f"{product.get('title')} har ingen formelle forudsætninger."
+        ),
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_get_course_sequel(args):
+    """Tool 4: Suggest natural NEXT courses after a given course.
+
+    Matches catalog courses whose topic/cert overlaps this course AND that are at
+    the same-or-next difficulty level. Read-only.
+    """
+    product = _find_augmented_product(handle=args.get("handle", ""), title=args.get("title", ""))
+    if not product:
+        return json.dumps({"status": "not_found", "message": "Kunne ikke finde det kursus, du vil bygge videre på."}, ensure_ascii=False)
+    meta = product.get("structured_metadata", {}) or {}
+    src_terms = _meta_topic_terms(meta, product)
+    src_diff = _DIFFICULTY_ORDER.get((meta.get("difficulty") or "").lower(), 1)
+    src_handle = product.get("handle")
+    src_title_l = (product.get("title") or "").strip().lower()
+
+    try:
+        candidates = load_augmented_products() or []
+    except Exception:
+        candidates = []
+
+    scored = []
+    for p in candidates:
+        if p.get("handle") == src_handle:
+            continue
+        if (p.get("title") or "").strip().lower() == src_title_l:
+            continue
+        pm = p.get("structured_metadata", {}) or {}
+        p_terms = _meta_topic_terms(pm, p)
+        overlap = src_terms & p_terms
+        if not overlap:
+            continue
+        p_diff = _DIFFICULTY_ORDER.get((pm.get("difficulty") or "").lower(), 1)
+        # Natural next: same level or one step up. Skip easier courses.
+        if p_diff < src_diff:
+            continue
+        score = len(overlap) * 10
+        if p_diff == src_diff + 1:
+            score += 5  # prefer the genuine "next step up"
+        elif p_diff == src_diff:
+            score += 2
+        scored.append((score, p_diff, p, pm))
+
+    scored.sort(key=lambda t: (t[0], -t[1]), reverse=True)
+    sequels = [_course_summary_line(p, pm) for _, _, p, pm in scored[:5]]
+
+    if not sequels:
+        return json.dumps({
+            "status": "no_results",
+            "title": product.get("title"),
+            "message": f"Jeg fandt ikke et oplagt næste kursus efter {product.get('title')}.",
+        }, ensure_ascii=False, default=str)
+
+    return _model_tool_json(
+        status="success",
+        after_course=product.get("title"),
+        after_handle=src_handle,
+        count=len(sequels),
+        sequels=sequels,
+        message=f"Naturlige næste skridt efter {product.get('title')}.",
+    )
+
+
+def _execute_find_certification_path(args):
+    """Tool 5: Ordered course list to reach a target certification.
+
+    Matches catalog courses whose structured_metadata.certification or tags mention
+    the target cert, ordered by difficulty (foundation -> advanced). Read-only.
+    """
+    cert = (args.get("certification") or "").strip()
+    if not cert:
+        return json.dumps({"status": "needs_info", "message": "Hvilken certificering vil du opnå (fx PMP, ITIL, PRINCE2)?"}, ensure_ascii=False)
+    cert_l = cert.lower()
+    try:
+        products = load_augmented_products() or []
+    except Exception:
+        products = []
+
+    matches = []
+    for p in products:
+        pm = p.get("structured_metadata", {}) or {}
+        cert_field = (pm.get("certification") or "").lower()
+        primary_topic = (pm.get("primary_topic") or "").lower()
+        title_l = (p.get("title") or "").lower()
+        tags = p.get("tags")
+        if isinstance(tags, str):
+            tags = [t.strip().lower() for t in tags.split(",")]
+        else:
+            tags = [str(t).strip().lower() for t in (tags or [])]
+        hit = (
+            cert_l in cert_field
+            or cert_l in primary_topic
+            or cert_l in title_l
+            or any(cert_l in t for t in tags)
+        )
+        if not hit:
+            continue
+        diff = _DIFFICULTY_ORDER.get((pm.get("difficulty") or "").lower(), 1)
+        matches.append((diff, p, pm))
+
+    if not matches:
+        return json.dumps({
+            "status": "no_results",
+            "certification": cert,
+            "message": f"Jeg fandt ingen kurser i kataloget der fører mod '{cert}'.",
+        }, ensure_ascii=False, default=str)
+
+    # De-duplicate by handle, keep difficulty order then a stable title sort.
+    seen = set()
+    matches.sort(key=lambda t: (t[0], (t[1].get("title") or "")))
+    path = []
+    for diff, p, pm in matches:
+        h = p.get("handle")
+        if h in seen:
+            continue
+        seen.add(h)
+        step = _course_summary_line(p, pm)
+        step["step"] = len(path) + 1
+        path.append(step)
+
+    return _model_tool_json(
+        status="success",
+        certification=cert,
+        count=len(path),
+        path=path[:8],
+        message=f"Forslag til vej mod {cert} ({len(path[:8])} trin).",
+    )
+
+
+def _execute_track_goal_progress(args, username):
+    """Tool 6: Progress toward the user's learning goals vs completed courses.
+
+    Scoped to the session user. Read-only.
+    """
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind for at se dine mål."}, ensure_ascii=False)
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        goals = db.get_learning_goals(username) or []
+        completed = db.get_completed_courses(username) or []
+    except Exception as e:
+        print(f"[track_goal_progress] DB error: {e}")
+        return json.dumps({"status": "error", "message": "Kunne ikke hente dine mål lige nu."}, ensure_ascii=False)
+
+    completed_titles = [(c.get("course_title") or "").strip() for c in completed if c.get("course_title")]
+    completed_lc = [t.lower() for t in completed_titles]
+    status_label = {"aktiv": "aktiv", "fuldfoert": "fuldført", "paa_pause": "på pause"}
+
+    goal_rows = []
+    for g in goals:
+        title = (g.get("title") or "").strip()
+        desc = (g.get("description") or "").strip()
+        # Heuristic match: a completed course supports a goal when a meaningful word
+        # from the goal title appears in the course title (or vice versa).
+        keywords = [w for w in re.split(r"[\s,/]+", (title + " " + desc).lower()) if len(w) >= 4]
+        matched = []
+        for ct, ctl in zip(completed_titles, completed_lc):
+            if any(kw in ctl for kw in keywords) or any(ctl_word in title.lower() for ctl_word in ctl.split() if len(ctl_word) >= 4):
+                matched.append(ct)
+        matched = list(dict.fromkeys(matched))
+        is_done = (g.get("status") == "fuldfoert")
+        if is_done:
+            pct = 100
+        elif matched:
+            pct = min(90, 30 * len(matched))  # progress signalled, not "done" until marked
+        else:
+            pct = 0
+        goal_rows.append({
+            "goal_id": g.get("id"),
+            "title": title,
+            "status": status_label.get(g.get("status"), g.get("status")),
+            "target_date": g.get("target_date") or "",
+            "matched_courses": matched,
+            "matched_count": len(matched),
+            "progress_pct": pct,
+            "remaining_hint": (
+                "Måske gennemført - marker som færdig eller find næste kursus." if matched and not is_done
+                else ("Opnået." if is_done else "Ingen relevante kurser gennemført endnu.")
+            ),
+        })
+
+    if not goal_rows:
+        message = "Du har ingen udviklingsmål endnu. Opret et mål, så kan jeg følge din fremgang."
+    else:
+        done = sum(1 for r in goal_rows if r["progress_pct"] >= 100)
+        message = f"Du har {len(goal_rows)} mål - {done} er nået, og du har gennemført {len(completed_titles)} kurser."
+
+    return json.dumps({
+        "status": "success",
+        "goal_count": len(goal_rows),
+        "completed_course_count": len(completed_titles),
+        "completed_courses": completed_titles[:20],
+        "goals": goal_rows,
+        "message": message,
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_add_to_calendar(args, username):
+    """Tool 7: Build an .ics entry for a booked course. Read-only (just generates).
+
+    Resolves a booked course either from a course_orders row (order_id, session user)
+    or from explicit handle+date+location args, then builds an .ics via the guarded
+    calendar_service module. Falls back to plain event fields if the module is absent.
+    """
+    from flask import session as flask_session, current_app as app, has_request_context
+
+    title = ""
+    date_str = (args.get("date") or "").strip()
+    location = (args.get("location") or "").strip()
+    handle = (args.get("handle") or "").strip()
+    order_id = (args.get("order_id") or "").strip()
+    url = ""
+
+    # Path A: resolve from the user's own order row.
+    if order_id and has_request_context() and username:
+        try:
+            import db_compat  # noqa: F401
+            from db_compat import refresh_flask_mysql_connection
+            import MySQLdb.cursors
+            try:
+                refresh_flask_mysql_connection(app.mysql)
+            except Exception:
+                pass
+            company_id = flask_session.get("company_id")
+            user_id = flask_session.get("user_id")
+            cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            where = "order_id = %s AND (username = %s"
+            params = [order_id, username]
+            if user_id:
+                where += " OR user_id = %s"
+                params.append(user_id)
+            where += ")"
+            if company_id:
+                where += " AND company_id = %s"
+                params.append(company_id)
+            cur.execute(
+                f"""
+                SELECT product_handle, product_title, variant_date, variant_location
+                FROM course_orders WHERE {where} LIMIT 1
+                """,
+                tuple(params),
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row:
+                title = row.get("product_title") or title
+                handle = handle or (row.get("product_handle") or "")
+                date_str = date_str or (row.get("variant_date") or "")
+                location = location or (row.get("variant_location") or "")
+        except Exception as e:
+            print(f"[add_to_calendar] DB lookup error: {e}")
+
+    # Path B / enrich: resolve title + url from the catalog by handle.
+    if handle:
+        product = _find_augmented_product(handle=handle)
+        if product:
+            title = title or product.get("title") or ""
+            url = f"/products/{handle}"
+            if not date_str:
+                variants = product.get("variants", [])
+                date_str = next((v.get("option2") for v in variants if v.get("option2")), "") or ""
+            if not location:
+                variants = product.get("variants", [])
+                location = next((v.get("option1") for v in variants if v.get("option1")), "") or ""
+
+    if not title:
+        title = (args.get("title") or "").strip()
+    if not title:
+        return json.dumps({"status": "needs_info", "message": "Angiv et kursus (order_id eller handle) jeg kan lægge i kalenderen."}, ensure_ascii=False)
+    if not date_str:
+        return json.dumps({"status": "needs_info", "message": "Jeg mangler en dato for at kunne lave kalenderaftalen."}, ensure_ascii=False)
+
+    event = {
+        "title": title,
+        "date": date_str,
+        "location": location,
+        "url": url,
+    }
+
+    # Guarded import: calendar_service is built by the cross-channel agent.
+    ics = ""
+    try:
+        import calendar_service  # noqa: F401
+        ics = calendar_service.build_ics(
+            title=title,
+            start=date_str,
+            location=location,
+            description=f"Tilmeldt kursus: {title}",
+            url=url,
+        ) or ""
+    except Exception as e:
+        print(f"[add_to_calendar] calendar_service unavailable: {e}")
+        ics = ""
+
+    if ics:
+        safe_name = re.sub(r"[^A-Za-z0-9_-]+", "_", title)[:40] or "kursus"
+        return json.dumps({
+            "status": "success",
+            "has_ics": True,
+            "ics": ics,
+            "filename": f"{safe_name}.ics",
+            "event": event,
+            "message": f"Kalenderaftale klar for {title} ({date_str}). Du kan downloade .ics-filen.",
+        }, ensure_ascii=False, default=str)
+
+    # Fallback: no ics module / bad input -> return event fields as text.
+    return json.dumps({
+        "status": "success",
+        "has_ics": False,
+        "event": event,
+        "message": (
+            f"Kursus: {title}\nDato: {date_str}"
+            + (f"\nSted: {location}" if location else "")
+            + "\n(Kalenderfil kunne ikke genereres - her er detaljerne i stedet.)"
+        ),
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_mark_course_complete(args, username):
+    """Tool 8 (MUTATION): Mark a booked course as completed for the session user.
+
+    Requires an explicit Danish confirmation. Updates course_orders.completion_status
+    + completion_date, adds the course to user_completed_courses, commits once, then
+    suggests a next course. Scoped to the session user.
+    """
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind for at markere et kursus som gennemført."}, ensure_ascii=False)
+    if not has_request_context():
+        return json.dumps({"status": "error", "message": "Kan ikke opdatere kursus uden for en session."}, ensure_ascii=False)
+
+    if not _is_danish_yes(args.get("confirm")):
+        return json.dumps({
+            "status": "needs_confirmation",
+            "creates_change": True,
+            "message": "Bekræft venligst med et tydeligt 'ja', før jeg markerer kurset som gennemført.",
+        }, ensure_ascii=False)
+
+    handle = (args.get("handle") or "").strip()
+    order_id = (args.get("order_id") or "").strip()
+    if not handle and not order_id:
+        return json.dumps({"status": "needs_info", "message": "Angiv hvilket kursus (handle eller order_id) du har gennemført."}, ensure_ascii=False)
+
+    company_id = flask_session.get("company_id")
+    user_id = flask_session.get("user_id")
+
+    try:
+        import db_compat  # noqa: F401
+        from db_compat import refresh_flask_mysql_connection
+        import MySQLdb.cursors
+        try:
+            refresh_flask_mysql_connection(app.mysql)
+        except Exception:
+            pass
+        conn = app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+
+        # Locate the user's own matching order (never cross-user/cross-tenant).
+        where = "(username = %s"
+        params = [username]
+        if user_id:
+            where += " OR user_id = %s"
+            params.append(user_id)
+        where += ")"
+        if company_id:
+            where += " AND company_id = %s"
+            params.append(company_id)
+        if order_id:
+            where += " AND order_id = %s"
+            params.append(order_id)
+        else:
+            where += " AND product_handle = %s"
+            params.append(handle)
+        cur.execute(
+            f"""
+            SELECT order_id, product_handle, product_title, completion_status
+            FROM course_orders WHERE {where}
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            tuple(params),
+        )
+        row = cur.fetchone()
+        if not row:
+            cur.close()
+            return json.dumps({"status": "not_found", "message": "Jeg fandt ikke et tilmeldt kursus, der matcher det."}, ensure_ascii=False)
+
+        if (row.get("completion_status") or "").lower() == "completed":
+            cur.close()
+            return json.dumps({
+                "status": "already_completed",
+                "product_title": row.get("product_title"),
+                "message": f"{row.get('product_title')} er allerede markeret som gennemført.",
+            }, ensure_ascii=False)
+
+        cur.execute(
+            """
+            UPDATE course_orders
+            SET completion_status = 'completed', completion_date = NOW()
+            WHERE order_id = %s
+            """,
+            (row.get("order_id"),),
+        )
+        cur.close()
+        conn.commit()
+    except Exception as e:
+        print(f"[mark_course_complete] DB error: {e}")
+        try:
+            app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return json.dumps({"status": "error", "message": "Kunne ikke markere kurset som gennemført lige nu."}, ensure_ascii=False)
+
+    course_title = row.get("product_title") or ""
+    course_handle = row.get("product_handle") or handle
+
+    # Add to the user's completed-courses profile (best-effort; don't fail the mutation).
+    product = _find_augmented_product(handle=course_handle, title=course_title)
+    vendor = product.get("vendor", "") if product else ""
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        if course_title:
+            db.add_completed_course(
+                username, course_title, course_handle=course_handle,
+                vendor=vendor, completed_date=datetime.date.today().isoformat(),
+            )
+    except Exception as e:
+        print(f"[mark_course_complete] profile add warning: {e}")
+
+    # Suggest a natural next course.
+    next_course = None
+    if product:
+        try:
+            meta = product.get("structured_metadata", {}) or {}
+            src_terms = _meta_topic_terms(meta, product)
+            src_diff = _DIFFICULTY_ORDER.get((meta.get("difficulty") or "").lower(), 1)
+            best = None
+            best_score = 0
+            for p in (load_augmented_products() or []):
+                if p.get("handle") == course_handle:
+                    continue
+                pm = p.get("structured_metadata", {}) or {}
+                overlap = src_terms & _meta_topic_terms(pm, p)
+                if not overlap:
+                    continue
+                p_diff = _DIFFICULTY_ORDER.get((pm.get("difficulty") or "").lower(), 1)
+                if p_diff < src_diff:
+                    continue
+                score = len(overlap) * 10 + (5 if p_diff == src_diff + 1 else 0)
+                if score > best_score:
+                    best_score, best = score, (p, pm)
+            if best:
+                next_course = _course_summary_line(best[0], best[1])
+        except Exception:
+            next_course = None
+
+    message = f"Godt gået! {course_title} er nu markeret som gennemført."
+    if next_course:
+        message += f" Et oplagt næste skridt kunne være {next_course['title']}."
+
+    result = {
+        "status": "success",
+        "completed": True,
+        "order_id": row.get("order_id"),
+        "product_title": course_title,
+        "product_handle": course_handle,
+        "message": message,
+    }
+    if next_course:
+        result["suggested_next"] = next_course
+    return json.dumps(result, ensure_ascii=False, default=str)
+
+
 def _execute_create_order(args):
     """Create a course order from chatbot conversation."""
     from flask import session as flask_session
@@ -2702,6 +3661,22 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_get_learning_goals(args, username)
         elif function_name == "update_learning_goal":
             return _execute_update_learning_goal(args, username)
+        elif function_name == "get_my_course_status":
+            return _execute_get_my_course_status(args, username)
+        elif function_name == "get_negotiated_discount":
+            return _execute_get_negotiated_discount(args, username)
+        elif function_name == "check_course_prerequisites":
+            return _execute_check_course_prerequisites(args)
+        elif function_name == "get_course_sequel":
+            return _execute_get_course_sequel(args)
+        elif function_name == "find_certification_path":
+            return _execute_find_certification_path(args)
+        elif function_name == "track_goal_progress":
+            return _execute_track_goal_progress(args, username)
+        elif function_name == "add_to_calendar":
+            return _execute_add_to_calendar(args, username)
+        elif function_name == "mark_course_complete":
+            return _execute_mark_course_complete(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

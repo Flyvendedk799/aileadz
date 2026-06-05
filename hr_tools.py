@@ -315,6 +315,233 @@ HR_TOOLS.extend([
 ])
 
 
+HR_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "get_team_non_starters",
+            "description": (
+                "Vis medarbejdere på holdet/virksomheden der IKKE er begyndt på deres tildelte/bestilte "
+                "kurser — bestillinger der er godkendt eller afventer, men hvor medarbejderen endnu ikke er "
+                "startet (ingen completion_status). Bruges ved spørgsmål som 'hvem på mit team er ikke "
+                "startet', 'hvem mangler at begynde', 'hvem er ikke kommet i gang'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {
+                        "type": "string",
+                        "description": "Afdeling at filtrere på. Tom for hele virksomheden."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_team_compliance",
+            "description": (
+                "Vis pr. compliance-/overholdelseskrav hvem på holdet der er forfalden (overdue), snart "
+                "udløber (expiring) eller compliant. Samme udledning som get_compliance_status, men kan også "
+                "filtreres på kategori. Bruges ved 'compliance', 'overholdelse', 'lovpligtig', 'forfaldne "
+                "kurser', 'hvem er overdue'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {
+                        "type": "string",
+                        "description": "Afdeling at filtrere på. Tom for hele virksomheden."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Valgfri kategori at filtrere krav på (fx 'GDPR', 'arbejdsmiljø', 'ISO')."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_roi_summary",
+            "description": (
+                "Hent virksomhedens reelle trænings-ROI-tal for et regnskabsår: samlet spend, "
+                "gennemførselsrate, spend pr. medarbejder, omkostning pr. gennemførelse og budgetoverskridelser "
+                "pr. afdeling. Bruges ved 'roi', 'afkast', 'værdi af træning', 'spend per medarbejder'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "department": {
+                        "type": "string",
+                        "description": "Valgfri afdeling at fremhæve i ROI-opsummeringen."
+                    },
+                    "year": {
+                        "type": "integer",
+                        "description": "Regnskabsår. Tom = indeværende år."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_benchmark",
+            "description": (
+                "Sammenlign virksomhedens nøgletal med en anonym branchekohort (k-anonym). Viser kun "
+                "kohortgennemsnit/median/percentil når kohorten er stor nok til at være sikker. Bruges ved "
+                "'benchmark', 'sammenlignet med branchen', 'hvordan klarer vi os mod peers'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "metric": {
+                        "type": "string",
+                        "description": "Valgfrit nøgletal at fokusere på (fx 'completion_rate', 'spend_per_employee')."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_trial_and_seat_status",
+            "description": (
+                "Vis virksomhedens abonnementsstatus: plan, prøveperiode (dage tilbage), pladser/licenser brugt "
+                "vs. maks., og udnyttelsesgrad. Bruges ved 'abonnement', 'prøveperiode', 'pladser', 'seats', "
+                "'licenser', 'hvor mange pladser har vi tilbage'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "approve_order_from_chat",
+            "description": (
+                "MUTATION: Godkend eller afvis en kursusbestilling der afventer godkendelse. Godkendelse "
+                "sætter ordren live og trækker på budgettet; afvisning refunderer. Kræver et eksplicit "
+                "confirm=true OG at den aktuelle HR-bruger er manager. Bruges ved 'godkend ordre', 'afvis "
+                "ordre', 'godkend bestilling'. Bekræft ALTID med brugeren før confirm=true sættes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "approval_id": {
+                        "type": "integer",
+                        "description": "ID på order_approvals-rækken. Brug enten denne eller order_id."
+                    },
+                    "order_id": {
+                        "type": "string",
+                        "description": "Ordrens order_id. Brug enten denne eller approval_id."
+                    },
+                    "decision": {
+                        "type": "string",
+                        "enum": ["approved", "rejected"],
+                        "description": "'approved' for at godkende, 'rejected' for at afvise."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at udføre handlingen. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": ["decision"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "assign_learning_path_to_team",
+            "description": (
+                "MUTATION: Tildel en læringssti eller et kursus til flere medarbejdere på én gang. Opretter "
+                "fremdriftsrækker (employee_learning_progress) og sender en notifikation/nudge til hver "
+                "medarbejder. Kræver et eksplicit confirm=true. Virksomheds-scoped. Bruges ved 'tildel', "
+                "'tilmeld holdet', 'bulk-tildel', 'tildel læringssti til teamet'. Bekræft ALTID før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "employee_ids": {
+                        "type": "array",
+                        "items": {"type": "integer"},
+                        "description": "Liste af user_id'er for de medarbejdere der skal tildeles."
+                    },
+                    "path_id": {
+                        "type": "integer",
+                        "description": "ID på læringsstien (learning_paths.id). Brug enten denne eller course_handle."
+                    },
+                    "course_handle": {
+                        "type": "string",
+                        "description": "Kursus-handle hvis der tildeles et enkelt kursus i stedet for en sti."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at udføre tildelingen. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": ["employee_ids"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_inactive_employees",
+            "description": (
+                "Vis medarbejdere der ikke har været aktive i et antal dage (sidste aktivitet eller sidste "
+                "chatbot-interaktion). Bruges ved 'inaktive medarbejdere', 'ikke aktive', 'hvem har ikke logget "
+                "ind/brugt platformen'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "inactive_days": {
+                        "type": "integer",
+                        "description": "Antal dage uden aktivitet. Standard 30.",
+                        "default": 30
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_expiring_agreements",
+            "description": (
+                "Vis leverandøraftaler der udløber inden for et antal dage (eller allerede er udløbet). Bruges "
+                "ved 'udløber aftale', 'leverandøraftaler udløber', 'hvilke aftaler skal fornyes'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "within_days": {
+                        "type": "integer",
+                        "description": "Vindue i dage. Standard 30.",
+                        "default": 30
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+])
+
+
 # ── Tool execution functions ──
 
 def _get_cursor():
@@ -1285,6 +1512,753 @@ def _execute_get_compliance_status(args):
     }, default=str)
 
 
+def _execute_get_team_non_starters(args):
+    """Employees with approved/pending course orders they have NOT started yet.
+
+    "Not started" = course_orders row whose status is approved/pending (i.e. the
+    order is live or awaiting approval) but completion_status is NULL / empty /
+    'not_started' AND started_at is NULL. Company-scoped to the session company.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet i session."})
+
+    department = (args.get('department') or '').strip()
+    cur = _get_cursor()
+
+    dept_clause = "AND cu.department = %s" if department else ""
+    params = [company_id]
+    if department:
+        params.append(department)
+
+    try:
+        cur.execute(f"""
+            SELECT co.order_id, co.user_id, co.username, co.product_handle,
+                   co.product_title, co.status, co.completion_status, co.started_at,
+                   co.completion_deadline, co.created_at, co.department,
+                   cu.full_name, cu.department AS cu_department, cu.manager_user_id
+            FROM course_orders co
+            JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
+            WHERE co.company_id = %s
+              AND cu.status = 'active'
+              AND co.status IN ('approved', 'pending', 'confirmed', 'processing')
+              AND (co.completion_status IS NULL OR co.completion_status = ''
+                   OR co.completion_status = 'not_started')
+              AND co.started_at IS NULL
+              {dept_clause}
+            ORDER BY cu.department, co.username, co.created_at
+        """, tuple(params))
+        rows = cur.fetchall()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][non_starters] query failed: {exc}")
+        return json.dumps({"error": "Kunne ikke hente ikke-startede kurser.", "non_starters": [], "total": 0})
+
+    cur.close()
+
+    by_employee = {}
+    for r in rows:
+        uname = r.get('username') or f"user_{r.get('user_id')}"
+        emp = by_employee.setdefault(uname, {
+            "username": uname,
+            "user_id": r.get('user_id'),
+            "full_name": r.get('full_name') or uname,
+            "department": r.get('cu_department') or r.get('department') or "Ukendt",
+            "manager_user_id": r.get('manager_user_id'),
+            "not_started_courses": [],
+        })
+        emp["not_started_courses"].append({
+            "order_id": r.get('order_id'),
+            "product_title": r.get('product_title') or r.get('product_handle') or "",
+            "product_handle": r.get('product_handle') or "",
+            "status": r.get('status'),
+            "deadline": r.get('completion_deadline').isoformat() if r.get('completion_deadline') else None,
+            "ordered_at": r.get('created_at').isoformat() if r.get('created_at') else None,
+        })
+
+    employees = list(by_employee.values())
+    total_courses = sum(len(e["not_started_courses"]) for e in employees)
+    return json.dumps({
+        "department": department or "Alle",
+        "non_starters": employees,
+        "total_employees": len(employees),
+        "total_not_started_courses": total_courses,
+        "summary_da": (
+            f"{len(employees)} medarbejder(e) er ikke startet på {total_courses} tildelt(e) kursus/kurser."
+            if employees else "Alle medarbejdere er kommet i gang med deres tildelte kurser."
+        ),
+    }, default=str)
+
+
+def _execute_hr_team_compliance(args):
+    """Per-requirement compliance roll-up, reusing get_compliance_status derivation.
+
+    Thin wrapper: delegates to the canonical compliance derivation (so the
+    overdue/expiring/compliant logic lives in exactly one place) and then applies
+    an optional category filter on top of the per-requirement rows.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    category = (args.get('category') or '').strip().lower()
+
+    # Reuse the canonical derivation. _execute_get_compliance_status returns a
+    # JSON string; we parse, optionally filter by category, and re-serialize so
+    # the overdue/expiring/compliant logic is never duplicated.
+    base = json.loads(_execute_get_compliance_status({
+        "department": args.get('department') or '',
+        "only_gaps": False,
+    }))
+    if "error" in base:
+        return json.dumps(base)
+
+    requirements = base.get("requirements", [])
+    if category:
+        requirements = [
+            r for r in requirements
+            if category in (str(r.get("category") or "").lower())
+            or category in (str(r.get("title") or "").lower())
+        ]
+
+    # Recompute the headline % over the (possibly filtered) set.
+    total_applicable = sum(r.get("applicable_employees", 0) for r in requirements)
+    total_compliant = sum(
+        (r.get("compliant", 0) + r.get("expiring", 0)) for r in requirements
+    )
+    overall_pct = round(total_compliant / total_applicable * 100, 1) if total_applicable else 0.0
+    overdue_total = sum(r.get("overdue", 0) for r in requirements)
+    expiring_total = sum(r.get("expiring", 0) for r in requirements)
+    missing_total = sum(r.get("missing", 0) for r in requirements)
+
+    return json.dumps({
+        "department": base.get("department", "Alle"),
+        "category": args.get('category') or "Alle",
+        "total_requirements": len(requirements),
+        "overall_compliance_pct": overall_pct,
+        "overdue_total": overdue_total,
+        "expiring_total": expiring_total,
+        "missing_total": missing_total,
+        "requirements": requirements,
+        "summary_da": (
+            f"{overall_pct}% overholdelse — {overdue_total} forfaldne, {expiring_total} udløber snart, "
+            f"{missing_total} mangler helt."
+            if requirements else "Ingen compliance-krav matcher filteret."
+        ),
+    }, default=str)
+
+
+def _execute_hr_roi_summary(args):
+    """Real training-ROI numbers for the company via insights_engine.get_roi_metrics."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    fiscal_year = args.get('year')
+    try:
+        fiscal_year = int(fiscal_year) if fiscal_year not in (None, '') else None
+    except (TypeError, ValueError):
+        fiscal_year = None
+
+    try:
+        import insights_engine
+    except Exception as exc:
+        print(f"[HR_TOOLS][roi] insights_engine import failed: {exc}")
+        return json.dumps({"error": "ROI-beregning er ikke tilgængelig lige nu.", "has_data": False})
+
+    try:
+        metrics = insights_engine.get_roi_metrics(current_app, company_id, fiscal_year)
+    except Exception as exc:
+        print(f"[HR_TOOLS][roi] get_roi_metrics failed: {exc}")
+        return json.dumps({"error": "Kunne ikke beregne ROI lige nu.", "has_data": False})
+
+    if not isinstance(metrics, dict):
+        return json.dumps({"error": "Uventet ROI-svar.", "has_data": False})
+
+    department = (args.get('department') or '').strip()
+    dept_focus = None
+    if department:
+        for d in (metrics.get('department_roi') or []):
+            if (d.get('department') or '') == department:
+                dept_focus = d
+                break
+
+    # Drop the explicitly-hypothetical scenario block from the model-facing payload
+    # so the agent never presents projections as real headline numbers.
+    out = {
+        "fiscal_year": metrics.get('fiscal_year'),
+        "has_data": bool(metrics.get('has_data')),
+        "total_training_spend": metrics.get('total_training_spend'),
+        "employees_trained": metrics.get('employees_trained'),
+        "courses_completed": metrics.get('courses_completed'),
+        "courses_total": metrics.get('courses_total'),
+        "completion_rate": metrics.get('completion_rate'),
+        "spend_per_employee": metrics.get('spend_per_employee'),
+        "cost_per_completion": metrics.get('cost_per_completion'),
+        "avg_completion_days": metrics.get('avg_completion_days'),
+        "budget_total": metrics.get('budget_total'),
+        "budget_spent": metrics.get('budget_spent'),
+        "budget_remaining": metrics.get('budget_remaining'),
+        "budget_utilization": metrics.get('budget_utilization'),
+        "budget_overruns": metrics.get('budget_overruns'),
+        "department_roi": metrics.get('department_roi'),
+        "department_focus": dept_focus,
+        "department_roi_anon_note": metrics.get('department_roi_anon_note'),
+    }
+    if not out["has_data"]:
+        out["summary_da"] = "Der er endnu ingen trænings-data til at beregne ROI for dette år."
+    else:
+        out["summary_da"] = (
+            f"Samlet spend {out['total_training_spend']} kr., {out['completion_rate']}% gennemført, "
+            f"{out['cost_per_completion']} kr. pr. gennemførelse."
+        )
+    return json.dumps(out, default=str)
+
+
+def _execute_hr_benchmark(args):
+    """Company value vs the k-anonymous industry cohort, via benchmarking.benchmark."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    try:
+        import benchmarking
+    except Exception as exc:
+        print(f"[HR_TOOLS][benchmark] import failed: {exc}")
+        return json.dumps({"error": "Benchmarking er ikke tilgængelig lige nu.", "metrics": []})
+
+    try:
+        data = benchmarking.benchmark(company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][benchmark] benchmark() failed: {exc}")
+        return json.dumps({"error": "Kunne ikke hente benchmark lige nu.", "metrics": []})
+
+    if not isinstance(data, dict):
+        return json.dumps({"error": "Uventet benchmark-svar.", "metrics": []})
+
+    metric_filter = (args.get('metric') or '').strip().lower()
+    metrics = data.get('metrics', []) or []
+    if metric_filter:
+        filtered = [
+            m for m in metrics
+            if metric_filter in (str(m.get('key') or '').lower())
+            or metric_filter in (str(m.get('label') or '').lower())
+        ]
+        if filtered:
+            metrics = filtered
+
+    return json.dumps({
+        "industry": data.get('industry'),
+        "company_size": data.get('company_size'),
+        "cohort_size": data.get('cohort_size'),
+        "cohort_safe": bool(data.get('safe')),
+        "metrics": metrics,
+        "overall_note": data.get('overall_note'),
+    }, default=str)
+
+
+def _execute_hr_trial_and_seat_status(args):
+    """Subscription / trial / seat utilisation for the company."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    cur = _get_cursor()
+    try:
+        cur.execute("""
+            SELECT company_name, subscription_plan, trial_ends_at,
+                   max_employees, current_employee_count, status
+            FROM companies
+            WHERE id = %s
+        """, (company_id,))
+        row = cur.fetchone()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][trial_seat] query failed: {exc}")
+        return json.dumps({"error": "Kunne ikke hente abonnementsstatus."})
+
+    if not row:
+        cur.close()
+        return json.dumps({"error": "Virksomheden blev ikke fundet."})
+
+    # Prefer the live active-employee count over the cached counter if available.
+    live_count = None
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS cnt FROM company_users
+            WHERE company_id = %s AND status = 'active'
+        """, (company_id,))
+        crow = cur.fetchone()
+        live_count = int(crow['cnt']) if crow and crow.get('cnt') is not None else None
+    except Exception as exc:
+        print(f"[HR_TOOLS][trial_seat] live count skipped: {exc}")
+    cur.close()
+
+    max_employees = int(row.get('max_employees') or 0)
+    seats_used = live_count if live_count is not None else int(row.get('current_employee_count') or 0)
+    seats_left = max(0, max_employees - seats_used) if max_employees else None
+    utilization_pct = round(seats_used / max_employees * 100, 1) if max_employees else None
+
+    trial_ends_at = row.get('trial_ends_at')
+    trial_days_left = None
+    on_trial = (str(row.get('subscription_plan') or '').lower() == 'trial')
+    if trial_ends_at:
+        try:
+            trial_days_left = (trial_ends_at - datetime.now()).days
+        except Exception:
+            trial_days_left = None
+
+    summary_parts = []
+    if on_trial and trial_days_left is not None:
+        summary_parts.append(
+            f"Prøveperioden udløber om {trial_days_left} dag(e)." if trial_days_left >= 0
+            else f"Prøveperioden udløb for {abs(trial_days_left)} dag(e) siden."
+        )
+    if max_employees:
+        summary_parts.append(f"{seats_used} af {max_employees} pladser brugt ({utilization_pct}% udnyttelse).")
+
+    return json.dumps({
+        "company_name": row.get('company_name'),
+        "subscription_plan": row.get('subscription_plan'),
+        "on_trial": on_trial,
+        "trial_ends_at": trial_ends_at.isoformat() if hasattr(trial_ends_at, 'isoformat') else trial_ends_at,
+        "trial_days_left": trial_days_left,
+        "max_employees": max_employees,
+        "seats_used": seats_used,
+        "seats_left": seats_left,
+        "utilization_pct": utilization_pct,
+        "seats_full": bool(max_employees and seats_left == 0),
+        "summary_da": " ".join(summary_parts) or "Ingen abonnementsgrænser registreret.",
+    }, default=str)
+
+
+def _execute_approve_order_from_chat(args):
+    """MUTATION — approve/reject a pending course order from the HR chat.
+
+    Routes the budget side effects through order_service.set_status (approved ->
+    'pending' charges the budget once; rejected refunds once) and records the
+    decision on order_approvals. Requires (a) confirm=true and (b) the HR actor be
+    a company manager. Strictly company-scoped: the resolved order must belong to
+    the session company.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    decision = (args.get('decision') or '').strip().lower()
+    if decision not in ('approved', 'rejected'):
+        return json.dumps({"error": "decision skal være 'approved' eller 'rejected'."})
+
+    approval_id = args.get('approval_id')
+    order_id = (args.get('order_id') or '').strip() or None
+    if not approval_id and not order_id:
+        return json.dumps({"error": "Angiv enten approval_id eller order_id."})
+
+    # ── Authorization: actor must be a company manager. ──
+    try:
+        from order_service import OrderContext, set_status as _set_status
+    except Exception as exc:
+        print(f"[HR_TOOLS][approve_order] order_service import failed: {exc}")
+        return json.dumps({"error": "Ordrehåndtering er ikke tilgængelig lige nu."})
+
+    ctx = OrderContext.from_session(source='hr_chat')
+    if not ctx.is_manager:
+        return json.dumps({
+            "error": "not_authorized",
+            "message": "Kun ledere/HR-managere kan godkende eller afvise bestillinger.",
+        })
+
+    cur = _get_cursor()
+    # ── Resolve the order, scoped to THIS company. ──
+    try:
+        if approval_id and not order_id:
+            cur.execute("""
+                SELECT order_id FROM order_approvals
+                WHERE id = %s AND company_id = %s
+            """, (approval_id, company_id))
+            arow = cur.fetchone()
+            if not arow:
+                cur.close()
+                return json.dumps({"error": "Godkendelsesanmodningen blev ikke fundet for din virksomhed."})
+            order_id = arow.get('order_id')
+
+        cur.execute("""
+            SELECT order_id, company_id, username, product_title, price, status
+            FROM course_orders
+            WHERE order_id = %s AND company_id = %s
+        """, (order_id, company_id))
+        order = cur.fetchone()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][approve_order] resolve failed: {exc}")
+        return json.dumps({"error": "Kunne ikke slå ordren op."})
+
+    if not order:
+        cur.close()
+        return json.dumps({"error": "Ordren blev ikke fundet for din virksomhed."})
+
+    # ── Confirmation gate: without confirm, return a preview only. ──
+    if not bool(args.get('confirm')):
+        cur.close()
+        return json.dumps({
+            "needs_confirmation": True,
+            "action": "approve_order",
+            "decision": decision,
+            "order_id": order.get('order_id'),
+            "product_title": order.get('product_title'),
+            "price": float(order.get('price') or 0),
+            "employee": order.get('username'),
+            "current_status": order.get('status'),
+            "message_da": (
+                f"Bekræft at du vil {'GODKENDE' if decision == 'approved' else 'AFVISE'} bestillingen "
+                f"'{order.get('product_title')}' for {order.get('username')} "
+                f"({float(order.get('price') or 0):.0f} kr.). Send confirm=true for at udføre."
+            ),
+        }, default=str)
+    cur.close()
+
+    # approved -> 'pending' (charges budget once); rejected -> 'rejected' (refunds).
+    new_status = 'pending' if decision == 'approved' else 'rejected'
+    try:
+        result = _set_status(ctx, order_id, new_status)
+    except Exception as exc:
+        print(f"[HR_TOOLS][approve_order] set_status raised: {exc}")
+        return json.dumps({"error": "Statusændring fejlede."})
+
+    if not isinstance(result, dict) or not result.get('success'):
+        return json.dumps({
+            "error": "status_change_failed",
+            "message": (result or {}).get('message', 'Statusændring fejlede.') if isinstance(result, dict) else "Statusændring fejlede.",
+        })
+
+    # ── Record the decision on order_approvals (best-effort, same company). ──
+    try:
+        cur2 = _get_cursor()
+        cur2.execute("""
+            UPDATE order_approvals
+            SET status = %s, approver_user_id = %s, decided_at = NOW()
+            WHERE order_id = %s AND company_id = %s
+        """, (decision, ctx.user_id, order_id, company_id))
+        current_app.mysql.connection.commit()
+        cur2.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][approve_order] order_approvals update skipped: {exc}")
+
+    return json.dumps({
+        "success": True,
+        "decision": decision,
+        "order_id": order_id,
+        "new_status": new_status,
+        "charged": result.get('charged'),
+        "refunded": result.get('refunded'),
+        "message_da": (
+            f"Bestillingen er {'godkendt' if decision == 'approved' else 'afvist'}."
+            + (" Budgettet er trukket." if result.get('charged') else "")
+            + (" Budgettet er refunderet." if result.get('refunded') else "")
+        ),
+    }, default=str)
+
+
+def _execute_assign_learning_path_to_team(args):
+    """MUTATION — bulk-assign a learning path / course to a set of employees.
+
+    Creates one employee_learning_progress row per employee (status not_started)
+    and a nudge notification (company_notifications) per employee. Requires
+    confirm=true. Strictly company-scoped: every target user_id must be an active
+    company_users row for the session company; foreign ids are rejected.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    raw_ids = args.get('employee_ids') or []
+    if not isinstance(raw_ids, list) or not raw_ids:
+        return json.dumps({"error": "Angiv mindst ét user_id i employee_ids."})
+
+    # Coerce to ints, drop junk.
+    employee_ids = []
+    for v in raw_ids:
+        try:
+            employee_ids.append(int(v))
+        except (TypeError, ValueError):
+            continue
+    if not employee_ids:
+        return json.dumps({"error": "employee_ids indeholder ingen gyldige id'er."})
+
+    path_id = args.get('path_id')
+    try:
+        path_id = int(path_id) if path_id not in (None, '') else None
+    except (TypeError, ValueError):
+        path_id = None
+    course_handle = (args.get('course_handle') or '').strip() or None
+    if not path_id and not course_handle:
+        return json.dumps({"error": "Angiv enten path_id eller course_handle."})
+
+    cur = _get_cursor()
+
+    # ── Validate every target belongs to THIS company (cross-tenant guard). ──
+    placeholders = ",".join(["%s"] * len(employee_ids))
+    try:
+        cur.execute(f"""
+            SELECT cu.user_id, cu.full_name, cu.username
+            FROM company_users cu
+            WHERE cu.company_id = %s AND cu.status = 'active'
+              AND cu.user_id IN ({placeholders})
+        """, tuple([company_id] + employee_ids))
+        valid_rows = cur.fetchall()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][assign_path] validation failed: {exc}")
+        return json.dumps({"error": "Kunne ikke validere medarbejdere."})
+
+    valid_map = {r['user_id']: r for r in valid_rows}
+    valid_ids = list(valid_map.keys())
+    rejected_ids = [uid for uid in employee_ids if uid not in valid_map]
+
+    if not valid_ids:
+        cur.close()
+        return json.dumps({
+            "error": "Ingen af de angivne medarbejdere tilhører din virksomhed.",
+            "rejected_user_ids": rejected_ids,
+        })
+
+    # ── Resolve a human-readable label for the assignment. ──
+    path_name = None
+    if path_id:
+        try:
+            cur.execute("""
+                SELECT path_name FROM learning_paths
+                WHERE id = %s AND (company_id = %s OR company_id IS NULL)
+            """, (path_id, company_id))
+            prow = cur.fetchone()
+            if not prow:
+                cur.close()
+                return json.dumps({"error": "Læringsstien blev ikke fundet for din virksomhed."})
+            path_name = prow.get('path_name')
+        except Exception as exc:
+            cur.close()
+            print(f"[HR_TOOLS][assign_path] path lookup failed: {exc}")
+            return json.dumps({"error": "Kunne ikke slå læringsstien op."})
+    content_name = path_name or course_handle
+
+    # ── Confirmation gate: preview only without confirm. ──
+    if not bool(args.get('confirm')):
+        cur.close()
+        return json.dumps({
+            "needs_confirmation": True,
+            "action": "assign_learning_path",
+            "path_id": path_id,
+            "course_handle": course_handle,
+            "content_name": content_name,
+            "target_count": len(valid_ids),
+            "targets": [{"user_id": uid, "name": valid_map[uid].get('full_name') or valid_map[uid].get('username')} for uid in valid_ids],
+            "rejected_user_ids": rejected_ids,
+            "message_da": (
+                f"Bekræft at du vil tildele '{content_name}' til {len(valid_ids)} medarbejder(e). "
+                f"Send confirm=true for at udføre."
+            ),
+        }, default=str)
+
+    # ── Execute: progress rows + nudges, idempotent on existing rows. ──
+    assigned = 0
+    nudged = 0
+    conn = current_app.mysql.connection
+    for uid in valid_ids:
+        try:
+            # Skip if an identical assignment already exists (idempotent bulk).
+            if path_id:
+                cur.execute("""
+                    SELECT id FROM employee_learning_progress
+                    WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
+                """, (uid, company_id, path_id))
+            else:
+                cur.execute("""
+                    SELECT id FROM employee_learning_progress
+                    WHERE user_id = %s AND company_id = %s AND course_handle = %s
+                """, (uid, company_id, course_handle))
+            if cur.fetchone():
+                continue
+            cur.execute("""
+                INSERT INTO employee_learning_progress
+                    (user_id, company_id, learning_path_id, course_handle,
+                     content_type, content_name, status, progress_percentage, created_at)
+                VALUES (%s, %s, %s, %s, %s, %s, 'not_started', 0, NOW())
+            """, (
+                uid, company_id, path_id, course_handle,
+                'learning_path' if path_id else 'course', content_name,
+            ))
+            assigned += 1
+        except Exception as exc:
+            print(f"[HR_TOOLS][assign_path] progress insert skipped for user {uid}: {exc}")
+            continue
+
+        # Nudge notification per employee (best-effort).
+        try:
+            cur.execute("""
+                INSERT INTO company_notifications
+                    (company_id, recipient_user_id, sender_user_id, title, message, is_urgent, created_at)
+                VALUES (%s, %s, %s, %s, %s, 0, NOW())
+            """, (
+                company_id, uid, session.get('user_id'),
+                "Ny læring tildelt",
+                f"Du er blevet tildelt '{content_name}'. Gå i gang når du er klar.",
+            ))
+            nudged += 1
+        except Exception as exc:
+            print(f"[HR_TOOLS][assign_path] nudge skipped for user {uid}: {exc}")
+
+    try:
+        conn.commit()
+    except Exception as exc:
+        print(f"[HR_TOOLS][assign_path] commit failed: {exc}")
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        cur.close()
+        return json.dumps({"error": "Tildelingen kunne ikke gemmes."})
+    cur.close()
+
+    return json.dumps({
+        "success": True,
+        "content_name": content_name,
+        "assigned": assigned,
+        "already_assigned": len(valid_ids) - assigned,
+        "nudges_sent": nudged,
+        "rejected_user_ids": rejected_ids,
+        "message_da": (
+            f"'{content_name}' tildelt til {assigned} medarbejder(e); {nudged} notifikation(er) sendt."
+            + (f" {len(rejected_ids)} id'er blev afvist (ikke i din virksomhed)." if rejected_ids else "")
+        ),
+    }, default=str)
+
+
+def _execute_hr_inactive_employees(args):
+    """Active employees with no activity for >= inactive_days (default 30)."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    try:
+        inactive_days = int(args.get('inactive_days') or 30)
+    except (TypeError, ValueError):
+        inactive_days = 30
+    if inactive_days < 0:
+        inactive_days = 30
+
+    cur = _get_cursor()
+    # Inactive = the most recent of (last_active_at, last_chatbot_interaction,
+    # last_login) is NULL or older than the threshold.
+    try:
+        cur.execute("""
+            SELECT cu.user_id, cu.username, cu.full_name, cu.department,
+                   cu.manager_user_id, cu.last_active_at, cu.last_chatbot_interaction,
+                   cu.last_login,
+                   GREATEST(
+                       COALESCE(cu.last_active_at, '1970-01-01'),
+                       COALESCE(cu.last_chatbot_interaction, '1970-01-01'),
+                       COALESCE(cu.last_login, '1970-01-01')
+                   ) AS last_seen
+            FROM company_users cu
+            WHERE cu.company_id = %s AND cu.status = 'active'
+              AND (
+                  (cu.last_active_at IS NULL OR cu.last_active_at < DATE_SUB(NOW(), INTERVAL %s DAY))
+                  AND (cu.last_chatbot_interaction IS NULL OR cu.last_chatbot_interaction < DATE_SUB(NOW(), INTERVAL %s DAY))
+                  AND (cu.last_login IS NULL OR cu.last_login < DATE_SUB(NOW(), INTERVAL %s DAY))
+              )
+            ORDER BY last_seen ASC
+        """, (company_id, inactive_days, inactive_days, inactive_days))
+        rows = cur.fetchall()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][inactive_employees] query failed: {exc}")
+        return json.dumps({"error": "Kunne ikke hente inaktive medarbejdere.", "employees": [], "total": 0})
+
+    cur.close()
+
+    now = datetime.now()
+    employees = []
+    for r in rows:
+        candidates = [r.get('last_active_at'), r.get('last_chatbot_interaction'), r.get('last_login')]
+        last_seen = max((d for d in candidates if isinstance(d, datetime)), default=None)
+        days_inactive = (now - last_seen).days if last_seen else None
+        employees.append({
+            "user_id": r.get('user_id'),
+            "username": r.get('username'),
+            "full_name": r.get('full_name') or r.get('username'),
+            "department": r.get('department') or "Ukendt",
+            "manager_user_id": r.get('manager_user_id'),
+            "last_seen": last_seen.isoformat() if last_seen else None,
+            "days_inactive": days_inactive,
+        })
+
+    return json.dumps({
+        "inactive_days_threshold": inactive_days,
+        "employees": employees,
+        "total": len(employees),
+        "summary_da": (
+            f"{len(employees)} medarbejder(e) har ikke været aktive i {inactive_days}+ dage."
+            if employees else f"Ingen medarbejdere har været inaktive i {inactive_days}+ dage."
+        ),
+    }, default=str)
+
+
+def _execute_hr_expiring_agreements(args):
+    """Supplier agreements expiring within within_days, via catalog_freshness."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    try:
+        within_days = int(args.get('within_days') or 30)
+    except (TypeError, ValueError):
+        within_days = 30
+    if within_days < 0:
+        within_days = 30
+
+    try:
+        import catalog_freshness
+    except Exception as exc:
+        print(f"[HR_TOOLS][expiring_agreements] import failed: {exc}")
+        return json.dumps({"error": "Aftaledata er ikke tilgængelig lige nu.", "agreements": [], "total": 0})
+
+    try:
+        # Always company-scoped — never platform-wide from the HR chat.
+        rows = catalog_freshness.expiring_agreements(company_id=company_id, within_days=within_days)
+    except Exception as exc:
+        print(f"[HR_TOOLS][expiring_agreements] call failed: {exc}")
+        return json.dumps({"error": "Kunne ikke hente udløbende aftaler.", "agreements": [], "total": 0})
+
+    agreements = []
+    for r in (rows or []):
+        if not isinstance(r, dict):
+            continue
+        vu = r.get('valid_until')
+        agreements.append({
+            "vendor_name": r.get('vendor_name'),
+            "agreement_name": r.get('agreement_name'),
+            "agreement_reference": r.get('agreement_reference'),
+            "discount_type": r.get('discount_type'),
+            "discount_value": r.get('discount_value'),
+            "valid_until": vu.isoformat() if hasattr(vu, 'isoformat') else vu,
+            "days_left": r.get('days_left'),
+            "is_expired": bool(r.get('is_expired')),
+        })
+
+    expired_n = sum(1 for a in agreements if a["is_expired"])
+    return json.dumps({
+        "within_days": within_days,
+        "agreements": agreements,
+        "total": len(agreements),
+        "expired": expired_n,
+        "summary_da": (
+            f"{len(agreements)} leverandøraftale(r) udløber inden for {within_days} dage "
+            f"({expired_n} allerede udløbet)."
+            if agreements else f"Ingen leverandøraftaler udløber inden for {within_days} dage."
+        ),
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -1309,6 +2283,15 @@ def execute_hr_tool(tool_call):
         "hr_get_supplier_coverage": _execute_hr_get_supplier_coverage,
         "hr_get_ai_usage_risks": _execute_hr_get_ai_usage_risks,
         "get_compliance_status": _execute_get_compliance_status,
+        "get_team_non_starters": _execute_get_team_non_starters,
+        "hr_team_compliance": _execute_hr_team_compliance,
+        "hr_roi_summary": _execute_hr_roi_summary,
+        "hr_benchmark": _execute_hr_benchmark,
+        "hr_trial_and_seat_status": _execute_hr_trial_and_seat_status,
+        "approve_order_from_chat": _execute_approve_order_from_chat,
+        "assign_learning_path_to_team": _execute_assign_learning_path_to_team,
+        "hr_inactive_employees": _execute_hr_inactive_employees,
+        "hr_expiring_agreements": _execute_hr_expiring_agreements,
     }
 
     fn = router.get(name)

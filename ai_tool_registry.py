@@ -101,6 +101,35 @@ _EMPLOYEE_META = {
     "update_learning_goal": ToolMeta(
         "update_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
     ),
+    # --- Specialised employee tools (keyword-gated, NOT in core seed) ---
+    "get_my_course_status": ToolMeta(
+        "get_my_course_status", auth_required=True, toolset_tags=("course", "status"), cache_ttl=30,
+    ),
+    "get_negotiated_discount": ToolMeta(
+        "get_negotiated_discount", auth_required=True, toolset_tags=("pricing", "discount"), cache_ttl=120,
+    ),
+    "check_course_prerequisites": ToolMeta(
+        "check_course_prerequisites", auth_required=True, toolset_tags=("course", "prerequisites"), cache_ttl=120,
+    ),
+    "get_course_sequel": ToolMeta(
+        "get_course_sequel", auth_required=True, toolset_tags=("course", "path"), cache_ttl=120,
+    ),
+    "find_certification_path": ToolMeta(
+        "find_certification_path", auth_required=True, toolset_tags=("certification", "path"), cache_ttl=120,
+    ),
+    "track_goal_progress": ToolMeta(
+        "track_goal_progress", auth_required=True, toolset_tags=("goals", "progress"), cache_ttl=30,
+    ),
+    "add_to_calendar": ToolMeta(
+        "add_to_calendar", auth_required=True, toolset_tags=("calendar", "export"), cache_ttl=0,
+    ),
+    "mark_course_complete": ToolMeta(
+        "mark_course_complete",
+        auth_required=True,
+        side_effect=True,
+        parallel_safe=False,
+        toolset_tags=("course", "mutation"),
+    ),
 }
 
 _HR_META = {
@@ -117,6 +146,22 @@ _HR_META = {
     "hr_get_supplier_coverage": ToolMeta("hr_get_supplier_coverage", "hr", company_required=True, cache_ttl=120, toolset_tags=("supplier", "catalog")),
     "hr_get_ai_usage_risks": ToolMeta("hr_get_ai_usage_risks", "hr", company_required=True, cache_ttl=120, toolset_tags=("usage", "risk")),
     "get_compliance_status": ToolMeta("get_compliance_status", "hr", company_required=True, cache_ttl=120, toolset_tags=("compliance",)),
+    # --- Specialised HR tools (keyword-gated, NOT in core seed) ---
+    "get_team_non_starters": ToolMeta("get_team_non_starters", "hr", company_required=True, cache_ttl=60, toolset_tags=("status", "team")),
+    "hr_team_compliance": ToolMeta("hr_team_compliance", "hr", company_required=True, cache_ttl=120, toolset_tags=("compliance", "team")),
+    "hr_roi_summary": ToolMeta("hr_roi_summary", "hr", company_required=True, cache_ttl=120, toolset_tags=("roi", "report")),
+    "hr_benchmark": ToolMeta("hr_benchmark", "hr", company_required=True, cache_ttl=120, toolset_tags=("benchmark",)),
+    "hr_trial_and_seat_status": ToolMeta("hr_trial_and_seat_status", "hr", company_required=True, cache_ttl=60, toolset_tags=("subscription", "seats")),
+    "approve_order_from_chat": ToolMeta(
+        "approve_order_from_chat", "hr",
+        company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("approval", "mutation"),
+    ),
+    "assign_learning_path_to_team": ToolMeta(
+        "assign_learning_path_to_team", "hr",
+        company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("path", "mutation"),
+    ),
+    "hr_inactive_employees": ToolMeta("hr_inactive_employees", "hr", company_required=True, cache_ttl=60, toolset_tags=("employee", "inactive")),
+    "hr_expiring_agreements": ToolMeta("hr_expiring_agreements", "hr", company_required=True, cache_ttl=120, toolset_tags=("supplier", "agreements")),
 }
 
 
@@ -306,6 +351,40 @@ def get_employee_tool_selection(
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",
                 "lære at", "laere at", "sæt et mål", "saet et maal", "mit mål", "mine mål")):
             names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile", "catalog_search"})
+        # --- Specialised employee tools: keyword-gated only, NOT in the core seed.
+        # Each stays off the menu until a matching Danish keyword activates it.
+        if _has_any(query, (
+                "status på mit kursus", "status paa mit kursus", "hvornår starter", "hvornaar starter",
+                "frist", "deadline", "forfald", "mit kursus", "hvor er mit",
+                "er jeg forsinket", "hvad mangler")):
+            names.add("get_my_course_status")
+        if _has_any(query, (
+                "rabat", "aftalepris", "hvad koster det med", "firma-rabat",
+                "hvad koster det med rabat")):
+            names.add("get_negotiated_discount")
+        if _has_any(query, (
+                "forudsætninger", "forudsaetninger", "krav", "sværhedsgrad", "svaerhedsgrad",
+                "hvad kræver", "hvad kraever", "er jeg klar til")):
+            names.add("check_course_prerequisites")
+        if _has_any(query, (
+                "næste kursus", "naeste kursus", "hvad nu", "bygge videre",
+                "efter dette", "hvad efter")):
+            names.add("get_course_sequel")
+        if _has_any(query, (
+                "certificering", "cert", "blive certificeret", "pmp", "itil",
+                "prince2", "vej til")):
+            names.add("find_certification_path")
+        if _has_any(query, (
+                "mål-progress", "maal-progress", "hvor langt er jeg", "mit mål", "mit maal",
+                "mangler jeg")):
+            names.add("track_goal_progress")
+        if _has_any(query, (
+                "kalender", "tilføj til kalender", "tilfoej til kalender", ".ics", "outlook")):
+            names.add("add_to_calendar")
+        if _has_any(query, (
+                "jeg har gennemført", "jeg har gennemfoert", "marker som færdig",
+                "marker som faerdig", "fuldført kurset", "fuldfoert kurset")):
+            names.add("mark_course_complete")
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
 
@@ -319,7 +398,7 @@ def get_employee_tool_selection(
             continue
         if meta.company_required and not company_id:
             continue
-        if meta.side_effect and name not in ("create_course_order", "update_user_profile") and not _explicit_order_confirmation(query):
+        if meta.side_effect and name not in ("create_course_order", "update_user_profile", "mark_course_complete") and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)
 
@@ -362,6 +441,40 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
     if _has_any(query, ("compliance", "overholdelse", "certificering", "recertificering", "lovpligtig", "obligatorisk", "arbejdsmiljø", "arbejdsmiljo", "gdpr-kursus")):
         names.add("get_compliance_status")
         forced_tool = "get_compliance_status"
+    # --- Specialised HR tools: keyword-gated only, NOT in the core seed. Each
+    # stays off the menu until a matching Danish keyword activates it. ---
+    if _has_any(query, (
+            "ikke startet", "ikke begyndt", "hvem mangler at starte", "ikke kommet i gang")):
+        names.add("get_team_non_starters")
+    if _has_any(query, (
+            "compliance", "overholdelse", "lovpligtig", "forfaldne kurser", "hvem er overdue")):
+        names.add("hr_team_compliance")
+    if _has_any(query, (
+            "roi", "afkast", "værdi af træning", "vaerdi af traening",
+            "spend per", "spend per medarbejder")):
+        names.add("hr_roi_summary")
+    if _has_any(query, (
+            "benchmark", "sammenlignet med branchen", "peers",
+            "hvordan klarer vi os mod peers")):
+        names.add("hr_benchmark")
+    if _has_any(query, (
+            "abonnement", "prøveperiode", "proeveperiode", "pladser", "seats", "licenser",
+            "hvor mange pladser har vi tilbage")):
+        names.add("hr_trial_and_seat_status")
+    if _has_any(query, (
+            "godkend ordre", "afvis ordre", "godkend bestilling")):
+        names.add("approve_order_from_chat")
+    if _has_any(query, (
+            "tildel", "tilmeld holdet", "bulk", "tildel læringssti", "tildel laeringssti",
+            "bulk-tildel")):
+        names.add("assign_learning_path_to_team")
+    if _has_any(query, (
+            "inaktive", "ikke aktive medarbejdere", "hvem har ikke logget ind")):
+        names.add("hr_inactive_employees")
+    if _has_any(query, (
+            "udløber aftale", "udloeber aftale", "leverandøraftaler udløber",
+            "leverandoeraftaler udloeber", "hvilke aftaler skal fornyes")):
+        names.add("hr_expiring_agreements")
 
     selected = []
     for name in sorted(names):

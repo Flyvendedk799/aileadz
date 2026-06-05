@@ -159,23 +159,20 @@ def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], O
             conn = app.mysql.connection
             cur = conn.cursor(MySQLdb.cursors.DictCursor)
 
-            # Tool names from the agent's own debug log for this session.
+            # Tool names from the agent's own debug log. NOTE: debug_logs lives in
+            # the SQLite ai_memory.db (app1/memory_store.py), NOT MySQL — querying
+            # MySQL here always returned nothing (table absent), which made the
+            # eval false-report tool:F for every non-card tool. Read the real source.
             try:
-                cur.execute(
-                    "SELECT details FROM debug_logs WHERE session_id=%s AND event_type='tool_call' "
-                    "ORDER BY id DESC LIMIT 20",
-                    (session_id,),
-                )
-                rows = cur.fetchall()
+                import app1.memory_store as _mem
+                entries = _mem.get_debug_logs_for_session(session_id) or []
                 names = []
-                for row in rows:
-                    try:
-                        d = json.loads(row["details"]) if row.get("details") else {}
-                    except Exception:
-                        d = {}
-                    if d.get("tool"):
-                        names.append(d["tool"])
-                tools = list(dict.fromkeys(names))  # de-dup, keep order
+                for e in entries:
+                    if e.get("step") == "tool_call":
+                        d = e.get("data") or {}
+                        if isinstance(d, dict) and d.get("tool"):
+                            names.append(d["tool"])
+                tools = list(dict.fromkeys(names)) or None  # de-dup, keep order
             except Exception:
                 tools = None
 

@@ -295,7 +295,7 @@ def _digits_only(s: str) -> str:
     return re.sub(r"\D", "", s or "")
 
 
-def grounded_heuristic(final_text, cards, tool_results=None) -> Dict[str, Any]:
+def grounded_heuristic(final_text, cards, tool_results=None, user_query="") -> Dict[str, Any]:
     """Flag a FAIL if the answer states a concrete course title or price that does
     NOT appear in any tool result / card (hallucinated chain-of-custody break).
 
@@ -322,6 +322,15 @@ def grounded_heuristic(final_text, cards, tool_results=None) -> Dict[str, Any]:
     # Title/claim grounding is left to the optional LLM judge (--judge).
     text_prices = [_digits_only(m.group(1)) for m in _PRICE_RE.finditer(text)]
     text_prices = [p for p in text_prices if p and p != "0"]
+
+    # Exclude prices the USER themselves supplied (e.g. a budget filter
+    # "kurser under 8000 kr") — echoing the user's number back is not a
+    # hallucinated course price.
+    query_prices = {_digits_only(m.group(1)) for m in _PRICE_RE.finditer(user_query or "")}
+    query_prices = {p for p in query_prices if p}
+    # also tolerate the raw digit run appearing anywhere in the query
+    qdigits = re.sub(r"\D", " ", user_query or "")
+    text_prices = [p for p in text_prices if p not in query_prices and p not in qdigits.split()]
 
     if not text_prices:
         # No concrete numeric price asserted → nothing for the price heuristic to
@@ -510,7 +519,8 @@ def score_case(collected: Dict[str, Any], expect: Dict[str, Any], *, use_judge: 
     out["refusal"] = refusal_correct(text, expect, tools=tools)
     out["retrieval"] = retrieval_relevant(cards, expect)
     out["grounding"] = (
-        grounded_heuristic(text, cards, tool_results)
+        grounded_heuristic(text, cards, tool_results,
+                           user_query=((case or {}).get("query") or _last_query(case)))
         if expect.get("grounded") else _result(None, False, "grounding not requested")
     )
     out["profile_event"] = profile_event_present(events, expect)

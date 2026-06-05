@@ -24,7 +24,12 @@
       "query": "Anbefal 3 kurser indenfor kommunikation",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["search_courses", "filter_courses", "catalog_search", "recommend_for_profile"],
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search",
+          "recommend_for_profile"
+        ],
         "retrieval_should_relate_to": "kommunikation",
         "grounded": true
       }
@@ -34,7 +39,11 @@
       "query": "Hvilke kurser har I om projektledelse?",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
       }
@@ -44,7 +53,11 @@
       "query": "Jeg leder efter et lederkursus til nye ledere",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
       }
@@ -54,7 +67,11 @@
       "query": "Har I et Excel-kursus til begyndere?",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "excel",
         "grounded": true
       }
@@ -64,7 +81,11 @@
       "query": "Find kurser om GDPR og persondata",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "gdpr",
         "grounded": true
       }
@@ -74,18 +95,28 @@
       "query": "Vis mig kurser i ledelse i Aarhus under 8000 kr",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["filter_courses", "search_courses", "catalog_search"],
+        "tool_any_of": [
+          "filter_courses",
+          "search_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
       }
     },
     {
       "id": "vendor_lookup",
-      "query": "Har I kurser fra Mannaz?",
+      "query": "Har I kurser fra Aros?",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["catalog_get_vendor", "get_vendor_info", "search_courses", "catalog_search", "filter_courses"],
-        "retrieval_should_relate_to": "mannaz",
+        "tool_any_of": [
+          "catalog_get_vendor",
+          "get_vendor_info",
+          "search_courses",
+          "catalog_search",
+          "filter_courses"
+        ],
+        "retrieval_should_relate_to": "aros",
         "grounded": true
       }
     },
@@ -94,7 +125,11 @@
       "query": "Hvilke kategorier af kurser har I?",
       "intent": "course_search",
       "expect": {
-        "tool_any_of": ["catalog_get_category", "search_courses", "catalog_search"],
+        "tool_any_of": [
+          "catalog_get_category",
+          "search_courses",
+          "catalog_search"
+        ],
         "grounded": true
       }
     },
@@ -103,7 +138,12 @@
       "query": "Anbefal kurser ud fra min profil",
       "intent": "recommend_for_profile",
       "expect": {
-        "tool_any_of": ["recommend_for_profile", "search_courses", "catalog_search", "get_user_profile"],
+        "tool_any_of": [
+          "recommend_for_profile",
+          "search_courses",
+          "catalog_search",
+          "get_user_profile"
+        ],
         "grounded": true
       }
     },
@@ -111,17 +151,31 @@
       "id": "compare_courses",
       "intent": "compare",
       "turns": [
-        {"query": "Vis mig projektledelseskurser"},
+        {
+          "query": "Vis mig projektledelseskurser"
+        },
         {
           "query": "Sammenlign de to billigste af dem",
           "expect": {
-            "tool_any_of": ["compare_courses", "catalog_compare_products", "get_course_details", "catalog_get_product", "search_courses"],
+            "tool_any_of": [
+              "compare_courses",
+              "catalog_compare_products",
+              "get_course_details",
+              "catalog_get_product",
+              "search_courses"
+            ],
             "grounded": true
           }
         }
       ],
       "expect": {
-        "tool_any_of": ["compare_courses", "catalog_compare_products", "get_course_details", "catalog_get_product", "search_courses"],
+        "tool_any_of": [
+          "compare_courses",
+          "catalog_compare_products",
+          "get_course_details",
+          "catalog_get_product",
+          "search_courses"
+        ],
         "grounded": true
       }
     },
@@ -130,7 +184,13 @@
       "query": "Hvad skal jeg lære for at blive projektleder?",
       "intent": "skill_gap",
       "expect": {
-        "tool_any_of": ["analyze_skill_gaps", "suggest_learning_path", "search_courses", "catalog_search", "recommend_for_profile"],
+        "tool_any_of": [
+          "analyze_skill_gaps",
+          "suggest_learning_path",
+          "search_courses",
+          "catalog_search",
+          "recommend_for_profile"
+        ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
       }
@@ -140,7 +200,12 @@
       "query": "Hvilke kompetencer mangler jeg for at arbejde med dataanalyse?",
       "intent": "skill_gap",
       "expect": {
-        "tool_any_of": ["analyze_skill_gaps", "suggest_learning_path", "search_courses", "catalog_search"],
+        "tool_any_of": [
+          "analyze_skill_gaps",
+          "suggest_learning_path",
+          "search_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "data",
         "grounded": true
       }
@@ -150,7 +215,12 @@
       "query": "Lav en læringssti til mig indenfor ledelse",
       "intent": "learning_path",
       "expect": {
-        "tool_any_of": ["suggest_learning_path", "search_courses", "catalog_search", "recommend_for_profile"],
+        "tool_any_of": [
+          "suggest_learning_path",
+          "search_courses",
+          "catalog_search",
+          "recommend_for_profile"
+        ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
       }
@@ -160,7 +230,13 @@
       "query": "Kan du bygge et forløb der gør mig klar til en IT-projektlederrolle?",
       "intent": "learning_path",
       "expect": {
-        "tool_any_of": ["suggest_learning_path", "search_courses", "catalog_search", "analyze_skill_gaps", "recommend_for_profile"],
+        "tool_any_of": [
+          "suggest_learning_path",
+          "search_courses",
+          "catalog_search",
+          "analyze_skill_gaps",
+          "recommend_for_profile"
+        ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
       }
@@ -170,7 +246,10 @@
       "query": "Tilføj kompetencen Python paa avanceret niveau til min profil",
       "intent": "profile_add",
       "expect": {
-        "tool_any_of": ["update_user_profile", "request_user_input"],
+        "tool_any_of": [
+          "update_user_profile",
+          "request_user_input"
+        ],
         "expect_profile_event": true,
         "grounded": true
       }
@@ -180,7 +259,10 @@
       "query": "Jeg har erfaring som projektleder hos Nordi",
       "intent": "profile_add",
       "expect": {
-        "tool_any_of": ["request_user_input", "update_user_profile"],
+        "tool_any_of": [
+          "request_user_input",
+          "update_user_profile"
+        ],
         "expect_profile_event": true,
         "grounded": true
       }
@@ -190,7 +272,10 @@
       "query": "Jeg har en uddannelse fra CBS",
       "intent": "profile_add",
       "expect": {
-        "tool_any_of": ["request_user_input", "update_user_profile"],
+        "tool_any_of": [
+          "request_user_input",
+          "update_user_profile"
+        ],
         "expect_profile_event": true,
         "grounded": true
       }
@@ -199,18 +284,34 @@
       "id": "order_requires_confirmation",
       "intent": "order",
       "turns": [
-        {"query": "Find et kursus om kommunikation til mit team"},
+        {
+          "query": "Find et kursus om kommunikation til mit team"
+        },
         {
           "query": "Jeg vil gerne bestille det første kursus til 4 personer",
           "expect": {
-            "tool_any_of": ["check_course_readiness", "prepare_course_order", "get_course_details", "catalog_get_product", "search_courses", "catalog_search"],
+            "tool_any_of": [
+              "check_course_readiness",
+              "prepare_course_order",
+              "get_course_details",
+              "catalog_get_product",
+              "search_courses",
+              "catalog_search"
+            ],
             "expect_confirmation_before_order": true,
             "grounded": true
           }
         }
       ],
       "expect": {
-        "tool_any_of": ["check_course_readiness", "prepare_course_order", "get_course_details", "catalog_get_product", "search_courses", "catalog_search"],
+        "tool_any_of": [
+          "check_course_readiness",
+          "prepare_course_order",
+          "get_course_details",
+          "catalog_get_product",
+          "search_courses",
+          "catalog_search"
+        ],
         "expect_confirmation_before_order": true,
         "grounded": true
       }
@@ -219,8 +320,12 @@
       "id": "order_confirm_then_place",
       "intent": "order",
       "turns": [
-        {"query": "Find et kursus om kommunikation"},
-        {"query": "Jeg vil gerne bestille det første kursus til 1 person"},
+        {
+          "query": "Find et kursus om kommunikation"
+        },
+        {
+          "query": "Jeg vil gerne bestille det første kursus til 1 person"
+        },
         {
           "query": "Ja tak, bekræft bestillingen",
           "expect": {
@@ -316,7 +421,11 @@
         {
           "query": "Vis mig kurser i kommunikation",
           "expect": {
-            "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+            "tool_any_of": [
+              "search_courses",
+              "filter_courses",
+              "catalog_search"
+            ],
             "retrieval_should_relate_to": "kommunikation"
           }
         },
@@ -338,21 +447,33 @@
         {
           "query": "Find kurser om Excel",
           "expect": {
-            "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+            "tool_any_of": [
+              "search_courses",
+              "filter_courses",
+              "catalog_search"
+            ],
             "retrieval_should_relate_to": "excel"
           }
         },
         {
           "query": "Faktisk, vis mig noget om ledelse i stedet",
           "expect": {
-            "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+            "tool_any_of": [
+              "search_courses",
+              "filter_courses",
+              "catalog_search"
+            ],
             "retrieval_should_relate_to": "ledelse",
             "grounded": true
           }
         }
       ],
       "expect": {
-        "tool_any_of": ["search_courses", "filter_courses", "catalog_search"],
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
       }

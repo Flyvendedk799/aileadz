@@ -238,7 +238,25 @@ def get_employee_tool_selection(
     forced_tool = None
     is_approval_query = _has_any(query, ("godkend", "approval", "afventer", "ordrestatus"))
 
-    if intent == "chit_chat" and not _has_any(query, ("kursus", "produkt", "budget", "ordre", "profil", "leverandør", "leverandor")):
+    # CORE tools are ALWAYS on the menu so the MODEL — not a brittle keyword/regex
+    # gate — decides when to use them. The keyword branches below only ADD
+    # specialised/expensive tools or FORCE a choice; they can no longer EXCLUDE the
+    # everyday ones. This is the robust, model-driven design: a profile statement the
+    # regex doesn't recognise (e.g. the compound "erhvervserfaring") still lets the
+    # model offer to save it, because request_user_input/update_user_profile are
+    # always available. Cost is tiny (a few small schemas) and worth the reliability.
+    names.add("catalog_search")  # can always search the catalog
+    if logged_in:
+        names.update({"get_user_profile", "request_user_input", "update_user_profile"})
+
+    # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
+    # signal. Anything mentioning the catalog OR the user's own background falls through
+    # to the model-driven core above (so "jeg har erhvervserfaring …" is never swallowed
+    # here even if it were misclassified as chit_chat).
+    if intent == "chit_chat" and not _has_any(query, (
+            "kursus", "produkt", "budget", "ordre", "profil", "leverandør", "leverandor",
+            "erfaring", "uddannelse", "uddannet", "arbejd", "ansat", "kompetence",
+            "baggrund", "stilling", "mit job", "min titel", "lære", "laere", "mål", "maal")):
         return [], {"version": TOOLSET_VERSION, "tool_names": [], "forced_tool": None}
 
     if intent in {"discovery", "follow_up", "profile_and_search"}:

@@ -389,8 +389,13 @@ _LOW_INTENT_PATTERNS = _re.compile(
 
 # Profile update: user mentions their own experience, skills, education, etc.
 _PROFILE_UPDATE_PATTERNS = _re.compile(
-    r'\b(jeg har\b.*?\b(?:været|arbejdet|erfaring|en |et )|jeg er |jeg kan |jeg arbejder |'
-    r'min (?:baggrund|uddannelse|erfaring|rolle)|'
+    # \w*erfaring catches erfaring, ERHVERVSerfaring, JOBerfaring, ARBEJDSerfaring
+    # (the old \berfaring missed compounds — the real bug behind "jeg har
+    # erhvervserfaring fra Nordea" being treated as small-talk).
+    r'\b(jeg har\b.*?\b(?:været|arbejdet|arbejdede|ansat|\w*erfaring|en |et )|jeg er |jeg kan |jeg arbejder |'
+    r'jeg (?:arbejdede|var ansat|har arbejdet|har været ansat|var) (?:hos|som|i|ved|på)|'
+    r'\w*erfaring (?:fra|hos|som|med|i)|'
+    r'min (?:baggrund|uddannelse|erfaring|erhvervserfaring|rolle)|'
     r'jeg (?:læste|studerede|tog)|jeg har\b.*?\b(?:taget|gennemført)|'
     r'jeg (?:ved noget om|kender til|har kompetence)|'
     r'min stilling|mit job|min titel|'

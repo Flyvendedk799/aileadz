@@ -20,16 +20,22 @@ unavailable the routes fail closed (Danish error / redirect to login), never 500
 in create_app().
 """
 
+import json
 import logging
+import time
+import uuid
 
 from flask import (
     Blueprint,
+    Response,
     current_app,
     flash,
+    jsonify,
     redirect,
     render_template,
     request,
     session,
+    stream_with_context,
     url_for,
 )
 
@@ -362,3 +368,194 @@ def vendor_submit():
         return redirect(url_for("vendor.vendor_dashboard"))
 
     return render_template("fm/vendor_submit.html")
+
+
+# ===========================================================================
+# Vendor AI assistant (leverandør-assistent)
+# ---------------------------------------------------------------------------
+# A small agent turn scoped strictly to the logged-in vendor. It offers the
+# vendor-only tools (vendor_tools.VENDOR_TOOLS), executes them via
+# execute_vendor_tool(name, args, session['vendor_name']) and streams the answer
+# back as SSE. Hard rules:
+#   * The agent ONLY sees this vendor's own aggregated numbers + anonymized,
+#     platform-wide market demand. Buyer (company/employee) identity is never
+#     exposed — enforced both in the tools and in the system prompt.
+#   * Boot-safe: ai_runtime / vendor_tools are imported lazily inside the route
+#     so a missing/broken AI stack can never crash create_app(); the route then
+#     fails closed with a Danish error instead of 500-ing.
+# ===========================================================================
+
+# In-memory per-vendor-session conversation memory (mirrors hr_agent's store).
+VENDOR_CHAT_MEMORY = {}
+VENDOR_SESSION_TTL = 3600
+
+VENDOR_SYSTEM_PROMPT = """Du er en leverandør-assistent for en kursusudbyder på Futurematch-platformen.
+
+DIN ROLLE:
+- Du hjælper leverandøren med at forstå deres egne salgstal og markedet.
+- Du er konkret og handlingsorienteret og giver 1-2 anbefalinger ud fra dataen.
+
+HVAD DU KAN (via værktøjer):
+- Vise leverandørens egne aggregerede salgstal (ordrer, trend 30/90 dage, gennemførelsesrate, topkurser).
+- Vise anonymiseret markedsefterspørgsel pr. kategori/emne på tværs af platformen.
+- Sammenligne leverandørens egne kurser med lignende kurser i kataloget på pris, varighed, sværhedsgrad og format.
+
+ABSOLUTTE REGLER:
+- Svar KUN ud fra leverandørens egne aggregerede tal og anonymiserede markedsdata.
+- Du må ALDRIG oplyse hvilken virksomhed eller hvilken medarbejder der har købt et kursus. Du har ikke adgang til den slags data — antyd den aldrig.
+- Du ser kun denne leverandørs egne kurser. Nævn aldrig andre leverandørers salgstal (kun offentlige katalogfakta som pris/varighed må sammenlignes).
+- Brug altid værktøjer før du nævner konkrete tal. Find aldrig på tal.
+- Hvis et tal er skjult af anonymitetshensyn (k-anonymitet), så forklar kort hvorfor i stedet for at gætte.
+
+STIL:
+- Kort, præcist og på dansk. Brug bullet points til tal. Fremhæv den vigtigste indsigt først.
+"""
+
+
+def _cleanup_vendor_sessions():
+    now = time.time()
+    stale = [
+        sid for sid, msgs in VENDOR_CHAT_MEMORY.items()
+        if msgs and isinstance(msgs[-1], dict) and msgs[-1].get("_ts", 0) < now - VENDOR_SESSION_TTL
+    ]
+    for sid in stale:
+        VENDOR_CHAT_MEMORY.pop(sid, None)
+
+
+def _vendor_sse(event):
+    """Serialize a single SSE 'data:' frame."""
+    return f"data: {json.dumps(event)}\n\n"
+
+
+@vendor_bp.route("/ask", methods=["POST"])
+@_vendor_login_required
+def vendor_ask():
+    """Run one vendor-scoped agent turn and stream the answer as SSE.
+
+    Strictly scoped to session['vendor_name']: the only tools offered are the
+    vendor tools, and they are executed with the SESSION vendor name so a vendor
+    can never reach another vendor's (or any buyer's) data.
+    """
+    vendor_name = session.get("vendor_name") or ""
+    vendor_id = session.get("vendor_id")
+
+    # Accept JSON or form body.
+    payload = request.get_json(silent=True) or {}
+    user_query = (payload.get("message") or payload.get("query")
+                  or request.form.get("message") or request.form.get("query") or "").strip()
+
+    if not user_query:
+        return jsonify({"error": "Skriv et spørgsmål."}), 400
+
+    # Lazy, guarded imports so a broken AI stack never crashes the portal.
+    try:
+        from vendor_tools import VENDOR_TOOLS, execute_vendor_tool
+    except Exception as e:  # pragma: no cover - boot safety
+        logger.warning("vendor_ask: vendor_tools unavailable: %s", e)
+        return jsonify({"error": "Leverandør-assistenten er midlertidigt utilgængelig."}), 503
+
+    # Per-vendor conversation memory, keyed by an isolated session id.
+    _cleanup_vendor_sessions()
+    sid = session.get("vendor_chat_session_id")
+    if not sid:
+        sid = f"vendor_{vendor_id}_{uuid.uuid4()}"
+        session["vendor_chat_session_id"] = sid
+    if sid not in VENDOR_CHAT_MEMORY:
+        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}]
+
+    messages = VENDOR_CHAT_MEMORY[sid]
+    # Inject/refresh a small vendor-context system line (which vendor we are).
+    context_line = {"role": "system", "content": f"LEVERANDØR: {vendor_name}"}
+    if len(messages) > 1 and messages[1].get("role") == "system" \
+            and (messages[1].get("content") or "").startswith("LEVERANDØR:"):
+        messages[1] = context_line
+    else:
+        messages.insert(1, context_line)
+    messages.append({"role": "user", "content": user_query, "_ts": time.time()})
+
+    def stream_generator():
+        full_text = ""
+        try:
+            yield _vendor_sse({"type": "ping", "content": "ok"})
+
+            from db_compat import close_flask_mysql_connection
+            from ai_runtime import (
+                iter_completion_stream,
+                make_run_id,
+                run_agent_with_fallback,
+                user_facing_error_message,
+            )
+
+            # Strip private "_ts" bookkeeping before sending to the model.
+            clean_messages = [
+                {k: v for k, v in m.items() if k != "_ts"} for m in messages
+            ]
+
+            # Vendor tool executor: ALWAYS bind the SESSION vendor name so the
+            # model can never widen scope to another vendor / buyer.
+            def _vendor_executor(tool_call, username=None, session_id=None):
+                name = tool_call.function.name
+                try:
+                    args = json.loads(tool_call.function.arguments or "{}")
+                except Exception:
+                    args = {}
+                result = execute_vendor_tool(name, args, vendor_name)
+                return json.dumps(result, default=str, ensure_ascii=False)
+
+            run_id = make_run_id()
+            yield _vendor_sse({"type": "thinking", "content": "Analyserer…"})
+
+            runtime_result = run_agent_with_fallback(
+                messages=clean_messages,
+                tools=VENDOR_TOOLS,
+                tool_executor=_vendor_executor,
+                username=f"vendor:{vendor_id}",
+                session_id=sid,
+                max_iterations=4,
+                prompt_cache_key="futurematch-vendor",
+            )
+
+            for tool_result in runtime_result.tool_results:
+                yield _vendor_sse({"type": "tool_call", "name": tool_result.name})
+
+            close_flask_mysql_connection()
+
+            final_messages = list(
+                runtime_result.stream_messages or runtime_result.messages or clean_messages
+            )
+            full_text = runtime_result.text or ""
+            if runtime_result.needs_final_stream or not full_text.strip():
+                full_text = ""
+                for token in iter_completion_stream(final_messages):
+                    full_text += token
+                    yield _vendor_sse({"type": "text", "content": token})
+            else:
+                yield _vendor_sse({"type": "text", "content": full_text})
+
+            messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
+            # Bound memory growth.
+            if len(messages) > 30:
+                VENDOR_CHAT_MEMORY[sid] = [messages[0]] + messages[-16:]
+
+            yield _vendor_sse({"type": "done"})
+        except Exception as e:
+            logger.warning("vendor_ask: stream failed: %s", e)
+            try:
+                from ai_runtime import user_facing_error_message as _ufem
+                _err_msg = _ufem(e)
+            except Exception:
+                _err_msg = "Der opstod en fejl. Prøv venligst igen."
+            yield _vendor_sse({"type": "error", "content": _err_msg})
+            yield _vendor_sse({"type": "done"})
+        finally:
+            try:
+                from db_compat import close_flask_mysql_connection
+                close_flask_mysql_connection()
+            except Exception:
+                pass
+
+    return Response(
+        stream_with_context(stream_generator()),
+        mimetype="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )

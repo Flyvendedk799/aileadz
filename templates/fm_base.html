@@ -118,6 +118,7 @@
       <div class="fm-nav-label">Admin</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'admin' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i><span>Adminpanel</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'acompanies' }}" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i><span>Virksomheder &amp; HR</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'acatalog' }}" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i><span>Katalogadmin</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'abot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i><span>Chatbot BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'aicost' }}" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span>AI-omkostninger</span></a></li>

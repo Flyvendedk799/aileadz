@@ -1,17 +1,104 @@
-<!DOCTYPE html><html lang="da"><head><title>Futurematch — Debug Log</title>
-<meta charset="UTF-8"/>
-<meta name="viewport" content="width=device-width, initial-scale=1"/>
-<link rel="preconnect" href="https://fonts.googleapis.com"/>
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
-<link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet"/>
-<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css"/>
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}"/>
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}"/>
-<style>body{background:#0a0d0c;color:#eef0ec;font-family:var(--ff)}.wrap{max-width:1100px;margin:0 auto;padding:28px 24px}
-.top{display:flex;align-items:center;gap:12px;margin-bottom:20px}.mark{width:34px;height:34px;border-radius:10px;display:grid;place-items:center;color:#052420;font-family:var(--ff-display);font-weight:800;background:linear-gradient(140deg,#2bb6a6,#239789 70%,#e0824f)}
-.seg2{display:inline-flex;gap:2px;padding:3px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.08)}.seg2 button{height:30px;padding:0 12px;border:none;background:transparent;color:#9aa39c;font-family:inherit;font-size:12.5px;font-weight:600;border-radius:7px}.seg2 button.on{background:rgba(43,182,166,.14);color:#2bb6a6}
-.logcard{border:1px solid rgba(255,255,255,.08);border-radius:14px;overflow:hidden;background:#11161 4;background:#111614}.lhead{display:grid;grid-template-columns:78px 64px 90px 1fr;gap:12px;padding:11px 14px;border-bottom:1px solid rgba(255,255,255,.08);font-family:var(--ff-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:#69726b;background:rgba(255,255,255,.02)}</style></head><body>
-<div class="wrap"><div class="top"><a href="{{ url_for('futurematch.chat') }}" style="text-decoration:none;display:flex;align-items:center;gap:10px;color:inherit"><span class="mark">F</span><div><div style="font-family:var(--ff-display);font-weight:700;font-size:16px">Debug Log</div><div style="font-size:11px;color:#69726b">app1 · kursusrådgiver</div></div></a>
-<div style="margin-left:auto;display:flex;gap:10px;align-items:center"><div class="seg2"><button class="on">Alle</button><button>Info</button><button>Warn</button><button>Error</button></div><a href="{{ url_for('futurematch.chat') }}" style="height:34px;padding:0 13px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:transparent;color:#9aa39c;display:inline-flex;align-items:center;gap:7px;font-size:12.5px;font-weight:600;text-decoration:none"><i class="fa-solid fa-arrow-left"></i> Til chat</a></div></div>
-<div style="display:flex;gap:12px;margin-bottom:16px"><div style="flex:1;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;background:#111614"><div style="font-family:var(--ff-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#69726b">Sessioner i dag</div><div style="font-family:var(--ff-display);font-size:22px;font-weight:700;margin-top:3px">—</div></div><div style="flex:1;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;background:#111614"><div style="font-family:var(--ff-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#69726b">Fejl (24t)</div><div style="font-family:var(--ff-display);font-size:22px;font-weight:700;margin-top:3px">—</div></div><div style="flex:1;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;background:#111614"><div style="font-family:var(--ff-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#69726b">Gns. svartid</div><div style="font-family:var(--ff-display);font-size:22px;font-weight:700;margin-top:3px">—</div></div><div style="flex:1;border:1px solid rgba(255,255,255,.08);border-radius:12px;padding:14px 16px;background:#111614"><div style="font-family:var(--ff-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:#69726b">Match-rate</div><div style="font-family:var(--ff-display);font-size:22px;font-weight:700;margin-top:3px">—</div></div></div>
-<div class="logcard"><div class="lhead"><span>Tid</span><span>Niveau</span><span>Modul</span><span>Besked</span></div><div style="padding:32px 14px;text-align:center;color:#69726b;font-family:var(--ff-mono);font-size:12px">Ingen log-hændelser endnu.</div></div></div></body></html>
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}alog{% endblock %}
+{% block title %}Aktivitetslog{% endblock %}
+{% block topbar_title %}Aktivitetslog{% endblock %}
+{% block topbar_sub %}Revisionsspor over handlinger på tværs af platformen — filtreret på type og periode.{% endblock %}
+
+{% block extra_head %}
+<style>
+  .alog-filter { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+  .alog-field { display: flex; flex-direction: column; gap: 6px; min-width: 180px; }
+  .alog-field .fm-select { min-width: 180px; }
+  .alog-time { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--fm-ink-2); font-size: 12.5px; }
+  .alog-res { font-family: var(--ff-mono, monospace); font-size: 12px; color: var(--fm-ink-2); }
+  .alog-desc { color: var(--fm-ink-2); max-width: 420px; }
+  @media (max-width: 720px) {
+    .alog-field, .alog-field .fm-select { min-width: 0; width: 100%; }
+    .alog-filter { flex-direction: column; align-items: stretch; }
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+{% set _rows = rows or [] %}
+{% set _types = action_types or [] %}
+<div class="fm-wrap">
+
+  <!-- Filter bar (GET, auto-submit) -->
+  <div class="fm-card" style="margin-bottom:16px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-filter"></i></span>
+      <h3>Filtre</h3>
+    </div>
+    <div class="fm-card-body">
+      <form class="alog-filter" method="get" action="{{ url_for('admin_dashboard.admin_audit_log') }}">
+        {% if sel_company_id %}<input type="hidden" name="company_id" value="{{ sel_company_id }}">{% endif %}
+        <div class="alog-field">
+          <label class="fm-eyebrow" for="alog-type"><i class="fa-solid fa-tag"></i> Handlingstype</label>
+          <select id="alog-type" name="action_type" class="fm-select" onchange="this.form.submit()">
+            <option value="" {{ 'selected' if not sel_action_type }}>Alle typer</option>
+            {% for t in _types %}
+            <option value="{{ t }}" {{ 'selected' if sel_action_type == t }}>{{ t }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="alog-field">
+          <label class="fm-eyebrow" for="alog-days"><i class="fa-solid fa-calendar-days"></i> Periode</label>
+          <select id="alog-days" name="days" class="fm-select" onchange="this.form.submit()">
+            {% for d, lbl in [(7,'Seneste 7 dage'),(30,'Seneste 30 dage'),(90,'Seneste 90 dage'),(365,'Seneste 12 mdr.')] %}
+            <option value="{{ d }}" {{ 'selected' if (days|default(30))|int == d }}>{{ lbl }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <noscript><button type="submit" class="btn btn-soft btn-sm"><i class="fa-solid fa-arrow-rotate-right"></i> Anvend</button></noscript>
+      </form>
+    </div>
+  </div>
+
+  <!-- Activity table -->
+  {% if _rows %}
+  <div class="fm-table-wrap">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-clock-rotate-left"></i></span>
+        <h3 style="font-size:15px;font-weight:700">Hændelser ({{ _rows|length }})</h3>
+      </div>
+      <span class="status-pill teal">Seneste {{ days|default(30) }} dage</span>
+    </div>
+    <table class="fm-table">
+      <thead>
+        <tr>
+          <th>Tidspunkt</th>
+          <th>Virksomhed</th>
+          <th>Bruger</th>
+          <th>Handling</th>
+          <th>Ressource</th>
+          <th>Beskrivelse</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for r in _rows %}
+        <tr>
+          <td class="alog-time">{{ r.created_at|default('—') }}</td>
+          <td>{{ r.company_name|default('—', true) }}</td>
+          <td style="font-weight:600">{{ r.username|default('—', true) }}</td>
+          <td>
+            {% set _act = r.action_type or r.action %}
+            {% if _act %}<span class="fm-badge">{{ _act }}</span>{% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}
+          </td>
+          <td class="alog-res">
+            {% if r.resource_type %}{{ r.resource_type }}{% if r.resource_id %} #{{ r.resource_id }}{% endif %}{% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}
+          </td>
+          <td class="alog-desc">{{ r.description|default('—', true) }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  {{ ui.empty("Ingen aktivitet i perioden", "Prøv at udvide perioden eller vælge en anden handlingstype.", "fa-clock-rotate-left") }}
+  {% endif %}
+
+</div>
+{% endblock %}

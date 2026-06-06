@@ -1,0 +1,83 @@
+{# Embedded, collapsible HR AI assistant. Include near the end of a page's content:
+       {% include 'fm/_ai_panel.html' %}
+   Reuses the existing SSE endpoint (hr_dashboard.hr_chatbot_ask) so users can ask
+   questions without leaving the dashboard. Only renders for HR-capable users. #}
+{% if session.get('company_role') in ['company_admin','hr_manager','department_head'] or session.get('role') == 'admin' %}
+<div class="fm-aip" id="fmAip" aria-live="polite">
+  <button type="button" class="fm-aip-fab" id="fmAipFab" aria-label="HR AI-assistent">
+    <i class="fa-solid fa-robot"></i><span>HR AI</span>
+  </button>
+  <section class="fm-aip-panel" id="fmAipPanel" hidden>
+    <header class="fm-aip-head">
+      <span><i class="fa-solid fa-robot"></i> HR AI-assistent</span>
+      <button type="button" class="fm-aip-x" id="fmAipClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
+    </header>
+    <div class="fm-aip-body" id="fmAipBody">
+      <div class="fm-aip-hint">Spørg om budgetter, kompetencegap, compliance, ROI eller leverandører.</div>
+      <div class="fm-aip-chips">
+        <button type="button" class="fm-aip-chip">Hvor står vi på budgettet?</button>
+        <button type="button" class="fm-aip-chip">Største kompetencegap lige nu?</button>
+        <button type="button" class="fm-aip-chip">Hvem mangler compliance?</button>
+      </div>
+    </div>
+    <form class="fm-aip-form" id="fmAipForm">
+      <input type="text" id="fmAipInput" placeholder="Stil et spørgsmål…" autocomplete="off" />
+      <button type="submit" aria-label="Send"><i class="fa-solid fa-paper-plane"></i></button>
+    </form>
+  </section>
+</div>
+<script>
+(function () {
+  var fab = document.getElementById('fmAipFab'),
+      panel = document.getElementById('fmAipPanel'),
+      closeb = document.getElementById('fmAipClose'),
+      form = document.getElementById('fmAipForm'),
+      input = document.getElementById('fmAipInput'),
+      body = document.getElementById('fmAipBody');
+  if (!fab) return;
+  var ASK = "{{ url_for('hr_dashboard.hr_chatbot_ask') }}";
+  function toggle(open) { panel.hidden = !open; if (open) setTimeout(function(){ input.focus(); }, 50); }
+  fab.addEventListener('click', function () { toggle(panel.hidden); });
+  closeb.addEventListener('click', function () { toggle(false); });
+  body.addEventListener('click', function (e) {
+    var c = e.target.closest('.fm-aip-chip'); if (c) { input.value = c.textContent; form.requestSubmit(); }
+  });
+  function addMsg(role, text) {
+    var d = document.createElement('div');
+    d.className = 'fm-aip-msg ' + role;
+    d.textContent = text;
+    body.appendChild(d); body.scrollTop = body.scrollHeight;
+    return d;
+  }
+  form.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var q = (input.value || '').trim(); if (!q) return;
+    addMsg('user', q); input.value = '';
+    var out = addMsg('bot', '…');
+    var acc = '';
+    fetch(ASK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q }) })
+      .then(function (r) {
+        if (!r.body) { out.textContent = 'Kunne ikke hente svar.'; return; }
+        var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+        (function pump() {
+          return reader.read().then(function (res) {
+            if (res.done) { if (!acc) out.textContent = 'Intet svar.'; return; }
+            buf += dec.decode(res.value, { stream: true });
+            var lines = buf.split('\n'); buf = lines.pop();
+            lines.forEach(function (line) {
+              if (!line.startsWith('data: ')) return;
+              try {
+                var d = JSON.parse(line.substring(6));
+                if (d.type === 'text' && d.content) { acc += d.content; out.textContent = acc; body.scrollTop = body.scrollHeight; }
+                else if (d.type === 'error') { out.textContent = d.content || 'Der opstod en fejl.'; }
+              } catch (err) {}
+            });
+            return pump();
+          });
+        })();
+      })
+      .catch(function () { out.textContent = 'Netværksfejl.'; });
+  });
+})();
+</script>
+{% endif %}

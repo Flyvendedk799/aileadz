@@ -192,6 +192,20 @@ def create_app():
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
 
+    # Dashboard-upgrade blueprints: new HR feature pages (Pillar B) sharing the
+    # /hr prefix, and the global ⌘K search API. Guarded so a failure here can
+    # never crash create_app().
+    try:
+        from hr_ext import hr_ext_bp
+        app.register_blueprint(hr_ext_bp, url_prefix='/hr')
+    except Exception as e:
+        logging.warning("HR feature pages (hr_ext) skipped: %s", e)
+    try:
+        from search_api import search_api_bp
+        app.register_blueprint(search_api_bp)
+    except Exception as e:
+        logging.warning("Global search API skipped: %s", e)
+
     # SCIM 2.0 provisioning/deprovisioning (enterprise SSO/HRIS). Guarded so a
     # failure here can never crash create_app().
     try:

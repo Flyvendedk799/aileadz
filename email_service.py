@@ -55,6 +55,43 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'order_approval_needed': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">Kursusbestilling afventer godkendelse</h2>
+    <p>En medarbejder har bestilt et kursus, der kræver din godkendelse.</p>
+    <p><strong>{{ product_title }}</strong>{% if amount %} — {{ amount }} kr.{% endif %}</p>
+    {% if requester %}<p style="font-size:13px;color:#64748b;">Bestilt af: {{ requester }}{% if department %} ({{ department }}){% endif %}</p>{% endif %}
+    <p><a href="{{ approvals_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;">Gennemgå godkendelser</a></p>
+  </div>
+</body></html>
+""",
+        'order_approved': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">Din kursusbestilling er {{ decision or 'godkendt' }}</h2>
+    <p><strong>{{ product_title }}</strong></p>
+    <p>{{ message or 'Du kan nu komme i gang. Log ind for at se detaljerne.' }}</p>
+    <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'budget_overrun_alert': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #fee2e2;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color:#b91c1c;">Budgetadvarsel: {{ department }}</h2>
+    <p>Afdelingen <strong>{{ department }}</strong> har overskredet sit årlige uddannelsesbudget.</p>
+    <p style="font-size:14px;">Forbrugt: <strong>{{ spent }} kr.</strong> af {{ annual_budget }} kr.</p>
+    <p style="font-size:13px;color:#64748b;">Udløst af ordre {{ order_id }}.</p>
+  </div>
+</body></html>
+""",
     }
     body_tpl = templates.get(template_name, templates['welcome'])
     ctx = {

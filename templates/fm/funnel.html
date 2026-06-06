@@ -30,9 +30,21 @@
   .fn-rate .r-v { font-size: 20px; font-weight: 800; margin-top: 4px; }
   .bi-empty { padding: 44px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
   .bi-empty i { font-size: 26px; display: block; margin-bottom: 10px; color: var(--fm-ink-3); opacity: .6; }
+
+  /* Company / period drill-down filter bar */
+  .fn-filterbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-top: 16px; }
+  .fn-filter-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+  .fn-filter-field { display: flex; flex-direction: column; gap: 5px; }
+  .fn-filter-field .fm-select { min-width: 200px; }
+  .fn-filter-chip { align-self: center; }
+  .fn-chip-clear { color: inherit; opacity: .75; margin-left: 2px; text-decoration: none; }
+  .fn-chip-clear:hover { opacity: 1; }
+
   @media (max-width: 900px) {
     .funnel-step { grid-template-columns: 1fr; gap: 6px; }
     .fn-rate-row { grid-template-columns: repeat(2, 1fr); }
+    .fn-filter-field .fm-select { min-width: 0; width: 100%; }
+    .fn-filter-field { flex: 1 1 160px; }
   }
 </style>
 {% endblock %}
@@ -42,6 +54,37 @@
     <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
     <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
     <a class="pg-tab active" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Conversion-funnel</a>
+  </div>
+
+  {# --- Per-company + periode drill-down (GET, auto-submit) --- #}
+  <div class="fn-filterbar">
+    <form class="fn-filter-form" method="get" action="{{ url_for('admin_reports.conversion_funnel') }}">
+      <div class="fn-filter-field">
+        <label class="fm-eyebrow" for="fnCompany"><i class="fa-solid fa-building"></i> Virksomhed</label>
+        <select id="fnCompany" name="company_id" class="fm-select" onchange="this.form.submit()">
+          <option value="" {{ 'selected' if not sel_company_id }}>Alle virksomheder</option>
+          {% for c in companies|default([]) %}
+          <option value="{{ c.id }}" {{ 'selected' if sel_company_id and sel_company_id|int == c.id|int }}>{{ c.company_name|default('Virksomhed #' ~ c.id) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fn-filter-field">
+        <label class="fm-eyebrow" for="fnDays"><i class="fa-solid fa-calendar-days"></i> Periode</label>
+        <select id="fnDays" name="days" class="fm-select" onchange="this.form.submit()">
+          {% for d, lbl in [(7,'7 dage'),(30,'30 dage'),(90,'90 dage'),(180,'6 mdr.'),(365,'12 mdr.')] %}
+          <option value="{{ d }}" {{ 'selected' if days|int == d }}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-soft btn-sm">Anvend</button></noscript>
+    </form>
+    {% if sel_company_id %}
+    {% set _sel_name = (companies|default([])|selectattr('id', 'equalto', sel_company_id|int)|map(attribute='company_name')|first) %}
+    <span class="status-pill teal fn-filter-chip">
+      <i class="fa-solid fa-filter"></i> Filtreret: {{ _sel_name|default('Virksomhed #' ~ sel_company_id) }}
+      <a class="fn-chip-clear" href="{{ url_for('admin_reports.conversion_funnel', days=days) }}" title="Ryd filter" aria-label="Ryd virksomhedsfilter"><i class="fa-solid fa-xmark"></i></a>
+    </span>
+    {% endif %}
   </div>
 
   {% if not has_data %}

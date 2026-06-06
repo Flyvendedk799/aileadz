@@ -1,15 +1,11 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}HR-workspace{% endblock %}
 {% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · medarbejdere, kompetencer, læring og AI-aktivitet.{% endblock %}
 {% block extra_head %}
 <style>
-  .hr-tabs { display: flex; gap: 4px; padding: 4px; border-radius: var(--r-ctrl); background: var(--fm-surface-3); border: 1px solid var(--fm-line); width: max-content; margin-bottom: 22px; overflow-x: auto; max-width: 100%; }
-  .hr-tab { height: 34px; padding: 0 14px; border-radius: 8px; border: none; background: transparent; color: var(--fm-ink-2); font-family: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap; transition: var(--t); display: inline-flex; align-items: center; gap: 7px; }
-  .hr-tab i { font-size: 12px; }
-  .hr-tab.active { background: var(--fm-surface); color: var(--fm-primary); box-shadow: var(--sh-xs); }
-
   .hr-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
   .hr-kpi { display: flex; gap: 14px; padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); }
   .hr-kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
@@ -21,6 +17,9 @@
   .hr-kpi .lab { font-size: 12.5px; color: var(--fm-ink-2); font-weight: 600; }
   .hr-kpi .val { font-family: var(--ff-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1.1; font-variant-numeric: tabular-nums; }
   .hr-kpi .det { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 3px; }
+  a.hr-kpi { text-decoration: none; color: inherit; }
+  a.hr-kpi .lab i.fa-arrow-right { font-size: 10px; opacity: 0; margin-left: 5px; transition: var(--t); }
+  a.hr-kpi:hover .lab i.fa-arrow-right { opacity: .65; }
 
   .signal-strip { display: grid; grid-template-columns: repeat(4,1fr); gap: 14px; margin-bottom: 18px; }
   .signal { padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); }
@@ -48,24 +47,16 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-        <div class="hr-tabs">
-          <a class="hr-tab active" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
-          <a class="hr-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
-          <a class="hr-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
-          <a class="hr-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
-          <a class="hr-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a>
-          <a class="hr-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
-          <a class="hr-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
-        </div>
+        {% set active_hr_page = 'dashboard' %}{% include 'fm/_hr_subnav.html' %}
 
         {% set m = hr_metrics or {} %}
         {% set lm = learning_metrics or {} %}
         <!-- KPIs -->
         <section class="hr-kpis">
           <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">{{ m.total_employees or 0 }}</div><div class="det">{{ m.active_employees or 0 }} aktive · {{ m.new_hires_30_days or 0 }} nye (30 d)</div></div></article>
-          <article class="hr-kpi green" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift</div><div class="val tnum">{{ completion_rate or 0 }}%</div><div class="det">{{ lm.completed_courses or 0 }} gennemført · {{ lm.in_progress_courses or 0 }} i gang</div></div></article>
-          <article class="hr-kpi indigo" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer</div><div class="val tnum">{{ lm.total_enrollments or 0 }}</div><div class="det">{{ completed_orders_count or 0 }} gennemført · {{ pending_orders_count or 0 }} afventer</div></div></article>
-          <article class="hr-kpi clay" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelses-ROI</div><div class="val tnum">{{ '{:,.0f}'.format(roi_total_spend or 0) }}</div><div class="det">{{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></article>
+          <a class="hr-kpi green" href="{{ url_for('hr_dashboard.learning_paths') }}" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ completion_rate or 0 }}%</div><div class="det">{{ lm.completed_courses or 0 }} gennemført · {{ lm.in_progress_courses or 0 }} i gang</div></div></a>
+          <a class="hr-kpi indigo" href="{{ url_for('hr_dashboard.pending_approvals') }}" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ lm.total_enrollments or 0 }}</div><div class="det">{{ completed_orders_count or 0 }} gennemført · {{ pending_orders_count or 0 }} afventer</div></div></a>
+          <a class="hr-kpi clay" href="{{ url_for('hr_dashboard.roi_dashboard') }}" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelses-ROI <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ '{:,.0f}'.format(roi_total_spend or 0) }}</div><div class="det">{{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></a>
         </section>
 
         {% set dh = dashboard_health or {} %}
@@ -88,6 +79,27 @@
           <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-clay btn-sm">Se godkendelser <i class="fa-solid fa-arrow-right"></i></a>
         </div>
         {% endif %}
+
+        <!-- AI insights -->
+        <div class="fm-card" data-reveal data-d="1" style="margin-bottom:18px">
+          <div class="fm-card-head">
+            <span class="fm-ch-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+            <h3>AI-indsigter</h3>
+            <form method="post" action="{{ url_for('hr_dashboard.generate_insights') }}" style="margin-left:auto">
+              <button type="submit" class="btn btn-soft btn-sm"><i class="fa-solid fa-arrows-rotate"></i> Generér nye</button>
+            </form>
+          </div>
+          <div class="fm-card-body">
+            {% set _ins = recent_insights or [] %}
+            {% if _ins and _ins|length > 0 %}
+            <div class="fm-grid" style="gap:12px">
+              {% for i in _ins[:6] %}{{ ui.insight_card(i) }}{% endfor %}
+            </div>
+            {% else %}
+            {{ ui.empty('Ingen AI-indsigter endnu', 'Generér indsigter for at se mønstre i læring, budget og kompetencer.', 'fa-wand-magic-sparkles') }}
+            {% endif %}
+          </div>
+        </div>
 
         <!-- Orders table + sidebar -->
         <div class="hr-cols">
@@ -162,5 +174,6 @@
           </div>
         </div>
 
+        {% include 'fm/_ai_panel.html' %}
       </div>
 {% endblock %}

@@ -29,6 +29,59 @@ logger = logging.getLogger(__name__)
 
 
 # ---------------------------------------------------------------------------
+# Cross-integration side effects (events / email / notifications).
+#
+# All best-effort and fully guarded: a failure here NEVER affects the order
+# transaction (they run AFTER commit, on their own connections) and NEVER raises
+# into the caller. This is the two-track integration spine — outbox events for
+# webhook fan-out + best-effort branded email + in-app notification rows.
+# ---------------------------------------------------------------------------
+def _emit_event_safe(company_id, event_type, payload):
+    """Record an integration event in the outbox. Never raises."""
+    if not company_id:
+        return
+    try:
+        from event_bus import emit_event
+        emit_event(company_id, event_type, payload or {})
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("order_service: emit_event(%s) skipped: %s", event_type, e)
+
+
+def _send_email_safe(to_email, subject, template_name, company_id, **context):
+    """Send a branded transactional email. No-op without SMTP; never raises."""
+    if not to_email:
+        return
+    try:
+        from email_service import send_branded_email, _resolve_branding
+        branding = _resolve_branding(company_id)
+        send_branded_email(to_email, subject, template_name, branding,
+                           company_id=company_id, **context)
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("order_service: email(%s) skipped: %s", template_name, e)
+
+
+def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0):
+    """Insert an in-app notification card for the company's HR/admins. Never raises.
+
+    Uses the same company_notifications shape as the HR dashboard nudge path.
+    Runs on the caller's cursor so it shares the order transaction's commit.
+    """
+    if not company_id:
+        return
+    try:
+        cur.execute(
+            """INSERT INTO company_notifications
+                   (company_id, recipient_user_id, sender_user_id, target_roles,
+                    title, message, is_urgent, is_read)
+               VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)""",
+            (company_id, '["company_admin","hr_manager"]', str(title)[:255],
+             str(message), is_urgent),
+        )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("order_service: company notification skipped: %s", e)
+
+
+# ---------------------------------------------------------------------------
 # Roles considered "manager-level" — these can view/manage company orders and
 # do NOT need approval for their own orders. Everyone else (employee / unknown)
 # is treated as an employee and routed through approval.
@@ -406,7 +459,34 @@ def create_order(ctx, *, product_handle, product_title, price,
             description=f"{product_title} ({ctx.source})",
         )
 
+        # In-app notification to HR/admins when an order needs their approval
+        # (shares this transaction so it commits atomically with the order).
+        if needs_approval and ctx.company_id:
+            _notify_company_admins_safe(
+                cur, ctx.company_id,
+                "Ny bestilling afventer godkendelse",
+                f"{product_title} er bestilt af {ctx.username or 'en medarbejder'} "
+                f"og afventer godkendelse.",
+                is_urgent=1,
+            )
+
         conn.commit()
+
+        # --- 7. cross-integration side effects (post-commit, best-effort) ---
+        _emit_event_safe(
+            ctx.company_id,
+            "order.needs_approval" if needs_approval else "order.created",
+            {"order_id": order_id, "product_title": product_title,
+             "price": price_f, "status": initial_status,
+             "department": dept, "source": ctx.source},
+        )
+        if user_email and not needs_approval:
+            _send_email_safe(
+                user_email, f"Ordrebekræftelse — {product_title}",
+                "order_confirmation", ctx.company_id,
+                product_title=product_title, order_id=order_id,
+                recipient_name=user_name or ctx.username or "",
+            )
 
         return {
             "success": True,
@@ -648,6 +728,22 @@ def _maybe_charge(cur, row):
             "UPDATE course_orders SET budget_charged = 1 WHERE order_id = %s",
             (row.get("order_id"),),
         )
+
+        # C3: budget overrun — surface as an in-app card (in this transaction) +
+        # an outbox event. Best-effort; never blocks the charge.
+        annual = _to_float(brow.get("annual_budget"))
+        if annual > 0 and new_spent > annual:
+            _notify_company_admins_safe(
+                cur, company_id,
+                f"Budget overskredet: {department}",
+                f"Afdelingen '{department}' har nu brugt {new_spent:.0f} kr. af "
+                f"{annual:.0f} kr. efter en godkendt bestilling.",
+                is_urgent=1,
+            )
+            _emit_event_safe(company_id, "budget.overrun", {
+                "department": department, "spent": new_spent,
+                "annual_budget": annual, "order_id": row.get("order_id"),
+            })
         return True
     except Exception as e:
         logger.warning("order_service: charge-on-transition failed: %s", e)
@@ -724,6 +820,35 @@ def set_status(ctx, order_id, new_status):
         )
 
         conn.commit()
+
+        # --- cross-integration side effects (post-commit, best-effort) ------
+        company_id = _int_or_none(row.get("company_id"))
+        if new_status in ("approved", "confirmed"):
+            _event = "order.approved"
+        elif new_status in _CANCELLED_LIKE_STATUSES:
+            _event = "order.rejected"
+        else:
+            _event = "order.status_changed"
+        _emit_event_safe(company_id, _event, {
+            "order_id": order_id, "status": new_status,
+            "previous_status": old_status, "charged": charged, "refunded": refunded,
+            "product_title": row.get("product_title"),
+        })
+        # Tell the requester their order was decided.
+        _requester_email = row.get("user_email")
+        if _requester_email and new_status in ("approved", "confirmed", "rejected"):
+            _decision = "afvist" if new_status == "rejected" else "godkendt"
+            _send_email_safe(
+                _requester_email,
+                f"Din kursusbestilling er {_decision}",
+                "order_approved", company_id,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                decision=_decision,
+                message=("Din bestilling blev desværre afvist."
+                         if new_status == "rejected"
+                         else "Din bestilling er godkendt — log ind for at komme i gang."),
+            )
+
         return {
             "success": True,
             "order_id": order_id,

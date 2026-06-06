@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}creports{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomhedsrapporter{% endblock %}
@@ -11,6 +12,19 @@
   <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-filter"></i></span><div><div class="kl">Konvertering</div><div class="kv tnum">{{ conversion_rate }}%</div><div class="kd">{{ completed_orders_count }} af / {{ pending_orders_count }} afventer</div></div></div>
   <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-users"></i></span><div><div class="kl">Engagement</div><div class="kv tnum">{{ employee_engagement_rate }}%</div><div class="kd">{{ company_stats.active_users_30d if company_stats else 0 }} aktive (30 d)</div></div></div>
   <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ "{:,.0f}".format(total_revenue) }}</div><div class="kd">kr fra {{ completed_orders_count }} ordrer</div></div></div>
+</div>
+
+<div class="fm-card" style="margin-top:18px">
+  <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-wand-magic-sparkles"></i></span><h3>AI-indsigter</h3>{% if recent_insights %}<span class="fm-badge teal" style="margin-left:auto">{{ recent_insights|length }}</span>{% endif %}</div>
+  <div class="fm-card-body">
+    {% if recent_insights %}
+    {% for i in recent_insights %}
+    {{ ui.insight_card(i) }}
+    {% endfor %}
+    {% else %}
+    {{ ui.empty("Ingen indsigter endnu", "Generér dem fra HR-dashboardet", "fa-wand-magic-sparkles") }}
+    {% endif %}
+  </div>
 </div>
 
 <div class="split">

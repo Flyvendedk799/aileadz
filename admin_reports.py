@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
@@ -700,11 +700,20 @@ def conversion_funnel():
     Everything is wrapped so a reporting failure renders a clean empty state
     instead of a 500.
     """
-    days = 30
+    try:
+        days = int(request.args.get('days', 30))
+    except (TypeError, ValueError):
+        days = 30
+    # B13: optional per-company drill-down. None = platform-wide.
+    try:
+        sel_company_id = int(request.args.get('company_id')) if request.args.get('company_id') else None
+    except (TypeError, ValueError):
+        sel_company_id = None
+
     funnel = {
         'sessions': 0, 'searches': 0, 'shown': 0, 'ordered': 0,
         'rate_search': 0.0, 'rate_shown': 0.0, 'rate_ordered': 0.0,
-        'overall_rate': 0.0, 'days': days, 'company_id': None,
+        'overall_rate': 0.0, 'days': days, 'company_id': sel_company_id,
     }
     daily = {'labels': [], 'data': []}
     queries = []
@@ -712,12 +721,22 @@ def conversion_funnel():
 
     try:
         if report_query is not None:
-            funnel = report_query.conversion_funnel(None, days)
-            daily = report_query.daily_volume(None, days)
-            queries = report_query.top_queries(None, days, 12)
+            funnel = report_query.conversion_funnel(sel_company_id, days)
+            daily = report_query.daily_volume(sel_company_id, days)
+            queries = report_query.top_queries(sel_company_id, days, 12)
             has_data = bool(funnel.get('sessions'))
     except Exception:
         # Fall through to the empty state defaults defined above.
+        pass
+
+    # Company list for the drill-down picker.
+    companies = []
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, company_name FROM companies ORDER BY company_name ASC")
+        companies = cur.fetchall() or []
+        cur.close()
+    except Exception:
         pass
 
     return render_template(
@@ -728,6 +747,8 @@ def conversion_funnel():
         top_queries=queries,
         days=days,
         has_data=has_data,
+        companies=companies,
+        sel_company_id=sel_company_id,
     )
 
 

@@ -226,6 +226,25 @@ def generate_company_insights(app, company_id):
             except Exception as e:
                 logger.warning(f"Failed to store insight: {e}")
 
+        # C5: surface new high-signal insights as an in-app notification card for
+        # HR/admins (same company_notifications shape the dashboard reads). Guarded.
+        try:
+            alerts = [i for i in insights if i.get('severity') in ('warning', 'critical', 'danger')]
+            if alerts:
+                top = alerts[0]
+                title = "Ny AI-indsigt" + (f" (+{len(alerts) - 1} mere)" if len(alerts) > 1 else "")
+                urgent = 1 if any(i.get('severity') in ('critical', 'danger') for i in alerts) else 0
+                cur.execute(
+                    """INSERT INTO company_notifications
+                           (company_id, recipient_user_id, sender_user_id, target_roles,
+                            title, message, is_urgent, is_read)
+                       VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)""",
+                    (company_id, '["company_admin","hr_manager"]', title[:255],
+                     f"{top.get('title', '')} — {top.get('body', '')}", urgent),
+                )
+        except Exception as e:
+            logger.warning(f"Insight notification skipped: {e}")
+
         conn.commit()
         cur.close()
         return insights

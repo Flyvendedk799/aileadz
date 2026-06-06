@@ -1,0 +1,137 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}syshealth{% endblock %}
+{% block title %}Systemstatus{% endblock %}
+{% block topbar_title %}Systemstatus{% endblock %}
+{% block topbar_sub %}Sundhedstilstand for valgfrie undersystemer, leveringskø for events og et øjebliksbillede af platformen.{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+
+  {# --- Normalise inputs defensively (tool outputs may be empty / hold 'error') --- #}
+  {% set ob = outbox if (outbox is mapping and not outbox.get('error')) else {} %}
+  {% set snap = snapshot if (snapshot is mapping and not snapshot.get('error')) else {} %}
+  {% set feats = features if (features is mapping and not features.get('error')) else {} %}
+
+  {# Pending/failed drive an at-a-glance overall health pill. #}
+  {% set ob_pending = ob.get('pending')|default(0) %}
+  {% set ob_failed = ob.get('failed')|default(0) %}
+  {% set ob_total = ob.get('total')|default(0) %}
+  {% set feat_down = [] %}
+  {% for k, v in feats.items() %}
+    {% set _ok = (v.get('available') or v.get('ok') or v.get('status') in ['ok','available','green','up']) if (v is mapping) else v %}
+    {% if not _ok %}{% set _ = feat_down.append(k) %}{% endif %}
+  {% endfor %}
+
+  {% set _overall_tone = 'green' if (ob_failed|int == 0 and feat_down|length == 0) else ('amber' if (ob_failed|int == 0 or feat_down|length <= 1) else 'red') %}
+  {% set _overall_lbl = 'Alt kører' if _overall_tone == 'green' else ('Mindre afvigelser' if _overall_tone == 'amber' else 'Kræver opmærksomhed') %}
+
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i> Systemstatus</a>
+  </div>
+
+  <div class="fm-spread" style="margin:6px 0 14px;align-items:center">
+    <span class="fm-eyebrow"><i class="fa-solid fa-heart-pulse"></i> Driftsoverblik</span>
+    <span class="status-pill {{ _overall_tone }}">{{ _overall_lbl }}</span>
+  </div>
+
+  {# --- KPI tiles: event-outbox backlog + platform snapshot --- #}
+  <div class="kpi-row k5">
+    {{ ui.kpi('Events i kø', ob_pending, 'afventer levering', 'fa-paper-plane', 'indigo') }}
+    {{ ui.kpi('Fejlede events', ob_failed, 'kunne ikke leveres', 'fa-triangle-exclamation', ('clay' if ob_failed|int > 0 else 'green')) }}
+    {{ ui.kpi('Events i alt', ob_total, (ob.get('delivered')|default(0))|string ~ ' leveret', 'fa-layer-group') }}
+    {{ ui.kpi('Virksomheder', (snap.get('companies') if snap.get('companies') is not none else '—'), 'aktive konti', 'fa-building', 'gold') }}
+    {{ ui.kpi('Ordrer (7 dage)', (snap.get('orders_7d') if snap.get('orders_7d') is not none else '—'), (((snap.get('users') if snap.get('users') is not none else '—')|string) ~ ' brugere'), 'fa-cart-shopping', 'green') }}
+  </div>
+
+  {# --- Undersystemer table --- #}
+  {% set feat_labels = {
+    'vector_search': 'Semantisk katalogsøgning',
+    'sso': 'Enterprise SSO (SAML / LDAP)',
+    'analytics_ml': 'ML-analyse',
+    'rate_limit': 'Distribueret rate-limiting',
+    'email': 'Udgående e-mail',
+    'xml_safe': 'XXE-sikker XML-parsing',
+    'html_sanitize': 'HTML-sanering'
+  } %}
+
+  <div class="fm-table-wrap">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-server"></i></span>
+        <h3 style="font-size:15px;font-weight:700">Undersystemer</h3>
+      </div>
+      <span class="fm-badge {{ 'green' if feat_down|length == 0 and feats else ('amber' if feats else '') }}">
+        {% if feats %}{{ feats|length - feat_down|length }} / {{ feats|length }} kører{% else %}Ingen{% endif %}
+      </span>
+    </div>
+
+    {% if feats %}
+    <table class="fm-table">
+      <thead><tr><th>Undersystem</th><th>Status</th><th>Detaljer</th></tr></thead>
+      <tbody>
+        {% for key, info in feats.items() %}
+          {% set inf = info if (info is mapping) else {} %}
+          {% set ok = (inf.get('available') or inf.get('ok') or inf.get('status') in ['ok','available','green','up']) if (info is mapping) else info %}
+          {% set detail = inf.get('detail') or inf.get('message') or inf.get('status') or '' %}
+          <tr>
+            <td style="font-weight:650">
+              {{ feat_labels.get(key, key|replace('_',' ')|capitalize) }}
+              <div style="font-size:11px;color:var(--fm-ink-3);font-weight:400;font-family:var(--fm-mono,monospace)">{{ key }}</div>
+            </td>
+            <td>
+              {% if ok %}
+              <span class="status-pill green">Aktiv</span>
+              {% else %}
+              <span class="status-pill {{ 'amber' if 'fallback' in (detail|lower) or 'optional' in (detail|lower) or 'in-process' in (detail|lower) else 'red' }}">
+                {{ 'Nedgraderet' if 'fallback' in (detail|lower) or 'optional' in (detail|lower) or 'in-process' in (detail|lower) else 'Utilgængelig' }}
+              </span>
+              {% endif %}
+            </td>
+            <td style="font-size:12.5px;color:var(--fm-ink-2);max-width:520px">{{ detail or '—' }}</td>
+          </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="fm-card-body">
+      {{ ui.empty('Ingen statusdata', 'Probningen af undersystemer returnerede intet. Tjek at feature_status er tilgængelig på serveren.', 'fa-server') }}
+    </div>
+    {% endif %}
+  </div>
+
+  {# --- Event-outbox detail (only if we actually have rows) --- #}
+  {% if ob and ob_total|int > 0 %}
+  <div class="split even" style="margin-top:20px">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-paper-plane"></i></span><h3>Leveringskø for events</h3></div>
+      <div class="fm-card-body">
+        <table class="fm-table">
+          <tbody>
+            <tr><td><span class="fm-health green">Leveret</span></td><td class="tnum" style="text-align:right;font-weight:650">{{ ob.get('delivered')|default(0) }}</td></tr>
+            <tr><td><span class="fm-health amber">Afventer</span></td><td class="tnum" style="text-align:right;font-weight:650">{{ ob_pending }}</td></tr>
+            <tr><td><span class="fm-health red">Fejlet</span></td><td class="tnum" style="text-align:right;font-weight:650">{{ ob_failed }}</td></tr>
+            <tr style="border-top:2px solid var(--fm-line)"><td style="font-weight:700">I alt</td><td class="tnum" style="text-align:right;font-weight:800">{{ ob_total }}</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-info"></i></span><h3>Hvad betyder det?</h3></div>
+      <div class="fm-card-body" style="font-size:13px;color:var(--fm-ink-2);line-height:1.6">
+        {% if ob_failed|int > 0 %}
+        <p><strong style="color:var(--fm-danger)">{{ ob_failed }} event(s) kunne ikke leveres.</strong> Disse kræver manuel opfølgning — typisk en utilgængelig webhook-modtager eller en fejlkonfigureret integration.</p>
+        {% elif ob_pending|int > 0 %}
+        <p><strong style="color:var(--fm-warning)">{{ ob_pending }} event(s) afventer levering.</strong> En sund kø tømmes løbende; et voksende tal kan indikere en standset baggrundsproces.</p>
+        {% else %}
+        <p><strong style="color:var(--fm-success)">Køen er ren.</strong> Alle events er leveret, og der er ingen efterslæb.</p>
+        {% endif %}
+        <p style="margin-top:8px">Events sendes til eksterne integrationer (webhooks). Se <a href="{{ url_for('admin_dashboard.admin_audit_log') }}">aktivitetsloggen</a> for hændelseshistorik.</p>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
+</div>
+{% endblock %}

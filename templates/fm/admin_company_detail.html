@@ -93,6 +93,16 @@
       <li><i class="fa-solid fa-{{ 'check' if company.company_slug else 'xmark' }}" style="color:{{ 'var(--fm-success)' if company.company_slug else 'var(--fm-ink-3)' }}"></i> Login-slug</li>
     </ul>
   </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></span><h3>Analysér virksomhed</h3></div><div class="fm-card-body">
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px">Drill ned i denne tenants data (virksomhedsafgrænset).</p>
+    <div style="display:flex;flex-direction:column;gap:8px">
+      <a href="{{ url_for('admin_dashboard.impersonate_company', company_id=company.id) }}" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-user-secret"></i> Åbn HR-dashboard (impersonér)</a>
+      <a href="{{ url_for('admin_reports.conversion_funnel', company_id=company.id) }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-filter"></i> Konverteringstragt</a>
+      <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-robot"></i> Chatbot-BI (platform)</a>
+      <a href="{{ url_for('admin_dashboard.admin_audit_log', company_id=company.id) }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
+    </div>
+  </div></div>
 </div>
 </div>
 </div>

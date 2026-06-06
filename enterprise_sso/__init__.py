@@ -501,17 +501,27 @@ class OAuth2Provider:
             'client_secret': client_secret
         }
         
-        response = requests.post(token_url, data=data)
+        # Timeout (connect, read) so a slow/unreachable IdP can't pin a worker
+        # indefinitely. Callers already treat None as "auth failed".
+        try:
+            response = requests.post(token_url, data=data, timeout=(3.05, 10))
+        except requests.RequestException as e:
+            logging.warning("SSO token exchange failed (%s): %s", token_url, e)
+            return None
         if response.status_code == 200:
             return response.json()
         return None
-    
+
     def get_user_info(self, access_token, config):
         """Get user information using access token"""
         userinfo_url = config.get('userinfo_url')
         headers = {'Authorization': f'Bearer {access_token}'}
-        
-        response = requests.get(userinfo_url, headers=headers)
+
+        try:
+            response = requests.get(userinfo_url, headers=headers, timeout=(3.05, 10))
+        except requests.RequestException as e:
+            logging.warning("SSO userinfo fetch failed (%s): %s", userinfo_url, e)
+            return None
         if response.status_code == 200:
             return response.json()
         return None

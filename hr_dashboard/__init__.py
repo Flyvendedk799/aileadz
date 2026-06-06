@@ -12,6 +12,8 @@ from collections import defaultdict
 import csv
 import io
 
+from perf_cache import ttl_cache
+
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
 
@@ -89,12 +91,28 @@ def create_hr_dashboard_blueprint():
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
-        
+
         company = get_company_context()
         if not company:
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
-        
+
+        try:
+            ctx = _hr_dashboard_metrics(company)
+        except Exception as e:
+            current_app.logger.error(f"Error loading HR dashboard: {e}")
+            flash("Error loading HR dashboard data.", "danger")
+            return redirect(url_for('dashboard.dashboard'))
+        return render_template('fm/hr.html', company=company,
+                               active_hr_page='dashboard', **ctx)
+
+    @ttl_cache(seconds=120, key=lambda company: company['id'])
+    def _hr_dashboard_metrics(company):
+        """Per-company HR dashboard metrics, cached 120s per worker keyed by
+        company id. The body reads only company['id'], so the result is the same
+        for every user of a company; the per-user `company` object is passed
+        fresh into the template by the route above and is never cached. Raises on
+        error so a failed load is not cached and the route can flash + redirect."""
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
@@ -574,8 +592,7 @@ def create_hr_dashboard_blueprint():
             if total_chatbot_queries > 0:
                 conversion_rate = round((len(recent_orders) / total_chatbot_queries) * 100, 2)
             
-            return render_template('fm/hr.html',
-                                 company=company,
+            return dict(
                                  hr_metrics=hr_metrics,
                                  learning_metrics=learning_metrics,
                                  engagement_metrics=engagement_metrics,
@@ -613,13 +630,11 @@ def create_hr_dashboard_blueprint():
                                  recent_sessions=recent_sessions,
                                  recent_activity=recent_activity,
                                  skills_summary=skills_summary,
-                                 dashboard_health=dashboard_health,
-                                 active_hr_page='dashboard')
-            
-        except Exception as e:
-            current_app.logger.error(f"Error loading HR dashboard: {e}")
-            flash("Error loading HR dashboard data.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
+                                 dashboard_health=dashboard_health)
+
+        except Exception:
+            # Never cache a failed load — propagate so the route flashes + redirects.
+            raise
 
     @hr_dashboard_bp.route('/order/<order_id>/update', methods=['POST'])
     def update_company_order_status(order_id):

@@ -350,20 +350,34 @@ def create_multitenant_reports_blueprint():
             if total_chatbot_queries > 0:
                 conversion_rate = (len(recent_orders) / total_chatbot_queries) * 100
             
-            # Get company-specific analytics
+            # Get company-specific analytics. The employee counts come from
+            # company_users alone; the avg interaction quality from
+            # chatbot_interactions alone. Previously these were a single query
+            # whose `LEFT JOIN chatbot_interactions ci ON ci.company_id =
+            # cu.company_id` produced a users×interactions cross product (e.g.
+            # 100 users × 10k interactions = 1M intermediate rows) before
+            # aggregating. Splitting them yields identical values with no blow-up.
             cur.execute("""
-                SELECT 
+                SELECT
                     COUNT(DISTINCT cu.user_id) as total_employees,
                     COUNT(DISTINCT CASE WHEN cu.status = 'active' THEN cu.user_id END) as active_employees,
                     COUNT(DISTINCT cu.department) as total_departments,
-                    COALESCE(AVG(ci.interaction_quality_score), 0) as avg_interaction_quality,
                     COUNT(DISTINCT CASE WHEN cu.last_chatbot_interaction >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN cu.user_id END) as active_users_30d
                 FROM company_users cu
-                LEFT JOIN chatbot_interactions ci ON ci.company_id = cu.company_id
                 WHERE cu.company_id = %s
             """, (company['id'],))
-            company_stats = cur.fetchone()
-            
+            company_stats = cur.fetchone() or {}
+
+            cur.execute("""
+                SELECT COALESCE(AVG(interaction_quality_score), 0) AS avg_interaction_quality
+                FROM chatbot_interactions
+                WHERE company_id = %s
+            """, (company['id'],))
+            _q_row = cur.fetchone()
+            company_stats['avg_interaction_quality'] = (
+                _q_row.get('avg_interaction_quality', 0) if isinstance(_q_row, dict) else 0
+            )
+
             cur.close()
             
         except Exception as e:

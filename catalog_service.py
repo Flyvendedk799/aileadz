@@ -53,7 +53,21 @@ _CACHE = {
     "by_handle": None,
     "categories": None,
     "vendors": None,
+    "filter_options": None,
+    "related": None,
+    "related_signature": None,
 }
+
+# Throttle the file-signature stat. _signature() stat()s four files and is hit on
+# every catalog/derive call; within a single page render that is many redundant
+# stat syscalls (slow on PythonAnywhere's networked filesystem). Re-checking the
+# files at most every CATALOG_SIGNATURE_TTL_SECONDS collapses those to one stat
+# burst per window while still picking up catalog edits within a few seconds.
+_SIG_CACHE = {"value": None, "checked_at": 0.0}
+try:
+    _SIG_TTL_SECONDS = max(0.0, float(os.environ.get("CATALOG_SIGNATURE_TTL_SECONDS", "5")))
+except (TypeError, ValueError):
+    _SIG_TTL_SECONDS = 5.0
 
 
 def _root_path():
@@ -98,6 +112,10 @@ def _write_json(path, payload):
 def clear_catalog_cache():
     for key in _CACHE:
         _CACHE[key] = None
+    # Force the next _signature() to re-stat immediately (explicit invalidation
+    # after a catalog edit must not be masked by the signature throttle window).
+    _SIG_CACHE["value"] = None
+    _SIG_CACHE["checked_at"] = 0.0
 
 
 def slugify(value):
@@ -279,13 +297,19 @@ def _load_import_products():
 
 
 def _signature():
+    now = time.monotonic()
+    if _SIG_CACHE["value"] is not None and (now - _SIG_CACHE["checked_at"]) < _SIG_TTL_SECONDS:
+        return _SIG_CACHE["value"]
     paths = [
         _data_path(SOURCE_FILE),
         _data_path(AUGMENTED_FILE),
         _instance_path(CATEGORY_OVERRIDES_FILE),
         _instance_path(IMPORT_PRODUCTS_FILE),
     ]
-    return tuple((path, _mtime(path)) for path in paths)
+    signature = tuple((path, _mtime(path)) for path in paths)
+    _SIG_CACHE["value"] = signature
+    _SIG_CACHE["checked_at"] = now
+    return signature
 
 
 def load_raw_products():
@@ -336,6 +360,9 @@ def load_raw_products():
     _CACHE["by_handle"] = None
     _CACHE["categories"] = None
     _CACHE["vendors"] = None
+    _CACHE["filter_options"] = None
+    _CACHE["related"] = None
+    _CACHE["related_signature"] = None
     return raw_products
 
 
@@ -453,7 +480,16 @@ def get_product(handle):
 
 
 def get_categories(products=None):
-    products = products or get_products()
+    # Cache the global (no-arg) result keyed by the catalog signature — this was
+    # recomputed over the whole catalog (~60k products) on every catalog/filter
+    # request even though the cache slot already existed. An explicit `products`
+    # arg (e.g. a filtered subset) bypasses the cache and is computed fresh.
+    use_cache = products is None
+    if use_cache:
+        signature = _signature()
+        if _CACHE["categories"] is not None and _CACHE["signature"] == signature:
+            return _CACHE["categories"]
+        products = get_products()
     counter = Counter()
     by_slug = {}
     for product in products:
@@ -466,6 +502,8 @@ def get_categories(products=None):
         for slug, count in counter.items()
     ]
     categories.sort(key=lambda c: (-c["count"], c["name"].lower()))
+    if use_cache:
+        _CACHE["categories"] = categories
     return categories
 
 
@@ -482,7 +520,14 @@ def _load_vendor_profiles():
 
 
 def get_vendors(products=None):
-    products = products or get_products()
+    # Same as get_categories: cache the global result keyed by the catalog
+    # signature; an explicit `products` arg is computed fresh and not cached.
+    use_cache = products is None
+    if use_cache:
+        signature = _signature()
+        if _CACHE["vendors"] is not None and _CACHE["signature"] == signature:
+            return _CACHE["vendors"]
+        products = get_products()
     profile_map = _load_vendor_profiles()
     grouped = defaultdict(list)
     for product in products:
@@ -507,6 +552,8 @@ def get_vendors(products=None):
             "image_url": next((item["image_url"] for item in items if item["image_url"]), ""),
         })
     vendors.sort(key=lambda v: (-v["course_count"], v["name"].lower()))
+    if use_cache:
+        _CACHE["vendors"] = vendors
     return vendors
 
 
@@ -518,15 +565,27 @@ def get_vendor(slug):
 
 
 def get_filter_options(products=None):
+    # The catalog/browse pages call this on every load; cache the assembled
+    # result (categories + vendors + formats + locations) keyed by the catalog
+    # signature so the whole derivation runs once per catalog change, not once
+    # per request.
+    use_cache = products is None
+    if use_cache:
+        signature = _signature()
+        if _CACHE["filter_options"] is not None and _CACHE["signature"] == signature:
+            return _CACHE["filter_options"]
     products = products or get_products()
     formats = sorted({p["format"] for p in products if p.get("format")})
     locations = Counter(loc for p in products for loc in p["locations"])
-    return {
+    result = {
         "categories": get_categories(products),
         "vendors": get_vendors(products),
         "formats": formats,
         "locations": [{"name": name, "count": count} for name, count in locations.most_common(30)],
     }
+    if use_cache:
+        _CACHE["filter_options"] = result
+    return result
 
 
 def product_search_text(product):
@@ -728,6 +787,11 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
     price_max = parse_price(filters.get("price_max"))
 
     matched = []
+    # Only build the (expensive) per-product search text when there is actually a
+    # query — the common browse/category/vendor case skips ~60k concatenations.
+    # Memoise it for products that pass the cheap filters so the relevance sort
+    # below doesn't recompute it.
+    search_text_cache = {}
     for product in get_products():
         if category_slug and category_slug not in product["category_slugs"]:
             continue
@@ -741,11 +805,13 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
             continue
         if price_max is not None and (product["price_min"] is None or product["price_min"] > price_max):
             continue
-        text = product_search_text(product)
-        if q and q not in text:
-            tokens = [token for token in re.findall(r"[a-zæøå0-9]+", q) if len(token) > 1]
-            if tokens and not all(token in text for token in tokens):
-                continue
+        if q:
+            text = product_search_text(product)
+            search_text_cache[product["handle"]] = text
+            if q not in text:
+                tokens = [token for token in re.findall(r"[a-zæøå0-9]+", q) if len(token) > 1]
+                if tokens and not all(token in text for token in tokens):
+                    continue
         matched.append(product)
 
     def relevance_key(product):
@@ -753,7 +819,7 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
             return (0, product["title"].lower())
         title = product["title"].lower()
         vendor = product["vendor"].lower()
-        text = product_search_text(product)
+        text = search_text_cache.get(product["handle"]) or product_search_text(product)
         score = 0
         if q in title:
             score += 6
@@ -796,6 +862,19 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
 def get_related_products(product, limit=4):
     if not product:
         return []
+    # Scoring scans the whole catalog; the result (undiscounted) only changes when
+    # the catalog does, so memoise per (handle, limit) keyed by the file signature.
+    # Discounts are applied by the caller AFTER this, so the cache stays per-user-safe.
+    handle = product.get("handle")
+    signature = _signature()
+    cache = _CACHE.get("related")
+    if cache is None or _CACHE.get("related_signature") != signature:
+        cache = {}
+        _CACHE["related"] = cache
+        _CACHE["related_signature"] = signature
+    cache_key = (handle, limit)
+    if cache_key in cache:
+        return cache[cache_key]
     scores = []
     category_set = set(product.get("category_slugs") or [])
     for candidate in get_products():
@@ -810,7 +889,9 @@ def get_related_products(product, limit=4):
         if score:
             scores.append((score, candidate["title"].lower(), candidate))
     scores.sort(key=lambda item: (-item[0], item[1]))
-    return [item[2] for item in scores[:limit]]
+    related = [item[2] for item in scores[:limit]]
+    cache[cache_key] = related
+    return related
 
 
 def build_product_url(handle):

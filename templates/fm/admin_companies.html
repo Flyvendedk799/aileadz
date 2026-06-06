@@ -33,7 +33,10 @@
         <td>{% if c.custom_branding %}<span class="fm-badge green dot">Aktiv</span>{% else %}<span class="fm-badge">Off</span>{% endif %}</td>
         <td>{% if c.enable_white_label %}<span class="fm-badge indigo">On</span>{% else %}<span class="fm-badge">Off</span>{% endif %}</td>
         <td><span class="fm-badge teal">{{ c.subscription_plan or 'trial' }}</span></td>
-        <td style="text-align:right"><a href="{{ url_for('companies.admin_company_detail', company_id=c.id) }}" class="btn btn-ghost btn-sm">Admin</a></td>
+        <td style="text-align:right;white-space:nowrap">
+          <a href="{{ url_for('admin_dashboard.impersonate_company', company_id=c.id) }}" class="btn btn-soft btn-sm" title="Åbn HR-dashboard som denne virksomhed"><i class="fa-solid fa-user-secret"></i> HR</a>
+          <a href="{{ url_for('companies.admin_company_detail', company_id=c.id) }}" class="btn btn-ghost btn-sm">Admin</a>
+        </td>
       </tr>
       {% endfor %}
     </tbody>

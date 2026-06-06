@@ -18,11 +18,11 @@
     <div class="fm-card-head">
       <span class="fm-ch-icon"><i class="fa-solid fa-users"></i></span>
       <h3>Alle brugere</h3>
-      <label class="fm-search" style="width:300px;margin-left:auto">
+      <form class="fm-search" method="get" action="{{ url_for('admin_dashboard.user_list') }}" style="width:320px;margin-left:auto;display:flex;align-items:center;gap:6px">
         <i class="fa-solid fa-magnifying-glass"></i>
-        <input type="search" id="userSearch" placeholder="Søg efter bruger, email eller virksomhed" />
-      </label>
-      <span class="fm-badge" style="margin-left:10px">{{ users|length }} brugere</span>
+        <input type="search" id="userSearch" name="q" value="{{ q|default('') }}" placeholder="Søg efter bruger, email eller virksomhed" />
+      </form>
+      <span class="fm-badge" style="margin-left:10px">{{ total|default(users|length) }} brugere</span>
     </div>
     <div class="fm-card-body" style="padding-top:6px">
       <div class="fm-table-wrap" style="border:0;box-shadow:none">
@@ -59,6 +59,19 @@
           </tbody>
         </table>
       </div>
+      {% if total_pages is defined and total_pages > 1 %}
+      <div class="fm-pagination" style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-top:14px">
+        <span class="muted" style="font-size:13px">Side {{ page }} af {{ total_pages }} · {{ total }} brugere</span>
+        <span style="display:flex;gap:8px">
+          {% if has_prev %}
+          <a class="btn btn-soft btn-sm" href="{{ url_for('admin_dashboard.user_list', page=page-1, q=q or None) }}"><i class="fa-solid fa-chevron-left"></i> Forrige</a>
+          {% endif %}
+          {% if has_next %}
+          <a class="btn btn-soft btn-sm" href="{{ url_for('admin_dashboard.user_list', page=page+1, q=q or None) }}">Næste <i class="fa-solid fa-chevron-right"></i></a>
+          {% endif %}
+        </span>
+      </div>
+      {% endif %}
     </div>
   </div>
 </div>

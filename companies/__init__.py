@@ -846,16 +846,30 @@ def create_companies_blueprint():
         companies = []
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            # Pre-aggregate employees + orders in derived tables (one grouped scan
+            # each, covered by idx_cu_company_status / idx_co_company_created)
+            # instead of 4 correlated subqueries per company row.
             cur.execute("""
                 SELECT c.id, c.company_name, c.company_slug, c.industry, c.status,
                        c.subscription_plan, c.created_at, c.features,
                        cs.enable_white_label,
-                       (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id AND cu.status = 'active') AS employee_count,
-                       (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id) AS orders_total,
-                       (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id AND co.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS orders_30d,
-                       (SELECT MAX(co.created_at) FROM course_orders co WHERE co.company_id = c.id) AS last_order_at
+                       COALESCE(emp.employee_count, 0) AS employee_count,
+                       COALESCE(ord.orders_total, 0) AS orders_total,
+                       COALESCE(ord.orders_30d, 0) AS orders_30d,
+                       ord.last_order_at AS last_order_at
                 FROM companies c
                 LEFT JOIN company_settings cs ON cs.company_id = c.id
+                LEFT JOIN (
+                    SELECT company_id, COUNT(*) AS employee_count
+                    FROM company_users WHERE status = 'active' GROUP BY company_id
+                ) emp ON emp.company_id = c.id
+                LEFT JOIN (
+                    SELECT company_id,
+                           COUNT(*) AS orders_total,
+                           COUNT(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 END) AS orders_30d,
+                           MAX(created_at) AS last_order_at
+                    FROM course_orders GROUP BY company_id
+                ) ord ON ord.company_id = c.id
                 ORDER BY c.company_name ASC
             """)
             companies = cur.fetchall()

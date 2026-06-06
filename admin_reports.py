@@ -4,8 +4,23 @@ from collections import defaultdict
 import datetime
 import json
 import logging
+import os
 
 from auth_decorators import require_role
+
+
+def _reports_window_days(default=90):
+    """Bound the heavy full-table report scans to a recent window.
+
+    The tool-usage / products-shown aggregations parse every matching row in
+    Python; without a date bound they scan the entire (largest) table on every
+    load. The window keeps the scan to recent rows (a range scan on the new
+    idx_ci_created index) and is tunable via REPORTS_WINDOW_DAYS.
+    """
+    try:
+        return max(1, int(os.environ.get('REPORTS_WINDOW_DAYS', str(default))))
+    except (TypeError, ValueError):
+        return default
 
 # Boot-safe import of the central reporting layer. Guarded so a problem in
 # report_query can never crash create_app / blueprint import.
@@ -177,7 +192,8 @@ def chatbot_dashboard():
         cur.execute("""
             SELECT tools_used FROM chatbot_interactions
             WHERE tools_used IS NOT NULL AND tools_used != ''
-        """)
+              AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """, (_reports_window_days(),))
         for r in cur.fetchall():
             for tool in r['tools_used'].split(','):
                 tool = tool.strip()
@@ -251,7 +267,8 @@ def chatbot_dashboard():
         cur.execute("""
             SELECT products_shown FROM chatbot_interactions
             WHERE products_shown IS NOT NULL AND products_shown != ''
-        """)
+              AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        """, (_reports_window_days(),))
         for r in cur.fetchall():
             try:
                 handles = json.loads(r['products_shown'])
@@ -344,14 +361,21 @@ def chatbot_dashboard():
     # --- Frequent questions ---
     frequent_questions = []
     try:
+        # Aggregate once to the top 15 query_texts (uses idx_ci_query), then join
+        # back by primary key to fetch each group's first response — replaces the
+        # per-group correlated subquery that re-scanned the whole table.
         cur.execute("""
-            SELECT query_text AS text, COUNT(*) AS count,
-                   (SELECT ci2.response_text FROM chatbot_interactions ci2 WHERE ci2.query_text = chatbot_interactions.query_text LIMIT 1) AS top_response
-            FROM chatbot_interactions
-            WHERE query_text IS NOT NULL
-            GROUP BY query_text
-            ORDER BY count DESC
-            LIMIT 15
+            SELECT t.query_text AS text, t.count AS count, ci.response_text AS top_response
+            FROM (
+                SELECT query_text, COUNT(*) AS count, MIN(id) AS first_id
+                FROM chatbot_interactions
+                WHERE query_text IS NOT NULL
+                GROUP BY query_text
+                ORDER BY count DESC
+                LIMIT 15
+            ) t
+            JOIN chatbot_interactions ci ON ci.id = t.first_id
+            ORDER BY t.count DESC
         """)
         frequent_questions = cur.fetchall()
     except Exception:

@@ -1,6 +1,7 @@
 # pages.py
 from flask import Blueprint, render_template, session, current_app, redirect, url_for, flash, request
 import MySQLdb.cursors
+import os
 from auth_decorators import login_required
 
 pages_bp = Blueprint('pages', __name__, template_folder='templates')
@@ -40,7 +41,16 @@ def analytics():
     try:
         import MySQLdb.cursors
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT timestamp, credits_used, description FROM credit_usage WHERE username = %s ORDER BY timestamp ASC", (username,))
+        try:
+            _win = max(1, int(os.environ.get('USAGE_WINDOW_DAYS', '365')))
+        except (TypeError, ValueError):
+            _win = 365
+        cur.execute(
+            "SELECT timestamp, credits_used, description FROM credit_usage "
+            "WHERE username = %s AND timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY) "
+            "ORDER BY timestamp ASC",
+            (username, _win),
+        )
         records = cur.fetchall()
         cur.close()
     except Exception as e:

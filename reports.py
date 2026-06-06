@@ -2,9 +2,19 @@ from flask import Blueprint, render_template, session, redirect, url_for, flash,
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
+import os
 from auth_decorators import login_required
 
 reports_bp = Blueprint('reports', __name__, template_folder='templates')
+
+
+def _usage_window_days(default=365):
+    """Bound the per-user credit_usage scan so a heavy-usage account can't pull an
+    unbounded history into Python. Generous default (1y); tunable via USAGE_WINDOW_DAYS."""
+    try:
+        return max(1, int(os.environ.get('USAGE_WINDOW_DAYS', str(default))))
+    except (TypeError, ValueError):
+        return default
 
 @reports_bp.route('')
 @reports_bp.route('/')
@@ -27,7 +37,12 @@ def reports():
     # Fetch credit usage records from credit_usage table
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT timestamp, credits_used, description FROM credit_usage WHERE username = %s ORDER BY timestamp ASC", (username,))
+        cur.execute(
+            "SELECT timestamp, credits_used, description FROM credit_usage "
+            "WHERE username = %s AND timestamp >= DATE_SUB(NOW(), INTERVAL %s DAY) "
+            "ORDER BY timestamp ASC",
+            (username, _usage_window_days()),
+        )
         credit_records = cur.fetchall()
         cur.close()
     except Exception as e:

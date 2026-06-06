@@ -24,6 +24,8 @@ Design notes (production-safety):
 
 import logging
 
+from flask import request
+
 # Report-only CSP. Intentionally permissive so the current inline-script /
 # inline-style / CDN (fonts.googleapis.com, cdn.jsdelivr.net, cdnjs, ...) frontend
 # keeps rendering. 'unsafe-inline' + 'unsafe-eval' are required because the Jinja
@@ -64,6 +66,14 @@ def register_security_headers(app):
             # Report-only CSP: collect violations, never block.
             if "Content-Security-Policy-Report-Only" not in response.headers:
                 response.headers["Content-Security-Policy-Report-Only"] = _CSP_REPORT_ONLY
+            # Long-lived caching for static assets that still go through the
+            # worker (before the PythonAnywhere /static nginx mapping is set, or
+            # on the dev server). Asset URLs are versioned with ?v=N, so caching
+            # them aggressively is safe. Flask's own static view already sets a
+            # Cache-Control from SEND_FILE_MAX_AGE_DEFAULT, so we only fill it in
+            # when absent and never override a more specific one.
+            if (request.path or "").startswith("/static/") and "Cache-Control" not in response.headers:
+                response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         except Exception as exc:  # never let header logic break a response
             logging.warning("Security headers not applied: %s", exc)
         return response

@@ -149,6 +149,18 @@ def create_app():
         'SESSION_COOKIE_SECURE': (os.environ.get('SANDBOX') != '1'),
     })
 
+    # Long-lived caching for worker-served static assets. Safe because every
+    # asset URL is cache-busted with a ?v=N query string (bump on each edit). On
+    # PythonAnywhere, mapping /static -> the static/ dir in the Web tab makes nginx
+    # serve these without hitting the worker at all; this default covers the dev
+    # server and any pre-mapping requests. See docs/runbooks/STATIC_AND_PERF.md.
+    try:
+        app.config['SEND_FILE_MAX_AGE_DEFAULT'] = int(
+            os.environ.get('STATIC_MAX_AGE_SECONDS', str(60 * 60 * 24 * 365))
+        )
+    except (TypeError, ValueError):
+        app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 365
+
     # DB config is env-overridable (for the local sandbox / CI). When the env
     # vars are unset it falls back to the production PythonAnywhere database, so
     # production behaviour is unchanged.
@@ -244,6 +256,15 @@ def create_app():
     except Exception as e:
         logging.warning("Security headers integration skipped: %s", e)
 
+    # Gzip dynamic responses (HTML/JSON/…). PythonAnywhere's nginx gzips mapped
+    # static files but not worker-proxied dynamic responses; this covers those.
+    # Guarded so a failure here can never crash create_app().
+    try:
+        from response_compression import register_response_compression
+        register_response_compression(app)
+    except Exception as e:
+        logging.warning("Response compression integration skipped: %s", e)
+
     # Initialize white-label context processor
     try:
         from white_label_global_integration import register_white_label_context_processor
@@ -304,6 +325,21 @@ def create_app():
                     logging.warning("Branding migration: %s", mig_err)
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
+
+    # Hot-path performance indexes. Runs once per worker process (its own flag,
+    # deliberately NOT gated by the enterprise-sync TTL stamp) so a `git pull` +
+    # web-app reload applies the indexes on the next request without a manual
+    # MySQL console step. ensure_performance_indexes is idempotent + never raises.
+    @app.before_request
+    def _ensure_performance_indexes_once():
+        if getattr(app, '_perf_indexes_ensured', False):
+            return
+        app._perf_indexes_ensured = True
+        try:
+            from performance_indexes import ensure_performance_indexes
+            ensure_performance_indexes(app)
+        except Exception as e:
+            logging.warning("Performance index init: %s", e)
 
     @app.route('/')
     def home():

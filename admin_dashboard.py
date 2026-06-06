@@ -6,6 +6,7 @@ import re
 from datetime import datetime, timedelta
 import catalog_service as catalog
 from auth_decorators import require_role
+from perf_cache import ttl_cache
 
 admin_dashboard_bp = Blueprint('admin_dashboard', __name__, template_folder='templates')
 
@@ -31,6 +32,13 @@ def require_admin():
 @admin_dashboard_bp.route('/')
 @require_role('admin')
 def admin_home():
+    # Platform-wide metrics (no per-user data) — safe to serve a few seconds
+    # stale, so the whole heavy KPI block is cached per worker for 60s.
+    return render_template('fm/admin_dashboard.html', **_admin_home_data())
+
+
+@ttl_cache(seconds=60)
+def _admin_home_data():
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     users_has_created_at = _column_exists(cur, 'users', 'created_at')
 
@@ -123,16 +131,29 @@ def admin_home():
     # Companies list with more details
     companies = []
     try:
+        # Pre-aggregate employees and orders in derived tables, then join — one
+        # grouped scan of each table (covered by idx_cu_* / idx_co_company_created)
+        # instead of 3 correlated subqueries per company (~60 scans for 20 rows).
+        # The two aggregates are kept in SEPARATE derived tables so the
+        # employees×orders join never fans out and inflates the counts/revenue.
         cur.execute("""
             SELECT c.id, c.company_name, c.company_slug, c.industry, c.company_size,
                    c.subscription_plan AS subscription_status, c.features,
                    c.trial_ends_at AS trial_end_date, c.created_at,
                    cs.enable_white_label,
-                   (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id) AS employee_count,
-                   (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id) AS order_count,
-                   (SELECT COALESCE(SUM(price), 0) FROM course_orders co WHERE co.company_id = c.id) AS revenue
+                   COALESCE(emp.employee_count, 0) AS employee_count,
+                   COALESCE(ord.order_count, 0) AS order_count,
+                   COALESCE(ord.revenue, 0) AS revenue
             FROM companies c
             LEFT JOIN company_settings cs ON cs.company_id = c.id
+            LEFT JOIN (
+                SELECT company_id, COUNT(*) AS employee_count
+                FROM company_users GROUP BY company_id
+            ) emp ON emp.company_id = c.id
+            LEFT JOIN (
+                SELECT company_id, COUNT(*) AS order_count, COALESCE(SUM(price), 0) AS revenue
+                FROM course_orders GROUP BY company_id
+            ) ord ON ord.company_id = c.id
             ORDER BY c.created_at DESC LIMIT 20
         """)
         companies = cur.fetchall()
@@ -163,21 +184,22 @@ def admin_home():
 
     cur.close()
 
-    return render_template('fm/admin_dashboard.html',
-                           total_users=total_users,
-                           total_admins=total_admins,
-                           active_users_7d=active_users_7d,
-                           new_users_month=new_users_month,
-                           total_companies=total_companies,
-                           total_orders=total_orders,
-                           total_revenue=total_revenue,
-                           orders_this_month=orders_this_month,
-                           revenue_this_month=revenue_this_month,
-                           total_chatbot_queries=total_chatbot_queries,
-                           queries_this_week=queries_this_week,
-                           recent_users=recent_users,
-                           companies=companies,
-                           recent_orders=recent_orders)
+    return dict(
+        total_users=total_users,
+        total_admins=total_admins,
+        active_users_7d=active_users_7d,
+        new_users_month=new_users_month,
+        total_companies=total_companies,
+        total_orders=total_orders,
+        total_revenue=total_revenue,
+        orders_this_month=orders_this_month,
+        revenue_this_month=revenue_this_month,
+        total_chatbot_queries=total_chatbot_queries,
+        queries_this_week=queries_this_week,
+        recent_users=recent_users,
+        companies=companies,
+        recent_orders=recent_orders,
+    )
 
 
 @admin_dashboard_bp.route('/credits', methods=['GET', 'POST'])
@@ -211,28 +233,71 @@ def credits():
 def user_list():
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     users_has_created_at = _column_exists(cur, 'users', 'created_at')
+
+    # Server-side pagination + optional search. Previously this fetched the whole
+    # users table on every load; now it pulls one bounded page and pushes the
+    # search into SQL so it still spans all users (not just the loaded page).
+    try:
+        page = max(1, int(request.args.get('page', 1)))
+    except (TypeError, ValueError):
+        page = 1
+    per_page = 50
+    offset = (page - 1) * per_page
+    q = (request.args.get('q') or '').strip()
+
+    where_sql = ""
+    params = []
+    if q:
+        where_sql = "WHERE (u.username LIKE %s OR u.email LIKE %s OR c.company_name LIKE %s)"
+        like = "%{}%".format(q)
+        params = [like, like, like]
+
+    users = []
+    total = 0
     try:
         created_at_select = "u.created_at" if users_has_created_at else "NULL AS created_at"
         user_order = "u.created_at DESC, u.id DESC" if users_has_created_at else "u.id DESC"
+        cur.execute("""
+            SELECT COUNT(*) AS cnt
+            FROM users u
+            LEFT JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active'
+            LEFT JOIN companies c ON c.id = cu.company_id
+            {where}
+        """.format(where=where_sql), params)
+        row = cur.fetchone()
+        total = (row['cnt'] if row else 0) or 0
+
         cur.execute("""
             SELECT u.id, u.username, u.email, u.role, u.credits, {created_at_select},
                    cu.company_id, c.company_name, cu.role AS company_role
             FROM users u
             LEFT JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active'
             LEFT JOIN companies c ON c.id = cu.company_id
+            {where}
             ORDER BY {user_order}
-        """.format(created_at_select=created_at_select, user_order=user_order))
+            LIMIT %s OFFSET %s
+        """.format(created_at_select=created_at_select, user_order=user_order, where=where_sql),
+            params + [per_page, offset])
         users = cur.fetchall()
     except Exception as e:
         logging.error("Error fetching admin user company data: %s", e)
-        cur.execute("""
-            SELECT id, username, email, role, credits, NULL AS created_at,
-                   NULL AS company_id, NULL AS company_name, NULL AS company_role
-            FROM users ORDER BY id DESC
-        """)
-        users = cur.fetchall()
+        try:
+            cur.execute("""
+                SELECT id, username, email, role, credits, NULL AS created_at,
+                       NULL AS company_id, NULL AS company_name, NULL AS company_role
+                FROM users ORDER BY id DESC LIMIT %s OFFSET %s
+            """, (per_page, offset))
+            users = cur.fetchall()
+        except Exception as e2:
+            logging.error("Error fetching admin user fallback: %s", e2)
+            users = []
     cur.close()
-    return render_template('fm/admin_users.html', users=users)
+
+    total_pages = max(1, (total + per_page - 1) // per_page) if total else 1
+    return render_template('fm/admin_users.html', users=users,
+                           page=page, per_page=per_page, total=total,
+                           total_pages=total_pages, q=q,
+                           has_prev=page > 1, has_next=page < total_pages)
 
 
 @admin_dashboard_bp.route('/users/<int:user_id>/role', methods=['POST'])

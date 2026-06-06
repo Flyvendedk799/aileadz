@@ -634,3 +634,195 @@ def make_superadmin(username):
         logging.error("Error making superadmin: %s", e)
         flash("Fejl.", "danger")
     return redirect(url_for('admin_dashboard.admin_home'))
+
+
+# ---------------------------------------------------------------------------
+# B10 — Audit-log viewer. The audit_log table is written across the app
+# (order_service._write_audit, gdpr, multitenant_reports) but was never surfaced.
+# Platform-admin only; filterable by action_type, company and time window.
+# ---------------------------------------------------------------------------
+@admin_dashboard_bp.route('/log')
+@require_role('admin')
+def admin_audit_log():
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    try:
+        days = int(request.args.get('days', 30))
+    except (TypeError, ValueError):
+        days = 30
+    action_type = (request.args.get('action_type') or '').strip()
+    try:
+        company_id = int(request.args.get('company_id')) if request.args.get('company_id') else None
+    except (TypeError, ValueError):
+        company_id = None
+
+    rows, action_types = [], []
+    try:
+        where = ["al.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)"]
+        params = [days]
+        if action_type:
+            where.append("al.action_type = %s")
+            params.append(action_type)
+        if company_id:
+            where.append("al.company_id = %s")
+            params.append(company_id)
+        cur.execute(
+            """SELECT al.id, al.company_id, al.user_id, al.action, al.action_type,
+                      al.resource_type, al.resource_id, al.description, al.created_at,
+                      c.company_name, u.username
+               FROM audit_log al
+               LEFT JOIN companies c ON c.id = al.company_id
+               LEFT JOIN users u ON u.id = al.user_id
+               WHERE """ + " AND ".join(where) + """
+               ORDER BY al.created_at DESC LIMIT 300""",
+            tuple(params),
+        )
+        rows = cur.fetchall() or []
+        cur.execute(
+            """SELECT DISTINCT action_type FROM audit_log
+               WHERE action_type IS NOT NULL AND action_type <> ''
+               ORDER BY action_type"""
+        )
+        action_types = [r['action_type'] for r in (cur.fetchall() or [])]
+    except Exception as e:
+        logging.warning("admin_audit_log query failed (table may be empty): %s", e)
+    finally:
+        cur.close()
+
+    return render_template('fm/adminlog.html', rows=rows, action_types=action_types,
+                           sel_action_type=action_type, sel_company_id=company_id, days=days)
+
+
+# ---------------------------------------------------------------------------
+# B12 — Subsystem / event-delivery health. Reuses feature_status probes +
+# event_outbox backlog + a platform snapshot. Platform-admin only.
+# ---------------------------------------------------------------------------
+@admin_dashboard_bp.route('/system-health')
+@require_role('admin')
+def admin_system_health():
+    features = {}
+    try:
+        from feature_status import check_feature_status
+        features = check_feature_status() or {}
+    except Exception as e:
+        logging.warning("system-health: feature_status unavailable: %s", e)
+
+    outbox = {'pending': 0, 'delivered': 0, 'failed': 0, 'total': 0}
+    snapshot = {}
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        cur.execute("SELECT status, COUNT(*) AS cnt FROM event_outbox GROUP BY status")
+        for r in (cur.fetchall() or []):
+            outbox[r['status']] = r['cnt']
+            outbox['total'] += r['cnt']
+    except Exception as e:
+        logging.warning("system-health: event_outbox read failed: %s", e)
+    for label, sql in (
+        ('companies', "SELECT COUNT(*) AS c FROM companies"),
+        ('users', "SELECT COUNT(*) AS c FROM users"),
+        ('orders_7d', "SELECT COUNT(*) AS c FROM course_orders WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"),
+    ):
+        try:
+            cur.execute(sql)
+            snapshot[label] = (cur.fetchone() or {}).get('c', 0)
+        except Exception:
+            snapshot[label] = None
+    cur.close()
+
+    return render_template('fm/admin_system_health.html',
+                           features=features, outbox=outbox, snapshot=snapshot)
+
+
+# ---------------------------------------------------------------------------
+# C6 — Admin → HR impersonation. A platform admin can "act as" a tenant to use
+# its HR workspace for support/oversight. Resolution happens in
+# hr_dashboard.get_company_context / companies.get_company_context (which honor
+# session['admin_acting_company_id']). Here we set/clear that state, align the
+# session, stash the admin's own context for restore, and audit it.
+#
+# NOTE: this is full read/write impersonation by design (requested). Security
+# hardening (read-only mode, SECRET_KEY rotation) is tracked separately.
+# ---------------------------------------------------------------------------
+@admin_dashboard_bp.route('/impersonate/<int:company_id>')
+@require_role('admin')
+def impersonate_company(company_id):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    company = None
+    try:
+        cur.execute("SELECT id, company_name FROM companies WHERE id = %s", (company_id,))
+        company = cur.fetchone()
+    except Exception as e:
+        logging.error("impersonate: company lookup failed: %s", e)
+    finally:
+        cur.close()
+
+    if not company:
+        flash("Virksomheden blev ikke fundet.", "warning")
+        return redirect(url_for('companies.admin_companies_list'))
+
+    # Stash the admin's own context ONCE so we can restore it on exit.
+    if 'admin_acting_company_id' not in session:
+        session['_imp_prev_company_id'] = session.get('company_id')
+        session['_imp_prev_company_role'] = session.get('company_role')
+        session['_imp_prev_company_name'] = session.get('company_name')
+
+    session['admin_acting_company_id'] = company['id']
+    session['company_id'] = company['id']
+    session['company_role'] = 'company_admin'
+    session['company_name'] = company['company_name']
+
+    # Audit (best-effort; reuses order_service audit shape / audit_log table).
+    try:
+        from order_service import _write_audit
+        acur = current_app.mysql.connection.cursor()
+        _write_audit(acur, company_id=company['id'],
+                     user_id=session.get('user_id'),
+                     action="admin.impersonate.start",
+                     resource_id=str(company['id']),
+                     description=f"{session.get('user')} acting as {company['company_name']}")
+        current_app.mysql.connection.commit()
+        acur.close()
+    except Exception as e:
+        logging.debug("impersonate audit skipped: %s", e)
+
+    flash(f"Du ser nu {company['company_name']} som administrator.", "info")
+    return redirect(url_for('hr_dashboard.dashboard'))
+
+
+@admin_dashboard_bp.route('/impersonate/exit')
+@require_role('admin')
+def impersonate_exit():
+    acting = session.pop('admin_acting_company_id', None)
+    # Restore the admin's own context.
+    prev_id = session.pop('_imp_prev_company_id', None)
+    prev_role = session.pop('_imp_prev_company_role', None)
+    prev_name = session.pop('_imp_prev_company_name', None)
+    if prev_id:
+        session['company_id'] = prev_id
+    else:
+        session.pop('company_id', None)
+    if prev_role:
+        session['company_role'] = prev_role
+    else:
+        session.pop('company_role', None)
+    if prev_name:
+        session['company_name'] = prev_name
+    else:
+        session.pop('company_name', None)
+
+    try:
+        if acting:
+            from order_service import _write_audit
+            acur = current_app.mysql.connection.cursor()
+            _write_audit(acur, company_id=acting, user_id=session.get('user_id'),
+                         action="admin.impersonate.stop", resource_id=str(acting),
+                         description=f"{session.get('user')} stopped impersonating")
+            current_app.mysql.connection.commit()
+            acur.close()
+    except Exception as e:
+        logging.debug("impersonate-exit audit skipped: %s", e)
+
+    flash("Impersonation afsluttet.", "info")
+    if acting:
+        return redirect(url_for('companies.admin_company_detail', company_id=acting))
+    return redirect(url_for('companies.admin_companies_list'))

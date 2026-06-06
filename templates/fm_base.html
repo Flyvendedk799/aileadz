@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=13" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=13" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=14" />
   {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
   <style id="fm-wl-vars">
     :root {
@@ -96,6 +96,10 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'company' }}" href="{{ url_for('companies.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span>Virksomheds-BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'benchmark' }}" href="{{ url_for('companies.benchmarking_page') }}"><i class="fa-solid fa-ranking-star"></i><span>Branche-benchmark</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'creports' }}" href="{{ url_for('multitenant_reports.reports') }}"><i class="fa-solid fa-folder-open"></i><span>Virksomhedsrapporter</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i><span>Træningsplan</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i><span>Indkøb &amp; leverandører</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i><span>Engagement</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-kvalitet</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'webhooks' }}" href="{{ url_for('enterprise_settings.webhooks_page') }}"><i class="fa-solid fa-plug"></i><span>Webhooks</span></a></li>
       </ul>
       {% endif %}
@@ -120,6 +124,8 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'funnel' }}" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter"></i><span>Konverteringstragt</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'freshness' }}" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-xmark"></i><span>Katalogfriskhed</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'vendors' }}" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i><span>Leverandører</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'alog' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Aktivitetslog</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'syshealth' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i><span>Systemstatus</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i><span>GDPR / datasletning</span></a></li>
       </ul>
       {% endif %}
@@ -167,6 +173,15 @@
     </header>
 
     <main class="fm-content">
+      {% if session.get('admin_acting_company_id') %}
+      <div class="fm-wrap" style="padding-bottom:0">
+        <div role="status" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:12px 16px;border-radius:var(--r-md);margin-bottom:12px;border:1px solid color-mix(in srgb,var(--fm-clay) 40%,var(--fm-line));background:color-mix(in srgb,var(--fm-clay) 12%,var(--fm-surface));color:var(--fm-ink)">
+          <i class="fa-solid fa-user-secret" style="color:var(--fm-clay)"></i>
+          <span style="font-size:13.5px;font-weight:600">Du ser <strong>{{ session.get('company_name') or 'virksomhed' }}</strong> som administrator.</span>
+          <a href="{{ url_for('admin_dashboard.impersonate_exit') }}" class="btn btn-ghost btn-sm" style="margin-left:auto"><i class="fa-solid fa-arrow-right-from-bracket"></i> Afslut</a>
+        </div>
+      </div>
+      {% endif %}
       {% block flashes %}
       {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
@@ -196,7 +211,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=9"></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

@@ -96,10 +96,32 @@ def create_companies_blueprint():
         return session.get('company_id')
 
     def get_company_context():
-        """Get current user's company context"""
+        """Get current user's company context.
+
+        Honors admin impersonation (session['admin_acting_company_id']) the same
+        way the HR dashboard does, so a platform admin acting as a tenant sees
+        that tenant's company BI / benchmark / reports too.
+        """
         if 'user' not in session:
             return None
-        
+
+        acting = session.get('admin_acting_company_id')
+        if session.get('role') == 'admin' and acting:
+            try:
+                cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                cur.execute("SELECT c.* FROM companies c WHERE c.id = %s", (acting,))
+                row = cur.fetchone()
+                cur.close()
+                if row:
+                    if session.get('company_id') != row['id']:
+                        session['company_id'] = row['id']
+                    row['user_role'] = 'company_admin'
+                    row['department'] = None
+                    row['permissions'] = None
+                    return row
+            except Exception as e:
+                current_app.logger.error(f"Error resolving acting company: {e}")
+
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur.execute("""
@@ -828,7 +850,10 @@ def create_companies_blueprint():
                 SELECT c.id, c.company_name, c.company_slug, c.industry, c.status,
                        c.subscription_plan, c.created_at, c.features,
                        cs.enable_white_label,
-                       (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id AND cu.status = 'active') AS employee_count
+                       (SELECT COUNT(*) FROM company_users cu WHERE cu.company_id = c.id AND cu.status = 'active') AS employee_count,
+                       (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id) AS orders_total,
+                       (SELECT COUNT(*) FROM course_orders co WHERE co.company_id = c.id AND co.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)) AS orders_30d,
+                       (SELECT MAX(co.created_at) FROM course_orders co WHERE co.company_id = c.id) AS last_order_at
                 FROM companies c
                 LEFT JOIN company_settings cs ON cs.company_id = c.id
                 ORDER BY c.company_name ASC
@@ -843,6 +868,16 @@ def create_companies_blueprint():
                     except (TypeError, ValueError):
                         feats = {}
                 co['custom_branding'] = bool((feats or {}).get('custom_branding'))
+                # B11: composite health signal (derived, not stored).
+                emp = co.get('employee_count') or 0
+                o30 = co.get('orders_30d') or 0
+                ot = co.get('orders_total') or 0
+                if emp == 0 or ot == 0:
+                    co['health'], co['health_label'] = 'red', 'Inaktiv'
+                elif o30 == 0:
+                    co['health'], co['health_label'] = 'amber', 'Lav aktivitet'
+                else:
+                    co['health'], co['health_label'] = 'green', 'Sund'
         except Exception as e:
             current_app.logger.error(f"admin_companies_list: {e}")
         return render_template(

@@ -154,3 +154,86 @@
   background:color-mix(in srgb,var(--fm-warning) 8%,var(--fm-surface));color:var(--fm-warning)}
 .fm-flash-info,.fm-flash-message{border-color:color-mix(in srgb,var(--fm-info) 40%,var(--fm-line));
   background:color-mix(in srgb,var(--fm-info) 8%,var(--fm-surface));color:var(--fm-info)}
+
+/* ===================================================================== */
+/* Dashboard-upgrade shared components (macros / charts / drilldown / AI) */
+/* ===================================================================== */
+
+/* Empty states */
+.fm-empty{padding:40px 18px;text-align:center;color:var(--fm-ink-3);border:1px dashed var(--fm-line);
+  border-radius:var(--r-card);background:var(--fm-surface-2)}
+.fm-empty>i{font-size:26px;display:block;margin-bottom:10px;opacity:.55}
+.fm-empty-t{font-weight:650;color:var(--fm-ink-2);font-size:14px}
+.fm-empty-s{font-size:12.5px;color:var(--fm-ink-3);margin-top:4px}
+.fm-chart-empty{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;
+  min-height:160px;color:var(--fm-ink-3);font-size:12.5px;border:1px dashed var(--fm-line);
+  border-radius:var(--r-md);background:var(--fm-surface-2)}
+.fm-chart-empty i{font-size:22px;opacity:.5}
+
+/* Chart card + canvas sizing */
+.fm-chart-card{border:1px solid var(--fm-line);border-radius:var(--r-card);background:var(--fm-surface);
+  box-shadow:var(--sh-sm);padding:18px}
+.fm-chart-card h3{font-family:var(--ff-display);font-size:15px;margin:0 0 2px}
+.fm-chart-card p{font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px}
+.fm-chart-wrap{position:relative;height:280px}
+.fm-chart-wrap.sm{height:200px}
+
+/* KPI drill-down affordance */
+.fm-kpi-link{display:flex;text-decoration:none;color:inherit}
+.fm-kpi-arrow{font-size:11px;opacity:0;transform:translateX(-4px);transition:all var(--t);color:var(--fm-primary)}
+.fm-kpi-link:hover .fm-kpi-arrow{opacity:1;transform:translateX(0)}
+.fm-drill{color:var(--fm-primary);text-decoration:none;font-weight:600}
+.fm-drill:hover{text-decoration:underline}
+.fm-drill i{font-size:10px;opacity:.7}
+
+/* Insight card */
+.fm-insight{display:flex;gap:12px;align-items:flex-start;padding:14px;border:1px solid var(--fm-line);
+  border-radius:var(--r-md);background:var(--fm-surface);box-shadow:var(--sh-xs);margin-bottom:10px}
+.fm-insight-t{font-weight:650;font-size:13.5px;color:var(--fm-ink)}
+.fm-insight-b{font-size:12.5px;color:var(--fm-ink-2);margin-top:3px;line-height:1.5}
+.fm-insight-m{font-size:11px;color:var(--fm-ink-3);font-family:var(--ff-mono);margin-top:6px}
+
+/* Date-range + export toolbars */
+.fm-daterange{display:inline-flex;align-items:center;gap:8px}
+.fm-export{display:inline-flex;gap:8px;flex-wrap:wrap}
+
+/* Embedded AI assistant panel */
+.fm-aip{position:fixed;right:22px;bottom:22px;z-index:1200}
+.fm-aip-fab{display:inline-flex;align-items:center;gap:8px;border:none;cursor:pointer;
+  padding:12px 18px;border-radius:999px;font-weight:650;font-size:13.5px;color:#fff;
+  background:linear-gradient(135deg,var(--fm-primary),var(--fm-clay));box-shadow:var(--sh-lg)}
+.fm-aip-fab:hover{filter:brightness(1.05)}
+.fm-aip-panel{position:absolute;right:0;bottom:62px;width:360px;max-width:88vw;height:460px;max-height:72vh;
+  display:flex;flex-direction:column;border:1px solid var(--fm-line);border-radius:16px;overflow:hidden;
+  background:var(--fm-surface);box-shadow:var(--sh-lg)}
+.fm-aip-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;
+  font-weight:650;font-size:13.5px;color:#fff;background:linear-gradient(135deg,var(--fm-primary),var(--fm-clay))}
+.fm-aip-x{background:none;border:none;color:#fff;cursor:pointer;font-size:15px}
+.fm-aip-body{flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:10px}
+.fm-aip-hint{font-size:12.5px;color:var(--fm-ink-2)}
+.fm-aip-chips{display:flex;flex-wrap:wrap;gap:6px}
+.fm-aip-chip{border:1px solid var(--fm-line);background:var(--fm-surface-2);border-radius:999px;
+  padding:6px 11px;font-size:11.5px;cursor:pointer;color:var(--fm-ink-2)}
+.fm-aip-chip:hover{border-color:var(--fm-primary);color:var(--fm-primary)}
+.fm-aip-msg{padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;white-space:pre-wrap}
+.fm-aip-msg.user{align-self:flex-end;background:var(--fm-primary);color:#fff;border-bottom-right-radius:4px}
+.fm-aip-msg.bot{align-self:flex-start;background:var(--fm-surface-3);color:var(--fm-ink);border-bottom-left-radius:4px}
+.fm-aip-form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--fm-line)}
+.fm-aip-form input{flex:1;border:1px solid var(--fm-line);border-radius:10px;padding:9px 12px;font-size:13px;
+  background:var(--fm-surface-2);color:var(--fm-ink)}
+.fm-aip-form button{border:none;background:var(--fm-primary);color:#fff;border-radius:10px;width:40px;cursor:pointer}
+
+/* Health / status dot badges for tables */
+.fm-health{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px}
+.fm-health::before{content:"";width:9px;height:9px;border-radius:999px;background:currentColor}
+.fm-health.green{color:var(--fm-success)}.fm-health.amber{color:var(--fm-warning)}.fm-health.red{color:var(--fm-danger)}
+
+/* ---- Print / PDF ---- */
+@media print{
+  .fm-side,.fm-top,.fm-foot,.fm-aip,.fm-export,.fm-daterange,.pg-subnav,.fm-menu-btn,[data-side-open]{display:none !important}
+  .fm-main,.fm-content,.fm-shell{display:block !important;margin:0 !important}
+  .fm-wrap{max-width:100% !important;padding:0 !important}
+  .fm-card,.kpi-tile,.fm-chart-card,.fm-table-wrap{break-inside:avoid;box-shadow:none !important;border-color:#ccc !important}
+  body{background:#fff !important}
+  a[href]::after{content:""}
+}

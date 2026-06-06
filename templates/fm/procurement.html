@@ -1,0 +1,159 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+
+{% block page_id %}procurement{% endblock %}
+{% block title %}Indkøb & leverandører · Futurematch{% endblock %}
+{% block topbar_title %}Indkøb & leverandører{% endblock %}
+{% block topbar_sub %}Leverandørdækning, rabataftaler og aftaler der snart udløber.{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'procurement' %}{% include 'fm/_hr_subnav.html' %}
+
+  {# --- Defensive unpacking of tool outputs (may be empty or carry 'error'). --- #}
+  {% set cov = coverage if coverage is mapping else {} %}
+  {% set exp = expiring if expiring is mapping else {} %}
+  {% set cov_err = cov.get('error') %}
+  {% set exp_err = exp.get('error') %}
+  {% set vendors = cov.get('vendors') or [] %}
+  {% set agreements = exp.get('agreements') or [] %}
+
+  {# --- KPI tiles --- #}
+  <div class="kpi-row k3">
+    {{ ui.kpi('Aktive leverandører', (cov.get('active_suppliers') if not cov_err else '—')|default(0),
+              (cov.get('inactive_suppliers')|default(0)) ~ ' inaktive', 'fa-store', 'indigo') }}
+    {{ ui.kpi('Rabataftaler', (cov.get('agreement_count') if not cov_err else '—')|default(0),
+              'aktive leverandøraftaler', 'fa-file-signature', 'gold') }}
+    {% set _exp_tone = 'clay' if (exp.get('total')|default(0)|int) > 0 else 'green' %}
+    {{ ui.kpi('Udløber snart', (exp.get('total') if not exp_err else '—')|default(0),
+              (exp.get('expired')|default(0)) ~ ' allerede udløbet', 'fa-hourglass-half', _exp_tone) }}
+  </div>
+
+  {# ─────────────────────────── Leverandørdækning ─────────────────────────── #}
+  <div class="fm-card" style="margin-top:8px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-store"></i></span>
+      <h3>Leverandørdækning</h3>
+      {% if vendors %}<span class="fm-badge" style="margin-left:auto">{{ vendors|length }} leverandører</span>{% endif %}
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if cov_err %}
+        {{ ui.empty('Leverandørdata kunne ikke hentes', cov_err, 'fa-triangle-exclamation') }}
+      {% elif not vendors %}
+        {{ ui.empty('Ingen leverandører fundet', 'Når jeres katalog kobles til leverandører, vises dækning og aftaler her.', 'fa-store-slash') }}
+      {% else %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead>
+            <tr>
+              <th>Leverandør</th>
+              <th>Kategorier</th>
+              <th class="tnum">Kurser</th>
+              <th>Aftale</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for v in vendors %}
+            {% set ag = v.get('agreement') if v.get('agreement') is mapping else None %}
+            <tr>
+              <td style="font-weight:650">
+                {% if v.get('url') %}<a class="fm-drill" href="{{ v.url }}">{{ v.get('name') or '—' }} <i class="fa-solid fa-arrow-up-right-from-square"></i></a>{% else %}{{ v.get('name') or '—' }}{% endif %}
+                {% if v.get('priority') %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">Prioritet {{ v.priority }}</div>{% endif %}
+              </td>
+              <td>
+                {% set cats = v.get('categories') or [] %}
+                {% if cats %}
+                  {% for c in cats %}<span class="fm-badge">{{ c }}</span>{% endfor %}
+                {% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}
+              </td>
+              <td class="tnum">{{ v.get('course_count')|default(0) }}</td>
+              <td>
+                {% if ag %}
+                  <span class="status-pill teal">{{ ag.get('name') or 'Aftale' }}</span>
+                  {% if ag.get('value') is not none %}
+                    <div style="font-size:11px;color:var(--fm-ink-2);margin-top:3px">
+                      {% if ag.get('type') == 'percentage' %}{{ ag.value|round(0)|int }}% rabat{% elif ag.get('type') %}{{ ag.value }} ({{ ag.type }}){% else %}{{ ag.value }}{% endif %}
+                    </div>
+                  {% endif %}
+                  {% if ag.get('valid_until') %}<div style="font-size:11px;color:var(--fm-ink-3)">Til {{ ag.valid_until }}</div>{% endif %}
+                {% else %}
+                  <span style="color:var(--fm-ink-3)">Ingen aftale</span>
+                {% endif %}
+              </td>
+              <td>
+                {% if v.get('is_active') %}<span class="status-pill green">Aktiv</span>{% else %}<span class="status-pill red">Inaktiv</span>{% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ──────────────────────── Aftaler der udløber snart ────────────────────── #}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-hourglass-half"></i></span>
+      <h3>Aftaler der udløber snart</h3>
+      {% if exp.get('within_days') %}<span class="fm-badge" style="margin-left:auto">inden for {{ exp.within_days }} dage</span>{% endif %}
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if exp_err %}
+        {{ ui.empty('Aftaledata kunne ikke hentes', exp_err, 'fa-triangle-exclamation') }}
+      {% elif not agreements %}
+        {{ ui.empty('Ingen aftaler udløber snart', exp.get('summary_da') or 'Alle leverandøraftaler er gyldige i den valgte periode.', 'fa-calendar-check') }}
+      {% else %}
+      {% if exp.get('summary_da') %}<p style="margin:0 0 10px;color:var(--fm-ink-2);font-size:13px">{{ exp.summary_da }}</p>{% endif %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead>
+            <tr>
+              <th>Leverandør</th>
+              <th>Aftale</th>
+              <th>Rabat</th>
+              <th>Udløber</th>
+              <th>Rest</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for a in agreements %}
+            {% set dl = a.get('days_left') %}
+            {% set dl_i = dl|int(-1) if dl is not none else -1 %}
+            {% if a.get('is_expired') %}
+              {% set pill_cls = 'red' %}{% set pill_lbl = 'Udløbet' %}
+            {% elif dl is not none and dl_i <= 14 %}
+              {% set pill_cls = 'red' %}{% set pill_lbl = dl_i ~ ' dage' %}
+            {% elif dl is not none and dl_i <= 30 %}
+              {% set pill_cls = 'amber' %}{% set pill_lbl = dl_i ~ ' dage' %}
+            {% else %}
+              {% set pill_cls = 'teal' %}{% set pill_lbl = (dl_i ~ ' dage') if dl is not none else 'Aktiv' %}
+            {% endif %}
+            <tr>
+              <td style="font-weight:650">{{ a.get('vendor_name') or '—' }}</td>
+              <td>
+                {{ a.get('agreement_name') or '—' }}
+                {% if a.get('agreement_reference') %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">Ref. {{ a.agreement_reference }}</div>{% endif %}
+              </td>
+              <td>
+                {% if a.get('discount_value') is not none %}
+                  {% if a.get('discount_type') == 'percentage' %}{{ a.discount_value }}%{% elif a.get('discount_type') %}{{ a.discount_value }} ({{ a.discount_type }}){% else %}{{ a.discount_value }}{% endif %}
+                {% else %}<span style="color:var(--fm-ink-3)">—</span>{% endif %}
+              </td>
+              <td style="font-size:12px;color:var(--fm-ink-2)">{{ a.get('valid_until') or '—' }}</td>
+              <td class="tnum">{% if dl is not none %}{{ dl_i }}{% else %}—{% endif %}</td>
+              <td><span class="status-pill {{ pill_cls }}">{{ pill_lbl }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+</div>
+{% endblock %}

@@ -21,13 +21,15 @@
   <div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line)"><label class="fm-search" style="width:280px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="coSearch" placeholder="Søg virksomhed…" onkeyup="filterCo()"/></label></div>
   {% if companies %}
   <table class="fm-table">
-    <thead><tr><th>Virksomhed</th><th>Slug</th><th>Medarbejdere</th><th>Branding</th><th>White-label</th><th>Plan</th><th></th></tr></thead>
+    <thead><tr><th>Virksomhed</th><th>Slug</th><th>Medarbejdere</th><th>Sundhed</th><th>Ordrer (30d)</th><th>Branding</th><th>White-label</th><th>Plan</th><th></th></tr></thead>
     <tbody>
       {% for c in companies %}
       <tr class="co-row {% if acting_company_id == c.id %}is-active{% endif %}" data-name="{{ c.company_name|lower }}">
         <td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">{{ (c.company_name[:2]|upper) if c.company_name else '??' }}</span><div><div style="font-weight:650"><a href="{{ url_for('companies.admin_company_detail', company_id=c.id) }}" style="text-decoration:none;color:inherit">{{ c.company_name }}</a></div><div class="muted" style="font-size:11.5px">{{ c.industry or '—' }}</div></div></div></td>
         <td><span class="mono" style="font-size:12px">{{ c.company_slug or '—' }}</span></td>
         <td class="mono">{{ c.employee_count or 0 }}</td>
+        <td>{% set _h = c.health if c.health in ['green','amber','red'] else '' %}{% if _h %}<span class="fm-health {{ _h }}">{{ c.health_label or _h|capitalize }}</span>{% else %}<span class="muted" style="font-size:12px">—</span>{% endif %}</td>
+        <td class="mono">{{ c.orders_30d or 0 }}<span class="muted" style="font-size:11px"> / {{ c.orders_total or 0 }}</span>{% if c.last_order_at %}<div class="muted" style="font-size:11px">{{ c.last_order_at }}</div>{% endif %}</td>
         <td>{% if c.custom_branding %}<span class="fm-badge green dot">Aktiv</span>{% else %}<span class="fm-badge">Off</span>{% endif %}</td>
         <td>{% if c.enable_white_label %}<span class="fm-badge indigo">On</span>{% else %}<span class="fm-badge">Off</span>{% endif %}</td>
         <td><span class="fm-badge teal">{{ c.subscription_plan or 'trial' }}</span></td>

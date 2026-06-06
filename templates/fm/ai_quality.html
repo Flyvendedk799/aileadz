@@ -1,0 +1,202 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+
+{% block page_id %}ai_quality{% endblock %}
+{% block title %}AI-kvalitet · Futurematch{% endblock %}
+{% block topbar_title %}AI-kvalitet{% endblock %}
+{% block topbar_sub %}Søge- og svarkvalitet for jeres AI-assistent — risikosignaler og handlingsanbefalinger.{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'ai_quality' %}{% include 'fm/_hr_subnav.html' %}
+
+  {# --- Defensive: risks is a parsed dict that may be empty or carry an error --- #}
+  {% set r = risks if (risks and not risks.get('error')) else None %}
+
+  {% if not r %}
+    {{ ui.empty(
+        'Ingen AI-data endnu',
+        (risks.get('error') if (risks and risks.get('error')) else 'Når jeres medarbejdere bruger AI-assistenten, vises kvalitets- og risikosignaler her.'),
+        'fa-wand-magic-sparkles') }}
+  {% else %}
+    {% set risk_count = r.get('risk_count') | default(0) | int %}
+    {% set total_q = r.get('total_queries') | default(0) | int %}
+    {% set avg_lat = r.get('avg_latency_ms') | default(0) | float %}
+    {% set period = r.get('period_days') | default(30) | int %}
+
+    {# --- KPI tiles summarising the risk signals --- #}
+    <div class="kpi-row">
+      {{ ui.kpi('Forespørgsler',
+                '{:,.0f}'.format(total_q).replace(',', '.'),
+                'sidste ' ~ period ~ ' dage', 'fa-comments', 'indigo') }}
+      {{ ui.kpi('Aktive brugere',
+                r.get('active_users') | default(0),
+                'medarbejdere med AI-brug', 'fa-users', '') }}
+      {{ ui.kpi('Gns. svartid',
+                '{:,.0f}'.format(avg_lat / 1000 if avg_lat else 0).replace(',', '.') ~ ' s',
+                ('{:,.0f}'.format(avg_lat).replace(',', '.') ~ ' ms') if avg_lat else 'ingen data',
+                'fa-gauge-high',
+                ('clay' if avg_lat > 12000 else ('gold' if avg_lat > 6000 else 'green'))) }}
+      {{ ui.kpi('Risikosignaler',
+                risk_count,
+                ('kræver opmærksomhed' if risk_count else 'ingen aktive signaler'),
+                'fa-triangle-exclamation',
+                ('clay' if risk_count else 'green')) }}
+    </div>
+
+    {# --- Overall health banner --- #}
+    {% set _health = 'red' if risk_count >= 3 else ('amber' if risk_count >= 1 else 'green') %}
+    <div class="fm-card" style="margin-top:18px">
+      <div class="fm-card-body" style="display:flex;align-items:center;gap:14px;flex-wrap:wrap">
+        <span class="fm-health {{ _health }}"></span>
+        <div style="flex:1;min-width:220px">
+          <div class="fm-eyebrow">Samlet AI-kvalitet</div>
+          <div style="font-weight:700;font-size:15px;margin-top:2px">
+            {% if risk_count == 0 %}Sund — ingen aktive risikosignaler i perioden.
+            {% elif risk_count == 1 %}1 risikosignal kræver opmærksomhed.
+            {% else %}{{ risk_count }} risikosignaler kræver opmærksomhed.{% endif %}
+          </div>
+        </div>
+        <button type="button" class="btn btn-soft btn-sm" id="fmRegenInsights">
+          <i class="fa-solid fa-arrows-rotate"></i> Regenerér indsigter
+        </button>
+      </div>
+    </div>
+
+    {# --- Risk detail list --- #}
+    {% set rlist = r.get('risks') or [] %}
+    <div class="fm-card" style="margin-top:18px">
+      <div class="fm-card-head">
+        <div>
+          <div class="fm-eyebrow"><i class="fa-solid fa-triangle-exclamation"></i> Risikosignaler</div>
+          <h3 style="font-size:15px;font-weight:700;margin-top:4px">Hvad trækker kvaliteten ned</h3>
+        </div>
+        <span class="status-pill {{ 'red' if rlist else 'green' }}">{{ rlist | length }}</span>
+      </div>
+      <div class="fm-card-body" style="padding:0">
+        {% if rlist %}
+        <div class="fm-table-wrap" style="border:0">
+          <table class="fm-table">
+            <thead><tr><th>Type</th><th>Signal</th><th style="text-align:right">Antal</th></tr></thead>
+            <tbody>
+              {% for risk in rlist %}
+              {% set _rtype = risk.get('type') %}
+              {% set _tone = 'red' if _rtype in ['latency','satisfaction'] else ('amber' if _rtype == 'search_quality' else 'teal') %}
+              {% set _label = {'latency':'Svartid','search_quality':'Søgekvalitet','satisfaction':'Tilfredshed'}.get(_rtype, (_rtype or 'signal') | capitalize) %}
+              <tr>
+                <td><span class="status-pill {{ _tone }}">{{ _label }}</span></td>
+                <td>{{ risk.get('message') | default('—') }}</td>
+                <td class="tnum" style="text-align:right;font-weight:650">{{ risk.get('count') | default(0) }}</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div style="padding:18px">
+          {{ ui.empty('Ingen aktive risikosignaler', 'AI-assistenten leverer hurtige, relevante svar i denne periode.', 'fa-circle-check') }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {# --- Repeated queries (zero-result / friction signal) --- #}
+    {% set reps = r.get('repeated_queries') or [] %}
+    <div class="fm-card" style="margin-top:18px">
+      <div class="fm-card-head">
+        <div>
+          <div class="fm-eyebrow"><i class="fa-solid fa-repeat"></i> Gentagne forespørgsler</div>
+          <h3 style="font-size:15px;font-weight:700;margin-top:4px">Hyppigt stillede spørgsmål</h3>
+        </div>
+        <span class="status-pill teal">{{ reps | length }}</span>
+      </div>
+      <div class="fm-card-body" style="padding:0">
+        {% if reps %}
+        <div class="fm-table-wrap" style="border:0">
+          <table class="fm-table">
+            <thead><tr><th>Forespørgsel</th><th style="text-align:right">Gentaget</th></tr></thead>
+            <tbody>
+              {% for q in reps %}
+              <tr>
+                <td>{{ q.get('query') | default('—') }}</td>
+                <td class="tnum" style="text-align:right;font-weight:650">{{ q.get('count') | default(0) }}×</td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        <div style="padding:18px">
+          {{ ui.empty('Ingen gentagne mønstre', 'Spørgsmålene er varierede — ingen tydelige videnshuller.', 'fa-inbox') }}
+        </div>
+        {% endif %}
+      </div>
+    </div>
+  {% endif %}
+
+  {# --- Indsigter (AI insights) --- #}
+  <div class="fm-card" style="margin-top:18px">
+    <div class="fm-card-head">
+      <div>
+        <div class="fm-eyebrow"><i class="fa-solid fa-lightbulb"></i> Indsigter</div>
+        <h3 style="font-size:15px;font-weight:700;margin-top:4px">AI-genererede anbefalinger</h3>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm" id="fmRegenInsights2">
+        <i class="fa-solid fa-arrows-rotate"></i> Regenerér indsigter
+      </button>
+    </div>
+    <div class="fm-card-body">
+      {% if insights and insights | length > 0 %}
+        {% for i in insights %}
+          {{ ui.insight_card(i) }}
+        {% endfor %}
+      {% else %}
+        {{ ui.empty('Ingen indsigter endnu', 'Generér AI-indsigter for at få konkrete anbefalinger baseret på jeres data.', 'fa-lightbulb') }}
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var endpoint = {{ url_for('hr_dashboard.generate_insights') | tojson }};
+  var buttons = [document.getElementById('fmRegenInsights'), document.getElementById('fmRegenInsights2')];
+
+  function regen(trigger) {
+    if (!trigger || trigger.dataset.busy === '1') return;
+    var label = trigger.innerHTML;
+    trigger.dataset.busy = '1';
+    trigger.disabled = true;
+    trigger.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Genererer…';
+    fetch(endpoint, {
+      method: 'POST',
+      headers: { 'X-Requested-With': 'XMLHttpRequest', 'Accept': 'application/json' },
+      credentials: 'same-origin'
+    })
+      .then(function (resp) { return resp.json().catch(function () { return { success: resp.ok }; }); })
+      .then(function (data) {
+        if (data && data.success !== false) {
+          window.location.reload();
+        } else {
+          trigger.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Fejl — prøv igen';
+          trigger.disabled = false;
+          trigger.dataset.busy = '';
+          setTimeout(function () { trigger.innerHTML = label; }, 3000);
+        }
+      })
+      .catch(function () {
+        trigger.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i> Fejl — prøv igen';
+        trigger.disabled = false;
+        trigger.dataset.busy = '';
+        setTimeout(function () { trigger.innerHTML = label; }, 3000);
+      });
+  }
+
+  buttons.forEach(function (b) {
+    if (b) b.addEventListener('click', function () { regen(b); });
+  });
+})();
+</script>
+{% endblock %}

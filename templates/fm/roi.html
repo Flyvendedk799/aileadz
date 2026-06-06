@@ -3,6 +3,7 @@
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Uddannelses-ROI{% endblock %}
 {% block topbar_sub %}Effekt og afkast af læringsinvesteringer{% if fiscal_year %} · regnskabsår {{ fiscal_year }}{% endif %}.{% endblock %}
+{% import 'fm/_macros.html' as ui %}
 {% block content %}
 <div class="fm-wrap">
 <div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
@@ -102,36 +103,116 @@
 
   {% endif %}{# has_data #}
 
-  <!-- ===== PREDICTIVE SIGNALS (real) ===== -->
-  <div class="split" style="margin-top:16px">
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-danger) 14%,transparent);color:var(--fm-danger)"><i class="fa-solid fa-user-clock"></i></span><h3>Churn-risiko (inaktive)</h3></div>
-      <div class="fm-card-body" style="padding-top:6px">
-        {% for e in (predictions.churn_risk if predictions else []) %}
-        <div class="fm-spread" style="padding:10px 0;border-bottom:1px solid var(--fm-line)"><div><div style="font-weight:600;font-size:13.5px">{{ e.username }}</div><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">{{ e.department or 'N/A' }}</div></div><span class="fm-badge red">{{ e.days_inactive }}d inaktiv</span></div>
-        {% else %}
-        <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);padding:8px 0">Ingen medarbejdere med churn-risiko.</div>
-        {% endfor %}
-      </div>
+  <!-- ===== FORUDSIGELSER & RISIKO (real predictive signals) ===== -->
+  {% set p = predictions or {} %}
+  {% set at_risk = p.at_risk_employees if (p and not p.get('error')) else [] %}
+  {% set trending = p.trending_courses if (p and not p.get('error')) else [] %}
+  {% set churn = p.churn_risk if (p and not p.get('error')) else [] %}
+
+  <div class="fm-eyebrow" style="margin-top:24px"><i class="fa-solid fa-wand-magic-sparkles"></i> Forudsigelser &amp; risiko</div>
+
+  <!-- Medarbejdere i risiko (kompetencegap) -->
+  <div class="fm-card" style="margin-top:12px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span>
+      <h3>Medarbejdere i risiko (kompetencegap)</h3>
     </div>
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span><h3>Store kompetencegab</h3></div>
-      <div class="fm-card-body" style="padding-top:6px">
-        {% for e in (predictions.at_risk_employees if predictions else []) %}
-        <div class="fm-spread" style="padding:10px 0;border-bottom:1px solid var(--fm-line)"><div><div style="font-weight:600;font-size:13.5px">{{ e.username }} · {{ e.skill_name }}</div><div class="muted" style="font-size:11.5px;color:var(--fm-ink-3)">{{ e.department or 'N/A' }} · {{ e.current_level }} → {{ e.target_level }}</div></div><span class="fm-badge red">−{{ e.gap }}</span></div>
-        {% else %}
-        <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);padding:8px 0">Ingen kritiske kompetencegab fundet.</div>
-        {% endfor %}
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if at_risk %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Stilling</th><th>Kompetence</th><th>Niveau</th><th>Gap</th></tr></thead>
+          <tbody>
+            {% for e in at_risk %}
+            <tr>
+              <td style="font-weight:650">{{ e.username|default('—') }}</td>
+              <td>{{ e.department|default('—') }}</td>
+              <td class="muted" style="color:var(--fm-ink-2)">{{ e.job_title|default('—') }}</td>
+              <td>{{ e.skill_name|default('—') }}</td>
+              <td class="mono" style="font-size:12px">{{ e.current_level|default(0) }} → {{ e.target_level|default(0) }}</td>
+              <td><span class="status-pill red">−{{ e.gap|default(0) }}</span></td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
       </div>
+      {% else %}
+      {{ ui.empty('Ingen kritiske kompetencegab', 'Ingen medarbejdere har et betydeligt kompetencegap lige nu.', 'fa-circle-check') }}
+      {% endif %}
     </div>
   </div>
 
-  {% if predictions and predictions.trending_courses %}
-  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-magnifying-glass"></i></span><h3>Trending kursussøgninger (14 dage)</h3></div>
-    <div class="fm-card-body"><div class="fm-flex fm-gap8" style="flex-wrap:wrap">
-      {% for t in predictions.trending_courses %}
-      <span class="fm-chip">{{ t.query_text }} <strong style="margin-left:4px">{{ t.cnt }}</strong></span>
-      {% endfor %}
-    </div></div>
+  <div class="split" style="margin-top:16px">
+    <!-- Trender (søgninger) -->
+    <div class="fm-card">
+      <div class="fm-card-head">
+        <span class="fm-ch-icon"><i class="fa-solid fa-magnifying-glass-chart"></i></span>
+        <h3>Trender (søgninger)</h3>
+      </div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if trending %}
+        <div class="fm-chart-wrap" style="min-height:200px"><canvas id="roiTrendChart"></canvas></div>
+        {% for t in trending %}
+        <div class="fm-spread" style="padding:9px 0;border-bottom:1px solid var(--fm-line)">
+          <span style="font-weight:600;font-size:13px">{{ t.query_text|default('—') }}</span>
+          <span class="status-pill teal">{{ t.cnt|default(0) }}</span>
+        </div>
+        {% endfor %}
+        {% else %}
+        {{ ui.empty('Ingen trender endnu', 'Populære kursussøgninger samles her, når medarbejdere begynder at søge.', 'fa-magnifying-glass') }}
+        {% endif %}
+      </div>
+    </div>
+
+    <!-- Churn-risiko (inaktive) -->
+    <div class="fm-card">
+      <div class="fm-card-head">
+        <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-danger) 14%,transparent);color:var(--fm-danger)"><i class="fa-solid fa-user-clock"></i></span>
+        <h3>Churn-risiko (inaktive)</h3>
+      </div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if churn %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
+          <table class="fm-table">
+            <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Stilling</th><th>Inaktiv</th></tr></thead>
+            <tbody>
+              {% for e in churn %}
+              <tr>
+                <td style="font-weight:650">{{ e.username|default('—') }}</td>
+                <td>{{ e.department|default('—') }}</td>
+                <td class="muted" style="color:var(--fm-ink-2)">{{ e.job_title|default('—') }}</td>
+                <td>
+                  {% set di = e.days_inactive|default(0)|int %}
+                  <span class="status-pill {{ 'red' if di >= 60 else 'amber' }}">{{ di }}d</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        {{ ui.empty('Ingen churn-risiko', 'Alle medarbejdere har været aktive for nylig.', 'fa-circle-check') }}
+        {% endif %}
+      </div>
+    </div>
   </div>
-  {% endif %}
 </div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% include 'fm/_charts.html' %}
+<script>
+  (function () {
+    if (typeof FMChart === 'undefined') return;
+    var trend = {{ ((predictions.trending_courses if (predictions and not predictions.get('error')) else []) or [])|tojson }};
+    if (trend && trend.length) {
+      FMChart.bar('roiTrendChart', {
+        labels: trend.map(function (t) { return (t.query_text || '—'); }),
+        series: [{ label: 'Søgninger', data: trend.map(function (t) { return Number(t.cnt) || 0; }) }],
+        horizontal: true,
+        empty: 'Ingen trender endnu'
+      });
+    }
+  })();
+</script>
 {% endblock %}

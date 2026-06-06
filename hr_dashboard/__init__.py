@@ -16,21 +16,56 @@ def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
 
     def require_hr_access():
-        """Ensure user has HR management permissions"""
+        """Ensure user has HR management permissions.
+
+        Platform admins (role == 'admin') who are impersonating a tenant
+        (session['admin_acting_company_id'] set) are allowed through — the acting
+        company is resolved in get_company_context. (Security hardening such as
+        read-only impersonation is tracked separately.)
+        """
         if 'user' not in session:
             flash("Please log in to access HR features.", "danger")
             return redirect(url_for('auth.login'))
-        
+
+        if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
+            return None
+
         if not session.get('company_id') or session.get('company_role') not in ['company_admin', 'hr_manager', 'department_head']:
             flash("You don't have permission to access HR features.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return None
 
     def get_company_context():
-        """Get current user's company context"""
+        """Get current user's company context.
+
+        Admin impersonation: when a platform admin has an
+        ``admin_acting_company_id`` in session, resolve THAT company directly by
+        id (the admin is not a company_users member, so the membership join would
+        return None). We also align session['company_id'] to the acting company
+        so the company-scoped HR tools (which read session['company_id']) operate
+        on the impersonated tenant.
+        """
         if 'user' not in session:
             return None
-        
+
+        acting = session.get('admin_acting_company_id')
+        if session.get('role') == 'admin' and acting:
+            try:
+                cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                cur.execute("SELECT c.* FROM companies c WHERE c.id = %s", (acting,))
+                row = cur.fetchone()
+                cur.close()
+                if row:
+                    if session.get('company_id') != row['id']:
+                        session['company_id'] = row['id']
+                    row['user_role'] = 'company_admin'
+                    row['department'] = None
+                    row['permissions'] = None
+                    return row
+            except Exception as e:
+                current_app.logger.error(f"Error resolving acting company: {e}")
+                # Fall through to the normal membership lookup.
+
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur.execute("""

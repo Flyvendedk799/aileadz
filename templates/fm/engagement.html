@@ -1,0 +1,298 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}engagement{% endblock %}
+{% block title %}Engagement{% endblock %}
+{% block topbar_title %}Engagement{% endblock %}
+{% block topbar_sub %}Hold øje med medarbejdere, der ikke er kommet i gang, eller som har været inaktive — og send et venligt skub.{% endblock %}
+
+{% block extra_head %}
+<style>
+  .eng-check { width: 16px; height: 16px; accent-color: var(--fm-primary); cursor: pointer; vertical-align: middle; }
+  .eng-toolbar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .eng-toolbar .eng-count { font-size: 12.5px; color: var(--fm-ink-2); }
+  tr.eng-nudged { opacity: .55; }
+  tr.eng-nudged .eng-check { pointer-events: none; }
+  #engToast {
+    position: fixed; right: 18px; bottom: 18px; z-index: 9999;
+    display: none; align-items: center; gap: 10px;
+    padding: 12px 16px; border-radius: 12px; max-width: 360px;
+    background: var(--fm-surface-1); border: 1px solid var(--fm-line);
+    box-shadow: 0 18px 40px rgba(15,23,42,.18); font-size: 13.5px; font-weight: 600;
+    color: var(--fm-ink-1);
+  }
+  #engToast.show { display: flex; }
+  #engToast.ok i { color: var(--fm-success); }
+  #engToast.err i { color: var(--fm-danger); }
+  .eng-th-check { width: 36px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'engagement' %}{% include 'fm/_hr_subnav.html' %}
+
+  {# ---- Defensive unpacking: backend dicts may be empty or carry an 'error' key ---- #}
+  {% set ns = non_starters or {} %}
+  {% set inact = inactive or {} %}
+  {% set ns_err = ns.get('error') %}
+  {% set inact_err = inact.get('error') %}
+  {% set ns_list = ns.get('non_starters') or [] %}
+  {% set inact_list = inact.get('employees') or [] %}
+  {% set ns_threshold = inact.get('inactive_days_threshold') | default(30) %}
+
+  {# ---- KPI tiles ---- #}
+  <div class="kpi-row">
+    {{ ui.kpi('Ikke-startere',
+              (ns.get('total_employees') | default(ns_list | length)) if not ns_err else '—',
+              'medarbejdere uden påbegyndt kursus', 'fa-hourglass-start', 'clay') }}
+    {{ ui.kpi('Ikke-startede kurser',
+              (ns.get('total_not_started_courses') | default(0)) if not ns_err else '—',
+              'tildelte kurser uden start', 'fa-book-bookmark', 'gold') }}
+    {{ ui.kpi('Inaktive medarbejdere',
+              (inact.get('total') | default(inact_list | length)) if not inact_err else '—',
+              ('ingen aktivitet i ' ~ ns_threshold ~ '+ dage'), 'fa-user-clock', 'indigo') }}
+    {{ ui.kpi('Til opfølgning',
+              ((ns_list | length) + (inact_list | length)) if not (ns_err and inact_err) else '—',
+              'kan modtage en påmindelse', 'fa-hand-holding-heart', 'green') }}
+  </div>
+
+  {# ===================== Ikke-startere ===================== #}
+  <div class="fm-card" style="margin-top:4px">
+    <div class="fm-card-head fm-spread">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon"><i class="fa-solid fa-hourglass-start"></i></span>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin:0">Ikke-startere</h3>
+          <p style="font-size:12px;color:var(--fm-ink-2);margin:2px 0 0">Medarbejdere med tildelte kurser, de endnu ikke har påbegyndt.</p>
+        </div>
+      </div>
+      {% if ns_list %}
+      <div class="eng-toolbar">
+        <span class="eng-count" data-count-for="nonStartersTable">0 valgt</span>
+        <button type="button" class="btn btn-primary btn-sm" data-nudge-for="nonStartersTable">
+          <i class="fa-regular fa-paper-plane"></i> Send påmindelse
+        </button>
+      </div>
+      {% endif %}
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if ns_err %}
+        {{ ui.empty('Kunne ikke hente ikke-startere', ns_err, 'fa-triangle-exclamation') }}
+      {% elif not ns_list %}
+        {{ ui.empty('Alle er kommet i gang', 'Ingen medarbejdere har uigangsatte kurser lige nu.', 'fa-circle-check') }}
+      {% else %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table" id="nonStartersTable">
+          <thead>
+            <tr>
+              <th class="eng-th-check"><input type="checkbox" class="eng-check" data-select-all="nonStartersTable" aria-label="Vælg alle"></th>
+              <th>Medarbejder</th>
+              <th>Afdeling</th>
+              <th>Ikke-startede kurser</th>
+              <th>Tidligste deadline</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in ns_list %}
+            {% set uid = e.get('user_id') %}
+            {% set ename = e.get('full_name') or e.get('username') or ('Bruger ' ~ (uid | default('—'))) %}
+            {% set courses = e.get('not_started_courses') or [] %}
+            {% set deadlines = courses | map(attribute='deadline') | select | list %}
+            <tr data-user-row{% if uid is none %} data-no-id="1"{% endif %}>
+              <td>
+                {% if uid is not none %}
+                <input type="checkbox" class="eng-check" name="user_ids" value="{{ uid }}"
+                       data-user-id="{{ uid }}" data-user-name="{{ ename }}" aria-label="Vælg {{ ename }}">
+                {% else %}
+                <span style="color:var(--fm-ink-3)" title="Mangler bruger-id">—</span>
+                {% endif %}
+              </td>
+              <td style="font-weight:650">{{ ename }}{% if e.get('username') and e.get('full_name') %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ e.get('username') }}</div>{% endif %}</td>
+              <td><span class="fm-badge">{{ e.get('department') or '—' }}</span></td>
+              <td class="tnum">{{ courses | length }}</td>
+              <td style="font-size:12px;color:var(--fm-ink-2)">{{ (deadlines | sort | first) if deadlines else '—' }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+
+  {# ===================== Inaktive medarbejdere ===================== #}
+  <div class="fm-card" style="margin-top:18px">
+    <div class="fm-card-head fm-spread">
+      <div class="fm-flex fm-ac fm-gap12">
+        <span class="fm-ch-icon"><i class="fa-solid fa-user-clock"></i></span>
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin:0">Inaktive medarbejdere</h3>
+          <p style="font-size:12px;color:var(--fm-ink-2);margin:2px 0 0">Aktive medarbejdere uden aktivitet i {{ ns_threshold }}+ dage.</p>
+        </div>
+      </div>
+      {% if inact_list %}
+      <div class="eng-toolbar">
+        <span class="eng-count" data-count-for="inactiveTable">0 valgt</span>
+        <button type="button" class="btn btn-primary btn-sm" data-nudge-for="inactiveTable">
+          <i class="fa-regular fa-paper-plane"></i> Send påmindelse
+        </button>
+      </div>
+      {% endif %}
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if inact_err %}
+        {{ ui.empty('Kunne ikke hente inaktive medarbejdere', inact_err, 'fa-triangle-exclamation') }}
+      {% elif not inact_list %}
+        {{ ui.empty('Ingen inaktive medarbejdere', 'Alle har været aktive inden for tærsklen.', 'fa-circle-check') }}
+      {% else %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table" id="inactiveTable">
+          <thead>
+            <tr>
+              <th class="eng-th-check"><input type="checkbox" class="eng-check" data-select-all="inactiveTable" aria-label="Vælg alle"></th>
+              <th>Medarbejder</th>
+              <th>Afdeling</th>
+              <th>Sidst aktiv</th>
+              <th>Dage inaktiv</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for e in inact_list %}
+            {% set uid = e.get('user_id') %}
+            {% set ename = e.get('full_name') or e.get('username') or ('Bruger ' ~ (uid | default('—'))) %}
+            {% set di = e.get('days_inactive') %}
+            <tr data-user-row{% if uid is none %} data-no-id="1"{% endif %}>
+              <td>
+                {% if uid is not none %}
+                <input type="checkbox" class="eng-check" name="user_ids" value="{{ uid }}"
+                       data-user-id="{{ uid }}" data-user-name="{{ ename }}" aria-label="Vælg {{ ename }}">
+                {% else %}
+                <span style="color:var(--fm-ink-3)" title="Mangler bruger-id">—</span>
+                {% endif %}
+              </td>
+              <td style="font-weight:650">{{ ename }}{% if e.get('username') and e.get('full_name') %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ e.get('username') }}</div>{% endif %}</td>
+              <td><span class="fm-badge">{{ e.get('department') or '—' }}</span></td>
+              <td style="font-size:12px;color:var(--fm-ink-2)">{{ e.get('last_seen') or 'Aldrig' }}</td>
+              <td>
+                {% if di is not none %}
+                <span class="fm-badge {{ 'red' if di >= 60 else 'amber' }}">{{ di }} dage</span>
+                {% else %}
+                <span class="fm-badge red">Aldrig aktiv</span>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+
+<div id="engToast" role="status" aria-live="polite"><i class="fa-solid fa-circle-check"></i><span id="engToastMsg"></span></div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var NUDGE_URL = {{ url_for('hr_ext.engagement_nudge') | tojson | safe }};
+
+  function toast(msg, ok) {
+    var el = document.getElementById('engToast');
+    var ic = el.querySelector('i');
+    document.getElementById('engToastMsg').textContent = msg;
+    el.classList.remove('ok', 'err');
+    el.classList.add(ok ? 'ok' : 'err');
+    ic.className = ok ? 'fa-solid fa-circle-check' : 'fa-solid fa-circle-exclamation';
+    el.classList.add('show');
+    clearTimeout(el._t);
+    el._t = setTimeout(function () { el.classList.remove('show'); }, 4200);
+  }
+
+  function rowChecks(table) {
+    return Array.prototype.slice.call(
+      table.querySelectorAll('tbody input.eng-check[name="user_ids"]')
+    );
+  }
+
+  function updateCount(table) {
+    var id = table.id;
+    var n = rowChecks(table).filter(function (c) { return c.checked && !c.disabled; }).length;
+    var label = document.querySelector('[data-count-for="' + id + '"]');
+    if (label) label.textContent = n + ' valgt';
+    var btn = document.querySelector('[data-nudge-for="' + id + '"]');
+    if (btn) btn.disabled = (n === 0);
+  }
+
+  function wireTable(table) {
+    var selectAll = document.querySelector('[data-select-all="' + table.id + '"]');
+    if (selectAll) {
+      selectAll.addEventListener('change', function () {
+        rowChecks(table).forEach(function (c) {
+          if (!c.disabled) c.checked = selectAll.checked;
+        });
+        updateCount(table);
+      });
+    }
+    table.addEventListener('change', function (ev) {
+      if (ev.target && ev.target.matches('input.eng-check[name="user_ids"]')) {
+        updateCount(table);
+      }
+    });
+    updateCount(table);
+  }
+
+  function sendNudge(table, btn) {
+    var checked = rowChecks(table).filter(function (c) { return c.checked && !c.disabled; });
+    var ids = checked.map(function (c) { return parseInt(c.value, 10); }).filter(function (n) { return !isNaN(n); });
+    if (!ids.length) { toast('Vælg mindst én medarbejder.', false); return; }
+
+    var original = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Sender…';
+
+    fetch(NUDGE_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+      credentials: 'same-origin',
+      body: JSON.stringify({ user_ids: ids })
+    })
+    .then(function (r) { return r.json().then(function (j) { return { ok: r.ok, body: j }; }); })
+    .then(function (res) {
+      if (res.ok && res.body && res.body.success) {
+        var n = (typeof res.body.nudged === 'number') ? res.body.nudged : ids.length;
+        checked.forEach(function (c) {
+          c.checked = false;
+          c.disabled = true;
+          var row = c.closest('tr');
+          if (row) row.classList.add('eng-nudged');
+        });
+        var sa = document.querySelector('[data-select-all="' + table.id + '"]');
+        if (sa) sa.checked = false;
+        toast('Påmindelse sendt til ' + n + ' medarbejder(e).', true);
+      } else {
+        var msg = (res.body && res.body.message) || 'Kunne ikke sende påmindelser.';
+        toast(msg, false);
+      }
+    })
+    .catch(function () { toast('Netværksfejl — prøv igen.', false); })
+    .finally(function () {
+      btn.innerHTML = original;
+      updateCount(table);
+    });
+  }
+
+  document.querySelectorAll('[data-nudge-for]').forEach(function (btn) {
+    var table = document.getElementById(btn.getAttribute('data-nudge-for'));
+    if (!table) return;
+    btn.addEventListener('click', function () { sendNudge(table, btn); });
+  });
+
+  ['nonStartersTable', 'inactiveTable'].forEach(function (id) {
+    var t = document.getElementById(id);
+    if (t) wireTable(t);
+  });
+})();
+</script>
+{% endblock %}

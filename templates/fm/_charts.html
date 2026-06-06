@@ -1,0 +1,7 @@
+{# Shared chart loader. Include INSIDE {% block extra_scripts %} on any page that
+   draws charts, BEFORE your own <script> that calls FMChart.* :
+       {% block extra_scripts %}{% include 'fm/_charts.html' %}<script> ... </script>{% endblock %}
+   Loads Chart.js (pinned, same version the existing cockpits use) + the shared
+   token-bound FM theme/helpers (window.FMChart). #}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/fm-charts.js') }}?v=1"></script>

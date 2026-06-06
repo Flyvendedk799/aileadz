@@ -314,12 +314,13 @@
     document.body.appendChild(back);
     const input = back.querySelector("#cmdkInput");
     const list = back.querySelector("#cmdkList");
-    let results = [], active = 0;
+    let results = [], active = 0, searchSeq = 0, debounceT = null;
+    const SEARCH_URL = "/api/search";
 
-    function render(q) {
-      const ql = q.trim().toLowerCase();
-      results = all.filter(it => !ql || it.title.toLowerCase().includes(ql) || it.sub.toLowerCase().includes(ql));
-      active = 0;
+    function staticMatches(ql) {
+      return all.filter(it => !ql || it.title.toLowerCase().includes(ql) || it.sub.toLowerCase().includes(ql));
+    }
+    function drawList(q) {
       if (!results.length) { list.innerHTML = `<div class="cmdk-empty">Ingen resultater for “${q}”</div>`; return; }
       const groups = {};
       results.forEach((r, i) => { (groups[r.group] = groups[r.group] || []).push({ r, i }); });
@@ -332,6 +333,33 @@
         el.addEventListener("mouseenter", () => { active = +el.dataset.i; paintActive(); });
         el.addEventListener("click", () => choose(+el.dataset.i));
       });
+    }
+
+    function render(q) {
+      const ql = q.trim().toLowerCase();
+      results = staticMatches(ql);
+      active = 0;
+      drawList(q);
+      // Live entity search (employees / companies / users) via the backend,
+      // debounced; live hits are shown first, static nav/actions after.
+      if (debounceT) clearTimeout(debounceT);
+      if (ql.length >= 2) {
+        const seq = ++searchSeq;
+        debounceT = setTimeout(() => {
+          fetch(SEARCH_URL + "?q=" + encodeURIComponent(q.trim()), { headers: { "Accept": "application/json" } })
+            .then(r => r.ok ? r.json() : null)
+            .then(data => {
+              if (!data || seq !== searchSeq) return;
+              const live = [];
+              (data.groups || []).forEach(g => (g.items || []).forEach(it =>
+                live.push({ icon: it.icon || "fa-circle", title: it.title, sub: it.sub || "", href: it.href, group: g.label })));
+              if (!live.length) return;
+              results = live.concat(staticMatches(ql));
+              active = 0;
+              drawList(q);
+            }).catch(() => {});
+        }, 180);
+      }
     }
     function paintActive() {
       list.querySelectorAll(".cmdk-item").forEach(el => el.classList.toggle("active", +el.dataset.i === active));

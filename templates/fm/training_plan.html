@@ -1,0 +1,192 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}training_plan{% endblock %}
+{% block title %}Træningsplan{% endblock %}
+{% block topbar_title %}Træningsplan{% endblock %}
+{% block topbar_sub %}AI-anbefalet udviklingsplan baseret på kompetencegab, budget og leverandøraftaler{% if company and company.company_name %} for {{ company.company_name }}{% endif %}.{% endblock %}
+
+{% block extra_head %}
+<style>
+  .tp-filter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+  .tp-filter .tp-field { display: flex; flex-direction: column; gap: 5px; min-width: 200px; flex: 1 1 200px; }
+  .tp-filter .tp-field .fm-eyebrow { margin: 0; }
+  .tp-courses { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; }
+  .tp-course { border: 1px solid var(--fm-line); border-radius: 12px; padding: 16px; background: var(--fm-surface-2); display: flex; flex-direction: column; gap: 8px; }
+  .tp-course-title { font-size: 14.5px; font-weight: 700; line-height: 1.35; }
+  .tp-course-meta { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12px; color: var(--fm-ink-2); }
+  .tp-course-reason { font-size: 12.5px; color: var(--fm-ink-2); }
+  .tp-course-foot { margin-top: auto; display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-top: 6px; }
+  .tp-actions-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+  .tp-actions-list li { display: flex; gap: 12px; align-items: flex-start; }
+  .tp-actions-list .tp-step { flex: 0 0 26px; width: 26px; height: 26px; border-radius: 8px; display: grid; place-items: center; font-size: 12px; font-weight: 700; background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .tp-cta { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; justify-content: space-between; }
+  .tp-cta .tp-cta-tx { font-size: 13px; color: var(--fm-ink-2); max-width: 520px; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'training_plan' %}{% include 'fm/_hr_subnav.html' %}
+
+  {# ---- defensive setup ---- #}
+  {% set plan = plan or {} %}
+  {% set has_error = plan.get('error') %}
+  {% set gaps = plan.get('priority_gaps') or [] %}
+  {% set courses = plan.get('recommended_courses') or [] %}
+  {% set actions = plan.get('next_actions') or [] %}
+  {% set budget = plan.get('budget') or {} %}
+  {% set budget_total = budget.get('company_total') or {} %}
+  {% set has_plan = (gaps or courses or actions) and not has_error %}
+
+  {# ---- GET filter form (auto-submit) ---- #}
+  <div class="fm-card" style="margin-top:4px">
+    <div class="fm-card-body">
+      <form class="tp-filter" method="get" action="{{ url_for('hr_ext.training_plan') }}">
+        <div class="tp-field">
+          <label class="fm-eyebrow" for="tp-dept"><i class="fa-solid fa-sitemap"></i> Afdeling</label>
+          <select id="tp-dept" name="department" class="fm-select" onchange="this.form.submit()">
+            <option value="" {{ 'selected' if not selected_department }}>Alle afdelinger</option>
+            {% for d in (departments or []) %}
+            <option value="{{ d }}" {{ 'selected' if selected_department == d }}>{{ d }}</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="tp-field">
+          <label class="fm-eyebrow" for="tp-focus"><i class="fa-solid fa-bullseye"></i> Fokusområde (valgfrit)</label>
+          <input id="tp-focus" name="focus" class="fm-input" type="text" value="{{ focus|default('') }}" placeholder="fx ledelse, GDPR, Python" autocomplete="off">
+        </div>
+        <div class="tp-field" style="flex:0 0 auto;min-width:0">
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> Opdater plan</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  {% if not has_plan %}
+  {{ ui.empty(
+      'Ingen træningsplan endnu' if not has_error else 'Kunne ikke hente træningsplan',
+      has_error or 'Definér kompetencemål og budgetter, eller vælg en afdeling/et fokusområde — så bygger AI en prioriteret udviklingsplan her.',
+      'fa-list-check') }}
+  {% else %}
+
+  {# ---- KPI tiles ---- #}
+  {% set crit_gaps = gaps | selectattr('critical') | list | length %}
+  <div class="kpi-row k3" style="margin-top:16px">
+    {{ ui.kpi('Prioriterede gap', gaps|length, (crit_gaps ~ ' kritiske') if crit_gaps else 'ingen kritiske', 'fa-triangle-exclamation', 'clay' if crit_gaps else '') }}
+    {{ ui.kpi('Anbefalede kurser', courses|length, 'matcher kompetencebehov', 'fa-graduation-cap', 'indigo') }}
+    {% if budget_total %}
+      {{ ui.kpi('Budget tilbage', '{:,.0f}'.format(budget_total.get('remaining', 0)|float).replace(',', '.') ~ ' kr',
+          'af ' ~ '{:,.0f}'.format(budget_total.get('budget', 0)|float).replace(',', '.') ~ ' kr',
+          'fa-wallet', 'green' if (budget_total.get('remaining', 0)|float) > 0 else 'clay') }}
+    {% else %}
+      {{ ui.kpi('Fokusområde', (plan.get('focus') or 'Bred') | truncate(20, true), plan.get('department') or 'Alle afdelinger', 'fa-bullseye', 'gold') }}
+    {% endif %}
+  </div>
+
+  <div class="split" style="margin-top:16px">
+    {# ---- Priority skill gaps ---- #}
+    <div class="fm-card">
+      <div class="fm-card-head">
+        <span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span>
+        <h3>Prioriterede kompetencegap</h3>
+        <a href="{{ url_for('hr_dashboard.skill_gaps_view') }}" class="btn btn-ghost btn-sm" style="margin-left:auto"><i class="fa-solid fa-arrow-up-right-from-square"></i> Alle</a>
+      </div>
+      <div class="fm-card-body" style="padding-top:6px">
+        {% if gaps %}
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
+          <table class="fm-table">
+            <thead><tr><th>Kompetence</th><th>Afdeling</th><th class="tnum">Niveau / mål</th><th class="tnum">Gap</th></tr></thead>
+            <tbody>
+              {% for g in gaps %}
+              <tr>
+                <td style="font-weight:650">{{ g.get('skill') or '—' }}{% if g.get('critical') %} <span class="status-pill red" style="font-size:10px">kritisk</span>{% endif %}</td>
+                <td><span class="fm-badge">{{ g.get('department') or 'Alle' }}</span></td>
+                <td class="tnum">{{ g.get('avg_current', 0) }} / {{ g.get('target', 0) }}</td>
+                <td class="tnum">
+                  {% set gv = g.get('gap', 0)|float %}
+                  <span class="status-pill {{ 'red' if g.get('critical') else ('amber' if gv > 0 else 'green') }}">{{ '+' ~ gv if gv > 0 else gv }}</span>
+                </td>
+              </tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% else %}
+        {{ ui.empty('Ingen kompetencegab', 'Ingen mål overstiger det aktuelle niveau for det valgte filter.', 'fa-circle-check') }}
+        {% endif %}
+      </div>
+    </div>
+
+    {# ---- Next actions ---- #}
+    <div class="fm-card">
+      <div class="fm-card-head">
+        <span class="fm-ch-icon"><i class="fa-solid fa-list-check"></i></span>
+        <h3>Næste handlinger</h3>
+      </div>
+      <div class="fm-card-body">
+        {% if actions %}
+        <ol class="tp-actions-list">
+          {% for a in actions %}
+          <li><span class="tp-step">{{ loop.index }}</span><span>{{ a }}</span></li>
+          {% endfor %}
+        </ol>
+        {% else %}
+        {{ ui.empty('Ingen handlinger', 'Der er ingen foreslåede skridt for det valgte filter.', 'fa-clipboard') }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+
+  {# ---- Recommended courses ---- #}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span>
+      <h3>Anbefalede kurser</h3>
+      {% if courses %}<span class="fm-badge" style="margin-left:auto">{{ courses|length }}</span>{% endif %}
+    </div>
+    <div class="fm-card-body">
+      {% if courses %}
+      <div class="tp-courses">
+        {% for c in courses %}
+        <div class="tp-course">
+          <div class="tp-course-title">{{ c.get('title') or 'Kursus' }}</div>
+          <div class="tp-course-meta">
+            {% if c.get('vendor') %}<span><i class="fa-solid fa-store"></i> {{ c.get('vendor') }}</span>{% endif %}
+            {% if c.get('format') %}<span class="fm-badge">{{ c.get('format') }}</span>{% endif %}
+            {% if c.get('topic') %}<span class="fm-badge teal">{{ c.get('topic') }}</span>{% endif %}
+          </div>
+          {% if c.get('reason') %}<div class="tp-course-reason">{{ c.get('reason') }}</div>{% endif %}
+          {% if c.get('categories') %}
+          <div class="tp-course-meta">
+            {% for cat in c.get('categories') %}<span class="fm-badge">{{ cat }}</span>{% endfor %}
+          </div>
+          {% endif %}
+          <div class="tp-course-foot">
+            <span class="mono" style="font-size:13px;font-weight:650">{{ c.get('price') or '—' }}</span>
+            {% if c.get('url') %}<a href="{{ c.get('url') }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-arrow-up-right-from-square"></i> Se kursus</a>{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      {{ ui.empty('Ingen kursusanbefalinger', 'Vi fandt ingen kurser i kataloget der matcher kompetencebehovet. Prøv et bredere fokusområde.', 'fa-graduation-cap') }}
+      {% endif %}
+    </div>
+  </div>
+
+  {# ---- CTA ---- #}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-body">
+      <div class="tp-cta">
+        <div>
+          <h3 style="font-size:15px;font-weight:700;margin:0 0 4px"><i class="fa-solid fa-route"></i> Klar til at rulle planen ud?</h3>
+          <div class="tp-cta-tx">Tildel de anbefalede forløb til berørte medarbejdere i én arbejdsgang og send dem direkte i gang.</div>
+        </div>
+        <a href="{{ url_for('hr_dashboard.bulk_assign_form') }}" class="btn btn-primary"><i class="fa-solid fa-people-arrows"></i> Bulk-tildel forløb</a>
+      </div>
+    </div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

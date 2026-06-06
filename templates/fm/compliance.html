@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}compliance{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Compliance{% endblock %}
@@ -75,6 +76,69 @@
       </tbody>
     </table>
   </div>
+
+  {# --- Kommende fornyelser (deadlines / recert timeline) ---------------------
+     Presentation over the existing matrix data: any requirement-row that has
+     employees udløbende (expiring) eller manglende/udløbet (overdue) cover.
+     Sorted so overdue (kræver handling nu) kommer øverst. #}
+  {% set dl_rows = [] %}
+  {% for row in matrix %}
+    {% if (row.expiring|default(0)|int) > 0 or (row.overdue|default(0)|int) > 0 %}
+      {% set _ = dl_rows.append(row) %}
+    {% endif %}
+  {% endfor %}
+  {% set dl_rows = dl_rows | sort(attribute='overdue', reverse=true) %}
+
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <div>
+        <h3 style="font-size:15px;font-weight:700"><i class="fa-solid fa-calendar-day"></i> Kommende fornyelser</h3>
+        <div class="fm-eyebrow" style="margin-top:3px">Krav med medarbejdere der snart udløber eller allerede mangler dækning.</div>
+      </div>
+      {% if dl_rows %}<span class="fm-badge">{{ dl_rows|length }} krav</span>{% endif %}
+    </div>
+    <div class="fm-card-body">
+      {% if dl_rows %}
+      <div class="timeline">
+        {% for row in dl_rows %}
+        {% set req = row.requirement or {} %}
+        {% set ov = row.overdue|default(0)|int %}
+        {% set ex = row.expiring|default(0)|int %}
+        {% set rec = req.recurrence_months|default(0)|int %}
+        {# Overdue dominates the row's status; otherwise it's "udløber snart". #}
+        {% if ov > 0 %}
+          {% set pill_cls = 'red' %}
+          {% set pill_lbl = ov ~ ' mangler / udløbet' %}
+        {% else %}
+          {% set pill_cls = 'amber' %}
+          {% set pill_lbl = ex ~ ' udløber snart' %}
+        {% endif %}
+        <div class="tl-item{{ ' muted' if ov == 0 }}">
+          <div class="tl-time">
+            {% if rec > 0 %}Gentages hver {{ rec }} mdr.{% else %}Engangskrav{% endif %}
+            {% if req.applies_to_department %} · {{ req.applies_to_department }}{% else %} · Alle afd.{% endif %}
+          </div>
+          <div class="fm-spread" style="align-items:flex-start;gap:10px;flex-wrap:wrap">
+            <div class="tl-title">
+              {{ req.title|default('Uden titel') }}
+              {% if req.is_statutory %}<span class="fm-badge red" style="margin-left:6px">Lovpligtig</span>{% endif %}
+            </div>
+            <span class="status-pill {{ pill_cls }}">{{ pill_lbl }}</span>
+          </div>
+          <div class="tl-desc">
+            {% if ov > 0 %}<strong style="color:var(--fm-danger)">{{ ov }}</strong> medarbejder{{ '' if ov == 1 else 'e' }} mangler eller har udløbet dækning{% if ex > 0 %} · {% endif %}{% endif %}
+            {% if ex > 0 %}<strong style="color:var(--fm-warning)">{{ ex }}</strong> udløber inden for 60 dage{% endif %}
+            {% if row.applicable is defined %} · {{ row.applicable }} omfattet i alt{% endif %}
+          </div>
+        </div>
+        {% endfor %}
+      </div>
+      {% else %}
+      {{ ui.empty('Ingen kommende fornyelser', 'Alle medarbejdere har gyldig dækning på de definerede krav. Udløbende eller manglende certificeringer dukker op her, så I kan handle i tide.', 'fa-calendar-check') }}
+      {% endif %}
+    </div>
+  </div>
+
   {% else %}
   <!-- Empty state -->
   <div class="fm-card" style="padding:48px 24px;text-align:center;margin-top:8px">

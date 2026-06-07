@@ -92,6 +92,30 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'manager_weekly_digest': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">Ugentligt lederoverblik</h2>
+    <p>Hej {{ recipient_name or 'leder' }},</p>
+    <p>Her er ugens overblik for {{ company_name }}:</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:14px;">
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Bestillinger der afventer godkendelse</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ pending_approvals }}</strong></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Budgetforbrug</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ budget_utilization }}</strong></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Inaktive medarbejdere (7+ dage)</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ inactive_employees }}</strong></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Åbne kompetencegab</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ skill_gaps }}</strong></td></tr>
+      <tr><td style="padding:8px 0;">Heraf kritiske kompetencegab</td>
+          <td style="padding:8px 0;text-align:right;"><strong>{{ critical_skill_gaps }}</strong></td></tr>
+    </table>
+    <p style="font-size:13px;color:#64748b;margin-top:20px;">Log ind for at se detaljerne og handle på dem.</p>
+  </div>
+</body></html>
+""",
     }
     body_tpl = templates.get(template_name, templates['welcome'])
     ctx = {

@@ -87,6 +87,10 @@
       </ul>
       {% endif %}
 
+      {# Page-specific sidebar content (e.g. the chat's conversation list),
+         placed right under the workspace nav. Empty on every other page. #}
+      {% block sidebar_extra %}{% endblock %}
+
       {% if session.get('company_id') %}
       <div class="fm-nav-label">Virksomhed</div>
       <ul class="fm-nav-list">
@@ -103,10 +107,6 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'webhooks' }}" href="{{ url_for('enterprise_settings.webhooks_page') }}"><i class="fa-solid fa-plug"></i><span>Webhooks</span></a></li>
       </ul>
       {% endif %}
-
-      {# Page-specific sidebar content (e.g. the chat's conversation list),
-         placed between the workspace nav and Konto. Empty on every other page. #}
-      {% block sidebar_extra %}{% endblock %}
 
       <div class="fm-nav-label">Konto</div>
       <ul class="fm-nav-list">

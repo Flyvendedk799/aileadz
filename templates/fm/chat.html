@@ -38,68 +38,63 @@
   }
 
   /* The chat fills the shell's content area and scrolls internally — the page
-     itself doesn't scroll. */
+     itself doesn't scroll. One sidebar only; the thread runs full width. */
   html, body.chat-page { height: 100%; }
   body.chat-page { overflow: hidden; }
   body.chat-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.chat-page .fm-foot { display: none; }
 
-  .chatx { flex: 1; display: flex; min-width: 0; min-height: 0; }
-  .chatx-conv { width: 264px; flex: 0 0 264px; display: flex; flex-direction: column; border-right: 1px solid var(--fm-line); background: var(--fm-surface); }
-  .chatx-conv-head { padding: 14px 14px 4px; }
-  .chatx-conv-head .new-chat { width: 100%; }
-  .chatx-conv-label { font-family: var(--ff-mono); font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase; color: var(--fm-ink-3); padding: 14px 16px 6px; }
-  .chatx-conv-scroll { flex: 1; overflow-y: auto; padding: 0 10px 12px; }
-  .chatx-conv-scroll .conv-group { display: flex; flex-direction: column; gap: 1px; }
+  .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
+  .chatx .scroll { flex: 1; min-height: 0; }
 
-  .chatx-main { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
-  .chatx-main .scroll { flex: 1; min-height: 0; }
-  /* chat.css gives .nudge/.input-wrap horizontal margins/padding that already fit */
-
-  @media (max-width: 900px) { .chatx-conv { display: none; } }
+  /* Conversation history lives in the main sidebar (block sidebar_extra). */
+  .fm-side .chat-newbtn { width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 11px; margin: 2px 0 4px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 13.5px; transition: border-color var(--t), color var(--t), background var(--t); }
+  .fm-side .chat-newbtn:hover { border-color: var(--fm-primary); color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .fm-side .chat-newbtn svg { width: 16px; height: 16px; flex: 0 0 16px; }
+  .fm-side #convList { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+  .fm-side #convList .conv { padding: 8px 10px; }
+  .fm-side .conv-empty { padding: 8px 11px; font-size: 12.5px; color: var(--fm-ink-3); }
+  /* collapsed sidebar: keep just the + button */
+  .fm-side.collapsed .chat-newbtn { justify-content: center; padding: 9px 0; }
+  .fm-side.collapsed .chat-newbtn span,
+  .fm-side.collapsed #convList { display: none; }
 </style>
+{% endblock %}
+
+{% block sidebar_extra %}
+<div class="fm-nav-label">Samtaler</div>
+<button class="chat-newbtn" data-new>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  <span>Ny samtale</span>
+</button>
+<div class="conv-group" id="convList"></div>
 {% endblock %}
 
 {% block content %}
 <div class="chatx">
-  <aside class="chatx-conv" id="rail">
-    <div class="chatx-conv-head">
-      <button class="new-chat" data-new>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>Ny samtale</span>
-      </button>
+  <div class="nudge" id="nudge">
+    <div class="nudge-inner">
+      <span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
+      <a class="nt" href="#" id="nudgeLink"></a>
+      <button class="nudge-x" id="nudgeX" aria-label="Luk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
     </div>
-    <div class="chatx-conv-label">Samtaler</div>
-    <div class="chatx-conv-scroll">
-      <div class="conv-group" id="convList"></div>
-    </div>
-  </aside>
+  </div>
 
-  <section class="chatx-main">
-    <div class="nudge" id="nudge">
-      <div class="nudge-inner">
-        <span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
-        <a class="nt" href="#" id="nudgeLink"></a>
-        <button class="nudge-x" id="nudgeX" aria-label="Luk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
-      </div>
-    </div>
+  <div class="scroll" id="scroll">
+    <div class="thread" id="thread"></div>
+    <button class="fab" id="fab" aria-label="Scroll ned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+  </div>
 
-    <div class="scroll" id="scroll">
-      <div class="thread" id="thread"></div>
-      <button class="fab" id="fab" aria-label="Scroll ned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+  <div class="input-wrap">
+    <div class="ref-bar" id="refBar"></div>
+    <div class="composer">
+      <button class="plus" title="Vedhæft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <textarea id="input" rows="1" placeholder="Spørg om kurser, kompetencer eller hold…"></textarea>
+      <button class="stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
+      <button class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
     </div>
-
-    <div class="input-wrap">
-      <div class="ref-bar" id="refBar"></div>
-      <div class="composer">
-        <button class="plus" title="Vedhæft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
-        <textarea id="input" rows="1" placeholder="Spørg om kurser, kompetencer eller hold…"></textarea>
-        <button class="stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
-        <button class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
-      </div>
-      <div class="hint">Futurematch AI · kan tage fejl — bekræft vigtige detaljer</div>
-    </div>
-  </section>
+    <div class="hint">Futurematch AI · kan tage fejl — bekræft vigtige detaljer</div>
+  </div>
 </div>
 {% endblock %}
 

@@ -26,6 +26,13 @@
           </select>
         </div>
         <div class="fm-field"><label>Jobtitel</label><input type="text" class="fm-input" name="job_title" value="{{ employee.job_title or '' }}"></div>
+        <div class="fm-field"><label>Nærmeste leder</label>
+          <select class="fm-select" name="manager_user_id">
+            <option value="">Ingen leder</option>
+            {% for m in managers|default([]) %}<option value="{{ m.user_id }}" {% if employee.manager_user_id == m.user_id %}selected{% endif %}>{{ m.name }}{% if m.job_title %} · {{ m.job_title }}{% endif %}</option>{% endfor %}
+          </select>
+          <div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Lederens team-overblik og godkendelser bygger på dette felt.</div>
+        </div>
         <div class="fm-field"><label>Systemrolle *</label>
           <select class="fm-select" name="role" required>
             <option value="employee" {% if employee.role == 'employee' %}selected{% endif %}>Medarbejder</option>

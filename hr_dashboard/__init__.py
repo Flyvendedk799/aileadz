@@ -13,6 +13,7 @@ import csv
 import io
 
 from perf_cache import ttl_cache
+from auth_decorators import require_company_role
 
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
@@ -3711,6 +3712,166 @@ def create_hr_dashboard_blueprint():
             flash("Fejl ved sletning.", "danger")
 
         return redirect(url_for('hr_dashboard.supplier_agreements'))
+
+    # ══════════════════════════════════════════════════════════
+    # ── Auto-Approval Policies (budget-aware auto-approval engine) ──
+    # Company-scoped thresholds consumed by order_service.create_order().
+    # Budget overspend ALWAYS overrides any auto-approval (safety first).
+    # ══════════════════════════════════════════════════════════
+
+    @hr_dashboard_bp.route('/approval-policies')
+    @require_company_role('company_admin', 'hr_manager')
+    def approval_policies():
+        """View and manage auto-approval policies for the company."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        policies = []
+        departments = []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""
+                SELECT * FROM company_approval_policies
+                WHERE company_id = %s
+                ORDER BY (department IS NULL) DESC, department
+            """, (company['id'],))
+            policies = cur.fetchall() or []
+
+            # Department list for the per-department override dropdown.
+            cur.execute("""
+                SELECT department_name FROM company_departments
+                WHERE company_id = %s ORDER BY department_name
+            """, (company['id'],))
+            departments = [row['department_name'] for row in cur.fetchall() if row.get('department_name')]
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error loading approval policies: {e}")
+            policies, departments = [], []
+
+        return render_template('fm/approval_policies.html',
+                               company=company, policies=policies,
+                               departments=departments,
+                               active_hr_page='approval_policies')
+
+    @hr_dashboard_bp.route('/approval-policies/save', methods=['POST'])
+    @require_company_role('company_admin', 'hr_manager')
+    def save_approval_policy():
+        """Create or update an auto-approval policy (company-wide or per-dept)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('hr_dashboard.approval_policies'))
+
+        policy_id = request.form.get('policy_id', '').strip()
+        department = request.form.get('department', '').strip() or None
+        auto_under_raw = request.form.get('auto_approve_under', '0').strip()
+        require_over_raw = request.form.get('require_approval_over', '').strip()
+        is_active = 1 if request.form.get('is_active') else 0
+
+        try:
+            auto_under = float(auto_under_raw or 0)
+        except ValueError:
+            auto_under = 0.0
+        if auto_under < 0:
+            auto_under = 0.0
+
+        require_over = None
+        if require_over_raw:
+            try:
+                require_over = float(require_over_raw)
+                if require_over < 0:
+                    require_over = None
+            except ValueError:
+                require_over = None
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            if policy_id:
+                # Update — strictly company-scoped (anti-IDOR via company_id).
+                cur.execute("""
+                    UPDATE company_approval_policies
+                    SET department = %s, auto_approve_under = %s,
+                        require_approval_over = %s, is_active = %s
+                    WHERE id = %s AND company_id = %s
+                """, (department, auto_under, require_over, is_active,
+                      policy_id, company['id']))
+            else:
+                cur.execute("""
+                    INSERT INTO company_approval_policies
+                        (company_id, department, auto_approve_under,
+                         require_approval_over, is_active, created_by)
+                    VALUES (%s, %s, %s, %s, %s, %s)
+                """, (company['id'], department, auto_under, require_over,
+                      is_active, session.get('user_id')))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Godkendelsespolitik gemt.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error saving approval policy: {e}")
+            flash("Fejl ved gem af politik.", "danger")
+
+        return redirect(url_for('hr_dashboard.approval_policies'))
+
+    @hr_dashboard_bp.route('/approval-policies/<int:policy_id>/delete', methods=['POST'])
+    @require_company_role('company_admin', 'hr_manager')
+    def delete_approval_policy(policy_id):
+        """Delete an auto-approval policy (company-scoped)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('hr_dashboard.approval_policies'))
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            cur.execute(
+                "DELETE FROM company_approval_policies WHERE id = %s AND company_id = %s",
+                (policy_id, company['id']))
+            current_app.mysql.connection.commit()
+            cur.close()
+            flash("Politik slettet.", "success")
+        except Exception as e:
+            current_app.logger.error(f"Error deleting approval policy: {e}")
+            flash("Fejl ved sletning.", "danger")
+
+        return redirect(url_for('hr_dashboard.approval_policies'))
+
+    # ══════════════════════════════════════════════════════════
+    # ── Industry Benchmarking (k-anonymous cohort comparison) ──
+    # ══════════════════════════════════════════════════════════
+
+    @hr_dashboard_bp.route('/benchmarking')
+    @require_company_role('company_admin', 'hr_manager', 'department_head')
+    def benchmarking_view():
+        """Anonymous industry benchmark for the company (k-anonymity enforced
+        inside benchmarking.benchmark)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Virksomhed ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        try:
+            import benchmarking
+            data = benchmarking.benchmark(company['id'])
+        except Exception as e:
+            current_app.logger.error(f"Error loading benchmarking: {e}")
+            data = None
+
+        return render_template('fm/benchmarking.html',
+                               company=company, data=data,
+                               active_hr_page='benchmarking')
 
     # ══════════════════════════════════════════════════════════
     # ── Chatbot Configuration ──

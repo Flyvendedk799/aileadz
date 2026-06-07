@@ -3373,11 +3373,33 @@ def _execute_create_order(args):
     # Build product_data
     variants = product.get("variants", [])
     price_str = variants[0].get("price", "0") if variants else "0"
+    vendor_name = product.get("vendor", "")
+
+    # Apply the negotiated supplier discount AT CAPTURE so the order is charged
+    # at the agreed price, not the list price. Reuse the existing per-request
+    # discount logic; fall back to the company discount map when the in-memory
+    # search context was not populated (e.g. a non-chat-loop entry point).
+    discounted_price, _orig, _agr_name = apply_discount(price_str, vendor_name)
+    if discounted_price is None:
+        try:
+            company_id = flask_session.get("company_id")
+            if company_id and vendor_name:
+                discount_map = catalog.get_company_discount_map(company_id)
+                agreement = discount_map.get((vendor_name or "").lower())
+                if agreement:
+                    eff = catalog.apply_discount_to_price(price_str, agreement)
+                    if eff is not None:
+                        discounted_price = eff
+        except Exception:
+            discounted_price = None
+    if discounted_price is not None:
+        price_str = str(discounted_price)
+
     product_data = {
         "handle": handle,
         "title": product.get("title", ""),
         "price": price_str,
-        "vendor": product.get("vendor", ""),
+        "vendor": vendor_name,
         "product_type": product.get("product_type", ""),
     }
 

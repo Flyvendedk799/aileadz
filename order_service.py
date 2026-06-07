@@ -282,6 +282,53 @@ def _write_audit(cur, *, company_id, user_id, action, resource_id, description="
         logger.debug("order_service: audit_log skipped (%s): %s", action, e)
 
 
+def _resolve_approval_policy(cur, company_id, department):
+    """Resolve the active auto-approval policy for one company (optionally one
+    department). STRICTLY company_id-scoped — one company's policy can never
+    affect another's.
+
+    Precedence: a department-specific active policy wins over the company-wide
+    (department IS NULL) default. Returns a dict with float thresholds, or None
+    when no active policy exists / on any error (callers fall back to the prior
+    employee-approval behaviour).
+
+        {"auto_approve_under": float, "require_approval_over": float | None}
+    """
+    cid = _int_or_none(company_id)
+    if cid is None:
+        return None
+    dept = (department or "").strip()
+    try:
+        # Department-specific policy first (most specific), then company-wide
+        # (department IS NULL). LIMIT 1 — the most specific active row wins.
+        cur.execute(
+            """
+            SELECT auto_approve_under, require_approval_over, department
+            FROM company_approval_policies
+            WHERE company_id = %s
+              AND is_active = 1
+              AND (department = %s OR department IS NULL)
+            ORDER BY (department IS NULL) ASC
+            LIMIT 1
+            """,
+            (cid, dept),
+        )
+        row = cur.fetchone()
+    except Exception as e:
+        logger.warning("order_service: approval policy lookup failed: %s", e)
+        return None
+    if not row:
+        return None
+
+    auto_under = _to_float(row.get("auto_approve_under"))
+    raw_over = row.get("require_approval_over")
+    require_over = _to_float(raw_over) if raw_over is not None else None
+    return {
+        "auto_approve_under": auto_under,
+        "require_approval_over": require_over,
+    }
+
+
 def _ownership_ok(ctx, order_row):
     """Ownership gate shared by get_order / cancel_order / set_status.
 
@@ -353,10 +400,32 @@ def create_order(ctx, *, product_handle, product_title, price,
         # admins and non-company (anonymous) orders do not.
         needs_approval = bool(ctx.company_id) and ctx.is_employee
 
+        dept = ctx.department or extra.get("department") or ""
+
+        # --- 1b. AUTO-APPROVAL policy layer (runs BEFORE budget check) -----
+        # A company can configure a per-company (optionally per-department)
+        # auto-approval threshold. Orders at/under auto_approve_under are
+        # auto-approved (needs_approval cleared); orders at/over
+        # require_approval_over are always routed to approval. The budget
+        # overspend safety rule below can still RE-force approval even when a
+        # policy auto-approved — safety first, it only ever tightens.
+        auto_approved_by_policy = False
+        if ctx.company_id and price_f > 0:
+            policy = _resolve_approval_policy(cur, ctx.company_id, dept)
+            if policy:
+                require_over = policy.get("require_approval_over")
+                auto_under = policy.get("auto_approve_under") or 0.0
+                if require_over is not None and require_over > 0 and price_f >= require_over:
+                    # Over the hard ceiling -> always needs approval.
+                    needs_approval = True
+                elif auto_under > 0 and price_f <= auto_under:
+                    # Under the auto-approve threshold -> auto-approve.
+                    needs_approval = False
+                    auto_approved_by_policy = True
+
         # --- 2. budget-aware approval ------------------------------------
         budget_warning = None
         fiscal_year = datetime.datetime.now().year
-        dept = ctx.department or extra.get("department") or ""
         budget_row = None
         if ctx.company_id and dept and price_f > 0:
             try:
@@ -377,8 +446,11 @@ def create_order(ctx, *, product_handle, product_title, price,
                 spent = _to_float(budget_row.get("spent"))
                 remaining = annual - spent
                 if annual > 0 and (spent + price_f) > annual:
-                    # Do NOT silently overspend — route to approval.
+                    # Do NOT silently overspend — route to approval. This is the
+                    # safety rule: it overrides any auto-approval the policy
+                    # layer granted above (safety first).
                     needs_approval = True
+                    auto_approved_by_policy = False
                     budget_warning = (
                         f"Bestillingen på {price_f:.0f} kr. overskrider afdelingens "
                         f"resterende budget på {remaining:.0f} kr. "
@@ -389,6 +461,10 @@ def create_order(ctx, *, product_handle, product_title, price,
         # --- 3. resolve status & INSERT course_orders --------------------
         if needs_approval:
             initial_status = "pending_approval"
+        elif auto_approved_by_policy:
+            # Policy auto-approved (and budget did NOT force approval): land in
+            # an approved status and run the existing charge path below.
+            initial_status = "approved"
         else:
             initial_status = status or "pending"
 
@@ -450,13 +526,16 @@ def create_order(ctx, *, product_handle, product_title, price,
                 logger.warning("order_service: budget charge failed: %s", ce)
 
         # --- 6. audit ----------------------------------------------------
+        _audit_desc = f"{product_title} ({ctx.source})"
+        if auto_approved_by_policy:
+            _audit_desc += " [auto-godkendt via politik]"
         _write_audit(
             cur,
             company_id=ctx.company_id,
             user_id=ctx.user_id,
-            action="order.created",
+            action="order.auto_approved" if auto_approved_by_policy else "order.created",
             resource_id=order_id,
-            description=f"{product_title} ({ctx.source})",
+            description=_audit_desc,
         )
 
         # In-app notification to HR/admins when an order needs their approval
@@ -473,12 +552,19 @@ def create_order(ctx, *, product_handle, product_title, price,
         conn.commit()
 
         # --- 7. cross-integration side effects (post-commit, best-effort) ---
+        if needs_approval:
+            _event_type = "order.needs_approval"
+        elif auto_approved_by_policy:
+            _event_type = "order.auto_approved"
+        else:
+            _event_type = "order.created"
         _emit_event_safe(
             ctx.company_id,
-            "order.needs_approval" if needs_approval else "order.created",
+            _event_type,
             {"order_id": order_id, "product_title": product_title,
              "price": price_f, "status": initial_status,
-             "department": dept, "source": ctx.source},
+             "department": dept, "source": ctx.source,
+             "auto_approved": auto_approved_by_policy},
         )
         if user_email and not needs_approval:
             _send_email_safe(
@@ -493,6 +579,7 @@ def create_order(ctx, *, product_handle, product_title, price,
             "order_id": order_id,
             "status": initial_status,
             "needs_approval": needs_approval,
+            "auto_approved": auto_approved_by_policy,
             "budget_warning": budget_warning,
             "budget_charged": bool(budget_charged),
             "price": price_f,

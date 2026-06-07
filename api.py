@@ -281,6 +281,132 @@ def manage_profile_summary_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+# ── Company notification center (company_notifications, recipient-scoped) ──
+#
+# These power the fm notification center + bell badge. They read the
+# company_notifications table (company_id + recipient scoped) — distinct from the
+# legacy `notifications` table above, which other surfaces still use. All routes
+# degrade to a safe empty/zero result so the shell never breaks.
+
+def _company_notif_scope():
+    """(company_id, user_id, company_role_json) or None if not in a company."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return None
+    return (company_id, session.get('user_id'),
+            json.dumps(session.get('company_role')))
+
+
+@api_bp.route('/api/notifications/company')
+@login_required
+def company_notifications_list():
+    """Recent company notifications + unread count for the session user."""
+    scope = _company_notif_scope()
+    if not scope:
+        return jsonify({'notifications': [], 'unread_count': 0})
+    company_id, user_id, role_json = scope
+    try:
+        import MySQLdb.cursors
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT id, title, message, is_urgent, is_read, created_at
+            FROM company_notifications
+            WHERE company_id = %s
+              AND (recipient_user_id = %s OR recipient_user_id IS NULL)
+              AND (target_roles IS NULL OR JSON_CONTAINS(target_roles, %s))
+            ORDER BY is_read ASC, is_urgent DESC, created_at DESC
+            LIMIT 20
+            """,
+            (company_id, user_id, role_json),
+        )
+        rows = cur.fetchall() or []
+        cur.close()
+        notifs = []
+        unread = 0
+        for r in rows:
+            is_read = int(r.get('is_read') or 0)
+            if not is_read:
+                unread += 1
+            created = r.get('created_at')
+            notifs.append({
+                'id': r.get('id'),
+                'title': r.get('title'),
+                'message': r.get('message'),
+                'is_urgent': int(r.get('is_urgent') or 0),
+                'is_read': is_read,
+                'created_at': created.strftime('%d.%m %H:%M') if hasattr(created, 'strftime') else str(created or ''),
+            })
+        return jsonify({'notifications': notifs, 'unread_count': unread})
+    except Exception as e:
+        current_app.logger.warning("company notifications list: %s", e)
+        return jsonify({'notifications': [], 'unread_count': 0})
+
+
+@api_bp.route('/api/notifications/company/unread_count')
+@login_required
+def company_notifications_unread_count():
+    """Unread company-notification count — drives the bell badge poll."""
+    scope = _company_notif_scope()
+    if not scope:
+        return jsonify({'unread_count': 0})
+    company_id, user_id, role_json = scope
+    try:
+        import MySQLdb.cursors
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT COUNT(*) AS unread_count
+            FROM company_notifications
+            WHERE company_id = %s AND is_read = 0
+              AND (recipient_user_id = %s OR recipient_user_id IS NULL)
+              AND (target_roles IS NULL OR JSON_CONTAINS(target_roles, %s))
+            """,
+            (company_id, user_id, role_json),
+        )
+        row = cur.fetchone()
+        cur.close()
+        return jsonify({'unread_count': int(row['unread_count']) if row else 0})
+    except Exception as e:
+        current_app.logger.warning("company notifications unread count: %s", e)
+        return jsonify({'unread_count': 0})
+
+
+@api_bp.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
+@login_required
+def company_notification_mark_read(notification_id):
+    """Mark a single company notification read — strictly company-scoped.
+
+    Only rows belonging to the session user's company and addressed to them (or
+    broadcast) can be marked. This is the only write here, so it commits.
+    """
+    company_id = session.get('company_id')
+    user_id = session.get('user_id')
+    if not company_id:
+        return jsonify({'success': False, 'error': 'No company context'}), 403
+    try:
+        mysql = current_app.mysql
+        cur = mysql.connection.cursor()
+        cur.execute(
+            """
+            UPDATE company_notifications SET is_read = 1
+            WHERE id = %s AND company_id = %s
+              AND (recipient_user_id = %s OR recipient_user_id IS NULL)
+            """,
+            (notification_id, company_id, user_id),
+        )
+        mysql.connection.commit()
+        cur.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        current_app.logger.error("company notification mark read: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @api_bp.route('/api/notifications/unread_list')
 def unread_notifications_list():
     if 'user' not in session:

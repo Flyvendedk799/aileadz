@@ -856,6 +856,29 @@ def ensure_enterprise_tables(app):
                     INDEX idx_vendor (vendor_name)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Company Approval Policies (budget-aware auto-approval) ──
+                # Per-company (optionally per-department) thresholds that drive
+                # the auto-approval policy layer in order_service.create_order().
+                # An order whose price is at or below auto_approve_under is
+                # auto-approved (and charged immediately); an order whose price
+                # is at or above require_approval_over is always routed to
+                # approval. Budget overspend STILL forces approval regardless.
+                # department is NULLable: a NULL row is the company-wide default,
+                # a non-NULL row overrides it for that department only.
+                """CREATE TABLE IF NOT EXISTS company_approval_policies (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    department VARCHAR(100) NULL,
+                    auto_approve_under DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    require_approval_over DECIMAL(12,2) NULL,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_company (company_id),
+                    INDEX idx_company_dept (company_id, department)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company Course Activations (toggle external courses on/off) ──
                 """CREATE TABLE IF NOT EXISTS company_course_activations (
                     id INT AUTO_INCREMENT PRIMARY KEY,

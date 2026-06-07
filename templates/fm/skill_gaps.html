@@ -31,6 +31,13 @@
     {% endfor %}
   </div>
 
+  <!-- Skill radar: actual vs target -->
+  <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-bullseye"></i> Faktisk vs. mål</span><h2 class="fm-section-title">Kompetenceniveau mod målniveau</h2></div></div>
+  <div class="fm-card" style="padding:18px;margin-bottom:8px">
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px">Gennemsnitligt faktisk niveau sammenlignet med fastsat målniveau, pr. kompetence (skala 0–5).</p>
+    <div style="position:relative;height:360px;max-width:560px;margin:0 auto"><canvas id="skillRadar" aria-label="Radardiagram: gennemsnitligt faktisk kompetenceniveau mod målniveau pr. kompetence" role="img"></canvas></div>
+  </div>
+
   <!-- Critical gaps from heatmap -->
   <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span><h3 style="font-size:15px;font-weight:700">Kritiske kompetencegab</h3></div></div>
   <table class="fm-table"><thead><tr><th>Kompetence</th><th>Afdeling</th><th>Målniveau</th><th>Gns. niveau</th><th>Gab</th><th></th></tr></thead><tbody>
@@ -105,6 +112,51 @@
 <style>.sg-modal{position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;display:flex;align-items:center;justify-content:center}</style>
 {% endblock %}
 {% block extra_scripts %}
+{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  // Aggregate the per-department heatmap into one company-wide actual-vs-target
+  // point per skill: average the actual levels (weighted by employees counted),
+  // and take the highest target set for that skill.
+  var heatmap = {{ (heatmap or {})|tojson|safe }};
+  var bySkill = {};
+  Object.keys(heatmap).forEach(function (dept) {
+    var skills = heatmap[dept] || {};
+    Object.keys(skills).forEach(function (name) {
+      var e = skills[name] || {};
+      var emp = Number(e.employees) || 0;
+      var cur = Number(e.avg_current) || 0;
+      var tgt = Number(e.target_level) || 0;
+      if (!bySkill[name]) bySkill[name] = { sumCur: 0, wEmp: 0, anyCur: 0, cnt: 0, target: 0 };
+      var s = bySkill[name];
+      s.target = Math.max(s.target, tgt);
+      if (emp > 0) { s.sumCur += cur * emp; s.wEmp += emp; }
+      s.anyCur += cur; s.cnt += 1;
+    });
+  });
+  var names = Object.keys(bySkill);
+  // Keep the chart legible: cap at the 8 skills with the largest gap.
+  names.sort(function (a, b) {
+    function gap(n) { var s = bySkill[n]; var act = s.wEmp ? s.sumCur / s.wEmp : (s.cnt ? s.anyCur / s.cnt : 0); return (s.target - act); }
+    return gap(b) - gap(a);
+  });
+  names = names.slice(0, 8);
+  var labels = names;
+  var actual = names.map(function (n) { var s = bySkill[n]; var v = s.wEmp ? s.sumCur / s.wEmp : (s.cnt ? s.anyCur / s.cnt : 0); return Math.round(v * 10) / 10; });
+  var target = names.map(function (n) { return bySkill[n].target; });
+
+  FMChart.radar('skillRadar', {
+    labels: labels,
+    max: 5, step: 1,
+    series: [
+      { label: 'Faktisk niveau', data: actual, color: FMChart.cssVar('--fm-primary', '#0f766e') },
+      { label: 'Målniveau', data: target, color: FMChart.cssVar('--fm-clay', '#c9603a') }
+    ],
+    empty: 'Ingen kompetencemål defineret endnu'
+  });
+})();
+</script>
 <script>
 function openModal(id){
   if(id==='addTargetModal'){

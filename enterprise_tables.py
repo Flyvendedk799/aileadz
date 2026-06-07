@@ -856,6 +856,29 @@ def ensure_enterprise_tables(app):
                     INDEX idx_vendor (vendor_name)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Company Approval Policies (budget-aware auto-approval) ──
+                # Per-company (optionally per-department) thresholds that drive
+                # the auto-approval policy layer in order_service.create_order().
+                # An order whose price is at or below auto_approve_under is
+                # auto-approved (and charged immediately); an order whose price
+                # is at or above require_approval_over is always routed to
+                # approval. Budget overspend STILL forces approval regardless.
+                # department is NULLable: a NULL row is the company-wide default,
+                # a non-NULL row overrides it for that department only.
+                """CREATE TABLE IF NOT EXISTS company_approval_policies (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    company_id INT NOT NULL,
+                    department VARCHAR(100) NULL,
+                    auto_approve_under DECIMAL(12,2) NOT NULL DEFAULT 0,
+                    require_approval_over DECIMAL(12,2) NULL,
+                    is_active TINYINT(1) NOT NULL DEFAULT 1,
+                    created_by INT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    INDEX idx_company (company_id),
+                    INDEX idx_company_dept (company_id, department)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company Course Activations (toggle external courses on/off) ──
                 """CREATE TABLE IF NOT EXISTS company_course_activations (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -927,6 +950,11 @@ def ensure_enterprise_tables(app):
                 # Vendor accounts are ISOLATED from the main user/company auth.
                 # vendor_name matches the free-text 'vendor' string on products,
                 # so existing catalog rows can be linked to an account later.
+                # invite_token / invite_expires_at back the vendor onboarding
+                # invite + set-password flow (admin creates account -> emailed a
+                # signed-opaque token -> vendor sets their own password). Both are
+                # NULLable: a NULL token means "no pending invite". The auto-sync
+                # pass below ADD-COLUMNs these onto any pre-existing vendors table.
                 """CREATE TABLE IF NOT EXISTS vendors (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     vendor_name VARCHAR(255) NOT NULL,
@@ -937,9 +965,12 @@ def ensure_enterprise_tables(app):
                     description TEXT,
                     website VARCHAR(255),
                     logo_url VARCHAR(500),
+                    invite_token VARCHAR(80),
+                    invite_expires_at DATETIME,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-                    INDEX idx_vendor_name (vendor_name)
+                    INDEX idx_vendor_name (vendor_name),
+                    INDEX idx_invite_token (invite_token)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
                 # ── Vendor Submissions (catalog import drafts uploaded by vendors) ──
@@ -957,6 +988,30 @@ def ensure_enterprise_tables(app):
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_vendor (vendor_id),
                     INDEX idx_status (status)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
+                # ── Course Reviews (two-sided rating signal) ──
+                # A review is OWNERSHIP-GATED at write time: only a buyer with a
+                # completed course_order for that product_handle may write one,
+                # and at most ONE review per order_id (uk_order). Rows are
+                # company_id-scoped. The public surface (product detail) shows
+                # only the aggregate (avg + count + recent bodies) — never which
+                # company/employee left which score in a way that singles a buyer
+                # out beyond their own chosen display name.
+                """CREATE TABLE IF NOT EXISTS course_reviews (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    product_handle VARCHAR(255) NOT NULL,
+                    company_id INT,
+                    user_id INT,
+                    username VARCHAR(255),
+                    order_id VARCHAR(50) NOT NULL,
+                    rating TINYINT NOT NULL,
+                    body TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_order (order_id),
+                    INDEX idx_product (product_handle),
+                    INDEX idx_company (company_id),
+                    INDEX idx_product_created (product_handle, created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
             ]
 

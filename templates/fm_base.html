@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=14" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=15" />
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=14" />
   {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
   <style id="fm-wl-vars">
@@ -110,7 +110,7 @@
 
       <div class="fm-nav-label">Konto</div>
       <ul class="fm-nav-list">
-        <li><a class="fm-nav-link {{ 'active' if page == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span><span class="fm-nav-badge" data-notif-badge hidden></span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil &amp; CV</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'goals' }}" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i><span>Udviklingsmål</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Min tidslinje</span></a></li>
@@ -167,7 +167,7 @@
       </div>
       <div class="fm-top-actions">
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
-        <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot"></span></a>
+        <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {% if session.get('user') %}
         <span class="fm-chip credits"><i class="fa-solid fa-coins"></i> {{ session.get('credits', 0) }}</span>
         <a class="fm-icon-btn" href="{{ url_for('auth.logout') }}" aria-label="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
@@ -216,7 +216,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=9"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=10"></script>
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

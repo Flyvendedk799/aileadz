@@ -1,0 +1,117 @@
+{% extends "fm_base.html" %}
+{% block page_id %}retention{% endblock %}
+{% block title %}Kohorte-fastholdelse{% endblock %}
+{% block topbar_title %}Kohorte-fastholdelse{% endblock %}
+{% block topbar_sub %}Læringskohorter grupperet efter første ordres måned — hvor mange gennemfører mindst ét kursus i de efterfølgende måneder.{% endblock %}
+{% block extra_head %}
+<style>
+  .rt-filterbar { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-top: 16px; }
+  .rt-filter-form { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; }
+  .rt-filter-field { display: flex; flex-direction: column; gap: 5px; }
+  .rt-filter-field .fm-select { min-width: 200px; }
+
+  .rt-matrix-wrap { overflow-x: auto; padding: 4px 2px; }
+  table.rt-matrix { border-collapse: separate; border-spacing: 4px; width: 100%; }
+  table.rt-matrix th, table.rt-matrix td { text-align: center; font-size: 12.5px; white-space: nowrap; }
+  table.rt-matrix thead th { color: var(--fm-ink-3); font-weight: 650; padding: 4px 8px; text-transform: uppercase; letter-spacing: .02em; font-size: 11px; }
+  table.rt-matrix tbody th { text-align: left; font-weight: 700; color: var(--fm-ink-1); padding-right: 12px; }
+  table.rt-matrix tbody th small { display: block; font-weight: 500; font-size: 11px; color: var(--fm-ink-3); margin-top: 2px; }
+  .rt-cell { border-radius: 8px; padding: 9px 8px; min-width: 58px; color: var(--fm-ink-1); font-weight: 700; }
+  .rt-cell small { display: block; font-weight: 500; font-size: 10.5px; opacity: .85; margin-top: 1px; }
+  .rt-cell.empty { background: var(--fm-surface-3); color: var(--fm-ink-3); font-weight: 500; }
+
+  .bi-empty { padding: 44px 16px; text-align: center; color: var(--fm-ink-3); font-size: 13px; }
+  .bi-empty i { font-size: 26px; display: block; margin-bottom: 10px; color: var(--fm-ink-3); opacity: .6; }
+
+  @media (max-width: 900px) {
+    .rt-filter-field .fm-select { min-width: 0; width: 100%; }
+    .rt-filter-field { flex: 1 1 160px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Conversion-funnel</a>
+    <a class="pg-tab active" href="{{ url_for('admin_reports.cohort_retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
+  </div>
+
+  {# --- Per-virksomhed + periode drill-down (GET, auto-submit) --- #}
+  <div class="rt-filterbar">
+    <form class="rt-filter-form" method="get" action="{{ url_for('admin_reports.cohort_retention_dashboard') }}">
+      <div class="rt-filter-field">
+        <label class="fm-eyebrow" for="rtCompany"><i class="fa-solid fa-building"></i> Virksomhed</label>
+        <select id="rtCompany" name="company_id" class="fm-select" onchange="this.form.submit()">
+          <option value="" {{ 'selected' if not sel_company_id }}>Alle virksomheder</option>
+          {% for c in companies|default([]) %}
+          <option value="{{ c.id }}" {{ 'selected' if sel_company_id and sel_company_id|int == c.id|int }}>{{ c.company_name|default('Virksomhed #' ~ c.id) }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="rt-filter-field">
+        <label class="fm-eyebrow" for="rtMonths"><i class="fa-solid fa-calendar-days"></i> Måneder frem</label>
+        <select id="rtMonths" name="months" class="fm-select" onchange="this.form.submit()">
+          {% for n in [3, 6, 9, 12] %}
+          <option value="{{ n }}" {{ 'selected' if months|int == n }}>{{ n }} måneder</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-soft btn-sm">Anvend</button></noscript>
+    </form>
+  </div>
+
+  {% if not has_data %}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="bi-empty">
+      <i class="fa-solid fa-people-group"></i>
+      Ingen kohorte-data endnu. Når læringskohorter begynder at gennemføre kurser over tid,
+      bygges fastholdelsestrekanten op her.
+    </div>
+  </div>
+  {% else %}
+
+  <div class="fm-card" style="margin-top:16px;padding:18px">
+    <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-table-cells"></i> Fastholdelsestrekant</h3>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 14px">
+      Hver række er en kohorte (måned for første ordre). Kolonnerne viser måned-offset 0..{{ retention.max_offset }} —
+      andelen af kohorten der gennemførte mindst ét kursus i den måned. Beregnet i databasen.
+    </p>
+    <div class="rt-matrix-wrap">
+      <table class="rt-matrix">
+        <thead>
+          <tr>
+            <th style="text-align:left">Kohorte</th>
+            {% for off in offsets %}<th>M{{ off }}</th>{% endfor %}
+          </tr>
+        </thead>
+        <tbody>
+          {% for c in retention.cohorts %}
+          <tr>
+            <th>{{ c.cohort }}<small>{{ c.size }} læringskunder</small></th>
+            {% for r in c.retention %}
+            {% set pct = r.pct %}
+            <td>
+              {% if r.count > 0 %}
+              <div class="rt-cell" style="background:color-mix(in srgb, var(--fm-primary) {{ [pct, 100]|min }}%, var(--fm-surface-2)); color:{{ '#fff' if pct >= 45 else 'var(--fm-ink-1)' }}">
+                {{ pct }}%<small>{{ r.count }}</small>
+              </div>
+              {% else %}
+              <div class="rt-cell empty">–</div>
+              {% endif %}
+            </td>
+            {% endfor %}
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% if retention.anon_note %}
+    <p style="font-size:11.5px;color:var(--fm-ink-3);margin:14px 0 0"><i class="fa-solid fa-user-shield"></i> {{ retention.anon_note }}</p>
+    {% endif %}
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}

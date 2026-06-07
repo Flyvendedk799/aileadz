@@ -75,6 +75,52 @@ def _company_discount_for(vendor_name):
         return None
 
 
+# Order in which active-filter chips are shown. (param, human label)
+_FILTER_CHIP_LABELS = (
+    ("q", "Søgning"),
+    ("category", "Kategori"),
+    ("vendor", "Leverandør"),
+    ("format", "Format"),
+    ("location", "Sted"),
+    ("price_min", "Min. pris"),
+    ("price_max", "Maks. pris"),
+)
+
+
+def _active_filters(filters, options):
+    """Build removable chips for the currently-applied filters.
+
+    Each chip carries a ``remove_url`` that drops just that one parameter (and
+    ``page``) while preserving the rest, so the user can peel filters off one at
+    a time. Category/vendor slugs are resolved to display names via the options.
+    """
+    cat_name = {c["slug"]: c["name"] for c in (options.get("categories") or [])}
+    ven_name = {v["slug"]: v["name"] for v in (options.get("vendors") or [])}
+    chips = []
+    for param, label in _FILTER_CHIP_LABELS:
+        value = (filters or {}).get(param)
+        if not value:
+            continue
+        if param == "category":
+            display = cat_name.get(value, value)
+        elif param == "vendor":
+            display = ven_name.get(value, value)
+        elif param == "price_min":
+            display = "fra {} kr".format(value)
+        elif param == "price_max":
+            display = "op til {} kr".format(value)
+        else:
+            display = value
+        rest = {k: v for k, v in request.args.items() if k not in (param, "page") and v}
+        chips.append({
+            "param": param,
+            "label": label,
+            "display": display,
+            "remove_url": url_for(request.endpoint, **(request.view_args or {}), **rest),
+        })
+    return chips
+
+
 def _render_catalog_list(template, **context):
     filters = context.pop("filters", _query_filters())
     result = catalog.search_products(
@@ -83,6 +129,7 @@ def _render_catalog_list(template, **context):
         per_page=24,
         company_id=session.get("company_id"),
     )
+    options = catalog.get_filter_options()
     prev_args = request.args.to_dict()
     prev_args["page"] = max(result["page"] - 1, 1)
     next_args = request.args.to_dict()
@@ -97,7 +144,9 @@ def _render_catalog_list(template, **context):
         pagination=result,
         pagination_urls=pagination_urls,
         filters=filters,
-        filter_options=catalog.get_filter_options(),
+        filter_options=options,
+        active_filters=_active_filters(filters, options),
+        clear_url=url_for(request.endpoint, **(request.view_args or {})),
         **context,
     )
 

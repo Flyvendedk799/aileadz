@@ -22,6 +22,18 @@
 
   .cat-meta-row { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 10px; margin-bottom: 16px; }
   .cat-meta-row .count { color: var(--fm-ink-2); font-size: 13.5px; }
+  .cat-meta-row .count strong { color: var(--fm-ink); }
+  .relaxed-note { color: var(--fm-ink-3); font-size: 12.5px; }
+
+  .price-range { display: flex; align-items: center; gap: 6px; }
+  .price-range input { width: 100%; min-width: 0; }
+  .price-range span { color: var(--fm-ink-3); }
+
+  .cat-active { display: flex; flex-wrap: wrap; gap: 8px; margin: -4px 0 18px; }
+  .fchip { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 11px; border-radius: 999px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink-2); font-size: 12.5px; font-weight: 600; text-decoration: none; transition: border-color var(--t), color var(--t), background var(--t); }
+  .fchip:hover { border-color: var(--fm-clay); color: var(--fm-clay); background: color-mix(in srgb, var(--fm-clay) 9%, var(--fm-surface)); }
+  .fchip .fchip-k { color: var(--fm-ink-3); font-weight: 600; }
+  .fchip i { font-size: 10px; opacity: .8; }
 
   .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); text-decoration: none; color: inherit; }
@@ -79,11 +91,11 @@
         <form class="cat-filter" method="GET" action="{{ url_for('catalog.catalog_index') }}">
           <div class="ff" style="grid-column: span 2">
             <label for="catalog-q">Søg</label>
-            <input id="catalog-q" class="fm-input" type="search" name="q" value="{{ filters.q if filters else '' }}" placeholder="Kursus, emne eller leverandør">
+            <input id="catalog-q" class="fm-input" type="search" name="q" value="{{ filters.q if filters else '' }}" placeholder="Kursus, emne, leverandør …" autocomplete="off">
           </div>
           <div class="ff">
             <label for="catalog-category">Kategori</label>
-            <select id="catalog-category" class="fm-select" name="category">
+            <select id="catalog-category" class="fm-select" name="category" onchange="this.form.submit()">
               <option value="">Alle kategorier</option>
               {% for category in (filter_options.categories if filter_options else []) %}
               <option value="{{ category.slug }}" {% if filters and filters.category == category.slug %}selected{% endif %}>{{ category.name }} ({{ category.count }})</option>
@@ -92,7 +104,7 @@
           </div>
           <div class="ff">
             <label for="catalog-vendor">Leverandør</label>
-            <select id="catalog-vendor" class="fm-select" name="vendor">
+            <select id="catalog-vendor" class="fm-select" name="vendor" onchange="this.form.submit()">
               <option value="">Alle leverandører</option>
               {% for vendor in (filter_options.vendors if filter_options else []) %}
               <option value="{{ vendor.slug }}" {% if filters and filters.vendor == vendor.slug %}selected{% endif %}>{{ vendor.name }} ({{ vendor.course_count }})</option>
@@ -101,7 +113,7 @@
           </div>
           <div class="ff">
             <label for="catalog-format">Format</label>
-            <select id="catalog-format" class="fm-select" name="format">
+            <select id="catalog-format" class="fm-select" name="format" onchange="this.form.submit()">
               <option value="">Alle formater</option>
               {% for format in (filter_options.formats if filter_options else []) %}
               <option value="{{ format }}" {% if filters and filters.format == format %}selected{% endif %}>{{ format }}</option>
@@ -109,26 +121,55 @@
             </select>
           </div>
           <div class="ff">
-            <label for="catalog-max">Max pris</label>
-            <input id="catalog-max" class="fm-input" type="number" min="0" step="500" name="price_max" value="{{ filters.price_max if filters else '' }}">
+            <label for="catalog-location">Sted</label>
+            <select id="catalog-location" class="fm-select" name="location" onchange="this.form.submit()">
+              <option value="">Hele landet</option>
+              {% for loc in (filter_options.locations if filter_options else []) %}
+              <option value="{{ loc.name }}" {% if filters and filters.location == loc.name %}selected{% endif %}>{{ loc.name }} ({{ loc.count }})</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="ff" style="grid-column: span 2">
+            <label>Pris (kr)</label>
+            <div class="price-range">
+              <input class="fm-input" type="number" min="0" step="500" name="price_min" value="{{ filters.price_min if filters else '' }}" placeholder="Min" aria-label="Mindste pris">
+              <span>–</span>
+              <input class="fm-input" type="number" min="0" step="500" name="price_max" value="{{ filters.price_max if filters else '' }}" placeholder="Max" aria-label="Højeste pris">
+            </div>
           </div>
           <div class="ff">
             <label for="catalog-sort">Sortering</label>
-            <select id="catalog-sort" class="fm-select" name="sort">
-              <option value="relevance" {% if filters and filters.sort == 'relevance' %}selected{% endif %}>Match</option>
-              <option value="price_asc" {% if filters and filters.sort == 'price_asc' %}selected{% endif %}>Pris op</option>
-              <option value="price_desc" {% if filters and filters.sort == 'price_desc' %}selected{% endif %}>Pris ned</option>
+            <select id="catalog-sort" class="fm-select" name="sort" onchange="this.form.submit()">
+              <option value="relevance" {% if filters and filters.sort == 'relevance' %}selected{% endif %}>Mest relevante</option>
+              <option value="title" {% if filters and filters.sort == 'title' %}selected{% endif %}>Titel A–Å</option>
+              <option value="title_desc" {% if filters and filters.sort == 'title_desc' %}selected{% endif %}>Titel Å–A</option>
+              <option value="price_asc" {% if filters and filters.sort == 'price_asc' %}selected{% endif %}>Pris (lav → høj)</option>
+              <option value="price_desc" {% if filters and filters.sort == 'price_desc' %}selected{% endif %}>Pris (høj → lav)</option>
               <option value="vendor" {% if filters and filters.sort == 'vendor' %}selected{% endif %}>Leverandør</option>
             </select>
           </div>
           <div class="ff submit">
-            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Filtrér</button>
+            <button class="btn btn-primary" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Søg</button>
           </div>
         </form>
 
         <div class="cat-meta-row">
-          <div class="count">{{ pagination.total if pagination else 0 }} kurser fundet</div>
+          <div class="count">
+            <strong class="tnum">{{ pagination.total if pagination else 0 }}</strong> kurser fundet
+            {% if pagination and pagination.relaxed %}<span class="relaxed-note">· ingen eksakte træffere, viser nærmeste match</span>{% endif %}
+          </div>
+          {% if active_filters %}
+          <a class="btn btn-ghost btn-sm" href="{{ clear_url or url_for('catalog.catalog_index') }}"><i class="fa-solid fa-xmark"></i> Ryd alle filtre</a>
+          {% endif %}
         </div>
+
+        {% if active_filters %}
+        <div class="cat-active" aria-label="Aktive filtre">
+          {% for chip in active_filters %}
+          <a class="fchip" href="{{ chip.remove_url }}" title="Fjern {{ chip.label|lower }}"><span class="fchip-k">{{ chip.label }}:</span> {{ chip.display }} <i class="fa-solid fa-xmark"></i></a>
+          {% endfor %}
+        </div>
+        {% endif %}
 
         {% if products %}
         <section class="cat-grid">

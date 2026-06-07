@@ -208,9 +208,22 @@ class AdvancedAnalytics:
             # Feature engineering
             df['review_month'] = pd.to_datetime(df['review_period_end']).dt.month
             df['review_quarter'] = pd.to_datetime(df['review_period_end']).dt.quarter
-            df['days_since_hire'] = (pd.to_datetime(df['review_period_end']) - 
-                                   pd.to_datetime([emp['hire_date'] for emp in employee_data 
-                                                 if emp['id'] in df['employee_id'].values])).dt.days
+            # days_since_hire: join each review row to its employee's hire_date BY
+            # employee_id — not by list position. The old code built a hire-date
+            # list filtered by a different predicate and subtracted it positionally,
+            # so the lengths/order never aligned with df's rows; pandas raised and
+            # the whole function returned None every time. Map id -> hire_date and
+            # look it up per row instead. Note: performance_reviews.employee_id is
+            # a user_id, while company_users carries both id and user_id — key the
+            # map on user_id so the join actually matches.
+            hire_by_emp = {}
+            for emp in employee_data:
+                key = emp.get('user_id', emp.get('id'))
+                if key is not None:
+                    hire_by_emp[key] = emp.get('hire_date')
+            df['hire_date'] = df['employee_id'].map(hire_by_emp)
+            df['days_since_hire'] = (pd.to_datetime(df['review_period_end']) -
+                                     pd.to_datetime(df['hire_date'])).dt.days
             
             # Select features and target
             feature_cols = ['technical_skills_rating', 'soft_skills_rating', 
@@ -497,10 +510,32 @@ class AdvancedAnalytics:
             # 1. Skill gap based recommendations
             for skill in skills:
                 if skill['current_level'] != skill['target_level']:
-                    level_map = {'novice': 1, 'beginner': 2, 'intermediate': 3, 'advanced': 4, 'expert': 5}
-                    current = level_map.get(skill['current_level'], 1)
-                    target = level_map.get(skill['target_level'], 3)
-                    
+                    # current_level/target_level are INT columns (1..5) and the
+                    # labels in this Danish app are begynder/mellem/avanceret/
+                    # ekspert — the old English-only level_map ('novice'..)
+                    # mapped every real value to its default, so no real gap was
+                    # ever detected. Reuse the corrected Danish-aware mapping from
+                    # generate_skill_gap_analysis: pass ints through unchanged and
+                    # map Danish (+ legacy English) labels.
+                    level_map = {
+                        'begynder': 1, 'mellem': 2, 'oevet': 2, 'øvet': 2, 'erfaren': 3,
+                        'avanceret': 3, 'ekspert': 4,
+                        'novice': 1, 'beginner': 2, 'intermediate': 3, 'advanced': 4, 'expert': 4,
+                    }
+
+                    def _to_level(v, default):
+                        if isinstance(v, bool):
+                            return default
+                        if isinstance(v, (int, float)):
+                            return max(0, min(5, int(v)))
+                        try:
+                            return max(0, min(5, int(float(str(v).strip()))))
+                        except (TypeError, ValueError):
+                            return level_map.get(str(v).strip().lower(), default)
+
+                    current = _to_level(skill['current_level'], 1)
+                    target = _to_level(skill['target_level'], 3)
+
                     if target > current:
                         recommendations.append({
                             'type': 'skill_gap',

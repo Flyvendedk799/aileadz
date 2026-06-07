@@ -370,3 +370,238 @@ def top_queries(company_id=None, days=30, limit=10):
             row.pop('_distinct_people', None)
 
     return rows_out
+
+
+def attributed_revenue(company_id=None, days=90):
+    """AI-ROI attribution: revenue (DKK) on orders the chatbot adviser drove.
+
+    Joins the BI fact table to ``course_orders`` on the shared session id
+    (``chatbot_interactions.session_id = course_orders.chatbot_session_id``) and
+    sums the order price for orders that were recommended by an AI tool — i.e.
+    ``course_orders.recommended_by_tool`` is set. This is the "DKK omsat
+    tilskrevet AI-rådgiveren" headline figure.
+
+    Everything is computed DB-side (SUM / COUNT) — no rows are pulled into
+    Python. Tenant-scoped when a ``company_id`` is given; platform-wide when it
+    is ``None``. Always safe; never raises.
+
+    Returns:
+        dict::
+            {'revenue': float,            # SUM(price) of AI-attributed orders
+             'orders': int,               # COUNT of AI-attributed orders
+             'sessions': int,             # distinct attributed chatbot sessions
+             'avg_order_value': float,    # revenue / orders
+             'days': int, 'company_id': company_id}
+    """
+    d = _days(days)
+    result = {
+        'revenue': 0.0,
+        'orders': 0,
+        'sessions': 0,
+        'avg_order_value': 0.0,
+        'days': d,
+        'company_id': company_id,
+    }
+
+    cur = _cursor()
+    if cur is None:
+        return result
+
+    try:
+        # Scope the orders side to the tenant (alias 'co').
+        scope_sql, scope_params = _scope(company_id, alias='co')
+        tenant_and = (' AND ' + scope_sql) if scope_sql else ''
+        status_placeholders = ', '.join(['%s'] * len(_ORDERED_STATUSES))
+        sql = """
+            SELECT
+                COALESCE(SUM(co.price), 0) AS revenue,
+                COUNT(*) AS orders,
+                COUNT(DISTINCT co.chatbot_session_id) AS sessions
+            FROM course_orders co
+            JOIN chatbot_interactions ci
+              ON ci.session_id = co.chatbot_session_id
+            WHERE co.chatbot_session_id IS NOT NULL AND co.chatbot_session_id <> ''
+              AND co.recommended_by_tool IS NOT NULL AND co.recommended_by_tool <> ''
+              AND co.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+              AND co.status IN ({statuses})
+              {tenant_and}
+        """.format(statuses=status_placeholders, tenant_and=tenant_and)
+        params = (d,) + _ORDERED_STATUSES + scope_params
+        cur.execute(sql, params)
+        row = cur.fetchone() or {}
+        try:
+            result['revenue'] = round(float(row.get('revenue') or 0), 2)
+        except (TypeError, ValueError):
+            result['revenue'] = 0.0
+        result['orders'] = _int(row.get('orders'))
+        result['sessions'] = _int(row.get('sessions'))
+        if result['orders']:
+            result['avg_order_value'] = round(result['revenue'] / result['orders'], 2)
+    except Exception as e:
+        logger.warning("attributed_revenue failed (company_id=%s): %s", company_id, e)
+    finally:
+        _close(cur)
+
+    return result
+
+
+def cohort_retention(company_id=None, months=6):
+    """Learner-cohort retention by first-order month (pure SQL).
+
+    Groups every learner (``course_orders.user_id``) into the calendar month of
+    their FIRST order, then measures — for each subsequent month offset 0..N —
+    how many of that cohort completed at least one course in that month. This is
+    the classic retention triangle: cohort size on the diagonal, falling
+    retention to the right.
+
+    Completion is ``completion_status = 'completed'`` (using completion_date when
+    present, else the order's created_at). All aggregation is DB-side; we group
+    by (cohort_month, month_offset) and COUNT(DISTINCT user_id) — no per-row
+    Python work. Tenant-scoped when ``company_id`` is given.
+
+    k-anonymity: a cohort whose first-month size is below k represents only a
+    handful of (possibly one) learners, so its retention curve would profile an
+    individual. Such cohorts are suppressed from the visible matrix. Guarded —
+    without k-anon the full matrix is returned.
+
+    Returns:
+        dict::
+            {'cohorts': [
+                {'cohort': 'YYYY-MM', 'size': int,
+                 'retention': [{'offset': 0, 'count': int, 'pct': float}, ...]},
+                ...],
+             'max_offset': int, 'months': int, 'company_id': company_id,
+             'anon_note': str|None}
+        Always safe; never raises.
+    """
+    m = _int(months, 6)
+    if m < 1:
+        m = 1
+    if m > 24:
+        m = 24
+
+    out = {
+        'cohorts': [],
+        'max_offset': m,
+        'months': m,
+        'company_id': company_id,
+        'anon_note': None,
+    }
+
+    cur = _cursor()
+    if cur is None:
+        return out
+
+    try:
+        scope_sql, scope_params = _scope(company_id, alias='o')
+        tenant_and = (' AND ' + scope_sql) if scope_sql else ''
+
+        # Per-cohort size = distinct learners whose FIRST order is in that month.
+        # first_order CTE-style subquery via GROUP BY user_id MIN(created_at).
+        # We compute it inline so it works on MySQL without explicit CTEs.
+        # cohort_month = first-order month; activity rows tie completions back to
+        # the learner's cohort and compute the month offset with PERIOD_DIFF.
+        sql = """
+            SELECT fo.cohort_month AS cohort_month,
+                   PERIOD_DIFF(
+                       EXTRACT(YEAR_MONTH FROM COALESCE(o.completion_date, o.created_at)),
+                       fo.cohort_period
+                   ) AS month_offset,
+                   COUNT(DISTINCT o.user_id) AS learners
+            FROM course_orders o
+            JOIN (
+                SELECT user_id,
+                       DATE_FORMAT(MIN(created_at), '%%Y-%%m') AS cohort_month,
+                       EXTRACT(YEAR_MONTH FROM MIN(created_at)) AS cohort_period
+                FROM course_orders
+                WHERE user_id IS NOT NULL
+                  {first_tenant_and}
+                GROUP BY user_id
+            ) fo ON fo.user_id = o.user_id
+            WHERE o.user_id IS NOT NULL
+              AND o.completion_status = 'completed'
+              {tenant_and}
+            GROUP BY fo.cohort_month, fo.cohort_period, month_offset
+            HAVING month_offset >= 0 AND month_offset <= %s
+            ORDER BY fo.cohort_month ASC, month_offset ASC
+        """.format(
+            first_tenant_and=(' AND ' + _scope(company_id)[0]) if scope_sql else '',
+            tenant_and=tenant_and,
+        )
+        # Params: inner first-order tenant scope, outer tenant scope, then offset.
+        first_scope_params = _scope(company_id)[1]
+        params = first_scope_params + scope_params + (m,)
+        cur.execute(sql, params)
+
+        # Build {cohort_month: {offset: learners}}
+        grid = {}
+        for r in cur.fetchall() or []:
+            cm = r.get('cohort_month')
+            if not cm:
+                continue
+            off = _int(r.get('month_offset'), -1)
+            if off < 0:
+                continue
+            grid.setdefault(cm, {})[off] = _int(r.get('learners'))
+
+        # Cohort size = retention at offset 0 (first-order month completions can
+        # be fewer than the cohort; the true cohort size is distinct first-order
+        # learners). Fetch first-order cohort sizes separately for an accurate base.
+        size_sql = """
+            SELECT cohort_month, COUNT(*) AS size
+            FROM (
+                SELECT user_id, DATE_FORMAT(MIN(created_at), '%%Y-%%m') AS cohort_month
+                FROM course_orders o
+                WHERE user_id IS NOT NULL
+                  {tenant_and}
+                GROUP BY user_id
+            ) firsts
+            GROUP BY cohort_month
+            ORDER BY cohort_month ASC
+        """.format(tenant_and=tenant_and)
+        cur.execute(size_sql, scope_params)
+        sizes = {}
+        for r in cur.fetchall() or []:
+            cm = r.get('cohort_month')
+            if cm:
+                sizes[cm] = _int(r.get('size'))
+
+        # Assemble cohort rows (only cohorts that have a known size).
+        cohort_rows = []
+        for cm in sorted(sizes.keys()):
+            size = sizes[cm]
+            retention = []
+            offsets = grid.get(cm, {})
+            for off in range(0, m + 1):
+                cnt = _int(offsets.get(off))
+                retention.append({
+                    'offset': off,
+                    'count': cnt,
+                    'pct': _rate(cnt, size),
+                })
+            cohort_rows.append({
+                'cohort': cm,
+                'size': size,
+                '_cohort': size,  # internal cohort-size key for k-anon
+                'retention': retention,
+            })
+
+        # k-anon: drop cohorts whose first-month size is sub-k.
+        if _kanon is not None and cohort_rows:
+            try:
+                cohort_rows, note = _kanon.suppress_small_groups(cohort_rows, '_cohort')
+                if note and note.get('suppressed'):
+                    out['anon_note'] = note.get('note_da')
+            except Exception:
+                pass
+        for row in cohort_rows:
+            if isinstance(row, dict):
+                row.pop('_cohort', None)
+
+        out['cohorts'] = cohort_rows
+    except Exception as e:
+        logger.warning("cohort_retention failed (company_id=%s): %s", company_id, e)
+    finally:
+        _close(cur)
+
+    return out

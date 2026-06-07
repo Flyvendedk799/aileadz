@@ -431,7 +431,40 @@ def create_companies_blueprint():
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
         
+        # Helper: load departments for re-renders / GET dropdown.
+        def _load_departments():
+            try:
+                dcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                dcur.execute("SELECT department_name FROM company_departments WHERE company_id = %s", (company['id'],))
+                rows = [r['department_name'] for r in dcur.fetchall()]
+                dcur.close()
+                return rows
+            except Exception as e:
+                current_app.logger.error(f"Error loading departments: {e}")
+                return []
+
+        # Seat governance snapshot for the template (informational banner).
+        try:
+            import seat_governance
+            seat_status = seat_governance.trial_status(company['id'])
+        except Exception:
+            seat_status = None
+
         if request.method == 'POST':
+            # Seat governance gate — enforce the same limit the REST/SCIM paths
+            # do. Company-scoped; fails OPEN inside seat_governance on any glitch.
+            try:
+                import seat_governance
+                seat_ok, seat_reason = seat_governance.can_add_employee(company['id'])
+            except Exception:
+                seat_ok, seat_reason = True, None
+            if not seat_ok:
+                flash(seat_reason or "Du kan ikke tilføje flere medarbejdere lige nu.", "danger")
+                return render_template('fm/add_employee.html', company=company,
+                                       departments=_load_departments(),
+                                       seat_status=seat_status,
+                                       active_hr_page='employees')
+
             # Employee details
             full_name = request.form.get('full_name', '').strip()
             username = request.form.get('username', '').strip()
@@ -447,7 +480,10 @@ def create_companies_blueprint():
             # Validation
             if not all([full_name, username, email, password, department, job_title]):
                 flash("Udfyld venligst alle paakraevede felter.", "danger")
-                return render_template('fm/add_employee.html', company=company, departments=[])
+                return render_template('fm/add_employee.html', company=company,
+                                       departments=_load_departments(),
+                                       seat_status=seat_status,
+                                       active_hr_page='employees')
             
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -466,7 +502,10 @@ def create_companies_blueprint():
                     if cur.fetchone():
                         flash("This user is already part of your company.", "warning")
                         cur.close()
-                        return render_template('fm/add_employee.html', company=company)
+                        return render_template('fm/add_employee.html', company=company,
+                                               departments=_load_departments(),
+                                               seat_status=seat_status,
+                                               active_hr_page='employees')
                 else:
                     # Create new user
                     hashed_password = generate_password_hash(password)
@@ -563,16 +602,11 @@ def create_companies_blueprint():
                     cur.close()
         
         # Get departments for dropdown
-        departments = []
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            cur.execute("SELECT department_name FROM company_departments WHERE company_id = %s", (company['id'],))
-            departments = [row['department_name'] for row in cur.fetchall()]
-            cur.close()
-        except Exception as e:
-            current_app.logger.error(f"Error loading departments: {e}")
-        
-        return render_template('fm/add_employee.html', company=company, departments=departments, active_hr_page='employees')
+        departments = _load_departments()
+
+        return render_template('fm/add_employee.html', company=company,
+                               departments=departments, seat_status=seat_status,
+                               active_hr_page='employees')
 
     @companies_bp.route('/employees/<int:user_id>/edit', methods=['GET', 'POST'])
     def edit_employee(user_id):
@@ -611,13 +645,34 @@ def create_companies_blueprint():
                 employee_id = request.form.get('employee_id', employee['employee_id'])
                 employment_type = request.form.get('employment_type', employee['employment_type'])
                 status = request.form.get('status', employee['status'])
-                
+
+                # Manager-of-record: must be another active user in THIS company
+                # (company-scoped to prevent cross-tenant assignment), and never
+                # the employee themselves. Empty -> NULL (no manager).
+                manager_raw = request.form.get('manager_user_id', '').strip()
+                manager_user_id = None
+                if manager_raw:
+                    try:
+                        candidate = int(manager_raw)
+                    except (TypeError, ValueError):
+                        candidate = None
+                    if candidate and candidate != user_id:
+                        mcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                        mcur.execute("""
+                            SELECT user_id FROM company_users
+                            WHERE company_id = %s AND user_id = %s AND status = 'active'
+                        """, (company['id'], candidate))
+                        if mcur.fetchone():
+                            manager_user_id = candidate
+                        mcur.close()
+
                 cur.execute("""
-                    UPDATE company_users 
+                    UPDATE company_users
                     SET role = %s, department = %s, job_title = %s, employee_id = %s,
-                        employment_type = %s, status = %s, updated_at = NOW()
+                        employment_type = %s, status = %s, manager_user_id = %s, updated_at = NOW()
                     WHERE company_id = %s AND user_id = %s
-                """, (role, department, job_title, employee_id, employment_type, status, company['id'], user_id))
+                """, (role, department, job_title, employee_id, employment_type, status,
+                      manager_user_id, company['id'], user_id))
                 
                 # Log the action
                 cur.execute("""
@@ -639,11 +694,25 @@ def create_companies_blueprint():
             # Get departments for dropdown
             cur.execute("SELECT department_name FROM company_departments WHERE company_id = %s", (company['id'],))
             departments = [row['department_name'] for row in cur.fetchall()]
-            
+
+            # Same-company users for the manager-of-record dropdown (exclude the
+            # employee themselves). Company-scoped.
+            cur.execute("""
+                SELECT cu.user_id,
+                       COALESCE(cu.full_name, u.username) AS name,
+                       cu.department, cu.job_title
+                FROM company_users cu
+                JOIN users u ON cu.user_id = u.id
+                WHERE cu.company_id = %s AND cu.status = 'active' AND cu.user_id <> %s
+                ORDER BY name
+            """, (company['id'], user_id))
+            managers = cur.fetchall() or []
+
             cur.close()
-            
+
             return render_template('fm/edit_employee.html',
                                  company=company, employee=employee, departments=departments,
+                                 managers=managers,
                                  active_hr_page='employees')
             
         except Exception as e:

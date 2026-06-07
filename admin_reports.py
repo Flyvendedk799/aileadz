@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request
+from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
@@ -28,6 +28,14 @@ try:
     import report_query
 except Exception:  # pragma: no cover - defensive boot guard
     report_query = None
+
+# Boot-safe import of k-anonymity helpers. Used to suppress zero-result queries
+# asked by fewer than k distinct people (readable individual wording = PII).
+# Guarded so a missing module never crashes the dashboard.
+try:
+    import kanon as _kanon
+except Exception:  # pragma: no cover - defensive boot guard
+    _kanon = None
 
 # Boot-safe import of the catalog-freshness monitor (Theme E/D quick win).
 # Its functions never raise, but the import itself is still guarded so a syntax
@@ -402,7 +410,67 @@ def chatbot_dashboard():
     except Exception:
         pass
 
+    # --- Search-quality console: zero-result queries (C1 new read) ---------
+    # Verbatim queries that returned no tool results (tool_results_count = 0).
+    # These are the search-quality gaps: what users asked that the catalog /
+    # retrieval couldn't answer. Aggregated DB-side with GROUP BY query_text;
+    # COUNT(DISTINCT username|session) measures the distinct cohort behind each
+    # query so k-anon can suppress single-person verbatim wording (PII).
+    zero_result_queries = []
+    zero_result_total = 0
+    zero_result_anon_note = None
+    try:
+        cur.execute("""
+            SELECT query_text AS query,
+                   COUNT(*) AS cnt,
+                   COUNT(DISTINCT COALESCE(username, session_id)) AS distinct_people
+            FROM chatbot_interactions
+            WHERE COALESCE(tool_results_count, 0) = 0
+              AND query_text IS NOT NULL AND query_text <> ''
+            GROUP BY query_text
+            ORDER BY cnt DESC
+            LIMIT 25
+        """)
+        rows = []
+        for r in cur.fetchall():
+            zero_result_total += int(r['cnt'] or 0)
+            rows.append({
+                'query': str(r['query'] or '')[:200],
+                'count': int(r['cnt'] or 0),
+                '_distinct_people': int(r['distinct_people'] or 0),
+            })
+        # k-anon on the distinct-people cohort per query.
+        if _kanon is not None and rows:
+            try:
+                rows, _note = _kanon.suppress_small_groups(rows, '_distinct_people')
+                if _note and _note.get('suppressed'):
+                    zero_result_anon_note = _note.get('note_da')
+            except Exception:
+                pass
+        for r in rows:
+            if isinstance(r, dict):
+                r.pop('_distinct_people', None)
+        zero_result_queries = rows
+    except Exception:
+        pass
+
     cur.close()
+
+    # --- AI-ROI attribution: DKK revenue driven by the AI adviser (C1) -----
+    # Platform-wide (company_id=None) via the central reporting layer's
+    # attributed_revenue() — joins chatbot sessions -> course_orders by
+    # chatbot_session_id and sums price for orders recommended_by_tool.
+    ai_attributed_revenue = 0.0
+    ai_attributed_orders = 0
+    ai_attributed_aov = 0.0
+    try:
+        if report_query is not None:
+            _ar = report_query.attributed_revenue(None, 90) or {}
+            ai_attributed_revenue = _ar.get('revenue', 0.0)
+            ai_attributed_orders = _ar.get('orders', 0)
+            ai_attributed_aov = _ar.get('avg_order_value', 0.0)
+    except Exception:
+        pass
 
     return render_template('fm/reports_dashboard.html',
                            total_chatbot_queries=total_chatbot_queries,
@@ -430,7 +498,144 @@ def chatbot_dashboard():
                            products_shown_ranking=products_shown_ranking,
                            conversion_by_tool=conversion_by_tool,
                            avg_queries_before_order=avg_queries_before_order,
-                           total_pending_approvals=total_pending_approvals)
+                           total_pending_approvals=total_pending_approvals,
+                           # --- C1 new reads ---
+                           zero_result_queries=zero_result_queries,
+                           zero_result_total=zero_result_total,
+                           zero_result_anon_note=zero_result_anon_note,
+                           ai_attributed_revenue=ai_attributed_revenue,
+                           ai_attributed_orders=ai_attributed_orders,
+                           ai_attributed_aov=ai_attributed_aov)
+
+
+@admin_reports_bp.route('/admin/api/live-kpi')
+@require_role('admin')
+def live_kpi():
+    """Real-time KPI tiles (C1 new read) — small JSON for a ~60s poller.
+
+    Returns ~5 platform-wide counters computed with REAL SQL aggregation:
+      * active_sessions_today  — distinct chatbot sessions started today
+      * orders_today           — course_orders created today
+      * ai_runs_last_hour      — ai_agent_runs in the last hour
+      * fallback_rate          — % of last-hour AI runs that fell back
+      * p95_response_ms        — p95 chatbot response_time_ms today
+
+    Read-only, no commit needed. Every counter is independently guarded so a
+    single failing query degrades to 0 rather than 500-ing the poller.
+    """
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    data = {
+        'active_sessions_today': 0,
+        'orders_today': 0,
+        'ai_runs_last_hour': 0,
+        'fallback_rate': 0.0,
+        'p95_response_ms': 0,
+        'ts': datetime.datetime.now().strftime('%H:%M:%S'),
+    }
+
+    try:
+        cur.execute("""
+            SELECT COUNT(DISTINCT session_id) AS cnt
+            FROM chatbot_interactions
+            WHERE created_at >= CURDATE()
+              AND session_id IS NOT NULL AND session_id <> ''
+        """)
+        row = cur.fetchone()
+        data['active_sessions_today'] = int((row or {}).get('cnt') or 0)
+    except Exception:
+        pass
+
+    try:
+        cur.execute("SELECT COUNT(*) AS cnt FROM course_orders WHERE created_at >= CURDATE()")
+        row = cur.fetchone()
+        data['orders_today'] = int((row or {}).get('cnt') or 0)
+    except Exception:
+        pass
+
+    try:
+        cur.execute("""
+            SELECT COUNT(*) AS cnt,
+                   SUM(CASE WHEN fallback_reason IS NOT NULL AND fallback_reason <> '' THEN 1 ELSE 0 END) AS fb
+            FROM ai_agent_runs
+            WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 HOUR)
+        """)
+        row = cur.fetchone() or {}
+        runs = int(row.get('cnt') or 0)
+        fb = int(row.get('fb') or 0)
+        data['ai_runs_last_hour'] = runs
+        if runs:
+            data['fallback_rate'] = round(fb / runs * 100, 1)
+    except Exception:
+        pass
+
+    # p95 chatbot response time today (MySQL has no percentile fn — compute in
+    # Python over today's small same-day window only).
+    try:
+        cur.execute("""
+            SELECT response_time_ms FROM chatbot_interactions
+            WHERE created_at >= CURDATE() AND response_time_ms IS NOT NULL
+            ORDER BY response_time_ms ASC
+        """)
+        vals = [r['response_time_ms'] for r in cur.fetchall() if r['response_time_ms'] is not None]
+        if vals:
+            idx = int(round(0.95 * (len(vals) - 1)))
+            data['p95_response_ms'] = int(vals[idx])
+    except Exception:
+        pass
+
+    cur.close()
+    return jsonify(data)
+
+
+@admin_reports_bp.route('/admin/cohort-retention')
+@require_role('admin')
+def cohort_retention_dashboard():
+    """Learner-cohort retention dashboard (C1 new read).
+
+    Renders the retention triangle from report_query.cohort_retention(): each
+    row is a first-order-month cohort; columns are month offsets showing how
+    many of that cohort completed >=1 course. Platform-wide here (company_id=
+    None); k-anon suppresses sub-k cohorts inside the query layer. Wrapped so a
+    reporting failure renders a clean empty state instead of a 500.
+    """
+    try:
+        months = int(request.args.get('months', 6))
+    except (TypeError, ValueError):
+        months = 6
+    try:
+        sel_company_id = int(request.args.get('company_id')) if request.args.get('company_id') else None
+    except (TypeError, ValueError):
+        sel_company_id = None
+
+    retention = {'cohorts': [], 'max_offset': months, 'months': months,
+                 'company_id': sel_company_id, 'anon_note': None}
+    try:
+        if report_query is not None:
+            retention = report_query.cohort_retention(sel_company_id, months)
+    except Exception:
+        pass
+
+    has_data = bool(retention.get('cohorts'))
+
+    # Company list for the optional drill-down picker.
+    companies = []
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, company_name FROM companies ORDER BY company_name ASC")
+        companies = cur.fetchall() or []
+        cur.close()
+    except Exception:
+        pass
+
+    return render_template(
+        'fm/cohort_retention.html',
+        retention=retention,
+        offsets=list(range(0, retention.get('max_offset', months) + 1)),
+        months=months,
+        has_data=has_data,
+        companies=companies,
+        sel_company_id=sel_company_id,
+    )
 
 
 @admin_reports_bp.route('/admin/ai-cost')

@@ -1,9 +1,70 @@
-# Runbook: Background Job Runner (Outbox Drain & Scheduled Maintenance)
+# Runbook: Background Job Runner (Scheduler — Outbox Drain & Scheduled Maintenance)
 
-aileadz has **no always-on worker**. Integration events (webhooks, etc.) are
-written to a durable outbox inside the request and delivered out-of-band by
-`event_bus.drain_outbox()`. This runbook sets up the reliable driver: a
-PythonAnywhere **Scheduled Task** that POSTs the token-protected drain endpoint.
+aileadz has **no always-on worker** and **no cron/Celery/Redis** on
+PythonAnywhere. Integration events (webhooks, etc.) are written to a durable
+outbox inside the request; daily insights / agreement alerts / compliance
+re-checks all need *something* to call them on a cadence. `scheduler.py` is that
+"something": a tiny, dependency-free job runner.
+
+## The scheduler (`scheduler.py`)
+
+A small registry of jobs, each `{name, interval_seconds, fn(app)->summary,
+enabled}`. The single entry point is `scheduler.run_due_jobs(app, only=None,
+force=False)` — it figures out which jobs are due, claims each one (so two
+workers don't double-run it), runs each wrapped in try/except, stamps the
+outcome, and returns a per-job summary. **It never raises.**
+
+### Registered jobs
+
+| job | interval | what it does |
+|-----|----------|--------------|
+| `outbox_drain` | ~120s | `event_bus.drain_outbox()` — deliver pending integration events (webhooks). |
+| `daily_company_insights` | 24h | iterate active companies → `insights_engine.generate_company_insights`. |
+| `daily_agreement_alerts` | 24h | iterate active companies → `catalog_freshness.notify_expiring_agreements`. |
+| `compliance_recheck` | 24h | thin guarded no-op pass today; clear extension point for per-company compliance re-derivation. |
+
+"Active company" = `companies.status = 'active'` (falls back to all companies if
+that column is unavailable), bounded to `DEFAULT_COMPANY_BATCH` (200) per pass.
+
+### Bookkeeping table (`scheduled_job_runs`)
+
+Created idempotently by `scheduler._ensure_table(app)` (self-contained in
+`scheduler.py`, NOT in `enterprise_tables.py`; never raises):
+
+```
+scheduled_job_runs (
+  job_name     VARCHAR(120) PRIMARY KEY,
+  last_run_at  DATETIME NULL,
+  last_status  VARCHAR(20) NULL,   -- 'ok' | 'error'
+  last_summary TEXT NULL,          -- JSON summary of the last run
+  updated_at   TIMESTAMP ...
+)
+```
+
+`last_run_at` drives both the "is this due?" check (`now - last_run_at >=
+interval`) and the **best-effort claim**: an atomic
+`UPDATE ... SET last_run_at = NOW() WHERE last_run_at < (NOW() - interval)` —
+the affected-row count tells the caller whether *it* won the claim, so two
+workers won't run the same daily job in the same window.
+
+## Three ways to drive it
+
+1. **PythonAnywhere Scheduled Task** (single pass, recommended) — `drain_worker.py` once.
+2. **Always-on-style worker loop** — `drain_worker.py --loop`.
+3. **Opportunistic request hook** — an `after_request` hook in `run.py` runs the
+   due jobs at most once per ~60s **per worker**, mirroring
+   `event_bus.opportunistic_drain`. Fully guarded (cannot affect the response or
+   raise); toggle with `SCHEDULER_OPPORTUNISTIC` (default on, set `0` to disable,
+   e.g. under tests). This is best-effort only — if the app gets no traffic,
+   nothing runs. **The reliable driver is mode 1 or 2.**
+
+---
+
+## Legacy: the token-protected HTTP outbox endpoint (still works)
+
+Before the scheduler, the only driver was a PythonAnywhere **Scheduled Task**
+that POSTed the token-protected drain endpoint. That endpoint still exists for
+outbox-only drains; the sections below document it.
 
 ## The endpoint
 
@@ -22,20 +83,44 @@ PythonAnywhere **Scheduled Task** that POSTs the token-protected drain endpoint.
 
 ## Option A (recommended): the `drain_worker.py` script — no token, no HTTP
 
-`drain_worker.py` calls `event_bus.drain_outbox()` directly in the app context, so
-there is no token to manage and no public endpoint to secure.
+`drain_worker.py` calls `scheduler.run_due_jobs(app)` directly in the app
+context (which includes the `outbox_drain` job), so there is no token to manage
+and no public endpoint to secure. It runs **all due jobs**, not just the outbox.
 
-- **Scheduled Task** (single-shot, runs then exits):
+- **Scheduled Task** (single-shot, runs every due job then exits):
   ```
-  cd ~/aileadz && python3 drain_worker.py --limit 200
+  cd ~/aileadz && python3 drain_worker.py
   ```
-- **Always-on Task** (paid; drains continuously, near-real-time):
+- **Always-on Task** (paid; runs due jobs continuously, near-real-time):
   ```
   cd ~/aileadz && python3 drain_worker.py --loop --interval 60
   ```
+- **Restrict / force** (debugging):
+  ```
+  cd ~/aileadz && python3 drain_worker.py --only outbox_drain      # one job (comma list ok)
+  cd ~/aileadz && python3 drain_worker.py --force                  # ignore intervals, run all now
+  ```
   Use your virtualenv python if you have one (`~/.virtualenvs/<env>/bin/python3`).
-  DB connection comes from `run.py`'s config, so no extra env is needed. This is the
-  simplest setup — skip Option B unless you specifically want the HTTP endpoint.
+  DB connection comes from `run.py`'s config, so no extra env is needed. The
+  daily jobs only do real work once per 24h regardless of how often the task
+  runs (the `scheduled_job_runs` claim enforces the cadence), so it is safe to
+  run this every few minutes. This is the simplest setup — skip Option B unless
+  you specifically want the HTTP endpoint.
+
+  **Free PythonAnywhere account note:** with only one daily scheduled task, set
+  it to the single command above. The `outbox_drain` job then runs at most once
+  a day from the task — for more frequent webhook delivery rely on the
+  opportunistic request hook, or upgrade to a paid plan for a higher cadence.
+
+### Env toggles (scheduler)
+
+- `SCHEDULER_OPPORTUNISTIC` — `1` (default) enables the `run.py` request-hook
+  fallback; set `0`/`false`/`off` to disable (the worker sets this to `0` for
+  its own process). Set to `0` in test environments.
+- `OUTBOX_DRAIN_INTERVAL` — seconds between passes in `--loop` mode (default 60;
+  floored at 5).
+- `OUTBOX_DRAIN_TOKEN` — only for the legacy HTTP endpoint (Option B), not the
+  scheduler.
 
 ## Option B: the token-protected HTTP endpoint
 

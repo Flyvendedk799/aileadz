@@ -1,0 +1,134 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Godkendelsespolitik · Futurematch{% endblock %}
+{% block topbar_title %}Godkendelsespolitik{% endblock %}
+{% block topbar_sub %}Automatisk godkendelse af kursusbestillinger under en grænse.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% set active_hr_page = 'approval_policies' %}{% include 'fm/_hr_subnav.html' %}
+
+  <div class="fm-section-head" style="margin-top:0">
+    <div>
+      <span class="fm-eyebrow"><i class="fa-solid fa-robot"></i> Automatisk godkendelse</span>
+      <h2 class="fm-section-title">Godkendelsespolitik</h2>
+    </div>
+    <div class="fm-flex fm-gap8">
+      <button class="btn btn-primary btn-sm" onclick="openPolicy()"><i class="fa-solid fa-plus"></i> Ny politik</button>
+    </div>
+  </div>
+
+  <div class="callout" style="margin-bottom:16px">
+    <span class="ci"><i class="fa-solid fa-shield-halved"></i></span>
+    <div style="flex:1">
+      <div style="font-weight:650">Sådan virker det</div>
+      <div style="font-size:12.5px;color:var(--fm-ink-2)">
+        Bestillinger på eller under <strong>auto-godkend under</strong> godkendes automatisk og trækkes på budgettet med det samme.
+        Bestillinger på eller over <strong>kræv godkendelse over</strong> sendes altid til manuel godkendelse.
+        En afdelingspolitik vinder over den virksomhedsdækkende standard (uden afdeling).
+        Overskrider en bestilling afdelingens budget, sendes den <strong>altid</strong> til godkendelse — også selvom den er under auto-grænsen (sikkerhed først).
+      </div>
+    </div>
+  </div>
+
+  <div class="kpi-row k3">
+    <div class="kpi-tile"><div class="kl">Politikker i alt</div><div class="kv tnum">{{ policies|length }}</div></div>
+    <div class="kpi-tile"><div class="kl">Aktive politikker</div><div class="kv tnum" style="color:var(--fm-success)">{{ policies|selectattr('is_active')|list|length }}</div></div>
+    <div class="kpi-tile"><div class="kl">Afdelinger</div><div class="kv tnum">{{ departments|length }}</div></div>
+  </div>
+
+  {% if policies %}
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(320px,1fr))">
+    {% for p in policies %}
+    <div class="fm-card" style="padding:18px;display:flex;flex-direction:column;gap:10px;{{ 'opacity:.6' if not p.is_active }}">
+      <div class="fm-spread">
+        <div>
+          <h3 style="font-size:15px;font-weight:700">
+            {% if p.department %}{{ p.department }}{% else %}Hele virksomheden{% endif %}
+          </h3>
+          <div style="font-size:12px;color:var(--fm-ink-3)">
+            {% if p.department %}Afdelingspolitik{% else %}Virksomhedsdækkende standard{% endif %}
+          </div>
+        </div>
+        <div class="fm-flex fm-gap8">
+          <button class="fm-icon-btn" style="width:32px;height:32px" title="Rediger"
+            onclick="editPolicy(this)"
+            data-id="{{ p.id }}"
+            data-department="{{ p.department or '' }}"
+            data-under="{{ p.auto_approve_under or 0 }}"
+            data-over="{{ p.require_approval_over if p.require_approval_over is not none else '' }}"
+            data-active="{{ p.is_active }}"><i class="fa-solid fa-pen"></i></button>
+          <form method="POST" action="{{ url_for('hr_dashboard.delete_approval_policy', policy_id=p.id) }}" onsubmit="return confirm('Slet denne politik?')" style="display:inline">
+            <button type="submit" class="fm-icon-btn" style="width:32px;height:32px;color:var(--fm-danger)" title="Slet"><i class="fa-solid fa-trash"></i></button>
+          </form>
+        </div>
+      </div>
+      <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+        <span class="fm-badge green dot"><i class="fa-solid fa-circle-check"></i> Auto-godkend ≤ {{ p.auto_approve_under|int }} kr</span>
+        {% if p.require_approval_over is not none %}
+        <span class="fm-badge amber dot"><i class="fa-solid fa-hand"></i> Kræv godkendelse ≥ {{ p.require_approval_over|int }} kr</span>
+        {% endif %}
+      </div>
+      {% if not p.is_active %}<div style="font-size:12px;color:var(--fm-warning)"><i class="fa-solid fa-circle-pause"></i> Inaktiv</div>{% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% else %}
+  <div class="fm-card" style="padding:40px;text-align:center;color:var(--fm-ink-3)">
+    <i class="fa-solid fa-robot" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i>
+    <div style="font-weight:650;color:var(--fm-ink-2);margin-bottom:4px">Ingen godkendelsespolitik endnu</div>
+    <div style="margin-bottom:14px">Opret en politik for at auto-godkende mindre bestillinger og spare manuelt arbejde.</div>
+    <button class="btn btn-primary btn-sm" onclick="openPolicy()"><i class="fa-solid fa-plus"></i> Opret første politik</button>
+  </div>
+  {% endif %}
+</div>
+
+<div id="policyModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center;overflow-y:auto;padding:24px 0">
+  <div class="fm-card" style="max-width:520px;width:90%;padding:22px;margin:auto">
+    <h3 id="policyModalTitle" style="font-size:17px;font-weight:700;margin-bottom:14px">Ny godkendelsespolitik</h3>
+    <form method="POST" action="{{ url_for('hr_dashboard.save_approval_policy') }}" id="policyForm">
+      <input type="hidden" name="policy_id" id="pol_id" value="">
+      <label class="fm-field"><span>Afdeling</span>
+        <select class="fm-input" name="department" id="pol_department">
+          <option value="">Hele virksomheden (standard)</option>
+          {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+        </select>
+        <div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Lad stå tom for en virksomhedsdækkende standard. En afdelingspolitik vinder over standarden.</div>
+      </label>
+      <label class="fm-field"><span>Auto-godkend under (kr) *</span>
+        <input type="number" class="fm-input" name="auto_approve_under" id="pol_under" required min="0" step="1" placeholder="f.eks. 2000">
+        <div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Bestillinger på eller under dette beløb godkendes automatisk.</div>
+      </label>
+      <label class="fm-field"><span>Kræv altid godkendelse over (kr)</span>
+        <input type="number" class="fm-input" name="require_approval_over" id="pol_over" min="0" step="1" placeholder="valgfrit loft">
+        <div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Bestillinger på eller over dette beløb sendes altid til manuel godkendelse.</div>
+      </label>
+      <label class="fm-flex fm-ac fm-gap12" style="margin:8px 0;cursor:pointer"><input type="checkbox" name="is_active" id="pol_active" checked><span style="font-weight:600">Politik aktiv</span></label>
+      <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
+        <button type="button" class="btn btn-ghost btn-sm" onclick="closePolicy()">Annuller</button>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Gem politik</button>
+      </div>
+    </form>
+  </div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+function openPolicy(){
+  document.getElementById('policyModalTitle').textContent = 'Ny godkendelsespolitik';
+  document.getElementById('policyForm').reset();
+  document.getElementById('pol_id').value = '';
+  document.getElementById('pol_active').checked = true;
+  document.getElementById('policyModal').style.display = 'flex';
+}
+function closePolicy(){ document.getElementById('policyModal').style.display = 'none'; }
+function editPolicy(btn){
+  document.getElementById('policyModalTitle').textContent = 'Rediger politik';
+  document.getElementById('pol_id').value = btn.dataset.id;
+  document.getElementById('pol_department').value = btn.dataset.department;
+  document.getElementById('pol_under').value = btn.dataset.under;
+  document.getElementById('pol_over').value = btn.dataset.over;
+  document.getElementById('pol_active').checked = btn.dataset.active === '1';
+  document.getElementById('policyModal').style.display = 'flex';
+}
+</script>
+{% endblock %}

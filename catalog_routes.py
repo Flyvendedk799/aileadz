@@ -245,6 +245,15 @@ def request_product(handle):
     variant = variants[variant_index] if 0 <= variant_index < len(variants) else {}
     price = variant.get("price") if variant.get("price") is not None else product.get("price_min") or 0
 
+    # Apply the negotiated supplier discount AT CAPTURE so the order is charged
+    # at the agreed price, not the list price. Re-resolve the agreement at order
+    # time (company-scoped); fall back to the list price when none applies.
+    agreement = _company_discount_for(product["vendor"])
+    if agreement:
+        discounted = catalog.apply_discount_to_price(price, agreement)
+        if discounted is not None:
+            price = discounted
+
     product_data = {
         "handle": product["handle"],
         "title": product["title"],

@@ -26,6 +26,8 @@
     <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
     <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
     <a class="pg-tab active" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Conversion-funnel</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.cohort_retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
   </div>
 
   <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
@@ -47,6 +49,22 @@
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-hourglass-half"></i></span><div><div class="kl">Godkendelser</div><div class="kv tnum">{{ total_pending_approvals }}</div><div class="kd">Enterprise-ordrer afventer</div></div></div>
   </div>
   {% endif %}
+
+  {# --- AI-ROI attribution: revenue driven by the AI adviser (seneste 90 dage) --- #}
+  <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:14px">
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-robot"></i></span><div><div class="kl">DKK omsat tilskrevet AI-rådgiveren</div><div class="kv tnum">{{ ai_attributed_revenue|round|int }} kr</div><div class="kd">Ordrer anbefalet af AI (90 d)</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">AI-tilskrevne ordrer</div><div class="kv tnum">{{ ai_attributed_orders }}</div><div class="kd">Ordrer med AI-anbefaling</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Gns. ordreværdi (AI)</div><div class="kv tnum">{{ ai_attributed_aov|round|int }} kr</div><div class="kd">Pr. AI-tilskreven ordre</div></div></div>
+  </div>
+
+  {# --- Live KPI tiles (poller, opdateres hvert 60. sekund) --- #}
+  <div class="kpi-row" id="liveKpiRow" style="grid-template-columns:repeat(5,1fr);margin-top:14px">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-tower-broadcast"></i></span><div><div class="kl">Aktive sessioner i dag</div><div class="kv tnum" data-live="active_sessions_today">–</div><div class="kd">Live · <span data-live="ts">…</span></div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Ordrer i dag</div><div class="kv tnum" data-live="orders_today">–</div><div class="kd">Live</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-bolt"></i></span><div><div class="kl">AI-kørsler (sidste time)</div><div class="kv tnum" data-live="ai_runs_last_hour">–</div><div class="kd">Live</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-shuffle"></i></span><div><div class="kl">Fallback-rate</div><div class="kv tnum" data-live="fallback_rate" data-live-suffix="%">–</div><div class="kd">Sidste time</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-gauge-high"></i></span><div><div class="kl">P95 svartid</div><div class="kv tnum" data-live="p95_response_ms" data-live-suffix="ms">–</div><div class="kd">I dag</div></div></div>
+  </div>
 
   <div class="bi-charts" style="margin-top:16px">
     <div class="fm-card bi-chart-card">
@@ -124,6 +142,25 @@
         {% endfor %}</tbody>
       </table></div>
       {% else %}<div class="bi-empty">Ordrer vises her, når kunder gennemfører ordreflowet.</div>{% endif %}
+    </div>
+  </div>
+
+  {# --- Søgekvalitet: forespørgsler uden resultater (zero-result) --- #}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-magnifying-glass-minus"></i></span><h3>Søgekvalitet · forespørgsler uden resultater</h3>
+      {% if zero_result_total %}<span class="fm-badge amber" style="margin-left:auto">{{ zero_result_total }} i alt</span>{% endif %}
+      <label class="fm-search" style="width:220px;margin-left:{{ 'auto' if not zero_result_total else '12px' }}"><i class="fa-solid fa-magnifying-glass"></i><input type="search" placeholder="Søg" data-table-search="zeroResultTable"></label></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if zero_result_queries %}
+      <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 10px">Forespørgsler hvor chatbotten ikke fandt nogen resultater — huller i katalog/retrieval, prioriteret efter hyppighed.</p>
+      <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table" id="zeroResultTable">
+        <thead><tr><th>#</th><th>Forespørgsel</th><th>Antal</th></tr></thead>
+        <tbody>{% for q in zero_result_queries %}
+          <tr><td>{{ loop.index }}</td><td>{{ q.query }}</td><td class="tnum">{{ q.count }}</td></tr>
+        {% endfor %}</tbody>
+      </table></div>
+      {% if zero_result_anon_note %}<p style="font-size:11.5px;color:var(--fm-ink-3);margin:10px 0 0"><i class="fa-solid fa-user-shield"></i> {{ zero_result_anon_note }}</p>{% endif %}
+      {% else %}<div class="bi-empty">Ingen resultatløse forespørgsler i øjeblikket — eller for få til at vise anonymt.</div>{% endif %}
     </div>
   </div>
 
@@ -250,6 +287,29 @@
         rows.forEach(function (row) { row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none'; });
       });
     });
+
+    // --- Live KPI poller (vanilla, no deps) — refresh every ~60s -----------
+    (function () {
+      const row = document.getElementById('liveKpiRow');
+      if (!row) return;
+      const cells = row.querySelectorAll('[data-live]');
+      function paint(data) {
+        cells.forEach(function (el) {
+          const key = el.dataset.live;
+          if (!(key in data)) return;
+          const suffix = el.dataset.liveSuffix || '';
+          el.textContent = (data[key] === null ? '–' : data[key]) + suffix;
+        });
+      }
+      function refresh() {
+        fetch('{{ url_for("admin_reports.live_kpi") }}', { headers: { 'Accept': 'application/json' }, credentials: 'same-origin' })
+          .then(function (r) { return r.ok ? r.json() : null; })
+          .then(function (d) { if (d) paint(d); })
+          .catch(function () { /* keep last values on transient failure */ });
+      }
+      refresh();
+      setInterval(refresh, 60000);
+    })();
   })();
 </script>
 {% endblock %}

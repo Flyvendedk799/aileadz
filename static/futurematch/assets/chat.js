@@ -652,7 +652,7 @@
     list.querySelectorAll(".conv").forEach((el) => el.onclick = () => {
       activeConvId = el.dataset.id;
       renderConv();
-      if (window.innerWidth <= 860) rail.classList.remove("open");
+      if (rail && window.innerWidth <= 860) rail.classList.remove("open");
     });
     list.querySelectorAll(".conv-del").forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
@@ -761,9 +761,15 @@
   }
 
   /* ---------------- sidebar / nudge / misc ---------------- */
-  $("#railToggle").onclick = () => { if (window.innerWidth <= 860) rail.classList.toggle("open"); else rail.classList.toggle("collapsed"); };
-  $("#menuBtn").onclick = () => rail.classList.add("open");
-  $("#overlay").onclick = () => rail.classList.remove("open");
+  // Rail chrome (toggle/menu/overlay) only exists on the standalone chat layout.
+  // When the chat is embedded in the shared fm_base shell these are absent, so
+  // guard every binding.
+  const railToggleEl = $("#railToggle");
+  if (railToggleEl && rail) railToggleEl.onclick = () => { if (window.innerWidth <= 860) rail.classList.toggle("open"); else rail.classList.toggle("collapsed"); };
+  const menuBtnEl = $("#menuBtn");
+  if (menuBtnEl && rail) menuBtnEl.onclick = () => rail.classList.add("open");
+  const overlayEl = $("#overlay");
+  if (overlayEl && rail) overlayEl.onclick = () => rail.classList.remove("open");
   document.querySelectorAll("[data-new]").forEach((b) => b.onclick = newChat);
   $("#nudgeX").onclick = () => hideNudge();
   $("#nudgeLink").onclick = (e) => {

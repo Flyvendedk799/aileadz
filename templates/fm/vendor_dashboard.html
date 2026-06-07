@@ -45,7 +45,42 @@
     .vp-empty { color: var(--fm-ink-3); font-size: 13.5px; padding: 14px 0; }
     .vp-cta { display: inline-block; padding: 10px 16px; border-radius: 10px; background: var(--fm-primary); color: #fff;
               font-weight: 700; font-size: 13.5px; text-decoration: none; }
-    @media (max-width: 720px) { .vp-kpis { grid-template-columns: 1fr; } }
+    .vp-stars { color: var(--fm-gold, #d9a441); font-size: 13px; white-space: nowrap; }
+    .vp-stars .empty { color: var(--fm-line-2, #d8dee3); }
+    .vp-rating-num { color: var(--fm-ink-2); font-weight: 700; font-size: 12.5px; margin-left: 4px; }
+    .vp-rating-cnt { color: var(--fm-ink-3); font-size: 11.5px; }
+
+    /* --- Inline AI assistant widget (self-contained, .vp-* styled) --- */
+    .vp-ai-fab { position: fixed; right: 22px; bottom: 22px; z-index: 40; display: inline-flex; align-items: center;
+                 gap: 9px; padding: 12px 18px; border: none; border-radius: 999px; background: var(--fm-primary);
+                 color: #fff; font: inherit; font-weight: 700; font-size: 14px; cursor: pointer;
+                 box-shadow: 0 8px 24px rgba(0,0,0,.18); }
+    .vp-ai-fab:hover { filter: brightness(1.05); }
+    .vp-ai-panel { position: fixed; right: 22px; bottom: 22px; z-index: 41; width: 380px; max-width: calc(100vw - 32px);
+                   height: 540px; max-height: calc(100vh - 44px); display: flex; flex-direction: column;
+                   background: var(--fm-surface, #fff); border: 1px solid var(--fm-line); border-radius: 16px;
+                   box-shadow: 0 18px 50px rgba(0,0,0,.22); overflow: hidden; }
+    .vp-ai-panel[hidden] { display: none; }
+    .vp-ai-head { display: flex; align-items: center; gap: 8px; padding: 13px 16px; border-bottom: 1px solid var(--fm-line);
+                  font-weight: 800; font-size: 14px; }
+    .vp-ai-head .x { margin-left: auto; background: none; border: none; color: var(--fm-ink-3); cursor: pointer; font-size: 16px; padding: 4px; }
+    .vp-ai-body { flex: 1; overflow-y: auto; padding: 14px 16px; display: flex; flex-direction: column; gap: 10px; }
+    .vp-ai-hint { color: var(--fm-ink-3); font-size: 12.5px; line-height: 1.5; }
+    .vp-ai-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+    .vp-ai-chip { padding: 6px 10px; border: 1px solid var(--fm-line-2); border-radius: 999px; background: var(--fm-bg);
+                  color: var(--fm-ink-2); font: inherit; font-size: 11.5px; font-weight: 600; cursor: pointer; }
+    .vp-ai-chip:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
+    .vp-ai-msg { font-size: 13.5px; line-height: 1.55; padding: 9px 12px; border-radius: 12px; max-width: 88%; white-space: pre-wrap; word-wrap: break-word; }
+    .vp-ai-msg.user { align-self: flex-end; background: var(--fm-primary); color: #fff; border-bottom-right-radius: 4px; }
+    .vp-ai-msg.bot { align-self: flex-start; background: var(--fm-bg); color: var(--fm-ink); border: 1px solid var(--fm-line); border-bottom-left-radius: 4px; }
+    .vp-ai-msg.bot.thinking { color: var(--fm-ink-3); font-style: italic; }
+    .vp-ai-tool { align-self: flex-start; font-size: 11px; color: var(--fm-ink-3); padding: 0 4px; }
+    .vp-ai-form { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--fm-line); }
+    .vp-ai-form input { flex: 1; padding: 10px 12px; border: 1px solid var(--fm-line-2); border-radius: 10px;
+                        font: inherit; font-size: 13.5px; background: var(--fm-bg); color: var(--fm-ink); }
+    .vp-ai-form input:focus { outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 3px var(--fm-primary-tint); }
+    .vp-ai-form button { border: none; border-radius: 10px; background: var(--fm-primary); color: #fff; width: 42px; cursor: pointer; font-size: 15px; }
+    @media (max-width: 720px) { .vp-kpis { grid-template-columns: 1fr; } .vp-ai-panel { width: calc(100vw - 24px); right: 12px; bottom: 12px; } }
   </style>
 </head>
 <body data-page="vendor-dashboard">
@@ -56,6 +91,7 @@
   </header>
   <nav class="vp-nav">
     <a href="{{ url_for('vendor.vendor_dashboard') }}" class="active">Oversigt</a>
+    <a href="{{ url_for('vendor.vendor_analytics') }}">Analyser</a>
     <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
     <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
     <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
@@ -118,7 +154,7 @@
       {% if products %}
       <table>
         <thead>
-          <tr><th>Kursus</th><th>Type</th><th>Pris</th></tr>
+          <tr><th>Kursus</th><th>Type</th><th>Pris</th><th>Bedommelse</th></tr>
         </thead>
         <tbody>
           {% for p in products[:100] %}
@@ -126,6 +162,19 @@
             <td>{{ p.title }}</td>
             <td>{{ p.product_type or '—' }}</td>
             <td>{{ p.price_label or '—' }}</td>
+            <td>
+              {% if p.review_count %}
+                {% set full = p.avg_rating|round(0, 'floor')|int %}
+                <span class="vp-stars" role="img"
+                      aria-label="{{ p.avg_rating }} ud af 5 stjerner, {{ p.review_count }} anmeldelser">
+                  {% for i in range(1, 6) %}{% if i <= full %}★{% else %}<span class="empty">★</span>{% endif %}{% endfor %}
+                </span>
+                <span class="vp-rating-num">{{ p.avg_rating }}</span>
+                <span class="vp-rating-cnt">({{ p.review_count }})</span>
+              {% else %}
+                <span class="vp-rating-cnt">Ingen endnu</span>
+              {% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody>
@@ -135,5 +184,129 @@
       {% endif %}
     </div>
   </main>
+
+  <!-- AI-assistent: self-contained SSE-klient mod /vendor/ask (.vp-* styling) -->
+  <button type="button" class="vp-ai-fab" id="vpAiFab" aria-label="Aben leverandor-assistent">
+    <i class="fa-solid fa-robot"></i><span>Spørg AI</span>
+  </button>
+  <section class="vp-ai-panel" id="vpAiPanel" hidden aria-live="polite" aria-label="Leverandor-assistent">
+    <header class="vp-ai-head">
+      <i class="fa-solid fa-robot" style="color:var(--fm-primary)"></i> Leverandør-assistent
+      <button type="button" class="x" id="vpAiClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
+    </header>
+    <div class="vp-ai-body" id="vpAiBody">
+      <div class="vp-ai-hint">Spørg om dine salgstal, markedsefterspørgsel eller sammenlign et af dine kurser med markedet. Du ser kun dine egne, aggregerede tal.</div>
+      <div class="vp-ai-chips">
+        <button type="button" class="vp-ai-chip">Hvordan sælger mine kurser?</button>
+        <button type="button" class="vp-ai-chip">Hvad efterspørges på markedet?</button>
+        <button type="button" class="vp-ai-chip">Hvilke kategorier dækker jeg ikke?</button>
+      </div>
+    </div>
+    <form class="vp-ai-form" id="vpAiForm">
+      <input type="text" id="vpAiInput" placeholder="Stil et spørgsmål…" autocomplete="off" aria-label="Spørgsmål" />
+      <button type="submit" aria-label="Send"><i class="fa-solid fa-paper-plane"></i></button>
+    </form>
+  </section>
+  <script>
+  (function () {
+    var fab = document.getElementById('vpAiFab'),
+        panel = document.getElementById('vpAiPanel'),
+        closeb = document.getElementById('vpAiClose'),
+        form = document.getElementById('vpAiForm'),
+        input = document.getElementById('vpAiInput'),
+        body = document.getElementById('vpAiBody');
+    if (!fab) return;
+    var ASK = "{{ url_for('vendor.vendor_ask') }}";
+    var busy = false;
+
+    function toggle(open) {
+      panel.hidden = !open;
+      fab.hidden = open;
+      if (open) setTimeout(function () { input.focus(); }, 50);
+    }
+    fab.addEventListener('click', function () { toggle(true); });
+    closeb.addEventListener('click', function () { toggle(false); });
+    body.addEventListener('click', function (e) {
+      var c = e.target.closest('.vp-ai-chip');
+      if (c && !busy) { input.value = c.textContent; form.requestSubmit(); }
+    });
+
+    function addMsg(role, text) {
+      var d = document.createElement('div');
+      d.className = 'vp-ai-msg ' + role;
+      d.textContent = text;
+      body.appendChild(d);
+      body.scrollTop = body.scrollHeight;
+      return d;
+    }
+
+    form.addEventListener('submit', function (e) {
+      e.preventDefault();
+      if (busy) return;
+      var q = (input.value || '').trim();
+      if (!q) return;
+      busy = true;
+      addMsg('user', q);
+      input.value = '';
+      var out = addMsg('bot thinking', 'Arbejder…');
+      var acc = '';
+
+      fetch(ASK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Requested-With': 'XMLHttpRequest' },
+        body: JSON.stringify({ message: q })
+      })
+        .then(function (r) {
+          if (!r.ok || !r.body) {
+            out.classList.remove('thinking');
+            out.textContent = 'Kunne ikke hente svar.';
+            busy = false;
+            return;
+          }
+          var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
+          (function pump() {
+            return reader.read().then(function (res) {
+              if (res.done) {
+                out.classList.remove('thinking');
+                if (!acc) out.textContent = 'Intet svar.';
+                busy = false;
+                return;
+              }
+              buf += dec.decode(res.value, { stream: true });
+              var lines = buf.split('\n'); buf = lines.pop();
+              lines.forEach(function (line) {
+                if (line.indexOf('data: ') !== 0) return;
+                var d;
+                try { d = JSON.parse(line.substring(6)); } catch (err) { return; }
+                if (d.type === 'thinking' && !acc) {
+                  out.textContent = d.content || 'Arbejder…';
+                } else if (d.type === 'tool_call') {
+                  // Show which vendor tool ran, kept above the answer line.
+                  var t = document.createElement('div');
+                  t.className = 'vp-ai-tool';
+                  t.textContent = 'Slår op: ' + (d.name || 'data');
+                  body.insertBefore(t, out);
+                } else if (d.type === 'text' && d.content) {
+                  acc += d.content;
+                  out.classList.remove('thinking');
+                  out.textContent = acc;
+                } else if (d.type === 'error') {
+                  out.classList.remove('thinking');
+                  out.textContent = d.content || 'Der opstod en fejl.';
+                }
+                body.scrollTop = body.scrollHeight;
+              });
+              return pump();
+            });
+          })();
+        })
+        .catch(function () {
+          out.classList.remove('thinking');
+          out.textContent = 'Netværksfejl. Prøv igen.';
+          busy = false;
+        });
+    });
+  })();
+  </script>
 </body>
 </html>

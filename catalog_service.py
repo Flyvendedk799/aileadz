@@ -781,7 +781,12 @@ SORT_OPTIONS = ("relevance", "price_asc", "price_desc", "vendor", "title", "titl
 def search_products(filters=None, page=1, per_page=24, company_id=None):
     filters = filters or {}
     q = (filters.get("q") or "").strip().lower()
-    category_slug = filters.get("category") or ""
+    # Categories are multi-select (OR): a product matches if it's in ANY selected
+    # category. Accept a list ("categories") or a single legacy "category".
+    category_slugs = filters.get("categories")
+    if not category_slugs:
+        category_slugs = [filters["category"]] if filters.get("category") else []
+    category_slugs = [c for c in category_slugs if c]
     vendor_slug = filters.get("vendor") or ""
     fmt = (filters.get("format") or "").strip().lower()
     location = (filters.get("location") or "").strip().lower()
@@ -799,7 +804,7 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
     q_tokens = [t for t in re.findall(r"[a-zæøå0-9]+", q) if len(t) > 1] if q else []
 
     def passes_facets(product):
-        if category_slug and category_slug not in product["category_slugs"]:
+        if category_slugs and not any(cs in product["category_slugs"] for cs in category_slugs):
             return False
         if vendor_slug and product["vendor_slug"] != vendor_slug:
             return False

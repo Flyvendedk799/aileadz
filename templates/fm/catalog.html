@@ -35,6 +35,23 @@
   .fchip .fchip-k { color: var(--fm-ink-3); font-weight: 600; }
   .fchip i { font-size: 10px; opacity: .8; }
 
+  /* multi-select dropdown (categories) */
+  details.ms { position: relative; }
+  details.ms > summary { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 8px; background-image: none; overflow: hidden; }
+  details.ms > summary::-webkit-details-marker { display: none; }
+  details.ms > summary span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  details.ms > summary i { font-size: 10px; color: var(--fm-ink-3); flex: none; transition: transform var(--t); }
+  details.ms[open] > summary { border-color: var(--fm-clay); }
+  details.ms[open] > summary i { transform: rotate(180deg); }
+  .ms-panel { position: absolute; z-index: 40; top: calc(100% + 6px); left: 0; right: 0; min-width: 250px; max-height: 300px; overflow-y: auto; padding: 6px; border: 1px solid var(--fm-line); border-radius: 12px; background: var(--fm-surface); box-shadow: var(--sh-md); }
+  .ms-opt { display: flex; align-items: center; gap: 9px; padding: 7px 9px; border-radius: 8px; font-size: 13px; color: var(--fm-ink); cursor: pointer; }
+  .ms-opt:hover { background: var(--fm-surface-3); }
+  .ms-opt input { accent-color: var(--fm-primary); width: 15px; height: 15px; flex: none; cursor: pointer; }
+  .ms-opt .ms-name { flex: 1; }
+  .ms-opt .ms-c { color: var(--fm-ink-3); font-size: 11.5px; }
+
+  #catResults.is-loading { opacity: .5; pointer-events: none; transition: opacity .15s ease; }
+
   .cat-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
   .ccard { display: flex; flex-direction: column; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); overflow: hidden; transition: transform var(--t), box-shadow var(--t), border-color var(--t); text-decoration: none; color: inherit; }
   .ccard:hover { transform: translateY(-3px); box-shadow: var(--sh-md); border-color: var(--fm-line-2); }
@@ -88,23 +105,25 @@
           <a class="pg-tab" href="{{ url_for('catalog.vendor_index') }}"><i class="fa-solid fa-building"></i> Leverandører</a>
         </div>
 
-        <form class="cat-filter" method="GET" action="{{ url_for('catalog.catalog_index') }}">
+        <form id="catFilterForm" class="cat-filter" method="GET" action="{{ url_for('catalog.catalog_index') }}">
           <div class="ff" style="grid-column: span 2">
             <label for="catalog-q">Søg</label>
             <input id="catalog-q" class="fm-input" type="search" name="q" value="{{ filters.q if filters else '' }}" placeholder="Kursus, emne, leverandør …" autocomplete="off">
           </div>
           <div class="ff">
-            <label for="catalog-category">Kategori</label>
-            <select id="catalog-category" class="fm-select" name="category" onchange="this.form.submit()">
-              <option value="">Alle kategorier</option>
-              {% for category in (filter_options.categories if filter_options else []) %}
-              <option value="{{ category.slug }}" {% if filters and filters.category == category.slug %}selected{% endif %}>{{ category.name }} ({{ category.count }})</option>
-              {% endfor %}
-            </select>
+            <label>Kategori</label>
+            <details class="ms">
+              <summary class="fm-select ms-summary"><span data-ms-label="Kategori" data-ms-empty="Alle kategorier">{% if filters and filters.categories %}Kategori ({{ filters.categories|length }}){% else %}Alle kategorier{% endif %}</span><i class="fa-solid fa-chevron-down"></i></summary>
+              <div class="ms-panel">
+                {% for category in (filter_options.categories if filter_options else []) %}
+                <label class="ms-opt"><input type="checkbox" name="category" value="{{ category.slug }}" {% if filters and filters.categories and category.slug in filters.categories %}checked{% endif %}><span class="ms-name">{{ category.name }}</span><span class="ms-c">{{ category.count }}</span></label>
+                {% endfor %}
+              </div>
+            </details>
           </div>
           <div class="ff">
             <label for="catalog-vendor">Leverandør</label>
-            <select id="catalog-vendor" class="fm-select" name="vendor" onchange="this.form.submit()">
+            <select id="catalog-vendor" class="fm-select" name="vendor">
               <option value="">Alle leverandører</option>
               {% for vendor in (filter_options.vendors if filter_options else []) %}
               <option value="{{ vendor.slug }}" {% if filters and filters.vendor == vendor.slug %}selected{% endif %}>{{ vendor.name }} ({{ vendor.course_count }})</option>
@@ -113,7 +132,7 @@
           </div>
           <div class="ff">
             <label for="catalog-format">Format</label>
-            <select id="catalog-format" class="fm-select" name="format" onchange="this.form.submit()">
+            <select id="catalog-format" class="fm-select" name="format">
               <option value="">Alle formater</option>
               {% for format in (filter_options.formats if filter_options else []) %}
               <option value="{{ format }}" {% if filters and filters.format == format %}selected{% endif %}>{{ format }}</option>
@@ -122,7 +141,7 @@
           </div>
           <div class="ff">
             <label for="catalog-location">Sted</label>
-            <select id="catalog-location" class="fm-select" name="location" onchange="this.form.submit()">
+            <select id="catalog-location" class="fm-select" name="location">
               <option value="">Hele landet</option>
               {% for loc in (filter_options.locations if filter_options else []) %}
               <option value="{{ loc.name }}" {% if filters and filters.location == loc.name %}selected{% endif %}>{{ loc.name }} ({{ loc.count }})</option>
@@ -139,7 +158,7 @@
           </div>
           <div class="ff">
             <label for="catalog-sort">Sortering</label>
-            <select id="catalog-sort" class="fm-select" name="sort" onchange="this.form.submit()">
+            <select id="catalog-sort" class="fm-select" name="sort">
               <option value="relevance" {% if filters and filters.sort == 'relevance' %}selected{% endif %}>Mest relevante</option>
               <option value="title" {% if filters and filters.sort == 'title' %}selected{% endif %}>Titel A–Å</option>
               <option value="title_desc" {% if filters and filters.sort == 'title_desc' %}selected{% endif %}>Titel Å–A</option>
@@ -153,78 +172,103 @@
           </div>
         </form>
 
-        <div class="cat-meta-row">
-          <div class="count">
-            <strong class="tnum">{{ pagination.total if pagination else 0 }}</strong> kurser fundet
-            {% if pagination and pagination.relaxed %}<span class="relaxed-note">· ingen eksakte træffere, viser nærmeste match</span>{% endif %}
-          </div>
-          {% if active_filters %}
-          <a class="btn btn-ghost btn-sm" href="{{ clear_url or url_for('catalog.catalog_index') }}"><i class="fa-solid fa-xmark"></i> Ryd alle filtre</a>
-          {% endif %}
+        <div id="catResults" data-results-url="{{ url_for('catalog.catalog_results') }}">
+          {% include 'fm/_catalog_results.html' %}
         </div>
-
-        {% if active_filters %}
-        <div class="cat-active" aria-label="Aktive filtre">
-          {% for chip in active_filters %}
-          <a class="fchip" href="{{ chip.remove_url }}" title="Fjern {{ chip.label|lower }}"><span class="fchip-k">{{ chip.label }}:</span> {{ chip.display }} <i class="fa-solid fa-xmark"></i></a>
-          {% endfor %}
-        </div>
-        {% endif %}
-
-        {% if products %}
-        <section class="cat-grid">
-          {% for product in products %}
-          <a class="ccard" href="{{ url_for('catalog.product_detail', handle=product.handle) }}" data-reveal>
-            <div class="ccard-media">
-              {% if product.image_url %}
-              <img src="{{ product.image_url }}" alt="{{ product.title }}">
-              {% else %}
-              <i class="fa-solid fa-graduation-cap"></i>
-              {% endif %}
-            </div>
-            <div class="ccard-body">
-              <div class="ccard-kick">{{ product.vendor }}</div>
-              <h3>{{ product.title }}</h3>
-              {% if product.description_excerpt %}
-              <p class="desc">{{ product.description_excerpt }}</p>
-              {% endif %}
-              <div class="ccard-meta">
-                {% for category in product.categories[:2] %}
-                <span class="cpill">{{ category }}</span>
-                {% endfor %}
-                {% if product.format %}<span class="cpill"><i class="fa-solid fa-display"></i>{{ product.format }}</span>{% endif %}
-                {% if product.has_agreement %}<span class="deal-badge"><i class="fa-solid fa-handshake"></i>Aftalepris{% if product.discount_label %} {{ product.discount_label }}{% endif %}</span>{% endif %}
-              </div>
-              <div class="ccard-foot">
-                {% if product.has_agreement and product.discounted_price_label %}
-                <span class="ccard-price-deal">
-                  <span class="deal-now">{{ product.discounted_price_label }}</span>
-                  <span class="deal-was">{{ product.original_price_label or product.price_label }}</span>
-                </span>
-                {% else %}
-                <span class="ccard-price">{{ product.price_label }}</span>
-                {% endif %}
-                <span class="cpill">{{ product.variants|length }} variant{{ '' if product.variants|length == 1 else 'er' }}</span>
-              </div>
-            </div>
-          </a>
-          {% endfor %}
-        </section>
-
-        {% if pagination and pagination.total_pages > 1 %}
-        <nav class="cat-pager" aria-label="Katalog pagination">
-          <a class="btn btn-ghost {{ '' if pagination.has_prev else 'disabled' }}" href="{{ pagination_urls.prev if pagination_urls else '#' }}"><i class="fa-solid fa-arrow-left"></i> Forrige</a>
-          <span class="pg-info">Side {{ pagination.page }} af {{ pagination.total_pages }}</span>
-          <a class="btn btn-ghost {{ '' if pagination.has_next else 'disabled' }}" href="{{ pagination_urls.next if pagination_urls else '#' }}">Næste <i class="fa-solid fa-arrow-right"></i></a>
-        </nav>
-        {% endif %}
-        {% else %}
-        <div class="cat-empty">
-          <i class="fa-solid fa-magnifying-glass fa-2x"></i>
-          <h3>Ingen kurser matcher filtrene</h3>
-          <p>Prøv en bredere søgning eller ryd filtrene.</p>
-          <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}" style="margin-top:14px">Ryd filtre</a>
-        </div>
-        {% endif %}
       </div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var form = document.getElementById('catFilterForm');
+  var results = document.getElementById('catResults');
+  if (!form || !results || !window.fetch || !window.history) return;
+  var endpoint = results.getAttribute('data-results-url');
+  var page = "{{ url_for('catalog.catalog_index') }}";
+  var debounce = null;
+  var seq = 0;
+
+  function paramsFromForm() {
+    var p = new URLSearchParams();
+    new FormData(form).forEach(function (v, k) {
+      if (String(v).trim() !== '') p.append(k, v);
+    });
+    return p;
+  }
+
+  function syncForm(params) {
+    form.querySelectorAll('[name]').forEach(function (el) {
+      if (el.type === 'checkbox') {
+        el.checked = params.getAll(el.name).indexOf(el.value) >= 0;
+      } else {
+        el.value = params.get(el.name) || '';
+      }
+    });
+    updateMultiLabels();
+  }
+
+  function updateMultiLabels() {
+    form.querySelectorAll('details.ms').forEach(function (d) {
+      var n = d.querySelectorAll('input[type=checkbox]:checked').length;
+      var label = d.querySelector('[data-ms-label]');
+      if (label) label.textContent = n ? (label.getAttribute('data-ms-label') + ' (' + n + ')') : label.getAttribute('data-ms-empty');
+    });
+  }
+
+  function load(params, push) {
+    var mine = ++seq;
+    results.classList.add('is-loading');
+    fetch(endpoint + (params.toString() ? ('?' + params.toString()) : ''), { headers: { 'X-Requested-With': 'fetch' } })
+      .then(function (r) { return r.text(); })
+      .then(function (html) {
+        if (mine !== seq) return; // a newer request superseded this one
+        results.innerHTML = html;
+        // Cards use [data-reveal] which starts hidden until shell.js marks it
+        // .fm-seen; AJAX-inserted cards aren't observed, so reveal them now.
+        results.querySelectorAll('[data-reveal]').forEach(function (el) { el.classList.add('fm-seen'); });
+        results.classList.remove('is-loading');
+        var url = page + (params.toString() ? ('?' + params.toString()) : '');
+        if (push) history.pushState({ cat: 1 }, '', url); else history.replaceState({ cat: 1 }, '', url);
+      })
+      .catch(function () { if (mine === seq) results.classList.remove('is-loading'); });
+  }
+
+  function apply(push) { load(paramsFromForm(), push !== false); }
+
+  var q = document.getElementById('catalog-q');
+  if (q) q.addEventListener('input', function () {
+    clearTimeout(debounce);
+    debounce = setTimeout(function () { apply(); }, 280);
+  });
+  form.addEventListener('change', function (e) {
+    if (e.target && e.target.matches('select, input[type=number], input[type=checkbox]')) {
+      updateMultiLabels();
+      apply();
+    }
+  });
+  form.addEventListener('submit', function (e) { e.preventDefault(); clearTimeout(debounce); apply(); });
+
+  // Intercept pager / chip / clear links inside the results so they load via AJAX.
+  results.addEventListener('click', function (e) {
+    var a = e.target.closest('a');
+    if (!a || a.classList.contains('ccard')) return; // let product cards navigate
+    var href = a.getAttribute('href');
+    if (!href || href.charAt(0) === '#' || a.classList.contains('disabled')) return;
+    var i = href.indexOf('?');
+    e.preventDefault();
+    var params = new URLSearchParams(i >= 0 ? href.slice(i + 1) : '');
+    syncForm(params);
+    load(params, true);
+  });
+
+  window.addEventListener('popstate', function () {
+    var params = new URLSearchParams(window.location.search);
+    syncForm(params);
+    load(params, false);
+  });
+
+  updateMultiLabels();
+})();
+</script>
 {% endblock %}

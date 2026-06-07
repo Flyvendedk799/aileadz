@@ -130,6 +130,9 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i><span>GDPR / datasletning</span></a></li>
       </ul>
       {% endif %}
+
+      {# Page-specific sidebar content (e.g. the chat's conversation list). Empty on most pages. #}
+      {% block sidebar_extra %}{% endblock %}
     </div>
 
     <div class="fm-side-foot">

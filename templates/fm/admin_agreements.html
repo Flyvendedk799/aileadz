@@ -1,0 +1,186 @@
+{% extends "fm_base.html" %}
+{% block page_id %}agreements{% endblock %}
+{% block title %}Leverandøraftaler{% endblock %}
+{% block topbar_title %}Leverandøraftaler{% endblock %}
+{% block topbar_sub %}Opret og rediger forhandlede rabatter pr. virksomhed og leverandør.{% endblock %}
+{% block extra_head %}
+<style>
+  .agr-split { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .agr-form { display: grid; gap: 10px; }
+  .agr-form label { font-size: 12px; font-weight: 600; color: var(--fm-ink-2); margin-bottom: 2px; display: block; }
+  .agr-form .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .agr-check { display: flex; align-items: center; gap: 8px; font-size: 13px; color: var(--fm-ink-2); }
+  .agr-status-form { display: inline; }
+  @media (max-width: 980px) { .agr-split { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a>
+  </div>
+
+  <div class="kpi-row">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-handshake"></i></span><div><div class="kl">Aftaler</div><div class="kv tnum">{{ agreements|length }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-circle-check"></i></span><div><div class="kl">Aktive</div><div class="kv tnum">{{ active_count }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-building"></i></span><div><div class="kl">Virksomheder</div><div class="kv tnum">{{ companies|length }}</div></div></div>
+  </div>
+
+  <div class="agr-split">
+    <div class="fm-card">
+      <div class="fm-card-head">
+        <span class="fm-ch-icon"><i class="fa-solid fa-handshake"></i></span>
+        <h3>Aftaler</h3>
+        <span class="fm-badge" style="margin-left:auto">{{ agreements|length }}</span>
+      </div>
+      <div class="fm-card-body" style="padding-top:6px">
+        <div class="fm-table-wrap" style="border:0;box-shadow:none">
+          <table class="fm-table">
+            <thead>
+              <tr>
+                <th>Virksomhed</th><th>Leverandør</th><th>Rabat</th>
+                <th>Gyldig</th><th>Status</th><th style="text-align:right">Handlinger</th>
+              </tr>
+            </thead>
+            <tbody>
+              {% for a in agreements %}
+              <tr>
+                <td style="font-weight:650">{{ a.company_name or ('Virksomhed #' ~ a.company_id) }}</td>
+                <td>{{ a.vendor_name }}{% if a.agreement_name %}<br><span class="muted" style="font-size:11.5px">{{ a.agreement_name }}</span>{% endif %}</td>
+                <td>
+                  {% if a.discount_type == 'percentage' %}{{ a.discount_value|round(0, 'common')|int }}%
+                  {% elif a.discount_type == 'fixed_price' %}Fast pris {{ a.discount_value|round(0, 'common')|int }} kr
+                  {% else %}-{{ a.discount_value|round(0, 'common')|int }} kr{% endif %}
+                </td>
+                <td class="muted" style="font-size:12px">
+                  {{ a.valid_from or '—' }} → {{ a.valid_until or '∞' }}
+                </td>
+                <td><span class="fm-badge {{ 'teal' if a.is_active else 'red' }}">{{ 'Aktiv' if a.is_active else 'Inaktiv' }}</span></td>
+                <td style="text-align:right;white-space:nowrap">
+                  <button type="button" class="btn btn-soft btn-sm js-edit-agreement"
+                    data-company="{{ a.company_id }}"
+                    data-vendor="{{ a.vendor_name }}"
+                    data-discount-type="{{ a.discount_type }}"
+                    data-discount-value="{{ a.discount_value }}"
+                    data-agreement-name="{{ a.agreement_name or '' }}"
+                    data-agreement-reference="{{ a.agreement_reference or '' }}"
+                    data-valid-from="{{ a.valid_from or '' }}"
+                    data-valid-until="{{ a.valid_until or '' }}"
+                    data-min-participants="{{ a.min_participants or 1 }}"
+                    data-notes="{{ a.notes or '' }}"
+                    data-is-active="{{ 1 if a.is_active else 0 }}"
+                    title="Rediger"><i class="fa-solid fa-pen"></i></button>
+                  <form class="agr-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_agreement_delete', agreement_id=a.id) }}" onsubmit="return confirm('Slet denne aftale?');">
+                    <button class="btn btn-ghost btn-sm" type="submit" title="Slet"><i class="fa-solid fa-trash"></i></button>
+                  </form>
+                </td>
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="muted" style="text-align:center;padding:28px">Ingen aftaler oprettet endnu.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-pen-to-square"></i></span><h3 id="agrFormTitle">Opret aftale</h3></div>
+      <div class="fm-card-body">
+        <form class="agr-form" method="POST" action="{{ url_for('admin_dashboard.admin_agreement_save') }}" id="agrForm">
+          <div>
+            <label for="company_id">Virksomhed</label>
+            <select class="fm-input" id="company_id" name="company_id" required>
+              <option value="">Vælg virksomhed…</option>
+              {% for c in companies %}
+              <option value="{{ c.id }}">{{ c.company_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div>
+            <label for="vendor_name">Leverandør</label>
+            <input class="fm-input" id="vendor_name" name="vendor_name" list="agrVendorList" required placeholder="Leverandørnavn">
+            <datalist id="agrVendorList">
+              {% for v in vendors %}<option value="{{ v }}">{% endfor %}
+            </datalist>
+          </div>
+          <div class="row2">
+            <div>
+              <label for="discount_type">Rabattype</label>
+              <select class="fm-input" id="discount_type" name="discount_type">
+                <option value="percentage">Procent (%)</option>
+                <option value="fixed_amount">Fast beløb (kr)</option>
+                <option value="fixed_price">Fast pris (kr)</option>
+              </select>
+            </div>
+            <div>
+              <label for="discount_value">Værdi</label>
+              <input class="fm-input" id="discount_value" name="discount_value" type="number" min="0" step="0.01" value="0" required>
+            </div>
+          </div>
+          <div>
+            <label for="agreement_name">Aftalenavn (valgfri)</label>
+            <input class="fm-input" id="agreement_name" name="agreement_name" type="text" placeholder="fx Rammeaftale 2026">
+          </div>
+          <div>
+            <label for="agreement_reference">Reference (valgfri)</label>
+            <input class="fm-input" id="agreement_reference" name="agreement_reference" type="text" placeholder="fx kontraktnr.">
+          </div>
+          <div class="row2">
+            <div>
+              <label for="valid_from">Gyldig fra</label>
+              <input class="fm-input" id="valid_from" name="valid_from" type="date">
+            </div>
+            <div>
+              <label for="valid_until">Gyldig til</label>
+              <input class="fm-input" id="valid_until" name="valid_until" type="date">
+            </div>
+          </div>
+          <div>
+            <label for="min_participants">Min. deltagere</label>
+            <input class="fm-input" id="min_participants" name="min_participants" type="number" min="1" value="1">
+          </div>
+          <div>
+            <label for="notes">Noter (valgfri)</label>
+            <textarea class="fm-input" id="notes" name="notes" rows="2" placeholder="Interne noter"></textarea>
+          </div>
+          <label class="agr-check"><input type="checkbox" name="is_active" value="1" id="is_active" checked> Aftalen er aktiv</label>
+          <button class="btn btn-primary" type="submit"><i class="fa-solid fa-floppy-disk"></i> Gem aftale</button>
+          <p class="muted" style="font-size:11.5px;margin:2px 0 0">Hver virksomhed kan have én aftale pr. leverandør. Vælges en eksisterende kombination, opdateres den eksisterende aftale.</p>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  // Edit: prefill the create/edit form from the row's data-* attributes and
+  // scroll it into view. The save route upserts on (company_id, vendor_name).
+  var form = document.getElementById('agrForm');
+  var title = document.getElementById('agrFormTitle');
+  if (!form) return;
+  document.querySelectorAll('.js-edit-agreement').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var d = btn.dataset;
+      form.company_id.value = d.company || '';
+      form.vendor_name.value = d.vendor || '';
+      form.discount_type.value = d.discountType || 'percentage';
+      form.discount_value.value = d.discountValue || '0';
+      form.agreement_name.value = d.agreementName || '';
+      form.agreement_reference.value = d.agreementReference || '';
+      form.valid_from.value = d.validFrom || '';
+      form.valid_until.value = d.validUntil || '';
+      form.min_participants.value = d.minParticipants || '1';
+      form.notes.value = d.notes || '';
+      form.is_active.checked = d.isActive === '1';
+      if (title) title.textContent = 'Rediger aftale';
+      form.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    });
+  });
+})();
+</script>
+{% endblock %}

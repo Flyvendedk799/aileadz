@@ -562,10 +562,48 @@ def admin_vendors():
     )
 
 
+def _send_vendor_invite_email(contact_email, vendor_name, token, expires_at):
+    """Best-effort 'Sæt din adgangskode' invite email. Never raises, never blocks.
+
+    Builds the absolute set-password URL from the invite token and sends it via
+    the branded email layer (no-op when SMTP isn't configured)."""
+    if not contact_email or not token:
+        return
+    try:
+        from email_service import send_branded_email
+        try:
+            set_password_url = url_for('vendor.vendor_set_password', token=token, _external=True)
+        except Exception:
+            set_password_url = url_for('vendor.vendor_set_password', token=token)
+        try:
+            exp_label = expires_at.strftime('%d/%m/%Y %H:%M') if expires_at else ''
+        except Exception:
+            exp_label = ''
+        send_branded_email(
+            contact_email,
+            "Sæt din adgangskode — Futurematch leverandørportal",
+            'vendor_invite',
+            {},
+            vendor_name=vendor_name,
+            set_password_url=set_password_url,
+            expires_at=exp_label,
+        )
+    except Exception as e:
+        logging.debug("Vendor invite email skipped: %s", e)
+
+
 @admin_dashboard_bp.route('/vendors/create', methods=['POST'])
 @require_role('admin')
 def admin_vendor_create():
-    """Create a vendor account with a hashed initial password."""
+    """Create a vendor account.
+
+    Two onboarding modes:
+      * If an initial password is provided, hash it (legacy behaviour).
+      * Otherwise mint an opaque single-use invite_token (+ 7-day expiry) on the
+        vendors row and email a 'Sæt din adgangskode' link so the vendor sets
+        their own password via vendor.vendor_set_password. The account is created
+        as 'pending' in that case and activates when the password is set.
+    """
     vendor_name = (request.form.get('vendor_name') or '').strip()
     contact_email = (request.form.get('contact_email') or '').strip().lower()
     password = request.form.get('password') or ''
@@ -576,18 +614,37 @@ def admin_vendor_create():
     if status not in ('pending', 'active', 'suspended'):
         status = 'active'
 
-    if not vendor_name or not contact_email or not password:
-        flash("Udfyld leverandørnavn, e-mail og adgangskode.", "danger")
+    # Password is now OPTIONAL — without one we send a set-password invite.
+    if not vendor_name or not contact_email:
+        flash("Udfyld leverandørnavn og e-mail.", "danger")
         return redirect(url_for('admin_dashboard.admin_vendors'))
 
     # Guarded import: vendor_auth is owned by a sibling module and is optional.
     try:
         import vendor_auth
-        password_hash = vendor_auth.hash_vendor_password(password)
     except Exception as e:
-        logging.error("vendor_auth unavailable, cannot hash vendor password: %s", e)
+        logging.error("vendor_auth unavailable, cannot create vendor: %s", e)
         flash("Leverandør-login er ikke tilgængeligt endnu. Prøv igen senere.", "danger")
         return redirect(url_for('admin_dashboard.admin_vendors'))
+
+    invite_mode = not password
+    password_hash = None
+    invite_token = None
+    invite_expires_at = None
+    if invite_mode:
+        # Opaque, single-use invite token (+ 7-day expiry). Account starts
+        # 'pending' and activates when the vendor sets their own password.
+        import secrets
+        invite_token = secrets.token_urlsafe(32)[:80]
+        invite_expires_at = datetime.now() + timedelta(days=7)
+        status = 'pending'
+    else:
+        try:
+            password_hash = vendor_auth.hash_vendor_password(password)
+        except Exception as e:
+            logging.error("vendor_auth could not hash vendor password: %s", e)
+            flash("Leverandør-login er ikke tilgængeligt endnu. Prøv igen senere.", "danger")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
 
     # Build a unique-ish slug from the vendor name.
     slug = re.sub(r'[^a-z0-9]+', '-', vendor_name.lower()).strip('-')[:140] or None
@@ -596,13 +653,20 @@ def admin_vendor_create():
         cur = current_app.mysql.connection.cursor()
         cur.execute(
             """INSERT INTO vendors
-                   (vendor_name, slug, contact_email, password_hash, status, description, website)
-               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
-            (vendor_name, slug, contact_email, password_hash, status, description, website),
+                   (vendor_name, slug, contact_email, password_hash, status,
+                    description, website, invite_token, invite_expires_at)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+            (vendor_name, slug, contact_email, password_hash, status, description,
+             website, invite_token, invite_expires_at),
         )
         current_app.mysql.connection.commit()
         cur.close()
-        flash(f"Leverandøren \"{vendor_name}\" er oprettet.", "success")
+        if invite_mode:
+            # Best-effort invite email (never blocks the create).
+            _send_vendor_invite_email(contact_email, vendor_name, invite_token, invite_expires_at)
+            flash(f"Leverandøren \"{vendor_name}\" er oprettet. En invitation til at saette adgangskode er sendt.", "success")
+        else:
+            flash(f"Leverandøren \"{vendor_name}\" er oprettet.", "success")
     except Exception as e:
         logging.error("Could not create vendor: %s", e)
         try:
@@ -674,6 +738,159 @@ def admin_vendor_submission_action(submission_id, action):
             pass
         flash("Indsendelsen kunne ikke opdateres.", "danger")
     return redirect(url_for('admin_dashboard.admin_vendors'))
+
+
+# ---------------------------------------------------------------------------
+# Supplier agreement CRUD (platform-admin only).
+#
+# company_supplier_agreements drives the negotiated discount decoration on the
+# catalog (catalog_service.get_company_discount_map). It was previously only
+# readable; these routes give admins a create/edit/delete UI. Each agreement is
+# uniquely keyed on (company_id, vendor_name) via uk_company_vendor_agreement,
+# so saving an existing pair upserts rather than duplicates.
+# ---------------------------------------------------------------------------
+@admin_dashboard_bp.route('/agreements')
+@require_role('admin')
+def admin_agreements():
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+    agreements, companies, vendors = [], [], []
+    try:
+        cur.execute("""
+            SELECT a.id, a.company_id, a.vendor_name, a.discount_type, a.discount_value,
+                   a.agreement_name, a.agreement_reference, a.valid_from, a.valid_until,
+                   a.min_participants, a.notes, a.is_active, a.created_at, a.updated_at,
+                   c.company_name
+            FROM company_supplier_agreements a
+            LEFT JOIN companies c ON c.id = a.company_id
+            ORDER BY (a.is_active = 1) DESC, c.company_name ASC, a.vendor_name ASC
+        """)
+        agreements = cur.fetchall() or []
+    except Exception as e:
+        logging.warning("Could not load supplier agreements (table may not exist yet): %s", e)
+
+    try:
+        cur.execute("SELECT id, company_name FROM companies ORDER BY company_name ASC")
+        companies = cur.fetchall() or []
+    except Exception as e:
+        logging.warning("Could not load companies for agreements: %s", e)
+
+    cur.close()
+
+    # Vendor-name options: the catalog vendor strings (agreements key on the
+    # free-text vendor_name that products carry), so an admin picks a real one.
+    try:
+        vendors = [v.get('name') for v in catalog.get_vendors() if v.get('name')]
+        vendors.sort(key=lambda s: s.lower())
+    except Exception as e:
+        logging.warning("Could not load vendor names for agreements: %s", e)
+        vendors = []
+
+    active_count = sum(1 for a in agreements if a.get('is_active'))
+
+    return render_template(
+        'fm/admin_agreements.html',
+        agreements=agreements,
+        companies=companies,
+        vendors=vendors,
+        active_count=active_count,
+    )
+
+
+@admin_dashboard_bp.route('/agreements/save', methods=['POST'])
+@require_role('admin')
+def admin_agreement_save():
+    """Create or update a supplier agreement (upsert on company_id+vendor_name)."""
+    def _back():
+        return redirect(url_for('admin_dashboard.admin_agreements'))
+
+    try:
+        company_id = int(request.form.get('company_id') or 0)
+    except (TypeError, ValueError):
+        company_id = 0
+    vendor_name = (request.form.get('vendor_name') or '').strip()
+    discount_type = (request.form.get('discount_type') or 'percentage').strip()
+    if discount_type not in ('percentage', 'fixed_price', 'fixed_amount'):
+        discount_type = 'percentage'
+    try:
+        discount_value = float(request.form.get('discount_value') or 0)
+    except (TypeError, ValueError):
+        discount_value = 0.0
+    agreement_name = (request.form.get('agreement_name') or '').strip() or None
+    agreement_reference = (request.form.get('agreement_reference') or '').strip() or None
+    valid_from = (request.form.get('valid_from') or '').strip() or None
+    valid_until = (request.form.get('valid_until') or '').strip() or None
+    try:
+        min_participants = int(request.form.get('min_participants') or 1)
+    except (TypeError, ValueError):
+        min_participants = 1
+    notes = (request.form.get('notes') or '').strip() or None
+    is_active = 1 if request.form.get('is_active') in ('1', 'on', 'true') else 0
+
+    if not company_id or not vendor_name:
+        flash("Vaelg en virksomhed og en leverandør.", "danger")
+        return _back()
+    if discount_value < 0:
+        flash("Rabatvaerdien kan ikke vaere negativ.", "danger")
+        return _back()
+
+    try:
+        cur = current_app.mysql.connection.cursor()
+        # Upsert keyed on uk_company_vendor_agreement (company_id, vendor_name).
+        cur.execute(
+            """INSERT INTO company_supplier_agreements
+                   (company_id, vendor_name, discount_type, discount_value,
+                    agreement_name, agreement_reference, valid_from, valid_until,
+                    min_participants, notes, is_active, created_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE
+                   discount_type = VALUES(discount_type),
+                   discount_value = VALUES(discount_value),
+                   agreement_name = VALUES(agreement_name),
+                   agreement_reference = VALUES(agreement_reference),
+                   valid_from = VALUES(valid_from),
+                   valid_until = VALUES(valid_until),
+                   min_participants = VALUES(min_participants),
+                   notes = VALUES(notes),
+                   is_active = VALUES(is_active)""",
+            (company_id, vendor_name, discount_type, discount_value,
+             agreement_name, agreement_reference, valid_from, valid_until,
+             min_participants, notes, is_active, session.get('user_id') or None),
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+        flash("Aftalen er gemt.", "success")
+    except Exception as e:
+        logging.error("Could not save supplier agreement: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        msg = str(e).lower()
+        if "doesn't exist" in msg or 'no such table' in msg:
+            flash("Aftaletabellen er ikke oprettet endnu.", "danger")
+        else:
+            flash("Aftalen kunne ikke gemmes.", "danger")
+    return _back()
+
+
+@admin_dashboard_bp.route('/agreements/<int:agreement_id>/delete', methods=['POST'])
+@require_role('admin')
+def admin_agreement_delete(agreement_id):
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute("DELETE FROM company_supplier_agreements WHERE id = %s", (agreement_id,))
+        current_app.mysql.connection.commit()
+        cur.close()
+        flash("Aftalen er slettet.", "info")
+    except Exception as e:
+        logging.error("Could not delete supplier agreement: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        flash("Aftalen kunne ikke slettes.", "danger")
+    return redirect(url_for('admin_dashboard.admin_agreements'))
 
 
 @admin_dashboard_bp.route('/make-superadmin/<username>')

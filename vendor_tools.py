@@ -282,6 +282,214 @@ def vendor_performance_summary(args, vendor_name):
 
 
 # ---------------------------------------------------------------------------
+# Analytics read helper (NOT a model tool) — chart-ready time series for the
+# vendor's own /vendor/analytics dashboard. Same scoping/anonymity rules as
+# vendor_performance_summary: resolves the vendor's OWN product handles from the
+# public catalog and reads course_orders for ONLY those handles, selecting
+# aggregate counts ONLY (never company_id / user_id / username). Returns a
+# JSON-serialisable dict the analytics route can hand straight to FMChart.
+# ---------------------------------------------------------------------------
+def vendor_analytics_series(vendor_name, months=6):
+    """Monthly orders + completions for this vendor's catalog, plus top courses.
+
+    Returns:
+        {
+          "vendor": str,
+          "course_count": int,
+          "months": [ "YYYY-MM", ... ],           # oldest -> newest
+          "orders_series": [int, ...],            # one per month
+          "completed_series": [int, ...],         # one per month
+          "totals": {orders, completed, orders_30d, completion_rate_pct},
+          "top_courses": [ {handle, title, orders, completed,
+                            completion_rate_pct, avg_rating, review_count}, ... ],
+        }
+    No buyer identity is ever read or returned.
+    """
+    if not vendor_name:
+        return _err("Ingen leverandør fundet i sessionen.")
+
+    try:
+        months = max(1, min(24, int(months)))
+    except (TypeError, ValueError):
+        months = 6
+
+    products = _vendor_products(vendor_name)
+    handle_title = {}
+    for p in products:
+        h = p.get("handle")
+        if h:
+            handle_title[h] = p.get("title") or h
+
+    # Always return a fully-formed (zeroed) month axis so the dashboard renders a
+    # clean empty state rather than a blank canvas.
+    from datetime import date
+
+    def _month_axis(n):
+        today = date.today()
+        y, m = today.year, today.month
+        out = []
+        for _ in range(n):
+            out.append("%04d-%02d" % (y, m))
+            m -= 1
+            if m == 0:
+                m = 12
+                y -= 1
+        out.reverse()
+        return out
+
+    axis = _month_axis(months)
+    base = {
+        "vendor": vendor_name,
+        "course_count": len(handle_title),
+        "months": axis,
+        "orders_series": [0] * len(axis),
+        "completed_series": [0] * len(axis),
+        "totals": {"orders": 0, "completed": 0, "orders_30d": 0,
+                   "completion_rate_pct": 0.0},
+        "top_courses": [],
+    }
+
+    if not handle_title:
+        return base
+
+    cur = _dict_cursor()
+    if cur is None:
+        return _err("Databasen er midlertidigt utilgængelig. Prøv igen senere.")
+
+    handles = list(handle_title.keys())
+    placeholders = ",".join(["%s"] * len(handles))
+
+    try:
+        # Monthly orders + completions (aggregate-only). DATE_FORMAT gives the
+        # YYYY-MM bucket; we map rows back onto the precomputed axis so missing
+        # months stay zero.
+        cur.execute(
+            f"""
+            SELECT DATE_FORMAT(created_at, '%%Y-%%m') AS ym,
+                   COUNT(*) AS orders,
+                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+            FROM course_orders
+            WHERE product_handle IN ({placeholders})
+              AND created_at >= DATE_SUB(DATE_FORMAT(NOW(), '%%Y-%%m-01'), INTERVAL %s MONTH)
+            GROUP BY ym
+            """,
+            tuple(handles) + (months - 1,),
+        )
+        by_month = {}
+        for r in (cur.fetchall() or []):
+            by_month[r.get("ym")] = r
+
+        # Totals + 30d window.
+        cur.execute(
+            f"""
+            SELECT COUNT(*) AS orders,
+                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed,
+                   SUM(CASE WHEN created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY) THEN 1 ELSE 0 END) AS orders_30d
+            FROM course_orders
+            WHERE product_handle IN ({placeholders})
+            """,
+            tuple(handles),
+        )
+        totals_row = cur.fetchone() or {}
+
+        # Per-course volume (top courses).
+        cur.execute(
+            f"""
+            SELECT product_handle,
+                   COUNT(*) AS orders,
+                   SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 ELSE 0 END) AS completed
+            FROM course_orders
+            WHERE product_handle IN ({placeholders})
+            GROUP BY product_handle
+            ORDER BY orders DESC
+            LIMIT 8
+            """,
+            tuple(handles),
+        )
+        per_course = cur.fetchall() or []
+
+        # Per-course rating aggregate (own catalog only).
+        rating_by_handle = {}
+        try:
+            cur.execute(
+                f"""
+                SELECT product_handle,
+                       AVG(rating) AS avg_rating,
+                       COUNT(*) AS review_count
+                FROM course_reviews
+                WHERE product_handle IN ({placeholders})
+                GROUP BY product_handle
+                """,
+                tuple(handles),
+            )
+            for r in (cur.fetchall() or []):
+                rating_by_handle[r.get("product_handle")] = r
+        except Exception as exc:
+            # course_reviews may not exist yet — degrade to no ratings.
+            logger.debug("vendor_tools: review aggregate skipped: %s", exc)
+    except Exception as exc:
+        logger.warning("vendor_tools: vendor_analytics_series query failed: %s", exc)
+        return _err("Kunne ikke hente leverandørens analyser lige nu.")
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+    def _i(v):
+        try:
+            return int(v or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    orders_series, completed_series = [], []
+    for ym in axis:
+        row = by_month.get(ym) or {}
+        orders_series.append(_i(row.get("orders")))
+        completed_series.append(_i(row.get("completed")))
+
+    total_orders = _i(totals_row.get("orders"))
+    total_completed = _i(totals_row.get("completed"))
+    completion_rate = round((total_completed / total_orders) * 100, 1) if total_orders else 0.0
+
+    top_courses = []
+    for r in per_course:
+        h = r.get("product_handle")
+        orders = _i(r.get("orders"))
+        comp = _i(r.get("completed"))
+        rr = rating_by_handle.get(h) or {}
+        avg_rating = rr.get("avg_rating")
+        try:
+            avg_rating = round(float(avg_rating), 1) if avg_rating is not None else None
+        except (TypeError, ValueError):
+            avg_rating = None
+        top_courses.append({
+            "handle": h,
+            "title": handle_title.get(h, h),
+            "orders": orders,
+            "completed": comp,
+            "completion_rate_pct": round((comp / orders) * 100, 1) if orders else 0.0,
+            "avg_rating": avg_rating,
+            "review_count": _i(rr.get("review_count")),
+        })
+
+    return {
+        "vendor": vendor_name,
+        "course_count": len(handle_title),
+        "months": axis,
+        "orders_series": orders_series,
+        "completed_series": completed_series,
+        "totals": {
+            "orders": total_orders,
+            "completed": total_completed,
+            "orders_30d": _i(totals_row.get("orders_30d")),
+            "completion_rate_pct": completion_rate,
+        },
+        "top_courses": top_courses,
+    }
+
+
+# ---------------------------------------------------------------------------
 # Tool 2: get_demand_by_category
 # ---------------------------------------------------------------------------
 def get_demand_by_category(args, vendor_name):
@@ -682,6 +890,7 @@ __all__ = [
     "VENDOR_TOOL_TRIGGER_KEYWORDS",
     "execute_vendor_tool",
     "vendor_performance_summary",
+    "vendor_analytics_series",
     "get_demand_by_category",
     "get_comparable_courses",
 ]

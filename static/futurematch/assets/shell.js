@@ -199,7 +199,42 @@
     initMotion();
     initCmdK();
     initTooltips();
+    initNotifBadge();
     applyBrand();
+  }
+
+  /* ---- Unread notification badge (bell + nav) ----
+     Sourced from a single cheap poll of the company-scoped unread count.
+     Fully guarded: any error leaves the shell untouched (badges stay hidden),
+     so users without notifications / outside a company are never affected. */
+  function initNotifBadge() {
+    const dots = document.querySelectorAll("[data-notif-dot]");
+    const counts = document.querySelectorAll("[data-notif-count]");
+    const navBadges = document.querySelectorAll("[data-notif-badge]");
+    if (!dots.length && !counts.length && !navBadges.length) return;
+    if (!window.fetch) return;
+
+    function paint(n) {
+      const has = n > 0;
+      const label = n > 99 ? "99+" : String(n);
+      dots.forEach(d => { d.hidden = !has; });
+      counts.forEach(c => { c.hidden = !has; if (has) c.textContent = label; });
+      navBadges.forEach(b => { b.hidden = !has; if (has) b.textContent = label; });
+    }
+
+    function refresh() {
+      fetch("/api/notifications/company/unread_count", {
+        credentials: "same-origin", headers: { "Accept": "application/json" }
+      })
+        .then(r => r.ok ? r.json() : null)
+        .then(d => { if (d && typeof d.unread_count === "number") paint(d.unread_count); })
+        .catch(() => {});
+    }
+
+    refresh();
+    // Light poll so the badge stays fresh without hammering the server.
+    window.fmRefreshNotifBadge = refresh;
+    setInterval(refresh, 60000);
   }
 
   /* Universal scroll-reveal. Adds html.fm-motion (so CSS hidden-state
@@ -295,11 +330,18 @@
     NAV.filter(g => !g.roles || g.roles.includes(role)).forEach(g => {
       g.items.forEach(it => items.push({ icon: it.icon, title: it.label, sub: g.group, href: it.href, group: "Naviger" }));
     });
+    // Action hrefs use real Flask paths so they navigate correctly in the
+    // server-rendered shell (the legacy *.html paths only ever applied to the
+    // standalone prototype). Role-awareness mirrors the NAV entries above:
+    // these learner/account actions are available to both roles.
     const actions = [
-      { icon: "fa-comment-dots", title: "Spørg AI-assistenten", sub: "Kursusrådgiver", href: "chat.html", group: "Handlinger" },
+      { icon: "fa-comment-dots", title: "Spørg AI-assistenten", sub: "Kursusrådgiver", href: "/chat", group: "Handlinger" },
+      { icon: "fa-bullseye", title: "Opret udviklingsmål", sub: "Udviklingsmål", href: "/mine-maal", group: "Handlinger" },
+      { icon: "fa-bell", title: "Mine notifikationer", sub: "Konto", href: "/notifications", group: "Handlinger" },
+      { icon: "fa-graduation-cap", title: "Browse katalog", sub: "Katalog", href: "/catalog", group: "Handlinger" },
+      { icon: "fa-receipt", title: "Mine bestillinger", sub: "Min tidslinje", href: "/min-tidslinje", group: "Handlinger" },
       { icon: "fa-circle-half-stroke", title: "Skift tema (lys/mørk)", sub: "Udseende", act: "theme", group: "Handlinger" },
-      { icon: "fa-graduation-cap", title: "Find et kursus", sub: "Katalog", href: "catalog.html", group: "Handlinger" },
-      { icon: "fa-circle-question", title: "Support & hjælp", sub: "Konto", href: "support.html", group: "Handlinger" },
+      { icon: "fa-circle-question", title: "Support & hjælp", sub: "Konto", href: "/support", group: "Handlinger" },
     ];
     const all = items.concat(actions);
 

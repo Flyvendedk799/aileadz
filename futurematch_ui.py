@@ -27,10 +27,191 @@ def chat():
     return render_template('fm/chat.html')
 
 
+# How many cards each employee-home section ever renders (cheap, bounded).
+_HOME_ACTIVE_LIMIT = 4
+_HOME_ORDER_LIMIT = 5
+_HOME_REC_LIMIT = 3
+
+# Maps a course_orders.status to a learner-facing "is this still in progress?"
+# bucket. Anything in this set is shown under "I gang lige nu".
+_HOME_ACTIVE_STATUSES = frozenset({'approved', 'processing', 'confirmed'})
+
+
+def _home_skill_completeness(profile):
+    """Profile-completeness ring data from a get_full_profile() snapshot.
+
+    Mirrors the 5-section model used by my_profile.html so the ring number is
+    consistent across the two learner surfaces. Returns (pct, sections, has_skills).
+    """
+    profile = profile or {}
+    skills = profile.get('skills') or []
+    sections = [
+        {'key': 'Profil', 'done': bool(profile.get('headline') or profile.get('bio'))},
+        {'key': 'Kompetencer', 'done': len(skills) > 0},
+        {'key': 'Erfaring', 'done': len(profile.get('experience') or []) > 0},
+        {'key': 'Uddannelse', 'done': len(profile.get('education') or []) > 0},
+        {'key': 'Mål', 'done': bool(profile.get('goals'))},
+    ]
+    done = sum(1 for s in sections if s['done'])
+    pct = round(done / len(sections) * 100) if sections else 0
+    return pct, sections, bool(skills)
+
+
+def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
+    """Cheap, non-LLM course recommendations for the learner home.
+
+    Strategy (no model call, page-route safe):
+      1. If the user has skills, run a catalog keyword search on the first skill
+         name — this reuses catalog_service.search_products (pure in-memory).
+      2. Otherwise fall back to the first page of the catalog (popular/recent by
+         the catalog's default ordering).
+    Company-scoped pricing is applied when company_id is present. Always returns
+    a list (possibly empty); never raises.
+    """
+    profile = profile or {}
+    skills = profile.get('skills') or []
+    why = 'Populært i kataloget lige nu'
+    products = []
+    try:
+        import catalog_service
+        q = ''
+        if skills:
+            q = (skills[0].get('name') or '').strip()
+            if q:
+                why = f'Matcher din kompetence: {q}'
+        result = catalog_service.search_products(
+            filters={'q': q} if q else {},
+            page=1, per_page=limit, company_id=company_id,
+        ) or {}
+        products = result.get('products') or []
+        # If a skill query found nothing, fall back to the default catalog page.
+        if q and not products:
+            result = catalog_service.search_products(
+                filters={}, page=1, per_page=limit, company_id=company_id) or {}
+            products = result.get('products') or []
+            why = 'Populært i kataloget lige nu'
+    except Exception as e:  # pragma: no cover - defensive
+        current_app.logger.warning("home recommendations: %s", e)
+        return []
+
+    recs = []
+    for p in products[:limit]:
+        recs.append({
+            'handle': p.get('handle'),
+            'title': p.get('title') or 'Ukendt kursus',
+            'vendor': p.get('vendor') or '',
+            'price_min': p.get('price_min'),
+            'price_label': p.get('price_label'),
+            'format': p.get('format') or '',
+            'why': why,
+        })
+    return recs
+
+
 @futurematch_bp.route('/min-laering')
 def employee_home():
-    """Employee learning home."""
-    return render_template('fm/employee_home.html')
+    """Employee learning home — real, user + company scoped data.
+
+    Read-only; cheap (no LLM). Every section degrades to its empty-state when it
+    truly has no data, and a load failure never breaks the page.
+    """
+    username = session.get('user')
+    user_id = session.get('user_id')
+    company_id = session.get('company_id')
+
+    active = []
+    orders = []
+    profile = {}
+    skills_groups = []
+    completeness_pct = 0
+    completeness_sections = []
+    has_skills = False
+    recommendations = []
+
+    # ── Orders (active + recent) from course_orders, strictly user-scoped ──
+    if username:
+        try:
+            import MySQLdb.cursors
+            from db_compat import refresh_flask_mysql_connection
+            mysql = getattr(current_app, 'mysql', None)
+            refresh_flask_mysql_connection(mysql)
+            conn = mysql.connection if mysql else None
+            if conn is not None:
+                _ensure_timeline_tables(conn)
+                cur = conn.cursor(MySQLdb.cursors.DictCursor)
+                cur.execute(
+                    """
+                    SELECT order_id, product_handle, product_title, price, status,
+                           completion_status, completion_deadline, created_at
+                    FROM course_orders
+                    WHERE (username = %s OR (user_id IS NOT NULL AND user_id = %s))
+                    ORDER BY created_at DESC
+                    LIMIT 50
+                    """,
+                    (username, user_id),
+                )
+                rows = cur.fetchall() or []
+                cur.close()
+                for r in rows:
+                    raw_status = r.get('status') or 'pending'
+                    item = {
+                        'order_id': r.get('order_id'),
+                        'handle': r.get('product_handle'),
+                        'title': r.get('product_title') or 'Ukendt kursus',
+                        'status': raw_status,
+                        'status_label': _ORDER_STATUS_LABELS.get(raw_status, raw_status),
+                        'state': _ORDER_STATE.get(raw_status, 'afventer'),
+                        'created_at': r.get('created_at'),
+                    }
+                    # "I gang lige nu": approved/active and not yet completed.
+                    completed = (r.get('completion_status') or '').lower() in ('completed', 'gennemfoert', 'done')
+                    if raw_status in _HOME_ACTIVE_STATUSES and not completed and len(active) < _HOME_ACTIVE_LIMIT:
+                        active.append(item)
+                    if len(orders) < _HOME_ORDER_LIMIT:
+                        orders.append(item)
+        except Exception as e:
+            current_app.logger.warning("home orders load: %s", e)
+
+    # ── Profile snapshot → completeness ring + skill groups ──
+    if username:
+        try:
+            from app1.user_profile_db import get_full_profile, ensure_tables
+            ensure_tables()
+            profile = get_full_profile(username) or {}
+        except Exception as e:
+            current_app.logger.warning("home profile load: %s", e)
+            profile = {}
+
+    completeness_pct, completeness_sections, has_skills = _home_skill_completeness(profile)
+
+    # Group skills by level for the compact competence card (highest first).
+    if profile.get('skills'):
+        _level_order = ['ekspert', 'avanceret', 'mellem', 'begynder']
+        _level_labels = {'begynder': 'Begynder', 'mellem': 'Mellem',
+                         'avanceret': 'Avanceret', 'ekspert': 'Ekspert'}
+        _by_level = {}
+        for s in profile['skills']:
+            _by_level.setdefault((s.get('level') or 'mellem'), []).append(s.get('name'))
+        for lvl in _level_order:
+            names = [n for n in (_by_level.get(lvl) or []) if n]
+            if names:
+                skills_groups.append({'level': lvl, 'label': _level_labels.get(lvl, lvl),
+                                      'names': names})
+
+    # ── Recommendations (cheap catalog fallback; no LLM) ──
+    recommendations = _home_recommendations(profile, company_id)
+
+    return render_template(
+        'fm/employee_home.html',
+        active=active,
+        orders=orders,
+        recommendations=recommendations,
+        skills_groups=skills_groups,
+        skills_total=len(profile.get('skills') or []),
+        completeness_pct=completeness_pct,
+        completeness_sections=completeness_sections,
+        has_skills=has_skills,
+    )
 
 
 @futurematch_bp.route('/mine-maal')

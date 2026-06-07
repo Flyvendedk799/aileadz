@@ -68,34 +68,123 @@
         <!-- Continue learning -->
         <div class="fm-section-head" style="margin-top:0">
           <div><span class="fm-eyebrow"><i class="fa-solid fa-play"></i> Fortsæt hvor du slap</span><h2 class="fm-section-title">I gang lige nu</h2></div>
+          {% if orders %}<a href="{{ url_for('futurematch.timeline') }}" class="fm-badge teal">Min tidslinje</a>{% endif %}
         </div>
         <section class="fm-grid" style="grid-template-columns:1fr;gap:14px">
+          {% if active %}
+            {% for c in active %}
+            <a class="learn-card" data-reveal data-d="{{ loop.index }}" href="{% if c.handle %}{{ url_for('catalog.product_detail', handle=c.handle) }}{% else %}{{ url_for('futurematch.timeline') }}{% endif %}">
+              <span class="learn-thumb"><i class="fa-solid fa-book-open-reader"></i></span>
+              <div class="learn-main">
+                <div class="learn-vendor">{{ c.status_label }}</div>
+                <div class="learn-title">{{ c.title }}</div>
+                <div class="fm-prog thin"><span style="width:55%"></span></div>
+              </div>
+              <span class="fm-badge teal dot" style="white-space:nowrap">I gang</span>
+            </a>
+            {% endfor %}
+          {% else %}
           <div class="fm-card" data-reveal data-d="1"><div class="fm-card-body">
-            <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen kurser i gang endnu</div>
+            <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">
+              {% if orders %}Ingen aktive kurser lige nu. Se status på dine bestillinger nedenfor.{% else %}Ingen kurser i gang endnu. <a href="{{ url_for('catalog.catalog_index') }}" style="color:var(--fm-primary)">Find dit første kursus</a>.{% endif %}
+            </div>
           </div></div>
+          {% endif %}
         </section>
 
         <!-- Two column: recommended + side -->
         <div class="split" style="margin-top:8px">
           <div>
             <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-wand-magic-sparkles"></i> Matchet til din profil</span><h2 class="fm-section-title">Anbefalet til dig</h2></div><a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal">Spørg AI</a></div>
-            <div class="fm-card"><div class="fm-card-body">
-              <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen anbefalinger endnu. Udfyld din profil, så finder AI’en relevante kurser.</div>
+            {# Skeleton placeholder shown until reveal; replaced by real cards when present. #}
+            {% if recommendations %}
+            <div class="fm-grid" style="grid-template-columns:repeat(3,1fr);gap:14px" data-reveal>
+              {% for r in recommendations %}
+              <a class="rec-card" href="{{ url_for('catalog.product_detail', handle=r.handle) }}">
+                <div class="rec-media"><i class="fa-solid fa-graduation-cap"></i>{% if r.format %}<span class="rec-match"><i class="fa-solid fa-circle-nodes"></i> {{ r.format }}</span>{% endif %}</div>
+                <div class="rec-body">
+                  <div class="learn-vendor">{{ r.vendor }}</div>
+                  <h3>{{ r.title }}</h3>
+                  <div class="rec-why">{{ r.why }}</div>
+                  <div class="rec-foot">
+                    <span class="rec-price">{{ r.price_label or ('%.0f kr.'|format(r.price_min) if r.price_min is not none else 'Pris på forespørgsel') }}</span>
+                    <span class="fm-badge teal">Se kursus</span>
+                  </div>
+                </div>
+              </a>
+              {% endfor %}
+            </div>
+            {% else %}
+            <div class="fm-card" id="recSkel" data-reveal><div class="fm-card-body">
+              <div class="fm-grid" style="grid-template-columns:repeat(3,1fr);gap:14px" aria-hidden="true">
+                {% for _ in range(3) %}
+                <div>
+                  <div class="fm-skel" style="height:80px;border-radius:var(--r-md);margin-bottom:10px"></div>
+                  <div class="fm-skel" style="height:11px;width:45%;margin-bottom:8px"></div>
+                  <div class="fm-skel" style="height:14px;width:85%;margin-bottom:6px"></div>
+                  <div class="fm-skel" style="height:11px;width:70%"></div>
+                </div>
+                {% endfor %}
+              </div>
+              <div class="muted" style="text-align:center;font-size:13px;padding:14px 16px 4px;color:var(--fm-ink-3)">Ingen anbefalinger endnu. Udfyld din profil, så finder AI’en relevante kurser.</div>
             </div></div>
+            {% endif %}
 
             <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-receipt"></i> Mine bestillinger</span><h2 class="fm-section-title">Status</h2></div></div>
             <div class="fm-card"><div class="fm-card-body" style="padding-top:8px">
-              <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen bestillinger endnu</div>
+              {% if orders %}
+                {% for o in orders %}
+                <div class="order-row">
+                  <span class="order-ic" style="background:var(--fm-primary-tint);color:var(--fm-primary)">
+                    {% if o.state == 'gennemfoert' %}<i class="fa-solid fa-circle-check"></i>
+                    {% elif o.state == 'godkendt' %}<i class="fa-solid fa-play"></i>
+                    {% elif o.state in ('annulleret','afvist') %}<i class="fa-solid fa-circle-xmark"></i>
+                    {% else %}<i class="fa-solid fa-clock"></i>{% endif %}
+                  </span>
+                  <div style="flex:1;min-width:0">
+                    <div style="font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.title }}</div>
+                    <div style="font-size:12px;color:var(--fm-ink-3)">{{ o.created_at.strftime('%d.%m.%Y') if o.created_at else '' }}</div>
+                  </div>
+                  <span class="fm-badge {{ 'green' if o.state == 'gennemfoert' else ('teal' if o.state == 'godkendt' else ('red' if o.state in ('annulleret','afvist') else 'amber')) }}" style="white-space:nowrap">{{ o.status_label }}</span>
+                </div>
+                {% endfor %}
+                <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle på tidslinjen</a></div>
+              {% else %}
+              <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen bestillinger endnu. <a href="{{ url_for('catalog.catalog_index') }}" style="color:var(--fm-primary)">Udforsk kataloget</a>.</div>
+              {% endif %}
             </div></div>
           </div>
 
           <div class="stack">
+            {% if not has_skills %}
             <div class="fm-card" data-reveal data-d="1"><div class="fm-card-body" style="text-align:center">
+              <span class="learn-thumb" style="margin:2px auto 10px"><i class="fa-solid fa-id-card"></i></span>
+              <div style="font-weight:700;font-size:14.5px">Kom godt i gang</div>
               <p style="font-size:13px;color:var(--fm-ink-2);margin:6px auto 14px;max-width:30ch;line-height:1.5">Udfyld din profil med erfaring og kompetencer, så bliver anbefalingerne skarpere.</p>
-              <a href="{{ url_for('pages.profile') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-id-card"></i> Forbedr min profil</a>
+              <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-primary btn-sm" style="width:100%"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
+              <a href="{{ url_for('pages.profile') }}" class="btn btn-soft btn-sm" style="width:100%;margin-top:8px"><i class="fa-solid fa-pen"></i> Udfyld profil manuelt</a>
             </div></div>
+            {% endif %}
             <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-pie"></i></span><h3>Kompetenceprofil</h3><a href="{{ url_for('pages.profile') }}" class="fm-badge teal" style="margin-left:auto">Detaljer</a></div>
-              <div class="fm-card-body"><div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">Ingen kompetencedata endnu</div></div>
+              <div class="fm-card-body">
+                {% if has_skills %}
+                <div class="ring-big" style="--p:{{ completeness_pct }}"><div><div><span class="pct">{{ completeness_pct }}%</span><div class="lab">Udfyldt</div></div></div></div>
+                <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
+                  {% for g in skills_groups %}
+                  <div>
+                    <div style="display:flex;align-items:center;gap:8px;font-family:var(--ff-mono);font-size:10.5px;letter-spacing:.06em;text-transform:uppercase;color:var(--fm-ink-3);margin-bottom:6px">{{ g.label }} <span style="margin-left:auto">{{ g.names|length }}</span></div>
+                    <div style="display:flex;flex-wrap:wrap;gap:6px">
+                      {% for n in g.names[:8] %}<span class="fm-badge">{{ n }}</span>{% endfor %}
+                      {% if g.names|length > 8 %}<span class="fm-badge teal">+{{ g.names|length - 8 }}</span>{% endif %}
+                    </div>
+                  </div>
+                  {% endfor %}
+                </div>
+                {% else %}
+                <div class="ring-big" style="--p:{{ completeness_pct }}"><div><div><span class="pct">{{ completeness_pct }}%</span><div class="lab">Udfyldt</div></div></div></div>
+                <div class="muted" style="text-align:center;font-size:13px;padding:14px 16px 2px;color:var(--fm-ink-3)">Ingen kompetencer endnu. Tilføj dem for et bedre kursusmatch.</div>
+                {% endif %}
+              </div>
             </div>
           </div>
         </div>

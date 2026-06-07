@@ -4,7 +4,7 @@ Enterprise API Management System
 Provides comprehensive API access with rate limiting, authentication, and analytics
 """
 
-from flask import Blueprint, request, jsonify, g, session, current_app
+from flask import Blueprint, request, jsonify, g, session, current_app, Response
 import MySQLdb.cursors
 import json
 import jwt
@@ -895,10 +895,27 @@ def create_employee():
         cur.execute("""
             SELECT * FROM company_users WHERE id = %s
         """, (employee_id,))
-        
+
         employee = cur.fetchone()
         cur.close()
-        
+
+        # Best-effort welcome/invite email + integration event (post-commit).
+        # Both are fully guarded: provisioning is NEVER blocked or failed by
+        # email delivery (no-ops without a MAIL backend) or event emission.
+        try:
+            from email_service import send_employee_welcome
+            send_employee_welcome(
+                {'id': g.company_id},
+                {'email': data['email'], 'name': data['full_name']},
+                login_url=os.getenv('APP_BASE_URL', ''),
+            )
+        except Exception:
+            pass
+        _fire_webhook(g.company_id, 'employee.added', {
+            'employee_id': employee_id, 'email': data['email'],
+            'name': data['full_name'], 'role': data['role'],
+        })
+
         return jsonify({
             'success': True,
             'message': 'Employee created successfully',
@@ -924,13 +941,95 @@ def get_employee(employee_id):
         
         if not employee:
             return jsonify({'error': 'Employee not found'}), 404
-        
+
         return jsonify({
             'success': True,
             'data': employee
         })
     except Exception as e:
         return jsonify({'error': 'Failed to retrieve employee'}), 500
+
+@api_enterprise_bp.route('/api/v1/employees/<int:employee_id>', methods=['PUT'])
+@require_api_auth('write:employees')
+def update_employee(employee_id):
+    """Update an existing employee (company-scoped).
+
+    Only a fixed allow-list of columns can be set; every query is hard-scoped
+    to g.company_id (no FKs, isolation is application-level). On success an
+    'employee.updated' integration event is emitted (best-effort, post-commit)
+    so the advertised webhook subscription actually fires.
+    """
+    try:
+        data = request.get_json() or {}
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+        # Verify the employee exists for THIS company before touching anything.
+        cur.execute(
+            "SELECT id FROM company_users WHERE id = %s AND company_id = %s",
+            (employee_id, g.company_id),
+        )
+        if not cur.fetchone():
+            cur.close()
+            return jsonify({'error': 'Employee not found'}), 404
+
+        # Allow-list of updatable columns -> incoming JSON keys. Anything else is
+        # ignored (no mass-assignment of company_id / status-by-accident etc.).
+        allowed = {
+            'full_name': 'full_name', 'email': 'email', 'role': 'role',
+            'job_title': 'job_title', 'department': 'department',
+            'hire_date': 'hire_date', 'employment_type': 'employment_type',
+            'phone': 'phone', 'status': 'status', 'manager_user_id': 'manager_user_id',
+        }
+        set_parts = []
+        params = []
+        updated_cols = []
+        for col, key in allowed.items():
+            if key in data:
+                set_parts.append(f"{col} = %s")
+                params.append(data.get(key))
+                updated_cols.append(col)
+
+        if not set_parts:
+            cur.close()
+            return jsonify({'error': 'No updatable fields provided'}), 400
+
+        params.extend([employee_id, g.company_id])
+        # set_parts is built ONLY from the fixed allow-list literals above; all
+        # user values are %s-bound params.
+        cur.execute(
+            "UPDATE company_users SET " + ", ".join(set_parts) +
+            " WHERE id = %s AND company_id = %s",
+            params,
+        )
+        current_app.mysql.connection.commit()
+
+        cur.execute(
+            "SELECT * FROM company_users WHERE id = %s AND company_id = %s",
+            (employee_id, g.company_id),
+        )
+        employee = cur.fetchone()
+        cur.close()
+
+        # Best-effort integration event (post-commit). Guarded.
+        _fire_webhook(g.company_id, 'employee.updated', {
+            'employee_id': employee_id,
+            'email': (employee or {}).get('email'),
+            'name': (employee or {}).get('full_name'),
+            'updated_fields': updated_cols,
+        })
+
+        return jsonify({
+            'success': True,
+            'message': 'Employee updated successfully',
+            'data': employee
+        })
+    except Exception as e:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'error': 'Failed to update employee'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees/<int:employee_id>/learning-progress')
 @require_api_auth('read:learning')
@@ -1488,12 +1587,210 @@ def create_order_api():
         # Fire webhook
         _fire_webhook(g.company_id, 'order.created', {'order_id': order_id, 'product': data['product_title']})
 
+        # Best-effort order-confirmation email — mirrors the chatbot/HR path
+        # (order_handler), which sends it via email_service.send_order_confirmation.
+        # Fully guarded: a missing mail backend is a clean no-op and an email
+        # failure NEVER affects the order response.
+        try:
+            from email_service import send_order_confirmation
+            send_order_confirmation(
+                {
+                    'order_id': order_id,
+                    'product': {'title': data['product_title']},
+                    'user': {'email': data['user_email'], 'name': data['user_name']},
+                },
+                company_id=g.company_id,
+            )
+        except Exception:
+            pass
+
         return jsonify({
             'success': True, 'message': 'Order created',
             'data': {'order_id': order_id}
         }), 201
     except Exception as e:
         return jsonify({'error': 'Failed to create order'}), 500
+
+
+# =====================================================
+# CALENDAR FEED (subscribable ICS) + AUDIT-LOG EXPORT
+# =====================================================
+
+@api_enterprise_bp.route('/api/v1/calendar/ics')
+@require_api_auth('read:orders')
+def calendar_ics_feed():
+    """Subscribable ICS feed of upcoming courses / deadlines (text/calendar).
+
+    Company-scoped via the API key (g.company_id). Optional ?employee_id=...
+    narrows to one employee's course orders (verified to belong to the company).
+    Builds VEVENTs from course_orders' scheduled start dates and completion
+    deadlines using the battle-tested calendar_service. Always returns a valid
+    calendar (even when empty) so a subscribed client never sees a 500.
+    """
+    try:
+        from calendar_service import build_ics_feed, parse_danish_date
+    except Exception as e:
+        logging.warning("enterprise_api: calendar_service unavailable: %s", e)
+        return Response(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            "PRODID:-//aileadz//calendar_service//DA\r\nEND:VCALENDAR\r\n",
+            mimetype='text/calendar',
+        )
+
+    employee_id = request.args.get('employee_id')
+
+    where = ['company_id = %s']
+    params = [g.company_id]
+
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        # If scoped to one employee, verify membership in THIS company first.
+        if employee_id:
+            try:
+                eid = int(employee_id)
+            except (TypeError, ValueError):
+                cur.close()
+                return jsonify({'error': 'Invalid employee_id'}), 400
+            cur.execute(
+                "SELECT user_id FROM company_users WHERE id = %s AND company_id = %s",
+                (eid, g.company_id),
+            )
+            emp = cur.fetchone()
+            if not emp:
+                cur.close()
+                return jsonify({'error': 'Employee not found'}), 404
+            # course_orders link employees by user_id (or by id where no user_id).
+            where.append('(user_id = %s OR user_id = %s)')
+            params.extend([emp.get('user_id'), eid])
+
+        # Only future/active courses + open deadlines — a forward-looking feed.
+        # Cancelled/rejected orders are excluded.
+        cur.execute(
+            "SELECT order_id, product_title, product_handle, variant_date, "
+            "       variant_location, status, completion_deadline, started_at, "
+            "       user_name, department "
+            "FROM course_orders "
+            "WHERE " + ' AND '.join(where) + " "
+            "  AND (status IS NULL OR status NOT IN ('cancelled', 'rejected')) "
+            "ORDER BY created_at DESC "
+            "LIMIT 500",
+            params,
+        )
+        rows = cur.fetchall() or []
+        cur.close()
+    except Exception as e:
+        try:
+            cur.close()
+        except Exception:
+            pass
+        logging.warning("enterprise_api: calendar feed query failed: %s", e)
+        rows = []
+
+    events = []
+    for r in rows:
+        title = (r.get('product_title') or 'Kursus').strip()
+        location = (r.get('variant_location') or '').strip()
+        # Course start (scheduled date) -> a calendar event.
+        start = None
+        if r.get('variant_date'):
+            start = parse_danish_date(r.get('variant_date'))
+        if start is not None:
+            events.append({
+                'title': 'Kursusstart: %s' % title,
+                'start': start,
+                'location': location,
+                'description': 'Status: %s' % (r.get('status') or 'pending'),
+                'uid': 'order-%s-start@aileadz' % r.get('order_id'),
+            })
+        # Completion deadline -> an all-day reminder event.
+        deadline = r.get('completion_deadline')
+        if deadline is not None:
+            events.append({
+                'title': 'Frist: %s' % title,
+                'start': deadline,
+                'location': location,
+                'description': 'Gennemførelsesfrist for %s' % title,
+                'uid': 'order-%s-deadline@aileadz' % r.get('order_id'),
+            })
+
+    cal_name = 'Kurser & frister'
+    ics = build_ics_feed(events, cal_name=cal_name)
+    resp = Response(ics, mimetype='text/calendar')
+    resp.headers['Content-Disposition'] = 'inline; filename="aileadz-calendar.ics"'
+    return resp
+
+
+@api_enterprise_bp.route('/api/v1/audit-log')
+@require_api_auth('read:reports')
+def get_audit_log():
+    """Paginated, company-scoped audit-log export (for security reviews).
+
+    Reads the already-populated audit_log table, STRICTLY scoped to the calling
+    company (g.company_id). Optional filters: ?from=&to= (ISO timestamps on
+    created_at) and ?action= (exact action match). Paginated via page/per_page.
+    """
+    try:
+        page = int(request.args.get('page', 1))
+    except (TypeError, ValueError):
+        page = 1
+    if page < 1:
+        page = 1
+    try:
+        per_page = min(int(request.args.get('per_page', 50)), 200)
+    except (TypeError, ValueError):
+        per_page = 50
+    if per_page < 1:
+        per_page = 1
+
+    date_from = (request.args.get('from') or '').strip()
+    date_to = (request.args.get('to') or '').strip()
+    action = (request.args.get('action') or '').strip()
+
+    try:
+        where = ['company_id = %s']
+        params = [g.company_id]
+        if date_from:
+            where.append('created_at >= %s')
+            params.append(date_from)
+        if date_to:
+            where.append('created_at <= %s')
+            params.append(date_to)
+        if action:
+            where.append('action = %s')
+            params.append(action)
+        where_clause = ' AND '.join(where)
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        # where_clause is built ONLY from fixed literals above; user values are
+        # %s-bound params.
+        cur.execute(
+            "SELECT COUNT(*) AS total FROM audit_log WHERE " + where_clause,
+            params,
+        )
+        total = (cur.fetchone() or {}).get('total') or 0
+
+        offset = (page - 1) * per_page
+        cur.execute(
+            "SELECT id, company_id, user_id, action, action_type, resource_type, "
+            "       resource_id, description, ip_address, created_at "
+            "FROM audit_log WHERE " + where_clause +
+            " ORDER BY created_at DESC, id DESC LIMIT %s OFFSET %s",
+            params + [per_page, offset],
+        )
+        entries = cur.fetchall()
+        cur.close()
+
+        return jsonify({
+            'success': True,
+            'data': entries,
+            'pagination': {
+                'page': page, 'per_page': per_page, 'total': total,
+                'pages': (total + per_page - 1) // per_page,
+            },
+        })
+    except Exception as e:
+        logging.warning("enterprise_api: audit-log export failed: %s", e)
+        return jsonify({'error': 'Failed to retrieve audit log'}), 500
 
 
 # =====================================================
@@ -2065,7 +2362,26 @@ def _build_openapi_spec():
                     '200': _ok_object({'data': {'$ref': '#/components/schemas/Employee'}}),
                     '404': _err('Employee not found.'), **common_errors,
                 },
-            }
+            },
+            'put': {
+                'tags': ['Employees'], 'summary': 'Update employee',
+                'description': 'Update an allow-listed set of employee fields. '
+                               'Emits an employee.updated integration event.',
+                'security': _scoped('write:employees'),
+                'parameters': [{'name': 'employee_id', 'in': 'path', 'required': True,
+                                'schema': {'type': 'integer'}}],
+                'requestBody': {
+                    'required': True,
+                    'content': {'application/json': {
+                        'schema': {'$ref': '#/components/schemas/EmployeeUpdate'}}},
+                },
+                'responses': {
+                    '200': _ok_object({'message': {'type': 'string'},
+                                       'data': {'$ref': '#/components/schemas/Employee'}}),
+                    '400': _err('No updatable fields provided.'),
+                    '404': _err('Employee not found.'), **common_errors,
+                },
+            },
         },
         '/api/v1/employees/{employee_id}/learning-progress': {
             'get': {
@@ -2165,6 +2481,57 @@ def _build_openapi_spec():
                     '400': _err('Missing required field.'), **common_errors,
                 },
             },
+        },
+        '/api/v1/calendar/ics': {
+            'get': {
+                'tags': ['Calendar'],
+                'summary': 'Subscribable ICS calendar feed',
+                'description': 'Returns text/calendar (RFC 5545) of upcoming courses and '
+                               'completion deadlines, company-scoped. Optional employee_id '
+                               'narrows to one employee. Always returns a valid calendar.',
+                'security': _scoped('read:orders'),
+                'parameters': [
+                    {'name': 'employee_id', 'in': 'query', 'required': False,
+                     'description': 'Restrict the feed to one employee (by company_users.id).',
+                     'schema': {'type': 'integer'}},
+                ],
+                'responses': {
+                    '200': {
+                        'description': 'An iCalendar (.ics) feed.',
+                        'content': {'text/calendar': {'schema': {'type': 'string'}}},
+                    },
+                    '400': _err('Invalid employee_id.'),
+                    '404': _err('Employee not found.'), **common_errors,
+                },
+            }
+        },
+        '/api/v1/audit-log': {
+            'get': {
+                'tags': ['Audit'],
+                'summary': 'Export the company audit log',
+                'description': 'Paginated, strictly company-scoped audit-log export for '
+                               'enterprise security reviews.',
+                'security': _scoped('read:reports'),
+                'parameters': [
+                    page_param, per_page_param,
+                    {'name': 'from', 'in': 'query', 'required': False,
+                     'description': 'Lower bound on created_at (ISO timestamp).',
+                     'schema': {'type': 'string', 'format': 'date-time'}},
+                    {'name': 'to', 'in': 'query', 'required': False,
+                     'description': 'Upper bound on created_at (ISO timestamp).',
+                     'schema': {'type': 'string', 'format': 'date-time'}},
+                    {'name': 'action', 'in': 'query', 'required': False,
+                     'description': 'Exact action match (e.g. order.created).',
+                     'schema': {'type': 'string'}},
+                ],
+                'responses': {
+                    '200': _ok_object({
+                        'data': {'type': 'array',
+                                 'items': {'$ref': '#/components/schemas/AuditLogEntry'}},
+                        'pagination': {'$ref': '#/components/schemas/Pagination'},
+                    }), **common_errors,
+                },
+            }
         },
         '/api/v1/webhooks': {
             'get': {
@@ -2373,8 +2740,8 @@ def _build_openapi_spec():
         'tags': [
             {'name': 'Company'}, {'name': 'Employees'}, {'name': 'Learning'},
             {'name': 'Analytics'}, {'name': 'Reports'}, {'name': 'Orders'},
-            {'name': 'Webhooks'}, {'name': 'Bulk'}, {'name': 'Admin'},
-            {'name': 'Meta'}, {'name': 'Internal'},
+            {'name': 'Calendar'}, {'name': 'Audit'}, {'name': 'Webhooks'},
+            {'name': 'Bulk'}, {'name': 'Admin'}, {'name': 'Meta'}, {'name': 'Internal'},
         ],
         'security': [{'ApiKeyHeader': []}, {'ApiKeyQuery': []}],
         'components': {
@@ -2455,6 +2822,37 @@ def _build_openapi_spec():
                         'hire_date': {'type': 'string', 'format': 'date'},
                         'employment_type': {'type': 'string', 'default': 'full_time'},
                         'phone': {'type': 'string'},
+                    },
+                },
+                'EmployeeUpdate': {
+                    'type': 'object',
+                    'description': 'Any subset of these fields; only provided keys are updated.',
+                    'properties': {
+                        'full_name': {'type': 'string'},
+                        'email': {'type': 'string', 'format': 'email'},
+                        'role': {'type': 'string'},
+                        'job_title': {'type': 'string'},
+                        'department': {'type': 'string'},
+                        'hire_date': {'type': 'string', 'format': 'date'},
+                        'employment_type': {'type': 'string'},
+                        'phone': {'type': 'string'},
+                        'status': {'type': 'string'},
+                        'manager_user_id': {'type': 'integer'},
+                    },
+                },
+                'AuditLogEntry': {
+                    'type': 'object',
+                    'properties': {
+                        'id': {'type': 'integer'},
+                        'company_id': {'type': 'integer'},
+                        'user_id': {'type': 'integer', 'nullable': True},
+                        'action': {'type': 'string'},
+                        'action_type': {'type': 'string', 'nullable': True},
+                        'resource_type': {'type': 'string', 'nullable': True},
+                        'resource_id': {'type': 'string', 'nullable': True},
+                        'description': {'type': 'string', 'nullable': True},
+                        'ip_address': {'type': 'string', 'nullable': True},
+                        'created_at': {'type': 'string', 'format': 'date-time'},
                     },
                 },
                 'Order': {

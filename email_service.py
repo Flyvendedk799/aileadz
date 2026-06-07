@@ -92,6 +92,45 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'vendor_invite': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:40px;margin-bottom:20px;">{% endif %}
+    <h1 style="color: {{ primary_color }}; font-size: 22px;">Velkommen som leverandør</h1>
+    <p>Hej {{ vendor_name or 'leverandør' }},</p>
+    <p>Du er blevet oprettet som leverandør på {{ company_name }}s kursusplatform. Sæt din adgangskode for at komme i gang med leverandørportalen.</p>
+    <p><a href="{{ set_password_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">Sæt din adgangskode</a></p>
+    {% if expires_at %}<p style="font-size:12px;color:#64748b;">Linket udløber {{ expires_at }}.</p>{% endif %}
+    <p style="font-size:12px;color:#64748b;">Virker knappen ikke, så kopiér dette link ind i din browser:<br><span style="word-break:break-all;">{{ set_password_url }}</span></p>
+    <p style="font-size:12px;color:#64748b;">Har du spørgsmål? Kontakt {{ support_email or 'support' }}.</p>
+  </div>
+</body></html>
+""",
+        'manager_weekly_digest': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">
+  <div style="max-width:600px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">Ugentligt lederoverblik</h2>
+    <p>Hej {{ recipient_name or 'leder' }},</p>
+    <p>Her er ugens overblik for {{ company_name }}:</p>
+    <table style="width:100%;border-collapse:collapse;margin-top:8px;font-size:14px;">
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Bestillinger der afventer godkendelse</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ pending_approvals }}</strong></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Budgetforbrug</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ budget_utilization }}</strong></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Inaktive medarbejdere (7+ dage)</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ inactive_employees }}</strong></td></tr>
+      <tr><td style="padding:8px 0;border-bottom:1px solid #f1f5f9;">Åbne kompetencegab</td>
+          <td style="padding:8px 0;border-bottom:1px solid #f1f5f9;text-align:right;"><strong>{{ skill_gaps }}</strong></td></tr>
+      <tr><td style="padding:8px 0;">Heraf kritiske kompetencegab</td>
+          <td style="padding:8px 0;text-align:right;"><strong>{{ critical_skill_gaps }}</strong></td></tr>
+    </table>
+    <p style="font-size:13px;color:#64748b;margin-top:20px;">Log ind for at se detaljerne og handle på dem.</p>
+  </div>
+</body></html>
+""",
     }
     body_tpl = templates.get(template_name, templates['welcome'])
     ctx = {

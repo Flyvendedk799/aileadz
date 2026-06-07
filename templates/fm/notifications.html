@@ -32,126 +32,111 @@
 {% block content %}
 <div class="nt-wrap">
   <div class="nt-filters">
-    <button class="nt-f active" data-filter="all">Alle</button>
-    <button class="nt-f" data-filter="unread">Ulæste · <span id="ntUnreadCount">0</span></button>
+    <button class="nt-f active" data-filter="all">Alle <span class="nt-counter">{{ notifications_total }}</span></button>
+    <button class="nt-f" data-filter="unread">Ulæste · <span id="ntUnreadCount">{{ notifications_unread }}</span></button>
+    {% if notifications_unread %}
+    <button class="nt-f" id="ntMarkAll" style="margin-left:auto"><i class="fa-solid fa-check-double"></i> Markér alle som læst</button>
+    {% endif %}
   </div>
 
-  <section>
-    <div class="nt-day">Nye Notifikationer <span class="nt-counter" id="ntNewCount">0</span></div>
-    <div class="nt-list" id="ntNewList" data-reveal>
-      <div class="nt-empty"><i class="fa-solid fa-spinner fa-spin"></i> Indlæser notifikationer…</div>
-    </div>
-  </section>
-
-  <section>
-    <div class="nt-day">Tidligere Notifikationer <span class="nt-counter" id="ntOldCount">0</span></div>
-    <div class="nt-list" id="ntOldList" data-reveal>
-      <div class="nt-empty"><i class="fa-regular fa-folder-open"></i> Ingen tidligere notifikationer.</div>
-    </div>
-  </section>
+  {% if notification_groups %}
+    {% for group in notification_groups %}
+    <section data-day-section>
+      <div class="nt-day">{{ group.label }} <span class="nt-counter">{{ group['items']|length }}</span></div>
+      <div class="nt-list" data-reveal>
+        {% for n in group['items'] %}
+        <div class="nt {{ 'unread' if not n.is_read }}{{ ' urgent' if n.is_urgent }}" id="notif-{{ n.id }}" data-unread="{{ '1' if not n.is_read else '0' }}">
+          <span class="nt-ic">{% if n.is_urgent %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid fa-bell"></i>{% endif %}</span>
+          <div class="nt-body">
+            <div class="nt-title">{{ n.title or 'Notifikation' }}{% if n.is_urgent %} <span class="fm-badge red">Vigtig</span>{% endif %}</div>
+            <div class="nt-desc">{{ n.message|safe if n.message else '' }}</div>
+            {% if n.sender_name %}<div style="font-size:11.5px;color:var(--fm-ink-3);margin-top:4px"><i class="fa-solid fa-user"></i> {{ n.sender_name }}</div>{% endif %}
+            {% if not n.is_read %}
+            <div class="nt-act"><button class="btn btn-primary btn-sm" data-mark="{{ n.id }}"><i class="fa-solid fa-check"></i> Markér som læst</button></div>
+            {% else %}
+            <div class="nt-act"><span class="nt-read-label"><i class="fa-solid fa-check-double"></i> Læst</span></div>
+            {% endif %}
+          </div>
+          <span class="nt-time">{{ n.created_at.strftime('%d.%m %H:%M') if n.created_at else '' }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </section>
+    {% endfor %}
+  {% else %}
+    <section>
+      <div class="nt-list" data-reveal>
+        <div class="nt-empty"><i class="fa-regular fa-bell-slash"></i> Ingen notifikationer endnu. Du er helt opdateret.</div>
+      </div>
+    </section>
+  {% endif %}
 </div>
 {% endblock %}
 {% block extra_scripts %}
 <script>
   (function () {
-    const newList = document.getElementById('ntNewList');
-    const oldList = document.getElementById('ntOldList');
-    const newCount = document.getElementById('ntNewCount');
-    const oldCount = document.getElementById('ntOldCount');
-    const unreadCount = document.getElementById('ntUnreadCount');
+    const unreadCountEl = document.getElementById('ntUnreadCount');
 
-    function esc(str) {
-      const d = document.createElement('div');
-      d.appendChild(document.createTextNode(str == null ? '' : String(str)));
-      return d.innerHTML;
+    function recountUnread() {
+      const n = document.querySelectorAll('.nt[data-unread="1"]').length;
+      if (unreadCountEl) unreadCountEl.textContent = n;
+      const markAll = document.getElementById('ntMarkAll');
+      if (markAll && n === 0) markAll.style.display = 'none';
+      return n;
     }
 
-    function cardHtml(n) {
-      const isUnread = Number(n.read) === 0;
-      const img = n.image_url ? '<img class="nt-img" src="' + esc(n.image_url) + '" alt="">' : '';
-      const action = isUnread
-        ? '<div class="nt-act"><button class="btn btn-primary btn-sm" data-mark="' + n.id + '"><i class="fa-solid fa-check"></i> Markér som læst</button></div>'
-        : '<div class="nt-act"><span class="nt-read-label"><i class="fa-solid fa-check-double"></i> Læst</span></div>';
-      // message may contain admin-authored HTML, mirror old template (|safe)
-      const msg = n.message == null ? '' : String(n.message);
-      return '' +
-        '<div class="nt ' + (isUnread ? 'unread' : '') + '" id="notif-' + n.id + '">' +
-          '<span class="nt-ic"><i class="fa-solid fa-bell"></i></span>' +
-          '<div class="nt-body">' +
-            '<div class="nt-title">' + esc(n.title) + '</div>' +
-            '<div class="nt-desc">' + msg + '</div>' +
-            img +
-            action +
-          '</div>' +
-          '<span class="nt-time">' + esc(n.timestamp) + '</span>' +
-        '</div>';
-    }
-
-    function render(notifs) {
-      const fresh = notifs.filter(n => Number(n.read) === 0);
-      const seen = notifs.filter(n => Number(n.read) !== 0);
-
-      newCount.textContent = fresh.length;
-      oldCount.textContent = seen.length;
-      unreadCount.textContent = fresh.length;
-
-      newList.innerHTML = fresh.length
-        ? fresh.map(cardHtml).join('')
-        : '<div class="nt-empty"><i class="fa-regular fa-bell-slash"></i> Ingen nye notifikationer. Du har set alle opdateringer.</div>';
-
-      oldList.innerHTML = seen.length
-        ? seen.map(cardHtml).join('')
-        : '<div class="nt-empty"><i class="fa-regular fa-folder-open"></i> Ingen tidligere notifikationer.</div>';
-
-      newList.querySelectorAll('[data-mark]').forEach(btn => {
-        btn.addEventListener('click', () => markRead(btn.getAttribute('data-mark')));
-      });
-    }
-
-    function markRead(id) {
-      const card = document.getElementById('notif-' + id);
-      if (card) { card.style.transition = 'all .4s ease'; card.style.opacity = '0.4'; }
-      fetch('/api/notifications/' + id + '/mark_read', {
-        method: 'POST',
-        credentials: 'same-origin',
+    function markRead(id, card) {
+      if (card) { card.style.transition = 'opacity .35s ease'; card.style.opacity = '0.45'; }
+      return fetch('/api/notifications/' + id + '/read', {
+        method: 'POST', credentials: 'same-origin',
         headers: { 'Content-Type': 'application/json' }
       })
         .then(r => r.json())
         .then(data => {
-          if (data.success) {
-            load();
-          } else {
-            if (card) card.style.opacity = '1';
-            alert('Fejl: ' + (data.error || 'Kunne ikke markere som læst.'));
-          }
+          if (data && data.success) {
+            if (card) {
+              card.classList.remove('unread');
+              card.setAttribute('data-unread', '0');
+              card.style.opacity = '1';
+              const act = card.querySelector('.nt-act');
+              if (act) act.innerHTML = '<span class="nt-read-label"><i class="fa-solid fa-check-double"></i> Læst</span>';
+            }
+            recountUnread();
+          } else if (card) { card.style.opacity = '1'; }
         })
-        .catch(() => {
-          if (card) card.style.opacity = '1';
-          alert('Der opstod en fejl.');
-        });
+        .catch(() => { if (card) card.style.opacity = '1'; });
     }
 
-    function load() {
-      fetch('/api/notifications', { credentials: 'same-origin' })
-        .then(r => r.json())
-        .then(data => render(Array.isArray(data.notifications) ? data.notifications : []))
-        .catch(() => {
-          newList.innerHTML = '<div class="nt-empty"><i class="fa-solid fa-triangle-exclamation"></i> Kunne ikke indlæse notifikationer.</div>';
-        });
+    document.querySelectorAll('[data-mark]').forEach(btn => {
+      btn.addEventListener('click', () => markRead(btn.getAttribute('data-mark'), document.getElementById('notif-' + btn.getAttribute('data-mark'))));
+    });
+
+    const markAll = document.getElementById('ntMarkAll');
+    if (markAll) {
+      markAll.addEventListener('click', () => {
+        const unread = Array.from(document.querySelectorAll('.nt[data-unread="1"]'));
+        Promise.all(unread.map(card => markRead(card.id.replace('notif-', ''), card)));
+      });
     }
 
-    // Filter chips
-    document.querySelectorAll('.nt-f').forEach(f => {
+    // Filter chips: "Ulæste" hides read cards; "Alle" shows everything.
+    document.querySelectorAll('.nt-f[data-filter]').forEach(f => {
       f.addEventListener('click', () => {
-        document.querySelectorAll('.nt-f').forEach(x => x.classList.remove('active'));
+        document.querySelectorAll('.nt-f[data-filter]').forEach(x => x.classList.remove('active'));
         f.classList.add('active');
-        const mode = f.getAttribute('data-filter');
-        const oldSection = oldList.closest('section');
-        if (oldSection) oldSection.style.display = (mode === 'unread') ? 'none' : '';
+        const unreadOnly = f.getAttribute('data-filter') === 'unread';
+        document.querySelectorAll('.nt').forEach(card => {
+          card.style.display = (unreadOnly && card.getAttribute('data-unread') !== '1') ? 'none' : '';
+        });
+        // Hide empty day sections in unread view.
+        document.querySelectorAll('[data-day-section]').forEach(sec => {
+          const visible = Array.from(sec.querySelectorAll('.nt')).some(c => c.style.display !== 'none');
+          sec.style.display = visible ? '' : 'none';
+        });
       });
     });
 
-    load();
+    recountUnread();
   })();
 </script>
 {% endblock %}

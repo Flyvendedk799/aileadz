@@ -2,9 +2,72 @@
 from flask import Blueprint, render_template, session, current_app, redirect, url_for, flash, request
 import MySQLdb.cursors
 import os
+import json
+import datetime
 from auth_decorators import login_required
 
 pages_bp = Blueprint('pages', __name__, template_folder='templates')
+
+
+def _fetch_company_notifications(limit=60):
+    """Recipient-scoped company_notifications for the session user.
+
+    Scoping mirrors hr_dashboard.notifications: same company, addressed to this
+    user directly OR broadcast (recipient_user_id IS NULL), and either untargeted
+    or targeted at this user's company_role. Read-only; returns [] on any failure
+    so the page never breaks for users without notifications.
+    """
+    company_id = session.get('company_id')
+    user_id = session.get('user_id')
+    company_role = session.get('company_role')
+    if not company_id:
+        return []
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """
+            SELECT cn.id, cn.title, cn.message, cn.is_urgent, cn.is_read,
+                   cn.created_at, u.username AS sender_name
+            FROM company_notifications cn
+            LEFT JOIN users u ON cn.sender_user_id = u.id
+            WHERE cn.company_id = %s
+              AND (cn.recipient_user_id = %s OR cn.recipient_user_id IS NULL)
+              AND (cn.target_roles IS NULL OR JSON_CONTAINS(cn.target_roles, %s))
+            ORDER BY cn.is_read ASC, cn.is_urgent DESC, cn.created_at DESC
+            LIMIT %s
+            """,
+            (company_id, user_id, json.dumps(company_role), int(limit)),
+        )
+        rows = cur.fetchall() or []
+        cur.close()
+        return list(rows)
+    except Exception as e:
+        current_app.logger.warning("notifications fetch: %s", e)
+        return []
+
+
+def _group_notifications_by_day(rows):
+    """Group rows into Danish day buckets: I dag / I går / Tidligere."""
+    today = datetime.date.today()
+    yesterday = today - datetime.timedelta(days=1)
+    buckets = {'today': [], 'yesterday': [], 'earlier': []}
+    for r in rows:
+        created = r.get('created_at')
+        d = created.date() if isinstance(created, datetime.datetime) else None
+        if d == today:
+            buckets['today'].append(r)
+        elif d == yesterday:
+            buckets['yesterday'].append(r)
+        else:
+            buckets['earlier'].append(r)
+    groups = []
+    if buckets['today']:
+        groups.append({'label': 'I dag', 'items': buckets['today']})
+    if buckets['yesterday']:
+        groups.append({'label': 'I går', 'items': buckets['yesterday']})
+    if buckets['earlier']:
+        groups.append({'label': 'Tidligere', 'items': buckets['earlier']})
+    return groups
 
 @pages_bp.route('/about')
 def about():
@@ -30,7 +93,13 @@ def terms():
 @pages_bp.route('/notifications')
 @login_required
 def notifications():
-    return render_template('fm/notifications.html')
+    rows = _fetch_company_notifications()
+    groups = _group_notifications_by_day(rows)
+    unread_count = sum(1 for r in rows if not r.get('is_read'))
+    return render_template('fm/notifications.html',
+                           notification_groups=groups,
+                           notifications_total=len(rows),
+                           notifications_unread=unread_count)
 
 @pages_bp.route('/analytics')
 @login_required

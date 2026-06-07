@@ -341,6 +341,33 @@ def create_app():
         except Exception as e:
             logging.warning("Performance index init: %s", e)
 
+    # Opportunistic scheduler driver (no cron/Celery on PythonAnywhere). Mirrors
+    # event_bus.opportunistic_drain: runs at most once per ~60s PER WORKER from a
+    # request hook so DUE scheduled jobs (outbox drain, daily insights, agreement
+    # alerts, compliance recheck) still fire even with no scheduled task. Attached
+    # as after_request and fully guarded so it can NEVER affect the response or
+    # raise. Toggle off with SCHEDULER_OPPORTUNISTIC=0 (e.g. under tests). The
+    # reliable driver is still drain_worker.py as a Scheduled/Always-on Task.
+    _SCHED_OPPORTUNISTIC_MIN_INTERVAL = 60  # seconds between passes per worker
+
+    @app.after_request
+    def _opportunistic_scheduler(response):
+        try:
+            if os.getenv("SCHEDULER_OPPORTUNISTIC", "1").lower() in {"0", "false", "no", "off"}:
+                return response
+            now = time.time()
+            last = getattr(app, '_last_scheduler_pass', 0)
+            if (now - last) < _SCHED_OPPORTUNISTIC_MIN_INTERVAL:
+                return response
+            # Stamp BEFORE running so concurrent requests on this worker don't pile up.
+            app._last_scheduler_pass = now
+            import scheduler
+            scheduler.run_due_jobs_safe(app)
+        except Exception as e:
+            # Opportunistic only — must never affect the response.
+            logging.warning("Opportunistic scheduler skipped: %s", e)
+        return response
+
     @app.route('/')
     def home():
         return redirect(url_for('dashboard.dashboard'))

@@ -157,6 +157,109 @@ def vendor_logout():
 
 
 # ---------------------------------------------------------------------------
+# Onboarding: set-password via signed/opaque invite token
+# ---------------------------------------------------------------------------
+# An admin creates the vendor (admin_dashboard.admin_vendor_create), which mints
+# an opaque invite_token (+ expiry) on the vendors row and emails it. The vendor
+# follows the link here to set their OWN password. This is the ONLY recovery
+# path; it is intentionally outside the @vendor_login_required gate (the vendor
+# is not logged in yet) but is gated by the unexpired single-use token instead.
+@vendor_bp.route("/set-password/<token>", methods=["GET", "POST"])
+def vendor_set_password(token):
+    token = (token or "").strip()
+
+    def _load_vendor_for_token(tok):
+        """Return the vendor row iff the token is valid AND unexpired, else None."""
+        if not tok:
+            return None
+        try:
+            conn = _db()
+            cur = conn.cursor()
+            cur.execute(
+                "SELECT id, vendor_name, contact_email, invite_expires_at "
+                "FROM vendors WHERE invite_token = %s "
+                "AND invite_expires_at IS NOT NULL AND invite_expires_at >= NOW() "
+                "LIMIT 1",
+                (tok,),
+            )
+            row = cur.fetchone()
+            cur.close()
+            return row
+        except Exception as e:
+            logger.warning("vendor_set_password: token lookup failed: %s", e)
+            return None
+
+    vendor_row = _load_vendor_for_token(token)
+    if not vendor_row:
+        flash("Linket er ugyldigt eller udløbet. Bed din kontaktperson om et nyt invitationslink.", "danger")
+        return render_template("fm/vendor_set_password.html", token=token, invalid=True,
+                               vendor_name="")
+
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm") or ""
+
+        if len(password) < 8:
+            flash("Adgangskoden skal vaere mindst 8 tegn.", "danger")
+            return render_template("fm/vendor_set_password.html", token=token,
+                                   invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
+        if password != confirm:
+            flash("De to adgangskoder er ikke ens.", "danger")
+            return render_template("fm/vendor_set_password.html", token=token,
+                                   invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
+
+        auth = _vendor_auth()
+        if auth is None or not hasattr(auth, "hash_vendor_password"):
+            flash("Leverandorlogin er midlertidigt utilgaengeligt. Prov igen senere.", "danger")
+            return render_template("fm/vendor_set_password.html", token=token,
+                                   invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
+
+        try:
+            password_hash = auth.hash_vendor_password(password)
+        except Exception as e:
+            logger.warning("vendor_set_password: hashing failed: %s", e)
+            flash("Adgangskoden kunne ikke gemmes. Prov igen senere.", "danger")
+            return render_template("fm/vendor_set_password.html", token=token,
+                                   invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
+
+        try:
+            conn = _db()
+            cur = conn.cursor()
+            # Set the password, ACTIVATE the account and CLEAR the single-use
+            # token (+ expiry) so the link can never be reused. Re-checked the
+            # token in WHERE so a concurrent/expired use cannot slip through.
+            cur.execute(
+                "UPDATE vendors SET password_hash = %s, status = 'active', "
+                "invite_token = NULL, invite_expires_at = NULL "
+                "WHERE id = %s AND invite_token = %s",
+                (password_hash, vendor_row.get("id"), token),
+            )
+            affected = cur.rowcount
+            conn.commit()
+            cur.close()
+        except Exception as e:
+            try:
+                _db().rollback()
+            except Exception:
+                pass
+            logger.warning("vendor_set_password: update failed: %s", e)
+            flash("Adgangskoden kunne ikke gemmes. Prov igen senere.", "danger")
+            return render_template("fm/vendor_set_password.html", token=token,
+                                   invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
+
+        if not affected:
+            flash("Linket er ugyldigt eller allerede brugt.", "danger")
+            return render_template("fm/vendor_set_password.html", token=token, invalid=True,
+                                   vendor_name="")
+
+        flash("Din adgangskode er sat. Du kan nu logge ind.", "success")
+        return redirect(url_for("vendor.vendor_login"))
+
+    return render_template("fm/vendor_set_password.html", token=token, invalid=False,
+                           vendor_name=vendor_row.get("vendor_name") or "")
+
+
+# ---------------------------------------------------------------------------
 # Helpers — DB access scoped to the logged-in vendor only.
 # ---------------------------------------------------------------------------
 def _db():
@@ -221,6 +324,43 @@ def _vendor_products(vendor_name):
         return []
 
 
+def _ratings_for_handles(handles):
+    """Map product_handle -> {avg_rating, review_count} for the given handles.
+
+    Scoped strictly to the handles passed in (the vendor's OWN catalog handles —
+    the caller resolves those). Aggregate-only: never reads buyer identity.
+    Returns {} on any failure / missing table.
+    """
+    handles = [h for h in (handles or []) if h]
+    if not handles:
+        return {}
+    try:
+        conn = _db()
+        cur = conn.cursor()
+        placeholders = ",".join(["%s"] * len(handles))
+        cur.execute(
+            f"""SELECT product_handle, AVG(rating) AS avg_rating, COUNT(*) AS review_count
+                FROM course_reviews WHERE product_handle IN ({placeholders})
+                GROUP BY product_handle""",
+            tuple(handles),
+        )
+        rows = cur.fetchall() or []
+        cur.close()
+        out = {}
+        for r in rows:
+            h = r.get("product_handle")
+            avg = r.get("avg_rating")
+            try:
+                avg = round(float(avg), 1) if avg is not None else None
+            except (TypeError, ValueError):
+                avg = None
+            out[h] = {"avg_rating": avg, "review_count": int(r.get("review_count") or 0)}
+        return out
+    except Exception as e:
+        logger.debug("vendor_portal: _ratings_for_handles skipped: %s", e)
+        return {}
+
+
 # ---------------------------------------------------------------------------
 # Dashboard
 # ---------------------------------------------------------------------------
@@ -233,6 +373,14 @@ def vendor_dashboard():
     vendor_row = _fetch_vendor_row(vendor_id) or {}
     products = _vendor_products(vendor_name)
     submissions = _fetch_submissions(vendor_id, limit=10)
+
+    # Per-course average rating (own catalog only; aggregate-only). Attach onto
+    # each product so the dashboard table can show a star average + count.
+    ratings = _ratings_for_handles([p.get("handle") for p in products])
+    for p in products:
+        r = ratings.get(p.get("handle")) or {}
+        p["avg_rating"] = r.get("avg_rating")
+        p["review_count"] = r.get("review_count", 0)
 
     last_submission = submissions[0] if submissions else None
     kpis = {
@@ -249,6 +397,46 @@ def vendor_dashboard():
         products=products,
         submissions=submissions,
         kpis=kpis,
+    )
+
+
+# ---------------------------------------------------------------------------
+# Analytics (own KPIs as charts — leverandørens egne tal)
+# ---------------------------------------------------------------------------
+@vendor_bp.route("/analytics", methods=["GET"])
+@_vendor_login_required
+def vendor_analytics():
+    """This vendor's own KPIs as charts (orders/completion over time, top
+    courses). Sourced from vendor_tools.vendor_analytics_series — aggregate-only
+    and k-anonymous: buyer (company/employee) identity is never read or shown."""
+    vendor_name = session.get("vendor_name") or ""
+
+    series = {}
+    try:
+        from vendor_tools import vendor_analytics_series
+        series = vendor_analytics_series(vendor_name, months=6) or {}
+    except Exception as e:
+        logger.warning("vendor_analytics: series unavailable: %s", e)
+        series = {}
+
+    # On any tool error fall back to an empty, fully-formed shape so the page
+    # renders a clean empty state rather than 500-ing.
+    if not isinstance(series, dict) or series.get("error") or "months" not in series:
+        series = {
+            "vendor": vendor_name,
+            "course_count": 0,
+            "months": [],
+            "orders_series": [],
+            "completed_series": [],
+            "totals": {"orders": 0, "completed": 0, "orders_30d": 0,
+                       "completion_rate_pct": 0.0},
+            "top_courses": [],
+        }
+
+    return render_template(
+        "fm/vendor_analytics.html",
+        vendor_name=vendor_name,
+        analytics=series,
     )
 
 

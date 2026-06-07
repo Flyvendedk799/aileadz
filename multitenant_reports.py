@@ -96,185 +96,168 @@ def create_multitenant_reports_blueprint():
         
         try:
             cur = conn.cursor(MySQLdb.cursors.DictCursor)
+            cid = company['id']
 
-            # 1) Fetch company-specific chatbot interactions
+            # ──────────────────────────────────────────────────────────────
+            # Company chatbot analytics — REAL SQL GROUP BY aggregation.
+            #
+            # Previously this route pulled up to 1000 rows into Python and
+            # categorised each one in a loop (string-scanning query_text,
+            # fabricating session ids like "company_X_session_<date>_<hour>_
+            # <dept>", and a hardcoded avg_response_time=250). It is now
+            # entirely DB-side: COUNT / AVG / GROUP BY scoped to this tenant,
+            # using the real columns (session_id, query_type,
+            # tool_results_count, response_time_ms). Output shapes are kept
+            # stable for company_reports.html.
+            # ──────────────────────────────────────────────────────────────
+
+            # 1) Headline counts + real avg response time (mirrors
+            #    admin_reports.py:87 — AVG(response_time_ms)).
             cur.execute("""
-                SELECT ci.*, cu.department, cu.job_title, cu.role
+                SELECT
+                    COUNT(*) AS total_queries,
+                    COUNT(DISTINCT session_id) AS total_sessions,
+                    AVG(response_time_ms) AS avg_rt,
+                    SUM(CASE WHEN COALESCE(tool_results_count, 0) = 0 THEN 1 ELSE 0 END) AS no_results
+                FROM chatbot_interactions
+                WHERE company_id = %s
+            """, (cid,))
+            _hdr = cur.fetchone() or {}
+            total_chatbot_queries = int(_hdr.get('total_queries') or 0)
+            total_conversations = int(_hdr.get('total_sessions') or 0)
+            # Real avg response time scoped to the company (no more 250 ms placeholder).
+            avg_response_time = round(_hdr.get('avg_rt') or 0)
+            no_results_queries = int(_hdr.get('no_results') or 0)
+
+            # Avg conversation length = queries / distinct sessions (DB-side counts).
+            if total_conversations:
+                avg_conversation_length = total_chatbot_queries / total_conversations
+
+            # 2) Daily activity (last 90 days) — GROUP BY DATE.
+            cur.execute("""
+                SELECT DATE(created_at) AS day, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s
+                  AND created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+                GROUP BY DATE(created_at)
+                ORDER BY day ASC
+            """, (cid,))
+            for r in cur.fetchall():
+                day = r['day']
+                label = day.strftime('%Y-%m-%d') if hasattr(day, 'strftime') else str(day)
+                daily_chatbot_usage[label] = int(r['cnt'] or 0)
+
+            # 3) Query-type distribution — GROUP BY query_type (real column).
+            cur.execute("""
+                SELECT COALESCE(NULLIF(query_type, ''), 'general') AS qtype, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s
+                GROUP BY COALESCE(NULLIF(query_type, ''), 'general')
+                ORDER BY cnt DESC
+                LIMIT 12
+            """, (cid,))
+            for r in cur.fetchall():
+                query_type_distribution[r['qtype']] = int(r['cnt'] or 0)
+                intent_distribution[r['qtype']] = int(r['cnt'] or 0)
+
+            # 4) Category distribution — GROUP BY category (real column).
+            cur.execute("""
+                SELECT COALESCE(NULLIF(category, ''), 'Andet') AS cat, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s
+                GROUP BY COALESCE(NULLIF(category, ''), 'Andet')
+                ORDER BY cnt DESC
+                LIMIT 12
+            """, (cid,))
+            for r in cur.fetchall():
+                category_distribution[r['cat']] = int(r['cnt'] or 0)
+
+            # 5) User locations — GROUP BY user_location (real column).
+            cur.execute("""
+                SELECT COALESCE(NULLIF(user_location, ''), 'Ukendt') AS loc, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s AND user_location IS NOT NULL AND user_location <> ''
+                GROUP BY user_location
+                ORDER BY cnt DESC
+                LIMIT 10
+            """, (cid,))
+            for r in cur.fetchall():
+                user_locations[r['loc']] = int(r['cnt'] or 0)
+
+            # 6) Course interest — GROUP BY product_handle on the orders the
+            #    chatbot is attributed to (replaces the regex scrape of
+            #    response_text). 'views' here = attributed order interest.
+            cur.execute("""
+                SELECT product_handle AS handle, COUNT(*) AS cnt
+                FROM course_orders
+                WHERE company_id = %s
+                  AND product_handle IS NOT NULL AND product_handle <> ''
+                GROUP BY product_handle
+                ORDER BY cnt DESC
+                LIMIT 10
+            """, (cid,))
+            for r in cur.fetchall():
+                course_views[r['handle']] = int(r['cnt'] or 0)
+
+            # 7) Frequent questions (top 10) — GROUP BY query_text, join back
+            #    by MIN(id) for a representative response (no Python grouping).
+            cur.execute("""
+                SELECT t.query_text AS text, t.cnt AS count, ci.response_text AS top_response
+                FROM (
+                    SELECT query_text, COUNT(*) AS cnt, MIN(id) AS first_id
+                    FROM chatbot_interactions
+                    WHERE company_id = %s AND query_text IS NOT NULL AND query_text <> ''
+                    GROUP BY query_text
+                    ORDER BY cnt DESC
+                    LIMIT 10
+                ) t
+                JOIN chatbot_interactions ci ON ci.id = t.first_id
+                ORDER BY t.cnt DESC
+            """, (cid,))
+            for r in cur.fetchall():
+                q_text = r.get('text') or ''
+                top_res = r.get('top_response') or ''
+                frequent_questions.append({
+                    'text': (q_text[:100] + '...') if len(q_text) > 100 else q_text,
+                    'count': int(r.get('count') or 0),
+                    'top_response': (top_res[:200] + '...') if len(top_res) > 200 else top_res,
+                })
+
+            # 8) Recent conversations (top 10 real sessions) — GROUP BY
+            #    session_id with real start/duration/depth from the DB.
+            cur.execute("""
+                SELECT ci.session_id,
+                       MIN(ci.created_at) AS start_time,
+                       MAX(ci.created_at) AS end_time,
+                       COUNT(*) AS query_count,
+                       MAX(cu.department) AS department
                 FROM chatbot_interactions ci
                 LEFT JOIN users u ON ci.username = u.username
                 LEFT JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = %s
                 WHERE ci.company_id = %s
-                ORDER BY ci.created_at DESC
-                LIMIT 1000
-            """, (company['id'], company['id']))
-            interactions = cur.fetchall()
-            
-            current_app.logger.info(f"Processing {len(interactions)} chatbot interactions for company {company['company_name']}")
-            
-            sessions = defaultdict(list)
-            question_responses = defaultdict(lambda: {'count': 0, 'responses': []})
-            
-            interactions_with_kursus = 0
-            interactions_with_products = 0
-            
-            for interaction in interactions:
-                total_chatbot_queries += 1
-                dt = interaction['created_at']
-                if isinstance(dt, datetime.datetime):
-                    date_str = dt.strftime('%Y-%m-%d')
-                    hour = dt.hour
-                    daily_chatbot_usage[date_str] += 1
-                    hourly_usage_pattern[hour] += 1
-                
-                response_text = interaction.get('response_text', '')
-                query_text = interaction.get('query_text', '')
-                
-                # Enhanced categorization with company context
-                department = interaction.get('department', 'Unknown')
-                role = interaction.get('role', 'employee')
-                
-                # Simple categorization
-                if any(word in query_text.lower() for word in ['pris', 'koster', 'price', 'cost']):
-                    query_type_distribution['price_inquiry'] += 1
-                    intent_distribution['prisInfo'] += 1
-                elif any(word in query_text.lower() for word in ['dato', 'hvornaar', 'when', 'date']):
-                    query_type_distribution['date_inquiry'] += 1
-                    intent_distribution['datoInfo'] += 1
-                elif any(word in query_text.lower() for word in ['sted', 'hvor', 'where', 'location']):
-                    query_type_distribution['location_inquiry'] += 1
-                    intent_distribution['stedInfo'] += 1
-                elif any(word in query_text.lower() for word in ['anbefal', 'foreslaa', 'recommend']):
-                    query_type_distribution['recommendation'] += 1
-                    intent_distribution['anbefaling'] += 1
-                elif any(word in query_text.lower() for word in ['bestil', 'koeb', 'ordre', 'tilmeld', 'order', 'buy']):
-                    query_type_distribution['order_intent'] += 1
-                    intent_distribution['bestilling'] += 1
-                else:
-                    query_type_distribution['general'] += 1
-                    intent_distribution['generelInfo'] += 1
-                
-                # Categories with company-specific tracking
-                categories = [
-                    'ledelse', 'projekt', 'it', 'kommunikation', 'salg',
-                    'personlig udvikling', 'jura', 'oekonomi', 'hr',
-                    'leadership', 'project', 'communication', 'sales', 'legal'
-                ]
-                for cat in categories:
-                    if cat in query_text.lower():
-                        category_distribution[f"{cat}_{department}"] += 1
-                        category_distribution[cat] += 1
-                
-                # Enhanced course tracking with company context
-                if response_text and ('kursus' in response_text.lower() or 'course' in response_text.lower()):
-                    interactions_with_kursus += 1
-                    
-                    # Enhanced patterns for course extraction
-                    patterns = [
-                        r'/products/([^"\s<>]+)',
-                        r'products/([^"\s<>]+)',
-                        r'href="[^"]*products/([^"/]+)',
-                        r'course[_-]([a-zA-Z0-9\-_]+)',
-                        r'kursus[_-]([a-zA-Z0-9\-_]+)',
-                    ]
-                    
-                    handles_found = set()
-                    for pattern in patterns:
-                        matches = re.findall(pattern, response_text, re.IGNORECASE)
-                        for match in matches:
-                            clean_match = match.strip().rstrip('",;.')
-                            if clean_match and len(clean_match) > 2:
-                                handles_found.add(clean_match)
-                    
-                    if handles_found:
-                        interactions_with_products += 1
-                        for handle in handles_found:
-                            course_views[handle] += 1
-                            current_app.logger.debug(f"Company {company['id']}: Extracted course handle: {handle}")
-                
-                # Track location references
-                locs = ['koebenhavn', 'aarhus', 'odense', 'aalborg', 'online', 'herlev', 'hoerkaer']
-                for loc in locs:
-                    if loc in query_text.lower():
-                        user_locations[loc] += 1
-                
-                # Error tracking
-                if 'fejl' in response_text.lower() or 'error' in response_text.lower():
-                    api_errors += 1
-                
-                # No results tracking
-                if 'ingen' in response_text.lower() and 'fundet' in response_text.lower():
-                    no_results_queries += 1
-                
-                # Session grouping with company context
-                session_id = f"company_{company['id']}_session_{date_str}_{hour}_{department}"
-                sessions[session_id].append(interaction)
-                
-                # Track frequent questions
-                if query_text:
-                    question_responses[query_text]['count'] += 1
-                    if response_text:
-                        question_responses[query_text]['responses'].append(response_text)
-            
-            # Log company-specific course extraction statistics
-            current_app.logger.info(f"Company {company['company_name']}: {interactions_with_kursus} interactions with 'kursus', {interactions_with_products} with product links, {len(course_views)} unique courses found")
-            
-            # Conversation metrics
-            if sessions:
-                total_conversations = len(sessions)
-                conv_lens = [len(msgs) for msgs in sessions.values()]
-                if conv_lens:
-                    avg_conversation_length = sum(conv_lens) / len(conv_lens)
-            
-            avg_response_time = 250  # placeholder ms
-            
-            # Frequent questions (top 10)
-            sorted_q = sorted(question_responses.items(), key=lambda x: x[1]['count'], reverse=True)[:10]
-            fd_qs = []
-            for q_text, q_data in sorted_q:
-                truncated_text = q_text[:100] + '...' if len(q_text) > 100 else q_text
-                top_res = ''
-                if q_data['responses']:
-                    top_res = q_data['responses'][0]
-                    if len(top_res) > 200:
-                        top_res = top_res[:200] + '...'
-                fd_qs.append({
-                    'text': truncated_text,
-                    'count': q_data['count'],
-                    'top_response': top_res
+                  AND ci.session_id IS NOT NULL AND ci.session_id <> ''
+                GROUP BY ci.session_id
+                ORDER BY start_time DESC
+                LIMIT 10
+            """, (cid, cid))
+            for r in cur.fetchall():
+                st = r.get('start_time')
+                en = r.get('end_time')
+                duration = 0
+                if isinstance(st, datetime.datetime) and isinstance(en, datetime.datetime):
+                    duration = int((en - st).total_seconds() / 60)
+                recent_conversations.append({
+                    'session_id': str(r.get('session_id') or '')[:12],
+                    'start_time': (
+                        st.strftime('%Y-%m-%d %H:%M:%S')
+                        if isinstance(st, datetime.datetime) else 'N/A'
+                    ),
+                    'duration': duration,
+                    'query_count': int(r.get('query_count') or 0),
+                    'topics': [],
+                    'department': r.get('department') or 'Unknown',
                 })
-            frequent_questions = fd_qs
-            
-            # Build recent conversations by session (top 10)
-            recent_session_ids = list(sessions.keys())[:10]
-            for sid in recent_session_ids:
-                si = sessions[sid]
-                if si:
-                    first_i = si[-1]
-                    last_i = si[0]
-                    topics = set()
-                    for inter in si:
-                        lower_txt = inter.get('query_text', '').lower()
-                        for tcat in ['ledelse', 'projekt', 'it', 'kommunikation', 'salg']:
-                            if tcat in lower_txt:
-                                topics.add(tcat)
-                    duration = 5
-                    if (isinstance(first_i['created_at'], datetime.datetime) and
-                       isinstance(last_i['created_at'], datetime.datetime)):
-                        duration = int((last_i['created_at'] - first_i['created_at']).total_seconds() / 60)
-                    
-                    recent_conversations.append({
-                        'session_id': sid[:12],
-                        'start_time': (
-                            first_i['created_at'].strftime('%Y-%m-%d %H:%M:%S')
-                            if isinstance(first_i['created_at'], datetime.datetime)
-                            else 'N/A'
-                        ),
-                        'duration': duration,
-                        'query_count': len(si),
-                        'topics': list(topics)[:3],
-                        'department': first_i.get('department', 'Unknown')
-                    })
-            
+
             # 2) Fetch company-specific orders
             try:
                 cur.execute("""
@@ -624,7 +607,98 @@ def create_multitenant_reports_blueprint():
             'time_series': {},
             'distributions': {}
         }
-        
+
+        # Populate the export with the SAME real, company-scoped aggregates the
+        # reports page computes (was previously an empty {} stub). All numbers
+        # come from REAL SQL GROUP BY / COUNT / AVG / SUM — never a placeholder.
+        try:
+            conn = current_app.mysql.connection
+            cur = conn.cursor(MySQLdb.cursors.DictCursor)
+            cid = company['id']
+
+            # --- Headline metrics (mirror the reports() route) ---
+            cur.execute("""
+                SELECT
+                    COUNT(*) AS total_queries,
+                    COUNT(DISTINCT session_id) AS total_sessions,
+                    AVG(response_time_ms) AS avg_rt,
+                    SUM(CASE WHEN COALESCE(tool_results_count, 0) = 0 THEN 1 ELSE 0 END) AS no_results,
+                    AVG(interaction_quality_score) AS avg_quality
+                FROM chatbot_interactions
+                WHERE company_id = %s
+            """, (cid,))
+            _h = cur.fetchone() or {}
+            total_queries = int(_h.get('total_queries') or 0)
+            total_sessions = int(_h.get('total_sessions') or 0)
+
+            cur.execute("""
+                SELECT COUNT(*) AS total_orders,
+                       COUNT(CASE WHEN status = 'pending' THEN 1 END) AS pending_orders,
+                       COUNT(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN 1 END) AS completed_orders,
+                       COALESCE(SUM(CASE WHEN status = 'completed' OR completion_status = 'completed' THEN price END), 0) AS total_revenue
+                FROM course_orders
+                WHERE company_id = %s
+            """, (cid,))
+            _o = cur.fetchone() or {}
+            total_orders = int(_o.get('total_orders') or 0)
+
+            analytics_data['metrics'] = {
+                'total_chatbot_queries': total_queries,
+                'total_conversations': total_sessions,
+                'avg_conversation_length': round(total_queries / total_sessions, 1) if total_sessions else 0,
+                'avg_response_time_ms': round(_h.get('avg_rt') or 0),
+                'avg_interaction_quality': round(float(_h.get('avg_quality') or 0), 2),
+                'no_results_queries': int(_h.get('no_results') or 0),
+                'total_orders': total_orders,
+                'pending_orders': int(_o.get('pending_orders') or 0),
+                'completed_orders': int(_o.get('completed_orders') or 0),
+                'total_revenue': float(_o.get('total_revenue') or 0),
+                'conversion_rate': round(total_orders / total_queries * 100, 2) if total_queries else 0,
+            }
+
+            # --- Time series: daily volume (last 90 days) ---
+            cur.execute("""
+                SELECT DATE(created_at) AS day, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s
+                  AND created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+                GROUP BY DATE(created_at)
+                ORDER BY day ASC
+            """, (cid,))
+            daily = {}
+            for r in cur.fetchall():
+                day = r['day']
+                label = day.strftime('%Y-%m-%d') if hasattr(day, 'strftime') else str(day)
+                daily[label] = int(r['cnt'] or 0)
+            analytics_data['time_series']['daily_chatbot_queries'] = daily
+
+            # --- Distributions: query type + category ---
+            cur.execute("""
+                SELECT COALESCE(NULLIF(query_type, ''), 'general') AS qtype, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s
+                GROUP BY COALESCE(NULLIF(query_type, ''), 'general')
+                ORDER BY cnt DESC LIMIT 12
+            """, (cid,))
+            analytics_data['distributions']['query_type'] = {
+                r['qtype']: int(r['cnt'] or 0) for r in cur.fetchall()
+            }
+
+            cur.execute("""
+                SELECT COALESCE(NULLIF(category, ''), 'Andet') AS cat, COUNT(*) AS cnt
+                FROM chatbot_interactions
+                WHERE company_id = %s
+                GROUP BY COALESCE(NULLIF(category, ''), 'Andet')
+                ORDER BY cnt DESC LIMIT 12
+            """, (cid,))
+            analytics_data['distributions']['category'] = {
+                r['cat']: int(r['cnt'] or 0) for r in cur.fetchall()
+            }
+
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error building analytics export: {e}")
+
         response = jsonify(analytics_data)
         response.headers['Content-Disposition'] = (
             f"attachment; filename=company_analytics_{company['company_slug']}_{datetime.datetime.now().strftime('%Y%m%d')}.json"

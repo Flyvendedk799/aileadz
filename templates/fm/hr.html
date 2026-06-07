@@ -41,7 +41,13 @@
   .dots span { width: 7px; height: 7px; border-radius: 999px; background: var(--fm-line-2); }
   .dots span.on { background: var(--fm-primary); }
   .skill-tile small { font-size: 10.5px; color: var(--fm-ink-3); }
-  @media (max-width: 1200px) { .hr-kpis, .signal-strip { grid-template-columns: repeat(2,1fr); } .hr-cols { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(3,1fr); } }
+  .hr-charts { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 18px; align-items: start; }
+  .hr-chart-card { padding: 18px; }
+  .hr-chart-card .ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .hr-chart-card .ch-head h3 { font-size: 14.5px; font-weight: 700; }
+  .hr-chart-card p { font-size: 12px; color: var(--fm-ink-2); margin: 0 0 12px; }
+  .hr-chart-wrap { position: relative; height: 280px; }
+  @media (max-width: 1200px) { .hr-kpis, .signal-strip { grid-template-columns: repeat(2,1fr); } .hr-cols, .hr-charts { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(3,1fr); } }
   @media (max-width: 680px) { .hr-kpis, .signal-strip { grid-template-columns: 1fr; } .skill-tiles { grid-template-columns: repeat(2,1fr); } }
 </style>
 {% endblock %}
@@ -78,6 +84,23 @@
           </div>
           <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-clay btn-sm">Se godkendelser <i class="fa-solid fa-arrow-right"></i></a>
         </div>
+        {% endif %}
+
+        <!-- Department performance charts -->
+        {% set _dp = department_performance or [] %}
+        {% if _dp|length > 0 %}
+        <section class="hr-charts">
+          <div class="fm-card hr-chart-card" data-reveal data-d="1">
+            <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-layer-group"></i></span><h3>Kursusgennemførsel pr. afdeling</h3></div>
+            <p>Gennemførte vs. igangværende kursusordrer fordelt på afdeling.</p>
+            <div class="hr-chart-wrap"><canvas id="hrDeptStacked" aria-label="Stablet søjlediagram: gennemførte og igangværende kursusordrer pr. afdeling" role="img"></canvas></div>
+          </div>
+          <div class="fm-card hr-chart-card" data-reveal data-d="2">
+            <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-chart-simple"></i></span><h3>Gennemførselsrate</h3></div>
+            <p>Andel gennemførte kurser pr. afdeling (%).</p>
+            <div class="hr-chart-wrap"><canvas id="hrDeptRate" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling" role="img"></canvas></div>
+          </div>
+        </section>
         {% endif %}
 
         <!-- AI insights -->
@@ -176,4 +199,35 @@
 
         {% include 'fm/_ai_panel.html' %}
       </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  var dp = {{ (department_performance or [])|list|tojson|safe }};
+  if (!dp.length) return;
+  var labels = dp.map(function (d) { return d.department || '—'; });
+  var completed = dp.map(function (d) { return Number(d.completed_courses) || 0; });
+  var inProgress = dp.map(function (d) {
+    var enr = Number(d.total_enrollments) || 0, comp = Number(d.completed_courses) || 0;
+    return Math.max(enr - comp, 0);
+  });
+  var rates = dp.map(function (d) { return Number(d.completion_rate) || 0; });
+
+  FMChart.stackedBar('hrDeptStacked', {
+    labels: labels,
+    series: [
+      { label: 'Gennemført', data: completed, color: FMChart.cssVar('--fm-success', '#16a34a') },
+      { label: 'I gang', data: inProgress, color: FMChart.cssVar('--fm-gold', '#d9a441') }
+    ],
+    empty: 'Ingen kursusordrer pr. afdeling endnu'
+  });
+
+  FMChart.bar('hrDeptRate', {
+    labels: labels,
+    series: [{ label: 'Gennemførselsrate (%)', data: rates, color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+    empty: 'Ingen gennemførselsdata endnu'
+  });
+})();
+</script>
 {% endblock %}

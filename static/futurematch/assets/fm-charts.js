@@ -7,6 +7,9 @@
  *   FMChart.line(canvasId, {labels, series, currency})
  *   FMChart.bar(canvasId,  {labels, series, horizontal, stacked})
  *   FMChart.doughnut(canvasId, {labels, values})
+ *   FMChart.radar(canvasId, {labels, series, max})
+ *   FMChart.sparkline(canvasId, {data, color})
+ *   FMChart.stackedBar(canvasId, {labels, series, horizontal})
  *
  * A "series" is {label, data:[...], color?}. Colors default to the brand palette.
  * If a chart has no positive data it is replaced with an empty-state node.
@@ -155,9 +158,120 @@
     });
   }
 
+  // Danish-locale number format for tooltips/ticks (matches the rest of the UI).
+  function nf(v) {
+    try { return Number(v).toLocaleString('da-DK'); } catch (e) { return String(v); }
+  }
+
+  function radar(canvasId, opts) {
+    opts = opts || {};
+    var series = opts.series || [];
+    var cols = palette();
+    var canvas = guard(canvasId, flatten(series), opts.empty);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: 'radar',
+      data: {
+        labels: opts.labels || [],
+        datasets: series.map(function (s, i) {
+          var c = s.color || cols[i % cols.length];
+          return {
+            label: s.label || '', data: s.data || [], borderColor: c,
+            backgroundColor: softTint(c), borderWidth: 2,
+            pointRadius: 3, pointHoverRadius: 5,
+            pointBackgroundColor: c, pointBorderColor: c
+          };
+        })
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: series.length > 1, position: 'bottom' },
+          tooltip: Object.assign(tooltip(), {
+            callbacks: { label: function (ctx) { return (ctx.dataset.label ? ctx.dataset.label + ': ' : '') + nf(ctx.parsed.r); } }
+          })
+        },
+        scales: {
+          r: {
+            beginAtZero: true,
+            suggestedMax: opts.max || undefined,
+            angleLines: { color: cssVar('--fm-line', 'rgba(148,163,184,.25)') },
+            grid: { color: cssVar('--fm-line', 'rgba(148,163,184,.25)') },
+            pointLabels: { color: cssVar('--fm-ink-2', '#475569'), font: { size: 11 } },
+            ticks: { display: true, precision: 0, backdropColor: 'transparent', stepSize: opts.step || undefined }
+          }
+        }
+      }
+    });
+  }
+
+  function sparkline(canvasId, opts) {
+    opts = opts || {};
+    var data = (opts.data || []).map(function (v) { return Number(v) || 0; });
+    var c = opts.color || palette()[0];
+    var canvas = guard(canvasId, data, opts.empty);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: 'line',
+      data: {
+        labels: data.map(function () { return ''; }),
+        datasets: [{
+          data: data, borderColor: c, backgroundColor: softTint(c),
+          borderWidth: 2, fill: true, tension: 0.4,
+          pointRadius: 0, pointHoverRadius: 3, pointHoverBackgroundColor: c
+        }]
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: Object.assign(tooltip(), {
+            callbacks: { title: function () { return ''; }, label: function (ctx) { return nf(ctx.parsed.y); } }
+          })
+        },
+        scales: { x: { display: false }, y: { display: false } },
+        elements: { line: { borderCapStyle: 'round' } }
+      }
+    });
+  }
+
+  function stackedBar(canvasId, opts) {
+    opts = opts || {};
+    var series = opts.series || [];
+    var cols = palette();
+    var canvas = guard(canvasId, flatten(series), opts.empty);
+    if (!canvas) return null;
+    return new Chart(canvas, {
+      type: 'bar',
+      data: {
+        labels: opts.labels || [],
+        datasets: series.map(function (s, i) {
+          var c = s.color || cols[i % cols.length];
+          return { label: s.label || '', data: s.data || [], backgroundColor: c,
+                   borderRadius: 5, borderWidth: 0, maxBarThickness: 46 };
+        })
+      },
+      options: {
+        indexAxis: opts.horizontal ? 'y' : 'x',
+        responsive: true, maintainAspectRatio: false,
+        plugins: {
+          legend: { display: series.length > 1, position: 'bottom' },
+          tooltip: Object.assign(tooltip(), {
+            callbacks: { label: function (ctx) { return (ctx.dataset.label ? ctx.dataset.label + ': ' : '') + nf(ctx.parsed[opts.horizontal ? 'x' : 'y']); } }
+          })
+        },
+        scales: {
+          x: { stacked: true, grid: { display: !!opts.horizontal }, beginAtZero: !!opts.horizontal, ticks: { precision: 0 } },
+          y: { stacked: true, beginAtZero: !opts.horizontal, grid: { display: !opts.horizontal }, ticks: { precision: 0 } }
+        }
+      }
+    });
+  }
+
   window.FMChart = {
     palette: palette, applyTheme: applyTheme, cssVar: cssVar,
-    line: line, bar: bar, doughnut: doughnut
+    line: line, bar: bar, doughnut: doughnut,
+    radar: radar, sparkline: sparkline, stackedBar: stackedBar
   };
 
   document.addEventListener('DOMContentLoaded', applyTheme);

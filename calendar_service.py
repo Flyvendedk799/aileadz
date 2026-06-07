@@ -18,7 +18,7 @@ from __future__ import annotations
 
 from datetime import date, datetime, timezone
 
-__all__ = ["build_ics", "parse_danish_date"]
+__all__ = ["build_ics", "build_ics_feed", "parse_danish_date"]
 
 
 # Danish month names (full + common 3-letter abbreviations), lowercase keys.
@@ -191,57 +191,42 @@ def _uid(stamp, title):
     return "{}@aileadz".format(base)
 
 
-def build_ics(*, title, start, end=None, location="", description="", url=""):
-    """Build a valid VCALENDAR/VEVENT ``.ics`` string. Never raises.
+def _vevent_lines(*, title, start, end=None, location="", description="", url="",
+                  dtstamp=None, uid=None):
+    """Build the VEVENT block (list of content lines) for one event.
 
-    Args:
-        title:       Event summary (required, non-empty).
-        start:       Danish date string, ISO string, ``date`` or ``datetime``.
-                     A bare date (no time) yields an all-day event.
-        end:         Optional end; same accepted forms as ``start``.
-        location:    Optional location text.
-        description: Optional description text.
-        url:         Optional URL.
-
-    Returns:
-        A CRLF-delimited ``.ics`` string, or ``""`` on bad/empty input.
+    Returns a list of lines, or ``[]`` if title/start are unusable. Shared by
+    ``build_ics`` (single event) and ``build_ics_feed`` (many events). Never
+    raises.
     """
     try:
         if not title or not str(title).strip():
-            return ""
-
+            return []
         start_obj, start_timed = _to_dt(start)
         if start_obj is None:
-            return ""
+            return []
 
-        now = datetime.now(timezone.utc)
-        dtstamp = _fmt_utc(now)
+        if dtstamp is None:
+            dtstamp = _fmt_utc(datetime.now(timezone.utc))
+        if uid is None:
+            uid = _uid(dtstamp, str(title))
 
         lines = [
-            "BEGIN:VCALENDAR",
-            "VERSION:2.0",
-            "PRODID:-//aileadz//calendar_service//DA",
-            "CALSCALE:GREGORIAN",
-            "METHOD:PUBLISH",
             "BEGIN:VEVENT",
-            "UID:" + _uid(dtstamp, str(title)),
+            "UID:" + uid,
             "DTSTAMP:" + dtstamp,
         ]
 
         if start_timed:
             lines.append("DTSTART:" + _fmt_utc(start_obj))
-            # Resolve end for a timed event.
             end_obj, end_timed = _to_dt(end) if end is not None else (None, False)
             if end_obj is not None and end_timed:
                 lines.append("DTEND:" + _fmt_utc(end_obj))
             elif end_obj is not None and not end_timed:
-                # End given as a bare date -> use day boundary.
                 lines.append(
                     "DTEND:" + _fmt_utc(datetime(end_obj.year, end_obj.month, end_obj.day, tzinfo=timezone.utc))
                 )
-            # No end -> a VEVENT with only DTSTART is valid (treated as instantaneous).
         else:
-            # All-day event: VALUE=DATE. DTEND is exclusive, so default to +1 day.
             lines.append("DTSTART;VALUE=DATE:" + _fmt_date(start_obj))
             end_obj, end_timed = _to_dt(end) if end is not None else (None, False)
             if end_obj is not None:
@@ -261,14 +246,102 @@ def build_ics(*, title, start, end=None, location="", description="", url=""):
             lines.append("DESCRIPTION:" + _esc(description))
         if url:
             lines.append("URL:" + _esc(url))
-
         lines.append("END:VEVENT")
+        return lines
+    except Exception:
+        return []
+
+
+def build_ics(*, title, start, end=None, location="", description="", url=""):
+    """Build a valid VCALENDAR/VEVENT ``.ics`` string. Never raises.
+
+    Args:
+        title:       Event summary (required, non-empty).
+        start:       Danish date string, ISO string, ``date`` or ``datetime``.
+                     A bare date (no time) yields an all-day event.
+        end:         Optional end; same accepted forms as ``start``.
+        location:    Optional location text.
+        description: Optional description text.
+        url:         Optional URL.
+
+    Returns:
+        A CRLF-delimited ``.ics`` string, or ``""`` on bad/empty input.
+    """
+    try:
+        vevent = _vevent_lines(
+            title=title, start=start, end=end, location=location,
+            description=description, url=url,
+        )
+        if not vevent:
+            return ""
+
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//aileadz//calendar_service//DA",
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+        ]
+        lines.extend(vevent)
         lines.append("END:VCALENDAR")
 
         folded = [_fold(ln) for ln in lines]
         return "\r\n".join(folded) + "\r\n"
     except Exception:
         return ""
+
+
+def build_ics_feed(events, *, cal_name=""):
+    """Build a multi-event VCALENDAR ``.ics`` feed. Never raises.
+
+    Args:
+        events: iterable of dicts, each with keys matching ``build_ics``:
+                ``title`` (required), ``start`` (required), and optional
+                ``end`` / ``location`` / ``description`` / ``url`` / ``uid``.
+        cal_name: optional X-WR-CALNAME for the subscribed feed.
+
+    Returns:
+        A CRLF-delimited ``.ics`` string. An empty/invalid events list yields a
+        valid but empty VCALENDAR (so a subscribed feed never 500s).
+    """
+    try:
+        dtstamp = _fmt_utc(datetime.now(timezone.utc))
+        lines = [
+            "BEGIN:VCALENDAR",
+            "VERSION:2.0",
+            "PRODID:-//aileadz//calendar_service//DA",
+            "CALSCALE:GREGORIAN",
+            "METHOD:PUBLISH",
+        ]
+        if cal_name:
+            lines.append("X-WR-CALNAME:" + _esc(cal_name))
+
+        seq = 0
+        for ev in (events or []):
+            if not isinstance(ev, dict):
+                continue
+            seq += 1
+            uid = ev.get("uid") or _uid("%s-%d" % (dtstamp, seq), str(ev.get("title") or ""))
+            vevent = _vevent_lines(
+                title=ev.get("title"),
+                start=ev.get("start"),
+                end=ev.get("end"),
+                location=ev.get("location", "") or "",
+                description=ev.get("description", "") or "",
+                url=ev.get("url", "") or "",
+                dtstamp=dtstamp,
+                uid=uid,
+            )
+            if vevent:
+                lines.extend(vevent)
+
+        lines.append("END:VCALENDAR")
+        folded = [_fold(ln) for ln in lines]
+        return "\r\n".join(folded) + "\r\n"
+    except Exception:
+        # Last-resort: a minimal valid empty calendar.
+        return ("BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+                "PRODID:-//aileadz//calendar_service//DA\r\nEND:VCALENDAR\r\n")
 
 
 # --- Quick self-test (runs only when executed directly) ----------------------
@@ -297,6 +370,19 @@ if __name__ == "__main__":
     assert parse_danish_date("17/02/2026") == date(2026, 2, 17)
     assert parse_danish_date("17 feb 2026") == date(2026, 2, 17)
     assert parse_danish_date("vrøvl") is None
+
+    feed = build_ics_feed(
+        [
+            {"title": "Kursusstart: Lederskab", "start": "2026-02-17T09:00",
+             "end": "2026-02-17T11:00", "location": "København"},
+            {"title": "Frist for tilmelding", "start": "17. februar 2026"},
+            {"title": "", "start": "2026-02-17"},  # invalid -> skipped
+        ],
+        cal_name="Mine kurser",
+    )
+    assert feed.count("BEGIN:VEVENT") == 2, "feed should contain exactly 2 events"
+    assert "X-WR-CALNAME:Mine kurser" in feed, "feed should carry the calendar name"
+    assert build_ics_feed([]).startswith("BEGIN:VCALENDAR"), "empty feed must still be valid"
 
     print("calendar_service self-test OK")
     print(allday)

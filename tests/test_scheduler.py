@@ -57,12 +57,12 @@ class IsDueTests(unittest.TestCase):
 
 class RegistryTests(unittest.TestCase):
     def test_expected_jobs_registered(self):
+        # The core jobs must always be present. Later waves register additional
+        # jobs (e.g. weekly_manager_digest), so assert a subset, not equality.
         names = {j['name'] for j in scheduler.JOBS}
-        self.assertEqual(
-            names,
-            {'outbox_drain', 'daily_company_insights',
-             'daily_agreement_alerts', 'compliance_recheck'},
-        )
+        core = {'outbox_drain', 'daily_company_insights',
+                'daily_agreement_alerts', 'compliance_recheck'}
+        self.assertTrue(core.issubset(names), f"missing core jobs: {core - names}")
 
     def test_each_job_is_well_formed(self):
         for j in scheduler.JOBS:

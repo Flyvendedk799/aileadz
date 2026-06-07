@@ -216,6 +216,38 @@ def _job_daily_agreement_alerts(app):
     return {'companies': companies, 'notifications': notified, 'errors': errors}
 
 
+def _job_weekly_manager_digest(app):
+    """Send the per-manager weekly digest for each active company.
+
+    Iterates active companies and delegates to digest_service.send_company_digest
+    (which builds self-contained, company-scoped metrics and emails each
+    manager-level recipient best-effort). Fully guarded: one company's failure
+    never blocks the rest, and the job never raises into the scheduler.
+    """
+    try:
+        from digest_service import send_company_digest
+    except Exception as e:
+        return {'error': "digest_service import failed: %s" % e}
+    companies = 0
+    emails_sent = 0
+    skipped = 0
+    errors = 0
+    with app.app_context():
+        ids = active_company_ids()
+        for cid in ids:
+            companies += 1
+            try:
+                summary = send_company_digest(cid) or {}
+                emails_sent += int(summary.get('sent') or 0)
+                if summary.get('skipped'):
+                    skipped += 1
+            except Exception as e:
+                errors += 1
+                logger.warning("scheduler: weekly digest failed for company %s: %s", cid, e)
+    return {'companies': companies, 'emails_sent': emails_sent,
+            'skipped': skipped, 'errors': errors}
+
+
 def _job_compliance_recheck(app):
     """Re-derive compliance state on a cadence (thin guarded pass for now).
 
@@ -264,6 +296,12 @@ JOBS = [
         'name': 'compliance_recheck',
         'interval_seconds': 86400,        # daily
         'fn': _job_compliance_recheck,
+        'enabled': True,
+    },
+    {
+        'name': 'weekly_manager_digest',
+        'interval_seconds': 604800,       # weekly (7 days)
+        'fn': _job_weekly_manager_digest,
         'enabled': True,
     },
 ]

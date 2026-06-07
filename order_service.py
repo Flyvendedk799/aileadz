@@ -916,11 +916,32 @@ def set_status(ctx, order_id, new_status):
             _event = "order.rejected"
         else:
             _event = "order.status_changed"
-        _emit_event_safe(company_id, _event, {
+        # Shared payload shape for every order status side-effect event.
+        _order_payload = {
             "order_id": order_id, "status": new_status,
             "previous_status": old_status, "charged": charged, "refunded": refunded,
             "product_title": row.get("product_title"),
-        })
+            "department": (row.get("department") or "") or None,
+            "user_email": row.get("user_email"),
+        }
+        _emit_event_safe(company_id, _event, _order_payload)
+        # ALWAYS emit a generic order.updated on a real status transition so the
+        # subscription UI's advertised 'order.updated' event actually fires (in
+        # addition to the approved/rejected specials above). No-op when the
+        # status did not actually change.
+        if old_status != new_status:
+            _emit_event_safe(company_id, "order.updated", _order_payload)
+        # course.completed — when the order/completion transitions to completed.
+        if new_status == "completed" and old_status != "completed":
+            _emit_event_safe(company_id, "course.completed", {
+                "order_id": order_id,
+                "product_title": row.get("product_title"),
+                "product_handle": row.get("product_handle"),
+                "department": (row.get("department") or "") or None,
+                "user_id": _int_or_none(row.get("user_id")),
+                "user_email": row.get("user_email"),
+                "completed_at": datetime.datetime.now().isoformat(),
+            })
         # Tell the requester their order was decided.
         _requester_email = row.get("user_email")
         if _requester_email and new_status in ("approved", "confirmed", "rejected"):

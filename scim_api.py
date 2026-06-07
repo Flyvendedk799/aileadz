@@ -542,6 +542,13 @@ def create_user():
             )
             row = cur.fetchone()
             cur.close()
+            # Re-provisioning an offboarded identity into active is also a
+            # provision event -> emit + best-effort welcome (both guarded).
+            if active:
+                _emit("scim.user.provisioned",
+                      {"user_id": existing["id"], "email": email,
+                       "userName": username, "reactivated": True})
+                _send_welcome_email(email, full_name)
             resource = _row_to_scim_user(row)
             return _scim_response(
                 resource,
@@ -592,6 +599,10 @@ def create_user():
 
         _emit("scim.user.provisioned",
               {"user_id": new_id, "email": email, "userName": username})
+        # Best-effort welcome/invite email after provisioning (guarded; no-ops
+        # without a MAIL backend; never blocks/fails provisioning).
+        if status == "active":
+            _send_welcome_email(email, full_name)
 
         resource = _row_to_scim_user(row)
         return _scim_response(
@@ -666,6 +677,12 @@ def put_user(user_id):
         if was_active and not active:
             _emit("scim.user.deprovisioned",
                   {"user_id": row.get("id"), "email": email})
+        # Generic employee.updated on every PUT replace so the advertised
+        # webhook subscription fires (in addition to the deprovision special).
+        _emit("employee.updated", {
+            "employee_id": row.get("id"), "email": email,
+            "name": full_name, "status": new_status, "source": "scim",
+        })
 
         return _scim_response(_row_to_scim_user(updated), status=200)
     except Exception as e:
@@ -805,6 +822,12 @@ def patch_user(user_id):
         if was_active and not new_active:
             _emit("scim.user.deprovisioned",
                   {"user_id": row.get("id"), "email": new_email})
+        # Generic employee.updated on every PATCH so the advertised webhook
+        # subscription fires (in addition to the deprovision special).
+        _emit("employee.updated", {
+            "employee_id": row.get("id"), "email": new_email,
+            "name": new_full_name, "status": new_status, "source": "scim",
+        })
 
         return _scim_response(_row_to_scim_user(updated), status=200)
     except Exception as e:
@@ -934,3 +957,21 @@ def _emit(event_type, payload):
         _event_bus.emit_event(g.company_id, event_type, payload)
     except Exception as e:  # pragma: no cover - best-effort
         logger.debug("scim_api: emit_event(%s) skipped: %s", event_type, e)
+
+
+def _send_welcome_email(email, full_name):
+    """Best-effort welcome/invite email after SCIM provisioning. Never raises.
+
+    No-ops cleanly when no MAIL backend is configured (email_service is
+    ops-gated). Provisioning is NEVER blocked or failed by email delivery.
+    """
+    if not email:
+        return
+    try:
+        from email_service import send_employee_welcome
+        send_employee_welcome(
+            {'id': g.company_id},
+            {'email': email, 'name': full_name or ''},
+        )
+    except Exception as e:  # pragma: no cover - best-effort
+        logger.debug("scim_api: welcome email skipped: %s", e)

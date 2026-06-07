@@ -775,6 +775,9 @@ def decorate_products_with_discounts(products, company_id=None, discount_map=Non
     return decorated
 
 
+SORT_OPTIONS = ("relevance", "price_asc", "price_desc", "vendor", "title", "title_desc")
+
+
 def search_products(filters=None, page=1, per_page=24, company_id=None):
     filters = filters or {}
     q = (filters.get("q") or "").strip().lower()
@@ -783,50 +786,97 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
     fmt = (filters.get("format") or "").strip().lower()
     location = (filters.get("location") or "").strip().lower()
     sort = filters.get("sort") or "relevance"
+    if sort not in SORT_OPTIONS:
+        sort = "relevance"
     price_min = parse_price(filters.get("price_min"))
     price_max = parse_price(filters.get("price_max"))
+    # Normalise a swapped price range so "min 5000, max 1000" still behaves.
+    if price_min is not None and price_max is not None and price_min > price_max:
+        price_min, price_max = price_max, price_min
+
+    # Multi-word query → individual tokens (≥2 chars). Used for AND/OR matching
+    # and for ranking. Computed once, not per product.
+    q_tokens = [t for t in re.findall(r"[a-zæøå0-9]+", q) if len(t) > 1] if q else []
+
+    def passes_facets(product):
+        if category_slug and category_slug not in product["category_slugs"]:
+            return False
+        if vendor_slug and product["vendor_slug"] != vendor_slug:
+            return False
+        if fmt and product["format"].lower() != fmt:
+            return False
+        if location and not any(location in loc.lower() for loc in product["locations"]):
+            return False
+        if price_min is not None and (product["price_min"] is None or product["price_min"] < price_min):
+            return False
+        if price_max is not None and (product["price_min"] is None or product["price_min"] > price_max):
+            return False
+        return True
+
+    # Only build the (expensive) per-product search text when there is actually a
+    # query — the common browse case skips ~60k concatenations — and memoise it so
+    # the relevance sort below doesn't recompute it.
+    search_text_cache = {}
+
+    def text_of(product):
+        cached = search_text_cache.get(product["handle"])
+        if cached is None:
+            cached = product_search_text(product)
+            search_text_cache[product["handle"]] = cached
+        return cached
 
     matched = []
-    # Only build the (expensive) per-product search text when there is actually a
-    # query — the common browse/category/vendor case skips ~60k concatenations.
-    # Memoise it for products that pass the cheap filters so the relevance sort
-    # below doesn't recompute it.
-    search_text_cache = {}
+    relaxed = []  # any-token matches, used only if the strict pass finds nothing
     for product in get_products():
-        if category_slug and category_slug not in product["category_slugs"]:
+        if not passes_facets(product):
             continue
-        if vendor_slug and product["vendor_slug"] != vendor_slug:
+        if not q:
+            matched.append(product)
             continue
-        if fmt and product["format"].lower() != fmt:
-            continue
-        if location and not any(location in loc.lower() for loc in product["locations"]):
-            continue
-        if price_min is not None and (product["price_min"] is None or product["price_min"] < price_min):
-            continue
-        if price_max is not None and (product["price_min"] is None or product["price_min"] > price_max):
-            continue
-        if q:
-            text = product_search_text(product)
-            search_text_cache[product["handle"]] = text
-            if q not in text:
-                tokens = [token for token in re.findall(r"[a-zæøå0-9]+", q) if len(token) > 1]
-                if tokens and not all(token in text for token in tokens):
-                    continue
-        matched.append(product)
+        text = text_of(product)
+        if q in text:
+            matched.append(product)
+        elif q_tokens:
+            hits = sum(1 for tok in q_tokens if tok in text)
+            if hits == len(q_tokens):
+                matched.append(product)
+            elif hits:
+                relaxed.append(product)
+
+    # If a multi-word / near-miss query matched nothing strictly, fall back to the
+    # closest "any term" matches instead of dead-ending the user on an empty page.
+    used_relaxed = False
+    if q and not matched and relaxed:
+        matched = relaxed
+        used_relaxed = True
 
     def relevance_key(product):
-        if not q:
-            return (0, product["title"].lower())
         title = product["title"].lower()
+        if not q:
+            return (0, title)
         vendor = product["vendor"].lower()
-        text = search_text_cache.get(product["handle"]) or product_search_text(product)
+        text = text_of(product)
         score = 0
+        if title == q:
+            score += 100
+        if title.startswith(q):
+            score += 40
         if q in title:
-            score += 6
+            score += 25
+        if q_tokens and all(tok in title for tok in q_tokens):
+            score += 15
         if q in vendor:
-            score += 3
-        score += sum(1 for token in q.split() if token and token in text)
-        return (-score, product["title"].lower())
+            score += 12
+        if any(q in (cat or "").lower() for cat in product.get("categories") or []):
+            score += 8
+        for tok in q_tokens:
+            if tok in title:
+                score += 4
+            elif tok in vendor:
+                score += 2
+            elif tok in text:
+                score += 1
+        return (-score, title)
 
     if sort == "price_asc":
         matched.sort(key=lambda p: (p["price_min"] is None, p["price_min"] or 0, p["title"].lower()))
@@ -834,6 +884,10 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
         matched.sort(key=lambda p: (p["price_min"] is None, -(p["price_min"] or 0), p["title"].lower()))
     elif sort == "vendor":
         matched.sort(key=lambda p: (p["vendor"].lower(), p["title"].lower()))
+    elif sort == "title":
+        matched.sort(key=lambda p: p["title"].lower())
+    elif sort == "title_desc":
+        matched.sort(key=lambda p: p["title"].lower(), reverse=True)
     else:
         matched.sort(key=relevance_key)
 
@@ -856,6 +910,7 @@ def search_products(filters=None, page=1, per_page=24, company_id=None):
         "total_pages": total_pages,
         "has_prev": page > 1,
         "has_next": page < total_pages,
+        "relaxed": used_relaxed,
     }
 
 

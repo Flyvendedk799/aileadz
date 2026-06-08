@@ -26,9 +26,21 @@ import re as _re
 __all__ = [
     "extract_factual_claims",
     "claims_supported",
+    "grounding_disclaimer",
     "delimit_untrusted",
     "DATA_NOTICE_DA",
+    "GROUNDING_DISCLAIMER_DA",
 ]
+
+# Short, guarded Danish disclaimer appended (as a trailing note) when the live
+# chain-of-custody check finds a price/date/title in the answer that is NOT
+# backed by this turn's tool results. It never accuses the model of being wrong;
+# it nudges the user to verify the volatile facts against the course page (which
+# is the canonical source). Kept to one short sentence to avoid noise.
+GROUNDING_DISCLAIMER_DA = (
+    "OBS: Bekræft venligst priser og datoer på selve kursussiden — "
+    "de kan ændre sig, og jeg vil være sikker på, du får de korrekte tal."
+)
 
 # Danish one-liner reused by delimit_untrusted: makes clear the fenced span is
 # data the model may *read* but must never *obey* as instructions.
@@ -328,6 +340,44 @@ def claims_supported(answer, tool_results):
         return result
     except Exception:
         return {"supported": [], "unsupported": [], "ok": True, "checked": 0}
+
+
+def grounding_disclaimer(answer, tool_results):
+    """Runtime circuit-breaker decision for the live agent loop.
+
+    Runs the pure chain-of-custody check and decides whether the streamed answer
+    needs a guarded disclaimer because it asserts a price/date/course-title that
+    is NOT present in THIS turn's tool results (a likely hallucination).
+
+    Returns:
+        {
+          "violation":  bool,            # True when at least one unsupported
+                                         #   price/date/title claim was found
+          "disclaimer": str,             # the Danish note to append (or "")
+          "unsupported": [ {...}, ... ], # the offending claims (for telemetry)
+          "checked":    int,             # total claims examined
+        }
+
+    Pure + fully guarded: any failure yields a safe, no-violation result so the
+    SSE path is never broken. The decision is intentionally conservative — only
+    concrete, checkable facts (price/date/title) trip it, never tone or phrasing.
+    """
+    safe = {"violation": False, "disclaimer": "", "unsupported": [], "checked": 0}
+    try:
+        report = claims_supported(answer, tool_results)
+        unsupported = report.get("unsupported") or []
+        # Only volatile, user-relevant facts should trip the breaker.
+        flagged = [u for u in unsupported if u.get("type") in ("price", "date", "title")]
+        if not flagged:
+            return {**safe, "checked": int(report.get("checked") or 0)}
+        return {
+            "violation": True,
+            "disclaimer": GROUNDING_DISCLAIMER_DA,
+            "unsupported": flagged,
+            "checked": int(report.get("checked") or 0),
+        }
+    except Exception:
+        return safe
 
 
 # ── Untrusted-text delimiting (prompt-injection hardening) ──────────────────

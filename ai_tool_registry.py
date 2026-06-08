@@ -162,6 +162,8 @@ _HR_META = {
     ),
     "hr_inactive_employees": ToolMeta("hr_inactive_employees", "hr", company_required=True, cache_ttl=60, toolset_tags=("employee", "inactive")),
     "hr_expiring_agreements": ToolMeta("hr_expiring_agreements", "hr", company_required=True, cache_ttl=120, toolset_tags=("supplier", "agreements")),
+    "get_workforce_risk": ToolMeta("get_workforce_risk", "hr", company_required=True, cache_ttl=120, toolset_tags=("risk", "predictive")),
+    "hr_explain_insights": ToolMeta("hr_explain_insights", "hr", company_required=True, cache_ttl=120, toolset_tags=("insights", "predictive")),
 }
 
 
@@ -483,6 +485,19 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "udløber aftale", "udloeber aftale", "leverandøraftaler udløber",
             "leverandoeraftaler udloeber", "hvilke aftaler skal fornyes")):
         names.add("hr_expiring_agreements")
+    if _has_any(query, (
+            "workforce-risiko", "workforce risiko", "risiko for medarbejdere",
+            "fastholdelse", "fastholdelsesrisiko", "i fare for at falde fra",
+            "tidlig advarsel", "early warning", "hvad skal jeg handle på",
+            "hvad bør jeg handle på", "hvad skal jeg gøre denne uge", "churn",
+            "frafald", "risiko-overblik", "risikooverblik")):
+        names.add("get_workforce_risk")
+        forced_tool = "get_workforce_risk"
+    if _has_any(query, (
+            "indsigt", "indsigter", "ai-indsigt", "hvad bør jeg vide",
+            "forklar advarsler", "forklar advarslerne", "hvad sker der på platformen",
+            "hvad foregår der", "giv mig overblik")):
+        names.add("hr_explain_insights")
 
     selected = []
     for name in sorted(names):

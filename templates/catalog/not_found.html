@@ -1,21 +1,26 @@
-{% extends "base.html" %}
+{% extends "fm_base.html" %}
 
-{% block title %}Ikke fundet - {{ platform_name }}{% endblock %}
-{% block page_heading %}Ikke fundet{% endblock %}
-{% block page_subheading %}Katalogsiden findes ikke eller er ikke laengere aktiv.{% endblock %}
-
-{% block extra_styles %}
-{{ super() }}
-{% include 'catalog/_styles.html' %}
-{% endblock %}
+{% block title %}Ikke fundet · {{ platform_name }}{% endblock %}
+{% block page_id %}catalog{% endblock %}
+{% block topbar_title %}Ikke fundet{% endblock %}
+{% block topbar_sub %}Katalogsiden findes ikke eller er ikke længere aktiv.{% endblock %}
 
 {% block content %}
-<div class="catalog-wrap">
-  <div class="catalog-empty">
-    <i class="fa-solid fa-circle-exclamation fa-2x mb-3"></i>
-    <h2>Vi kunne ikke finde {{ kind|default('produkt') }}et</h2>
-    <p class="mb-3"><code>{{ handle }}</code></p>
-    <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}">Ga til kataloget</a>
+<div class="fm-card" style="max-width:560px;margin:8vh auto 0;text-align:center;">
+  <div class="fm-card-body" style="padding:40px 32px;">
+    <div style="width:64px;height:64px;border-radius:18px;margin:0 auto 18px;display:grid;place-items:center;
+                background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-clay);font-size:26px;">
+      <i class="fa-solid fa-circle-exclamation"></i>
+    </div>
+    <h2 style="font-family:var(--ff-display);letter-spacing:-.02em;margin-bottom:8px;">
+      Vi kunne ikke finde {{ kind | default('produkt') }}et
+    </h2>
+    <p style="color:var(--fm-ink-2);margin-bottom:18px;">
+      <code style="background:var(--fm-surface-2);border:1px solid var(--fm-line);border-radius:8px;padding:3px 8px;">{{ handle }}</code>
+    </p>
+    <a class="btn btn-primary" href="{{ url_for('catalog.catalog_index') }}">
+      <i class="fa-solid fa-arrow-left"></i> Gå til kataloget
+    </a>
   </div>
 </div>
 {% endblock %}

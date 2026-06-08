@@ -58,6 +58,24 @@
   </div>
   {% endif %}
 
+  {% set safe_metrics = data.metrics|selectattr('safe')|selectattr('your_percentile', 'ne', None)|list %}
+  {% if data.safe and safe_metrics|length %}
+  <div class="fm-card" style="margin-bottom:18px">
+    <div class="fm-card-body">
+      <div class="bm-metric-head" style="margin-bottom:6px">
+        <span class="fm-ch-icon"><i class="fa-solid fa-ranking-star"></i></span>
+        <h3>Din position i branchen — på tværs af alle nøgletal</h3>
+      </div>
+      <p style="font-size:12.5px;color:var(--fm-ink-3);margin:0 0 10px">
+        Hver søjle viser din percentil (0–100) i den anonyme branchekohort: jo længere mod højre, jo bedre placerer du dig. Tallene er anonyme gennemsnit på tværs af {{ data.cohort_size }} virksomheder.
+      </p>
+      <div style="position:relative;height:{{ 60 + safe_metrics|length * 34 }}px">
+        <canvas id="bmPercentileChart" aria-label="Liggende søjlediagram: virksomhedens percentil-placering i branchen for hvert nøgletal (0 til 100)" role="img"></canvas>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if data.metrics %}
   <div class="bm-grid">
     {% for m in data.metrics %}
@@ -68,7 +86,12 @@
             {% if m.key == 'spend_per_employee' %}<i class="fa-solid fa-sack-dollar"></i>
             {% elif m.key == 'completion_rate' %}<i class="fa-solid fa-circle-check"></i>
             {% elif m.key == 'courses_per_employee' %}<i class="fa-solid fa-graduation-cap"></i>
-            {% else %}<i class="fa-solid fa-robot"></i>{% endif %}
+            {% elif m.key == 'ai_adoption_rate' %}<i class="fa-solid fa-robot"></i>
+            {% elif m.key == 'skill_gap_closure' %}<i class="fa-solid fa-bullseye"></i>
+            {% elif m.key == 'budget_utilization' %}<i class="fa-solid fa-chart-pie"></i>
+            {% elif m.key == 'engagement_rate' %}<i class="fa-solid fa-users"></i>
+            {% elif m.key == 'avg_completion_days' %}<i class="fa-solid fa-clock"></i>
+            {% else %}<i class="fa-solid fa-chart-line"></i>{% endif %}
           </span>
           <h3>{{ m.label }}</h3>
           {% if m.safe and m.your_percentile is not none %}
@@ -128,4 +151,32 @@
   {% endif %}
 
 </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  // Percentile overview: ONE token-bound horizontal bar of the company's
+  // percentile rank (0-100) per safe metric. Percentiles are aggregate cohort
+  // ranks (never a peer's raw value) and are computed server-side only when the
+  // cohort is k-safe — sub-k metrics carry your_percentile=null and are
+  // excluded here, so nothing identifiable can render. Higher = better for
+  // every metric (the server already inverts direction for lower-is-better).
+  var pct = {{ (safe_metrics or [])|map(attribute='your_percentile')|list|tojson|safe }};
+  var labels = {{ (safe_metrics or [])|map(attribute='label')|list|tojson|safe }};
+  if (pct.length) {
+    FMChart.bar('bmPercentileChart', {
+      horizontal: true,
+      labels: labels,
+      series: [
+        { label: 'Din percentil i branchen',
+          data: pct.map(function (v) { return Number(v) || 0; }),
+          color: FMChart.cssVar('--fm-primary', '#0f766e') }
+      ],
+      max: 100,
+      empty: 'Ingen anonyme sammenligningstal endnu'
+    });
+  }
+})();
+</script>
 {% endblock %}

@@ -194,6 +194,40 @@ def _auto_sync_columns(conn, create_stmts):
         if not (hasattr(e, 'args') and e.args and e.args[0] == 1061):
             logging.debug("Auto-sync: employee_skills_matrix unique key: %s", e)
 
+    # Add unique key to company_analytics if missing — required so the nightly
+    # company_analytics_rollup job can upsert idempotently (one row per company
+    # per day). Pre-existing DBs created this table before it had a writer, so
+    # they only have the non-unique idx_company_date and may already hold
+    # duplicate (company_id, date) rows; dedupe first, then add the key.
+    try:
+        ca_cur = conn.cursor()
+        try:
+            ca_cur.execute("""
+                DELETE t1 FROM company_analytics t1
+                INNER JOIN company_analytics t2
+                WHERE t1.id < t2.id
+                  AND t1.company_id = t2.company_id
+                  AND t1.date = t2.date
+            """)
+            dupes = ca_cur.rowcount
+            if dupes:
+                conn.commit()
+                logging.info("Auto-sync: removed %d duplicate company_analytics rows", dupes)
+        except Exception:
+            pass
+        ca_cur.execute("""
+            ALTER TABLE company_analytics
+            ADD UNIQUE KEY uk_company_date (company_id, date)
+        """)
+        conn.commit()
+        logging.info("Auto-sync: added unique key uk_company_date on company_analytics")
+        synced += 1
+        ca_cur.close()
+    except Exception as e:
+        # 1061 = Duplicate key name (already exists) — that's fine
+        if not (hasattr(e, 'args') and e.args and e.args[0] == 1061):
+            logging.debug("Auto-sync: company_analytics unique key: %s", e)
+
     if synced:
         conn.commit()
         logging.info("Auto-sync complete: %d changes made", synced)
@@ -532,6 +566,11 @@ def ensure_enterprise_tables(app):
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
                 # ── Company Analytics ──
+                # Daily per-company KPI snapshot. Written by the nightly
+                # ``company_analytics_rollup`` scheduler job (the table's only
+                # writer). The UNIQUE (company_id, date) key makes the nightly
+                # upsert idempotent — re-running the job for the same day updates
+                # the existing row instead of inserting a duplicate.
                 """CREATE TABLE IF NOT EXISTS company_analytics (
                     id INT AUTO_INCREMENT PRIMARY KEY,
                     company_id INT NOT NULL,
@@ -542,6 +581,8 @@ def ensure_enterprise_tables(app):
                     courses_started INT DEFAULT 0,
                     courses_completed INT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                    UNIQUE KEY uk_company_date (company_id, date),
                     INDEX idx_company_date (company_id, date)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 

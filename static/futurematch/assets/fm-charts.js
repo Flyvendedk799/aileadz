@@ -134,15 +134,26 @@
                    borderRadius: 6, maxBarThickness: 46 };
         })
       },
-      options: {
-        indexAxis: opts.horizontal ? 'y' : 'x',
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: series.length > 1, position: 'bottom' }, tooltip: tooltip() },
-        scales: {
+      options: (function () {
+        var valueAxis = opts.horizontal ? 'x' : 'y';
+        var scales = {
           x: { stacked: !!opts.stacked, grid: { display: !!opts.horizontal } },
           y: { stacked: !!opts.stacked, beginAtZero: true, ticks: { precision: 0 } }
+        };
+        // Optional fixed upper bound on the value axis (e.g. 0..100 for a
+        // percentile chart). Direction-agnostic: applies to whichever axis
+        // carries the data values given the orientation.
+        if (opts.max != null) {
+          scales[valueAxis].max = Number(opts.max);
+          scales[valueAxis].beginAtZero = true;
         }
-      }
+        return {
+          indexAxis: opts.horizontal ? 'y' : 'x',
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: series.length > 1, position: 'bottom' }, tooltip: tooltip() },
+          scales: scales
+        };
+      })()
     });
   }
 

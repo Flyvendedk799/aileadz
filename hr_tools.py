@@ -407,14 +407,21 @@ HR_TOOLS.extend([
             "description": (
                 "Sammenlign virksomhedens nøgletal med en anonym branchekohort (k-anonym). Viser kun "
                 "kohortgennemsnit/median/percentil når kohorten er stor nok til at være sikker. Bruges ved "
-                "'benchmark', 'sammenlignet med branchen', 'hvordan klarer vi os mod peers'."
+                "'benchmark', 'sammenlignet med branchen', 'hvordan klarer vi os mod peers'. Dækker forbrug, "
+                "gennemførsel, AI-brug, lukning af kompetencegab (skill_gap_closure), budgetudnyttelse "
+                "(budget_utilization), engagement (engagement_rate) og gns. dage til gennemførsel "
+                "(avg_completion_days). For hvert nøgletal angiver 'higher_is_better' om en højere værdi er bedre "
+                "(percentilen er allerede retningskorrigeret, så højere percentil = bedre placering for ALLE nøgletal)."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "metric": {
                         "type": "string",
-                        "description": "Valgfrit nøgletal at fokusere på (fx 'completion_rate', 'spend_per_employee')."
+                        "description": (
+                            "Valgfrit nøgletal at fokusere på, fx 'completion_rate', 'spend_per_employee', "
+                            "'skill_gap_closure', 'budget_utilization', 'engagement_rate' eller 'avg_completion_days'."
+                        )
                     }
                 },
                 "required": []

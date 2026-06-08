@@ -457,6 +457,49 @@ def _job_compliance_recheck(app):
             'emails': emails, 'errors': errors}
 
 
+def _job_learning_deadline_reminders(app):
+    """Daily: warn about approaching/lapsed learning-path due dates (plan #17).
+
+    Closes a missing proactive loop on data that already exists
+    (``employee_learning_progress.due_date``, used until now only by the
+    ``deadline_ics`` route). Per active company it delegates to
+    ``deadline_service.remind_company`` which finds not-yet-completed progress
+    rows whose ``due_date`` is within N days (or already overdue) and raises:
+
+      * ONE aggregate, k-anon-safe (counts-only) ``company_notifications`` card to
+        the HR/manager roles — always, deduped per company; and
+      * direct per-learner reminder cards — ONLY when the company has explicitly
+        opted in (``company_settings.learning_deadline_reminders_enabled``), so a
+        tenant never auto-spams its workforce (plan #17 / risk register #321).
+
+    Bounded per pass by ``active_company_ids`` (DEFAULT_COMPANY_BATCH); the
+    cross-worker claim guard lives at the job level (``_claim``). Each company is
+    fully guarded so one failure never aborts the batch.
+    """
+    try:
+        from deadline_service import remind_company
+    except Exception as e:
+        return {'error': "deadline_service import failed: %s" % e}
+    companies = 0
+    manager_cards = 0
+    learner_reminders = 0
+    errors = 0
+    with app.app_context():
+        ids = active_company_ids()
+        for cid in ids:
+            companies += 1
+            try:
+                summary = remind_company(cid) or {}
+                manager_cards += int(summary.get('manager_cards') or 0)
+                learner_reminders += int(summary.get('learner_reminders') or 0)
+            except Exception as e:
+                errors += 1
+                logger.warning("scheduler: deadline reminders failed for company %s: %s",
+                               cid, e)
+    return {'companies': companies, 'manager_cards': manager_cards,
+            'learner_reminders': learner_reminders, 'errors': errors}
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -483,6 +526,12 @@ JOBS = [
         'name': 'compliance_recheck',
         'interval_seconds': 86400,        # daily
         'fn': _job_compliance_recheck,
+        'enabled': True,
+    },
+    {
+        'name': 'learning_deadline_reminders',
+        'interval_seconds': 86400,        # daily — nudge before learning deadlines lapse
+        'fn': _job_learning_deadline_reminders,
         'enabled': True,
     },
     {

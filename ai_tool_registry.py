@@ -172,6 +172,9 @@ _HR_META = {
         "create_compliance_requirement", "hr",
         company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("compliance", "mutation"),
     ),
+    "hr_compare_cohorts": ToolMeta(
+        "hr_compare_cohorts", "hr", company_required=True, cache_ttl=120, toolset_tags=("compare", "report"),
+    ),
 }
 
 
@@ -523,6 +526,16 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "tilføj compliance", "tilfoej compliance", "årligt krav", "aarligt krav",
             "recertificeringskrav")):
         names.add("create_compliance_requirement")
+    # --- Cohort comparison (plan #14): keyword-gated only. Comparison verbs
+    # ('sammenlign', 'X vs Y', 'mod', 'kvartal') force the single-turn k-anon
+    # comparison tool instead of serial get_* calls + an ungrounded hand-diff. ---
+    if _has_any(query, (
+            "sammenlign", "sammenligning", " vs ", " vs.", "versus", "kontra",
+            "mod hinanden", "op mod", "forskellen mellem", "forskel mellem",
+            "i forhold til", "dette kvartal mod", "sidste kvartal", "denne periode mod",
+            "ledere vs", "afdelinger mod", "hvordan klarer", "klarer sig mod")):
+        names.add("hr_compare_cohorts")
+        forced_tool = "hr_compare_cohorts"
 
     selected = []
     for name in sorted(names):

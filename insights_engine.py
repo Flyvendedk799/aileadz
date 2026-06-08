@@ -276,7 +276,10 @@ def get_skill_gap_analysis(app, company_id, department=None):
             return None
 
         # Get current employee skills (merge enterprise + chatbot sources)
-        level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 3 WHEN 'ekspert' THEN 4 ELSE 2 END"
+        # CANONICAL SCALE 1-5: map the chatbot 4-label enum onto the same 1-5
+        # scale the HR matrix/targets and the viz use, so a chatbot "ekspert"
+        # reaches 5 and gaps cannot flip sign against a 5/5 target.
+        level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END"
         cur.execute(f"""
             SELECT skill_name, current_level, department, user_id FROM (
                 SELECT esm.skill_name, esm.current_level, cu.department, cu.user_id

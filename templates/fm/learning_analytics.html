@@ -7,6 +7,8 @@
 {% block extra_head %}
 <style>
   .la-chart-wrap { position: relative; height: 260px; }
+  .fm-ch-sub { margin-left: auto; font-size: 11px; font-weight: 500; color: var(--fm-ink-3); text-align: right; }
+  .la-anon { font-size: 11px; color: var(--fm-ink-3); margin: 10px 0 0; display: flex; align-items: center; gap: 6px; }
 </style>
 {% endblock %}
 {% block content %}
@@ -30,6 +32,30 @@
   <div class="split">
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Tilmeldinger vs. gennemførelser</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="trendChart" role="img" aria-label="Linjediagram: tilmeldinger og gennemførelser pr. dag i valgt periode"></canvas></div></div></div>
     <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Gennemførselsrate pr. afdeling</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="deptChart" role="img" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling"></canvas></div></div></div>
+  </div>
+
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock"></i></span><h3>Hvornår på dagen lærer medarbejderne?</h3><span class="fm-ch-sub">Interaktioner pr. time i valgt periode</span></div><div class="fm-card-body">
+    <div class="la-chart-wrap"><canvas id="hourChart" role="img" aria-label="Søjlediagram: antal lærings-interaktioner fordelt på døgnets 24 timer"></canvas></div>
+    {% if engagement_anon %}<p class="la-anon"><i class="fa-solid fa-user-shield"></i> {{ engagement_anon }}</p>{% endif %}
+  </div></div>
+
+  <div class="split" style="margin-top:16px">
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Læringsforløb der faktisk gennemføres</h3><span class="fm-ch-sub">Gennemsnitlig fremdrift og gennemførselsrate pr. forløb</span></div><div class="fm-card-body">
+      {% if path_effectiveness %}
+      <div class="la-chart-wrap"><canvas id="pathChart" role="img" aria-label="Liggende søjlediagram: gennemsnitlig fremdrift og gennemførselsrate i procent pr. læringsforløb"></canvas></div>
+      {% if path_anon %}<p class="la-anon"><i class="fa-solid fa-user-shield"></i> {{ path_anon }}</p>{% endif %}
+      {% else %}
+      {{ empty('Ingen forløbsdata i perioden', 'Når medarbejdere starter på et læringsforløb vises fremdrift og gennemførsel her.', 'fa-route') }}
+      {% endif %}
+    </div></div>
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Bestilte vs. gennemførte kurser pr. kategori</h3><span class="fm-ch-sub">Bestillingsvolumen mod gennemførsler — ikke kompetencebehov</span></div><div class="fm-card-body">
+      {% if category_throughput %}
+      <div class="la-chart-wrap"><canvas id="categoryChart" role="img" aria-label="Søjlediagram: antal bestilte og gennemførte kurser pr. kursuskategori"></canvas></div>
+      {% if category_anon %}<p class="la-anon"><i class="fa-solid fa-user-shield"></i> {{ category_anon }}</p>{% endif %}
+      {% else %}
+      {{ empty('Ingen kategori-data i perioden', 'Bestilte og gennemførte kurser grupperes efter kategori, når medarbejdere bestiller kurser.', 'fa-layer-group') }}
+      {% endif %}
+    </div></div>
   </div>
 
   <div class="fm-table-wrap" style="margin-top:16px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Mest populære kurser</h3></div>
@@ -66,6 +92,45 @@
     series: [{ label: 'Gennemførselsrate (%)', data: dc.map(function (d) { return Number(d.completion_rate) || 0; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
     empty: 'Ingen afdelingsdata i perioden'
   });
+
+  // When-do-people-learn: 24 hourly buckets, sub-k hours already zeroed
+  // server-side (no single-learner pattern reaches the visual).
+  var he = {{ (chart_data.hourly_engagement if chart_data else {'hours':[],'interactions':[]})|tojson }};
+  FMChart.bar('hourChart', {
+    labels: he.hours || [],
+    series: [{ label: 'Interaktioner', data: he.interactions || [], color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+    empty: 'Ingen interaktionsdata i perioden'
+  });
+
+  // Learning-path effectiveness — horizontal grouped bars; sub-k paths
+  // already dropped server-side. Aggregate percentages only, no names.
+  var pe = {{ (path_effectiveness or [])|list|tojson|safe }};
+  if (pe.length) {
+    FMChart.bar('pathChart', {
+      horizontal: true,
+      labels: pe.map(function (p) { return p.path_name; }),
+      series: [
+        { label: 'Gns. fremdrift (%)', data: pe.map(function (p) { return Number(p.avg_progress) || 0; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') },
+        { label: 'Gennemførselsrate (%)', data: pe.map(function (p) { return Number(p.completion_rate) || 0; }), color: FMChart.cssVar('--fm-success', '#16a34a') }
+      ],
+      empty: 'Ingen forløbsdata i perioden'
+    });
+  }
+
+  // Course-category throughput — bestilte vs. gennemførte kurser
+  // (bestillingsvolumen mod gennemførsler, IKKE kompetencebehov mod udbud).
+  // Sub-k categories already dropped server-side.
+  var ct = {{ (category_throughput or [])|list|tojson|safe }};
+  if (ct.length) {
+    FMChart.bar('categoryChart', {
+      labels: ct.map(function (c) { return c.skill_category; }),
+      series: [
+        { label: 'Bestilte kurser', data: ct.map(function (c) { return Number(c.ordered) || 0; }), color: FMChart.cssVar('--fm-clay', '#c9603a') },
+        { label: 'Gennemførte kurser', data: ct.map(function (c) { return Number(c.completed) || 0; }), color: FMChart.cssVar('--fm-success', '#16a34a') }
+      ],
+      empty: 'Ingen kategori-data i perioden'
+    });
+  }
 })();
 </script>
 {% endblock %}

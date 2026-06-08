@@ -11,12 +11,22 @@ from datetime import datetime, timedelta
 
 # ── Skill-level normalization ──
 #
+# CANONICAL SCALE: 1..5. Every skill level — HR-assigned or chatbot-derived —
+# lives on this single 1-5 scale. The viz (radar max=5, "af 5 mulige", target/
+# assign sliders min=1/max=5) is the source of truth for the scale; the data
+# sources are normalized to match it.
+#
 # Two sources of truth for an employee's skill proficiency exist:
 #   1) employee_skills_matrix.current_level / company_skill_targets.target_level
-#      — INTEGER columns (1..5), HR-managed.
+#      — INTEGER columns (1..5), HR-managed; already on the canonical scale.
 #   2) user_skills.skill_level — a Danish STRING ENUM
 #      ('begynder','mellem','avanceret','ekspert'), self-reported via the chatbot
-#      profile.
+#      profile. The 4-label enum is spread onto the canonical 1-5 scale below so
+#      a chatbot-reported "ekspert" reaches the ceiling (5) instead of being
+#      permanently capped at 4/5 and manufacturing a phantom gap against a 5/5
+#      HR target. begynder/mellem keep their low anchors; avanceret/ekspert take
+#      the upper anchors (4/5). BOTH sources must share this scale or gaps flip
+#      sign — see the HR_VALUE_PLAN risk register.
 #
 # The historical bug: skill-gap analytics ran the matrix's INT level through a
 # string->int map (e.g. {'begynder':1,...}.get(current_level, 2)). Because
@@ -26,8 +36,8 @@ from datetime import datetime, timedelta
 SKILL_LEVEL_MAP = {
     'begynder': 1,
     'mellem': 2,
-    'avanceret': 3,
-    'ekspert': 4,
+    'avanceret': 4,
+    'ekspert': 5,
 }
 
 
@@ -39,8 +49,9 @@ def _skill_level_to_int(value, default=0):
     string labels, exactly once.
 
     Regression contract (the bug this guards against):
-        _skill_level_to_int(3)          == 3      # int passes through unchanged
-        _skill_level_to_int('avanceret') == 3      # string mapped once
+        _skill_level_to_int(3)           == 3      # int passes through unchanged
+        _skill_level_to_int('avanceret') == 4      # string mapped once (1-5 scale)
+        _skill_level_to_int('ekspert')   == 5      # ekspert reaches the ceiling
         _skill_level_to_int('begynder')  == 1
         # the bug was: SKILL_LEVEL_MAP.get(3, default) -> default (WRONG)
     """

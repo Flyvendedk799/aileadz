@@ -29,3 +29,8 @@
   <a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>
   <a class="pg-tab {{ 'active' if _hp == 'reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i> Rapporter</a>
 </nav>
+{# Embedded HR AI assistant — included HERE (HR-only subnav) so it lands on every HR
+   page with the correct audience scoping, and NEVER in fm_base.html (94 admin/vendor/
+   public/employee templates extend that). It is position:fixed, so DOM placement is
+   immaterial; active_hr_page flows through for page-aware context. #}
+{% include 'fm/_ai_panel.html' %}

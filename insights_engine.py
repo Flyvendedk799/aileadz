@@ -370,6 +370,234 @@ def get_skill_gap_analysis(app, company_id, department=None):
 
 
 # ---------------------------------------------------------------------------
+# Skill-uplift loop READ side (plan #19).
+#
+# The write side (skill_history.record_snapshot) appends an immutable row to
+# employee_skill_history on every actual skill-level change. These two readers
+# turn that trail into the buyer-facing evidence the product promises:
+#
+#   * get_skill_growth_trend — company-wide AVERAGE measured skill level per
+#     month (a line chart on skill_gaps.html). Proves the level moved over time.
+#   * get_uplift_roi         — measured aggregate level LIFT vs training spend
+#     (avg level lift per 1000 kr, a headline on roi.html). Upgrades ROI from
+#     cost/throughput to MEASURED outcome.
+#
+# BOTH are aggregate, company-scoped, and k-anon-safe: they emit only
+# company-level numbers and SUPPRESS any bucket whose distinct-employee cohort
+# is below kanon.K_DEFAULT (so a single learner's trajectory can never be
+# re-identified from a month's average or the lift figure). They NEVER return
+# people-level rows — that is the GDPR/k-anon bar for people-level analytics.
+# ---------------------------------------------------------------------------
+
+def _k_default():
+    """Active k floor (kanon.K_DEFAULT), or a safe 5 if k-anon is unavailable."""
+    try:
+        return int(_kanon.K_DEFAULT) if _kanon is not None else 5
+    except Exception:
+        return 5
+
+
+def get_skill_growth_trend(app, company_id, months=6):
+    """Company-wide monthly average measured skill level (k-anon-safe).
+
+    Reads employee_skill_history (the append-only trajectory) and, for each of
+    the last ``months`` calendar months, computes the AVERAGE level of the
+    latest snapshot per (employee, skill) recorded in that month — i.e. "where
+    did the measured skill levels sit that month". A rising line is direct
+    evidence that training moved levels upward.
+
+    k-anonymity: a month whose distinct-employee count is below k would expose a
+    handful of (possibly one) people's levels, so that month is SUPPRESSED from
+    the series (its average is dropped). The series only ever carries
+    company-level aggregates. Returns a safe-empty dict on no data / error.
+
+    Returns::
+
+        {'labels': ['2026-01', ...],        # months with a k-safe cohort
+         'avg_levels': [3.2, ...],          # company avg level that month
+         'employee_counts': [12, ...],      # distinct employees that month
+         'months': <int>, 'k': <int>,
+         'suppressed_months': <int>, 'anon_note': <str|None>,
+         'has_data': <bool>}
+    """
+    import MySQLdb.cursors
+
+    try:
+        months = int(months)
+    except (TypeError, ValueError):
+        months = 6
+    if months < 1:
+        months = 1
+    if months > 36:
+        months = 36
+
+    k = _k_default()
+    out = {'labels': [], 'avg_levels': [], 'employee_counts': [],
+           'months': months, 'k': k, 'suppressed_months': 0,
+           'anon_note': None, 'has_data': False}
+
+    with app.app_context():
+        conn = app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            # One pass over the company's history within the window. AVG over the
+            # rows in each month, plus the DISTINCT-employee cohort that drives
+            # the k-anon decision. month label is 'YYYY-MM'.
+            cur.execute("""
+                SELECT DATE_FORMAT(captured_at, '%%Y-%%m')      AS ym,
+                       AVG(level)                               AS avg_level,
+                       COUNT(DISTINCT employee_id)              AS employees
+                FROM employee_skill_history
+                WHERE company_id = %s
+                  AND captured_at >= DATE_SUB(
+                        DATE_FORMAT(CURDATE(), '%%Y-%%m-01'),
+                        INTERVAL %s MONTH)
+                GROUP BY ym
+                ORDER BY ym ASC
+            """, (company_id, months - 1))
+            rows = cur.fetchall() or []
+        except Exception as e:
+            logger.warning(f"skill growth trend error: {e}")
+            rows = []
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+    suppressed = 0
+    for r in rows:
+        try:
+            n = int(r.get('employees') or 0)
+        except (TypeError, ValueError):
+            n = 0
+        if n < k:
+            # Sub-k month: suppress entirely (never reveal its average).
+            suppressed += 1
+            continue
+        try:
+            avg = round(float(r.get('avg_level') or 0), 2)
+        except (TypeError, ValueError):
+            avg = 0.0
+        out['labels'].append(r.get('ym'))
+        out['avg_levels'].append(avg)
+        out['employee_counts'].append(n)
+
+    out['suppressed_months'] = suppressed
+    out['has_data'] = bool(out['labels'])
+    if suppressed and _kanon is not None:
+        try:
+            out['anon_note'] = _kanon.anon_note(k)
+        except Exception:
+            out['anon_note'] = None
+    return out
+
+
+def get_uplift_roi(app, company_id, fiscal_year=None):
+    """Measured aggregate skill LIFT vs training spend for a fiscal year.
+
+    The skill-uplift headline for roi.html: instead of spend+completion only,
+    this quantifies how much measured skill level the year's training BOUGHT.
+
+      * ``total_lift``  = SUM of positive (level - previous_level) deltas across
+        every employee_skill_history row captured in the fiscal year (only
+        increases count — a manager correcting a level downward is not "uplift").
+      * ``spend``       = the same real SUM(course_orders.price) the ROI engine
+        uses for the year.
+      * ``lift_per_1000_kr`` = total_lift / (spend / 1000) — "skill points gained
+        per 1.000 kr invested", the measured-outcome metric.
+
+    k-anonymity: the lift figure is built from at least ``employees`` distinct
+    people; if that distinct-employee cohort is below k the aggregate is
+    SUPPRESSED (a single learner's lift would be re-identifying). Aggregate,
+    company-scoped, never people-level. Safe-zero on no data / error.
+
+    Returns::
+
+        {'fiscal_year': <int>, 'total_lift': <float>, 'levels_raised': <int>,
+         'employees': <int>, 'skills': <int>, 'spend': <float>,
+         'lift_per_1000_kr': <float>, 'avg_lift_per_employee': <float>,
+         'suppressed': <bool>, 'anon_note': <str|None>, 'has_data': <bool>, 'k': <int>}
+    """
+    import MySQLdb.cursors
+    import datetime as _dt
+
+    if fiscal_year is None:
+        try:
+            fiscal_year = _dt.datetime.now().year
+        except Exception:
+            fiscal_year = 0
+
+    k = _k_default()
+    out = {'fiscal_year': fiscal_year, 'total_lift': 0.0, 'levels_raised': 0,
+           'employees': 0, 'skills': 0, 'spend': 0.0, 'lift_per_1000_kr': 0.0,
+           'avg_lift_per_employee': 0.0, 'suppressed': False,
+           'anon_note': None, 'has_data': False, 'k': k}
+
+    with app.app_context():
+        conn = app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            # Aggregate measured lift for the year. Only POSITIVE deltas (an
+            # actual increase) count toward uplift; previous_level NULL means the
+            # first observation — no measurable delta yet, so it is excluded.
+            cur.execute("""
+                SELECT
+                    COALESCE(SUM(GREATEST(level - previous_level, 0)), 0) AS total_lift,
+                    SUM(CASE WHEN level > previous_level THEN 1 ELSE 0 END) AS levels_raised,
+                    COUNT(DISTINCT CASE WHEN level > previous_level THEN employee_id END) AS employees,
+                    COUNT(DISTINCT CASE WHEN level > previous_level THEN skill_name END) AS skills
+                FROM employee_skill_history
+                WHERE company_id = %s
+                  AND previous_level IS NOT NULL
+                  AND YEAR(captured_at) = %s
+            """, (company_id, fiscal_year))
+            row = cur.fetchone() or {}
+
+            cur.execute("""
+                SELECT COALESCE(SUM(price), 0) AS spend
+                FROM course_orders
+                WHERE company_id = %s
+                  AND status NOT IN ('cancelled', 'rejected')
+                  AND YEAR(created_at) = %s
+            """, (company_id, fiscal_year))
+            srow = cur.fetchone() or {}
+        except Exception as e:
+            logger.warning(f"uplift ROI error: {e}")
+            row, srow = {}, {}
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+    employees = int(row.get('employees') or 0)
+    out['levels_raised'] = int(row.get('levels_raised') or 0)
+    out['skills'] = int(row.get('skills') or 0)
+    out['employees'] = employees
+    out['spend'] = float(srow.get('spend') or 0)
+
+    # k-anon: the measured lift rests on `employees` distinct people. Below k,
+    # the aggregate could re-identify a single learner's progress — suppress it.
+    if 0 < employees < k:
+        out['suppressed'] = True
+        if _kanon is not None:
+            try:
+                out['anon_note'] = _kanon.anon_note(k)
+            except Exception:
+                out['anon_note'] = None
+        return out
+
+    out['total_lift'] = round(float(row.get('total_lift') or 0), 1)
+    if out['spend'] > 0 and out['total_lift'] > 0:
+        out['lift_per_1000_kr'] = round(out['total_lift'] / (out['spend'] / 1000), 2)
+    if employees > 0 and out['total_lift'] > 0:
+        out['avg_lift_per_employee'] = round(out['total_lift'] / employees, 2)
+    out['has_data'] = out['total_lift'] > 0 or out['levels_raised'] > 0
+    return out
+
+
+# ---------------------------------------------------------------------------
 # Canonical ROI engine (roadmap value-4, Theme D/E).
 #
 # This is the SINGLE source of truth for training-ROI numbers. The HEADLINE /

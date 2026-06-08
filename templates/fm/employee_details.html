@@ -97,7 +97,7 @@
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetencer</h3>{% if employee_skills %}<span class="fm-badge" style="margin-left:auto">{{ employee_skills|length }} skills</span>{% endif %}</div>
       <div class="fm-card-body">
         {% if employee_skills %}
-        <div class="split"><div><canvas id="skillRadar" height="260"></canvas></div>
+        <div class="split"><div style="position:relative;height:260px"><canvas id="skillRadar" aria-label="Radardiagram: nuværende kompetenceniveau vs. mål for {{ employee.username|e }}" role="img"></canvas></div>
         <div>{% for s in employee_skills %}
           <div class="emp-skill-row"><span style="font-weight:600;font-size:13px;flex:1">{{ s.skill_name }}</span>
             <span class="fm-flex" style="gap:4px">{% for i in range(1,6) %}<span class="emp-dot {{ 'on' if i <= s.current_level else 'off' }}"></span>{% endfor %}</span>
@@ -133,6 +133,13 @@
       <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Kursushistorik</h3><span class="fm-badge" style="margin-left:auto">{{ course_history|length }}</span></div>
       <div class="fm-card-body" style="padding:0">
         {% if course_history %}
+        {% set _spark = course_history|map(attribute='time_spent_minutes')|map('default', 0)|list %}
+        {% if _spark|select|list %}
+        <div style="padding:14px 18px 4px;border-bottom:1px solid var(--fm-line)">
+          <div class="fm-eyebrow" style="margin:0 0 6px"><i class="fa-solid fa-chart-line"></i> Læringsaktivitet over tid</div>
+          <div style="position:relative;height:56px"><canvas id="empCourseSpark" aria-label="Sparkline: læringstid (minutter) pr. kursus i kronologisk rækkefølge for {{ employee.username|e }}" role="img"></canvas></div>
+        </div>
+        {% endif %}
         <table class="fm-table"><thead><tr><th>Kursus</th><th style="text-align:right">Pris</th><th style="text-align:center">Fremgang</th><th style="text-align:center">Status</th><th>Tilmeldt</th></tr></thead><tbody>
         {% for c in course_history %}
           <tr>
@@ -174,47 +181,38 @@
   </div>
 </div>
 {% endblock %}
-{% block extra_scripts %}
-{% if employee_skills %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
 <script>
-const skillRadarLabels = {{ employee_skills|map(attribute='skill_name')|list|tojson }};
-const skillRadarCurrent = {{ employee_skills|map(attribute='current_level')|list|tojson }};
-const skillRadarTarget = {{ employee_skills|map(attribute='target_level')|list|tojson }};
-const skillRadarDatasets = [{
-  label: 'Nuværende niveau',
-  data: skillRadarCurrent,
-  backgroundColor: 'rgba(15, 118, 110, 0.14)',
-  borderColor: '#0f766e',
-  borderWidth: 2,
-  pointBackgroundColor: '#0f766e',
-  pointRadius: 4
-}];
-if (skillRadarTarget.some(value => Number(value || 0) > 0)) {
-  skillRadarDatasets.push({
-    label: 'Mål',
-    data: skillRadarTarget.map(value => Number(value || 0)),
-    backgroundColor: 'rgba(16,185,129,0.08)',
-    borderColor: '#10b981',
-    borderWidth: 1,
-    borderDash: [4, 4],
-    pointRadius: 3,
-    pointBackgroundColor: '#10b981'
-  });
-}
-new Chart(document.getElementById('skillRadar'), {
-  type: 'radar',
-  data: { labels: skillRadarLabels, datasets: skillRadarDatasets },
-  options: {
-    responsive: true,
-    scales: { r: {
-      min: 0, max: 5,
-      ticks: { stepSize: 1, font: { size: 10 }, backdropColor: 'transparent' },
-      pointLabels: { font: { size: 11, weight: '600' } }
-    } },
-    plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 12, font: { size: 11 } } } }
+(function () {
+  if (typeof FMChart === 'undefined') return;
+
+  // ── Skill radar — actual vs. target, token-bound & dark-aware (was raw new Chart()) ──
+  var skillLabels  = {{ employee_skills|map(attribute='skill_name')|list|tojson|safe }};
+  var skillCurrent = {{ employee_skills|map(attribute='current_level')|map('default', 0)|list|tojson|safe }};
+  var skillTarget  = {{ employee_skills|map(attribute='target_level')|map('default', 0)|list|tojson|safe }};
+  if (skillLabels.length) {
+    var radarSeries = [
+      { label: 'Nuværende niveau', data: skillCurrent.map(function (v) { return Number(v) || 0; }),
+        color: FMChart.cssVar('--fm-primary', '#0f766e') }
+    ];
+    if (skillTarget.some(function (v) { return Number(v) > 0; })) {
+      radarSeries.push({ label: 'Mål', data: skillTarget.map(function (v) { return Number(v) || 0; }),
+        color: FMChart.cssVar('--fm-success', '#16a34a') });
+    }
+    FMChart.radar('skillRadar', {
+      labels: skillLabels, series: radarSeries, max: 5, step: 1,
+      empty: 'Ingen kompetencer registreret endnu'
+    });
   }
-});
+
+  // ── Course-activity sparkline — learning minutes per course, chronological ──
+  // course_history is newest-first from the route, so reverse for left→right time order.
+  var spark = {{ course_history|map(attribute='time_spent_minutes')|map('default', 0)|list|tojson|safe }};
+  spark = spark.map(function (v) { return Number(v) || 0; }).reverse();
+  FMChart.sparkline('empCourseSpark', {
+    data: spark, color: FMChart.cssVar('--fm-indigo', '#4f46e5'),
+    empty: 'Ingen læringsaktivitet endnu'
+  });
+})();
 </script>
-{% endif %}
 {% endblock %}

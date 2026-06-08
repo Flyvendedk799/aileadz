@@ -215,17 +215,56 @@ def credits():
             return redirect(url_for('admin_dashboard.credits'))
 
         try:
+            granted_by = session.get('user', '') or 'admin'
             cur = current_app.mysql.connection.cursor()
             cur.execute("UPDATE users SET credits = credits + %s WHERE username = %s", (credit_amount, target_user))
+            # Log the grant in the same credit_usage ledger the app already uses
+            # for deductions. Grants are recorded with a NEGATIVE credits_used so
+            # they read as "added" vs. positive deductions, and the description
+            # captures who performed the action (by whom).
+            cur.execute(
+                "INSERT INTO credit_usage (username, credits_used, description) VALUES (%s, %s, %s)",
+                (target_user, -credit_amount, f"Admin-tildeling af {granted_by}"),
+            )
             current_app.mysql.connection.commit()
             cur.close()
             flash(f"Kreditter tilfojet til {target_user}!", "success")
         except Exception as e:
             logging.error("Error updating credits: %s", e)
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
             flash("Fejl ved tildeling af kreditter.", "danger")
         return redirect(url_for('admin_dashboard.credits'))
 
-    return render_template('fm/admin_credits.html')
+    # Read-only, admin-scoped history: most recent credit-grant entries from the
+    # credit_usage ledger (grants are the negative-credits_used "Admin-tildeling"
+    # rows written above). No commit needed for a SELECT.
+    credit_history = []
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            "SELECT username, credits_used, description, timestamp "
+            "FROM credit_usage "
+            "WHERE credits_used < 0 AND description LIKE 'Admin-tildeling%%' "
+            "ORDER BY timestamp DESC LIMIT 25"
+        )
+        for row in cur.fetchall() or []:
+            desc = row.get('description') or ''
+            granted_by = desc.split(' af ', 1)[1].strip() if ' af ' in desc else '—'
+            credit_history.append({
+                'username': row.get('username') or '—',
+                'amount': abs(int(row.get('credits_used') or 0)),
+                'granted_by': granted_by,
+                'timestamp': row.get('timestamp'),
+            })
+        cur.close()
+    except Exception as e:
+        logging.warning("Could not load credit history (table may be empty): %s", e)
+        credit_history = []
+
+    return render_template('fm/admin_credits.html', credit_history=credit_history)
 
 
 @admin_dashboard_bp.route('/users')

@@ -15,6 +15,11 @@
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-xmark"></i></span><div><div class="kl">Afvist</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','rejected')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
   </div>
 
+  <div class="fm-card" style="padding:18px 18px 14px">
+    <div class="fm-card-head" style="margin-bottom:8px"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Godkendelsesaktivitet (30 dage)</h3><span class="fm-badge teal" style="margin-left:auto">dagligt</span></div>
+    <div class="fm-chart-wrap" style="min-height:220px"><canvas id="approvalTrendChart" role="img" aria-label="Linjediagram: daglige godkendelsesanmodninger fordelt på afventer, godkendt og afvist over de seneste 30 dage"></canvas></div>
+  </div>
+
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-clipboard-check"></i> Afventer handling</span><h2 class="fm-section-title">Godkendelsesanmodninger</h2></div></div>
 
   {% for a in approvals %}
@@ -49,6 +54,22 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
+{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  var trend = {{ (approval_trend or {})|tojson }};
+  FMChart.line('approvalTrendChart', {
+    labels: trend.labels || [],
+    series: [
+      { label: 'Afventer',  data: trend.pending  || [], color: FMChart.cssVar('--fm-clay', '#c9603a') },
+      { label: 'Godkendt',  data: trend.approved || [], color: FMChart.cssVar('--fm-success', '#16a34a') },
+      { label: 'Afvist',    data: trend.rejected || [], color: FMChart.cssVar('--fm-primary', '#0f766e') }
+    ],
+    empty: 'Ingen godkendelsesaktivitet i de seneste 30 dage'
+  });
+})();
+</script>
 <script>
 let _pendingRejectId = null;
 function closeRejectModal(){ document.getElementById('rejectModal').style.display='none'; }

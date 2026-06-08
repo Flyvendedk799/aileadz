@@ -35,11 +35,11 @@
   <div class="rp-charts">
     <div class="fm-card rp-chart-card">
       <h3><i class="fa-solid fa-chart-line"></i> Dagligt kreditforbrug</h3>
-      <div class="rp-chart-wrap"><canvas id="usageChart"></canvas></div>
+      <div class="rp-chart-wrap"><canvas id="usageChart" role="img" aria-label="Linjediagram over dagligt kreditforbrug over tid"></canvas></div>
     </div>
     <div class="fm-card rp-chart-card">
       <h3><i class="fa-solid fa-chart-column"></i> Sidste 7 dage</h3>
-      <div class="rp-chart-wrap"><canvas id="last7Chart"></canvas></div>
+      <div class="rp-chart-wrap"><canvas id="last7Chart" role="img" aria-label="Søjlediagram over kreditforbrug de seneste 7 dage"></canvas></div>
     </div>
   </div>
 
@@ -87,39 +87,22 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
   (function () {
-    const styles = getComputedStyle(document.documentElement);
-    const primary = styles.getPropertyValue('--fm-primary').trim() || '#0f766e';
-    const muted = styles.getPropertyValue('--fm-ink-3').trim() || '#64748b';
-    const border = styles.getPropertyValue('--fm-line').trim() || 'rgba(148,163,184,.25)';
-    Chart.defaults.color = muted;
-    Chart.defaults.borderColor = border;
+    if (typeof FMChart === 'undefined') return;
 
-    const usageEl = document.getElementById('usageChart');
-    if (usageEl) {
-      new Chart(usageEl.getContext('2d'), {
-        type: 'line',
-        data: {
-          labels: {{ chart_labels|tojson }},
-          datasets: [{ label: 'Dagligt kreditforbrug', data: {{ chart_data|tojson }}, fill: true, borderColor: primary, backgroundColor: 'rgba(15,118,110,.1)', tension: 0.3 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-      });
-    }
+    FMChart.line('usageChart', {
+      labels: {{ chart_labels|tojson }},
+      series: [{ label: 'Dagligt kreditforbrug', data: {{ chart_data|tojson }} }],
+      empty: 'Intet kreditforbrug i perioden endnu'
+    });
 
-    const last7El = document.getElementById('last7Chart');
-    if (last7El) {
-      new Chart(last7El.getContext('2d'), {
-        type: 'bar',
-        data: {
-          labels: {{ last7_labels|tojson }},
-          datasets: [{ label: 'Kreditter (sidste 7 dage)', data: {{ last7_usage|tojson }}, backgroundColor: primary, borderRadius: 6 }]
-        },
-        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'top' } }, scales: { y: { beginAtZero: true } } }
-      });
-    }
+    FMChart.bar('last7Chart', {
+      labels: {{ last7_labels|tojson }},
+      series: [{ label: 'Kreditter (sidste 7 dage)', data: {{ last7_usage|tojson }} }],
+      empty: 'Intet forbrug de seneste 7 dage'
+    });
   })();
 </script>
 {% endblock %}

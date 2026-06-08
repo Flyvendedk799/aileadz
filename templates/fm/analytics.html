@@ -5,21 +5,14 @@
 {% block topbar_sub %}Kreditforbrug, aktivitet og trends i et roligt overblik.{% endblock %}
 {% block extra_head %}
 <style>
-  .an-kpis { display: grid; grid-template-columns: repeat(5, 1fr); gap: 14px; margin-bottom: 18px; }
-  .an-kpi { padding: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); transition: transform var(--t), box-shadow var(--t); }
-  .an-kpi:hover { transform: translateY(-2px); box-shadow: var(--sh-md); }
-  .an-kpi .lab { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .06em; text-transform: uppercase; color: var(--fm-ink-3); margin-bottom: 10px; }
-  .an-kpi .val { font-family: var(--ff-display); font-size: clamp(24px,2.4vw,30px); font-weight: 700; letter-spacing: -.03em; line-height: 1; font-variant-numeric: tabular-nums; }
-  .an-kpi .det { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 8px; display: flex; align-items: center; gap: 6px; }
-  .an-charts { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 18px; }
+  .an-charts { display: grid; grid-template-columns: 1.5fr 1fr; gap: 16px; margin-bottom: 18px; margin-top: 18px; }
   .chart-card { padding: 20px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-sm); }
   .chart-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 14px; margin-bottom: 16px; }
   .chart-head h3 { font-size: 15px; font-weight: 700; letter-spacing: -.02em; }
   .chart-head p { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 3px; }
   .chart-box { position: relative; height: 280px; }
   .credit-pill { display: inline-flex; align-items: center; justify-content: center; min-width: 48px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--fm-primary-tint); color: var(--fm-primary-700); font-family: var(--ff-mono); font-weight: 600; font-size: 12.5px; }
-  @media (max-width: 1200px) { .an-kpis { grid-template-columns: repeat(3,1fr); } .an-charts { grid-template-columns: 1fr; } }
-  @media (max-width: 680px) { .an-kpis { grid-template-columns: 1fr; } }
+  @media (max-width: 1200px) { .an-charts { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 {% block content %}
@@ -32,13 +25,13 @@
           </div>
         </div>
 
-        <section class="an-kpis">
-          <article class="an-kpi" data-reveal data-d="1"><div class="lab">Forbrugt</div><div class="val tnum">{{ total_used or 0 }}</div><div class="det">Samlet kreditforbrug</div></article>
-          <article class="an-kpi" data-reveal data-d="2"><div class="lab">Tilgængeligt</div><div class="val tnum">{{ current_credits or 0 }}</div><div class="det"><span class="fm-badge green dot">Aktuel saldo</span></div></article>
-          <article class="an-kpi" data-reveal data-d="3"><div class="lab">Total base</div><div class="val tnum">{{ (total_used or 0) + (current_credits or 0) }}</div><div class="det">Forbrugt plus saldo</div></article>
-          <article class="an-kpi" data-reveal data-d="4"><div class="lab">Dagligt snit</div><div class="val tnum">{{ (average_usage or 0) | round(2) }}</div><div class="det">Baseret på aktive dage</div></article>
-          <article class="an-kpi" data-reveal data-d="5"><div class="lab">Peak</div><div class="val tnum">{{ peak_usage or 0 }}</div><div class="det">{{ peak_day if peak_day else 'Ingen historik endnu' }}</div></article>
-        </section>
+        <div class="kpi-row" style="grid-template-columns:repeat(5,1fr)">
+          <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Forbrugt</div><div class="kv tnum">{{ total_used or 0 }}</div><div class="kd">Samlet kreditforbrug</div></div></div>
+          <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-wallet"></i></span><div><div class="kl">Tilgængeligt</div><div class="kv tnum">{{ current_credits or 0 }}</div><div class="kd">Aktuel saldo</div></div></div>
+          <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Total base</div><div class="kv tnum">{{ (total_used or 0) + (current_credits or 0) }}</div><div class="kd">Forbrugt plus saldo</div></div></div>
+          <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-gauge"></i></span><div><div class="kl">Dagligt snit</div><div class="kv tnum">{{ (average_usage or 0) | round(2) }}</div><div class="kd">Baseret på aktive dage</div></div></div>
+          <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-arrow-trend-up"></i></span><div><div class="kl">Peak</div><div class="kv tnum">{{ peak_usage or 0 }}</div><div class="kd">{{ peak_day if peak_day else 'Ingen historik endnu' }}</div></div></div>
+        </div>
 
         <section class="an-charts">
           <div class="chart-card" data-reveal data-d="1">
@@ -46,14 +39,14 @@
               <div><h3>Forbrug over tid</h3><p>Daglig kreditaktivitet sorteret kronologisk.</p></div>
               <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-regular fa-calendar"></i> {{ labels|length if labels else 0 }} dage</span>
             </div>
-            <div class="chart-box"><canvas id="lineChart"></canvas></div>
+            <div class="chart-box"><canvas id="lineChart" role="img" aria-label="Linjediagram over kreditforbrug over tid"></canvas></div>
           </div>
           <div class="chart-card" data-reveal data-d="2">
             <div class="chart-head">
               <div><h3>Seneste 7 dage</h3><p>Hurtig sammenligning af de nyeste dage.</p></div>
               <span class="fm-chip" style="height:30px;font-size:12px"><i class="fa-solid fa-bolt"></i> {{ last7_usage|sum if last7_usage else 0 }}</span>
             </div>
-            <div class="chart-box"><canvas id="barChart"></canvas></div>
+            <div class="chart-box"><canvas id="barChart" role="img" aria-label="Søjlediagram over kreditforbrug de seneste 7 dage"></canvas></div>
           </div>
         </section>
 
@@ -80,65 +73,21 @@
       </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
   (function () {
-    const rootStyles = getComputedStyle(document.documentElement);
-    const primary = (rootStyles.getPropertyValue('--fm-primary') || '').trim() || '#0b6b63';
-    const secondary = (rootStyles.getPropertyValue('--fm-indigo') || '').trim() || '#2563eb';
-    const textMuted = (rootStyles.getPropertyValue('--fm-ink-3') || '').trim() || '#64748b';
-    const border = (rootStyles.getPropertyValue('--fm-line') || '').trim() || 'rgba(148,163,184,.25)';
+    if (typeof FMChart !== 'undefined') {
+      FMChart.line('lineChart', {
+        labels: {{ labels|tojson }},
+        series: [{ label: 'Kreditter', data: {{ usage|tojson }} }],
+        empty: 'Intet kreditforbrug i perioden endnu'
+      });
 
-    const labels = {{ labels|tojson }};
-    const usage = {{ usage|tojson }};
-    const last7Labels = {{ last7_labels|tojson }};
-    const last7Usage = {{ last7_usage|tojson }};
-
-    if (window.Chart) {
-      Chart.defaults.color = textMuted;
-      Chart.defaults.borderColor = border;
-
-      const sharedOptions = {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: { display: false },
-          tooltip: { backgroundColor: 'rgba(15, 23, 42, .92)', padding: 12, cornerRadius: 8 }
-        },
-        scales: {
-          x: { grid: { display: false } },
-          y: { beginAtZero: true, ticks: { precision: 0 } }
-        }
-      };
-
-      const lineCanvas = document.getElementById('lineChart');
-      if (lineCanvas) {
-        new Chart(lineCanvas, {
-          type: 'line',
-          data: {
-            labels: labels,
-            datasets: [{
-              label: 'Kreditter', data: usage,
-              borderColor: primary, backgroundColor: 'rgba(15, 118, 110, .12)',
-              fill: true, tension: .35, pointRadius: 3, pointHoverRadius: 5,
-              pointBackgroundColor: primary, borderWidth: 2
-            }]
-          },
-          options: sharedOptions
-        });
-      }
-
-      const barCanvas = document.getElementById('barChart');
-      if (barCanvas) {
-        new Chart(barCanvas, {
-          type: 'bar',
-          data: {
-            labels: last7Labels,
-            datasets: [{ label: 'Kreditter', data: last7Usage, backgroundColor: secondary, borderRadius: 7, maxBarThickness: 42 }]
-          },
-          options: sharedOptions
-        });
-      }
+      FMChart.bar('barChart', {
+        labels: {{ last7_labels|tojson }},
+        series: [{ label: 'Kreditter', data: {{ last7_usage|tojson }} }],
+        empty: 'Intet forbrug de seneste 7 dage'
+      });
     }
 
     const search = document.getElementById('transactionSearch');

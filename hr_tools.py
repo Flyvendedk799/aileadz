@@ -602,6 +602,100 @@ HR_TOOLS.extend([
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_skill_target",
+            "description": (
+                "MUTATION: Sæt (opret eller opdatér) et kompetencemål for virksomheden — det ønskede "
+                "niveau på den kanoniske skala 1-5 for en kompetence, evt. afgrænset til en afdeling. "
+                "Kræver et eksplicit confirm=true OG at den aktuelle HR-bruger er manager. Virksomheds-scoped. "
+                "Bruges ved 'sæt målet for X til Y', 'gør Z til et kompetencemål', 'hæv/sænk målet for'. "
+                "Bekræft ALTID med brugeren (gentag kompetence, afdeling og niveau) før confirm=true sættes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "skill_name": {
+                        "type": "string",
+                        "description": "Navnet på kompetencen, fx 'Cybersikkerhed', 'Python', 'GDPR'."
+                    },
+                    "target_level": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 5,
+                        "description": "Ønsket niveau på den kanoniske skala 1-5 (1=begynder, 5=ekspert)."
+                    },
+                    "department": {
+                        "type": "string",
+                        "description": "Valgfri afdeling målet gælder. Udeladt = hele virksomheden."
+                    },
+                    "priority": {
+                        "type": "string",
+                        "enum": ["low", "medium", "high", "critical"],
+                        "description": "Prioritet for kompetencemålet. Standard 'medium'."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at gemme. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": ["skill_name", "target_level"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_compliance_requirement",
+            "description": (
+                "MUTATION: Opret et compliance-krav for virksomheden (fx lovpligtig recertificering i "
+                "arbejdsmiljø, GDPR eller ISO). Compliance-matrixen udleder automatisk hvem der mangler "
+                "ud fra kravet. Kræver et eksplicit confirm=true OG at den aktuelle HR-bruger er manager. "
+                "Virksomheds-scoped. Bruges ved 'gør X til et obligatorisk krav', 'opret et compliance-krav', "
+                "'gør GDPR til et årligt krav'. Bekræft ALTID med brugeren før confirm=true sættes."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Titlen på kravet, fx 'Årlig GDPR-genopfriskning' eller 'Arbejdsmiljøkursus'."
+                    },
+                    "category": {
+                        "type": "string",
+                        "description": "Valgfri kategori, fx 'GDPR', 'Arbejdsmiljø', 'ISO 27001'."
+                    },
+                    "applies_to_department": {
+                        "type": "string",
+                        "description": "Valgfri afdeling kravet gælder. Udeladt = hele virksomheden."
+                    },
+                    "applies_to_role": {
+                        "type": "string",
+                        "description": "Valgfri rolle kravet gælder. Udeladt = alle roller."
+                    },
+                    "required_course_handle": {
+                        "type": "string",
+                        "description": "Valgfrit kursus-handle der opfylder kravet (knytter kravet til et kursus)."
+                    },
+                    "recurrence_months": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "description": "Hvor ofte kravet skal genopfyldes i måneder (fx 12 = årligt). 0 = engangskrav."
+                    },
+                    "is_statutory": {
+                        "type": "boolean",
+                        "description": "true hvis kravet er lovpligtigt (skærper eskalering ved overskridelse)."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at oprette kravet. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": ["title"]
+            }
+        }
+    },
 ])
 
 
@@ -2248,6 +2342,322 @@ def _execute_assign_learning_path_to_team(args):
     }, default=str)
 
 
+# ── Confirm-gated write tools (plan #13) ──────────────────────────────────────
+#
+# The advisor can diagnose skill gaps and compliance misses but, until now, could
+# not ACT on them: every fix bounced the HR user out to a separate UI form. These
+# two MUTATIONS close that loop in chat, reusing the EXACT guard contract proven
+# in approve_order_from_chat / assign_learning_path_to_team:
+#   1) company-scoped — the write only ever touches the session company's rows,
+#   2) manager-only — OrderContext.from_session().is_manager (a non-manager is
+#      refused, never silently downgraded),
+#   3) confirm-gated — without confirm=true the tool returns a preview only
+#      (needs_confirmation), so the LLM must echo the change back and get an
+#      explicit human "yes" before any row is written,
+#   4) audited — a best-effort audit_log row records who changed what (mirrors
+#      order_service._write_audit; never breaks the surrounding op).
+# These mirror the write paths that already exist in the HR UI:
+#   set_skill_target            -> hr_dashboard.save_skill_target (company_skill_targets)
+#   create_compliance_requirement -> hr_dashboard.add_compliance_requirement (compliance_requirements)
+
+
+_SKILL_TARGET_PRIORITIES = ('low', 'medium', 'high', 'critical')
+
+
+def _hr_manager_ctx():
+    """Resolve the HR actor; (ctx, error_json_or_None). error is set for a
+    non-manager so callers refuse the mutation explicitly."""
+    try:
+        from order_service import OrderContext
+        ctx = OrderContext.from_session(source='hr_chat')
+    except Exception as exc:
+        print(f"[HR_TOOLS][write] OrderContext import/build failed: {exc}")
+        return None, json.dumps({"error": "Brugerkontekst er ikke tilgængelig lige nu."})
+    if not ctx.is_manager:
+        return ctx, json.dumps({
+            "error": "not_authorized",
+            "message": "Kun ledere/HR-managere kan ændre kompetencemål eller compliance-krav.",
+        })
+    return ctx, None
+
+
+def _hr_write_audit(cur, *, company_id, user_id, action, resource_id, description=""):
+    """Best-effort audit row for an HR chat mutation. Never breaks the op."""
+    try:
+        cur.execute(
+            """
+            INSERT INTO audit_log
+                (company_id, user_id, action, action_type, resource_type,
+                 resource_id, description)
+            VALUES (%s, %s, %s, %s, 'hr_chat', %s, %s)
+            """,
+            (company_id, user_id, action, action, str(resource_id), description),
+        )
+    except Exception as exc:  # pragma: no cover - audit must never fail the op
+        print(f"[HR_TOOLS][write] audit_log skipped ({action}): {exc}")
+
+
+def _execute_set_skill_target(args):
+    """MUTATION — set (insert or update) a company skill target.
+
+    Writes company_skill_targets.target_level (canonical 1-5 scale) for a
+    skill, optionally scoped to a department. Requires (a) confirm=true and
+    (b) the HR actor be a company manager. Strictly company-scoped: the write
+    only ever touches the session company's rows. Mirrors the proven
+    confirm+manager+company-scope pattern from approve_order_from_chat and the
+    existing UI write path at hr_dashboard.save_skill_target.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    # ── Authorization: actor must be a company manager. ──
+    ctx, err = _hr_manager_ctx()
+    if err:
+        return err
+
+    skill_name = (args.get('skill_name') or '').strip()
+    if not skill_name:
+        return json.dumps({"error": "Angiv et kompetencenavn (skill_name)."})
+    skill_name = skill_name[:150]
+
+    department = (args.get('department') or '').strip() or None
+    if department:
+        department = department[:100]
+
+    # target_level on the canonical 1-5 scale; never re-map an int (see
+    # _skill_level_to_int contract). Reject out-of-range so the radar/gap math
+    # never sees a 0 or a 7.
+    raw_target = args.get('target_level')
+    try:
+        target_level = int(raw_target)
+    except (TypeError, ValueError):
+        return json.dumps({"error": "target_level skal være et heltal mellem 1 og 5."})
+    if not (1 <= target_level <= 5):
+        return json.dumps({"error": "target_level skal være mellem 1 og 5 (kanonisk skala)."})
+
+    priority = (args.get('priority') or 'medium').strip().lower()
+    if priority not in _SKILL_TARGET_PRIORITIES:
+        priority = 'medium'
+
+    scope_da = f"i {department}" if department else "for hele virksomheden"
+
+    cur = _get_cursor()
+
+    # Detect whether this is a create or an update (for accurate preview + audit).
+    existing_level = None
+    try:
+        cur.execute("""
+            SELECT id, target_level FROM company_skill_targets
+            WHERE company_id = %s AND skill_name = %s
+              AND ((department IS NULL AND %s IS NULL) OR department = %s)
+        """, (company_id, skill_name, department, department))
+        erow = cur.fetchone()
+        if erow:
+            existing_level = erow.get('target_level')
+    except Exception as exc:
+        print(f"[HR_TOOLS][set_skill_target] existing lookup skipped: {exc}")
+    is_update = existing_level is not None
+
+    # ── Confirmation gate: without confirm, return a preview only. ──
+    if not bool(args.get('confirm')):
+        cur.close()
+        if is_update:
+            msg = (
+                f"Bekræft at du vil ÆNDRE kompetencemålet for '{skill_name}' {scope_da} "
+                f"fra {existing_level} til {target_level} (af 5). Send confirm=true for at udføre."
+            )
+        else:
+            msg = (
+                f"Bekræft at du vil OPRETTE et kompetencemål: '{skill_name}' {scope_da} "
+                f"= {target_level} (af 5), prioritet '{priority}'. Send confirm=true for at udføre."
+            )
+        return json.dumps({
+            "needs_confirmation": True,
+            "action": "set_skill_target",
+            "skill_name": skill_name,
+            "department": department,
+            "target_level": target_level,
+            "priority": priority,
+            "is_update": is_update,
+            "previous_target_level": existing_level,
+            "message_da": msg,
+        }, default=str)
+
+    # ── Execute: INSERT ... ON DUPLICATE KEY UPDATE (matches the UI route). ──
+    try:
+        cur.execute("""
+            INSERT INTO company_skill_targets (company_id, department, skill_name, target_level, priority)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE target_level = %s, priority = %s
+        """, (company_id, department, skill_name, target_level, priority, target_level, priority))
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=ctx.user_id,
+            action='set_skill_target', resource_id=skill_name,
+            description=f"target_level={target_level} priority={priority} dept={department or '*'}",
+        )
+        current_app.mysql.connection.commit()
+    except Exception as exc:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        cur.close()
+        print(f"[HR_TOOLS][set_skill_target] write failed: {exc}")
+        return json.dumps({"error": "Kompetencemålet kunne ikke gemmes."})
+    cur.close()
+
+    return json.dumps({
+        "success": True,
+        "action": "set_skill_target",
+        "skill_name": skill_name,
+        "department": department,
+        "target_level": target_level,
+        "priority": priority,
+        "was_update": is_update,
+        "message_da": (
+            f"Kompetencemål for '{skill_name}' {scope_da} "
+            f"{'opdateret' if is_update else 'oprettet'}: {target_level} af 5 (prioritet {priority})."
+        ),
+    }, default=str)
+
+
+def _execute_create_compliance_requirement(args):
+    """MUTATION — create a compliance requirement for the company.
+
+    Inserts one compliance_requirements row (the matrix derives per-employee
+    status from it — see derive_company_compliance). Requires (a) confirm=true
+    and (b) the HR actor be a company manager. Strictly company-scoped. Mirrors
+    the proven confirm+manager+company-scope pattern and the existing UI write
+    path at hr_dashboard.add_compliance_requirement.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    # ── Authorization: actor must be a company manager. ──
+    ctx, err = _hr_manager_ctx()
+    if err:
+        return err
+
+    title = (args.get('title') or '').strip()
+    if not title:
+        return json.dumps({"error": "Angiv en titel på compliance-kravet (title)."})
+    title = title[:255]
+
+    category = (args.get('category') or '').strip() or None
+    if category:
+        category = category[:100]
+    department = (args.get('applies_to_department') or '').strip() or None
+    if department:
+        department = department[:100]
+    role = (args.get('applies_to_role') or '').strip() or None
+    if role:
+        role = role[:50]
+    handle = (args.get('required_course_handle') or '').strip() or None
+    if handle:
+        handle = handle[:255]
+
+    raw_recurrence = args.get('recurrence_months')
+    try:
+        recurrence = int(raw_recurrence) if raw_recurrence not in (None, '') else 0
+    except (TypeError, ValueError):
+        recurrence = 0
+    if recurrence < 0:
+        recurrence = 0
+
+    is_statutory = 1 if args.get('is_statutory') in (True, 1, '1', 'on', 'true', 'ja', 'yes') else 0
+
+    # Human-readable scope for the preview/confirm message.
+    scope_bits = []
+    if department:
+        scope_bits.append(f"afdeling: {department}")
+    if role:
+        scope_bits.append(f"rolle: {role}")
+    scope_da = ("(" + ", ".join(scope_bits) + ")") if scope_bits else "(hele virksomheden)"
+    recur_da = f"hver {recurrence}. måned" if recurrence else "engangs"
+
+    # ── Confirmation gate: without confirm, return a preview only. ──
+    if not bool(args.get('confirm')):
+        return json.dumps({
+            "needs_confirmation": True,
+            "action": "create_compliance_requirement",
+            "title": title,
+            "category": category,
+            "applies_to_department": department,
+            "applies_to_role": role,
+            "required_course_handle": handle,
+            "recurrence_months": recurrence,
+            "is_statutory": bool(is_statutory),
+            "message_da": (
+                f"Bekræft at du vil OPRETTE compliance-kravet '{title}' {scope_da}, "
+                f"{recur_da}{', lovpligtigt' if is_statutory else ''}. "
+                f"Send confirm=true for at udføre."
+            ),
+        }, default=str)
+
+    cur = _get_cursor()
+
+    # Idempotency guard: don't silently create a duplicate of an identical
+    # requirement for the same company/scope (the table has no unique key).
+    try:
+        cur.execute("""
+            SELECT id FROM compliance_requirements
+            WHERE company_id = %s AND title = %s
+              AND ((applies_to_department IS NULL AND %s IS NULL) OR applies_to_department = %s)
+              AND ((applies_to_role IS NULL AND %s IS NULL) OR applies_to_role = %s)
+        """, (company_id, title, department, department, role, role))
+        dup = cur.fetchone()
+    except Exception as exc:
+        print(f"[HR_TOOLS][create_compliance] dup check skipped: {exc}")
+        dup = None
+    if dup:
+        cur.close()
+        return json.dumps({
+            "error": "duplicate",
+            "message": f"Et compliance-krav '{title}' {scope_da} findes allerede.",
+            "existing_id": dup.get('id'),
+        })
+
+    # ── Execute: INSERT (matches the UI route column set). ──
+    try:
+        cur.execute("""
+            INSERT INTO compliance_requirements
+                (company_id, title, category, applies_to_department, applies_to_role,
+                 required_course_handle, recurrence_months, is_statutory)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+        """, (company_id, title, category, department, role, handle, recurrence, is_statutory))
+        new_id = cur.lastrowid
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=ctx.user_id,
+            action='create_compliance_requirement', resource_id=new_id or title,
+            description=f"statutory={is_statutory} recurrence={recurrence} dept={department or '*'} role={role or '*'}",
+        )
+        current_app.mysql.connection.commit()
+    except Exception as exc:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        cur.close()
+        print(f"[HR_TOOLS][create_compliance] write failed: {exc}")
+        return json.dumps({"error": "Compliance-kravet kunne ikke oprettes."})
+    cur.close()
+
+    return json.dumps({
+        "success": True,
+        "action": "create_compliance_requirement",
+        "requirement_id": new_id,
+        "title": title,
+        "is_statutory": bool(is_statutory),
+        "recurrence_months": recurrence,
+        "message_da": (
+            f"Compliance-kravet '{title}' {scope_da} er oprettet ({recur_da}"
+            f"{', lovpligtigt' if is_statutory else ''}). Matrixen opdateres automatisk."
+        ),
+    }, default=str)
+
+
 def _execute_hr_inactive_employees(args):
     """Active employees with no activity for >= inactive_days (default 30)."""
     company_id = session.get('company_id')
@@ -2549,6 +2959,8 @@ def execute_hr_tool(tool_call):
         "hr_expiring_agreements": _execute_hr_expiring_agreements,
         "get_workforce_risk": _execute_get_workforce_risk,
         "hr_explain_insights": _execute_hr_explain_insights,
+        "set_skill_target": _execute_set_skill_target,
+        "create_compliance_requirement": _execute_create_compliance_requirement,
     }
 
     fn = router.get(name)

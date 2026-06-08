@@ -1369,13 +1369,123 @@ def create_hr_dashboard_blueprint():
             # Canonical ROI engine — single source of truth, real headline data.
             roi = get_roi_metrics(current_app._get_current_object(), company['id'], fiscal_year)
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
+
+            # AI-attributed revenue — the renewal-justifying "AI-rådgiveren drev
+            # X kr" headline. Tenant-scoped (never None) with the small-tenant
+            # suppression floor ON: for a tiny tenant a single attributed order's
+            # value is re-identifiable, so report_query zeroes it + sets a note.
+            # Guarded so a reporting failure renders a clean empty state instead
+            # of breaking the whole ROI page.
+            ai_revenue = None
+            try:
+                import report_query as _rq
+                ai_revenue = _rq.attributed_revenue(
+                    company['id'], 90, suppress_floor=True)
+            except Exception as _e:
+                current_app.logger.warning(f"attributed_revenue (HR) failed: {_e}")
+                ai_revenue = None
+
             return render_template('fm/roi.html',
                                    company=company, roi=roi, predictions=predictions,
+                                   ai_revenue=ai_revenue,
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
             flash("Error loading ROI data.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/funnel')
+    def funnel_dashboard():
+        """HR-scoped conversion funnel (chatbot session -> order).
+
+        Surfaces report_query.conversion_funnel for the CURRENT company only
+        (never None / platform-wide). The suppression floor is ON: a tenant with
+        fewer than k distinct sessions would re-identify a single learner's
+        journey, so the query zeroes every stage and returns an anon_note that
+        the template renders as a privacy notice instead of the funnel.
+        """
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Company information not found.", "danger")
+            return redirect(url_for('auth.login'))
+
+        try:
+            days = int(request.args.get('days', 30))
+        except (TypeError, ValueError):
+            days = 30
+        if days not in (7, 30, 90, 180, 365):
+            days = 30
+
+        funnel = {
+            'sessions': 0, 'searches': 0, 'shown': 0, 'ordered': 0,
+            'rate_search': 0.0, 'rate_shown': 0.0, 'rate_ordered': 0.0,
+            'overall_rate': 0.0, 'days': days, 'company_id': company['id'],
+            'suppressed': False, 'anon_note': None,
+        }
+        daily = {'labels': [], 'data': []}
+        try:
+            import report_query as _rq
+            # Company-scoped (never None) with the small-tenant floor ON.
+            funnel = _rq.conversion_funnel(company['id'], days, suppress_floor=True)
+            daily = _rq.daily_volume(company['id'], days)
+        except Exception as e:
+            current_app.logger.warning(f"HR funnel report failed: {e}")
+
+        has_data = bool(funnel.get('sessions'))
+        return render_template('fm/hr_funnel.html',
+                               company=company,
+                               funnel=funnel,
+                               daily_labels=daily.get('labels', []),
+                               daily_data=daily.get('data', []),
+                               days=days,
+                               has_data=has_data,
+                               active_hr_page='funnel')
+
+    @hr_dashboard_bp.route('/retention')
+    def retention_dashboard():
+        """HR-scoped learner-cohort retention (first-order-month triangle).
+
+        Surfaces report_query.cohort_retention for the CURRENT company only.
+        cohort_retention already suppresses sub-k cohorts inside the query layer
+        (it drops any first-month cohort below k and sets anon_note), so no extra
+        floor flag is needed — small cohorts simply never reach the template.
+        """
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            flash("Company information not found.", "danger")
+            return redirect(url_for('auth.login'))
+
+        try:
+            months = int(request.args.get('months', 6))
+        except (TypeError, ValueError):
+            months = 6
+        if months < 1:
+            months = 1
+        if months > 24:
+            months = 24
+
+        retention = {'cohorts': [], 'max_offset': months, 'months': months,
+                     'company_id': company['id'], 'anon_note': None}
+        try:
+            import report_query as _rq
+            retention = _rq.cohort_retention(company['id'], months)
+        except Exception as e:
+            current_app.logger.warning(f"HR retention report failed: {e}")
+
+        has_data = bool(retention.get('cohorts'))
+        return render_template('fm/hr_retention.html',
+                               company=company,
+                               retention=retention,
+                               offsets=list(range(0, retention.get('max_offset', months) + 1)),
+                               months=months,
+                               has_data=has_data,
+                               active_hr_page='retention')
 
     @hr_dashboard_bp.route('/employee-progress')
     def employee_progress():

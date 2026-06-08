@@ -314,6 +314,14 @@ def get_employee_tool_selection(
             forced_tool = "catalog_get_product"
     if intent in {"comparison"} or _has_any(query, ("sammenlign", "forskel", "bedst", "versus", "vs")):
         names.update({"catalog_compare_products", "catalog_get_product"})
+    # Refined intents from the LLM router (item #2). These abstract labels only ever
+    # arrive after the regex classifier returned its ambiguous "discovery" catch-all,
+    # so they pull in the specialised tools that catch-all wouldn't have. catalog_search
+    # is always seeded, so a path/gap answer is built from REAL courses on the topic.
+    if intent == "skill_gap":
+        names.add("analyze_skill_gaps")
+    if intent == "learning_path" and logged_in:
+        names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path"})
     if _has_any(query, ("kategori", "category", "type kurser")):
         names.add("catalog_get_category")
         forced_tool = "catalog_get_category"

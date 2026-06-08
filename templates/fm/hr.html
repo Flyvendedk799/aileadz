@@ -129,10 +129,13 @@
           <div class="fm-table-wrap" data-reveal data-d="1">
             <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
               <div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-cart-shopping"></i></span><h3 style="font-size:15px;font-weight:700">Kursusordrer</h3></div>
-              <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="fm-badge teal">Se alle</a>
+              <div class="fm-flex fm-ac fm-gap8">
+                {{ ui.addtocal(url_for('hr_ext.calendar_feed'), 'Abonnér på kalender') }}
+                <a href="{{ url_for('hr_dashboard.billing_overview') }}" class="fm-badge teal">Se alle</a>
+              </div>
             </div>
             <table class="fm-table">
-              <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kursus</th><th>Pris</th><th>Status</th></tr></thead>
+              <thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Kursus</th><th>Pris</th><th>Status</th><th></th></tr></thead>
               <tbody>
                 {% for o in (recent_orders or [])[:8] %}
                 {% set st = o.status %}
@@ -148,9 +151,12 @@
                     {% elif st == 'rejected' %}<span class="fm-badge red dot">Afvist</span>
                     {% else %}<span class="fm-badge">{{ st }}</span>{% endif %}
                   </td>
+                  <td style="text-align:right;white-space:nowrap">
+                    {% if o.variant_date and o.order_id and o.order_id != 'N/A' %}{{ ui.addtocal(url_for('hr_ext.order_ics', order_id=o.order_id), 'Kalender') }}{% endif %}
+                  </td>
                 </tr>
                 {% else %}
-                <tr><td colspan="5" class="muted" style="text-align:center;padding:20px">Ingen ordrer endnu.</td></tr>
+                <tr><td colspan="6" class="muted" style="text-align:center;padding:20px">Ingen ordrer endnu.</td></tr>
                 {% endfor %}
               </tbody>
             </table>

@@ -1,5 +1,5 @@
 {% extends "fm_base.html" %}
-{% from 'fm/_macros.html' import empty %}
+{% from 'fm/_macros.html' import empty, addtocal %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Medarbejderfremdrift{% endblock %}
@@ -34,6 +34,7 @@
       <option value="courses_desc" {{ 'selected' if current_filters.sort == 'courses_desc' }}>Kurser gennemført</option>
       <option value="engagement_desc" {{ 'selected' if current_filters.sort == 'engagement_desc' }}>AI-engagement</option>
     </select></label>
+    <div style="margin-left:auto">{{ addtocal(url_for('hr_ext.calendar_feed'), 'Abonnér på kursuskalender') }}</div>
   </form>
 
   {% if employees %}

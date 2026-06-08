@@ -1758,7 +1758,15 @@ def _execute_hr_benchmark(args):
 
 
 def _execute_hr_trial_and_seat_status(args):
-    """Subscription / trial / seat utilisation for the company."""
+    """Subscription / trial / seat utilisation for the company.
+
+    SALES-LED read only: this is an ops snapshot of the company's plan and seat
+    utilisation, NOT a self-serve upsell prompt. aileadz is sold and provisioned
+    by an account manager, so when the trial has expired or seats are full the
+    only correct next step is to contact the account manager — never an
+    'upgrade subscription' affordance. The next_step_da field carries that
+    routing so the advisor grounds on it instead of inventing an upgrade flow.
+    """
     company_id = session.get('company_id')
     if not company_id:
         return json.dumps({"error": "Ingen virksomhed fundet."})
@@ -1817,6 +1825,21 @@ def _execute_hr_trial_and_seat_status(args):
     if max_employees:
         summary_parts.append(f"{seats_used} af {max_employees} pladser brugt ({utilization_pct}% udnyttelse).")
 
+    # Sales-led routing: when the trial has expired or seats are full, the next
+    # step is always to contact the account manager — NEVER a self-serve upgrade.
+    trial_expired = bool(on_trial and trial_days_left is not None and trial_days_left < 0)
+    seats_full = bool(max_employees and seats_left == 0)
+    if trial_expired or seats_full:
+        next_step_da = (
+            "Kontakt din kundeansvarlige for at tilføje flere pladser eller "
+            "forny abonnementet."
+        )
+    else:
+        next_step_da = (
+            "Ingen handling nødvendig. Kontakt din kundeansvarlige ved behov "
+            "for flere pladser."
+        )
+
     return json.dumps({
         "company_name": row.get('company_name'),
         "subscription_plan": row.get('subscription_plan'),
@@ -1827,7 +1850,8 @@ def _execute_hr_trial_and_seat_status(args):
         "seats_used": seats_used,
         "seats_left": seats_left,
         "utilization_pct": utilization_pct,
-        "seats_full": bool(max_employees and seats_left == 0),
+        "seats_full": seats_full,
+        "next_step_da": next_step_da,
         "summary_da": " ".join(summary_parts) or "Ingen abonnementsgrænser registreret.",
     }, default=str)
 

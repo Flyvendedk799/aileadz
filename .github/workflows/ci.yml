@@ -28,6 +28,11 @@ jobs:
         env:
           GITLEAKS_CONFIG: .gitleaks.toml
           # No license needed for public repos / basic scanning.
+          # gitleaks-action@v2 requires GITHUB_TOKEN to scan pull_request events
+          # (it reads the PR commit range via the API). Without it, the job errors
+          # on every PR ("GITHUB_TOKEN is now required to scan pull requests") even
+          # though the push-event scan passes. The automatic token is sufficient.
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   # ── Tests + boot smoke ──────────────────────────────────────────────────────
   test:

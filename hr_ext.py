@@ -165,6 +165,31 @@ def _recent_insights():
 # ---------------------------------------------------------------------------
 # B7 — Engagement / nudge workflows (non-starters + inactive employees)
 # ---------------------------------------------------------------------------
+def _deadline_reminders_enabled():
+    """Read the company's learning-deadline per-learner reminder opt-in flag.
+
+    Defaults to False (opt-in OFF) when the settings row/column is absent or on
+    any error — the same fail-closed default the scheduler job honours, so the UI
+    and the job agree on the company's choice.
+    """
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute(
+            "SELECT learning_deadline_reminders_enabled FROM company_settings "
+            "WHERE company_id = %s",
+            (session.get('company_id'),),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return False
+        val = row.get('learning_deadline_reminders_enabled') if isinstance(row, dict) else row[0]
+        return int(val or 0) == 1
+    except Exception as e:
+        logger.warning("hr_ext: deadline opt-in read failed: %s", e)
+        return False
+
+
 @hr_ext_bp.route('/engagement')
 def engagement():
     g = _guard_html()
@@ -175,7 +200,54 @@ def engagement():
     return render_template(
         'fm/engagement.html',
         company=_company(), non_starters=non_starters, inactive=inactive,
+        deadline_reminders_enabled=_deadline_reminders_enabled(),
     )
+
+
+@hr_ext_bp.route('/engagement/deadline-reminders', methods=['POST'])
+def set_deadline_reminders():
+    """HR opt-in toggle for the daily per-learner deadline reminder cadence.
+
+    The aggregate HR/manager deadline card (counts-only, k-anon-safe) always
+    fires; this flag controls ONLY whether the scheduler also sends direct
+    reminders to individual learners — the spam-prone nudging the plan requires
+    HR to opt in to (plan #17 / risk register #321). Strictly company-scoped and
+    HR-gated; persists to company_settings (upsert) so a fresh tenant can opt in
+    without an admin first creating a settings row.
+    """
+    if not _hr_ok():
+        return jsonify({'success': False, 'message': 'Ikke autoriseret'}), 401
+    data = request.get_json(silent=True) or request.form
+    raw = data.get('enabled')
+    enabled = 1 if str(raw).lower() in ('1', 'true', 'on', 'yes') else 0
+    company_id = session.get('company_id')
+    try:
+        cur = current_app.mysql.connection.cursor()
+        # Upsert so a tenant without a company_settings row can still opt in.
+        cur.execute(
+            "INSERT INTO company_settings (company_id, learning_deadline_reminders_enabled) "
+            "VALUES (%s, %s) "
+            "ON DUPLICATE KEY UPDATE learning_deadline_reminders_enabled = VALUES(learning_deadline_reminders_enabled)",
+            (company_id, enabled),
+        )
+        try:
+            from order_service import _write_audit
+            _write_audit(cur, company_id=company_id, user_id=session.get('user_id'),
+                         action="engagement.deadline_reminders",
+                         resource_id=str(enabled),
+                         description=f"deadline reminders {'enabled' if enabled else 'disabled'}")
+        except Exception:
+            pass
+        current_app.mysql.connection.commit()
+        cur.close()
+        return jsonify({'success': True, 'enabled': bool(enabled)})
+    except Exception as e:
+        logger.error("hr_ext: set_deadline_reminders failed: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Kunne ikke gemme indstillingen'}), 500
 
 
 @hr_ext_bp.route('/engagement/nudge', methods=['POST'])

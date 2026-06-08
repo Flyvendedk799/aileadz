@@ -108,6 +108,10 @@ jobs:
 
       - name: Readiness capability check (/readyz, best-effort)
         continue-on-error: true
+        # Hard cap: the first request triggers the AI warmup (before_request), which
+        # retries network calls when OPENAI_API_KEY is unset (as in CI) and can hang.
+        # This probe is best-effort only, so bound it so it can never stall the job.
+        timeout-minutes: 2
         run: |
           python - <<'PY'
           from run import create_app

@@ -190,7 +190,7 @@
         <!-- Skills -->
         {% set ss = skills_summary or {} %}
         <div class="fm-card" data-reveal data-d="1">
-          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3>{% if dh.avg_top_skill_level %}<span class="fm-badge teal" style="margin-left:auto">{{ dh.avg_top_skill_level }}/4 gns.</span>{% endif %}</div>
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-brain"></i></span><h3>Kompetenceoverblik</h3>{% if dh.avg_top_skill_level %}<span class="fm-badge teal" style="margin-left:auto">{{ dh.avg_top_skill_level }}/5 gns.</span>{% endif %}</div>
           <div class="fm-card-body">
             <div class="skill-tiles">
               {% for sk in (ss.top_skills or [])[:6] %}

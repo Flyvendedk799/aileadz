@@ -565,6 +565,33 @@ def ensure_enterprise_tables(app):
                     INDEX idx_employee_company (employee_id, company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
 
+                # ── Employee Skill History (Skill-uplift loop, plan #19) ──
+                # Append-only before/after-training trajectory for one employee's
+                # ONE skill. employee_skills_matrix.current_level is overwritten on
+                # change (updated_at ON UPDATE), so it has no time dimension — this
+                # table records a row on EVERY current_level change so gap-closure
+                # can be measured, not just spend. ``source`` distinguishes a
+                # manager re-rating ('assign') from a confirmed post-course uplift
+                # ('post_course') and any future capture path. ``order_id`` links a
+                # post-course confirmation back to the course_orders row that drove
+                # the lift (NULL otherwise). Aggregate, count-only reads on this
+                # table are k-anon-safe; people-level reads must be suppressed by
+                # the caller (see insights_engine.get_skill_growth_trend /
+                # get_uplift_roi, which only ever emit company-level aggregates).
+                """CREATE TABLE IF NOT EXISTS employee_skill_history (
+                    id INT AUTO_INCREMENT PRIMARY KEY,
+                    employee_id INT NOT NULL,
+                    company_id INT NOT NULL,
+                    skill_name VARCHAR(100),
+                    level INT DEFAULT 0,
+                    previous_level INT,
+                    source VARCHAR(30) DEFAULT 'assign',
+                    order_id INT,
+                    captured_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    INDEX idx_company_captured (company_id, captured_at),
+                    INDEX idx_employee_skill (employee_id, company_id, skill_name)
+                ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
+
                 # ── Company Analytics ──
                 # Daily per-company KPI snapshot. Written by the nightly
                 # ``company_analytics_rollup`` scheduler job (the table's only

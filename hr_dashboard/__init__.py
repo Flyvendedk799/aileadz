@@ -1108,8 +1108,20 @@ def create_hr_dashboard_blueprint():
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
         try:
-            from insights_engine import get_skill_gap_analysis
+            from insights_engine import get_skill_gap_analysis, get_skill_growth_trend
             heatmap = get_skill_gap_analysis(current_app._get_current_object(), company['id'])
+
+            # Skill-uplift loop (plan #19): company-wide monthly average measured
+            # skill level over time — direct evidence the level moved, not just
+            # spend. Aggregate + k-anon-safe (months below k distinct employees
+            # are suppressed). Guarded so a reporting failure never breaks the
+            # page; the chart simply renders its empty state.
+            growth_trend = {'labels': [], 'avg_levels': [], 'has_data': False}
+            try:
+                growth_trend = get_skill_growth_trend(
+                    current_app._get_current_object(), company['id'], months=12)
+            except Exception as _e:
+                current_app.logger.warning(f"get_skill_growth_trend failed: {_e}")
 
             # Get skill targets for management
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -1243,6 +1255,7 @@ def create_hr_dashboard_blueprint():
                                    all_employee_skills=all_employee_skills,
                                    all_skill_names=all_skill_names,
                                    skill_dashboard=skill_dashboard,
+                                   growth_trend=growth_trend,
                                    total_gaps=total_gaps,
                                    critical_gaps=critical_gaps,
                                    met_targets=met_targets,
@@ -1334,13 +1347,22 @@ def create_hr_dashboard_blueprint():
             if not employee_ids:
                 return jsonify({'success': False, 'message': 'Ingen medarbejdere valgt'}), 400
 
+            import skill_history as _sh
             count = 0
             for eid in employee_ids:
+                # Capture the pre-change level so the history trail records a real
+                # before/after trajectory point (plan #19), then overwrite.
+                prev_level = _sh.current_level_for(cur, company['id'], eid, skill_name)
                 cur.execute("""
                     INSERT INTO employee_skills_matrix (employee_id, company_id, skill_name, current_level)
                     VALUES (%s, %s, %s, %s)
                     ON DUPLICATE KEY UPDATE current_level = %s
                 """, (eid, company['id'], skill_name, level, level))
+                # Append-only skill-history snapshot in the SAME transaction.
+                # Guarded: a history-append failure never aborts the real write.
+                _sh.record_snapshot(
+                    cur, company['id'], eid, skill_name, level,
+                    previous_level=prev_level, source='assign')
                 count += 1
 
             current_app.mysql.connection.commit()
@@ -1348,6 +1370,112 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': True, 'message': f'Kompetence tildelt {count} medarbejder(e).'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
+
+    @hr_dashboard_bp.route('/skills/confirm-uplift', methods=['POST'])
+    def confirm_skill_uplift():
+        """Confirm a post-training skill level for ONE employee+skill (plan #19).
+
+        The genuinely net-new capture path that closes the skill-uplift loop:
+        after an employee completes a course, a manager confirms the new
+        ``current_level`` here. This (a) updates ``employee_skills_matrix`` and
+        (b) appends a ``source='post_course'`` row to ``employee_skill_history``
+        linked (optionally) to the ``course_orders`` row that drove the lift, so
+        gap closure becomes measured evidence rather than inferred from spend.
+
+        Manager-scoped: writing one named employee's skill level is people-level,
+        so it requires a company manager (company_admin / hr_manager) — the same
+        bar the advisor write tools and skill-target writes use. Strictly
+        company-scoped: the employee must belong to the session company.
+        """
+        # Base HR auth (also handles unauthenticated + admin impersonation).
+        if require_hr_access():
+            return jsonify({'success': False, 'message': 'Ingen adgang.'}), 401
+        # Narrow to a company manager: confirming a NAMED employee's level is
+        # people-level, so department_head (allowed for the read pages) is not
+        # enough. A platform admin impersonating a tenant is allowed through.
+        is_impersonating_admin = (session.get('role') == 'admin'
+                                  and session.get('admin_acting_company_id'))
+        if not is_impersonating_admin and session.get('company_role') not in ('company_admin', 'hr_manager'):
+            return jsonify({'success': False, 'message': 'Kun virksomhedsadministrator eller HR-leder kan bekræfte kompetenceløft.'}), 403
+
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False, 'message': 'Virksomhed ikke fundet.'}), 404
+
+        data = request.get_json() if request.is_json else {}
+        skill_name = (data.get('skill_name') or '').strip()
+        if not skill_name:
+            return jsonify({'success': False, 'message': 'Kompetencenavn påkrævet.'}), 400
+        skill_name = skill_name[:100]
+        try:
+            employee_id = int(data.get('employee_id'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Vælg en medarbejder.'}), 400
+        try:
+            new_level = int(data.get('level'))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Angiv et nyt niveau (1-5).'}), 400
+        if not (1 <= new_level <= 5):
+            return jsonify({'success': False, 'message': 'Niveau skal være mellem 1 og 5.'}), 400
+        order_id = data.get('order_id')
+
+        try:
+            cur = current_app.mysql.connection.cursor()
+            # Company-scope guard: the employee must be an active member of THIS
+            # company — never let a manager rate someone in another tenant.
+            cur.execute("""
+                SELECT 1 FROM company_users
+                WHERE company_id = %s AND user_id = %s AND status = 'active'
+            """, (company['id'], employee_id))
+            if not cur.fetchone():
+                cur.close()
+                return jsonify({'success': False, 'message': 'Medarbejder ikke fundet i din virksomhed.'}), 404
+
+            # If an order_id is supplied, verify it belongs to THIS company so the
+            # history row can never link to a foreign tenant's order.
+            linked_order = None
+            if order_id is not None:
+                try:
+                    oid = int(order_id)
+                    cur.execute("""
+                        SELECT 1 FROM course_orders WHERE id = %s AND company_id = %s
+                    """, (oid, company['id']))
+                    if cur.fetchone():
+                        linked_order = oid
+                except (TypeError, ValueError):
+                    linked_order = None
+
+            import skill_history as _sh
+            prev_level = _sh.current_level_for(cur, company['id'], employee_id, skill_name)
+            cur.execute("""
+                INSERT INTO employee_skills_matrix (employee_id, company_id, skill_name, current_level)
+                VALUES (%s, %s, %s, %s)
+                ON DUPLICATE KEY UPDATE current_level = %s
+            """, (employee_id, company['id'], skill_name, new_level, new_level))
+            recorded = _sh.record_snapshot(
+                cur, company['id'], employee_id, skill_name, new_level,
+                previous_level=prev_level, source='post_course', order_id=linked_order)
+            current_app.mysql.connection.commit()
+            cur.close()
+
+            if prev_level is None:
+                msg = f"Niveau registreret for '{skill_name}' ({new_level}/5)."
+            elif new_level > prev_level:
+                msg = f"Kompetenceløft bekræftet: '{skill_name}' {prev_level} → {new_level} (af 5)."
+            elif new_level == prev_level:
+                msg = f"Niveau uændret for '{skill_name}' ({new_level}/5)."
+            else:
+                msg = f"Niveau opdateret for '{skill_name}': {prev_level} → {new_level} (af 5)."
+            return jsonify({'success': True, 'message': msg,
+                            'previous_level': prev_level, 'level': new_level,
+                            'recorded': recorded})
+        except Exception as e:
+            current_app.logger.error(f"confirm_skill_uplift error: {e}")
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
+            return jsonify({'success': False, 'message': 'Fejl ved registrering af kompetenceløft.'}), 500
 
     @hr_dashboard_bp.route('/roi')
     def roi_dashboard():
@@ -1365,10 +1493,22 @@ def create_hr_dashboard_blueprint():
                 fiscal_year = int(request.args.get('year', _dt.datetime.now().year))
             except (TypeError, ValueError):
                 fiscal_year = _dt.datetime.now().year
-            from insights_engine import get_roi_metrics, get_predictive_data
+            from insights_engine import get_roi_metrics, get_predictive_data, get_uplift_roi
             # Canonical ROI engine — single source of truth, real headline data.
             roi = get_roi_metrics(current_app._get_current_object(), company['id'], fiscal_year)
             predictions = get_predictive_data(current_app._get_current_object(), company['id'])
+
+            # Skill-uplift loop (plan #19): MEASURED aggregate skill lift vs
+            # spend for the year — upgrades ROI from cost/throughput to measured
+            # outcome. Aggregate + k-anon-safe (suppresses below k distinct
+            # employees). Guarded so a reporting failure renders a clean empty
+            # state instead of breaking the ROI page.
+            uplift = None
+            try:
+                uplift = get_uplift_roi(current_app._get_current_object(), company['id'], fiscal_year)
+            except Exception as _e:
+                current_app.logger.warning(f"get_uplift_roi (HR) failed: {_e}")
+                uplift = None
 
             # AI-attributed revenue — the renewal-justifying "AI-rådgiveren drev
             # X kr" headline. Tenant-scoped (never None) with the small-tenant
@@ -1387,7 +1527,7 @@ def create_hr_dashboard_blueprint():
 
             return render_template('fm/roi.html',
                                    company=company, roi=roi, predictions=predictions,
-                                   ai_revenue=ai_revenue,
+                                   ai_revenue=ai_revenue, uplift=uplift,
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")

@@ -3,9 +3,11 @@
 {% block title %}Kreditter{% endblock %}
 {% block topbar_title %}Tildel kreditter{% endblock %}
 {% block topbar_sub %}En kontrolleret formular til manuelle kreditjusteringer.{% endblock %}
+{% from 'fm/_macros.html' import empty %}
 {% block extra_head %}
 <style>
   .cr-split { display: grid; grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .cr-field { margin-top: 14px; }
   @media (max-width: 900px) { .cr-split { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -29,7 +31,7 @@
             <label for="target_user">Brugernavn</label>
             <input type="text" class="fm-input" id="target_user" name="target_user" placeholder="Indtast brugernavn" required>
           </div>
-          <div class="fm-field" style="margin-top:14px">
+          <div class="fm-field cr-field">
             <label for="credit_amount">Kreditter at tildele</label>
             <input type="number" class="fm-input" id="credit_amount" name="credit_amount" placeholder="Angiv antal kreditter" required min="1">
           </div>
@@ -46,6 +48,31 @@
         <p style="color:var(--fm-ink-2);font-size:13.5px;line-height:1.6">Kreditter tilføjes direkte til den angivne bruger. Brug brugerlisten til at validere stavning og eksisterende saldo før større justeringer.</p>
         <a href="{{ url_for('admin_dashboard.user_list') }}" class="btn btn-ghost btn-sm" style="margin-top:6px"><i class="fa-solid fa-users"></i> Se brugere</a>
       </div>
+    </div>
+  </div>
+
+  <div class="fm-card cr-field">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Seneste kredittildelinger</h3></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if credit_history %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead><tr><th>Bruger</th><th class="tnum">Kreditter</th><th>Tildelt af</th><th>Tidspunkt</th></tr></thead>
+          <tbody>
+            {% for h in credit_history %}
+            <tr>
+              <td style="font-weight:650">{{ h.username }}</td>
+              <td class="tnum"><span class="fm-badge teal">+{{ h.amount }}</span></td>
+              <td>{{ h.granted_by }}</td>
+              <td>{{ h.timestamp }}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      {{ empty('Ingen kredit-tildelinger endnu','') }}
+      {% endif %}
     </div>
   </div>
 </div>

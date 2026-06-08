@@ -1,11 +1,17 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import empty %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}HR-rapporter{% endblock %}
 {% block topbar_sub %}Genererede rapporter for {{ company.company_name if company else 'virksomheden' }}.{% endblock %}
+{% block extra_head %}
+<style>
+  .rep-chart-wrap { position: relative; height: 300px; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-lines"></i> Rapporter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a></div>
+{% set active_hr_page = 'reports' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set rs = report_summary or {} %}
   <div class="kpi-row">
@@ -15,7 +21,11 @@
     <div class="kpi-tile"><div class="kl">Kompetencedata</div><div class="kv tnum">{{ rs.skills_recorded|default(0) }}</div><div class="kd">{{ rs.skill_targets|default(0) }} kompetencemål</div></div>
   </div>
 
-  <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-download"></i> Eksport</span><h2 class="fm-section-title">Hent rapporter som CSV</h2></div></div>
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførselsrate pr. afdeling</h3></div>
+    <div class="fm-card-body"><div class="rep-chart-wrap"><canvas id="deptCompletionChart" role="img" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling"></canvas></div></div>
+  </div>
+
+  <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-download"></i> Eksport</span><h2 class="fm-section-title">Hent rapporter som CSV</h2></div></div>
   <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
     {% for report in (report_cards or []) %}
     <a href="{{ url_for('hr_dashboard.export_report', report_type=report.type) }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px">
@@ -43,8 +53,28 @@
     {% endfor %}
   </tbody></table>
   {% else %}
-  <div style="text-align:center;padding:28px;color:var(--fm-ink-3)">Ingen afdelingsdata endnu.</div>
+  {{ empty('Ingen afdelingsdata endnu', 'Afdelingernes medarbejdere, ordrer og gennemførsel vises her, når der er registreret aktivitet.', 'fa-sitemap') }}
   {% endif %}
   </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function(){
+  if (typeof FMChart === 'undefined') return;
+
+  var rows = {{ (department_rows or [])|list|tojson|safe }};
+  var labels = rows.map(function (d) { return d.department || 'Uden afdeling'; });
+  var rates = rows.map(function (d) {
+    var orders = Number(d.orders) || 0;
+    if (!orders) return 0;
+    return Math.round((Number(d.completed) || 0) / orders * 1000) / 10;
+  });
+  FMChart.bar('deptCompletionChart', {
+    labels: labels,
+    series: [{ label: 'Gennemførselsrate (%)', data: rates, color: FMChart.cssVar('--fm-success', '#16a34a') }],
+    empty: 'Ingen afdelingsdata endnu'
+  });
+})();
+</script>
 {% endblock %}

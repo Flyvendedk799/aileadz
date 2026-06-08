@@ -133,4 +133,97 @@ def notifications_dashboard():
             flash('Fejl under afsendelse: ' + str(e), 'danger')
         return redirect(url_for('admin_notifications.notifications_dashboard'))
     
-    return render_template('notifications_admin.html')
+    # ── GET: build read-only dashboard metrics ─────────────────────────────
+    # A broadcast is one INSERT that creates N `notifications` rows (one per
+    # recipient) all sharing the same (title, timestamp). We therefore treat a
+    # distinct (title, timestamp) pair as a single broadcast. Columns used:
+    #   user_id (recipient), title, `read` (0/1, reserved word), timestamp.
+    # Everything below is read-only and degrades to safe defaults on any error
+    # so the page (and the POST flow above) can never be broken by a bad query.
+    broadcasts_sent = 0
+    recipients_reached = 0
+    read_rate = 0
+    last_broadcast_at = '—'
+    past_broadcasts = []
+    try:
+        import MySQLdb.cursors
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+
+        # Aggregate KPI tiles in one pass over the notifications table.
+        cur.execute(
+            """
+            SELECT
+                COUNT(*) AS recipients,
+                COALESCE(SUM(`read`), 0) AS read_count,
+                COUNT(DISTINCT CONCAT(COALESCE(title, ''), '|', COALESCE(timestamp, ''))) AS broadcasts,
+                MAX(timestamp) AS last_at
+            FROM notifications
+            """
+        )
+        agg = cur.fetchone() or {}
+        recipients_reached = int(agg.get('recipients') or 0)
+        broadcasts_sent = int(agg.get('broadcasts') or 0)
+        _read_count = int(agg.get('read_count') or 0)
+        # Guard divide-by-zero -> 0.
+        if recipients_reached > 0:
+            read_rate = round((_read_count / recipients_reached) * 100)
+        last_at = agg.get('last_at')
+        if last_at:
+            try:
+                last_broadcast_at = last_at.strftime('%d-%m-%Y %H:%M')
+            except Exception:
+                last_broadcast_at = str(last_at)
+
+        # History table: most recent ~15 broadcasts (grouped by title+timestamp).
+        cur.execute(
+            """
+            SELECT
+                title,
+                MAX(timestamp) AS created_at,
+                COUNT(*) AS recipient_count,
+                COALESCE(SUM(`read`), 0) AS read_count
+            FROM notifications
+            GROUP BY title, timestamp
+            ORDER BY created_at DESC
+            LIMIT 15
+            """
+        )
+        for row in cur.fetchall() or []:
+            rc = int(row.get('recipient_count') or 0)
+            created = row.get('created_at')
+            if created:
+                try:
+                    created = created.strftime('%d-%m-%Y %H:%M')
+                except Exception:
+                    created = str(created)
+            else:
+                created = '—'
+            # `target` (all/specific/role) is not stored per broadcast, so we
+            # derive a Danish recipient label from the delivered row count.
+            target_label = '1 bruger' if rc == 1 else f'{rc} modtagere'
+            past_broadcasts.append({
+                'title': row.get('title') or '—',
+                'target_label': target_label,
+                'recipient_count': rc,
+                'read_count': int(row.get('read_count') or 0),
+                'created_at': created,
+            })
+
+        cur.close()
+    except Exception as e:
+        current_app.logger.error("Error building notifications dashboard metrics: %s", e)
+        # Reset to safe defaults so a partial failure never renders garbage.
+        broadcasts_sent = 0
+        recipients_reached = 0
+        read_rate = 0
+        last_broadcast_at = '—'
+        past_broadcasts = []
+
+    return render_template(
+        'fm/notifications_admin.html',
+        broadcasts_sent=broadcasts_sent,
+        recipients_reached=recipients_reached,
+        read_rate=read_rate,
+        last_broadcast_at=last_broadcast_at,
+        past_broadcasts=past_broadcasts,
+    )

@@ -1,11 +1,17 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import empty %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Læringsanalyse{% endblock %}
 {% block topbar_sub %}Deltagelse, gennemførelse og udvikling over tid.{% endblock %}
+{% block extra_head %}
+<style>
+  .la-chart-wrap { position: relative; height: 260px; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-pie"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-lines"></i> Rapporter</a></div>
+{% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set total_enroll = 0 %}{% set total_complete = 0 %}
   {% for c in (popular_courses or []) %}{% set total_enroll = total_enroll + (c.enrollments or 0) %}{% set total_complete = total_complete + (c.completions or 0) %}{% endfor %}
@@ -22,43 +28,44 @@
   </div>
 
   <div class="split">
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Tilmeldinger vs. gennemførelser</h3></div><div class="fm-card-body"><canvas id="trendChart" height="200"></canvas></div></div>
-    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Pr. afdeling</h3></div><div class="fm-card-body">
-      {% for d in (department_comparison or [])[:8] %}
-      {% set rate = (d.completion_rate or 0)|float %}
-      <div class="prog-row"><div class="pt"><b>{{ d.department or '—' }}</b><span class="mono">{{ rate|round(0)|int }}%</span></div><div class="fm-prog"><span style="width:{{ rate }}%;background:{{ 'var(--fm-success)' if rate >= 80 else ('var(--fm-info)' if rate >= 60 else 'var(--fm-warning)') }}"></span></div></div>
-      {% else %}
-      <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3)">Ingen afdelingsdata.</div>
-      {% endfor %}
-    </div></div>
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Tilmeldinger vs. gennemførelser</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="trendChart" role="img" aria-label="Linjediagram: tilmeldinger og gennemførelser pr. dag i valgt periode"></canvas></div></div></div>
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sitemap"></i></span><h3>Gennemførselsrate pr. afdeling</h3></div><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="deptChart" role="img" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling"></canvas></div></div></div>
   </div>
 
   <div class="fm-table-wrap" style="margin-top:16px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Mest populære kurser</h3></div>
+  {% if popular_courses %}
   <table class="fm-table"><thead><tr><th>Kursus</th><th>Tilmeldinger</th><th>Gennemført</th><th>Rate</th></tr></thead><tbody>
-    {% for c in (popular_courses or []) %}
+    {% for c in popular_courses %}
     <tr><td style="font-weight:650">{{ c.product_title }}</td><td class="mono">{{ c.enrollments }}</td><td class="mono">{{ c.completions }}</td><td><span class="fm-badge {{ 'green' if (c.completion_rate or 0)|float >= 70 else 'amber' }}">{{ c.completion_rate or 0 }}%</span></td></tr>
-    {% else %}
-    <tr><td colspan="4" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen kursusdata i perioden.</td></tr>
     {% endfor %}
-  </tbody></table></div>
+  </tbody></table>
+  {% else %}
+  {{ empty('Ingen kursusdata i perioden', 'Tilmeldinger og gennemførelser vises her, når medarbejdere bestiller kurser i den valgte periode.', 'fa-graduation-cap') }}
+  {% endif %}
+  </div>
 </div>
 {% endblock %}
-{% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
 <script>
 (function(){
+  if (typeof FMChart === 'undefined') return;
+
   var cd = {{ (chart_data.learning_trends if chart_data else {'dates':[],'enrollments':[],'completions':[]})|tojson }};
-  var ctx = document.getElementById('trendChart');
-  if(ctx && window.Chart){
-    new Chart(ctx, {
-      type:'line',
-      data:{ labels: cd.dates, datasets:[
-        {label:'Tilmeldinger', data: cd.enrollments, borderColor:'#0f766e', backgroundColor:'rgba(15,118,110,.1)', tension:.3, fill:true},
-        {label:'Gennemført', data: cd.completions, borderColor:'#22c55e', backgroundColor:'rgba(34,197,94,.1)', tension:.3, fill:true}
-      ]},
-      options:{ responsive:true, maintainAspectRatio:false, plugins:{legend:{position:'bottom'}}, scales:{y:{beginAtZero:true}} }
-    });
-  }
+  FMChart.line('trendChart', {
+    labels: cd.dates || [],
+    series: [
+      { label: 'Tilmeldinger', data: cd.enrollments || [], color: FMChart.cssVar('--fm-primary', '#0f766e') },
+      { label: 'Gennemført', data: cd.completions || [], color: FMChart.cssVar('--fm-success', '#16a34a') }
+    ],
+    empty: 'Ingen læringsaktivitet i perioden'
+  });
+
+  var dc = {{ (department_comparison or [])|list|tojson|safe }};
+  FMChart.bar('deptChart', {
+    labels: dc.map(function (d) { return d.department || '—'; }),
+    series: [{ label: 'Gennemførselsrate (%)', data: dc.map(function (d) { return Number(d.completion_rate) || 0; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
+    empty: 'Ingen afdelingsdata i perioden'
+  });
 })();
 </script>
 {% endblock %}

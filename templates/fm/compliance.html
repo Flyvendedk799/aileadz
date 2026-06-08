@@ -25,6 +25,17 @@
     <div class="kpi-tile"><div class="kl">Mangler / udløbet</div><div class="kv tnum" style="color:var(--fm-danger)">{{ t.overdue|default(0) }}</div><div class="kd">kræver handling</div></div>
   </div>
 
+  {% if (t.compliant|default(0)) + (t.expiring|default(0)) + (t.overdue|default(0)) > 0 %}
+  <div class="fm-card" style="margin-bottom:16px;padding:18px">
+    <div class="fm-flex fm-ac fm-gap12" style="margin-bottom:4px">
+      <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-pie"></i></span>
+      <h3 style="font-size:14.5px;font-weight:700">Samlet compliance-status</h3>
+    </div>
+    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Fordeling af alle medarbejder-krav på opfyldt, udløber snart og mangler/udløbet.</p>
+    <div style="position:relative;height:260px"><canvas id="complianceDonut" aria-label="Doughnut-diagram: andel af medarbejder-krav der er opfyldt, udløber snart eller mangler/udløbet" role="img"></canvas></div>
+  </div>
+  {% endif %}
+
   {% if matrix %}
   <div class="fm-table-wrap">
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
@@ -184,7 +195,21 @@
   </div>
 </div>
 {% endblock %}
-{% block extra_scripts %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  FMChart.doughnut('complianceDonut', {
+    labels: ['Opfyldt', 'Udløber snart', 'Mangler / udløbet'],
+    values: [
+      {{ totals.compliant|default(0)|int }},
+      {{ totals.expiring|default(0)|int }},
+      {{ totals.overdue|default(0)|int }}
+    ],
+    empty: 'Ingen compliance-data endnu'
+  });
+})();
+</script>
 <script>
 function openComplianceModal(){ document.getElementById('complianceModal').style.display='flex'; }
 function closeComplianceModal(){ document.getElementById('complianceModal').style.display='none'; }

@@ -11,6 +11,7 @@
   .cat-log { font-size: 12.5px; color: var(--fm-ink-3); min-height: 20px; margin-top: 8px; }
   .cat-link-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--fm-line); text-decoration: none; color: inherit; }
   .cat-link-row:last-child { border-bottom: 0; }
+  .cat-chart-wrap { position: relative; height: 280px; margin-bottom: 14px; }
   @media (max-width: 900px) { .cat-split { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
@@ -90,6 +91,7 @@
     <div class="fm-card">
       <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Top kategorier</h3></div>
       <div class="fm-card-body" style="padding-top:6px">
+        <div class="cat-chart-wrap"><canvas id="catCategoryChart" role="img" aria-label="Top 10 kategorier efter antal produkter"></canvas></div>
         <div class="fm-table-wrap" style="border:0;box-shadow:none">
           <table class="fm-table">
             <tbody>
@@ -104,6 +106,7 @@
     <div class="fm-card">
       <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Top leverandører</h3></div>
       <div class="fm-card-body" style="padding-top:6px">
+        <div class="cat-chart-wrap"><canvas id="catVendorChart" role="img" aria-label="Top 10 leverandører efter antal kurser"></canvas></div>
         <div class="fm-table-wrap" style="border:0;box-shadow:none">
           <table class="fm-table">
             <tbody>
@@ -119,6 +122,33 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}
+{% include 'fm/_charts.html' %}
+<script>
+  (function () {
+    if (typeof FMChart === 'undefined') return;
+    // Top-10 distributions, derived from the same context the tables render.
+    var cats = {{ (categories or [])|tojson }};
+    var topCats = cats.slice(0, 10);
+    if (topCats.length) {
+      FMChart.bar('catCategoryChart', {
+        labels: topCats.map(function (c) { return c.name || '—'; }),
+        series: [{ label: 'Produkter', data: topCats.map(function (c) { return Number(c.count) || 0; }) }],
+        horizontal: true,
+        empty: 'Ingen kategorier endnu'
+      });
+    }
+    var vendors = {{ (vendors or [])|tojson }};
+    var topVendors = vendors.slice(0, 10);
+    if (topVendors.length) {
+      FMChart.bar('catVendorChart', {
+        labels: topVendors.map(function (v) { return v.name || '—'; }),
+        series: [{ label: 'Kurser', data: topVendors.map(function (v) { return Number(v.course_count) || 0; }) }],
+        horizontal: true,
+        empty: 'Ingen leverandører endnu'
+      });
+    }
+  })();
+</script>
 <script>
   const aiBtn = document.getElementById('aiStartBtn');
   const aiLog = document.getElementById('aiLog');

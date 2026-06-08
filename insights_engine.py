@@ -652,19 +652,62 @@ def get_predictive_data(app, company_id):
         }
 
         try:
-            # Employees who haven't used chatbot in 30+ days but were active before
+            # Churn = active employees whose *last learning activity* is 30+ days
+            # old. The signal is a unified GREATEST() over every way an employee
+            # touches the platform — not chatbot-only — mirroring the coalesce
+            # _execute_hr_inactive_employees already uses (hr_tools.py), so the
+            # predictive path stops flagging learners-who-never-chat as inactive.
+            # Sources: last_chatbot_interaction, last_active_at, most recent
+            # course_orders.created_at, most recent
+            # employee_learning_progress.last_accessed (all company-scoped).
+            # Anchored at '1970-01-01' so a NULL source never wins the GREATEST;
+            # employees with NO activity at all (all four NULL) are excluded —
+            # they're never-onboarded, not churn.
             cur.execute("""
                 SELECT cu.user_id, u.username, cu.department, cu.job_title,
                        cu.last_chatbot_interaction, cu.total_chatbot_queries,
-                       DATEDIFF(NOW(), cu.last_chatbot_interaction) AS days_inactive
+                       GREATEST(
+                           COALESCE(cu.last_chatbot_interaction, '1970-01-01'),
+                           COALESCE(cu.last_active_at, '1970-01-01'),
+                           COALESCE(ord.last_order_at, '1970-01-01'),
+                           COALESCE(prog.last_progress_at, '1970-01-01')
+                       ) AS last_learning_activity,
+                       DATEDIFF(NOW(), GREATEST(
+                           COALESCE(cu.last_chatbot_interaction, '1970-01-01'),
+                           COALESCE(cu.last_active_at, '1970-01-01'),
+                           COALESCE(ord.last_order_at, '1970-01-01'),
+                           COALESCE(prog.last_progress_at, '1970-01-01')
+                       )) AS days_inactive
                 FROM company_users cu
                 JOIN users u ON cu.user_id = u.id
+                LEFT JOIN (
+                    SELECT user_id, MAX(created_at) AS last_order_at
+                    FROM course_orders
+                    WHERE company_id = %s
+                    GROUP BY user_id
+                ) ord ON ord.user_id = cu.user_id
+                LEFT JOIN (
+                    SELECT user_id, MAX(last_accessed) AS last_progress_at
+                    FROM employee_learning_progress
+                    WHERE company_id = %s
+                    GROUP BY user_id
+                ) prog ON prog.user_id = cu.user_id
                 WHERE cu.company_id = %s AND cu.status = 'active'
-                AND cu.total_chatbot_queries > 3
-                AND cu.last_chatbot_interaction < DATE_SUB(NOW(), INTERVAL 30 DAY)
+                AND GREATEST(
+                        COALESCE(cu.last_chatbot_interaction, '1970-01-01'),
+                        COALESCE(cu.last_active_at, '1970-01-01'),
+                        COALESCE(ord.last_order_at, '1970-01-01'),
+                        COALESCE(prog.last_progress_at, '1970-01-01')
+                    ) > '1970-01-01'
+                AND GREATEST(
+                        COALESCE(cu.last_chatbot_interaction, '1970-01-01'),
+                        COALESCE(cu.last_active_at, '1970-01-01'),
+                        COALESCE(ord.last_order_at, '1970-01-01'),
+                        COALESCE(prog.last_progress_at, '1970-01-01')
+                    ) < DATE_SUB(NOW(), INTERVAL 30 DAY)
                 ORDER BY days_inactive DESC
                 LIMIT 10
-            """, (company_id,))
+            """, (company_id, company_id, company_id))
             predictions['churn_risk'] = cur.fetchall()
 
             # Employees with skill gaps (current_level < target_level by 2+)

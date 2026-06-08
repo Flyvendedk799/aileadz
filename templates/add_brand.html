@@ -1,131 +1,91 @@
-{% extends "base.html" %}
+{% extends "fm_base.html" %}
 
-{% block extra_styles %}
+{% block title %}Tilføj brand{% endblock %}
+{% block page_id %}brands{% endblock %}
+{% block topbar_title %}Tilføj nyt brand{% endblock %}
+{% block topbar_sub %}Opret et white-label brand med logo, beskrivelse og sociale links.{% endblock %}
+
+{% block extra_head %}
 <style>
-.form-container {
-  padding: 30px;
-  color: var(--text-color);
-}
-.form-container h2 {
-  margin-bottom: 20px;
-}
-.form-group {
-  margin-bottom: 15px;
-}
-.form-group label {
-  display: block;
-  margin-bottom: 5px;
-}
-.form-group input[type="text"],
-.form-group input[type="url"],
-.form-group textarea {
-  width: 100%;
-  padding: 8px;
-  border: 1px solid var(--muted-text);
-  border-radius: var(--border-radius);
-}
-.file-input-wrapper {
-  position: relative;
-  overflow: hidden;
-  display: inline-block;
-}
-.file-input-button {
-  border: 1px solid #ccc;
-  color: #333;
-  background-color: #fff;
-  padding: 6px 12px;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-}
-.file-input-wrapper input[type=file] {
-  font-size: 100px;
-  position: absolute;
-  left: 0;
-  top: 0;
-  opacity: 0;
-}
-.image-preview {
-  margin-top: 10px;
-  max-width: 120px;
-  max-height: 120px;
-  border: 1px solid #ccc;
-  border-radius: var(--border-radius);
-  object-fit: cover;
-  display: none;
-}
-.btn-submit {
-  padding: 10px 20px;
-  background-color: var(--primary-color);
-  color: #fff;
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-}
-.btn-cancel {
-  padding: 10px 20px;
-  background-color: #888;
-  color: #fff;
-  border: none;
-  border-radius: var(--border-radius);
-  cursor: pointer;
-  margin-left: 10px;
-  text-decoration: none;
-}
+  .ab-wrap { max-width: 720px; }
+  .ab-file { display:flex; align-items:center; gap:14px; flex-wrap:wrap; }
+  .ab-file input[type=file] { display:none; }
+  .ab-preview {
+    width: 88px; height: 88px; border-radius: var(--r-2, 14px);
+    border: 1px solid var(--fm-line); background: var(--fm-surface-2);
+    object-fit: cover; display: none;
+  }
+  .ab-actions { display:flex; gap:10px; margin-top: 6px; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="form-container">
-  <h2>Tilføj Nyt Brand</h2>
-  <form method="post" action="/add_brand" enctype="multipart/form-data">
-    <div class="form-group">
-      <label for="brand_name">Navn:</label>
-      <input type="text" name="brand_name" id="brand_name" required>
-    </div>
-    <div class="form-group">
-      <label for="brand_site">Hjemmeside:</label>
-      <input type="url" name="brand_site" id="brand_site" required>
-    </div>
-    <div class="form-group">
-      <label for="brand_logo">Logo:</label>
-      <div class="file-input-wrapper">
-        <button type="button" class="file-input-button" onclick="document.getElementById('brand_logo').click()">Vælg billede</button>
-        <input type="file" name="brand_logo" id="brand_logo" accept="image/*" onchange="previewImage(event, 'preview')">
+<div class="ab-wrap">
+  <form class="fm-card" method="post" action="{{ url_for('auth.add_brand') }}" enctype="multipart/form-data">
+    <div class="fm-card-body">
+      <div class="form-grid">
+        <div class="fm-field">
+          <label for="brand_name">Navn</label>
+          <input class="fm-input" type="text" name="brand_name" id="brand_name" required placeholder="F.eks. Acme Læring">
+        </div>
+        <div class="fm-field">
+          <label for="brand_site">Hjemmeside</label>
+          <input class="fm-input" type="url" name="brand_site" id="brand_site" required placeholder="https://...">
+        </div>
       </div>
-      <img id="preview" class="image-preview" alt="Logo preview">
+
+      <div class="fm-field" style="margin-top:14px">
+        <label>Logo</label>
+        <div class="ab-file">
+          <button type="button" class="btn btn-ghost btn-sm" onclick="document.getElementById('brand_logo').click()">
+            <i class="fa-solid fa-image"></i> Vælg billede
+          </button>
+          <input type="file" name="brand_logo" id="brand_logo" accept="image/*" onchange="previewImage(event, 'preview')">
+          <img id="preview" class="ab-preview" alt="Logo-forhåndsvisning">
+        </div>
+      </div>
+
+      <div class="fm-field" style="margin-top:14px">
+        <label for="brand_description">Beskrivelse</label>
+        <textarea class="fm-input" name="brand_description" id="brand_description" rows="3" placeholder="Kort beskrivelse af dit brand"></textarea>
+      </div>
+
+      <div class="fm-eyebrow indigo" style="margin:20px 0 10px">Sociale medier</div>
+      <div class="form-grid">
+        <div class="fm-field">
+          <label for="brand_fb">Facebook</label>
+          <input class="fm-input" type="text" name="brand_fb" id="brand_fb" placeholder="fb.com/brand">
+        </div>
+        <div class="fm-field">
+          <label for="brand_twitter">Twitter / X</label>
+          <input class="fm-input" type="text" name="brand_twitter" id="brand_twitter" placeholder="twitter.com/brand">
+        </div>
+        <div class="fm-field">
+          <label for="brand_instagram">Instagram</label>
+          <input class="fm-input" type="text" name="brand_instagram" id="brand_instagram" placeholder="instagram.com/brand">
+        </div>
+        <div class="fm-field">
+          <label for="brand_linkedin">LinkedIn</label>
+          <input class="fm-input" type="text" name="brand_linkedin" id="brand_linkedin" placeholder="linkedin.com/company/brand">
+        </div>
+      </div>
+
+      <div class="ab-actions">
+        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-plus"></i> Tilføj brand</button>
+        <a href="{{ url_for('auth.brands') }}" class="btn btn-ghost">Annuller</a>
+      </div>
     </div>
-    <div class="form-group">
-      <label for="brand_description">Beskrivelse:</label>
-      <textarea name="brand_description" id="brand_description" rows="3" placeholder="Kort beskrivelse af dit brand"></textarea>
-    </div>
-    <div class="form-group">
-      <label>Sociale Medier:</label>
-      <div class="form-group">
-        <label for="brand_fb">Facebook:</label>
-        <input type="text" name="brand_fb" id="brand_fb" placeholder="fb.com/brand">
-      </div>
-      <div class="form-group">
-        <label for="brand_twitter">Twitter:</label>
-        <input type="text" name="brand_twitter" id="brand_twitter" placeholder="twitter.com/brand">
-      </div>
-      <div class="form-group">
-        <label for="brand_instagram">Instagram:</label>
-        <input type="text" name="brand_instagram" id="brand_instagram" placeholder="instagram.com/brand">
-      </div>
-      <div class="form-group">
-        <label for="brand_linkedin">LinkedIn:</label>
-        <input type="text" name="brand_linkedin" id="brand_linkedin" placeholder="linkedin.com/company/brand">
-      </div>
-    </div>
-    <button type="submit" class="btn-submit">Tilføj Brand</button>
-    <a href="/profile" class="btn-cancel">Annuller</a>
   </form>
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
 function previewImage(event, previewId) {
   var output = document.getElementById(previewId);
-  output.src = URL.createObjectURL(event.target.files[0]);
+  var file = event.target.files && event.target.files[0];
+  if (!file) return;
+  output.src = URL.createObjectURL(file);
   output.style.display = 'block';
 }
 </script>

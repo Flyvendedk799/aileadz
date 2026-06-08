@@ -107,6 +107,20 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'compliance_recert_alert': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #fee2e2;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color:#b91c1c;">Lovpligtig recertificering forfalden</h2>
+    <p>Hej {{ recipient_name or 'leder' }},</p>
+    <p>Et lovpligtigt compliance-krav hos {{ company_name }} er ikke længere overholdt og kræver recertificering.</p>
+    <p style="font-size:15px;"><strong>{{ requirement_title }}</strong></p>
+    <p style="font-size:14px;">{{ overdue_count }} medarbejder{{ 'e' if overdue_count != 1 else '' }} har en udløbet certificering ({{ scope }}).</p>
+    <p style="font-size:13px;color:#64748b;">Log ind for at se hvem og planlæg recertificering, så kravet kommer tilbage i overholdelse.</p>
+  </div>
+</body></html>
+""",
         'manager_weekly_digest': """
 <!DOCTYPE html>
 <html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">

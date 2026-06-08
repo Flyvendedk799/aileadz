@@ -28,13 +28,20 @@
 </div>
 
 <div class="split">
-  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3><span class="fm-badge teal" style="margin-left:auto">samtaler</span></div><div class="fm-card-body"><canvas id="dailyChart" height="200"></canvas></div></div>
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Daglig aktivitet</h3><span class="fm-badge teal" style="margin-left:auto">samtaler</span></div><div class="fm-card-body"><div style="position:relative;height:220px"><canvas id="dailyChart" role="img" aria-label="Søjlediagram over daglige chatbot-forespørgsler"></canvas></div></div></div>
   <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3>{% if popular_courses %}<span class="fm-badge" style="margin-left:auto">{{ popular_courses|length }} kurser</span>{% endif %}</div><div class="fm-card-body" style="padding-top:6px">
     {% if popular_courses %}
+    {% set _top_views = popular_courses[0].views or 1 %}
     {% for c in popular_courses %}
-    <div class="prog-row"><div class="pt"><b>{{ c.handle }}</b><span class="mono">{{ c.views }} visn.</span></div><div class="fm-prog"><span style="width:{{ (c.views / (popular_courses[0].views or 1) * 100)|round(1) }}%"></span></div>{% if c.conversion_rate %}<div style="font-size:11px;color:var(--fm-ink-3);margin-top:2px">{{ c.conversion_rate }}% konvertering</div>{% endif %}</div>
+    <div style="margin-bottom:16px">
+      <div class="fm-spread" style="font-size:13px;margin-bottom:7px"><b style="font-weight:650">{{ c.handle }}</b><span class="mono" style="color:var(--fm-ink-2)">{{ c.views }} visn.</span></div>
+      <div class="fm-prog"><span style="width:{{ (c.views / _top_views * 100)|round(1) }}%"></span></div>
+      {% if c.conversion_rate %}<div style="font-size:11px;color:var(--fm-ink-3);margin-top:4px">{{ c.conversion_rate }}% konvertering</div>{% endif %}
+    </div>
     {% endfor %}
-    {% else %}<p style="color:var(--fm-ink-3);margin:0">Ingen kursusdata endnu.</p>{% endif %}
+    {% else %}
+    {{ ui.empty('Ingen kursusdata endnu', 'Populære kurser vises her, når medarbejdere begynder at browse kataloget.', 'fa-graduation-cap') }}
+    {% endif %}
   </div></div>
 </div>
 
@@ -69,39 +76,43 @@
   {% endif %}
 </div>
 
-{% if recent_conversations %}
-<div class="fm-table-wrap" style="margin-top:18px">
-  <div class="fm-card-head" style="padding:14px 18px"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Seneste samtaler</h3></div>
-  <table class="fm-table">
-    <thead><tr><th>Session</th><th>Tidspunkt</th><th>Beskeder</th><th>Emner</th><th>Afdeling</th></tr></thead>
-    <tbody>
-      {% for c in recent_conversations %}
-      <tr>
-        <td><span class="mono" style="font-size:12px">{{ c.session_id }}</span></td>
-        <td class="muted" style="font-size:12px">{{ c.start_time }}</td>
-        <td class="mono">{{ c.query_count }}</td>
-        <td>{% for t in c.topics %}<span class="fm-badge teal" style="margin-right:4px">{{ t }}</span>{% endfor %}</td>
-        <td><span class="fm-badge">{{ c.department or '—' }}</span></td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
+<div class="fm-card" style="margin-top:18px">
+  <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Seneste samtaler</h3>{% if recent_conversations %}<span class="fm-badge teal" style="margin-left:auto">{{ recent_conversations|length }}</span>{% endif %}</div>
+  <div class="fm-card-body" style="padding-top:6px">
+    {% if recent_conversations %}
+    <div class="fm-table-wrap" style="border:0;box-shadow:none">
+      <table class="fm-table">
+        <thead><tr><th>Session</th><th>Tidspunkt</th><th>Beskeder</th><th>Emner</th><th>Afdeling</th></tr></thead>
+        <tbody>
+          {% for c in recent_conversations %}
+          <tr>
+            <td><span class="mono" style="font-size:12px">{{ c.session_id }}</span></td>
+            <td class="muted" style="font-size:12px">{{ c.start_time }}</td>
+            <td class="mono">{{ c.query_count }}</td>
+            <td>{% for t in c.topics %}<span class="fm-badge teal" style="margin-right:4px">{{ t }}</span>{% endfor %}</td>
+            <td><span class="fm-badge">{{ c.department or '—' }}</span></td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ ui.empty('Ingen samtaler endnu', 'Samtalehistorik vises her, når medarbejdere interagerer med chatbotten.', 'fa-comments') }}
+    {% endif %}
+  </div>
 </div>
-{% endif %}
 </div>
 {% endblock %}
 {% block extra_scripts %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+{% include 'fm/_charts.html' %}
 <script>
-const labels = {{ daily_chatbot_query_labels | tojson | safe }};
-const data = {{ daily_chatbot_query_data | tojson | safe }};
-const css = getComputedStyle(document.documentElement);
-const primary = (css.getPropertyValue('--fm-primary') || '#0b6b63').trim();
-new Chart(document.getElementById('dailyChart'), {
-  type: 'bar',
-  data: { labels: labels, datasets: [{ label: 'Forespørgsler', data: data, backgroundColor: primary, borderRadius: 4 }] },
-  options: { responsive: true, plugins: { legend: { display: false } },
-    scales: { y: { beginAtZero: true, ticks: { stepSize: 1 } }, x: { grid: { display: false } } } }
-});
+  (function () {
+    if (typeof FMChart === 'undefined') return;
+    FMChart.bar('dailyChart', {
+      labels: {{ daily_chatbot_query_labels | tojson | safe }},
+      series: [{ label: 'Forespørgsler', data: {{ daily_chatbot_query_data | tojson | safe }} }],
+      empty: 'Ingen samtaler i perioden endnu'
+    });
+  })();
 </script>
 {% endblock %}

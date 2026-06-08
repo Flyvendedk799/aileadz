@@ -1,11 +1,17 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import empty %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Medarbejderfremdrift{% endblock %}
 {% block topbar_sub %}Læringsstatus pr. medarbejder.{% endblock %}
+{% block extra_head %}
+<style>
+  .ep-dist-wrap { position: relative; height: 240px; }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a></div>
+{% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set st = summary_stats or {} %}
   <div class="kpi-row k3">
@@ -14,7 +20,11 @@
     <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ st.total_count|default(0) }}</div><div class="kd">{{ st.active_count|default(0) }} aktive</div></div>
   </div>
 
-  <form method="GET" action="{{ url_for('hr_dashboard.employee_progress') }}" class="fm-flex fm-gap8" style="margin-bottom:14px;flex-wrap:wrap;align-items:flex-end">
+  <div class="fm-card" style="margin-top:4px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-pie"></i></span><h3>Fordeling af fremdrift</h3></div>
+    <div class="fm-card-body"><div class="ep-dist-wrap"><canvas id="progressDistChart" role="img" aria-label="Cirkeldiagram: antal medarbejdere fordelt på fremdriftsintervaller 0-25, 25-50, 50-75 og 75-100 procent"></canvas></div></div>
+  </div>
+
+  <form method="GET" action="{{ url_for('hr_dashboard.employee_progress') }}" class="fm-flex fm-gap8" style="margin:14px 0;flex-wrap:wrap;align-items:flex-end">
     <label class="fm-field" style="margin:0"><span>Afdeling</span><select class="fm-input" name="department" onchange="this.form.submit()"><option value="">Alle afdelinger</option>{% for d in departments %}<option value="{{ d }}" {{ 'selected' if current_filters.department == d }}>{{ d }}</option>{% endfor %}</select></label>
     <label class="fm-field" style="margin:0"><span>Status</span><select class="fm-input" name="status" onchange="this.form.submit()"><option value="">Alle</option><option value="active" {{ 'selected' if current_filters.status == 'active' }}>Aktiv</option><option value="inactive" {{ 'selected' if current_filters.status == 'inactive' }}>Inaktiv</option></select></label>
     <label class="fm-field" style="margin:0"><span>Sortér</span><select class="fm-input" name="sort" onchange="this.form.submit()">
@@ -26,6 +36,7 @@
     </select></label>
   </form>
 
+  {% if employees %}
   <div class="fm-table-wrap"><table class="fm-table"><thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Gennemført</th><th>I gang</th><th>Fremdrift</th><th></th></tr></thead><tbody>
     {% for e in employees %}
     {% set prog = (e.avg_progress|default(0)|float)|round(0)|int %}
@@ -37,9 +48,33 @@
       <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ prog }}%;background:{{ 'var(--fm-success)' if prog >= 80 else 'var(--fm-primary)' }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ prog }}%</span></td>
       <td style="text-align:right"><a href="{{ url_for('hr_dashboard.employee_details', user_id=e.user_id) }}" class="btn btn-ghost btn-sm">Profil</a></td>
     </tr>
-    {% else %}
-    <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen medarbejdere matcher filtrene.</td></tr>
     {% endfor %}
   </tbody></table></div>
+  {% else %}
+  {{ empty('Ingen medarbejdere matcher filtrene', 'Justér afdeling, status eller sortering for at se medarbejdere her.', 'fa-users') }}
+  {% endif %}
 </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function(){
+  if (typeof FMChart === 'undefined') return;
+
+  var emps = {{ (employees or [])|list|tojson|safe }};
+  var buckets = [0, 0, 0, 0]; // 0-25, 25-50, 50-75, 75-100
+  emps.forEach(function (e) {
+    var p = Number(e.avg_progress) || 0;
+    if (p < 25) buckets[0]++;
+    else if (p < 50) buckets[1]++;
+    else if (p < 75) buckets[2]++;
+    else buckets[3]++;
+  });
+
+  FMChart.doughnut('progressDistChart', {
+    labels: ['0–25 %', '25–50 %', '50–75 %', '75–100 %'],
+    values: buckets,
+    empty: 'Ingen fremdriftsdata endnu'
+  });
+})();
+</script>
 {% endblock %}

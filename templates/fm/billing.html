@@ -3,8 +3,20 @@
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Fakturering{% endblock %}
 {% block topbar_sub %}{{ company.company_name }} · ordrer, betalingsstatus og massehandlinger.{% endblock %}
+{% from 'fm/_macros.html' import empty %}
+{% block extra_head %}
+<style>
+  .bill-charts { display: grid; grid-template-columns: 1fr 1.5fr; gap: 16px; margin-bottom: 16px; align-items: start; }
+  .bill-chart-card { padding: 18px; }
+  .bill-chart-card .ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .bill-chart-card .ch-head h3 { font-size: 14.5px; font-weight: 700; }
+  .bill-chart-card p { font-size: 12px; color: var(--fm-ink-2); margin: 0 0 12px; }
+  @media (max-width: 980px) { .bill-charts { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+  {% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 
   <div class="kpi-row k4">
     <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-circle-xmark"></i></span><div><div class="kl">Ikke faktureret</div><div class="kv tnum">{{ summary.not_invoiced or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.not_invoiced_value or 0).replace(",", ".") }} kr</div></div></div>
@@ -12,6 +24,21 @@
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Betalt</div><div class="kv tnum">{{ summary.paid or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.paid_value or 0).replace(",", ".") }} kr</div></div></div>
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Total værdi</div><div class="kv tnum">{{ "{:,.0f}".format(summary.total_value or 0).replace(",", ".") }}</div><div class="kd">kr · {{ summary.total_orders or 0 }} ordrer</div></div></div>
   </div>
+
+  {% if orders and orders|length > 0 %}
+  <section class="bill-charts">
+    <div class="fm-card bill-chart-card" data-reveal data-d="1">
+      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-pie"></i></span><h3>Betalingsstatus</h3></div>
+      <p>Fordeling af ordrer på faktureringsstatus i den viste liste.</p>
+      <div class="fm-chart-wrap"><canvas id="billStatusChart" aria-label="Cirkeldiagram: fordeling af ordrer på faktureringsstatus (ikke faktureret, faktureret, betalt, krediteret)" role="img"></canvas></div>
+    </div>
+    <div class="fm-card bill-chart-card" data-reveal data-d="2">
+      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-chart-line"></i></span><h3>Ordrevolumen over tid</h3></div>
+      <p>Antal ordrer pr. måned, baseret på oprettelsesdato.</p>
+      <div class="fm-chart-wrap"><canvas id="billVolumeChart" aria-label="Linjediagram: antal kursusordrer pr. måned over tid" role="img"></canvas></div>
+    </div>
+  </section>
+  {% endif %}
 
   <form method="GET" class="fm-card" style="padding:14px 16px;margin-bottom:16px">
     <div class="fm-flex fm-ac fm-gap12" style="flex-wrap:wrap">
@@ -74,7 +101,7 @@
           </div></td>
         </tr>
       {% else %}
-        <tr><td colspan="10" style="text-align:center;padding:30px;color:var(--fm-ink-3)"><i class="fa-solid fa-file-invoice" style="font-size:22px;display:block;margin-bottom:8px;opacity:.4"></i>Ingen ordrer matcher dine filtre.</td></tr>
+        <tr><td colspan="10" style="padding:0">{{ empty('Ingen ordrer', 'Ingen ordrer matcher dine filtre. Justér status eller afdeling for at se flere.', 'fa-file-invoice') }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
@@ -116,7 +143,49 @@
 </div>
 {% endblock %}
 
-{% block extra_scripts %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  var orders = {{ (orders or [])|list|tojson|safe }};
+  if (!orders.length) return;
+
+  // --- Doughnut: payment-status distribution (counted client-side) ---
+  var statusKeys = ['not_invoiced', 'invoiced', 'paid', 'credited'];
+  var statusLabels = { not_invoiced: 'Ikke faktureret', invoiced: 'Faktureret', paid: 'Betalt', credited: 'Krediteret' };
+  var counts = { not_invoiced: 0, invoiced: 0, paid: 0, credited: 0 };
+  orders.forEach(function (o) {
+    var st = o.billing_status || 'not_invoiced';
+    if (counts[st] === undefined) counts[st] = 0;
+    counts[st] += 1;
+  });
+  FMChart.doughnut('billStatusChart', {
+    labels: statusKeys.map(function (k) { return statusLabels[k]; }),
+    values: statusKeys.map(function (k) { return counts[k] || 0; }),
+    empty: 'Ingen faktureringsdata endnu'
+  });
+
+  // --- Line: order volume per month (from created_at) ---
+  var byMonth = {};
+  orders.forEach(function (o) {
+    if (!o.created_at) return;
+    var d = new Date(o.created_at);
+    if (isNaN(d)) return;
+    var key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
+    byMonth[key] = (byMonth[key] || 0) + 1;
+  });
+  var monthKeys = Object.keys(byMonth).sort();
+  var monthNames = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+  FMChart.line('billVolumeChart', {
+    labels: monthKeys.map(function (k) {
+      var p = k.split('-');
+      return monthNames[parseInt(p[1], 10) - 1] + ' ' + p[0].slice(2);
+    }),
+    series: [{ label: 'Ordrer', data: monthKeys.map(function (k) { return byMonth[k]; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
+    empty: 'Ingen daterede ordrer endnu'
+  });
+})();
+</script>
 <script>
 const BILLING_URL_TMPL = `{{ url_for('hr_dashboard.update_billing', order_id='ORDER_ID') }}`;
 function billingUrl(orderId){ return BILLING_URL_TMPL.replace('ORDER_ID', orderId); }

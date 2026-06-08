@@ -3,14 +3,41 @@
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}AI-samtaler{% endblock %}
 {% block topbar_sub %}Chatbot-sessioner på tværs af {{ company.company_name }}.{% endblock %}
+{% from 'fm/_macros.html' import empty %}
+{% block extra_head %}
+<style>
+  .cs-charts { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; margin-bottom: 16px; align-items: start; }
+  .cs-chart-card { padding: 18px; }
+  .cs-chart-card .ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .cs-chart-card .ch-head h3 { font-size: 14.5px; font-weight: 700; }
+  .cs-chart-card p { font-size: 12px; color: var(--fm-ink-2); margin: 0 0 12px; }
+  @media (max-width: 980px) { .cs-charts { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+  {% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 
   <div class="kpi-row k3">
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Sessioner</div><div class="kv tnum">{{ sessions|length }}</div><div class="kd">seneste 100</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-message"></i></span><div><div class="kl">Beskeder i alt</div><div class="kv tnum">{{ sessions|sum(attribute='message_count') }}</div><div class="kd">på tværs af sessioner</div></div></div>
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-users"></i></span><div><div class="kl">Unikke brugere</div><div class="kv tnum">{{ sessions|map(attribute='username')|select|unique|list|length }}</div><div class="kd">aktive medarbejdere</div></div></div>
   </div>
+
+  {% if sessions and sessions|length > 0 %}
+  <section class="cs-charts">
+    <div class="fm-card cs-chart-card" data-reveal data-d="1">
+      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-chart-line"></i></span><h3>Aktivitet over tid</h3></div>
+      <p>Antal sessioner og beskeder pr. dag, baseret på sessionens start.</p>
+      <div class="fm-chart-wrap"><canvas id="csVolumeChart" aria-label="Linjediagram: antal sessioner og beskeder pr. dag over tid" role="img"></canvas></div>
+    </div>
+    <div class="fm-card cs-chart-card" data-reveal data-d="2">
+      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-star-half-stroke"></i></span><h3>Kvalitetsfordeling</h3></div>
+      <p>Sessioner grupperet efter gennemsnitlig kvalitetsscore.</p>
+      <div class="fm-chart-wrap"><canvas id="csQualityChart" aria-label="Cirkeldiagram: fordeling af sessioner efter gennemsnitlig kvalitetsscore" role="img"></canvas></div>
+    </div>
+  </section>
+  {% endif %}
 
   <div class="fm-table-wrap">
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
@@ -40,14 +67,58 @@
           <td style="text-align:right"><a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=s.session_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i> Se samtale</a></td>
         </tr>
       {% else %}
-        <tr><td colspan="7" style="text-align:center;padding:40px;color:var(--fm-ink-3)"><i class="fa-solid fa-comments" style="font-size:26px;display:block;margin-bottom:10px;opacity:.4"></i><div style="font-weight:650;margin-bottom:4px">Ingen samtaler fundet</div>Der er endnu ikke registreret nogen chat-interaktioner for denne virksomhed.</td></tr>
+        <tr><td colspan="7" style="padding:0">{{ empty('Ingen samtaler fundet', 'Der er endnu ikke registreret nogen chat-interaktioner for denne virksomhed.', 'fa-comments') }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 {% endblock %}
-{% block extra_scripts %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  var sessions = {{ (sessions or [])|list|tojson|safe }};
+  if (!sessions.length) return;
+
+  // --- Line: sessions + messages per day (from started_at) ---
+  var byDay = {}; // key -> { sessions, messages }
+  sessions.forEach(function (s) {
+    if (!s.started_at) return;
+    var d = new Date(s.started_at);
+    if (isNaN(d)) return;
+    var key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2) + '-' + ('0' + d.getDate()).slice(-2);
+    if (!byDay[key]) byDay[key] = { sessions: 0, messages: 0 };
+    byDay[key].sessions += 1;
+    byDay[key].messages += Number(s.message_count) || 0;
+  });
+  var dayKeys = Object.keys(byDay).sort();
+  var monthNames = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
+  FMChart.line('csVolumeChart', {
+    labels: dayKeys.map(function (k) { var p = k.split('-'); return parseInt(p[2], 10) + '. ' + monthNames[parseInt(p[1], 10) - 1]; }),
+    series: [
+      { label: 'Sessioner', data: dayKeys.map(function (k) { return byDay[k].sessions; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') },
+      { label: 'Beskeder', data: dayKeys.map(function (k) { return byDay[k].messages; }), color: FMChart.cssVar('--fm-primary', '#0f766e') }
+    ],
+    empty: 'Ingen daterede sessioner endnu'
+  });
+
+  // --- Doughnut: quality-score distribution (banded from avg_quality) ---
+  var bands = { high: 0, mid: 0, low: 0, none: 0 };
+  sessions.forEach(function (s) {
+    var q = Number(s.avg_quality) || 0;
+    if (q >= 4.0) bands.high += 1;
+    else if (q >= 3.0) bands.mid += 1;
+    else if (q > 0) bands.low += 1;
+    else bands.none += 1;
+  });
+  FMChart.doughnut('csQualityChart', {
+    labels: ['Høj (≥4.0)', 'Middel (3.0–3.9)', 'Lav (<3.0)', 'Ikke vurderet'],
+    values: [bands.high, bands.mid, bands.low, bands.none],
+    empty: 'Ingen kvalitetsdata endnu'
+  });
+})();
+</script>
 <script>
 const _ss = document.getElementById('sessionSearch');
 if (_ss) _ss.addEventListener('keyup', function(){

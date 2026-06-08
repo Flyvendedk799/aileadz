@@ -133,4 +133,4 @@ def notifications_dashboard():
             flash('Fejl under afsendelse: ' + str(e), 'danger')
         return redirect(url_for('admin_notifications.notifications_dashboard'))
     
-    return render_template('notifications_admin.html')
+    return render_template('fm/notifications_admin.html')

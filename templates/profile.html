@@ -1,430 +1,345 @@
-{% extends "base.html" %}
+{% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import empty %}
+{% block page_id %}profile{% endblock %}
+{% block topbar_title %}Min konto &amp; brands{% endblock %}
+{% block topbar_sub %}Profil, CV og personlige marketing-brands ét sted.{% endblock %}
 
-{% block extra_styles %}
+{% block extra_head %}
 <style>
-  @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+  /* ── profile.html — page-specific components on top of fm tokens ──
+     The inline CRUD script renders into the classes below, so their names
+     are load-bearing. Only the look is fm-aligned; the structure is unchanged. */
 
-  :root {
-    --primary-color: var(--fm-primary, #0b6b63);
-    --secondary-color: var(--fm-secondary, #2563eb);
-    --accent-color: var(--fm-accent, #d97706);
-    --success-color: var(--fm-success, #10b981);
-    --warning-color: var(--fm-warning, #f59e0b);
-    --danger-color: var(--fm-danger, #ef4444);
-    --text-color: var(--fm-text, #111827);
-    --muted-text: var(--fm-text-muted, #5f6673);
-    --bg-color: var(--fm-bg, #f5f5f7);
-    --card-bg: var(--fm-surface-solid, #ffffff);
-    --card-bg-hover: var(--fm-surface-muted, #f0f2f5);
-    --border-color: var(--fm-border, rgba(17, 24, 39, 0.1));
-    --border-radius: var(--fm-radius-lg, 12px);
-    --shadow: var(--fm-shadow-sm);
-    --transition: var(--fm-duration-base, 320ms) var(--fm-ease-out, ease);
-  }
-
-  body.futurematch-shell {
-    background: var(--fm-bg) !important;
-    color: var(--fm-text) !important;
-  }
-
-  /* Override base.html Bootstrap text resets — profile uses dark-themed custom components */
-  .content .card,
-  .content .card-body,
-  .content .form-control,
-  .content .form-select,
-  .content .form-label { color: inherit; }
-
-  .profile-container { max-width: 1100px; margin: 2rem auto; padding: 1.5rem; }
-
-  /* ── Flash Messages ── */
-  .flash-messages { margin-bottom: 1.5rem; }
-  .flash-message {
-    padding: 1rem; border-radius: 12px; margin-bottom: 0.75rem;
-    background: var(--card-bg); border: 1px solid var(--border-color);
-    animation: fadeIn 0.4s ease;
-  }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
-  @keyframes slideIn { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
-  @keyframes growIn { from { transform: scale(0.8); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-
-  /* ── Profile Header ── */
+  /* Profile header ------------------------------------------------------ */
   .profile-header {
-    background: var(--card-bg); backdrop-filter: blur(12px);
-    border: 1px solid var(--border-color); border-radius: var(--border-radius);
-    box-shadow: var(--shadow); padding: 2rem; margin-bottom: 2rem;
-    display: flex; align-items: center; gap: 2rem; flex-wrap: wrap;
+    display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
+    padding: 26px 28px; margin-bottom: 16px;
+    border: 1px solid var(--fm-line); border-radius: var(--r-card);
+    background: var(--fm-surface); box-shadow: var(--sh-sm);
+    position: relative; overflow: hidden;
   }
+  .profile-header::after {
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(70% 130% at 100% 0%, var(--fm-primary-tint), transparent 55%),
+                radial-gradient(60% 90% at 0% 100%, var(--fm-clay-tint), transparent 55%);
+    opacity: .8;
+  }
+  .profile-header > * { position: relative; }
   .profile-avatar {
-    width: 80px; height: 80px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--primary-color), var(--secondary-color));
-    display: flex; align-items: center; justify-content: center;
-    font-size: 2rem; font-weight: 700; flex-shrink: 0;
-    box-shadow: 0 4px 15px rgba(106, 17, 203, 0.4);
+    width: 80px; height: 80px; flex: 0 0 80px; border-radius: 24px;
+    display: grid; place-items: center; font-family: var(--ff-display);
+    font-size: 30px; font-weight: 700; color: #fff;
+    background: linear-gradient(140deg, var(--fm-indigo), var(--fm-primary));
+    box-shadow: var(--sh-glow);
   }
   .profile-header-info { flex: 1; min-width: 200px; }
-  .profile-header-info h1 { font-size: 1.5rem; margin: 0 0 4px; }
-  .profile-header-info .headline { color: var(--muted-text); font-size: 0.95rem; margin: 0; }
-  .profile-header-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .profile-header-info h1 { font-size: clamp(22px,2.6vw,28px); letter-spacing: -.03em; line-height: 1.05; margin: 0; }
+  .profile-header-info .headline { color: var(--fm-ink-2); font-size: 14px; margin: 5px 0 0; line-height: 1.4; }
+  .profile-header-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 
-  /* ── Completeness Bar ── */
-  .completeness-wrap { margin-bottom: 2rem; }
+  /* Completeness bar ---------------------------------------------------- */
+  .completeness-wrap {
+    padding: 18px 22px; margin-bottom: 16px;
+    border: 1px solid var(--fm-line); border-radius: var(--r-card);
+    background: var(--fm-surface); box-shadow: var(--sh-xs);
+  }
   .completeness-label {
     display: flex; justify-content: space-between; align-items: center;
-    font-size: 0.8rem; font-weight: 600; color: var(--muted-text);
-    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px;
+    font-family: var(--ff-mono); font-size: 10.5px; font-weight: 600;
+    color: var(--fm-ink-3); text-transform: uppercase; letter-spacing: .05em; margin-bottom: 8px;
   }
-  .completeness-bar {
-    height: 8px; border-radius: 8px; background: rgba(255,255,255,0.08); overflow: hidden;
-  }
+  .completeness-label #completeness-pct { color: var(--fm-primary); font-size: 13px; }
+  .completeness-bar { height: 8px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; }
   .completeness-fill {
-    height: 100%; border-radius: 8px; transition: width 0.8s ease;
-    background: linear-gradient(90deg, var(--primary-color), var(--secondary-color), var(--success-color));
+    height: 100%; border-radius: 999px; transition: width .8s var(--ease);
+    background: linear-gradient(90deg, var(--fm-primary), var(--fm-primary-300));
   }
-  .completeness-tips {
-    display: flex; gap: 0.5rem; flex-wrap: wrap; margin-top: 8px;
-  }
+  .completeness-tips { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
   .completeness-tip {
-    font-size: 0.72rem; padding: 4px 10px; border-radius: 20px;
-    background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1);
-    color: var(--muted-text); cursor: pointer; transition: var(--transition);
+    font-size: 12px; font-weight: 600; padding: 5px 12px; border-radius: 999px;
+    background: var(--fm-surface-2); border: 1px solid var(--fm-line);
+    color: var(--fm-ink-2); cursor: pointer; transition: var(--t);
   }
-  .completeness-tip:hover { background: rgba(106,17,203,0.15); color: #fff; border-color: var(--primary-color); }
-  .completeness-tip.done { opacity: 0.4; text-decoration: line-through; cursor: default; }
+  .completeness-tip:hover { background: var(--fm-primary-tint); color: var(--fm-primary); border-color: var(--fm-primary); }
+  .completeness-tip.done { opacity: .5; text-decoration: line-through; cursor: default; }
 
-  /* ── Buttons ── */
-  .btn {
-    display: inline-flex; align-items: center; gap: 6px;
-    padding: 0.6rem 1.2rem; border-radius: 10px; font-weight: 600;
-    font-size: 0.85rem; transition: var(--transition); text-decoration: none;
-    border: none; cursor: pointer; white-space: nowrap;
+  /* Stats banner -------------------------------------------------------- */
+  .profile-stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 14px; margin-bottom: 16px; }
+  .stat-card {
+    padding: 16px 18px; text-align: center;
+    border: 1px solid var(--fm-line); border-radius: var(--r-card);
+    background: var(--fm-surface); box-shadow: var(--sh-xs); transition: var(--t);
   }
-  .btn-primary { background: var(--primary-color); color: #fff; }
-  .btn-primary:hover { background: var(--secondary-color); transform: translateY(-2px); }
-  .btn-ghost { background: transparent; color: var(--muted-text); border: 1px solid var(--border-color); }
-  .btn-ghost:hover { background: rgba(255,255,255,0.05); color: #fff; }
-  .btn-danger { background: var(--danger-color); color: #fff; }
-  .btn-danger:hover { background: #ff4b4b; transform: translateY(-2px); }
-  .btn-sm { padding: 0.4rem 0.8rem; font-size: 0.78rem; border-radius: 8px; }
-  .btn-ai {
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    color: #fff; box-shadow: 0 4px 12px rgba(106,17,203,0.3);
-  }
-  .btn-ai:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(106,17,203,0.4); }
+  .stat-card:hover { transform: translateY(-2px); box-shadow: var(--sh-sm); }
+  .stat-value { font-family: var(--ff-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1; color: var(--fm-primary); font-variant-numeric: tabular-nums; }
+  .stat-label { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 5px; }
 
-  /* ── Section Cards ── */
-  .cv-section {
-    background: var(--card-bg); backdrop-filter: blur(10px);
-    border: 1px solid var(--border-color); border-radius: var(--border-radius);
-    box-shadow: var(--shadow); margin-bottom: 1.5rem;
-    overflow: hidden; transition: var(--transition);
-  }
-  .cv-section:hover { border-color: rgba(255,255,255,0.18); }
-  .cv-section-header {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 1.25rem 1.5rem; cursor: pointer; user-select: none;
-  }
-  .cv-section-header h3 {
-    font-size: 1rem; font-weight: 700; margin: 0;
-    display: flex; align-items: center; gap: 10px;
-  }
-  .cv-section-header .section-icon {
-    width: 32px; height: 32px; border-radius: 10px;
-    display: flex; align-items: center; justify-content: center;
-    font-size: 0.9rem;
-  }
+  /* CV section = fm-card with collapsible body --------------------------- */
+  .cv-section { margin-bottom: 16px; }
+  .cv-section .cv-section-header { cursor: pointer; user-select: none; }
+  .cv-section .cv-section-header h3 { display: flex; align-items: center; gap: 10px; margin: 0; }
   .cv-section-header .count-badge {
-    font-size: 0.7rem; font-weight: 600; padding: 2px 8px;
-    border-radius: 20px; background: rgba(106,17,203,0.2);
-    color: var(--secondary-color);
+    font-family: var(--ff-mono); font-size: 11px; font-weight: 600; padding: 1px 9px;
+    border-radius: 999px; background: var(--fm-primary-tint); color: var(--fm-primary-700);
   }
-  .cv-section-header .toggle-icon { transition: transform 0.3s ease; color: var(--muted-text); }
+  .cv-section-header .header-tools { display: flex; gap: 8px; align-items: center; margin-left: auto; }
+  .cv-section-header .toggle-icon { color: var(--fm-ink-3); transition: transform .3s var(--ease); }
   .cv-section.collapsed .cv-section-body { display: none; }
   .cv-section.collapsed .toggle-icon { transform: rotate(-90deg); }
-  .cv-section-body { padding: 0 1.5rem 1.5rem; }
 
-  /* ── Skills ── */
+  /* Skills -------------------------------------------------------------- */
   .skills-level-group { margin-bottom: 16px; }
+  .skills-level-group:last-child { margin-bottom: 0; }
   .skills-level-label {
-    font-size: 0.68rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
-    margin-bottom: 8px; display: flex; align-items: center; gap: 8px;
+    font-family: var(--ff-mono); font-size: 10.5px; font-weight: 600; text-transform: uppercase; letter-spacing: .06em;
+    margin-bottom: 9px; display: flex; align-items: center; gap: 9px;
   }
-  .skills-level-label .level-bar { flex: 1; height: 1px; background: rgba(255,255,255,0.06); }
-  .skills-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 1rem; }
+  .skills-level-label .level-bar { flex: 1; height: 1px; background: var(--fm-line); }
+  .skills-grid { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  .skills-grid:last-child { margin-bottom: 0; }
   .skill-pill {
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 14px; border-radius: 50px;
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
-    font-size: 0.82rem; transition: var(--transition);
-    animation: growIn 0.3s ease;
-    position: relative;
+    display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 12px;
+    border-radius: 999px; border: 1px solid var(--fm-line); background: var(--fm-surface-2);
+    font-size: 13px; font-weight: 600; transition: var(--t); animation: fmReveal .25s var(--ease) both;
   }
-  .skill-pill:hover { background: rgba(106,17,203,0.12); border-color: rgba(106,17,203,0.3); transform: translateY(-2px); box-shadow: 0 4px 12px rgba(0,0,0,0.2); }
-  .skill-pill.level-ekspert { border-color: rgba(239,68,68,0.3); background: rgba(239,68,68,0.06); }
-  .skill-pill.level-avanceret { border-color: rgba(245,158,11,0.3); background: rgba(245,158,11,0.06); }
-  .skill-pill.level-mellem { border-color: rgba(15,118,110,0.3); background: rgba(15,118,110,0.06); }
-  .skill-pill.level-begynder { border-color: rgba(59,130,246,0.3); background: rgba(59,130,246,0.06); }
-  .skill-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .skill-level { font-size: 0.68rem; color: var(--muted-text); text-transform: capitalize; }
+  .skill-pill:hover { border-color: var(--fm-line-2); transform: translateY(-1px); box-shadow: var(--sh-xs); }
+  .skill-pill.level-ekspert  { border-color: color-mix(in srgb,var(--fm-clay) 35%,var(--fm-line)); }
+  .skill-pill.level-avanceret { border-color: color-mix(in srgb,var(--fm-gold) 35%,var(--fm-line)); }
+  .skill-pill.level-mellem   { border-color: color-mix(in srgb,var(--fm-primary) 35%,var(--fm-line)); }
+  .skill-pill.level-begynder { border-color: color-mix(in srgb,var(--fm-info) 35%,var(--fm-line)); }
+  .skill-dot { width: 8px; height: 8px; border-radius: 999px; flex: 0 0 8px; }
+  .skill-level { font-size: 11px; color: var(--fm-ink-3); text-transform: capitalize; }
   .skill-remove {
-    background: none; border: none; color: var(--muted-text); cursor: pointer;
-    font-size: 14px; padding: 0; margin-left: 2px; transition: var(--transition);
-    opacity: 0;
+    width: 20px; height: 20px; border: none; background: transparent; color: var(--fm-ink-3);
+    border-radius: 6px; display: grid; place-items: center; cursor: pointer;
+    font-size: 16px; line-height: 1; padding: 0; opacity: 0; transition: var(--t);
   }
   .skill-pill:hover .skill-remove { opacity: 1; }
-  .skill-remove:hover { color: var(--danger-color); }
+  .skill-remove:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
 
-  /* ── Profile Stats Banner ── */
-  .profile-stats {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-    gap: 12px; margin-bottom: 1.5rem;
-  }
-  .stat-card {
-    background: var(--card-bg); border: 1px solid var(--border-color); border-radius: 12px;
-    padding: 16px; text-align: center; transition: var(--transition);
-  }
-  .stat-card:hover { border-color: rgba(106,17,203,0.3); transform: translateY(-2px); }
-  .stat-value { font-size: 1.8rem; font-weight: 800; background: linear-gradient(135deg, var(--primary-color), var(--secondary-color)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
-  .stat-label { font-size: 0.7rem; color: var(--muted-text); text-transform: uppercase; letter-spacing: 0.04em; margin-top: 2px; }
-
-  /* ── Timeline (Experience & Education) ── */
-  .timeline { position: relative; padding-left: 24px; }
+  /* Timeline (experience & education) ----------------------------------- */
+  .timeline { position: relative; padding-left: 28px; }
+  .timeline:empty { padding-left: 0; }
   .timeline::before {
-    content: ''; position: absolute; left: 7px; top: 8px; bottom: 8px;
-    width: 2px; background: linear-gradient(to bottom, var(--primary-color), var(--secondary-color), transparent);
+    content: ''; position: absolute; left: 9px; top: 6px; bottom: 6px; width: 2px;
+    background: linear-gradient(to bottom, var(--fm-primary), var(--fm-primary-300), transparent);
   }
-  .timeline-item {
-    position: relative; padding: 0 0 1.5rem 16px;
-    animation: slideIn 0.4s ease;
-  }
+  .timeline:empty::before { display: none; }
+  .timeline-item { position: relative; padding: 0 0 18px; animation: fmReveal .3s var(--ease) both; }
   .timeline-item:last-child { padding-bottom: 0; }
   .timeline-dot {
-    position: absolute; left: -21px; top: 6px;
-    width: 12px; height: 12px; border-radius: 50%;
-    background: var(--primary-color); border: 2px solid var(--bg-color);
-    box-shadow: 0 0 0 3px rgba(106,17,203,0.2);
+    position: absolute; left: -23px; top: 4px; width: 13px; height: 13px; border-radius: 999px;
+    background: var(--fm-surface); border: 2.5px solid var(--fm-primary);
   }
   .timeline-item.current .timeline-dot {
-    background: var(--success-color);
-    box-shadow: 0 0 0 3px rgba(74,222,128,0.2), 0 0 8px rgba(74,222,128,0.3);
+    background: var(--fm-success); border-color: var(--fm-success);
+    box-shadow: 0 0 0 4px color-mix(in srgb,var(--fm-success) 18%,transparent);
   }
   .timeline-content {
-    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.06);
-    border-radius: 12px; padding: 1rem 1.25rem; transition: var(--transition);
+    padding: 14px 16px; border-radius: var(--r-md);
+    border: 1px solid var(--fm-line); background: var(--fm-surface-2); transition: var(--t);
   }
-  .timeline-content:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.12); }
-  .timeline-title { font-weight: 600; font-size: 0.92rem; margin: 0; }
-  .timeline-subtitle { color: var(--muted-text); font-size: 0.82rem; margin: 3px 0 0; }
+  .timeline-content:hover { border-color: var(--fm-line-2); box-shadow: var(--sh-xs); }
+  .timeline-title { font-weight: 700; font-size: 14.5px; margin: 0; }
+  .timeline-subtitle { color: var(--fm-ink-2); font-size: 13px; margin: 2px 0 0; }
   .timeline-period {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 0.72rem; color: var(--muted-text); margin-top: 6px;
-    padding: 3px 8px; background: rgba(255,255,255,0.04); border-radius: 6px;
+    display: inline-flex; align-items: center; gap: 5px; font-family: var(--ff-mono);
+    font-size: 11px; color: var(--fm-ink-3); margin-top: 6px;
+    padding: 3px 8px; background: var(--fm-surface-3); border-radius: 6px;
   }
-  .timeline-period.active { color: var(--success-color); background: rgba(74,222,128,0.08); }
-  .timeline-desc { font-size: 0.82rem; color: var(--muted-text); margin-top: 8px; line-height: 1.5; }
+  .timeline-period.active { color: var(--fm-success); background: color-mix(in srgb,var(--fm-success) 12%,transparent); }
+  .timeline-desc { font-size: 13px; color: var(--fm-ink-2); margin-top: 8px; line-height: 1.55; }
   .timeline-duration {
-    display: inline-flex; align-items: center; gap: 4px;
-    font-size: 0.68rem; color: var(--secondary-color); margin-left: 8px;
-    padding: 2px 6px; background: rgba(37,117,252,0.08); border-radius: 4px;
+    display: inline-flex; align-items: center; gap: 4px; font-size: 11px; font-weight: 600;
+    color: var(--fm-primary); margin-left: 8px; padding: 2px 8px;
+    background: var(--fm-primary-tint); border-radius: 6px;
   }
-  .timeline-actions {
-    display: flex; gap: 6px; margin-top: 8px; opacity: 0; transition: opacity 0.2s;
-  }
+  .timeline-actions { display: flex; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity .2s; }
   .timeline-content:hover .timeline-actions { opacity: 1; }
   @media (max-width: 768px) { .timeline-actions { opacity: 1; } .skill-remove { opacity: 1; } }
 
-  /* ── Inline Edit Mode ── */
+  /* Inline edit forms (injected) ---------------------------------------- */
   .inline-edit-form {
-    display: flex; flex-direction: column; gap: 6px; margin-top: 8px;
-    padding: 10px; background: rgba(255,255,255,0.03); border-radius: 8px;
-    border: 1px solid rgba(106,17,203,0.2); animation: fadeIn 0.2s ease;
+    display: flex; flex-direction: column; gap: 8px; margin-top: 10px; padding: 12px;
+    background: var(--fm-surface-2); border: 1px solid var(--fm-primary-300); border-radius: var(--r-md);
+    animation: fmReveal .2s var(--ease) both;
   }
-  .inline-edit-form .form-row { display: flex; gap: 6px; flex-wrap: wrap; }
+  .inline-edit-form .form-row { display: flex; gap: 8px; flex-wrap: wrap; }
   .inline-edit-form input, .inline-edit-form textarea {
-    flex: 1; min-width: 120px; padding: 6px 10px; border-radius: 6px;
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
-    color: var(--text-color); font-size: 0.82rem; font-family: inherit;
+    flex: 1; min-width: 120px; height: 40px; padding: 0 12px; border-radius: var(--r-sm);
+    background: var(--fm-surface); border: 1px solid var(--fm-line);
+    color: var(--fm-ink); font-size: 13.5px; font-family: inherit;
   }
+  .inline-edit-form textarea { height: auto; min-height: 72px; padding: 10px 12px; resize: vertical; }
   .inline-edit-form input:focus, .inline-edit-form textarea:focus {
-    outline: none; border-color: var(--primary-color);
+    outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 4px var(--fm-ring);
   }
-  .inline-edit-actions { display: flex; gap: 6px; margin-top: 4px; }
+  .inline-edit-actions { display: flex; gap: 8px; margin-top: 2px; }
 
-  /* ── Highlight animation for anchor scroll ── */
-  .highlight-pulse {
-    animation: highlightPulse 1.5s ease;
-  }
+  /* Highlight pulse on anchor scroll ------------------------------------ */
+  .highlight-pulse { animation: highlightPulse 1.5s var(--ease); }
   @keyframes highlightPulse {
-    0% { box-shadow: 0 0 0 0 rgba(15,118,110,0.4); }
-    50% { box-shadow: 0 0 0 8px rgba(15,118,110,0.1); }
+    0% { box-shadow: 0 0 0 0 var(--fm-ring); }
+    50% { box-shadow: 0 0 0 8px color-mix(in srgb,var(--fm-primary) 8%,transparent); }
     100% { box-shadow: 0 0 0 0 transparent; }
   }
 
-  /* ── Courses Grid ── */
-  .courses-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; margin-bottom: 1rem; }
+  /* Courses grid -------------------------------------------------------- */
+  .courses-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 14px; margin-bottom: 12px; }
   .course-card {
-    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px; padding: 1rem 1.25rem; transition: var(--transition);
-    display: flex; flex-direction: column; animation: growIn 0.3s ease;
+    padding: 16px; display: flex; flex-direction: column;
+    border: 1px solid var(--fm-line); border-radius: var(--r-card);
+    background: var(--fm-surface); box-shadow: var(--sh-xs); transition: var(--t);
+    animation: fmReveal .3s var(--ease) both;
   }
-  .course-card:hover { background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); transform: translateY(-2px); }
-  .course-title { font-weight: 600; font-size: 0.88rem; margin: 0 0 4px; }
-  .course-vendor { font-size: 0.78rem; color: var(--muted-text); }
-  .course-meta { display: flex; gap: 8px; margin-top: 8px; flex-wrap: wrap; align-items: center; }
+  .course-card:hover { transform: translateY(-2px); box-shadow: var(--sh-sm); border-color: var(--fm-line-2); }
+  .course-title { font-weight: 700; font-size: 14px; margin: 0 0 4px; }
+  .course-vendor { font-size: 12.5px; color: var(--fm-ink-2); }
+  .course-meta { display: flex; gap: 8px; margin-top: 10px; flex-wrap: wrap; align-items: center; }
   .course-badge {
-    font-size: 0.68rem; padding: 3px 8px; border-radius: 6px;
-    background: rgba(106,17,203,0.15); color: var(--secondary-color);
+    font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+    background: var(--fm-primary-tint); color: var(--fm-primary-700);
     display: inline-flex; align-items: center; gap: 4px;
   }
-  .course-badge.cert { background: rgba(251,191,36,0.15); color: var(--warning-color); }
-  .course-remove {
-    margin-top: auto; padding-top: 8px; opacity: 0; transition: opacity 0.2s;
-  }
+  .course-badge.cert { background: color-mix(in srgb,var(--fm-gold) 16%,transparent); color: var(--fm-gold); }
+  .course-remove { margin-top: auto; padding-top: 10px; opacity: 0; transition: opacity .2s; }
   .course-card:hover .course-remove { opacity: 1; }
 
-  /* ── Summary Info Grid ── */
-  .summary-grid {
-    display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px;
-    margin-bottom: 1rem;
-  }
-  .summary-item { padding: 12px; border-radius: 10px; background: rgba(255,255,255,0.03); }
+  /* Summary info grid (injected) ---------------------------------------- */
+  .summary-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; }
+  .summary-item { padding: 14px 16px; border-radius: var(--r-md); background: var(--fm-surface-2); border: 1px solid var(--fm-line); }
   .summary-label {
-    font-size: 0.68rem; font-weight: 600; color: var(--muted-text);
-    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 4px;
+    font-family: var(--ff-mono); font-size: 10.5px; font-weight: 600; color: var(--fm-ink-3);
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 5px;
   }
-  .summary-value { font-size: 0.9rem; font-weight: 500; }
+  .summary-value { font-size: 14px; font-weight: 500; color: var(--fm-ink); line-height: 1.5; }
   .summary-bio { grid-column: 1 / -1; }
 
-  /* ── Add Forms ── */
+  /* Add forms (injected toggle) ----------------------------------------- */
   .add-form {
-    display: none; padding: 1rem; margin-top: 0.75rem;
-    background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 12px;
+    display: none; padding: 16px; margin-top: 14px;
+    background: var(--fm-surface-2); border: 1px solid var(--fm-line); border-radius: var(--r-md);
   }
-  .add-form.visible { display: block; animation: fadeIn 0.3s ease; }
-  .form-row { display: flex; gap: 8px; flex-wrap: wrap; align-items: flex-end; }
-  .form-field { flex: 1; min-width: 140px; }
-  .form-field label {
-    display: block; font-size: 0.72rem; font-weight: 600;
-    color: var(--muted-text); margin-bottom: 4px; text-transform: uppercase;
+  .add-form.visible { display: block; animation: fmReveal .3s var(--ease) both; }
+  .add-form .form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+  .add-form .form-field { flex: 1; min-width: 150px; }
+  .add-form .form-field label {
+    display: block; font-size: 13px; font-weight: 600; color: var(--fm-ink-2); margin-bottom: 7px;
   }
-  .form-field input, .form-field select, .form-field textarea {
-    width: 100%; padding: 8px 12px; border-radius: 8px;
-    background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
-    color: var(--text-color); font-size: 0.85rem; font-family: inherit;
-    transition: var(--transition);
+  .add-form .form-field input, .add-form .form-field select, .add-form .form-field textarea {
+    width: 100%; height: 42px; padding: 0 14px; border-radius: var(--r-md);
+    background: var(--fm-surface); border: 1px solid var(--fm-line);
+    color: var(--fm-ink); font-size: 14px; font-family: inherit; transition: var(--t);
   }
-  .form-field input:focus, .form-field select:focus, .form-field textarea:focus {
-    outline: none; border-color: var(--primary-color);
-    box-shadow: 0 0 0 3px rgba(106,17,203,0.15);
+  .add-form .form-field textarea { height: auto; min-height: 80px; padding: 12px 14px; resize: vertical; }
+  .add-form .form-field input:focus, .add-form .form-field select:focus, .add-form .form-field textarea:focus {
+    outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 4px var(--fm-ring);
   }
 
-  /* ── Edit overlay for summary ── */
+  /* Summary edit modal -------------------------------------------------- */
   .edit-overlay {
-    display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0,0,0,0.6); backdrop-filter: blur(4px);
-    z-index: 1000; align-items: center; justify-content: center;
+    display: none; position: fixed; inset: 0; z-index: 1000;
+    background: color-mix(in srgb,var(--fm-ink) 55%,transparent); backdrop-filter: blur(4px);
+    align-items: center; justify-content: center;
   }
-  .edit-overlay.visible { display: flex; animation: fadeIn 0.2s ease; }
+  .edit-overlay.visible { display: flex; animation: fmReveal .2s var(--ease) both; }
   .edit-modal {
-    background: #2a2a3d; border: 1px solid var(--border-color);
-    border-radius: var(--border-radius); padding: 2rem; width: 90%; max-width: 600px;
-    max-height: 80vh; overflow-y: auto; box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    background: var(--fm-surface); border: 1px solid var(--fm-line); border-radius: var(--r-card);
+    padding: 28px; width: 92%; max-width: 600px; max-height: 84vh; overflow-y: auto; box-shadow: var(--sh-md);
   }
-  .edit-modal h3 { margin: 0 0 1.5rem; font-size: 1.1rem; }
+  .edit-modal h3 { margin: 0 0 20px; font-size: 17px; font-weight: 700; letter-spacing: -.02em; }
+  .edit-modal .form-field { margin-bottom: 14px; }
+  .edit-modal .form-field label { display: block; font-size: 13px; font-weight: 600; color: var(--fm-ink-2); margin-bottom: 7px; }
+  .edit-modal .form-field input, .edit-modal .form-field textarea {
+    width: 100%; height: 42px; padding: 0 14px; border-radius: var(--r-md);
+    background: var(--fm-surface-2); border: 1px solid var(--fm-line);
+    color: var(--fm-ink); font-size: 14px; font-family: inherit;
+  }
+  .edit-modal .form-field textarea { height: auto; min-height: 80px; padding: 12px 14px; resize: vertical; }
+  .edit-modal .form-field input:focus, .edit-modal .form-field textarea:focus {
+    outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 4px var(--fm-ring);
+  }
 
-  /* ── Toast ── */
-  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; }
+  /* Toasts -------------------------------------------------------------- */
+  .toast-container { position: fixed; top: 16px; right: 16px; z-index: 9999; display: flex; flex-direction: column; gap: 9px; }
   .toast {
-    padding: 10px 18px; border-radius: 10px; font-size: 0.82rem; color: #fff;
-    animation: fadeIn 0.3s ease; box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    display: flex; align-items: center; gap: 8px;
+    display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-radius: 12px;
+    background: var(--fm-surface); border: 1px solid var(--fm-line); border-left: 3px solid var(--fm-success);
+    box-shadow: var(--sh-md); font-size: 13px; font-weight: 600; color: var(--fm-ink);
+    animation: fmReveal .3s var(--ease) both;
   }
-  .toast.success { background: #22c55e; }
-  .toast.error { background: #ef4444; }
+  .toast.success { border-left-color: var(--fm-success); }
+  .toast.error { border-left-color: var(--fm-danger); }
 
-  /* ── Brands Section (kept from original) ── */
-  .brands-section { margin-top: 2rem; }
-  .brands-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; }
-  .section-title {
-    font-size: 1.3rem; font-weight: 700; position: relative;
-    padding-bottom: 0.5rem; margin: 0;
-  }
-  .section-title::after {
-    content: ''; position: absolute; bottom: 0; left: 0; width: 60px; height: 3px;
-    background: linear-gradient(to right, var(--accent-color), var(--secondary-color)); border-radius: 3px;
-  }
-  .brand-card {
-    background: var(--card-bg); border: 1px solid var(--border-color);
-    border-radius: var(--border-radius); box-shadow: var(--shadow);
-    margin-bottom: 1.5rem; overflow: hidden; transition: var(--transition);
-  }
-  .brand-card:hover { transform: scale(1.01); }
-  .brand-card-inner { display: flex; flex-wrap: wrap; padding: 1.5rem; }
-  .brand-logo-container { margin-right: 1.5rem; flex-shrink: 0; }
+  /* Brands -------------------------------------------------------------- */
+  .brand-card { margin-bottom: 16px; }
+  .brand-card-inner { display: flex; flex-wrap: wrap; gap: 22px; padding: 22px; }
+  .brand-logo-container { flex-shrink: 0; }
   .brand-logo, .no-logo {
-    width: 100px; height: 100px; object-fit: cover; border-radius: 12px;
-    box-shadow: 0 4px 8px rgba(0,0,0,0.2);
+    width: 100px; height: 100px; object-fit: cover; border-radius: var(--r-md);
+    border: 1px solid var(--fm-line); box-shadow: var(--sh-xs);
   }
-  .no-logo {
-    background: linear-gradient(135deg, #2c2c3c, #3a3a4d);
-    display: flex; align-items: center; justify-content: center; color: var(--muted-text);
-  }
-  .brand-details { flex-grow: 1; }
+  .no-logo { display: grid; place-items: center; color: var(--fm-ink-3); background: var(--fm-surface-2); }
+  .brand-details { flex: 1; min-width: 220px; }
   .brand-number {
-    display: inline-block; font-size: 0.75rem; font-weight: 600;
-    background: linear-gradient(135deg, var(--primary-color), var(--accent-color));
-    padding: 4px 12px; border-radius: 50px; margin-bottom: 0.75rem; color: #fff;
+    display: inline-block; font-family: var(--ff-mono); font-size: 11px; font-weight: 600;
+    background: var(--fm-primary-tint); color: var(--fm-primary-700);
+    padding: 3px 10px; border-radius: 999px; margin-bottom: 12px;
   }
-  .brand-info-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 1rem; }
+  .brand-info-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 14px; }
   .brand-info-item { margin: 0; line-height: 1.5; }
   .brand-info-label {
-    display: block; font-size: 0.7rem; font-weight: 600; color: var(--muted-text);
-    text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 2px;
+    display: block; font-family: var(--ff-mono); font-size: 10.5px; font-weight: 600; color: var(--fm-ink-3);
+    text-transform: uppercase; letter-spacing: .05em; margin-bottom: 3px;
   }
-  .brand-info-value { font-weight: 500; font-size: 0.9rem; }
-  .brand-info-value a { color: var(--secondary-color); text-decoration: none; }
+  .brand-info-value { font-weight: 500; font-size: 14px; color: var(--fm-ink); }
+  .brand-info-value a { color: var(--fm-primary); text-decoration: none; }
   .brand-info-value a:hover { text-decoration: underline; }
-  .brand-description { margin-top: 1rem; padding-top: 1rem; border-top: 1px solid var(--border-color); line-height: 1.6; font-size: 0.9rem; }
-  .brand-actions { margin-top: 1rem; display: flex; gap: 0.75rem; flex-wrap: wrap; }
+  .brand-description { margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--fm-line); line-height: 1.6; font-size: 14px; color: var(--fm-ink-2); }
+  .brand-description p { margin: 4px 0 0; }
+  .brand-actions { margin-top: 16px; display: flex; gap: 8px; flex-wrap: wrap; }
 
-  /* ── Brand edit form ── */
-  .brand-edit .form-group { margin-bottom: 1rem; }
-  .brand-edit .form-label { display: block; font-weight: 600; margin-bottom: 0.5rem; font-size: 0.85rem; }
+  /* Brand edit form ----------------------------------------------------- */
+  .brand-edit .form-group { margin-bottom: 14px; }
+  .brand-edit .form-label { display: block; font-size: 13px; font-weight: 600; color: var(--fm-ink-2); margin-bottom: 7px; }
   .brand-edit .form-control {
-    width: 100%; padding: 0.75rem; border: 1px solid var(--border-color); border-radius: 10px;
-    background: transparent; color: var(--text-color); font-family: inherit; font-size: 0.85rem;
+    width: 100%; padding: 11px 14px; border-radius: var(--r-md);
+    border: 1px solid var(--fm-line); background: var(--fm-surface-2);
+    color: var(--fm-ink); font-family: inherit; font-size: 14px;
   }
-  .brand-edit .form-control:focus { outline: none; border-color: var(--primary-color); box-shadow: 0 0 0 3px rgba(106,17,203,0.15); }
-  .brand-edit .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0.75rem; }
-  .brand-edit .social-media-group { display: flex; align-items: center; gap: 0.5rem; }
-  .brand-edit .social-media-icon { width: 20px; height: 20px; color: var(--muted-text); flex-shrink: 0; }
+  .brand-edit .form-control:focus { outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 4px var(--fm-ring); }
+  .brand-edit .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+  .brand-edit .social-media-group { display: flex; align-items: center; gap: 9px; }
+  .brand-edit .social-media-icon { width: 20px; height: 20px; color: var(--fm-ink-3); flex-shrink: 0; }
   .file-input-wrapper { position: relative; overflow: hidden; display: inline-block; }
   .file-input-button {
-    display: inline-flex; align-items: center; gap: 6px; padding: 0.6rem 1rem;
-    background: transparent; border: 1px solid var(--border-color); border-radius: 10px;
-    color: var(--text-color); font-weight: 600; cursor: pointer; font-size: 0.82rem;
+    display: inline-flex; align-items: center; gap: 7px; padding: 10px 16px; border-radius: var(--r-md);
+    background: var(--fm-surface-2); border: 1px solid var(--fm-line);
+    color: var(--fm-ink); font-weight: 600; font-size: 13px; cursor: pointer;
   }
+  .file-input-button:hover { border-color: var(--fm-line-2); }
   .file-input-wrapper input[type=file] { font-size: 100px; position: absolute; left: 0; top: 0; opacity: 0; cursor: pointer; }
-  .logo-preview-section { display: flex; gap: 1rem; margin-top: 0.75rem; }
+  .logo-preview-section { display: flex; gap: 14px; margin-top: 10px; }
   .current-logo-container, .new-logo-container { text-align: center; }
-  .logo-preview-title { font-size: 0.68rem; font-weight: 600; color: var(--muted-text); margin-bottom: 4px; text-transform: uppercase; }
-  .current-logo, .image-preview { width: 80px; height: 80px; object-fit: cover; border-radius: 10px; border: 1px solid var(--border-color); }
+  .logo-preview-title { font-family: var(--ff-mono); font-size: 10.5px; font-weight: 600; color: var(--fm-ink-3); margin-bottom: 5px; text-transform: uppercase; letter-spacing: .05em; }
+  .current-logo, .image-preview { width: 80px; height: 80px; object-fit: cover; border-radius: var(--r-md); border: 1px solid var(--fm-line); }
   .image-preview { display: none; }
 
+  /* Empty states (injected + static) ------------------------------------ */
   .empty-state {
-    text-align: center; padding: 2rem; color: var(--muted-text);
-    font-size: 0.85rem; line-height: 1.6;
-    border: 1px dashed rgba(255,255,255,0.08); border-radius: 12px;
-    background: rgba(255,255,255,0.01);
+    text-align: center; padding: 32px 18px; color: var(--fm-ink-3);
+    font-size: 13px; line-height: 1.6;
+    border: 1px dashed var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2);
   }
-  .empty-state svg { opacity: 0.4; margin-bottom: 0.5rem; }
+  .empty-state svg { opacity: .4; margin-bottom: 8px; }
+  .empty-state p { margin: 4px 0; color: var(--fm-ink-2); font-weight: 600; }
   .empty-state-cta {
-    display: inline-flex; align-items: center; gap: 6px; margin-top: 10px;
-    padding: 6px 14px; border-radius: 8px; font-size: 0.78rem; font-weight: 600;
-    background: rgba(106,17,203,0.12); color: var(--secondary-color);
-    border: 1px solid rgba(106,17,203,0.2); cursor: pointer; transition: var(--transition);
+    display: inline-flex; align-items: center; gap: 6px; margin-top: 12px;
+    padding: 7px 16px; border-radius: var(--r-md); font-size: 13px; font-weight: 600;
+    background: var(--fm-primary-tint); color: var(--fm-primary); border: 1px solid var(--fm-primary-300);
+    cursor: pointer; transition: var(--t);
   }
-  .empty-state-cta:hover { background: rgba(106,17,203,0.2); transform: translateY(-1px); }
+  .empty-state-cta:hover { background: color-mix(in srgb,var(--fm-primary) 18%,transparent); transform: translateY(-1px); }
 
   @media (max-width: 768px) {
     .profile-header { flex-direction: column; text-align: center; }
@@ -432,27 +347,15 @@
     .summary-grid { grid-template-columns: 1fr; }
     .courses-grid { grid-template-columns: 1fr; }
     .brand-card-inner { flex-direction: column; align-items: center; }
-    .brand-logo-container { margin: 0 0 1rem; }
-    .form-row { flex-direction: column; }
-    .form-field { min-width: 100%; }
+    .add-form .form-row { flex-direction: column; align-items: stretch; }
+    .add-form .form-field { min-width: 100%; }
   }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="fm-workspace fm-ops-page profile-container">
+<div class="fm-wrap">
   <div id="toast-container" class="toast-container"></div>
-
-  <!-- Flash Messages -->
-  {% with messages = get_flashed_messages(with_categories=true) %}
-    {% if messages %}
-      <div class="flash-messages">
-        {% for category, message in messages %}
-          <div class="flash-message {{ category }}">{{ message }}</div>
-        {% endfor %}
-      </div>
-    {% endif %}
-  {% endwith %}
 
   <!-- Profile Header -->
   <div class="profile-header">
@@ -462,12 +365,9 @@
       <p class="headline" id="header-headline">Indlæser profil...</p>
     </div>
     <div class="profile-header-actions">
-      <a href="/app1" class="btn btn-ai">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
-        Opdater via AI Chat
-      </a>
-      <a href="/dashboard" class="btn btn-ghost">Oversigt</a>
-      <a href="/logout" class="btn btn-ghost" style="color: var(--danger-color); border-color: rgba(248,113,113,0.3);">Log ud</a>
+      <a href="/app1" class="btn btn-primary btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Opdater via AI Chat</a>
+      <a href="/dashboard" class="btn btn-ghost btn-sm"><i class="fa-solid fa-table-columns"></i> Oversigt</a>
+      <a href="/logout" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-right-from-bracket"></i> Log ud</a>
     </div>
   </div>
 
@@ -487,40 +387,31 @@
   <div class="profile-stats" id="profile-stats" style="display:none;"></div>
 
   <!-- Profile Summary -->
-  <div class="cv-section" id="section-summary">
-    <div class="cv-section-header" onclick="toggleSection('summary')">
-      <h3>
-        <span class="section-icon" style="background: rgba(37,117,252,0.15);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#2575fc" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
-        </span>
-        Profiloversigt
-      </h3>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); openSummaryEdit()">Rediger</button>
+  <div class="fm-card cv-section" id="section-summary">
+    <div class="fm-card-head cv-section-header" onclick="toggleSection('summary')">
+      <span class="fm-ch-icon"><i class="fa-solid fa-user"></i></span>
+      <h3>Profiloversigt</h3>
+      <div class="header-tools">
+        <button class="btn btn-soft btn-sm" onclick="event.stopPropagation(); openSummaryEdit()"><i class="fa-solid fa-pen"></i> Rediger</button>
         <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="cv-section-body">
+    <div class="fm-card-body cv-section-body">
       <div class="summary-grid" id="summary-grid"></div>
     </div>
   </div>
 
   <!-- Skills -->
-  <div class="cv-section" id="section-skills">
-    <div class="cv-section-header" onclick="toggleSection('skills')">
-      <h3>
-        <span class="section-icon" style="background: rgba(15,118,110,0.15);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#0f766e" stroke-width="2"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
-        </span>
-        Kompetencer
-        <span class="count-badge" id="skills-count">0</span>
-      </h3>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('skills')">+ Tilføj</button>
+  <div class="fm-card cv-section" id="section-skills">
+    <div class="fm-card-head cv-section-header" onclick="toggleSection('skills')">
+      <span class="fm-ch-icon"><i class="fa-solid fa-star"></i></span>
+      <h3>Kompetencer <span class="count-badge" id="skills-count">0</span></h3>
+      <div class="header-tools">
+        <button class="btn btn-soft btn-sm" onclick="event.stopPropagation(); toggleAddForm('skills')"><i class="fa-solid fa-plus"></i> Tilføj</button>
         <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="cv-section-body">
+    <div class="fm-card-body cv-section-body">
       <div class="skills-grid" id="skills-list"></div>
       <div class="add-form" id="add-form-skills">
         <div class="form-row">
@@ -534,60 +425,50 @@
               <option value="ekspert">Ekspert</option>
             </select>
           </div>
-          <button class="btn btn-sm btn-primary" onclick="addSkill()" style="align-self:flex-end;">Tilføj</button>
+          <button class="btn btn-primary" onclick="addSkill()">Tilføj</button>
         </div>
       </div>
     </div>
   </div>
 
   <!-- Experience -->
-  <div class="cv-section" id="section-experience">
-    <div class="cv-section-header" onclick="toggleSection('experience')">
-      <h3>
-        <span class="section-icon" style="background: rgba(74,222,128,0.15);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#4ade80" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2" ry="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>
-        </span>
-        Erfaring
-        <span class="count-badge" id="exp-count">0</span>
-      </h3>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('exp')">+ Tilføj</button>
+  <div class="fm-card cv-section" id="section-experience">
+    <div class="fm-card-head cv-section-header" onclick="toggleSection('experience')">
+      <span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span>
+      <h3>Erfaring <span class="count-badge" id="exp-count">0</span></h3>
+      <div class="header-tools">
+        <button class="btn btn-soft btn-sm" onclick="event.stopPropagation(); toggleAddForm('exp')"><i class="fa-solid fa-plus"></i> Tilføj</button>
         <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="cv-section-body">
+    <div class="fm-card-body cv-section-body">
       <div class="timeline" id="experience-list"></div>
       <div class="add-form" id="add-form-exp">
         <div class="form-row">
           <div class="form-field"><label>Jobtitel</label><input type="text" id="new-exp-title" placeholder="F.eks. Projektleder"></div>
           <div class="form-field"><label>Virksomhed</label><input type="text" id="new-exp-company" placeholder="F.eks. Novo Nordisk"></div>
         </div>
-        <div class="form-row" style="margin-top:8px;">
+        <div class="form-row" style="margin-top:12px;">
           <div class="form-field"><label>Startår</label><input type="number" id="new-exp-start" placeholder="2020"></div>
           <div class="form-field"><label>Slutår (tom = nuværende)</label><input type="number" id="new-exp-end" placeholder="2024"></div>
           <div class="form-field" style="flex:2"><label>Beskrivelse (valgfri)</label><input type="text" id="new-exp-desc" placeholder="Kort om dine opgaver..."></div>
         </div>
-        <div style="margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="addExperience()">Tilføj erfaring</button></div>
+        <div style="margin-top:14px;"><button class="btn btn-primary" onclick="addExperience()">Tilføj erfaring</button></div>
       </div>
     </div>
   </div>
 
   <!-- Education -->
-  <div class="cv-section" id="section-education">
-    <div class="cv-section-header" onclick="toggleSection('education')">
-      <h3>
-        <span class="section-icon" style="background: rgba(251,191,36,0.15);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c0 2 4 3 6 3s6-1 6-3v-5"/></svg>
-        </span>
-        Uddannelse
-        <span class="count-badge" id="edu-count">0</span>
-      </h3>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('edu')">+ Tilføj</button>
+  <div class="fm-card cv-section" id="section-education">
+    <div class="fm-card-head cv-section-header" onclick="toggleSection('education')">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span>
+      <h3>Uddannelse <span class="count-badge" id="edu-count">0</span></h3>
+      <div class="header-tools">
+        <button class="btn btn-soft btn-sm" onclick="event.stopPropagation(); toggleAddForm('edu')"><i class="fa-solid fa-plus"></i> Tilføj</button>
         <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="cv-section-body">
+    <div class="fm-card-body cv-section-body">
       <div class="timeline" id="education-list"></div>
       <div class="add-form" id="add-form-edu">
         <div class="form-row">
@@ -595,27 +476,22 @@
           <div class="form-field" style="flex:2"><label>Institution</label><input type="text" id="new-edu-institution" placeholder="F.eks. CBS, DTU, Aalborg Universitet"></div>
           <div class="form-field"><label>Afsluttet år</label><input type="number" id="new-edu-year" placeholder="2022"></div>
         </div>
-        <div style="margin-top:10px;"><button class="btn btn-sm btn-primary" onclick="addEducation()">Tilføj uddannelse</button></div>
+        <div style="margin-top:14px;"><button class="btn btn-primary" onclick="addEducation()">Tilføj uddannelse</button></div>
       </div>
     </div>
   </div>
 
   <!-- Completed Courses -->
-  <div class="cv-section" id="section-courses">
-    <div class="cv-section-header" onclick="toggleSection('courses')">
-      <h3>
-        <span class="section-icon" style="background: rgba(255,81,47,0.15);">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff512f" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
-        </span>
-        Gennemførte Kurser
-        <span class="count-badge" id="courses-count">0</span>
-      </h3>
-      <div style="display:flex;gap:8px;align-items:center;">
-        <button class="btn btn-sm btn-ghost" onclick="event.stopPropagation(); toggleAddForm('course')">+ Tilføj</button>
+  <div class="fm-card cv-section" id="section-courses">
+    <div class="fm-card-head cv-section-header" onclick="toggleSection('courses')">
+      <span class="fm-ch-icon" style="background:var(--fm-clay-tint);color:var(--fm-clay)"><i class="fa-solid fa-certificate"></i></span>
+      <h3>Gennemførte Kurser <span class="count-badge" id="courses-count">0</span></h3>
+      <div class="header-tools">
+        <button class="btn btn-soft btn-sm" onclick="event.stopPropagation(); toggleAddForm('course')"><i class="fa-solid fa-plus"></i> Tilføj</button>
         <svg class="toggle-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="6 9 12 15 18 9"/></svg>
       </div>
     </div>
-    <div class="cv-section-body">
+    <div class="fm-card-body cv-section-body">
       <div class="courses-grid" id="courses-list"></div>
       <div class="add-form" id="add-form-course">
         <div class="form-row">
@@ -623,9 +499,9 @@
           <div class="form-field"><label>Udbyder</label><input type="text" id="new-course-vendor" placeholder="F.eks. Teknologisk Institut"></div>
           <div class="form-field"><label>Dato</label><input type="text" id="new-course-date" placeholder="F.eks. marts 2024"></div>
         </div>
-        <div class="form-row" style="margin-top:8px;">
+        <div class="form-row" style="margin-top:12px;">
           <div class="form-field" style="flex:2"><label>Certifikat (valgfri)</label><input type="text" id="new-course-cert" placeholder="F.eks. PRINCE2 Practitioner certificeret"></div>
-          <button class="btn btn-sm btn-primary" onclick="addCourse()" style="align-self:flex-end;">Tilføj kursus</button>
+          <button class="btn btn-primary" onclick="addCourse()">Tilføj kursus</button>
         </div>
       </div>
     </div>
@@ -635,15 +511,15 @@
   <div class="edit-overlay" id="summary-modal">
     <div class="edit-modal">
       <h3>Rediger Profiloversigt</h3>
-      <div class="form-field" style="margin-bottom:12px"><label>Overskrift</label><input type="text" id="edit-headline" placeholder="F.eks. IT-projektleder med fokus på agil udvikling"></div>
-      <div class="form-field" style="margin-bottom:12px"><label>Bio</label><textarea id="edit-bio" rows="3" placeholder="Kort om dig selv og din baggrund..."></textarea></div>
-      <div class="form-field" style="margin-bottom:12px"><label>Mål</label><input type="text" id="edit-goals" placeholder="Hvad vil du opnå? F.eks. PRINCE2 certificering, lederudvikling"></div>
-      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-bottom:16px;">
+      <div class="form-field"><label>Overskrift</label><input type="text" id="edit-headline" placeholder="F.eks. IT-projektleder med fokus på agil udvikling"></div>
+      <div class="form-field"><label>Bio</label><textarea id="edit-bio" rows="3" placeholder="Kort om dig selv og din baggrund..."></textarea></div>
+      <div class="form-field"><label>Mål</label><input type="text" id="edit-goals" placeholder="Hvad vil du opnå? F.eks. PRINCE2 certificering, lederudvikling"></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;">
         <div class="form-field"><label>Lokation</label><input type="text" id="edit-location" placeholder="København"></div>
         <div class="form-field"><label>Format</label><input type="text" id="edit-format" placeholder="E-learning, fysisk"></div>
         <div class="form-field"><label>Budget</label><input type="text" id="edit-budget" placeholder="5000-10000 kr"></div>
       </div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;">
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px;">
         <button class="btn btn-ghost" onclick="closeSummaryEdit()">Annuller</button>
         <button class="btn btn-primary" onclick="saveSummary()">Gem ændringer</button>
       </div>
@@ -651,98 +527,96 @@
   </div>
 
   <!-- Brands Section -->
-  <div class="brands-section">
-    <div class="brands-header">
-      <h2 class="section-title">Marketing-brands (personlige)</h2>
-      <a href="/add_brand" class="btn btn-ai">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Tilføj Brand
-      </a>
+  <div class="fm-section-head">
+    <div>
+      <span class="fm-eyebrow clay"><i class="fa-solid fa-bullhorn"></i> Personlige</span>
+      <h2 class="fm-section-title">Marketing-brands</h2>
     </div>
-    {% if brands %}
-      {% for brand in brands %}
-      <div class="brand-card" id="brand-slot-{{ brand.id }}">
-        <div class="brand-card-inner">
-          <div class="brand-logo-container">
-            {% if brand.brand_logo %}
-            <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }}" class="brand-logo">
-            {% else %}
-            <div class="brand-logo no-logo">
-              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
-            </div>
-            {% endif %}
+    <a href="/add_brand" class="btn btn-primary btn-sm"><i class="fa-solid fa-plus"></i> Tilføj Brand</a>
+  </div>
+  {% if brands %}
+    {% for brand in brands %}
+    <div class="fm-card brand-card" id="brand-slot-{{ brand.id }}">
+      <div class="brand-card-inner">
+        <div class="brand-logo-container">
+          {% if brand.brand_logo %}
+          <img src="{{ brand.brand_logo }}?v={{ timestamp }}" alt="{{ brand.brand_name }}" class="brand-logo">
+          {% else %}
+          <div class="brand-logo no-logo">
+            <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg>
           </div>
-          <div class="brand-details">
-            <div class="brand-number">Brand {{ loop.index }}</div>
-            <div class="brand-view" id="brand-view-{{ brand.id }}">
-              <div class="brand-info-list">
-                <p class="brand-info-item"><span class="brand-info-label">Navn</span><span class="brand-info-value">{{ brand.brand_name }}</span></p>
-                <p class="brand-info-item"><span class="brand-info-label">Hjemmeside</span><span class="brand-info-value"><a href="{{ brand.brand_site }}" target="_blank">{{ brand.brand_site }}</a></span></p>
-                {% if brand.brand_facebook %}<p class="brand-info-item"><span class="brand-info-label">Facebook</span><span class="brand-info-value">{{ brand.brand_facebook }}</span></p>{% endif %}
-                {% if brand.brand_twitter %}<p class="brand-info-item"><span class="brand-info-label">Twitter</span><span class="brand-info-value">{{ brand.brand_twitter }}</span></p>{% endif %}
-                {% if brand.brand_instagram %}<p class="brand-info-item"><span class="brand-info-label">Instagram</span><span class="brand-info-value">{{ brand.brand_instagram }}</span></p>{% endif %}
-                {% if brand.brand_linkedin %}<p class="brand-info-item"><span class="brand-info-label">LinkedIn</span><span class="brand-info-value">{{ brand.brand_linkedin }}</span></p>{% endif %}
+          {% endif %}
+        </div>
+        <div class="brand-details">
+          <div class="brand-number">Brand {{ loop.index }}</div>
+          <div class="brand-view" id="brand-view-{{ brand.id }}">
+            <div class="brand-info-list">
+              <p class="brand-info-item"><span class="brand-info-label">Navn</span><span class="brand-info-value">{{ brand.brand_name }}</span></p>
+              <p class="brand-info-item"><span class="brand-info-label">Hjemmeside</span><span class="brand-info-value"><a href="{{ brand.brand_site }}" target="_blank">{{ brand.brand_site }}</a></span></p>
+              {% if brand.brand_facebook %}<p class="brand-info-item"><span class="brand-info-label">Facebook</span><span class="brand-info-value">{{ brand.brand_facebook }}</span></p>{% endif %}
+              {% if brand.brand_twitter %}<p class="brand-info-item"><span class="brand-info-label">Twitter</span><span class="brand-info-value">{{ brand.brand_twitter }}</span></p>{% endif %}
+              {% if brand.brand_instagram %}<p class="brand-info-item"><span class="brand-info-label">Instagram</span><span class="brand-info-value">{{ brand.brand_instagram }}</span></p>{% endif %}
+              {% if brand.brand_linkedin %}<p class="brand-info-item"><span class="brand-info-label">LinkedIn</span><span class="brand-info-value">{{ brand.brand_linkedin }}</span></p>{% endif %}
+            </div>
+            {% if brand.brand_description %}
+            <div class="brand-description"><span class="brand-info-label">Beskrivelse</span><p>{{ brand.brand_description }}</p></div>
+            {% endif %}
+            <div class="brand-actions">
+              <button onclick="editBrand({{ brand.id }})" class="btn btn-soft btn-sm">
+                <i class="fa-solid fa-pen"></i> Rediger
+              </button>
+            </div>
+          </div>
+          <div class="brand-edit" id="brand-edit-{{ brand.id }}" style="display:none;">
+            <form method="post" action="/update_brand/{{ brand.id }}" enctype="multipart/form-data">
+              <div class="form-group"><label class="form-label">Navn:</label><input type="text" name="brand_name" value="{{ brand.brand_name }}" required class="form-control"></div>
+              <div class="form-group"><label class="form-label">Hjemmeside:</label><input type="text" name="brand_site" value="{{ brand.brand_site }}" required class="form-control"></div>
+              <div class="form-group">
+                <label class="form-label">Logo:</label>
+                <div class="file-input-wrapper">
+                  <div class="file-input-button">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    Vælg billede
+                  </div>
+                  <input type="file" name="brand_logo" accept="image/*" onchange="previewImage(event, 'preview_{{ brand.id }}')">
+                </div>
+                <div class="logo-preview-section">
+                  {% if brand.brand_logo %}
+                  <div class="current-logo-container"><div class="logo-preview-title">Nuværende</div><img src="{{ brand.brand_logo }}?v={{ timestamp }}" class="current-logo"></div>
+                  {% endif %}
+                  <div class="new-logo-container"><div class="logo-preview-title">Nyt</div><img id="preview_{{ brand.id }}" class="image-preview"></div>
+                </div>
               </div>
-              {% if brand.brand_description %}
-              <div class="brand-description"><span class="brand-info-label">Beskrivelse</span><p>{{ brand.brand_description }}</p></div>
-              {% endif %}
+              <div class="form-group"><label class="form-label">Beskrivelse:</label><textarea name="brand_description" rows="2" class="form-control">{{ brand.brand_description or '' }}</textarea></div>
+              <div class="form-group"><label class="form-label">Sociale Medier:</label>
+                <div class="form-grid">
+                  <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg><input type="text" name="brand_fb" value="{{ brand.brand_facebook or '' }}" placeholder="fb.com/brand" class="form-control"></div>
+                  <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg><input type="text" name="brand_twitter" value="{{ brand.brand_twitter or '' }}" placeholder="twitter.com/brand" class="form-control"></div>
+                  <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg><input type="text" name="brand_instagram" value="{{ brand.brand_instagram or '' }}" placeholder="instagram.com/brand" class="form-control"></div>
+                  <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg><input type="text" name="brand_linkedin" value="{{ brand.brand_linkedin or '' }}" placeholder="linkedin.com/company/brand" class="form-control"></div>
+                </div>
+              </div>
               <div class="brand-actions">
-                <button onclick="editBrand({{ brand.id }})" class="btn btn-sm btn-ghost">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
-                  Rediger
-                </button>
+                <button type="submit" class="btn btn-primary btn-sm">Gem</button>
+                <button type="button" class="btn btn-ghost btn-sm" onclick="cancelEdit({{ brand.id }})">Annuller</button>
               </div>
-            </div>
-            <div class="brand-edit" id="brand-edit-{{ brand.id }}" style="display:none;">
-              <form method="post" action="/update_brand/{{ brand.id }}" enctype="multipart/form-data">
-                <div class="form-group"><label class="form-label">Navn:</label><input type="text" name="brand_name" value="{{ brand.brand_name }}" required class="form-control"></div>
-                <div class="form-group"><label class="form-label">Hjemmeside:</label><input type="text" name="brand_site" value="{{ brand.brand_site }}" required class="form-control"></div>
-                <div class="form-group">
-                  <label class="form-label">Logo:</label>
-                  <div class="file-input-wrapper">
-                    <div class="file-input-button">
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-                      Vælg billede
-                    </div>
-                    <input type="file" name="brand_logo" accept="image/*" onchange="previewImage(event, 'preview_{{ brand.id }}')">
-                  </div>
-                  <div class="logo-preview-section">
-                    {% if brand.brand_logo %}
-                    <div class="current-logo-container"><div class="logo-preview-title">Nuværende</div><img src="{{ brand.brand_logo }}?v={{ timestamp }}" class="current-logo"></div>
-                    {% endif %}
-                    <div class="new-logo-container"><div class="logo-preview-title">Nyt</div><img id="preview_{{ brand.id }}" class="image-preview"></div>
-                  </div>
-                </div>
-                <div class="form-group"><label class="form-label">Beskrivelse:</label><textarea name="brand_description" rows="2" class="form-control">{{ brand.brand_description or '' }}</textarea></div>
-                <div class="form-group"><label class="form-label">Sociale Medier:</label>
-                  <div class="form-grid">
-                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z"/></svg><input type="text" name="brand_fb" value="{{ brand.brand_facebook or '' }}" placeholder="fb.com/brand" class="form-control"></div>
-                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 4s-.7 2.1-2 3.4c1.6 10-9.4 17.3-18 11.6 2.2.1 4.4-.6 6-2C3 15.5.5 9.6 3 5c2.2 2.6 5.6 4.1 9 4-.9-4.2 4-6.6 7-3.8 1.1 0 3-1.2 3-1.2z"/></svg><input type="text" name="brand_twitter" value="{{ brand.brand_twitter or '' }}" placeholder="twitter.com/brand" class="form-control"></div>
-                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="2" width="20" height="20" rx="5"/><path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z"/><line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/></svg><input type="text" name="brand_instagram" value="{{ brand.brand_instagram or '' }}" placeholder="instagram.com/brand" class="form-control"></div>
-                    <div class="social-media-group"><svg class="social-media-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 8a6 6 0 0 1 6 6v7h-4v-7a2 2 0 0 0-4 0v7h-4v-7a6 6 0 0 1 6-6z"/><rect x="2" y="9" width="4" height="12"/><circle cx="4" cy="4" r="2"/></svg><input type="text" name="brand_linkedin" value="{{ brand.brand_linkedin or '' }}" placeholder="linkedin.com/company/brand" class="form-control"></div>
-                  </div>
-                </div>
-                <div class="brand-actions">
-                  <button type="submit" class="btn btn-sm btn-primary">Gem</button>
-                  <button type="button" class="btn btn-sm btn-ghost" onclick="cancelEdit({{ brand.id }})">Annuller</button>
-                </div>
-              </form>
-            </div>
+            </form>
           </div>
         </div>
       </div>
-      {% endfor %}
-    {% else %}
-      <div class="empty-state" style="background:var(--card-bg);border:1px dashed var(--border-color);border-radius:var(--border-radius);padding:2.5rem;">
-        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg>
-        <h3 style="margin:0.5rem 0;color:var(--text-color);">Ingen marketing-brands endnu</h3>
-        <p class="text-muted small">Personlige marketing-profiler — adskilt fra virksomhedens <a href="{{ url_for('companies.branding') }}">white-label branding</a>.</p>
-        <p>Tilføj dit første brand med knappen ovenfor.</p>
+    </div>
+    {% endfor %}
+  {% else %}
+    <div class="fm-card">
+      <div class="fm-card-body">
+        {{ empty('Ingen marketing-brands endnu', 'Personlige marketing-profiler — adskilt fra virksomhedens white-label branding. Tilføj dit første brand med knappen ovenfor.', 'fa-bullhorn') }}
       </div>
-    {% endif %}
-  </div>
+    </div>
+  {% endif %}
 </div>
+{% endblock %}
 
+{% block extra_scripts %}
 <script>
   const LEVEL_COLORS = {begynder:'#3b82f6', mellem:'#0b6b63', avanceret:'#d97706', ekspert:'#ef4444'};
   const LEVEL_LABELS = {begynder:'Begynder', mellem:'Mellem', avanceret:'Avanceret', ekspert:'Ekspert'};
@@ -938,8 +812,8 @@
           </div>
           ${e.description ? `<div class="timeline-desc">${esc(e.description)}</div>` : ''}
           <div class="timeline-actions">
-            <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;" onclick="editExperience(${e.id})">Rediger</button>
-            <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);border-color:rgba(248,113,113,0.2);padding:2px 8px;font-size:0.72rem;" onclick="removeExperience(${e.id})">Fjern</button>
+            <button class="btn btn-soft btn-sm" onclick="editExperience(${e.id})">Rediger</button>
+            <button class="btn btn-ghost btn-sm" onclick="removeExperience(${e.id})">Fjern</button>
           </div>
         </div>
         <div class="inline-edit-form" id="exp-edit-${e.id}" style="display:none;">
@@ -953,8 +827,8 @@
             <input type="text" id="edit-exp-desc-${e.id}" value="${esc(e.description||'')}" placeholder="Beskrivelse..." style="flex:2;">
           </div>
           <div class="inline-edit-actions">
-            <button class="btn btn-sm btn-primary" onclick="saveExperience(${e.id})">Gem</button>
-            <button class="btn btn-sm btn-ghost" onclick="cancelEditExp(${e.id})">Annuller</button>
+            <button class="btn btn-primary btn-sm" onclick="saveExperience(${e.id})">Gem</button>
+            <button class="btn btn-ghost btn-sm" onclick="cancelEditExp(${e.id})">Annuller</button>
           </div>
         </div>
       </div>`;
@@ -1005,8 +879,8 @@
         ${e.institution ? `<div class="timeline-subtitle">${esc(e.institution)}</div>` : ''}
         ${e.year_completed ? `<div class="timeline-period">${e.year_completed}</div>` : ''}
         <div class="timeline-actions">
-          <button class="btn btn-sm btn-ghost" style="padding:2px 8px;font-size:0.72rem;" onclick="editEducation(${e.id})">Rediger</button>
-          <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);border-color:rgba(248,113,113,0.2);padding:2px 8px;font-size:0.72rem;" onclick="removeEducation(${e.id})">Fjern</button>
+          <button class="btn btn-soft btn-sm" onclick="editEducation(${e.id})">Rediger</button>
+          <button class="btn btn-ghost btn-sm" onclick="removeEducation(${e.id})">Fjern</button>
         </div>
       </div>
       <div class="inline-edit-form" id="edu-edit-${e.id}" style="display:none;">
@@ -1016,8 +890,8 @@
           <input type="number" id="edit-edu-year-${e.id}" value="${e.year_completed||''}" placeholder="År" style="max-width:90px;">
         </div>
         <div class="inline-edit-actions">
-          <button class="btn btn-sm btn-primary" onclick="saveEducation(${e.id})">Gem</button>
-          <button class="btn btn-sm btn-ghost" onclick="cancelEditEdu(${e.id})">Annuller</button>
+          <button class="btn btn-primary btn-sm" onclick="saveEducation(${e.id})">Gem</button>
+          <button class="btn btn-ghost btn-sm" onclick="cancelEditEdu(${e.id})">Annuller</button>
         </div>
       </div>
     </div>`).join('');
@@ -1064,7 +938,7 @@
         ${c.certificate_note ? `<span class="course-badge cert">&#127942; Certifikat</span>` : ''}
       </div>
       <div class="course-remove">
-        <button class="btn btn-sm btn-ghost" style="color:var(--danger-color);border-color:rgba(248,113,113,0.2);padding:2px 8px;font-size:0.72rem;" onclick="removeCourse('${esc(c.title).replace(/'/g,"&#39;")}')">Fjern</button>
+        <button class="btn btn-ghost btn-sm" onclick="removeCourse('${esc(c.title).replace(/'/g,"&#39;")}')">Fjern</button>
       </div>
     </div>`).join('');
   }
@@ -1283,10 +1157,6 @@
       handleAnchor();
     });
     document.getElementById('new-skill-name').addEventListener('keydown', e => { if (e.key === 'Enter') addSkill(); });
-    // Flash message fade
-    document.querySelectorAll('.flash-message').forEach(m => {
-      setTimeout(() => { m.style.opacity='0'; m.style.transition='opacity 0.5s'; }, 4000);
-    });
     // Poll for chat-driven changes every 10s
     setInterval(pollProfileChanges, 10000);
   });

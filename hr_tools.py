@@ -1294,8 +1294,14 @@ def _parse_completion_dt(value):
         return None
 
 
-def _execute_get_compliance_status(args):
-    """Derive (read-only) compliance status per requirement for the company.
+def derive_company_compliance(conn, company_id, department='', only_gaps=False):
+    """Derive (read-only) per-requirement compliance status for one company.
+
+    Session-INDEPENDENT core of the compliance tool: takes an explicit DB
+    connection + company_id so it can be reused both by the HR chatbot tool
+    (request path) AND by the scheduled compliance recheck (no request session).
+    Returns a plain ``dict`` (the chatbot wrapper json-dumps it); the scheduler
+    reads the aggregate per-requirement counts directly.
 
     For each compliance_requirements row we find the applicable active employees
     (filtered by applies_to_department / applies_to_role, NULL = all), then derive
@@ -1307,17 +1313,19 @@ def _execute_get_compliance_status(args):
     Completions come from course_orders (completion_status='completed') and the
     employee profile table user_completed_courses, matched by required_course_handle,
     or by title/category text when no handle is set. Nothing is stored — pure read.
-    """
-    company_id = session.get('company_id')
-    if not company_id:
-        return json.dumps({"error": "Ingen virksomhed fundet."})
 
-    department = (args.get('department') or '').strip()
-    only_gaps = bool(args.get('only_gaps'))
+    Only AGGREGATE per-requirement status counts are returned — never people-level
+    rows — so the result is k-anon-safe to surface as a company-wide notification.
+    """
+    if not company_id:
+        return {"error": "Ingen virksomhed fundet."}
+
+    department = (department or '').strip()
+    only_gaps = bool(only_gaps)
     EXPIRING_DAYS = 60
     now = datetime.now()
 
-    cur = _get_cursor()
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
 
     # 1) Requirements for this company (optionally narrowed to a department:
     #    a requirement applies to the department if it targets that department or
@@ -1341,21 +1349,21 @@ def _execute_get_compliance_status(args):
         cur.close()
         # Table may not exist yet on this tenant — safe-empty.
         print(f"[HR_TOOLS][compliance] requirements query failed: {exc}")
-        return json.dumps({
+        return {
             "message": "Ingen compliance-krav fundet endnu.",
             "requirements": [],
             "overall_compliance_pct": 0,
             "total_requirements": 0,
-        }, default=str)
+        }
 
     if not requirements:
         cur.close()
-        return json.dumps({
+        return {
             "message": "Ingen compliance-krav defineret endnu. Opret lovpligtige/obligatoriske kurser for at spore overholdelse.",
             "requirements": [],
             "overall_compliance_pct": 0,
             "total_requirements": 0,
-        }, default=str)
+        }
 
     # 2) Active employees for this company (id + username + dept + role).
     emp_dept_clause = "AND cu.department = %s" if department else ""
@@ -1509,7 +1517,7 @@ def _execute_get_compliance_status(args):
 
     overall_pct = round(total_compliant / total_applicable * 100, 1) if total_applicable else 0.0
 
-    return json.dumps({
+    return {
         "department": department or "Alle",
         "total_requirements": len(requirements),
         "shown_requirements": len(per_requirement),
@@ -1520,7 +1528,27 @@ def _execute_get_compliance_status(args):
             f"{overall_pct}% samlet overholdelse på tværs af {len(requirements)} krav."
             if total_applicable else "Ingen berørte medarbejdere for de definerede krav endnu."
         ),
-    }, default=str)
+    }
+
+
+def _execute_get_compliance_status(args):
+    """HR-chatbot wrapper around ``derive_company_compliance``.
+
+    Reads the session company + tool args, delegates to the session-independent
+    derivation and json-encodes the result for the LLM tool channel. Keeping the
+    derivation separate lets the scheduled compliance recheck reuse the exact
+    same logic without a request session.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+    result = derive_company_compliance(
+        current_app.mysql.connection,
+        company_id,
+        department=(args.get('department') or ''),
+        only_gaps=bool(args.get('only_gaps')),
+    )
+    return json.dumps(result, default=str)
 
 
 def _execute_get_team_non_starters(args):

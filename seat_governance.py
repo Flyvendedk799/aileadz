@@ -175,8 +175,8 @@ def can_add_employee(company_id):
         if _trial_expired(row["plan"], row["trial_ends_at"]):
             return (
                 False,
-                "Din prøveperiode er udløbet. Opgradér dit abonnement for at "
-                "tilføje flere medarbejdere.",
+                "Din prøveperiode er udløbet. Kontakt din kundeansvarlige for "
+                "at tilføje flere medarbejdere.",
             )
 
         # 2) Seat-limit gate.
@@ -184,8 +184,8 @@ def can_add_employee(company_id):
             return (
                 False,
                 "Du har nået grænsen for antal medarbejdere "
-                "(%d af %d pladser brugt). Opgradér dit abonnement for at "
-                "tilføje flere." % (row["seats_used"], row["max_employees"]),
+                "(%d af %d pladser brugt). Kontakt din kundeansvarlige for at "
+                "tilføje flere pladser." % (row["seats_used"], row["max_employees"]),
             )
 
         return True, None

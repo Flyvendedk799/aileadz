@@ -550,6 +550,58 @@ HR_TOOLS.extend([
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_workforce_risk",
+            "description": (
+                "Tidlig advarsel på medarbejderstyrken: hvor er der fastholdelses-/inaktivitetsrisiko, "
+                "væsentlige kompetencegab og stigende læringsbehov. Returnerer ALTID AGGREGEREDE tal pr. "
+                "afdeling/kompetence (antal, ikke navne) med k-anonymitet, så ingen enkeltperson udpeges. "
+                "Bruges ved 'hvad skal jeg handle på', 'workforce-risiko', 'hvem er i fare for at falde fra', "
+                "'fastholdelsesrisiko', 'tidlig advarsel'. Sæt KUN drill_down=true hvis brugeren udtrykkeligt "
+                "beder om navne — navne vises kun til ledere/HR-managere og kun for afdelinger der er store nok "
+                "til at bevare anonymitet."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "drill_down": {
+                        "type": "boolean",
+                        "description": (
+                            "Sæt true KUN hvis brugeren eksplicit beder om navne på enkeltpersoner. Kræver "
+                            "manager-rolle og afsløres kun for k-sikre afdelinger. Standard false (kun aggregater)."
+                        )
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_explain_insights",
+            "description": (
+                "Forklar virksomhedens proaktive AI-indsigter konversationelt: stigende emner, lav tilfredshed, "
+                "søgninger uden ordrer, fald i engagement og populære kurser uden ordrer. Aggregerede tal på "
+                "virksomhedsniveau (ingen personoplysninger). Bruges ved 'hvad bør jeg vide', 'giv mig "
+                "indsigterne', 'forklar advarslerne', 'hvad sker der på platformen'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "severity": {
+                        "type": "string",
+                        "description": (
+                            "Valgfrit filter på alvorlighed: 'info', 'warning' eller 'critical'. Tom = alle."
+                        )
+                    }
+                },
+                "required": []
+            }
+        }
+    },
 ])
 
 
@@ -2322,6 +2374,146 @@ def _execute_hr_expiring_agreements(args):
     }, default=str)
 
 
+def _execute_get_workforce_risk(args):
+    """Early-warning workforce risk for the company — AGGREGATE-FIRST and k-anon-safe.
+
+    Wraps insights_engine.get_predictive_data (which returns NAMED individuals with
+    NO suppression) and runs it through insights_engine.aggregate_workforce_risk so
+    the model only ever sees department/skill-level COUNTS with sub-k cohorts
+    suppressed — never identifiable at-risk/churn employees. This is NET-NEW
+    suppression (the engine has none); see the HR_VALUE_PLAN risk register.
+
+    Individual NAMES are surfaced ONLY behind an explicit ``drill_down=true`` AND
+    the actor being a company manager, and even then only for departments whose
+    cohort is itself k-safe (the aggregator enforces this). Strictly company-scoped.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    try:
+        import insights_engine
+    except Exception as exc:
+        print(f"[HR_TOOLS][workforce_risk] insights_engine import failed: {exc}")
+        return json.dumps({"error": "Risikoanalyse er ikke tilgængelig lige nu.", "has_data": False})
+
+    # Drill-down to named individuals is doubly gated: an explicit flag AND a
+    # manager role. A non-manager (or a missing confirm) never receives names.
+    want_drill = bool(args.get('drill_down'))
+    is_manager = False
+    if want_drill:
+        try:
+            from order_service import OrderContext
+            is_manager = OrderContext.from_session(source='hr_chat').is_manager
+        except Exception as exc:
+            print(f"[HR_TOOLS][workforce_risk] manager check failed: {exc}")
+            is_manager = False
+    drill_down = want_drill and is_manager
+
+    try:
+        predictions = insights_engine.get_predictive_data(
+            current_app._get_current_object(), company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][workforce_risk] get_predictive_data failed: {exc}")
+        return json.dumps({"error": "Kunne ikke beregne workforce-risiko lige nu.", "has_data": False})
+
+    try:
+        risk = insights_engine.aggregate_workforce_risk(predictions, drill_down=drill_down)
+    except Exception as exc:
+        print(f"[HR_TOOLS][workforce_risk] aggregation failed: {exc}")
+        return json.dumps({"error": "Kunne ikke aggregere workforce-risiko lige nu.", "has_data": False})
+
+    churn_total = risk.get('churn_risk', {}).get('total', 0)
+    gap_total = risk.get('skill_gap_risk', {}).get('total', 0)
+    trending = risk.get('trending_demand', {}).get('terms', [])
+    has_data = bool(churn_total or gap_total or trending)
+
+    out = {
+        "has_data": has_data,
+        "k": risk.get('k'),
+        "drill_down_applied": drill_down,
+        "churn_risk": risk.get('churn_risk'),
+        "skill_gap_risk": risk.get('skill_gap_risk'),
+        "trending_demand": risk.get('trending_demand'),
+        "anon_note": risk.get('anon', {}).get('note_da') or None,
+    }
+    # If a non-manager (or no-confirm) asked to drill down, say so explicitly so
+    # the model routes them, rather than silently returning only aggregates.
+    if want_drill and not drill_down:
+        out["drill_down_denied"] = True
+        out["drill_down_message_da"] = (
+            "Navne på enkeltpersoner kan kun vises for ledere/HR-managere og kun for "
+            "afdelinger der er store nok til at bevare anonymitet. Kontakt en manager for detaljer."
+        )
+
+    if not has_data:
+        out["summary_da"] = "Ingen aktuelle risikosignaler at handle på lige nu."
+    else:
+        parts = []
+        if churn_total:
+            parts.append(f"{churn_total} medarbejder(e) med inaktivitets-/fastholdelsesrisiko")
+        if gap_total:
+            parts.append(f"{gap_total} medarbejder(e) med væsentlige kompetencegab")
+        if trending:
+            parts.append(f"{len(trending)} stigende læringsbehov")
+        out["summary_da"] = "Tidlig advarsel: " + ", ".join(parts) + "."
+    return json.dumps(out, default=str)
+
+
+def _execute_hr_explain_insights(args):
+    """Read-only conversational view of the company's proactive AI insight cards.
+
+    Thin wrapper over insights_engine.generate_company_insights so the advisor can
+    explain the same insight cards the dashboard surfaces ('what should I act on
+    this week?'). The insights are company-level aggregates (trending topics are
+    k-anon-gated inside the engine; the rest are counts) — no people-level rows.
+    Severity can be filtered to focus on what needs action.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    try:
+        import insights_engine
+    except Exception as exc:
+        print(f"[HR_TOOLS][explain_insights] insights_engine import failed: {exc}")
+        return json.dumps({"error": "Indsigter er ikke tilgængelige lige nu.", "insights": [], "total": 0})
+
+    try:
+        insights = insights_engine.generate_company_insights(
+            current_app._get_current_object(), company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][explain_insights] generate_company_insights failed: {exc}")
+        return json.dumps({"error": "Kunne ikke hente indsigter lige nu.", "insights": [], "total": 0})
+
+    severity_filter = (args.get('severity') or '').strip().lower()
+    rows = []
+    for ins in (insights or []):
+        if not isinstance(ins, dict):
+            continue
+        sev = (ins.get('severity') or 'info')
+        if severity_filter and sev != severity_filter:
+            continue
+        rows.append({
+            "type": ins.get('type'),
+            "severity": sev,
+            "title": ins.get('title'),
+            "body": ins.get('body'),
+            "data": ins.get('data', {}),
+        })
+
+    actionable = sum(1 for r in rows if r["severity"] in ('warning', 'critical', 'danger'))
+    return json.dumps({
+        "insights": rows,
+        "total": len(rows),
+        "actionable": actionable,
+        "summary_da": (
+            f"{len(rows)} indsigt(er){' (' + str(actionable) + ' kræver handling)' if actionable else ''}."
+            if rows else "Der er endnu ikke nok aktivitet til at generere indsigter."
+        ),
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -2355,6 +2547,8 @@ def execute_hr_tool(tool_call):
         "assign_learning_path_to_team": _execute_assign_learning_path_to_team,
         "hr_inactive_employees": _execute_hr_inactive_employees,
         "hr_expiring_agreements": _execute_hr_expiring_agreements,
+        "get_workforce_risk": _execute_get_workforce_risk,
+        "hr_explain_insights": _execute_hr_explain_insights,
     }
 
     fn = router.get(name)

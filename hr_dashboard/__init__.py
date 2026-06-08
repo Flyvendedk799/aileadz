@@ -851,12 +851,49 @@ def create_hr_dashboard_blueprint():
             approvals = cur.fetchall()
 
             pending_count = sum(1 for a in approvals if a['status'] == 'pending')
+
+            # 30-day daily approval-activity trend by status (read-only, company-scoped).
+            # Activity date = COALESCE(decided_at, requested_at): decided rows
+            # (approved/rejected) land on their decision day, pending rows on their
+            # request day (decided_at is NULL until a decision is made). Bucketing is
+            # done in SQL via GROUP BY DATE; empty days are back-filled in Python from
+            # a fixed 30-day calendar so the line is continuous. Degrades to empty
+            # arrays on any error so the page never breaks.
+            approval_trend = {'labels': [], 'pending': [], 'approved': [], 'rejected': []}
+            try:
+                cur.execute("""
+                    SELECT DATE(COALESCE(oa.decided_at, oa.requested_at)) AS d,
+                           SUM(oa.status = 'pending')  AS pending,
+                           SUM(oa.status = 'approved') AS approved,
+                           SUM(oa.status = 'rejected') AS rejected
+                    FROM order_approvals oa
+                    WHERE oa.company_id = %s
+                      AND COALESCE(oa.decided_at, oa.requested_at) >= DATE_SUB(CURDATE(), INTERVAL 29 DAY)
+                    GROUP BY DATE(COALESCE(oa.decided_at, oa.requested_at))
+                """, (company['id'],))
+                by_day = {}
+                for r in cur.fetchall():
+                    if r['d'] is not None:
+                        by_day[r['d']] = r
+                today = date.today()
+                for i in range(29, -1, -1):
+                    day = today - timedelta(days=i)
+                    row = by_day.get(day)
+                    approval_trend['labels'].append(day.strftime('%d/%m'))
+                    approval_trend['pending'].append(int(row['pending']) if row and row['pending'] else 0)
+                    approval_trend['approved'].append(int(row['approved']) if row and row['approved'] else 0)
+                    approval_trend['rejected'].append(int(row['rejected']) if row and row['rejected'] else 0)
+            except Exception as trend_err:
+                current_app.logger.warning(f"Approval trend error: {trend_err}")
+                approval_trend = {'labels': [], 'pending': [], 'approved': [], 'rejected': []}
+
             cur.close()
 
             return render_template('fm/approvals.html',
                                    company=company,
                                    approvals=approvals,
-                                   pending_count=pending_count)
+                                   pending_count=pending_count,
+                                   approval_trend=approval_trend)
         except Exception as e:
             current_app.logger.error(f"Error loading approvals: {e}")
             flash("Error loading approvals.", "danger")

@@ -548,3 +548,126 @@ def _last_query(case) -> str:
     if case.get("turns"):
         return case["turns"][-1].get("query", "")
     return case.get("query", "")
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# 7. REFERENCE-FREE live self-eval (in-process, zero API cost)
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# score_live() is a thin, dependency-free wrapper over the heuristic scorers that
+# need NO golden/expected answer, so the live agent can score every turn in-process
+# without the eval harness, a golden set, or any LLM call. It reuses the existing
+# reference-free scorers verbatim:
+#   * grounded_heuristic  — price chain-of-custody (hallucinated price -> FAIL)
+#   * system_prompt_leaked — prompt-leak guard (a leak is an automatic 0.0)
+#   * a tiny retrieval-presence signal — when a catalog tool fired but produced no
+#     cards for a non-greeting answer, that's a soft quality ding.
+# Reference-dependent scorers (refusal/must_refuse, retrieval-vs-topic, profile/
+# order expectations) are intentionally EXCLUDED — they require a per-case
+# `expect`, which the live loop does not have.
+#
+# Returns a small, JSON-serialisable dict:
+#   {
+#     "score": 0.0..1.0,          # aggregate of the applicable components
+#     "components": {name: {"score","applies","detail"}, ...},
+#     "applied": [name, ...],     # component names that actually applied
+#     "flags": {"grounding_violation": bool, "prompt_leak": bool},
+#   }
+# Never raises — on any failure it degrades to a neutral score of 1.0 (no penalty)
+# so a scoring bug can never make a good turn look bad or break the SSE path.
+
+# Reference-free component weights. Grounding + prompt-leak dominate because they
+# are the highest-signal correctness checks; retrieval presence is a soft nudge.
+_LIVE_WEIGHTS = {
+    "grounding": 0.6,
+    "prompt_leak": 0.3,
+    "retrieval_presence": 0.1,
+}
+
+
+def score_live(answer, tool_results=None, *, tools=None, cards=None, user_query=""):
+    """Reference-free, in-process quality score for ONE live turn (no LLM cost).
+
+    Args:
+        answer:       the visible final answer text the user saw.
+        tool_results: this turn's raw tool-result evidence — a list of JSON
+                      strings/dicts and/or card dicts (chain-of-custody source).
+        tools:        tool names that fired this turn (optional).
+        cards:        course cards surfaced this turn (optional; strengthens the
+                      grounding source-of-truth and the retrieval-presence check).
+        user_query:   the user's query (so we don't penalise echoing their budget).
+
+    Returns the dict described above. Pure + fully guarded.
+    """
+    try:
+        text = answer or ""
+        tool_results = tool_results or []
+        cards = cards or []
+        tools = tools or []
+
+        components: Dict[str, Any] = {}
+
+        # 1) Grounding (price chain-of-custody) — reference-free.
+        components["grounding"] = grounded_heuristic(
+            text, cards, tool_results, user_query=user_query or ""
+        )
+
+        # 2) Prompt-leak guard — leaking the system prompt is an automatic fail.
+        leaked = False
+        try:
+            leaked = bool(text.strip()) and system_prompt_leaked(text)
+        except Exception:
+            leaked = False
+        components["prompt_leak"] = _result(
+            FAIL if leaked else PASS, bool(text.strip()),
+            "LEAKED system prompt" if leaked else "no leak",
+        )
+
+        # 3) Retrieval presence — if a catalog tool fired but nothing surfaced and
+        #    the answer is substantive, that's a soft quality ding (asked, got
+        #    nothing). Not applicable when no catalog tool fired (greetings etc.).
+        catalog_fired = bool(set(tools) & _CATALOG_TOOLS)
+        if catalog_fired and len((text or "").strip()) > 0:
+            has_evidence = bool(cards) or bool(tool_results)
+            components["retrieval_presence"] = _result(
+                PASS if has_evidence else FAIL, True,
+                "catalog evidence present" if has_evidence else "catalog tool fired but no evidence",
+            )
+        else:
+            components["retrieval_presence"] = _result(None, False, "no catalog tool")
+
+        # Weighted aggregate over applicable components only.
+        total_w = 0.0
+        acc = 0.0
+        applied: List[str] = []
+        for name, comp in components.items():
+            if comp.get("applies") and comp.get("score") is not None:
+                w = _LIVE_WEIGHTS.get(name, 0.0)
+                total_w += w
+                acc += w * float(comp["score"])
+                applied.append(name)
+
+        score = round(acc / total_w, 3) if total_w > 0 else 1.0
+
+        grounding = components["grounding"]
+        grounding_violation = bool(
+            grounding.get("applies") and grounding.get("score") == FAIL
+        )
+
+        return {
+            "score": score,
+            "components": components,
+            "applied": applied,
+            "flags": {
+                "grounding_violation": grounding_violation,
+                "prompt_leak": leaked,
+            },
+        }
+    except Exception:
+        # Scoring must never penalise a turn it failed to analyse.
+        return {
+            "score": 1.0,
+            "components": {},
+            "applied": [],
+            "flags": {"grounding_violation": False, "prompt_leak": False},
+        }

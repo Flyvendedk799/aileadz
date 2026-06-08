@@ -714,6 +714,134 @@ def run_direct_completion(
         raise
 
 
+# --- LLM-as-router for ambiguous intents --------------------------------------
+# The rule-based classifier (_classify_intent_local in app1/agent.py) is the
+# source of truth for everything it CAN classify. Its one ambiguous catch-all
+# ("discovery") lumps together genuinely different needs (learning_path,
+# skill_gap, comparison, profile_and_search). ONLY on that catch-all turn we do a
+# single cheap gpt-4o-mini classification to pick the real intent before the main
+# turn, and feed the refined intent into tool selection + model-tier routing.
+#
+# Cost/latency safety: this fires only on ambiguous turns (confident regex intents
+# skip it entirely), is bounded (tiny prompt, low max-tokens, short timeout), and
+# any error/timeout/garbage silently falls back to the regex result. A small
+# bounded in-process cache avoids repeat calls for the same text.
+
+# The fixed enum the router is allowed to return. Each label is already understood
+# by both _route_tier() (model tier) and get_employee_tool_selection() (tools).
+ROUTER_INTENT_ENUM = (
+    "learning_path",
+    "skill_gap",
+    "comparison",
+    "profile_and_search",
+    "discovery",
+)
+
+_ROUTER_CACHE: Dict[str, str] = {}
+_ROUTER_CACHE_MAX = 256
+
+_ROUTER_SYSTEM_PROMPT = (
+    "Du klassificerer en brugers besked til en dansk kursus- og kompetencerådgiver. "
+    "Vælg PRÆCIST ÉT af følgende intentioner og svar KUN med selve etiketten (intet andet):\n"
+    "- learning_path: brugeren vil have en læringssti/plan for at nå et mål eller en rolle "
+    "(\"lav en læringssti\", \"hvordan bliver jeg X\", \"plan for at lære Y\").\n"
+    "- skill_gap: brugeren spørger hvilke kompetencer de mangler "
+    "(\"hvad mangler jeg for at blive X\", \"hvilke kompetencer skal jeg have\").\n"
+    "- comparison: brugeren vil sammenligne kurser eller muligheder "
+    "(\"hvad er forskellen\", \"hvilket er bedst\", \"X vs Y\").\n"
+    "- profile_and_search: brugeren fortæller om sin egen baggrund/erfaring OG vil finde kurser.\n"
+    "- discovery: almindelig kursussøgning eller noget der ikke passer ovenfor.\n"
+    "Svar med ét ord fra: learning_path, skill_gap, comparison, profile_and_search, discovery."
+)
+
+
+def llm_router_enabled() -> bool:
+    """Env gate for the LLM-as-router.
+
+    Default is ON-for-ambiguous-only: the router only ever fires on the regex
+    catch-all, and is bounded + falls back on any failure, so the cost is tiny.
+    Disable completely (regex path stays the source of truth + fallback) with
+    AI_LLM_ROUTER=0 / false / off / no.
+    """
+    return (os.getenv("AI_LLM_ROUTER", "1") or "1").strip().lower() not in (
+        "0", "false", "no", "off", "",
+    )
+
+
+def _router_timeout_seconds() -> float:
+    try:
+        return float(os.getenv("AI_LLM_ROUTER_TIMEOUT_SECONDS", "4"))
+    except ValueError:
+        return 4.0
+
+
+def _parse_router_label(raw: Any, fallback: str) -> str:
+    """Defensively map a model response to one enum label; unknown -> fallback."""
+    if not isinstance(raw, str):
+        return fallback
+    text = raw.strip().lower()
+    if not text:
+        return fallback
+    # Exact match first, then substring (model may add punctuation/prose).
+    if text in ROUTER_INTENT_ENUM:
+        return text
+    for label in ROUTER_INTENT_ENUM:
+        if label in text:
+            return label
+    return fallback
+
+
+def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
+    """Single cheap gpt-4o-mini classification of an ambiguous turn.
+
+    Returns one label from ROUTER_INTENT_ENUM, or `fallback` (the regex result)
+    on any error/timeout/garbage. Cached per query text within the process.
+    Reuses the shared OpenAI client + fast_model() (no new client config).
+    """
+    if not llm_router_enabled():
+        return fallback
+    query = (user_query or "").strip()
+    if not query:
+        return fallback
+
+    cache_key = str(hash(query))
+    cached = _ROUTER_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    label = fallback
+    try:
+        client = _openai_client()
+        # Short, per-request timeout so an ambiguous turn never stalls the SSE turn.
+        # with_options is the SDK's per-request override; guard for resilience.
+        with_options = getattr(client, "with_options", None)
+        scoped = with_options(timeout=_router_timeout_seconds()) if callable(with_options) else client
+        resp = scoped.chat.completions.create(
+            model=fast_model(),
+            messages=[
+                {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
+                {"role": "user", "content": query[:2000]},
+            ],
+            stream=False,
+            max_tokens=4,
+            temperature=0.0,
+        )
+        raw = resp.choices[0].message.content if resp.choices else ""
+        label = _parse_router_label(raw, fallback)
+    except Exception:
+        # Any error/timeout/unparseable response -> silently keep the regex result.
+        label = fallback
+
+    # Bounded cache: drop oldest-ish entry when full (simple, no LRU needed).
+    if len(_ROUTER_CACHE) >= _ROUTER_CACHE_MAX:
+        try:
+            _ROUTER_CACHE.pop(next(iter(_ROUTER_CACHE)))
+        except StopIteration:
+            pass
+    _ROUTER_CACHE[cache_key] = label
+    return label
+
+
 def _truncate_text(text: str, max_chars: int) -> str:
     text = text or ""
     if len(text) <= max_chars:
@@ -1118,6 +1246,12 @@ def ensure_ai_log_tables(mysql) -> None:
             ("compaction_level", "VARCHAR(30) DEFAULT 'normal'"),
             ("runtime_path", "VARCHAR(60) DEFAULT ''"),
             ("embedding_skipped", "TINYINT NULL"),
+            # Post-turn quality signal (Item #6): heuristic, reference-free, no
+            # API cost. NULL when no self-eval ran for the run.
+            ("self_eval_score", "FLOAT NULL"),
+            # Hallucination circuit-breaker flag (Item #1): 1 when the live
+            # chain-of-custody check found an unsupported price/date/title claim.
+            ("grounding_violation", "TINYINT NULL"),
         ):
             try:
                 cur.execute(f"ALTER TABLE ai_agent_runs ADD COLUMN {col} {ddl}")
@@ -1159,6 +1293,8 @@ def log_agent_run(
     compaction_level: str = "normal",
     runtime_path: str = "",
     embedding_skipped: Optional[bool] = None,
+    self_eval_score: Optional[float] = None,
+    grounding_violation: Optional[bool] = None,
 ) -> None:
     if not mysql or trace_sample_rate() <= 0:
         return
@@ -1168,14 +1304,19 @@ def log_agent_run(
         cur = mysql.connection.cursor()
         input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
         output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+        try:
+            self_eval_value = float(self_eval_score) if self_eval_score is not None else None
+        except (TypeError, ValueError):
+            self_eval_value = None
         cur.execute(
             """
             INSERT INTO ai_agent_runs
             (run_id, session_id, company_id, username, agent_scope, runtime, model,
              prompt_version, toolset_version, tool_names, response_id, status,
              fallback_reason, latency_ms, input_tokens, output_tokens, cached_tokens,
-             compaction_level, runtime_path, embedding_skipped)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             compaction_level, runtime_path, embedding_skipped, self_eval_score,
+             grounding_violation)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 run_id,
@@ -1198,7 +1339,60 @@ def log_agent_run(
                 compaction_level,
                 runtime_path,
                 (1 if embedding_skipped else 0 if embedding_skipped is False else None),
+                self_eval_value,
+                (1 if grounding_violation else 0 if grounding_violation is False else None),
             ),
+        )
+        mysql.connection.commit()
+        cur.close()
+    except Exception:
+        try:
+            mysql.connection.rollback()
+        except Exception:
+            pass
+
+
+def update_agent_run_quality(
+    mysql,
+    *,
+    run_id: str,
+    self_eval_score: Optional[float] = None,
+    grounding_violation: Optional[bool] = None,
+) -> None:
+    """Backfill the post-turn quality signals on an already-logged run row.
+
+    The agent logs the run row right after the tool loop, but the self-eval score
+    and grounding-violation flag are only known AFTER the answer has streamed.
+    Rather than duplicating the row, we UPDATE it by run_id once the final answer
+    is in hand. Fully guarded + idempotent: a missing column, missing row, or any
+    DB error degrades silently and never raises into the SSE path. No-op when both
+    signals are None or trace sampling is off.
+    """
+    if not mysql or trace_sample_rate() <= 0:
+        return
+    if self_eval_score is None and grounding_violation is None:
+        return
+    try:
+        refresh_flask_mysql_connection(mysql)
+        ensure_ai_log_tables(mysql)
+        sets = []
+        params: List[Any] = []
+        if self_eval_score is not None:
+            try:
+                sets.append("self_eval_score = %s")
+                params.append(float(self_eval_score))
+            except (TypeError, ValueError):
+                pass
+        if grounding_violation is not None:
+            sets.append("grounding_violation = %s")
+            params.append(1 if grounding_violation else 0)
+        if not sets:
+            return
+        params.append(run_id)
+        cur = mysql.connection.cursor()
+        cur.execute(
+            f"UPDATE ai_agent_runs SET {', '.join(sets)} WHERE run_id = %s",
+            tuple(params),
         )
         mysql.connection.commit()
         cur.close()

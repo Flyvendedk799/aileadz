@@ -69,6 +69,7 @@ _TABLES_SQL = [
         username VARCHAR(255) PRIMARY KEY,
         session_id VARCHAR(100) NOT NULL,
         messages LONGTEXT,
+        summary TEXT DEFAULT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )""",
     """CREATE TABLE IF NOT EXISTS conversation_history (
@@ -121,6 +122,24 @@ def ensure_tables():
                 print(f"[UserProfileDB] Table {i} creation error: {table_err}")
                 current_app.mysql.connection.rollback()
         current_app.mysql.connection.commit()
+
+        # Idempotent migration: add the cross-session rolling `summary` column to
+        # an existing user_conversations table (mirrors the anonymous-profile
+        # conversation_summary). Safe to run every boot — a duplicate-column error
+        # just rolls back and is ignored.
+        try:
+            cur.execute("SELECT summary FROM user_conversations LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("ALTER TABLE user_conversations ADD COLUMN summary TEXT DEFAULT NULL")
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] summary column migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
 
         # Migration: if user_conversations exists with wrong schema, recreate it
         try:
@@ -553,6 +572,56 @@ def clear_conversation(username):
     cur.execute("DELETE FROM user_conversations WHERE username = %s", (username,))
     current_app.mysql.connection.commit()
     cur.close()
+
+
+# ── Cross-session rolling summary (logged-in users) ──
+# Mirrors the anonymous-profile `conversation_summary` so memory survives session
+# boundaries for logged-in users too — not just the verbatim last messages.
+
+def save_conversation_summary(username, session_id, summary_text):
+    """Persist a rolling conversation summary for a logged-in user.
+
+    Upserts on the user_conversations row (PK = username). session_id keeps the
+    row's NOT NULL constraint satisfied when no conversation row exists yet; if a
+    row already exists, the session_id is refreshed and the existing messages are
+    left untouched. The summary is capped to keep the column small. Returns True
+    on success, False if there was nothing to store.
+    """
+    text = (summary_text or "").strip()
+    if not text:
+        return False
+    text = text[:4000]  # cap — the summary is a compact recap, not a transcript
+    # Best-effort, like save_conversation_history: a rolling-summary persistence
+    # failure must never raise into the SSE turn that triggered it.
+    try:
+        refresh_flask_mysql_connection(current_app.mysql)
+        cur = current_app.mysql.connection.cursor()
+        cur.execute(
+            "INSERT INTO user_conversations (username, session_id, summary) VALUES (%s, %s, %s) "
+            "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), summary = VALUES(summary)",
+            (username, session_id or "", text)
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+        return True
+    except Exception:
+        return False
+
+
+def load_conversation_summary(username):
+    """Load the rolling cross-session summary for a logged-in user (or "")."""
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        cur.execute("SELECT summary FROM user_conversations WHERE username = %s", (username,))
+        row = cur.fetchone()
+    except Exception:
+        # Column may not exist yet on a not-yet-migrated table — degrade to "".
+        cur.close()
+        return ""
+    cur.close()
+    if not row:
+        return ""
+    return (row.get("summary") or "").strip()
 
 
 # ── Conversation History (multi-session) ──

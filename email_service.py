@@ -155,7 +155,14 @@ def _default_sender() -> str:
 
 
 def _ensure_email_log_table(conn) -> bool:
-    """Idempotently create the email_log table. Best-effort; never raises."""
+    """Idempotently create the email_log table. Best-effort; never raises.
+
+    Also idempotently adds the nullable ``dedupe_key`` column on pre-existing
+    installs (the ALTER is wrapped so it never breaks when the column is already
+    present). ``dedupe_key`` is a caller-supplied per-event marker (e.g.
+    ``order_approval_needed:<order_id>``) the recent-duplicate guard reads so the
+    same alert is not re-sent within a short window.
+    """
     try:
         cur = conn.cursor()
         cur.execute(
@@ -167,10 +174,19 @@ def _ensure_email_log_table(conn) -> bool:
                 template VARCHAR(64) NULL,
                 status VARCHAR(32) NULL,
                 error TEXT NULL,
+                dedupe_key VARCHAR(255) NULL,
                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4
             """
         )
+        # Idempotent column add for installs that predate dedupe_key.
+        try:
+            cur.execute(
+                "ALTER TABLE email_log ADD COLUMN dedupe_key VARCHAR(255) NULL"
+            )
+        except Exception:
+            # Column already exists (or the DB rejected the harmless ALTER) — fine.
+            pass
         conn.commit()
         cur.close()
         return True
@@ -189,6 +205,7 @@ def _record_email_attempt(
     *,
     company_id=None,
     error: Optional[str] = None,
+    dedupe_key: Optional[str] = None,
 ) -> None:
     """Persist an email attempt into email_log. Fully guarded — never raises."""
     try:
@@ -201,8 +218,9 @@ def _record_email_attempt(
         cur = conn.cursor()
         cur.execute(
             """
-            INSERT INTO email_log (company_id, to_email, template, status, error, created_at)
-            VALUES (%s, %s, %s, %s, %s, NOW())
+            INSERT INTO email_log
+                (company_id, to_email, template, status, error, dedupe_key, created_at)
+            VALUES (%s, %s, %s, %s, %s, %s, NOW())
             """,
             (
                 company_id,
@@ -210,6 +228,7 @@ def _record_email_attempt(
                 (template_name or '')[:64],
                 (status or '')[:32],
                 (error or None),
+                (dedupe_key or None) and str(dedupe_key)[:255],
             ),
         )
         conn.commit()
@@ -221,6 +240,53 @@ def _record_email_attempt(
             pass
 
 
+def email_recently_sent(dedupe_key: str, *, within_hours: int = 24,
+                        company_id=None) -> bool:
+    """True iff an email with this ``dedupe_key`` was logged within the window.
+
+    Recent-duplicate guard for time-sensitive alerts (order-approval-needed,
+    budget-overrun) so the same event is not re-emailed on every order while the
+    condition persists. Counts ANY logged attempt for the key — including
+    ``skipped_no_backend`` — so a configured-then-unconfigured flap does not
+    cause a burst. Fully guarded: returns False on any error / missing DB (i.e.
+    "not a known duplicate, go ahead and try").
+    """
+    if not dedupe_key:
+        return False
+    try:
+        conn = getattr(current_app, 'mysql', None)
+        conn = getattr(conn, 'connection', None) if conn is not None else None
+        if conn is None:
+            return False
+        if not _ensure_email_log_table(conn):
+            return False
+        cur = conn.cursor()
+        try:
+            hours = int(within_hours)
+        except (TypeError, ValueError):
+            hours = 24
+        cur.execute(
+            """
+            SELECT COUNT(*) AS n FROM email_log
+            WHERE dedupe_key = %s
+              AND created_at >= DATE_SUB(NOW(), INTERVAL %s HOUR)
+            """,
+            (str(dedupe_key)[:255], hours),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if row is None:
+            return False
+        n = row.get('n') if isinstance(row, dict) else row[0]
+        return bool(n and int(n) > 0)
+    except Exception as e:  # pragma: no cover - defensive
+        try:
+            current_app.logger.debug("email_recently_sent check failed: %s", e)
+        except Exception:
+            pass
+        return False
+
+
 def send_branded_email(
     to_email: str,
     subject: str,
@@ -229,13 +295,16 @@ def send_branded_email(
     *,
     reply_to: Optional[str] = None,
     company_id=None,
+    dedupe_key: Optional[str] = None,
     **context,
 ) -> bool:
     """Send a branded email. Returns True on success, False on no-op/failure.
 
     Best-effort by design: if no mail backend is configured this returns
     False quietly (logged at debug) and NEVER raises. Each attempt is recorded
-    in email_log (guarded).
+    in email_log (guarded). An optional ``dedupe_key`` is stamped on the log row
+    so callers can use ``email_recently_sent`` to avoid re-sending the same
+    time-sensitive alert within a window.
     """
     branding = branding or {}
 
@@ -258,7 +327,7 @@ def send_branded_email(
             pass
         _record_email_attempt(
             to_email, template_name, 'error', company_id=company_id,
-            error=f"render: {e}",
+            error=f"render: {e}", dedupe_key=dedupe_key,
         )
         return False
 
@@ -274,6 +343,7 @@ def send_branded_email(
         )
         _record_email_attempt(
             to_email, template_name, 'skipped_no_backend', company_id=company_id,
+            dedupe_key=dedupe_key,
         )
         return False
 
@@ -290,6 +360,7 @@ def send_branded_email(
         mail.send(msg)
         _record_email_attempt(
             to_email, template_name, 'sent', company_id=company_id,
+            dedupe_key=dedupe_key,
         )
         return True
     except Exception as e:
@@ -299,6 +370,7 @@ def send_branded_email(
             pass
         _record_email_attempt(
             to_email, template_name, 'error', company_id=company_id, error=str(e),
+            dedupe_key=dedupe_key,
         )
         return False
 

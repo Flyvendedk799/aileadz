@@ -164,6 +164,14 @@ _HR_META = {
     "hr_expiring_agreements": ToolMeta("hr_expiring_agreements", "hr", company_required=True, cache_ttl=120, toolset_tags=("supplier", "agreements")),
     "get_workforce_risk": ToolMeta("get_workforce_risk", "hr", company_required=True, cache_ttl=120, toolset_tags=("risk", "predictive")),
     "hr_explain_insights": ToolMeta("hr_explain_insights", "hr", company_required=True, cache_ttl=120, toolset_tags=("insights", "predictive")),
+    "set_skill_target": ToolMeta(
+        "set_skill_target", "hr",
+        company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("skills", "mutation"),
+    ),
+    "create_compliance_requirement": ToolMeta(
+        "create_compliance_requirement", "hr",
+        company_required=True, side_effect=True, parallel_safe=False, toolset_tags=("compliance", "mutation"),
+    ),
 }
 
 
@@ -498,6 +506,23 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "forklar advarsler", "forklar advarslerne", "hvad sker der på platformen",
             "hvad foregår der", "giv mig overblik")):
         names.add("hr_explain_insights")
+    # --- Confirm-gated write tools (plan #13): keyword-gated only. They stay off
+    # the menu until the user expresses an intent to SET a target or CREATE a
+    # requirement; both are confirm+manager+company-scoped in hr_tools. ---
+    if _has_any(query, (
+            "sæt målet", "saet maalet", "sæt mål", "saet maal", "kompetencemål",
+            "kompetencemaal", "skill target", "sæt target", "gør til et mål",
+            "goer til et maal", "hæv målet", "haev maalet", "sænk målet",
+            "saenk maalet", "opdater målet", "opdater maalet", "definer kompetencemål")):
+        names.add("set_skill_target")
+    if _has_any(query, (
+            "opret compliance", "opret et compliance", "nyt compliance-krav",
+            "nyt compliance krav", "compliance-krav", "compliance krav",
+            "obligatorisk krav", "gør obligatorisk", "goer obligatorisk",
+            "lovpligtigt krav", "gør til et krav", "goer til et krav",
+            "tilføj compliance", "tilfoej compliance", "årligt krav", "aarligt krav",
+            "recertificeringskrav")):
+        names.add("create_compliance_requirement")
 
     selected = []
     for name in sorted(names):

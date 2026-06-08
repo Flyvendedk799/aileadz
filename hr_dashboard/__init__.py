@@ -1631,7 +1631,7 @@ def create_hr_dashboard_blueprint():
             skills_gap_analysis = cur.fetchall()
             
             cur.close()
-            
+
             # Prepare chart data
             chart_data = {
                 'learning_trends': {
@@ -1644,11 +1644,111 @@ def create_hr_dashboard_blueprint():
                     'interactions': [0] * 24
                 }
             }
-            
-            # Fill hourly engagement data
+
+            # ── Hourly engagement (k-anon-safe) ──────────────────────────────
+            # The hour buckets are company-aggregated interaction counts, but an
+            # hour in which only a single learner was active re-identifies that
+            # person's behavioural pattern. Suppress (zero out) any hour whose
+            # distinct-user cohort is below k BEFORE it reaches the chart; the
+            # rest carries aggregate counts only. Fail closed if k-anon is
+            # unavailable: with no proof a bucket is >= k we surface nothing.
+            engagement_anon = None
+            _eng_suppressed = 0
             for engagement in hourly_engagement:
-                chart_data['hourly_engagement']['interactions'][engagement['hour_of_day']] = engagement['interactions']
-            
+                hod = engagement.get('hour_of_day')
+                if hod is None or not (0 <= int(hod) < 24):
+                    continue
+                cohort = int(engagement.get('unique_users') or 0)
+                if _kanon is not None:
+                    safe = _kanon.is_cohort_safe(cohort)
+                else:
+                    safe = False  # fail closed
+                if safe:
+                    chart_data['hourly_engagement']['interactions'][int(hod)] = \
+                        int(engagement.get('interactions') or 0)
+                elif int(engagement.get('interactions') or 0) > 0:
+                    _eng_suppressed += 1
+            if _eng_suppressed:
+                engagement_anon = (_kanon.anon_note() if _kanon is not None
+                                   else 'Timer med få aktive medarbejdere er skjult '
+                                        'af hensyn til anonymitet')
+
+            # ── Learning-path effectiveness (k-anon-safe) ────────────────────
+            # Per-path averages (progress / completion / days) computed over the
+            # enrolled cohort. A path with fewer than k enrolled learners exposes
+            # an individual's progress, so suppress sub-k paths before charting.
+            path_effectiveness = []
+            path_anon = None
+            try:
+                candidates = []
+                for row in learning_path_effectiveness:
+                    enrolled = int(row.get('enrolled_users') or 0)
+                    if enrolled <= 0:
+                        continue  # never-started paths carry no learner signal
+                    completed = int(row.get('completed_users') or 0)
+                    candidates.append({
+                        'path_name': row.get('path_name') or 'Uden navn',
+                        'enrolled_users': enrolled,
+                        'completed_users': completed,
+                        'completion_rate': round(completed * 100.0 / enrolled, 1),
+                        'avg_progress': round(float(row.get('avg_progress') or 0), 1),
+                        'avg_completion_days': round(float(row.get('avg_completion_days') or 0), 1),
+                    })
+                if _kanon is not None:
+                    kept, note = _kanon.suppress_small_groups(candidates, 'enrolled_users')
+                    kept = [r for r in kept if isinstance(r, dict) and 'enrolled_users' in r]
+                    if note and note.get('suppressed'):
+                        path_anon = note.get('note_da')
+                else:
+                    kept = []  # fail closed
+                    if candidates:
+                        path_anon = ('Forløb med få deltagere er skjult af hensyn '
+                                     'til anonymitet')
+                kept.sort(key=lambda r: r.get('enrolled_users', 0), reverse=True)
+                path_effectiveness = kept[:8]
+            except Exception as e:
+                current_app.logger.error(f"Error building learning-path effectiveness chart: {e}")
+                path_effectiveness = []
+
+            # ── Course-category throughput (k-anon-safe) ─────────────────────
+            # NOTE: this is ORDER-based throughput — demand = orders placed,
+            # supply = orders completed, per course-title keyword category. It is
+            # NOT a skill-competency demand/supply signal, so it is labelled as
+            # bestilte vs. gennemførte kurser (order-vs-completion volume) to
+            # avoid misrepresenting order volume as skill demand. Cohort is the
+            # distinct employees who ordered in the category; suppress sub-k.
+            category_throughput = []
+            category_anon = None
+            try:
+                candidates = []
+                for row in skills_gap_analysis:
+                    ordered = int(row.get('demand') or 0)
+                    if ordered <= 0:
+                        continue
+                    completed = int(row.get('supply') or 0)
+                    candidates.append({
+                        'skill_category': row.get('skill_category') or 'Andet',
+                        'ordered': ordered,
+                        'completed': completed,
+                        'interested_employees': int(row.get('interested_employees') or 0),
+                        'fulfillment_rate': float(row.get('fulfillment_rate') or 0),
+                    })
+                if _kanon is not None:
+                    kept, note = _kanon.suppress_small_groups(candidates, 'interested_employees')
+                    kept = [r for r in kept if isinstance(r, dict) and 'interested_employees' in r]
+                    if note and note.get('suppressed'):
+                        category_anon = note.get('note_da')
+                else:
+                    kept = []  # fail closed
+                    if candidates:
+                        category_anon = ('Kategorier med få medarbejdere er skjult '
+                                         'af hensyn til anonymitet')
+                kept.sort(key=lambda r: r.get('ordered', 0), reverse=True)
+                category_throughput = kept
+            except Exception as e:
+                current_app.logger.error(f"Error building course-category throughput chart: {e}")
+                category_throughput = []
+
             return render_template('fm/learning_analytics.html',
                                  company=company,
                                  period=period,
@@ -1659,6 +1759,11 @@ def create_hr_dashboard_blueprint():
                                  hourly_engagement=hourly_engagement,
                                  skills_gap_analysis=skills_gap_analysis,
                                  chart_data=chart_data,
+                                 engagement_anon=engagement_anon,
+                                 path_effectiveness=path_effectiveness,
+                                 path_anon=path_anon,
+                                 category_throughput=category_throughput,
+                                 category_anon=category_anon,
                                  active_hr_page='learning_analytics')
             
         except Exception as e:

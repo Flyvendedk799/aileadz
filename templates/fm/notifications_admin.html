@@ -1,15 +1,168 @@
 {% extends "fm_base.html" %}
-{% block page_id %}{% endblock %}
+{% from 'fm/_macros.html' import empty %}
+{% block page_id %}notif{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Send notifikation{% endblock %}
-{% block topbar_sub %}Udgiv en besked til brugere eller tenants.{% endblock %}
+{% block topbar_sub %}Udgiv en systembesked til alle brugere, en specifik bruger eller en rolle.{% endblock %}
+{% block extra_head %}
+<style>
+  .nt-grid { display: grid; grid-template-columns: 1.35fr .85fr; gap: 16px; align-items: start; margin-top: 16px; }
+  .nt-preview { padding: 22px; border: 1px dashed var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface-2); text-align: center; }
+  .nt-preview .nt-ico { width: 52px; height: 52px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 20px; margin-bottom: 12px; }
+  .nt-preview h4 { font-size: 17px; font-weight: 700; letter-spacing: -.02em; margin: 0 0 4px; }
+  .nt-preview .nt-sub { color: var(--fm-primary); font-weight: 600; font-size: 13px; margin: 0 0 8px; min-height: 1px; }
+  .nt-preview .nt-desc { color: var(--fm-ink-2); font-size: 13px; line-height: 1.5; margin: 0; }
+  .nt-preview img { max-width: 100%; border-radius: var(--r-ctrl); margin: 12px 0 0; display: block; }
+  .nt-target-extra { display: none; }
+  @media (max-width: 980px) { .nt-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a><a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a><a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a><a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a><a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a><a class="pg-tab" href="{{ url_for('futurematch.showcase', page='admin_chatbot') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a><a class="pg-tab active" href="{{ url_for('futurematch.showcase', page='notifications_admin') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a></div><div style="max-width:760px"><div class="fm-card"><div class="fm-card-body">
-  <div class="fm-field"><label>Modtagere</label><select class="fm-select"><option>Alle brugere</option><option>Alle HR-managers</option><option>Specifik tenant…</option></select></div>
-  <div class="fm-field"><label>Titel</label><input class="fm-input" placeholder="fx Nyt kompetence-dashboard"/></div>
-  <div class="fm-field"><label>Besked</label><textarea class="fm-textarea" placeholder="Skriv din annoncering…"></textarea></div>
-  <div class="fm-field" style="margin-bottom:0"><label>Type</label><div class="seg"><button class="active">Info</button><button>Opdatering</button><button>Vigtigt</button></div></div>
-  </div></div></div>
+<div class="pg-subnav">
+  <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a>
+  <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+  <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
+  <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+  <a class="pg-tab active" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
 </div>
+
+<div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
+  <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-bullhorn"></i></span><div><div class="kl">Udsendelser</div><div class="kv tnum">{{ broadcasts_sent|default(0) }}</div><div class="kd">Sendte beskeder</div></div></div>
+  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-users"></i></span><div><div class="kl">Modtagere nået</div><div class="kv tnum">{{ recipients_reached|default(0) }}</div><div class="kd">Samlet leverancer</div></div></div>
+  <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-envelope-open"></i></span><div><div class="kl">Læsterate</div><div class="kv tnum">{{ read_rate|default(0) }}%</div><div class="kd">Åbnede notifikationer</div></div></div>
+  <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-clock-rotate-left"></i></span><div><div class="kl">Seneste udsendelse</div><div class="kv tnum" style="font-size:18px">{{ last_broadcast_at|default('—') }}</div><div class="kd">Dato &amp; tid</div></div></div>
+</div>
+
+<div class="nt-grid">
+  <div class="fm-card">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-pen-to-square"></i></span><h3>Beskedindhold</h3></div>
+    <div class="fm-card-body" style="padding-top:10px">
+      <form method="post" enctype="multipart/form-data" id="notif-form" action="{{ url_for('admin_notifications.notifications_dashboard') }}">
+        <div class="fm-field">
+          <label for="title">Titel</label>
+          <input type="text" id="title" name="title" class="fm-input" placeholder="fx Nyt kompetence-dashboard" required>
+        </div>
+        <div class="fm-field">
+          <label for="subtitle">Undertitel</label>
+          <input type="text" id="subtitle" name="subtitle" class="fm-input" placeholder="Kort uddybning (valgfri)">
+        </div>
+        <div class="fm-field">
+          <label for="description">Beskrivelse</label>
+          <textarea id="description" name="description" rows="4" class="fm-textarea" placeholder="Skriv din annoncering…"></textarea>
+        </div>
+        <div class="fm-field">
+          <label for="image_file">Billede</label>
+          <input type="file" id="image_file" name="image_file" accept="image/*" class="fm-input">
+        </div>
+        <div class="form-grid">
+          <div class="fm-field" style="margin-bottom:0">
+            <label for="target">Modtager</label>
+            <select id="target" name="target" class="fm-select" required>
+              <option value="all">Alle brugere</option>
+              <option value="specific">Specifik bruger</option>
+              <option value="role">Rolle</option>
+            </select>
+          </div>
+          <div class="fm-field nt-target-extra" id="specific-user-group" style="margin-bottom:0">
+            <label for="username">Brugernavn</label>
+            <input type="text" id="username" name="username" class="fm-input" placeholder="Brugernavn">
+          </div>
+          <div class="fm-field nt-target-extra" id="role-group" style="margin-bottom:0">
+            <label for="role">Rolle</label>
+            <select id="role" name="role" class="fm-select">
+              <option value="user">Bruger</option>
+              <option value="admin">Admin</option>
+            </select>
+          </div>
+        </div>
+        <div class="fm-spread" style="margin-top:18px;justify-content:flex-end">
+          <button type="submit" class="btn btn-primary"><i class="fa-solid fa-paper-plane"></i> Send notifikation</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="fm-card">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-eye"></i></span><h3>Preview</h3></div>
+    <div class="fm-card-body" style="padding-top:10px">
+      <div class="nt-preview" id="notif-preview">
+        <span class="nt-ico"><i class="fa-solid fa-bell"></i></span>
+        <h4 id="preview-title">Din titel vises her</h4>
+        <p class="nt-sub" id="preview-subtitle"></p>
+        <div class="notification-image-wrapper" style="display:none"><img src="" alt="Preview" id="preview-image"></div>
+        <p class="nt-desc" id="preview-description">Skriv en beskrivelse for at se preview.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="fm-card" style="margin-top:16px">
+  <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Tidligere udsendelser</h3>
+    {% if past_broadcasts %}<span class="fm-badge teal" style="margin-left:auto">{{ past_broadcasts|length }}</span>{% endif %}</div>
+  <div class="fm-card-body" style="padding-top:6px">
+    {% if past_broadcasts %}
+    <div class="fm-table-wrap" style="border:0;box-shadow:none">
+      <table class="fm-table">
+        <thead><tr><th>Titel</th><th>Modtager</th><th class="tnum">Modtagere</th><th>Sendt</th></tr></thead>
+        <tbody>
+          {% for b in past_broadcasts %}
+          <tr>
+            <td style="font-weight:650">{{ b.title }}</td>
+            <td>{{ b.target_label or b.target or '—' }}</td>
+            <td class="tnum">{{ b.recipient_count|default(0) }}</td>
+            <td class="muted" style="font-size:12px">{{ b.created_at or b.sent_at or '—' }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    {{ empty('Ingen udsendelser endnu', 'Notifikationer du sender, vises her med modtagerantal og tidspunkt.', 'fa-bullhorn') }}
+    {% endif %}
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+  (function () {
+    const targetSelect = document.getElementById('target');
+    const specificGroup = document.getElementById('specific-user-group');
+    const roleGroup = document.getElementById('role-group');
+    const titleInput = document.getElementById('title');
+    const subtitleInput = document.getElementById('subtitle');
+    const descriptionInput = document.getElementById('description');
+    const imageInput = document.getElementById('image_file');
+
+    function updateTargetFields() {
+      specificGroup.style.display = targetSelect.value === 'specific' ? 'flex' : 'none';
+      roleGroup.style.display = targetSelect.value === 'role' ? 'flex' : 'none';
+    }
+
+    function updatePreview() {
+      document.getElementById('preview-title').textContent = titleInput.value || 'Din titel vises her';
+      document.getElementById('preview-subtitle').textContent = subtitleInput.value || '';
+      document.getElementById('preview-description').textContent = descriptionInput.value || 'Skriv en beskrivelse for at se preview.';
+      const wrap = document.querySelector('.notification-image-wrapper');
+      if (imageInput.files && imageInput.files[0]) {
+        const reader = new FileReader();
+        reader.onload = function (e) {
+          document.getElementById('preview-image').src = e.target.result;
+          wrap.style.display = 'block';
+        };
+        reader.readAsDataURL(imageInput.files[0]);
+      } else {
+        wrap.style.display = 'none';
+      }
+    }
+
+    targetSelect.addEventListener('change', function () { updateTargetFields(); updatePreview(); });
+    titleInput.addEventListener('input', updatePreview);
+    subtitleInput.addEventListener('input', updatePreview);
+    descriptionInput.addEventListener('input', updatePreview);
+    imageInput.addEventListener('change', updatePreview);
+    updateTargetFields();
+  })();
+</script>
 {% endblock %}

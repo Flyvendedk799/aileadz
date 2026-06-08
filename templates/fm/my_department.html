@@ -3,9 +3,20 @@
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Min afdeling{% endblock %}
 {% block topbar_sub %}{{ department }} · {{ employees|length }} medarbejder{{ 'e' if employees|length != 1 else '' }}.{% endblock %}
+{% from 'fm/_macros.html' import empty %}
+{% block extra_head %}
+<style>
+  .dep-charts { display: grid; grid-template-columns: 1fr 1.6fr; gap: 16px; margin: 0 0 18px; align-items: start; }
+  .dep-chart-card { padding: 18px; }
+  .dep-chart-card .ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
+  .dep-chart-card .ch-head h3 { font-size: 14.5px; font-weight: 700; }
+  .dep-chart-card p { font-size: 12px; color: var(--fm-ink-2); margin: 0 0 12px; }
+  @media (max-width: 980px) { .dep-charts { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+  {% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set util = budget.utilization|float %}
   {% set barcol = 'var(--fm-danger)' if util > 90 else ('var(--fm-warning)' if util > 80 else 'var(--fm-success)') %}
@@ -19,6 +30,19 @@
   {% if budget.annual_budget > 0 %}
   <div class="fm-prog thin" style="margin-bottom:18px"><span style="width:{{ [util,100]|min }}%;background:{{ barcol }}"></span></div>
   {% endif %}
+
+  <section class="dep-charts">
+    <div class="fm-card dep-chart-card" data-reveal data-d="1">
+      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-wallet"></i></span><h3>Budgetudnyttelse {{ fiscal_year }}</h3></div>
+      <p>Forbrugt vs. resterende af afdelingens årsbudget.</p>
+      <div class="fm-chart-wrap"><canvas id="depBudgetChart" aria-label="Cirkeldiagram: forbrugt mod resterende del af afdelingens årsbudget" role="img"></canvas></div>
+    </div>
+    <div class="fm-card dep-chart-card" data-reveal data-d="2">
+      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-chart-simple"></i></span><h3>Aktivitet pr. medarbejder</h3></div>
+      <p>Gennemførte kurser pr. medarbejder i afdelingen.</p>
+      <div class="fm-chart-wrap"><canvas id="depActivityChart" aria-label="Søjlediagram: antal gennemførte kurser pr. medarbejder" role="img"></canvas></div>
+    </div>
+  </section>
 
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-people-group"></i> Team</span><h2 class="fm-section-title">Medarbejdere i {{ department }}</h2></div></div>
   <div class="fm-table-wrap">
@@ -34,7 +58,7 @@
         <td style="font-size:12px;color:var(--fm-ink-2)">{{ emp.last_login.strftime('%d/%m/%Y') if emp.last_login else '-' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="7" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen medarbejdere fundet i denne afdeling.</td></tr>
+      <tr><td colspan="7" style="padding:0">{{ empty('Ingen medarbejdere', 'Der er endnu ikke registreret medarbejdere i ' ~ department ~ '.', 'fa-users') }}</td></tr>
       {% endfor %}
     </tbody></table>
   </div>
@@ -63,9 +87,40 @@
         <td style="font-size:12px;color:var(--fm-ink-2)">{{ o.created_at.strftime('%d/%m/%Y') if o.created_at else '-' }}</td>
       </tr>
       {% else %}
-      <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen ordrer endnu.</td></tr>
+      <tr><td colspan="6" style="padding:0">{{ empty('Ingen ordrer endnu', 'Kursusordrer fra afdelingens medarbejdere vises her.', 'fa-cart-shopping') }}</td></tr>
       {% endfor %}
     </tbody></table>
   </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+
+  // --- Doughnut: budget utilisation (spent vs remaining) ---
+  var spent = {{ budget.spent|default(0)|float }};
+  var remaining = {{ budget.remaining|default(0)|float }};
+  if (remaining < 0) remaining = 0; // over budget -> nothing left to show as available
+  FMChart.doughnut('depBudgetChart', {
+    labels: ['Forbrugt', 'Resterende'],
+    values: [spent, remaining],
+    empty: 'Intet budget registreret for året'
+  });
+
+  // --- Bar: completed courses per employee ---
+  var emps = {{ (employees or [])|list|tojson|safe }};
+  var withActivity = emps
+    .map(function (e) { return { name: e.username || '—', completed: Number(e.total_courses_completed) || 0 }; })
+    .filter(function (e) { return e.completed > 0; })
+    .sort(function (a, b) { return b.completed - a.completed; })
+    .slice(0, 12);
+  FMChart.bar('depActivityChart', {
+    labels: withActivity.map(function (e) { return e.name; }),
+    series: [{ label: 'Gennemførte kurser', data: withActivity.map(function (e) { return e.completed; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
+    horizontal: withActivity.length > 6,
+    empty: 'Ingen gennemførte kurser endnu'
+  });
+})();
+</script>
 {% endblock %}

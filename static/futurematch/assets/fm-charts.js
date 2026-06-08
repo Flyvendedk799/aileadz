@@ -110,11 +110,17 @@
           };
         })
       },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        plugins: { legend: { display: series.length > 1, position: 'bottom' }, tooltip: tooltip() },
-        scales: { y: { beginAtZero: true, ticks: { precision: 0 } }, x: { grid: { display: false } } }
-      }
+      options: (function () {
+        var yScale = { beginAtZero: true, ticks: { precision: 0 } };
+        // Optional fixed upper bound on the value axis (e.g. 0..5 for a skill
+        // level trend) so a small movement isn't exaggerated by auto-scaling.
+        if (opts.max != null) yScale.max = Number(opts.max);
+        return {
+          responsive: true, maintainAspectRatio: false,
+          plugins: { legend: { display: series.length > 1, position: 'bottom' }, tooltip: tooltip() },
+          scales: { y: yScale, x: { grid: { display: false } } }
+        };
+      })()
     });
   }
 

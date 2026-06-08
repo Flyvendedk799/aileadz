@@ -56,7 +56,12 @@
   }
 
   function tooltip() {
-    return { backgroundColor: 'rgba(15,23,42,.92)', padding: 12, cornerRadius: 8, displayColors: true,
+    // Token-bound so the tooltip surface inverts in dark mode and re-skins under
+    // white-label, instead of a hardcoded slate that disappears on dark backgrounds.
+    var bg = cssVar('--fm-tooltip-bg', '#1a211d');
+    var ink = cssVar('--fm-tooltip-ink', '#ffffff');
+    return { backgroundColor: bg, titleColor: ink, bodyColor: ink,
+             padding: 12, cornerRadius: 8, displayColors: true,
              titleFont: { weight: '600' }, bodyFont: { size: 12 } };
   }
 

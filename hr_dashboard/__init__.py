@@ -496,7 +496,9 @@ def create_hr_dashboard_blueprint():
             # Merge from both enterprise (employee_skills_matrix) and chatbot (user_skills) tables
             skills_summary = {'total_skills': 0, 'employees_with_skills': 0, 'critical_gaps': 0, 'top_skills': [], 'critical_gap_list': []}
             try:
-                level_map_sql = "CASE skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 3 WHEN 'ekspert' THEN 4 ELSE 2 END"
+                # CANONICAL SCALE 1-5 (matches HR matrix/targets + viz); chatbot
+                # 4-label enum spread onto 1-5 so ekspert reaches the ceiling.
+                level_map_sql = "CASE skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END"
 
                 # Unified skill count: enterprise + chatbot
                 cur.execute(f"""
@@ -1120,7 +1122,9 @@ def create_hr_dashboard_blueprint():
             cur.close()
 
             # Get all employee skills for search/browse (merge enterprise + chatbot)
-            level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 3 WHEN 'ekspert' THEN 4 ELSE 2 END"
+            # CANONICAL SCALE 1-5 (matches HR matrix/targets + viz); chatbot
+            # 4-label enum spread onto 1-5 so ekspert reaches the ceiling.
+            level_map = "CASE us.skill_level WHEN 'begynder' THEN 1 WHEN 'mellem' THEN 2 WHEN 'avanceret' THEN 4 WHEN 'ekspert' THEN 5 ELSE 2 END"
             cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             cur2.execute(f"""
                 SELECT skill_name, current_level, username, department, job_title, user_id
@@ -1960,7 +1964,10 @@ def create_hr_dashboard_blueprint():
                         WHERE username = %s
                         ORDER BY skill_name
                     """, (emp_username,))
-                    level_map = {'begynder': 1, 'mellem': 2, 'avanceret': 3, 'ekspert': 4}
+                    # CANONICAL SCALE 1-5: same mapping as hr_tools.SKILL_LEVEL_MAP
+                    # and the SQL level_maps above, so the employee detail view
+                    # agrees with the dashboard radar/KPIs.
+                    level_map = {'begynder': 1, 'mellem': 2, 'avanceret': 4, 'ekspert': 5}
                     for chatbot_sk in cur.fetchall():
                         if chatbot_sk['skill_name'].lower() not in seen_skills:
                             employee_skills.append({

@@ -420,25 +420,41 @@ def _job_company_analytics_rollup(app):
 
 
 def _job_compliance_recheck(app):
-    """Re-derive compliance state on a cadence (thin guarded pass for now).
+    """Daily: re-derive compliance per company and raise proactive recert nudges.
 
-    EXTENSION POINT: today this is a no-op safety pass — it enumerates active
-    companies so the cadence/bookkeeping is wired up, but does not yet mutate or
-    notify. When the compliance re-derivation is ready (e.g. re-evaluating
-    mandatory-training/retention windows per company), call it here per
-    ``cid`` inside the loop. Keep it guarded and company-scoped.
+    Fills the previously no-op extension point (plan #16). Per active company it
+    delegates to ``compliance_service.recheck_company`` which re-derives the EXACT
+    same compliance status the HR matrix/chatbot use (via
+    ``hr_tools.derive_company_compliance``) and, for any requirement that is
+    expiring/overdue/missing, raises an aggregate (k-anon-safe, counts-only)
+    ``company_notifications`` card with recent-duplicate dedupe — escalating
+    statutory-overdue cases via the branded email path when MAIL is configured.
+
+    Bounded per pass by ``active_company_ids`` (DEFAULT_COMPANY_BATCH); the
+    cross-worker claim guard lives at the job level (``_claim``). Each company is
+    fully guarded so one failure never aborts the batch.
     """
+    try:
+        from compliance_service import recheck_company
+    except Exception as e:
+        return {'error': "compliance_service import failed: %s" % e}
+    companies = 0
+    notifications = 0
+    emails = 0
+    errors = 0
     with app.app_context():
         ids = active_company_ids()
-    checked = 0
-    for cid in ids:
-        try:
-            # --- extension point: re-derive compliance for `cid` here ---
-            # e.g.  from compliance_engine import recheck_company; recheck_company(app, cid)
-            checked += 1
-        except Exception as e:
-            logger.warning("scheduler: compliance recheck failed for company %s: %s", cid, e)
-    return {'companies': checked, 'noop': True}
+        for cid in ids:
+            companies += 1
+            try:
+                summary = recheck_company(cid) or {}
+                notifications += int(summary.get('notifications') or 0)
+                emails += int(summary.get('emails') or 0)
+            except Exception as e:
+                errors += 1
+                logger.warning("scheduler: compliance recheck failed for company %s: %s", cid, e)
+    return {'companies': companies, 'notifications': notifications,
+            'emails': emails, 'errors': errors}
 
 
 # ── Job registry ─────────────────────────────────────────────────────────────

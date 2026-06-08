@@ -5,13 +5,7 @@
 {% block topbar_sub %}Dine direkte referencer, deres læring og ordrer, der venter på din godkendelse.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
-    <a class="pg-tab active" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-people-group"></i> Mit team</a>
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a>
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-shield-halved"></i> Compliance</a>
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.bulk_assign_form') }}"><i class="fa-solid fa-route"></i> Tildel forløb</a>
-  </div>
+  {% set active_hr_page = 'team' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set s = summary or {} %}
   <div class="kpi-row">

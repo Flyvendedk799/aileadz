@@ -5,7 +5,7 @@
 {% block topbar_sub %}{{ agreements|length }} aftale{{ 'r' if agreements|length != 1 else '' }} · rabatter med kursusleverandører.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.supplier_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a></div>
+{% set active_hr_page = 'suppliers' %}{% include 'fm/_hr_subnav.html' %}
 
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-handshake"></i> Aftaler</span><h2 class="fm-section-title">Leverandøraftaler</h2></div>
     <div class="fm-flex fm-gap8">

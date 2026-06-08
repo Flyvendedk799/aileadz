@@ -39,6 +39,11 @@
   --fm-line-2:    #d6d4c8;
   --fm-ring:      rgba(12, 107, 98, 0.22);
 
+  /* Chart/overlay tooltip surface — mirrors the .fm-tip pattern so data-viz
+     tooltips stay token-bound, dark-mode-correct and white-label-friendly. */
+  --fm-tooltip-bg:   #1a211d;
+  --fm-tooltip-ink:  #ffffff;
+
   /* Type */
   --ff-display: "Bricolage Grotesque", "Hanken Grotesk", system-ui, sans-serif;
   --ff-sans:    "Hanken Grotesk", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
@@ -96,6 +101,9 @@
   --fm-line:      rgba(255, 255, 255, 0.09);
   --fm-line-2:    rgba(255, 255, 255, 0.15);
   --fm-ring:      rgba(43, 182, 166, 0.3);
+
+  --fm-tooltip-bg:   #2a312d;
+  --fm-tooltip-ink:  #ecefea;
 
   --sh-xs: 0 1px 2px rgba(0, 0, 0, 0.4);
   --sh-sm: 0 2px 6px rgba(0, 0, 0, 0.4), 0 10px 24px rgba(0, 0, 0, 0.35);

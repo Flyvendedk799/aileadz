@@ -1,9 +1,11 @@
-{# Embedded, collapsible HR AI assistant. Include near the end of a page's content:
-       {% include 'fm/_ai_panel.html' %}
+{# Embedded, collapsible HR AI assistant. Auto-included on every HR page via
+   fm/_hr_subnav.html (the canonical HR-only inclusion point) — it is deliberately
+   NOT placed in fm_base.html, which 94 admin/vendor/public/employee templates extend.
    Reuses the existing SSE endpoint (hr_dashboard.hr_chatbot_ask) so users can ask
-   questions without leaving the dashboard. Only renders for HR-capable users. #}
-{% if session.get('company_role') in ['company_admin','hr_manager','department_head'] or session.get('role') == 'admin' %}
-<div class="fm-aip" id="fmAip" aria-live="polite">
+   questions without leaving the dashboard. Only renders for HR-capable users.
+   The JS self-guards against a duplicate #fmAip if a page somehow includes it twice. #}
+{% if session is defined and (session.get('company_role') in ['company_admin','hr_manager','department_head'] or session.get('role') == 'admin') %}
+<div class="fm-aip" id="fmAip" aria-live="polite" data-aip-page="{{ active_hr_page | default('') }}">
   <button type="button" class="fm-aip-fab" id="fmAipFab" aria-label="HR AI-assistent">
     <i class="fa-solid fa-robot"></i><span>HR AI</span>
   </button>
@@ -28,14 +30,54 @@
 </div>
 <script>
 (function () {
+  var root = document.getElementById('fmAip');
+  // Self-guard: if a page somehow includes this partial twice, only wire the first.
+  if (!root || root.dataset.aipInit) return;
+  root.dataset.aipInit = '1';
   var fab = document.getElementById('fmAipFab'),
       panel = document.getElementById('fmAipPanel'),
       closeb = document.getElementById('fmAipClose'),
       form = document.getElementById('fmAipForm'),
       input = document.getElementById('fmAipInput'),
-      body = document.getElementById('fmAipBody');
+      body = document.getElementById('fmAipBody'),
+      chipWrap = body ? body.querySelector('.fm-aip-chips') : null;
   if (!fab) return;
   var ASK = "{{ url_for('hr_dashboard.hr_chatbot_ask') }}";
+  var page = root.getAttribute('data-aip-page') || '';
+
+  // Page-aware context: a short Danish phrase prepended to each question so the
+  // advisor knows which HR view the user is standing on, plus tailored quick chips.
+  var PAGES = {
+    budgets:    { ctx: 'budgetterne',           chips: ['Hvilke afdelinger er tæt på budgettet?', 'Hvor meget er der tilbage i år?'] },
+    roi:        { ctx: 'ROI',                    chips: ['Hvad er vores ROI på læring?', 'Hvilke kurser giver mest værdi?'] },
+    compliance: { ctx: 'compliance',            chips: ['Hvem mangler compliance?', 'Hvilke krav udløber snart?'] },
+    skill_gaps: { ctx: 'kompetencer',           chips: ['Største kompetencegap lige nu?', 'Hvilke afdelinger har størst gap?'] },
+    suppliers:  { ctx: 'leverandører',          chips: ['Hvilke leverandører bruger vi mest?', 'Hvilke aftaler udløber snart?'] },
+    learning_paths: { ctx: 'læringsforløb',     chips: ['Hvilke forløb halter?', 'Hvem er bagud på deadlines?'] },
+    learning_analytics: { ctx: 'læringsanalyse', chips: ['Hvornår lærer folk mest?', 'Hvilke kurser er mest populære?'] },
+    approvals:  { ctx: 'godkendelser',          chips: ['Hvilke ordrer afventer godkendelse?', 'Hvad bør jeg prioritere?'] },
+    team:       { ctx: 'mit team',              chips: ['Hvordan klarer mit team sig?', 'Hvem har brug for opmærksomhed?'] },
+    employees:  { ctx: 'medarbejdere',          chips: ['Hvem er inaktive på læring?', 'Hvem er længst med deres forløb?'] },
+    departments:{ ctx: 'afdelinger',            chips: ['Hvilken afdeling klarer sig bedst?', 'Hvor er der flest gap?'] }
+  };
+  var info = PAGES[page];
+
+  // Swap in page-tailored quick chips when we have them for this view.
+  if (info && info.chips && chipWrap) {
+    chipWrap.innerHTML = '';
+    info.chips.forEach(function (label) {
+      var b = document.createElement('button');
+      b.type = 'button'; b.className = 'fm-aip-chip'; b.textContent = label;
+      chipWrap.appendChild(b);
+    });
+  }
+
+  function withContext(q) {
+    // Soft, non-overriding hint — the user's actual question stays primary.
+    if (info && info.ctx) { return '(Jeg ser på ' + info.ctx + '-siden.) ' + q; }
+    return q;
+  }
+
   function toggle(open) { panel.hidden = !open; if (open) setTimeout(function(){ input.focus(); }, 50); }
   fab.addEventListener('click', function () { toggle(panel.hidden); });
   closeb.addEventListener('click', function () { toggle(false); });
@@ -55,7 +97,7 @@
     addMsg('user', q); input.value = '';
     var out = addMsg('bot', '…');
     var acc = '';
-    fetch(ASK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q }) })
+    fetch(ASK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: withContext(q), page: page }) })
       .then(function (r) {
         if (!r.body) { out.textContent = 'Kunne ikke hente svar.'; return; }
         var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';

@@ -6,6 +6,55 @@ from flask import session, current_app, Response, stream_with_context
 from db_compat import close_flask_mysql_connection
 from hr_tools import execute_hr_tool
 
+# Grounding / prompt-injection hardening helpers. Guarded import so a missing or
+# broken module can never crash create_app or the live HR agent loop — we fall
+# back to identity delimiting (text passed through unchanged) if it's
+# unavailable. Mirrors the employee path (app1/agent.py) verbatim so HR answers
+# are as safe as employee answers.
+try:
+    import grounding as _grounding
+except Exception:  # pragma: no cover - boot-safety
+    _grounding = None
+
+
+def _fence(label, text):
+    """Wrap tenant/user-supplied text as DATA via grounding.delimit_untrusted.
+
+    Use at every point where tenant-controlled free text (company name, the HR
+    user's display name, department label) enters the system prompt/context, so
+    a stored prompt-injection in any of those values can't hijack the HR system
+    prompt. Falls back to the raw text (identity) if grounding is unavailable or
+    raises, so context assembly never breaks and behavior degrades gracefully.
+    """
+    try:
+        if _grounding is not None:
+            fenced = _grounding.delimit_untrusted(label, text)
+            if fenced:
+                return fenced
+    except Exception:
+        pass
+    return text if isinstance(text, str) else ("" if text is None else str(text))
+
+
+def _hr_grounding_evidence(runtime_result):
+    """Build the chain-of-custody evidence base for THIS HR turn.
+
+    Flattens the raw tool-result outputs the model actually saw into a flat list
+    of strings that grounding.claims_supported accepts. The HR money-quoting
+    figures (budgets, spend, ROI, headcount) live in those tool outputs, so an
+    answer that asserts a figure absent from them is a likely hallucination.
+    Never raises — degrades to an empty evidence list.
+    """
+    evidence = []
+    try:
+        for tr in getattr(runtime_result, "tool_results", None) or []:
+            out = getattr(tr, "output", None)
+            if out:
+                evidence.append(out)
+    except Exception:
+        pass
+    return evidence
+
 
 HR_CHAT_MEMORY = {}
 HR_SESSION_TTL = 3600
@@ -107,14 +156,21 @@ def handle_hr_ask(user_query, flask_session):
     company_name = flask_session.get('company_name', 'Virksomheden')
     user_role = flask_session.get('company_role', 'hr_manager')
     user_dept = flask_session.get('company_department', '')
+    user_name = flask_session.get('user', 'ukendt')
 
-    context_parts = [f"HR-BRUGER: {flask_session.get('user', 'ukendt')} (rolle: {user_role})"]
-    context_parts.append(f"VIRKSOMHED: {company_name}")
+    # The role is an internal enum (trusted); the company name, the HR user's
+    # display name and the department label are tenant-stored free text, so a
+    # stored prompt-injection in any of them must NOT be obeyed as instructions.
+    # Fence each as DATA (identity fallback keeps the value if grounding is off).
+    context_parts = [
+        f"HR-BRUGER (rolle: {user_role}): {_fence('HR-BRUGERNAVN', user_name)}",
+        f"VIRKSOMHED: {_fence('VIRKSOMHEDSNAVN', company_name)}",
+    ]
     if user_dept:
-        context_parts.append(f"AFDELING: {user_dept}")
+        context_parts.append(f"AFDELING: {_fence('AFDELING', user_dept)}")
 
     context_msg = {"role": "system", "content": "\n".join(context_parts)}
-    if len(messages) > 2 and messages[1].get("role") == "system" and messages[1].get("content", "").startswith("HR-BRUGER:"):
+    if len(messages) > 2 and messages[1].get("role") == "system" and messages[1].get("content", "").startswith("HR-BRUGER"):
         messages[1] = context_msg
     else:
         messages.insert(1, context_msg)
@@ -144,6 +200,7 @@ def handle_hr_ask(user_query, flask_session):
                 make_run_id,
                 prepare_messages_for_turn,
                 run_agent_with_fallback,
+                update_agent_run_quality,
                 user_facing_error_message,
             )
             from ai_tool_registry import get_hr_tool_selection, make_tool_choice, tool_name, toolset_enabled
@@ -268,6 +325,47 @@ def handle_hr_ask(user_query, flask_session):
                     yield f"data: {json.dumps({'type': 'text', 'content': token})}\n\n"
             elif full_text:
                 yield f"data: {json.dumps({'type': 'text', 'content': full_text})}\n\n"
+
+            # ── Grounding circuit-breaker (HR money-quoting path) ──
+            # HR answers quote real budgets, spend, ROI and headcount. After the
+            # complete answer has streamed, validate it against THIS turn's tool
+            # results (the canonical source for those figures) and, if it asserts
+            # a price/date/title not backed by them, append at most ONE guarded
+            # Danish disclaimer (log-don't-block — we never suppress the answer,
+            # only nudge verification). The violation is logged through the
+            # existing ai_runtime quality path so the dormant grounding_violation
+            # column finally populates for HR turns. Pure check + trailing note =
+            # zero new API cost. Fully guarded so the SSE path is never broken.
+            grounding_violation = False
+            try:
+                if (
+                    _grounding is not None
+                    and runtime_result.tool_results
+                    and full_text.strip()
+                ):
+                    _verdict = _grounding.grounding_disclaimer(
+                        full_text, _hr_grounding_evidence(runtime_result)
+                    )
+                    if _verdict.get("violation"):
+                        grounding_violation = True
+                        disclaimer = _verdict.get("disclaimer") or ""
+                        if disclaimer:
+                            note = "\n\n" + disclaimer
+                            full_text += note
+                            yield f"data: {json.dumps({'type': 'text', 'content': note})}\n\n"
+            except Exception as _grounding_err:
+                print(f"[HR Grounding Check Error] {_grounding_err}")
+
+            # Backfill the grounding flag onto the run row logged above (guarded,
+            # idempotent, no-op when the flag is False/None or tracing is off).
+            try:
+                update_agent_run_quality(
+                    getattr(current_app, "mysql", None),
+                    run_id=run_id,
+                    grounding_violation=grounding_violation,
+                )
+            except Exception:
+                pass
 
             messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
             HR_CHAT_MEMORY[hr_sid] = prune_conversation_memory(messages, keep_recent=16, trigger_at=28)

@@ -1118,6 +1118,12 @@ def ensure_ai_log_tables(mysql) -> None:
             ("compaction_level", "VARCHAR(30) DEFAULT 'normal'"),
             ("runtime_path", "VARCHAR(60) DEFAULT ''"),
             ("embedding_skipped", "TINYINT NULL"),
+            # Post-turn quality signal (Item #6): heuristic, reference-free, no
+            # API cost. NULL when no self-eval ran for the run.
+            ("self_eval_score", "FLOAT NULL"),
+            # Hallucination circuit-breaker flag (Item #1): 1 when the live
+            # chain-of-custody check found an unsupported price/date/title claim.
+            ("grounding_violation", "TINYINT NULL"),
         ):
             try:
                 cur.execute(f"ALTER TABLE ai_agent_runs ADD COLUMN {col} {ddl}")
@@ -1159,6 +1165,8 @@ def log_agent_run(
     compaction_level: str = "normal",
     runtime_path: str = "",
     embedding_skipped: Optional[bool] = None,
+    self_eval_score: Optional[float] = None,
+    grounding_violation: Optional[bool] = None,
 ) -> None:
     if not mysql or trace_sample_rate() <= 0:
         return
@@ -1168,14 +1176,19 @@ def log_agent_run(
         cur = mysql.connection.cursor()
         input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
         output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+        try:
+            self_eval_value = float(self_eval_score) if self_eval_score is not None else None
+        except (TypeError, ValueError):
+            self_eval_value = None
         cur.execute(
             """
             INSERT INTO ai_agent_runs
             (run_id, session_id, company_id, username, agent_scope, runtime, model,
              prompt_version, toolset_version, tool_names, response_id, status,
              fallback_reason, latency_ms, input_tokens, output_tokens, cached_tokens,
-             compaction_level, runtime_path, embedding_skipped)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+             compaction_level, runtime_path, embedding_skipped, self_eval_score,
+             grounding_violation)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """,
             (
                 run_id,
@@ -1198,7 +1211,60 @@ def log_agent_run(
                 compaction_level,
                 runtime_path,
                 (1 if embedding_skipped else 0 if embedding_skipped is False else None),
+                self_eval_value,
+                (1 if grounding_violation else 0 if grounding_violation is False else None),
             ),
+        )
+        mysql.connection.commit()
+        cur.close()
+    except Exception:
+        try:
+            mysql.connection.rollback()
+        except Exception:
+            pass
+
+
+def update_agent_run_quality(
+    mysql,
+    *,
+    run_id: str,
+    self_eval_score: Optional[float] = None,
+    grounding_violation: Optional[bool] = None,
+) -> None:
+    """Backfill the post-turn quality signals on an already-logged run row.
+
+    The agent logs the run row right after the tool loop, but the self-eval score
+    and grounding-violation flag are only known AFTER the answer has streamed.
+    Rather than duplicating the row, we UPDATE it by run_id once the final answer
+    is in hand. Fully guarded + idempotent: a missing column, missing row, or any
+    DB error degrades silently and never raises into the SSE path. No-op when both
+    signals are None or trace sampling is off.
+    """
+    if not mysql or trace_sample_rate() <= 0:
+        return
+    if self_eval_score is None and grounding_violation is None:
+        return
+    try:
+        refresh_flask_mysql_connection(mysql)
+        ensure_ai_log_tables(mysql)
+        sets = []
+        params: List[Any] = []
+        if self_eval_score is not None:
+            try:
+                sets.append("self_eval_score = %s")
+                params.append(float(self_eval_score))
+            except (TypeError, ValueError):
+                pass
+        if grounding_violation is not None:
+            sets.append("grounding_violation = %s")
+            params.append(1 if grounding_violation else 0)
+        if not sets:
+            return
+        params.append(run_id)
+        cur = mysql.connection.cursor()
+        cur.execute(
+            f"UPDATE ai_agent_runs SET {', '.join(sets)} WHERE run_id = %s",
+            tuple(params),
         )
         mysql.connection.commit()
         cur.close()

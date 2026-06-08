@@ -714,6 +714,134 @@ def run_direct_completion(
         raise
 
 
+# --- LLM-as-router for ambiguous intents --------------------------------------
+# The rule-based classifier (_classify_intent_local in app1/agent.py) is the
+# source of truth for everything it CAN classify. Its one ambiguous catch-all
+# ("discovery") lumps together genuinely different needs (learning_path,
+# skill_gap, comparison, profile_and_search). ONLY on that catch-all turn we do a
+# single cheap gpt-4o-mini classification to pick the real intent before the main
+# turn, and feed the refined intent into tool selection + model-tier routing.
+#
+# Cost/latency safety: this fires only on ambiguous turns (confident regex intents
+# skip it entirely), is bounded (tiny prompt, low max-tokens, short timeout), and
+# any error/timeout/garbage silently falls back to the regex result. A small
+# bounded in-process cache avoids repeat calls for the same text.
+
+# The fixed enum the router is allowed to return. Each label is already understood
+# by both _route_tier() (model tier) and get_employee_tool_selection() (tools).
+ROUTER_INTENT_ENUM = (
+    "learning_path",
+    "skill_gap",
+    "comparison",
+    "profile_and_search",
+    "discovery",
+)
+
+_ROUTER_CACHE: Dict[str, str] = {}
+_ROUTER_CACHE_MAX = 256
+
+_ROUTER_SYSTEM_PROMPT = (
+    "Du klassificerer en brugers besked til en dansk kursus- og kompetencerådgiver. "
+    "Vælg PRÆCIST ÉT af følgende intentioner og svar KUN med selve etiketten (intet andet):\n"
+    "- learning_path: brugeren vil have en læringssti/plan for at nå et mål eller en rolle "
+    "(\"lav en læringssti\", \"hvordan bliver jeg X\", \"plan for at lære Y\").\n"
+    "- skill_gap: brugeren spørger hvilke kompetencer de mangler "
+    "(\"hvad mangler jeg for at blive X\", \"hvilke kompetencer skal jeg have\").\n"
+    "- comparison: brugeren vil sammenligne kurser eller muligheder "
+    "(\"hvad er forskellen\", \"hvilket er bedst\", \"X vs Y\").\n"
+    "- profile_and_search: brugeren fortæller om sin egen baggrund/erfaring OG vil finde kurser.\n"
+    "- discovery: almindelig kursussøgning eller noget der ikke passer ovenfor.\n"
+    "Svar med ét ord fra: learning_path, skill_gap, comparison, profile_and_search, discovery."
+)
+
+
+def llm_router_enabled() -> bool:
+    """Env gate for the LLM-as-router.
+
+    Default is ON-for-ambiguous-only: the router only ever fires on the regex
+    catch-all, and is bounded + falls back on any failure, so the cost is tiny.
+    Disable completely (regex path stays the source of truth + fallback) with
+    AI_LLM_ROUTER=0 / false / off / no.
+    """
+    return (os.getenv("AI_LLM_ROUTER", "1") or "1").strip().lower() not in (
+        "0", "false", "no", "off", "",
+    )
+
+
+def _router_timeout_seconds() -> float:
+    try:
+        return float(os.getenv("AI_LLM_ROUTER_TIMEOUT_SECONDS", "4"))
+    except ValueError:
+        return 4.0
+
+
+def _parse_router_label(raw: Any, fallback: str) -> str:
+    """Defensively map a model response to one enum label; unknown -> fallback."""
+    if not isinstance(raw, str):
+        return fallback
+    text = raw.strip().lower()
+    if not text:
+        return fallback
+    # Exact match first, then substring (model may add punctuation/prose).
+    if text in ROUTER_INTENT_ENUM:
+        return text
+    for label in ROUTER_INTENT_ENUM:
+        if label in text:
+            return label
+    return fallback
+
+
+def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
+    """Single cheap gpt-4o-mini classification of an ambiguous turn.
+
+    Returns one label from ROUTER_INTENT_ENUM, or `fallback` (the regex result)
+    on any error/timeout/garbage. Cached per query text within the process.
+    Reuses the shared OpenAI client + fast_model() (no new client config).
+    """
+    if not llm_router_enabled():
+        return fallback
+    query = (user_query or "").strip()
+    if not query:
+        return fallback
+
+    cache_key = str(hash(query))
+    cached = _ROUTER_CACHE.get(cache_key)
+    if cached is not None:
+        return cached
+
+    label = fallback
+    try:
+        client = _openai_client()
+        # Short, per-request timeout so an ambiguous turn never stalls the SSE turn.
+        # with_options is the SDK's per-request override; guard for resilience.
+        with_options = getattr(client, "with_options", None)
+        scoped = with_options(timeout=_router_timeout_seconds()) if callable(with_options) else client
+        resp = scoped.chat.completions.create(
+            model=fast_model(),
+            messages=[
+                {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
+                {"role": "user", "content": query[:2000]},
+            ],
+            stream=False,
+            max_tokens=4,
+            temperature=0.0,
+        )
+        raw = resp.choices[0].message.content if resp.choices else ""
+        label = _parse_router_label(raw, fallback)
+    except Exception:
+        # Any error/timeout/unparseable response -> silently keep the regex result.
+        label = fallback
+
+    # Bounded cache: drop oldest-ish entry when full (simple, no LRU needed).
+    if len(_ROUTER_CACHE) >= _ROUTER_CACHE_MAX:
+        try:
+            _ROUTER_CACHE.pop(next(iter(_ROUTER_CACHE)))
+        except StopIteration:
+            pass
+    _ROUTER_CACHE[cache_key] = label
+    return label
+
+
 def _truncate_text(text: str, max_chars: int) -> str:
     text = text or ""
     if len(text) <= max_chars:

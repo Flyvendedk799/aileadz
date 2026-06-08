@@ -1370,15 +1370,39 @@ def handle_agentic_ask(user_query, session):
     user_profile_text = USER_PROFILES.get(sid, {}).get("summary", "")
     shown_count = len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
 
-    # Rule-based intent detection (replaces GPT-4o-mini API call)
-    intent = _classify_intent_local(user_query, messages, shown_count)
+    # Rule-based intent detection (replaces GPT-4o-mini API call). This stays the
+    # source of truth for everything it CAN classify, and the fallback whenever the
+    # LLM router is disabled, errors, or times out.
+    regex_intent = _classify_intent_local(user_query, messages, shown_count)
+    intent = regex_intent
     rewritten_query = ""  # The main model handles query optimization via tools
 
-    # Debug: log user query + intent classification
+    # LLM-as-router (item #2): the regex classifier's ONE ambiguous catch-all is
+    # "discovery" — it lumps together learning_path / skill_gap / comparison /
+    # profile_and_search. ONLY on that catch-all turn do a single cheap gpt-4o-mini
+    # classification to pick the real intent before the main turn, then feed the
+    # refined intent into tool selection + model-tier routing below. Confident regex
+    # intents skip the router entirely (no cost, no latency). Guarded: any failure
+    # falls back to the regex result inside classify_intent_llm itself.
+    router_fired = False
+    if regex_intent == "discovery":
+        try:
+            from ai_runtime import classify_intent_llm, llm_router_enabled
+            if llm_router_enabled():
+                router_fired = True
+                intent = classify_intent_llm(user_query, fallback=regex_intent)
+        except Exception:
+            intent = regex_intent  # never break the turn on a router failure
+
+    # Debug: log user query + intent classification (+ cheap router telemetry so its
+    # value vs the regex guess is measurable).
     try:
         log_debug(sid, "user_query", {
             "query": user_query,
             "intent": intent,
+            "regex_intent": regex_intent,
+            "router_fired": router_fired,
+            "router_changed": router_fired and intent != regex_intent,
             "logged_in": logged_in_user or False,
             "hint": "",
             "rewritten_query": rewritten_query,
@@ -1744,7 +1768,7 @@ def handle_agentic_ask(user_query, session):
                 intent=intent,
                 tool_count=len(all_tools),
                 token_estimate=token_estimate,
-                prefer_quality=intent in {"comparison", "buying", "team_buying", "profile_and_search"},
+                prefer_quality=intent in {"comparison", "buying", "team_buying", "profile_and_search", "learning_path", "skill_gap"},
             )
             run_id = make_run_id()
             compaction_level = compaction_level_for_messages(ephemeral_messages)

@@ -47,7 +47,8 @@ def _emit_event_safe(company_id, event_type, payload):
         logger.debug("order_service: emit_event(%s) skipped: %s", event_type, e)
 
 
-def _send_email_safe(to_email, subject, template_name, company_id, **context):
+def _send_email_safe(to_email, subject, template_name, company_id,
+                     dedupe_key=None, **context):
     """Send a branded transactional email. No-op without SMTP; never raises."""
     if not to_email:
         return
@@ -55,9 +56,146 @@ def _send_email_safe(to_email, subject, template_name, company_id, **context):
         from email_service import send_branded_email, _resolve_branding
         branding = _resolve_branding(company_id)
         send_branded_email(to_email, subject, template_name, branding,
-                           company_id=company_id, **context)
+                           company_id=company_id, dedupe_key=dedupe_key, **context)
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: email(%s) skipped: %s", template_name, e)
+
+
+def _app_base_url():
+    """Best-effort external base URL for email CTA links. '' when unknown."""
+    try:
+        import os
+        base = (os.getenv("APP_BASE_URL") or "").strip()
+        if base:
+            return base.rstrip("/")
+    except Exception:
+        pass
+    try:
+        from flask import current_app
+        base = (current_app.config.get("APP_BASE_URL") or "").strip()
+        return base.rstrip("/") if base else ""
+    except Exception:
+        return ""
+
+
+def _manager_recipient_emails(company_id):
+    """Manager-level recipient emails for a company. Reuses the SAME helper
+    digest_service uses (hr_manager / department_head / company_admin, active,
+    non-empty email). Returns a de-duplicated list of address strings. Never
+    raises — returns [] on any error / no DB.
+    """
+    cid = _int_or_none(company_id)
+    if cid is None:
+        return []
+    conn = _get_connection()
+    if conn is None:
+        return []
+    cur = None
+    try:
+        from digest_service import _recipients as _digest_recipients
+        cur = _dict_cursor(conn)
+        rows = _digest_recipients(cur, cid) or []
+        seen = set()
+        out = []
+        for r in rows:
+            email = (r.get("email") or "").strip()
+            if email and email.lower() not in seen:
+                seen.add(email.lower())
+                out.append(email)
+        return out
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("order_service: manager recipients lookup skipped: %s", e)
+        return []
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+
+
+# Don't re-send the same approval-needed / budget-overrun alert within this
+# window even if the underlying condition persists across multiple orders.
+_EMAIL_DEDUPE_HOURS = 24
+
+
+def _send_approval_needed_emails_safe(company_id, *, order_id, product_title,
+                                      price, department, requester):
+    """Email the order_approval_needed template to manager-level recipients.
+
+    Fired AFTER commit, best-effort: no-ops cleanly when SMTP is unconfigured
+    (the send layer is ops-gated) and when there are no manager recipients.
+    Recent-duplicate guarded per (order) so a flapping caller can't spam.
+    """
+    cid = _int_or_none(company_id)
+    if cid is None:
+        return
+    try:
+        from email_service import email_recently_sent
+        dedupe_key = "order_approval_needed:%s" % order_id
+        if email_recently_sent(dedupe_key, within_hours=_EMAIL_DEDUPE_HOURS,
+                               company_id=cid):
+            return
+        recipients = _manager_recipient_emails(cid)
+        if not recipients:
+            return
+        base = _app_base_url()
+        approvals_url = (base + "/hr/approvals") if base else ""
+        price_f = _to_float(price)
+        amount = ("%.0f" % price_f) if price_f > 0 else ""
+        for to_email in recipients:
+            _send_email_safe(
+                to_email,
+                "Kursusbestilling afventer godkendelse",
+                "order_approval_needed", cid,
+                dedupe_key=dedupe_key,
+                product_title=product_title or "",
+                amount=amount,
+                requester=requester or "",
+                department=(department or "") or "",
+                approvals_url=approvals_url,
+            )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("order_service: approval-needed email skipped: %s", e)
+
+
+def _send_budget_overrun_emails_safe(company_id, *, department, spent,
+                                     annual_budget, order_id):
+    """Email the budget_overrun_alert template to manager-level recipients.
+
+    Fired from the charge path when a department crosses its annual budget.
+    Best-effort + ops-gated + recent-duplicate guarded per (department) so a
+    department that stays over budget across many orders alerts at most once per
+    window.
+    """
+    cid = _int_or_none(company_id)
+    if cid is None:
+        return
+    try:
+        from email_service import email_recently_sent
+        dept = (department or "").strip()
+        dedupe_key = "budget_overrun_alert:%s:%s" % (cid, dept)
+        if email_recently_sent(dedupe_key, within_hours=_EMAIL_DEDUPE_HOURS,
+                               company_id=cid):
+            return
+        recipients = _manager_recipient_emails(cid)
+        if not recipients:
+            return
+        spent_f = _to_float(spent)
+        annual_f = _to_float(annual_budget)
+        for to_email in recipients:
+            _send_email_safe(
+                to_email,
+                "Budgetadvarsel: %s" % (dept or "afdeling"),
+                "budget_overrun_alert", cid,
+                dedupe_key=dedupe_key,
+                department=dept,
+                spent="%.0f" % spent_f,
+                annual_budget="%.0f" % annual_f,
+                order_id=order_id or "",
+            )
+    except Exception as e:  # pragma: no cover - defensive
+        logger.debug("order_service: budget-overrun email skipped: %s", e)
 
 
 def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0):
@@ -573,6 +711,18 @@ def create_order(ctx, *, product_handle, product_title, price,
                 product_title=product_title, order_id=order_id,
                 recipient_name=user_name or ctx.username or "",
             )
+        # Approval-needed: email the managers who can act on it, so the decision
+        # doesn't sit behind a login. Mirrors the in-app card above; best-effort
+        # + ops-gated + recent-duplicate guarded.
+        if needs_approval and ctx.company_id:
+            _send_approval_needed_emails_safe(
+                ctx.company_id,
+                order_id=order_id,
+                product_title=product_title,
+                price=price_f,
+                department=dept,
+                requester=ctx.username or user_name or "",
+            )
 
         return {
             "success": True,
@@ -817,7 +967,10 @@ def _maybe_charge(cur, row):
         )
 
         # C3: budget overrun — surface as an in-app card (in this transaction) +
-        # an outbox event. Best-effort; never blocks the charge.
+        # an outbox event. Best-effort; never blocks the charge. The branded
+        # email is deferred to the caller's POST-COMMIT phase (it needs its own
+        # connection + ops-gated send), so we stash the overrun details on the
+        # row for set_status to pick up rather than sending mid-transaction.
         annual = _to_float(brow.get("annual_budget"))
         if annual > 0 and new_spent > annual:
             _notify_company_admins_safe(
@@ -831,6 +984,13 @@ def _maybe_charge(cur, row):
                 "department": department, "spent": new_spent,
                 "annual_budget": annual, "order_id": row.get("order_id"),
             })
+            row["_budget_overrun"] = {
+                "company_id": company_id,
+                "department": department,
+                "spent": new_spent,
+                "annual_budget": annual,
+                "order_id": row.get("order_id"),
+            }
         return True
     except Exception as e:
         logger.warning("order_service: charge-on-transition failed: %s", e)
@@ -910,6 +1070,17 @@ def set_status(ctx, order_id, new_status):
 
         # --- cross-integration side effects (post-commit, best-effort) ------
         company_id = _int_or_none(row.get("company_id"))
+        # Budget overrun email: the charge above flagged a crossing on the row.
+        # Send the branded alert to managers now (post-commit, own connection).
+        _overrun = row.get("_budget_overrun")
+        if _overrun:
+            _send_budget_overrun_emails_safe(
+                _overrun.get("company_id"),
+                department=_overrun.get("department"),
+                spent=_overrun.get("spent"),
+                annual_budget=_overrun.get("annual_budget"),
+                order_id=_overrun.get("order_id"),
+            )
         if new_status in ("approved", "confirmed"):
             _event = "order.approved"
         elif new_status in _CANCELLED_LIKE_STATUSES:

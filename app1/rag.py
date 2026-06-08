@@ -696,6 +696,45 @@ def _compute_rrf_weights(query_tokens, bm25_ranked):
         return [1.0, 1.0]
 
 
+# Hard ceiling on the profile-conditioned candidate pool. Even the richest
+# profile never pulls more than this many candidates into the re-rank — keeps
+# the (already-fetched, in-memory) lexical+vector pool bounded so there is no
+# runaway cost. 40 comfortably covers a few dozen courses for re-ranking.
+PROFILE_CANDIDATE_LIMIT_CAP = 40
+
+
+def profile_candidate_limit(profile_boost, base_limit, cap=PROFILE_CANDIDATE_LIMIT_CAP):
+    """Scale the RETRIEVAL candidate pool up with profile richness (value-5).
+
+    Pure function (no I/O) so it is trivially unit-testable. The SHOWN result
+    count stays = base_limit; this only widens the candidate set that the
+    profile re-rank gets to reorder. Anonymous / thin-profile callers pass
+    profile_boost=None (or an empty boost) and get back exactly base_limit, so
+    there is no cost regression and the legacy path is preserved.
+
+    Richness signal = number of distinct profile target terms (desired skills +
+    learning-goal keywords + skill-gap terms) the learner has. Each ~4 distinct
+    terms adds one base_limit-sized "page" of candidates, capped at `cap`.
+
+    Returns an int >= base_limit, never above `cap`.
+    """
+    base = max(1, int(base_limit or 1))
+    if not profile_boost:
+        return base
+    target_terms = profile_boost.get("target_terms") if isinstance(profile_boost, dict) else None
+    richness = len(target_terms) if target_terms else 0
+    if richness <= 1:
+        # A single (or no) target term is a thin profile — no widening.
+        return base
+    # Each block of ~4 distinct target terms unlocks one extra base_limit page.
+    extra_pages = richness // 4
+    scaled = base * (1 + extra_pages)
+    # Always give a meaningfully wider pool than base for any rich profile, so
+    # the re-rank has material even when base_limit is tiny (e.g. 4).
+    scaled = max(scaled, base + 8)
+    return max(base, min(scaled, max(base, int(cap))))
+
+
 def semantic_search_courses(query, limit=5, min_score=0.35, shown_handles=None, user_prefs=None):
     detailed = semantic_search_courses_detailed(query, limit=limit, min_score=min_score,
                                                  shown_handles=shown_handles, user_prefs=user_prefs)
@@ -824,7 +863,8 @@ def _get_search_cache_key(query, limit, shown_handles, user_prefs):
     return hashlib.md5(key.encode()).hexdigest()
 
 
-def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handles=None, user_prefs=None):
+def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handles=None,
+                                     user_prefs=None, candidate_limit=None):
     """
     Hybrid search: combines vector similarity with BM25 keyword matching
     using weighted Reciprocal Rank Fusion for best results.
@@ -832,6 +872,15 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     Args:
         shown_handles: set of product handles already shown this session (soft deprioritized)
         user_prefs: dict with optional keys {location, format, budget_range} from user profile
+        candidate_limit: optional retrieval pool size (value-5). When None or
+            <= limit, behaviour is byte-for-byte the legacy path — exactly `limit`
+            products are returned from the standard candidate pool. When a caller
+            with a rich profile passes a larger value, the lexical+vector
+            candidate set (already fetched in-memory, no extra API/embedding
+            cost) is widened and up to `candidate_limit` ranked products are
+            returned so a downstream profile re-rank has more material to
+            reorder. The caller is responsible for slicing back to its shown
+            top-N. Defaults to None so all existing callers are unaffected.
 
     Returns:
         dict with "products", "debug", "confidence" keys on success,
@@ -841,8 +890,16 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     if not products:
         return {"error": "index_not_loaded", "message": "Produktindekset er ikke indlæst."}
 
+    # value-5: the candidate pool (how many ranked products we return) can be
+    # widened beyond the shown `limit` for rich-profile callers. `pool` only
+    # ever grows the candidate set; it never shrinks below `limit`. The internal
+    # BM25/vector fetch widths scale with it so the wider pool is actually filled
+    # from the lexical+vector indices (both in-memory — no extra paid calls).
+    pool = max(int(limit or 1), int(candidate_limit) if candidate_limit else 0)
+    retrieval_width = max(20, pool)
+
     # 5.3: Check search cache (shown_handles excluded from key — applied as post-filter)
-    cache_key = _get_search_cache_key(query, limit, shown_handles, user_prefs)
+    cache_key = _get_search_cache_key(query, pool, shown_handles, user_prefs)
     now = time.time()
     if cache_key in _search_cache:
         cached_result, cached_at = _search_cache[cache_key]
@@ -865,7 +922,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     query_tokens = _tokenize(query)
     core_query_tokens = _core_query_tokens(query_tokens)
     expanded_tokens, fuzzy_corrections = _expand_query_tokens(query_tokens)
-    bm25_ranked = _bm25_search(expanded_tokens, limit=20)
+    bm25_ranked = _bm25_search(expanded_tokens, limit=retrieval_width)
 
     vector_ranked = []
     query_vector = None
@@ -873,7 +930,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     if not skip_embedding:
         query_vector = get_query_embedding(query)
         if query_vector:
-            vector_ranked = _vector_search(query_vector, limit=20)
+            vector_ranked = _vector_search(query_vector, limit=retrieval_width)
 
     # ── 3. Weighted Reciprocal Rank Fusion ──
     # Weight depends on query specificity: specific queries favor BM25, vague favor vectors
@@ -890,7 +947,9 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     # ── 4. Relative gap filtering (replaces absolute thresholds) ──
     if vector_ranked and query_vector and len(fused) > 1:
         vector_scores = {idx: score for idx, score in vector_ranked}
-        bm25_top_set = {bidx for bidx, _ in bm25_ranked[:10]}
+        # Widen the BM25 "strong match" guard in lock-step with the pool so a
+        # bigger candidate pool keeps more real lexical hits (legacy default 10).
+        bm25_top_set = {bidx for bidx, _ in bm25_ranked[:max(10, pool)]}
 
         # Keep results that are either strong vector matches or strong BM25 matches
         top_rrf_score = fused[0][1] if fused else 0
@@ -901,7 +960,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
             # Relative gap: keep if within 50% of top score, or strong BM25 match
             if rrf_score >= top_rrf_score * 0.5 or is_bm25_hit:
                 filtered_fused.append((doc_idx, rrf_score))
-        fused = filtered_fused if filtered_fused else fused[:limit]
+        fused = filtered_fused if filtered_fused else fused[:pool]
 
     # ── 5. Title-match scoring + topical sanity check ──
     # Strong differentiation: courses where query tokens appear in the TITLE
@@ -1008,7 +1067,14 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     )
     if len(reranked) >= 2 and core_query_tokens:
         if _should_run_cross_encoder(query, core_query_tokens, reranked, pre_confidence, top_vector_score):
-            reranked = _crossencoder_rerank(query, reranked, products, limit=limit)
+            # Let the reranker reorder the head it scores, but preserve the tail
+            # so a widened candidate pool (pool > limit) keeps its extra
+            # candidates for the caller's downstream profile re-rank.
+            rerank_head_len = min(len(reranked), max(limit, cross_encoder_max_candidates()))
+            reranked_head = _crossencoder_rerank(
+                query, reranked[:rerank_head_len], products, limit=rerank_head_len
+            )
+            reranked = reranked_head + reranked[rerank_head_len:]
 
     # ── 9. Confidence signal for AI ──
     confidence = pre_confidence
@@ -1024,7 +1090,11 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         query, core_query_tokens, reranked[:limit], confidence, top_vector_score
     ) and any("cross_encoder_score" in explain for _, _, explain in reranked[:3])
 
-    result_indices = [doc_idx for doc_idx, _, _ in reranked[:limit]]
+    # Return up to `pool` ranked products. When pool == limit (the default for
+    # every legacy caller) this is byte-for-byte the old behaviour; a rich-profile
+    # caller that asked for a wider pool gets the extra candidates and is expected
+    # to slice back to its own shown top-N after its profile re-rank.
+    result_indices = [doc_idx for doc_idx, _, _ in reranked[:pool]]
     selected_products = [products[idx] for idx in result_indices if idx < len(products)]
 
     diagnostics = {
@@ -1043,6 +1113,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         "top_vector_score": round(top_vector_score, 4),
         "confidence": confidence,
         "effective_limit": limit,
+        "candidate_pool": pool,
         "shown_handles_count": len(shown_handles),
         "selected": [
             {
@@ -1051,7 +1122,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
                 "score": round(score, 4),
                 "explain": explain,
             }
-            for idx, score, explain in reranked[:limit]
+            for idx, score, explain in reranked[:pool]
         ]
     }
     result = {"products": selected_products, "debug": diagnostics, "confidence": confidence}

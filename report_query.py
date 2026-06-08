@@ -143,11 +143,40 @@ def _days(days):
     return d
 
 
+def _floor_k():
+    """Resolve the active small-tenant suppression floor (k).
+
+    Mirrors kanon's env-overridable K_DEFAULT. Guarded: if the k-anon module is
+    missing or anything goes wrong we fall back to a conservative constant of 5
+    so the floor can never be silently weakened to 0/1 by an import failure.
+    """
+    try:
+        if _kanon is not None:
+            k = int(getattr(_kanon, 'K_DEFAULT', 5))
+            return k if k >= 1 else 5
+    except Exception:
+        pass
+    return 5
+
+
+def _small_tenant_note(k):
+    """Danish UI note explaining why a scalar company figure is suppressed.
+
+    Prefers kanon's canonical note (keeps wording consistent across the app),
+    falls back to a self-contained Danish string if k-anon is unavailable."""
+    try:
+        if _kanon is not None:
+            return _kanon.anon_note(k)
+    except Exception:
+        pass
+    return 'Grupper under k={k} er skjult af hensyn til anonymitet'.format(k=k)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
 
-def conversion_funnel(company_id=None, days=30):
+def conversion_funnel(company_id=None, days=30, suppress_floor=False):
     """Reconstruct the chatbot -> order conversion funnel with real SQL.
 
     The funnel stages are derived from the BI fact table
@@ -167,11 +196,20 @@ def conversion_funnel(company_id=None, days=30):
     Args:
         company_id: int tenant id, or ``None`` for platform-wide (admin).
         days: look-back window in days (clamped to 1..3650).
+        suppress_floor: when True, apply a SMALL-TENANT suppression floor. The
+            funnel is a scalar company-level count whose only safety rests on
+            aggregation — for a tenant with fewer than ``kanon.K_DEFAULT``
+            distinct sessions a single learner's journey is re-identifiable. In
+            that case every stage count/rate is zeroed and ``suppressed`` is set
+            with a Danish ``anon_note``. Tenant-facing HR routes pass True;
+            platform-wide admin (company_id=None) leaves it False (the
+            platform-wide cohort is always far above k).
 
     Returns:
         dict with keys ``sessions, searches, shown, ordered`` (ints),
         ``rate_search, rate_shown, rate_ordered, overall_rate`` (floats, %),
-        plus ``days`` and ``company_id`` echoed back. Always safe; never raises.
+        plus ``days``, ``company_id``, ``suppressed`` (bool) and ``anon_note``
+        (str|None) echoed back. Always safe; never raises.
     """
     d = _days(days)
     result = {
@@ -185,6 +223,8 @@ def conversion_funnel(company_id=None, days=30):
         'overall_rate': 0.0,   # sessions -> ordered
         'days': d,
         'company_id': company_id,
+        'suppressed': False,
+        'anon_note': None,
     }
 
     cur = _cursor()
@@ -244,6 +284,23 @@ def conversion_funnel(company_id=None, days=30):
         cur.execute(order_sql, (d,) + _ORDERED_STATUSES + order_scope_params)
         orow = cur.fetchone() or {}
         result['ordered'] = _int(orow.get('ordered'))
+
+        # ── small-tenant suppression floor (k-anon) ──
+        # The funnel is a scalar count whose safety rests on aggregation alone.
+        # For a tiny tenant a sub-k session cohort lets a single learner's
+        # journey be re-identified. When requested (HR-scoped calls), zero out
+        # every stage below the floor rather than expose it. Skipped entirely
+        # when there are 0 sessions (an empty funnel is not a privacy leak —
+        # it's just "no data"), so the empty-state copy still renders.
+        if suppress_floor:
+            k = _floor_k()
+            if 0 < result['sessions'] < k:
+                result['sessions'] = 0
+                result['searches'] = 0
+                result['shown'] = 0
+                result['ordered'] = 0
+                result['suppressed'] = True
+                result['anon_note'] = _small_tenant_note(k)
 
         # ── derived rates ──
         result['rate_search'] = _rate(result['searches'], result['sessions'])
@@ -372,7 +429,7 @@ def top_queries(company_id=None, days=30, limit=10):
     return rows_out
 
 
-def attributed_revenue(company_id=None, days=90):
+def attributed_revenue(company_id=None, days=90, suppress_floor=False):
     """AI-ROI attribution: revenue (DKK) on orders the chatbot adviser drove.
 
     Joins the BI fact table to ``course_orders`` on the shared session id
@@ -385,13 +442,25 @@ def attributed_revenue(company_id=None, days=90):
     Python. Tenant-scoped when a ``company_id`` is given; platform-wide when it
     is ``None``. Always safe; never raises.
 
+    Args:
+        company_id: int tenant id, or ``None`` for platform-wide (admin).
+        days: look-back window in days.
+        suppress_floor: when True, apply a SMALL-TENANT suppression floor. The
+            attributed-revenue headline is a scalar SUM/COUNT — for a tenant
+            with fewer than ``kanon.K_DEFAULT`` distinct attributed sessions a
+            single order's value is re-identifiable. In that case revenue /
+            orders / sessions / AOV are zeroed and ``suppressed`` is set with a
+            Danish ``anon_note``. Tenant-facing HR routes pass True;
+            platform-wide admin (company_id=None) leaves it False.
+
     Returns:
         dict::
             {'revenue': float,            # SUM(price) of AI-attributed orders
              'orders': int,               # COUNT of AI-attributed orders
              'sessions': int,             # distinct attributed chatbot sessions
              'avg_order_value': float,    # revenue / orders
-             'days': int, 'company_id': company_id}
+             'days': int, 'company_id': company_id,
+             'suppressed': bool, 'anon_note': str|None}
     """
     d = _days(days)
     result = {
@@ -401,6 +470,8 @@ def attributed_revenue(company_id=None, days=90):
         'avg_order_value': 0.0,
         'days': d,
         'company_id': company_id,
+        'suppressed': False,
+        'anon_note': None,
     }
 
     cur = _cursor()
@@ -435,6 +506,22 @@ def attributed_revenue(company_id=None, days=90):
             result['revenue'] = 0.0
         result['orders'] = _int(row.get('orders'))
         result['sessions'] = _int(row.get('sessions'))
+
+        # ── small-tenant suppression floor (k-anon) ──
+        # The DKK headline is a scalar SUM/COUNT; for a tiny tenant a single
+        # attributed order's value is re-identifiable. When requested (HR-scoped
+        # calls), suppress the whole figure below the floor. The cohort is the
+        # number of distinct attributed sessions. Skipped when there are 0
+        # sessions (no data is not a leak), so the empty state still renders.
+        if suppress_floor:
+            k = _floor_k()
+            if 0 < result['sessions'] < k:
+                result['revenue'] = 0.0
+                result['orders'] = 0
+                result['sessions'] = 0
+                result['suppressed'] = True
+                result['anon_note'] = _small_tenant_note(k)
+
         if result['orders']:
             result['avg_order_value'] = round(result['revenue'] / result['orders'], 2)
     except Exception as e:

@@ -1,0 +1,137 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Futurematch{% endblock %}
+{% block topbar_title %}Conversion-funnel{% endblock %}
+{% block topbar_sub %}Fra chatbot-samtale til kursusordre i din virksomhed (seneste {{ days }} dage).{% endblock %}
+{% import 'fm/_macros.html' as ui %}
+{% block extra_head %}
+<style>
+  /* Funnel bars — fully token-bound (--fm-*), dark-mode & a11y safe. */
+  .fn-funnel { display: flex; flex-direction: column; gap: 12px; padding: 8px 2px 4px; }
+  .fn-step { display: grid; grid-template-columns: 170px 1fr; gap: 14px; align-items: center; }
+  .fn-step .fn-label { font-size: 13px; font-weight: 650; color: var(--fm-ink-2); }
+  .fn-step .fn-label small { display: block; font-weight: 500; font-size: 11.5px; color: var(--fm-ink-3); margin-top: 2px; }
+  .fn-track { position: relative; height: 44px; border-radius: 10px; background: var(--fm-surface-3); overflow: hidden; }
+  .fn-fill { position: absolute; inset: 0 auto 0 0; display: flex; align-items: center; padding: 0 14px; min-width: 60px;
+    border-radius: 10px; color: #fff; font-weight: 700; font-size: 14px; white-space: nowrap;
+    background: linear-gradient(90deg, var(--fm-primary), color-mix(in srgb, var(--fm-primary) 60%, var(--fm-indigo))); }
+  .fn-fill.s2 { background: linear-gradient(90deg, var(--fm-indigo), color-mix(in srgb, var(--fm-indigo) 55%, var(--fm-primary))); }
+  .fn-fill.s3 { background: linear-gradient(90deg, color-mix(in srgb, var(--fm-primary) 50%, var(--fm-indigo)), var(--fm-indigo)); }
+  .fn-fill.s4 { background: linear-gradient(90deg, var(--fm-success), color-mix(in srgb, var(--fm-success) 60%, var(--fm-primary))); }
+  .fn-fill .fn-pct { margin-left: 10px; font-weight: 600; font-size: 12px; opacity: .9; }
+  .fn-rate-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 18px; }
+  .fn-rate { padding: 12px 14px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); }
+  .fn-rate .r-l { font-size: 11.5px; color: var(--fm-ink-3); text-transform: uppercase; letter-spacing: .03em; }
+  .fn-rate .r-v { font-size: 20px; font-weight: 800; margin-top: 4px; }
+  .fn-chart-wrap { position: relative; min-height: 260px; }
+  .fn-filter { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 14px; margin-top: 16px; }
+  .fn-filter .fn-field { display: flex; flex-direction: column; gap: 5px; }
+  .fn-filter .fm-select { min-width: 180px; }
+  .fn-anon { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--fm-ink-3);
+    border: 1px dashed color-mix(in srgb, var(--fm-ink-3) 45%, transparent); border-radius: 10px;
+    padding: 12px 14px; margin-top: 14px; background: var(--fm-surface-2); }
+  @media (max-width: 900px) {
+    .fn-step { grid-template-columns: 1fr; gap: 6px; }
+    .fn-rate-row { grid-template-columns: repeat(2, 1fr); }
+    .fn-filter .fm-select { min-width: 0; width: 100%; }
+    .fn-filter .fn-field { flex: 1 1 160px; }
+  }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% set active_hr_page = 'funnel' %}{% include 'fm/_hr_subnav.html' %}
+
+  {% set f = funnel or {} %}
+
+  {# --- Period drill-down (GET, auto-submit). Company is always the tenant. --- #}
+  <div class="fn-filter">
+    <form class="fn-filter" method="get" action="{{ url_for('hr_dashboard.funnel_dashboard') }}" style="margin-top:0">
+      <div class="fn-field">
+        <label class="fm-eyebrow" for="fnDays"><i class="fa-solid fa-calendar-days"></i> Periode</label>
+        <select id="fnDays" name="days" class="fm-select" onchange="this.form.submit()">
+          {% for d, lbl in [(7,'7 dage'),(30,'30 dage'),(90,'90 dage'),(180,'6 mdr.'),(365,'12 mdr.')] %}
+          <option value="{{ d }}" {{ 'selected' if days|int == d }}>{{ lbl }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <noscript><button type="submit" class="btn btn-soft btn-sm">Anvend</button></noscript>
+    </form>
+  </div>
+
+  {% if f.suppressed %}
+  <div class="fn-anon">
+    <i class="fa-solid fa-user-shield" style="opacity:.6"></i>
+    <span>{{ f.anon_note or 'Funnel-data er skjult af hensyn til anonymitet, da datagrundlaget er for lille.' }}</span>
+  </div>
+  {% elif not has_data %}
+  {{ ui.empty('Ingen funnel-data endnu', 'Når medarbejdere begynder at chatte, søge efter kurser og afgive ordrer, bygges hele rejsen fra samtale til ordre op her.', 'fa-filter-circle-dollar') }}
+  {% else %}
+
+  <!-- KPI row -->
+  <div class="kpi-row" style="margin-top:16px">
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Samtaler</div><div class="kv tnum">{{ f.sessions|default(0) }}</div><div class="kd">Unikke chatbot-samtaler</div></div></div>
+    <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-magnifying-glass"></i></span><div><div class="kl">Søgninger</div><div class="kv tnum">{{ f.searches|default(0) }}</div><div class="kd">Samtaler med kursussøgning</div></div></div>
+    <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-eye"></i></span><div><div class="kl">Produkter vist</div><div class="kv tnum">{{ f.shown|default(0) }}</div><div class="kd">Samtaler med anbefaling</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">Ordrer</div><div class="kv tnum">{{ f.ordered|default(0) }}</div><div class="kd">Samtaler der konverterede</div></div></div>
+  </div>
+
+  <!-- Funnel bars -->
+  <div class="fm-card" style="margin-top:16px;padding:18px">
+    <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-filter"></i> Konverteringsrejse</h3>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 14px">Andel af samtaler der når hvert trin, beregnet over de seneste {{ f.days|default(days) }} dage.</p>
+    {% set base = f.sessions if f.sessions else 1 %}
+    <div class="fn-funnel">
+      <div class="fn-step">
+        <div class="fn-label">Samtaler<small>Alle chatbot-samtaler</small></div>
+        <div class="fn-track"><div class="fn-fill" style="width:100%">{{ f.sessions|default(0) }}</div></div>
+      </div>
+      <div class="fn-step">
+        <div class="fn-label">Søgninger<small>Udløste en kursussøgning</small></div>
+        <div class="fn-track"><div class="fn-fill s2" style="width:{{ ((f.searches / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.searches|default(0) }}<span class="fn-pct">{{ f.rate_search|default(0) }}%</span></div></div>
+      </div>
+      <div class="fn-step">
+        <div class="fn-label">Produkter vist<small>Chatbotten anbefalede kurser</small></div>
+        <div class="fn-track"><div class="fn-fill s3" style="width:{{ ((f.shown / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.shown|default(0) }}<span class="fn-pct">{{ f.rate_shown|default(0) }}% af søgninger</span></div></div>
+      </div>
+      <div class="fn-step">
+        <div class="fn-label">Ordrer<small>Endte i en ordre</small></div>
+        <div class="fn-track"><div class="fn-fill s4" style="width:{{ ((f.ordered / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.ordered|default(0) }}<span class="fn-pct">{{ f.rate_ordered|default(0) }}% af visninger</span></div></div>
+      </div>
+    </div>
+
+    <div class="fn-rate-row">
+      <div class="fn-rate"><div class="r-l">Samtale → Søgning</div><div class="r-v tnum">{{ f.rate_search|default(0) }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Søgning → Visning</div><div class="r-v tnum">{{ f.rate_shown|default(0) }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Visning → Ordre</div><div class="r-v tnum">{{ f.rate_ordered|default(0) }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Samlet conversion</div><div class="r-v tnum" style="color:var(--fm-primary)">{{ f.overall_rate|default(0) }}%</div></div>
+    </div>
+  </div>
+
+  <!-- Daily volume chart (token-bound FMChart) -->
+  <div class="fm-card" style="margin-top:16px;padding:18px">
+    <h3 style="font-size:15px;font-weight:700;margin:0"><i class="fa-solid fa-chart-line"></i> Daglig samtalevolumen</h3>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:3px 0 12px">Antal interaktioner pr. dag de seneste {{ days }} dage.</p>
+    <div class="fn-chart-wrap"><canvas id="hrFunnelDailyChart"></canvas></div>
+  </div>
+
+  {% endif %}
+</div>
+{% endblock %}
+{% block extra_scripts %}
+{% include 'fm/_charts.html' %}
+<script>
+  (function () {
+    if (typeof FMChart === 'undefined') return;
+    var labels = {{ (daily_labels or [])|tojson }};
+    var data = {{ (daily_data or [])|tojson }};
+    if (document.getElementById('hrFunnelDailyChart')) {
+      FMChart.line('hrFunnelDailyChart', {
+        labels: labels,
+        series: [{ label: 'Interaktioner', data: data }],
+        empty: 'Ingen aktivitet i perioden'
+      });
+    }
+  })();
+</script>
+{% endblock %}

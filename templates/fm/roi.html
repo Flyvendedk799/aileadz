@@ -18,6 +18,41 @@
   </div>
   {% else %}
 
+  <!-- ===== AI-ATTRIBUTED REVENUE (renewal-justifying headline) ===== -->
+  {# Tenant-scoped (never platform-wide) with a k-anon small-tenant floor in
+     report_query: for a tiny tenant a single attributed order is re-identifying,
+     so the figure is suppressed and ar.anon_note is shown instead. #}
+  {% set ar = ai_revenue or {} %}
+  {% if ar.suppressed %}
+  <div class="fm-card" style="margin-top:16px;border:1px dashed color-mix(in srgb,var(--fm-ink-3) 45%,transparent)">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-indigo) 14%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+      <h3>Omsætning tilskrevet AI-rådgiveren</h3>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);display:flex;align-items:center;gap:8px">
+        <i class="fa-solid fa-user-shield" style="opacity:.6"></i>
+        <span>{{ ar.anon_note or 'Tallet er skjult af hensyn til anonymitet, da datagrundlaget er for lille.' }}</span>
+      </div>
+    </div>
+  </div>
+  {% elif ar.orders %}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-indigo) 14%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
+      <h3>Omsætning tilskrevet AI-rådgiveren</h3>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);margin-bottom:10px">Kursusordrer afgivet efter en AI-anbefaling de seneste {{ ar.days|default(90) }} dage.</div>
+      <div class="kpi-row" style="margin-top:0">
+        <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Omsætning fra AI</div><div class="kv tnum">{{ '{:,.0f}'.format(ar.revenue|default(0)|float).replace(',','.') }}</div><div class="kd">kr</div></div></div>
+        <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="kl">AI-drevne ordrer</div><div class="kv tnum">{{ ar.orders|default(0) }}</div><div class="kd">{{ ar.sessions|default(0) }} samtaler</div></div></div>
+        <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Gns. ordreværdi</div><div class="kv tnum">{{ '{:,.0f}'.format(ar.avg_order_value|default(0)|float).replace(',','.') }}</div><div class="kd">kr pr. ordre</div></div></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   <!-- ===== REAL HEADLINE / CFO FIGURES (grounded in actual data) ===== -->
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-sack-dollar"></i></span><div><div class="kl">Samlet uddannelsesudgift</div><div class="kv tnum">{{ '{:,.0f}'.format(r.total_training_spend|default(0)|float).replace(',','.') }}</div><div class="kd">kr · {{ r.courses_total|default(0) }} ordrer</div></div></div>

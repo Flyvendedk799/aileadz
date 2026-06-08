@@ -3,9 +3,9 @@
        {% set active_hr_page = 'roi' %}{% include 'fm/_hr_subnav.html' %}
    Replaces the per-page inlined .pg-subnav blocks so tabs never drift.
    active_hr_page keys (one per destination): dashboard, team, employees, departments,
-   approvals, approval_policies, budgets, roi, learning_analytics, benchmarking,
-   skill_gaps, training_plan, learning_paths, internal_courses, compliance,
-   suppliers, procurement, engagement, ai_quality, reports. #}
+   approvals, approval_policies, budgets, roi, funnel, retention, learning_analytics,
+   benchmarking, skill_gaps, training_plan, learning_paths, internal_courses,
+   compliance, suppliers, procurement, engagement, ai_quality, reports. #}
 {% set _hp = active_hr_page | default('') %}
 <nav class="pg-subnav" aria-label="HR-navigation">
   <a class="pg-tab {{ 'active' if _hp == 'dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Oversigt</a>
@@ -16,6 +16,8 @@
   <a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-robot"></i> Auto-godkendelse</a>
   <a class="pg-tab {{ 'active' if _hp == 'budgets' }}" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
   <a class="pg-tab {{ 'active' if _hp == 'roi' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-pie"></i> ROI</a>
+  <a class="pg-tab {{ 'active' if _hp == 'funnel' }}" href="{{ url_for('hr_dashboard.funnel_dashboard') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Funnel</a>
+  <a class="pg-tab {{ 'active' if _hp == 'retention' }}" href="{{ url_for('hr_dashboard.retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
   <a class="pg-tab {{ 'active' if _hp == 'learning_analytics' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a>
   <a class="pg-tab {{ 'active' if _hp == 'benchmarking' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i> Benchmarking</a>
   <a class="pg-tab {{ 'active' if _hp == 'skill_gaps' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>

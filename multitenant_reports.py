@@ -13,6 +13,63 @@ import json
 import re
 from datetime import timedelta
 
+# Max age (days) of the newest company_analytics snapshot row for the
+# pre-aggregated daily-usage series to be considered "fresh enough" to serve
+# instead of the live GROUP BY recompute. The nightly rollup writes yesterday's
+# row, so a snapshot up to 2 days old still means the job is running on cadence;
+# anything staler means the substrate is cold and we recompute live.
+_ANALYTICS_SNAPSHOT_MAX_AGE_DAYS = 2
+
+
+def _daily_usage_from_snapshot(cur, company_id, days_back=90):
+    """Serve the 90-day daily chatbot-usage series from the pre-aggregated
+    company_analytics snapshot when a fresh-enough one exists.
+
+    Returns a ``{ 'YYYY-MM-DD': count }`` dict mirroring the live GROUP BY in
+    reports(), or ``None`` when no fresh snapshot is available (in which case the
+    caller falls back to the live recompute). NEVER raises — a snapshot read
+    problem must transparently degrade to live recompute, never break the page.
+
+    "Fresh enough" = the most recent snapshot row for this company is no older
+    than ``_ANALYTICS_SNAPSHOT_MAX_AGE_DAYS`` (i.e. the nightly rollup job is
+    running on cadence). This is a count-only, company-scoped daily aggregate
+    (no people-level data), so it carries no k-anon exposure.
+    """
+    try:
+        cur.execute(
+            """SELECT MAX(date) AS max_date
+               FROM company_analytics WHERE company_id = %s""",
+            (company_id,),
+        )
+        row = cur.fetchone() or {}
+        max_date = row.get('max_date') if isinstance(row, dict) else (row[0] if row else None)
+        if not max_date:
+            return None  # table never written for this company -> recompute live
+        today = datetime.date.today()
+        if hasattr(max_date, 'date'):
+            max_date = max_date.date()
+        age = (today - max_date).days
+        if age > _ANALYTICS_SNAPSHOT_MAX_AGE_DAYS:
+            return None  # snapshot is stale -> the job isn't running; recompute live
+        cur.execute(
+            """SELECT date AS day, total_queries AS cnt
+               FROM company_analytics
+               WHERE company_id = %s
+                 AND date >= DATE_SUB(CURDATE(), INTERVAL %s DAY)
+               ORDER BY date ASC""",
+            (company_id, days_back),
+        )
+        usage = {}
+        for r in cur.fetchall() or []:
+            day = r['day'] if isinstance(r, dict) else r[0]
+            cnt = r['cnt'] if isinstance(r, dict) else r[1]
+            label = day.strftime('%Y-%m-%d') if hasattr(day, 'strftime') else str(day)
+            usage[label] = int(cnt or 0)
+        return usage
+    except Exception:
+        return None
+
+
 def create_multitenant_reports_blueprint():
     multitenant_reports_bp = Blueprint('multitenant_reports', __name__, template_folder='templates')
 
@@ -133,19 +190,29 @@ def create_multitenant_reports_blueprint():
             if total_conversations:
                 avg_conversation_length = total_chatbot_queries / total_conversations
 
-            # 2) Daily activity (last 90 days) — GROUP BY DATE.
-            cur.execute("""
-                SELECT DATE(created_at) AS day, COUNT(*) AS cnt
-                FROM chatbot_interactions
-                WHERE company_id = %s
-                  AND created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
-                GROUP BY DATE(created_at)
-                ORDER BY day ASC
-            """, (cid,))
-            for r in cur.fetchall():
-                day = r['day']
-                label = day.strftime('%Y-%m-%d') if hasattr(day, 'strftime') else str(day)
-                daily_chatbot_usage[label] = int(r['cnt'] or 0)
+            # 2) Daily activity (last 90 days). Prefer the pre-aggregated
+            #    company_analytics snapshot (written nightly by the
+            #    company_analytics_rollup scheduler job) when a fresh-enough one
+            #    exists — this is the heavy per-request GROUP BY DATE the rollup
+            #    exists to displace. Falls back to the live recompute below when
+            #    the snapshot is absent/stale so the page is never wrong.
+            _snapshot_usage = _daily_usage_from_snapshot(cur, cid, days_back=90)
+            if _snapshot_usage is not None:
+                for label, cnt in _snapshot_usage.items():
+                    daily_chatbot_usage[label] = cnt
+            else:
+                cur.execute("""
+                    SELECT DATE(created_at) AS day, COUNT(*) AS cnt
+                    FROM chatbot_interactions
+                    WHERE company_id = %s
+                      AND created_at >= DATE_SUB(CURDATE(), INTERVAL 90 DAY)
+                    GROUP BY DATE(created_at)
+                    ORDER BY day ASC
+                """, (cid,))
+                for r in cur.fetchall():
+                    day = r['day']
+                    label = day.strftime('%Y-%m-%d') if hasattr(day, 'strftime') else str(day)
+                    daily_chatbot_usage[label] = int(r['cnt'] or 0)
 
             # 3) Query-type distribution — GROUP BY query_type (real column).
             cur.execute("""

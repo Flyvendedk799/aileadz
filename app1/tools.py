@@ -1120,11 +1120,20 @@ def _execute_catalog_search(args, username=None):
 
     use_rag = query and (len(products) < max(1, limit // 2) or (result.get("total", 0) or 0) <= 1)
     if use_rag:
+        # value-5: scale the RETRIEVAL candidate pool with profile richness.
+        # A logged-in user with many target skills/goals pulls a wider (still
+        # in-memory, no extra API cost) candidate set so the profile re-rank
+        # below has real material to reorder. Anonymous / thin-profile users
+        # have profile_boost=None → candidate_limit stays = limit (no widening,
+        # no cost regression). The SHOWN count is always sliced back to `limit`.
+        from app1.rag import profile_candidate_limit
+        candidate_limit = profile_candidate_limit(profile_boost, limit)
         detailed = semantic_search_courses_detailed(
             query,
             limit=limit,
             shown_handles=_current_shown_handles,
             user_prefs=_current_user_prefs,
+            candidate_limit=candidate_limit,
         )
         if isinstance(detailed, dict) and "error" not in detailed:
             confidence = detailed.get("confidence", confidence)
@@ -1228,9 +1237,57 @@ def _execute_catalog_get_vendor(args):
     )
 
 
+# Hard cap on how many courses a single comparison may contain. More than a
+# handful side-by-side is unreadable and overflows the cards, so extras are
+# truncated and the model is told (in Danish) so it can mention it to the user.
+COMPARE_MAX_COURSES = 4
+
+
+def _comparison_guardrails(requested_count, vendors):
+    """Pure helper (no I/O) that derives the comparison guardrail fields.
+
+    Given how many handles the model asked to compare and the list of vendor
+    names that ended up IN the comparison, returns a dict with:
+      - "_compare_cap": the hard cap actually applied (COMPARE_MAX_COURSES)
+      - "_truncation_note": Danish note (or None) when extras were dropped
+      - "single_vendor_notice": Danish note (or None) when every compared course
+        comes from one and the same supplier — a nudge for the model to flag the
+        missing vendor diversity and offer an alternative from another supplier.
+
+    Kept separate from the executors so it can be unit-tested with no DB/API.
+    """
+    truncation_note = None
+    if requested_count and requested_count > COMPARE_MAX_COURSES:
+        dropped = requested_count - COMPARE_MAX_COURSES
+        truncation_note = (
+            f"Du bad om at sammenligne {requested_count} kurser, men der kan "
+            f"højst sammenlignes {COMPARE_MAX_COURSES} ad gangen. "
+            f"De {dropped} sidste blev udeladt — fortæl brugeren det og tilbyd "
+            f"at sammenligne resten i en ny omgang."
+        )
+
+    single_vendor_notice = None
+    distinct_vendors = {(v or "").strip() for v in vendors if (v or "").strip()}
+    if len(distinct_vendors) == 1 and len([v for v in vendors if (v or "").strip()]) >= 2:
+        only_vendor = next(iter(distinct_vendors))
+        single_vendor_notice = (
+            f"Alle de sammenlignede kurser er fra samme udbyder ({only_vendor}). "
+            f"Gør brugeren opmærksom på den manglende leverandørspredning og "
+            f"tilbyd et tilsvarende alternativ fra en anden udbyder."
+        )
+
+    return {
+        "_compare_cap": COMPARE_MAX_COURSES,
+        "_truncation_note": truncation_note,
+        "single_vendor_notice": single_vendor_notice,
+    }
+
+
 def _execute_catalog_compare_products(args):
     handles = args.get("handles") or []
-    products = [catalog.get_product(handle) for handle in handles[:4]]
+    requested_count = len(handles)
+    # Hard-cap to COMPARE_MAX_COURSES — extras are truncated (and noted below).
+    products = [catalog.get_product(handle) for handle in handles[:COMPARE_MAX_COURSES]]
     products = [p for p in products if p]
     if len(products) < 2:
         return json.dumps({"status": "error", "message": "Mindst to gyldige produkter kræves for sammenligning."}, ensure_ascii=False)
@@ -1249,7 +1306,16 @@ def _execute_catalog_compare_products(args):
             "categories": [c["name"] for c in _catalog_category_urls(product)[:4]],
             "summary": _truncate_summary(product.get("summary") or product.get("description_excerpt")),
         })
-    return _model_tool_json(status="success", count=len(products), comparison=comparison)
+
+    # Guardrails: cap-truncation note + single-vendor (no diversity) notice.
+    guards = _comparison_guardrails(requested_count, [c["vendor"] for c in comparison])
+    payload = {"status": "success", "count": len(products), "comparison": comparison}
+    if guards["_truncation_note"]:
+        payload["truncated"] = True
+        payload["truncation_note"] = guards["_truncation_note"]
+    if guards["single_vendor_notice"]:
+        payload["single_vendor_notice"] = guards["single_vendor_notice"]
+    return _model_tool_json(**payload)
 
 
 def _supplier_state_for_vendor(vendor_name):
@@ -1633,14 +1699,16 @@ def _execute_get_course_details(args):
 def _execute_compare_courses(args):
     """Phase 2: Compare 2-4 courses side by side."""
     handles = args.get("handles", [])
-    if len(handles) < 2:
+    requested_count = len(handles)
+    if requested_count < 2:
         return json.dumps({"status": "error", "message": "Mindst 2 kurser kræves for sammenligning."})
 
     products = load_augmented_products()
     handle_map = {p.get("handle"): p for p in products}
 
     comparisons = []
-    for handle in handles[:4]:
+    # Hard-cap to COMPARE_MAX_COURSES — extras are truncated (and noted below).
+    for handle in handles[:COMPARE_MAX_COURSES]:
         p = handle_map.get(handle)
         if not p:
             continue
@@ -1667,7 +1735,15 @@ def _execute_compare_courses(args):
     if len(comparisons) < 2:
         return json.dumps({"status": "error", "message": "Kunne ikke finde nok kurser til sammenligning."})
 
-    return _model_tool_json(status="success", comparison=comparisons)
+    # Guardrails: cap-truncation note + single-vendor (no diversity) notice.
+    guards = _comparison_guardrails(requested_count, [c["vendor"] for c in comparisons])
+    payload = {"status": "success", "comparison": comparisons}
+    if guards["_truncation_note"]:
+        payload["truncated"] = True
+        payload["truncation_note"] = guards["_truncation_note"]
+    if guards["single_vendor_notice"]:
+        payload["single_vendor_notice"] = guards["single_vendor_notice"]
+    return _model_tool_json(**payload)
 
 
 # ── Profile Management Tools (connected to MySQL user system) ──

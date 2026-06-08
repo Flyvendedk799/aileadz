@@ -855,6 +855,46 @@ def _infer_embedding_skipped(tool_results) -> Optional[bool]:
     return None
 
 
+def _grounding_recall_enabled():
+    """Item #1: env gate for the optional corrective re-call (default OFF).
+
+    When OFF (default) a grounding violation only appends a guarded disclaimer —
+    zero new API cost. When ON (AI_GROUNDING_RECALL in a truthy set) a single
+    bounded re-generation is attempted instead, for the buffered-answer path.
+    """
+    import os as _os
+    return (_os.getenv("AI_GROUNDING_RECALL", "") or "").strip().lower() in (
+        "1", "true", "yes", "on",
+    )
+
+
+def _collect_turn_evidence(tool_results, buffered_course_cards):
+    """Build the chain-of-custody evidence base for THIS turn.
+
+    Combines the raw tool-result JSON (what the model actually saw) with the
+    course cards streamed to the user (which carry the canonical titles/prices).
+    Returns a flat list of JSON strings / dicts that grounding.claims_supported
+    and scorers.score_live both accept. Never raises.
+    """
+    evidence = []
+    try:
+        for tr in tool_results or []:
+            out = getattr(tr, "output", None)
+            if out:
+                evidence.append(out)
+    except Exception:
+        pass
+    try:
+        for card_group in buffered_course_cards or []:
+            if isinstance(card_group, list):
+                evidence.extend(card_group)
+            elif card_group:
+                evidence.append(card_group)
+    except Exception:
+        pass
+    return evidence
+
+
 def _build_learning_context_message(logged_in_user, company_id, sid, supplier_agreements=None):
     """Inject company learning context without a tool call."""
     if not logged_in_user or not company_id:
@@ -1239,6 +1279,30 @@ def handle_agentic_ask(user_query, session):
                         except Exception:
                             pass
 
+            # Item #3: Inject the cross-session ROLLING SUMMARY for logged-in
+            # users — so memory survives session boundaries even after the
+            # verbatim last messages have aged out of the saved conversation.
+            # Marked with the "TILBAGEVENDENDE BRUGER" profile marker so the
+            # pruner protects it from being trimmed. Mirrors the anonymous
+            # "Tidligere samtaleopsummering" path. Fenced as DATA (it is derived
+            # from the user's own prior free text).
+            try:
+                from app1.user_profile_db import load_conversation_summary
+                rolling_summary = load_conversation_summary(logged_in_user)
+                if rolling_summary:
+                    CHAT_MEMORY[sid].append({
+                        "role": "system",
+                        "content": "TILBAGEVENDENDE BRUGER — TIDLIGERE SAMTALER (opsummering på tværs af sessioner):\n"
+                                   + _fence("TIDLIGERE SAMTALER", rolling_summary[:2000])
+                                   + "\nBrug dette til at huske brugerens behov og kontekst fra tidligere besøg."
+                    })
+            except Exception as e:
+                print(f"[Rolling Summary Load Error] {e}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
+
             # Restore saved conversation messages for logged-in users
             try:
                 from app1.user_profile_db import load_conversation
@@ -1306,15 +1370,39 @@ def handle_agentic_ask(user_query, session):
     user_profile_text = USER_PROFILES.get(sid, {}).get("summary", "")
     shown_count = len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
 
-    # Rule-based intent detection (replaces GPT-4o-mini API call)
-    intent = _classify_intent_local(user_query, messages, shown_count)
+    # Rule-based intent detection (replaces GPT-4o-mini API call). This stays the
+    # source of truth for everything it CAN classify, and the fallback whenever the
+    # LLM router is disabled, errors, or times out.
+    regex_intent = _classify_intent_local(user_query, messages, shown_count)
+    intent = regex_intent
     rewritten_query = ""  # The main model handles query optimization via tools
 
-    # Debug: log user query + intent classification
+    # LLM-as-router (item #2): the regex classifier's ONE ambiguous catch-all is
+    # "discovery" — it lumps together learning_path / skill_gap / comparison /
+    # profile_and_search. ONLY on that catch-all turn do a single cheap gpt-4o-mini
+    # classification to pick the real intent before the main turn, then feed the
+    # refined intent into tool selection + model-tier routing below. Confident regex
+    # intents skip the router entirely (no cost, no latency). Guarded: any failure
+    # falls back to the regex result inside classify_intent_llm itself.
+    router_fired = False
+    if regex_intent == "discovery":
+        try:
+            from ai_runtime import classify_intent_llm, llm_router_enabled
+            if llm_router_enabled():
+                router_fired = True
+                intent = classify_intent_llm(user_query, fallback=regex_intent)
+        except Exception:
+            intent = regex_intent  # never break the turn on a router failure
+
+    # Debug: log user query + intent classification (+ cheap router telemetry so its
+    # value vs the regex guess is measurable).
     try:
         log_debug(sid, "user_query", {
             "query": user_query,
             "intent": intent,
+            "regex_intent": regex_intent,
+            "router_fired": router_fired,
+            "router_changed": router_fired and intent != regex_intent,
             "logged_in": logged_in_user or False,
             "hint": "",
             "rewritten_query": rewritten_query,
@@ -1401,6 +1489,23 @@ def handle_agentic_ask(user_query, session):
             if browser_token:
                 try:
                     _get_store().update_anonymous_summary(browser_token, summary_text)
+                except Exception:
+                    pass
+
+        # Item #3: Persist the rolling summary for LOGGED-IN users too, mirroring
+        # the anonymous summary path above. This is what survives across session
+        # boundaries (the verbatim last messages are restored separately). Reuses
+        # the same heuristic/GPT-gated summary already computed by the pruner — no
+        # extra model call. Guarded so a DB hiccup never breaks the turn.
+        elif logged_in_user and summary_text:
+            try:
+                from app1.user_profile_db import save_conversation_summary, ensure_tables
+                ensure_tables()
+                save_conversation_summary(logged_in_user, sid, summary_text)
+            except Exception as e:
+                print(f"[Logged-in Summary Persist Error] {e}")
+                try:
+                    current_app.mysql.connection.rollback()
                 except Exception:
                     pass
 
@@ -1663,7 +1768,7 @@ def handle_agentic_ask(user_query, session):
                 intent=intent,
                 tool_count=len(all_tools),
                 token_estimate=token_estimate,
-                prefer_quality=intent in {"comparison", "buying", "team_buying", "profile_and_search"},
+                prefer_quality=intent in {"comparison", "buying", "team_buying", "profile_and_search", "learning_path", "skill_gap"},
             )
             run_id = make_run_id()
             compaction_level = compaction_level_for_messages(ephemeral_messages)
@@ -1935,6 +2040,59 @@ def handle_agentic_ask(user_query, session):
                                "ALDRIG liste kursusnavne, priser, beskrivelser eller detaljer i teksten."
                 })
 
+            # Item #1: chain-of-custody evidence for this turn (tool results +
+            # the cards actually shown). Used by the disclaimer/self-eval after
+            # streaming, and by the env-gated pre-stream corrective re-call below.
+            _turn_evidence = _collect_turn_evidence(
+                runtime_result.tool_results, buffered_course_cards
+            )
+            # At most ONE grounding intervention per turn (hard guard against
+            # double-correcting: a re-call here OR a disclaimer later, never both).
+            _grounding_handled = False
+            _grounding_violation = False
+
+            # Optional env-gated corrective RE-CALL (AI_GROUNDING_RECALL, default
+            # OFF). Only applies when the answer was already buffered (not token-
+            # streamed) so we can validate it BEFORE the user sees it and, on a
+            # violation, replace it with a single bounded re-generation that is
+            # told to drop unverifiable prices/dates. Costs one extra completion
+            # ONLY on a real violation AND only when explicitly opted in.
+            if (
+                had_tool_calls
+                and last_message_is_final
+                and not runtime_result.needs_final_stream
+                and (runtime_result.text or "").strip()
+                and _grounding is not None
+                and _grounding_recall_enabled()
+            ):
+                try:
+                    _pre = _grounding.grounding_disclaimer(
+                        runtime_result.text, _turn_evidence
+                    )
+                    if _pre.get("violation"):
+                        _grounding_violation = True
+                        recall_messages = list(final_messages)
+                        recall_messages.append({
+                            "role": "system",
+                            "content": (
+                                "GROUNDING-KORREKTION: Dit forrige svar nævnte priser/datoer/kursusnavne "
+                                "der IKKE står i værktøjsresultaterne fra denne tur. Skriv svaret om: "
+                                "nævn KUN tal, datoer og navne der findes i værktøjsresultaterne. "
+                                "Er du i tvivl, så undlad det konkrete tal og henvis til kursussiden. "
+                                "Hold det kort (1-2 sætninger) og afslut med <suggestions>."
+                            ),
+                        })
+                        # Replace the buffered text so the standard streamer below
+                        # streams the corrected answer (single bounded re-call).
+                        corrected = "".join(
+                            iter_completion_stream(recall_messages, model=turn_model)
+                        )
+                        if corrected.strip():
+                            runtime_result.text = corrected
+                        _grounding_handled = True  # intervention spent on the re-call
+                except Exception as _recall_err:
+                    print(f"[Grounding Recall Error] {_recall_err}")
+
             if last_message_is_final:
                 stream_start = time.time()
                 full_text = ""
@@ -1980,6 +2138,98 @@ def handle_agentic_ask(user_query, session):
             # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)
             quality_ok = _check_response_quality(visible_text, had_tool_calls)
+
+            # ── Item #1: Runtime hallucination circuit-breaker ──
+            # The final answer is token-streamed, so we validate the COMPLETE
+            # streamed text here (after the stream) and append at most ONE guarded
+            # Danish disclaimer if it asserts a price/date/title not present in
+            # this turn's tool results. Pure check + a trailing note = zero new API
+            # cost. If the env-gated re-call already handled a violation above,
+            # _grounding_handled is set and we never double-correct. Fully guarded
+            # so the SSE path is never broken.
+            self_eval_score = None
+            try:
+                if (
+                    _grounding is not None
+                    and had_tool_calls
+                    and visible_text.strip()
+                    and not _grounding_handled
+                ):
+                    _verdict = _grounding.grounding_disclaimer(visible_text, _turn_evidence)
+                    if _verdict.get("violation"):
+                        _grounding_violation = True
+                        _grounding_handled = True
+                        disclaimer = _verdict.get("disclaimer") or ""
+                        if disclaimer:
+                            # Trailing note, separated from the answer by a blank line.
+                            note = "\n\n" + disclaimer
+                            yield f"data: {json.dumps({'type': 'chunk', 'content': note})}\n\n"
+                        try:
+                            log_debug(sid, "grounding_violation", {
+                                "unsupported": _verdict.get("unsupported", [])[:5],
+                                "checked": _verdict.get("checked", 0),
+                                "recall_enabled": _grounding_recall_enabled(),
+                            })
+                        except Exception:
+                            pass
+            except Exception as _grounding_err:
+                print(f"[Grounding Check Error] {_grounding_err}")
+
+            # ── Item #6: In-process post-turn self-eval (heuristic, no LLM) ──
+            # Reference-free score using only the scorers that need no golden
+            # answer (price grounding + prompt-leak + retrieval presence). Zero
+            # API cost. Written to telemetry (MySQL run row + SQLite analytics).
+            try:
+                from ai_eval.scorers import score_live as _score_live
+                _live = _score_live(
+                    visible_text,
+                    _turn_evidence,
+                    tools=list(dict.fromkeys(_tools_used)),
+                    cards=[c for grp in buffered_course_cards for c in (grp or [])],
+                    user_query=user_query,
+                )
+                self_eval_score = _live.get("score")
+                # The grounding component is a strong, independent confirmation of
+                # the circuit-breaker; OR them so telemetry never under-reports.
+                if _live.get("flags", {}).get("grounding_violation"):
+                    _grounding_violation = True
+                try:
+                    log_debug(sid, "self_eval", {
+                        "score": self_eval_score,
+                        "applied": _live.get("applied", []),
+                        "flags": _live.get("flags", {}),
+                    })
+                except Exception:
+                    pass
+                try:
+                    _get_store().log_event(
+                        sid, "self_eval",
+                        query_text=user_query,
+                        extra={
+                            "self_eval_score": self_eval_score,
+                            "grounding_violation": bool(_grounding_violation),
+                            "applied": _live.get("applied", []),
+                            "intent": intent,
+                            "stage": stage,
+                        },
+                    )
+                except Exception:
+                    pass
+            except Exception as _eval_err:
+                print(f"[Self-Eval Error] {_eval_err}")
+
+            # Backfill the post-turn quality signals onto the run row logged
+            # earlier (avoids a duplicate row). Guarded + idempotent.
+            try:
+                from ai_runtime import update_agent_run_quality
+                update_agent_run_quality(
+                    getattr(current_app, "mysql", None),
+                    run_id=run_id,
+                    self_eval_score=self_eval_score,
+                    grounding_violation=_grounding_violation,
+                )
+            except Exception:
+                pass
 
             # Debug: log AI response + length validation
             response_len = len(visible_text)

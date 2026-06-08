@@ -1901,16 +1901,16 @@ def bulk_import_employees():
                 result['seat_limit'] = 'trial_expired'
                 result['message'] = (
                     'Din prøveperiode er udløbet. %d medarbejder(e) blev ikke '
-                    'tilføjet. Opgradér dit abonnement.' % seat_skipped
+                    'tilføjet. Kontakt din kundeansvarlige.' % seat_skipped
                 ) if seat_skipped else (
-                    'Din prøveperiode er udløbet. Opgradér dit abonnement for at '
-                    'tilføje medarbejdere.'
+                    'Din prøveperiode er udløbet. Kontakt din kundeansvarlige for '
+                    'at tilføje medarbejdere.'
                 )
             elif seat_skipped:
                 result['seat_limit'] = 'seat_limit'
                 result['message'] = (
                     'Pladsgrænsen er nået. %d medarbejder(e) blev ikke tilføjet. '
-                    'Opgradér dit abonnement for flere pladser.' % seat_skipped
+                    'Kontakt din kundeansvarlige for flere pladser.' % seat_skipped
                 )
         return jsonify(result)
     except Exception as e:

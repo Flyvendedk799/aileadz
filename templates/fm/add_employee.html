@@ -18,8 +18,8 @@
       <div style="font-size:12.5px;color:var(--fm-ink-2)">
         {{ seat_status.seats_used }} af {{ seat_status.seats_max }} pladser brugt
         ({{ seat_status.seats_left }} {{ 'plads' if seat_status.seats_left == 1 else 'pladser' }} tilbage).
-        {% if seat_status.expired %}<span style="color:var(--fm-danger)">Prøveperioden er udløbet — opgradér for at tilføje flere.</span>
-        {% elif seat_status.seats_left <= 0 %}<span style="color:var(--fm-danger)">Du har nået grænsen — opgradér for at tilføje flere.</span>{% endif %}
+        {% if seat_status.expired %}<span style="color:var(--fm-danger)">Prøveperioden er udløbet — kontakt din kundeansvarlige for at tilføje flere.</span>
+        {% elif seat_status.seats_left <= 0 %}<span style="color:var(--fm-danger)">Du har nået grænsen — kontakt din kundeansvarlige for flere pladser.</span>{% endif %}
       </div>
     </div>
   </div>

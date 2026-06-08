@@ -748,3 +748,224 @@ def get_predictive_data(app, company_id):
 
         cur.close()
         return predictions
+
+
+def _coerce_dept(value):
+    """Normalise a department label, folding NULL/empty into a stable bucket."""
+    s = (str(value).strip() if value is not None else "")
+    return s or "Ukendt"
+
+
+def aggregate_workforce_risk(predictions, *, k=None, drill_down=False,
+                             drill_limit=10):
+    """Turn raw ``get_predictive_data`` output into an AGGREGATE-FIRST, k-anon
+    -safe workforce-risk payload suitable for the conversational HR advisor.
+
+    ``get_predictive_data`` returns NAMED INDIVIDUALS (username / user_id /
+    job_title / department for churn_risk and at_risk_employees) with NO
+    suppression — surfacing those rows verbatim through an AI tool would let the
+    model verbalise identifiable at-risk/churn employees with no k-anon floor, a
+    GDPR / k-anonymity hard-constraint violation (HR_VALUE_PLAN risk register).
+
+    This helper is PURE (no DB, no Flask) so the suppression logic is unit
+    -testable, and it is the single place the advisor's net-new k-anon floor
+    lives. It returns:
+
+      * per-DEPARTMENT counts for churn risk and skill-gap risk, with every
+        department cohort below ``k`` SUPPRESSED via
+        ``kanon.suppress_small_groups`` (counts only — no names);
+      * per-SKILL counts for skill-gap risk, suppressed the same way;
+      * trending unmet learning demand, keeping only query terms whose volume is
+        itself >= ``k`` (a term searched by a single person can be re-identifying);
+      * company-wide totals (already aggregated, hence safe);
+      * a Danish anonymity note when anything was suppressed.
+
+    Individual NAMES are NEVER included unless ``drill_down=True`` is passed
+    explicitly (the executor gates this behind a manager role + an explicit
+    confirm), and even then names are only emitted for departments whose cohort
+    is itself k-safe — naming the sole member of a 1-person department IS the
+    de-anonymisation we are guarding against.
+
+    Guarded: any malformed input degrades to empty aggregates rather than
+    raising, so a bad upstream payload can never crash a tool call.
+
+    Args:
+        predictions: the dict returned by ``get_predictive_data``
+                     (``churn_risk`` / ``at_risk_employees`` / ``trending_courses``).
+        k:           minimum cohort size; defaults to env-resolved K_DEFAULT.
+        drill_down:  when True, attach a capped, k-safe-department-only list of
+                     named individuals under ``*_individuals``.
+        drill_limit: cap on the number of named individuals per drill-down list.
+
+    Returns:
+        dict with ``churn_risk`` / ``skill_gap_risk`` / ``trending_demand``
+        sections plus ``anon`` metadata.
+    """
+    kk = None
+    if _kanon is not None:
+        try:
+            kk = _kanon._coerce_k(k)
+        except Exception:
+            kk = None
+    if kk is None:
+        # k-anon module missing: fail CLOSED — pick a conservative default and
+        # suppress with a local floor so we never emit sub-k named/aggregate rows.
+        try:
+            kk = int(k) if k else 5
+        except Exception:
+            kk = 5
+        if kk < 1:
+            kk = 5
+
+    out = {
+        "k": kk,
+        "churn_risk": {"total": 0, "by_department": []},
+        "skill_gap_risk": {"total": 0, "by_department": [], "by_skill": []},
+        "trending_demand": {"terms": []},
+        "anon": {"suppressed_groups": 0, "note_da": ""},
+    }
+    if not isinstance(predictions, dict):
+        return out
+
+    def _suppress(rows, count_key):
+        """Drop cohorts below k. Returns (kept_rows, n_suppressed)."""
+        if _kanon is not None:
+            try:
+                kept, note = _kanon.suppress_small_groups(rows, count_key, k=kk)
+                return kept, int(note.get("suppressed", 0) or 0)
+            except Exception:
+                pass
+        # Local fail-closed fallback when kanon is unavailable / errored.
+        kept, dropped = [], 0
+        for r in rows:
+            try:
+                if int(r.get(count_key) or 0) >= kk:
+                    kept.append(r)
+                else:
+                    dropped += 1
+            except Exception:
+                dropped += 1
+        return kept, dropped
+
+    total_suppressed = 0
+
+    # ── 1) Churn risk: per-department distinct-employee counts ──
+    churn_rows = predictions.get("churn_risk") or []
+    churn_by_dept = {}
+    churn_members = {}  # dept -> [named individuals] (only used for drill-down)
+    churn_total = 0
+    for r in churn_rows:
+        if not isinstance(r, dict):
+            continue
+        churn_total += 1
+        dept = _coerce_dept(r.get("department"))
+        churn_by_dept[dept] = churn_by_dept.get(dept, 0) + 1
+        churn_members.setdefault(dept, []).append(r)
+    out["churn_risk"]["total"] = churn_total
+    churn_dept_rows = [{"department": d, "count": c} for d, c in churn_by_dept.items()]
+    kept, dropped = _suppress(churn_dept_rows, "count")
+    total_suppressed += dropped
+    out["churn_risk"]["by_department"] = sorted(
+        kept, key=lambda x: x.get("count", 0), reverse=True)
+
+    # ── 2) Skill-gap risk: per-department + per-skill distinct-employee counts ──
+    gap_rows = predictions.get("at_risk_employees") or []
+    gap_dept_members = {}   # dept -> set(username)
+    gap_skill_members = {}  # skill -> set(username)
+    gap_employees = set()
+    gap_member_rows = {}    # dept -> [rows] for drill-down
+    for r in gap_rows:
+        if not isinstance(r, dict):
+            continue
+        uname = r.get("username")
+        dept = _coerce_dept(r.get("department"))
+        skill = (str(r.get("skill_name")).strip() if r.get("skill_name") else "") or "Ukendt"
+        key = uname if uname is not None else (dept, skill, r.get("gap"))
+        gap_employees.add(uname if uname is not None else id(r))
+        gap_dept_members.setdefault(dept, set()).add(key)
+        gap_skill_members.setdefault(skill, set()).add(key)
+        gap_member_rows.setdefault(dept, []).append(r)
+    out["skill_gap_risk"]["total"] = len(gap_employees)
+    gap_dept_count_rows = [
+        {"department": d, "count": len(members)}
+        for d, members in gap_dept_members.items()
+    ]
+    kept_d, dropped_d = _suppress(gap_dept_count_rows, "count")
+    total_suppressed += dropped_d
+    out["skill_gap_risk"]["by_department"] = sorted(
+        kept_d, key=lambda x: x.get("count", 0), reverse=True)
+    gap_skill_count_rows = [
+        {"skill": s, "count": len(members)}
+        for s, members in gap_skill_members.items()
+    ]
+    kept_s, dropped_s = _suppress(gap_skill_count_rows, "count")
+    total_suppressed += dropped_s
+    out["skill_gap_risk"]["by_skill"] = sorted(
+        kept_s, key=lambda x: x.get("count", 0), reverse=True)
+
+    # ── 3) Trending unmet learning demand: keep only k-safe-volume terms ──
+    trend_rows = predictions.get("trending_courses") or []
+    safe_terms = []
+    for r in trend_rows:
+        if not isinstance(r, dict):
+            continue
+        try:
+            cnt = int(r.get("cnt") or 0)
+        except Exception:
+            cnt = 0
+        qt = (str(r.get("query_text")).strip() if r.get("query_text") else "")
+        if not qt:
+            continue
+        if cnt >= kk:
+            safe_terms.append({"query": qt, "count": cnt})
+        else:
+            total_suppressed += 1
+    out["trending_demand"]["terms"] = sorted(
+        safe_terms, key=lambda x: x.get("count", 0), reverse=True)
+
+    # ── 4) Optional manager-scoped drill-down (k-safe departments only) ──
+    if drill_down:
+        try:
+            dl = int(drill_limit)
+        except Exception:
+            dl = 10
+        if dl < 0:
+            dl = 10
+        safe_churn_depts = {row["department"] for row in out["churn_risk"]["by_department"]}
+        churn_named = []
+        for dept in safe_churn_depts:
+            for r in churn_members.get(dept, []):
+                churn_named.append({
+                    "username": r.get("username"),
+                    "department": dept,
+                    "job_title": r.get("job_title"),
+                    "days_inactive": r.get("days_inactive"),
+                })
+        churn_named.sort(key=lambda x: (x.get("days_inactive") or 0), reverse=True)
+        out["churn_risk"]["individuals"] = churn_named[:dl]
+
+        safe_gap_depts = {row["department"] for row in out["skill_gap_risk"]["by_department"]}
+        gap_named = []
+        for dept in safe_gap_depts:
+            for r in gap_member_rows.get(dept, []):
+                gap_named.append({
+                    "username": r.get("username"),
+                    "department": dept,
+                    "skill": r.get("skill_name"),
+                    "current_level": r.get("current_level"),
+                    "target_level": r.get("target_level"),
+                    "gap": r.get("gap"),
+                })
+        gap_named.sort(key=lambda x: (x.get("gap") or 0), reverse=True)
+        out["skill_gap_risk"]["individuals"] = gap_named[:dl]
+
+    out["anon"]["suppressed_groups"] = total_suppressed
+    if total_suppressed:
+        try:
+            out["anon"]["note_da"] = (
+                _kanon.anon_note(kk) if _kanon is not None
+                else f"Grupper under k={kk} er skjult af hensyn til anonymitet"
+            )
+        except Exception:
+            out["anon"]["note_da"] = f"Grupper under k={kk} er skjult af hensyn til anonymitet"
+    return out

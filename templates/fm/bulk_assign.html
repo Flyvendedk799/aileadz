@@ -5,12 +5,7 @@
 {% block topbar_sub %}Tildel ét læringsforløb til flere medarbejdere på én gang — og send dem et puf.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a>
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-people-group"></i> Mit team</a>
-    <a class="pg-tab" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a>
-    <a class="pg-tab active" href="{{ url_for('hr_dashboard.bulk_assign_form') }}"><i class="fa-solid fa-users-gear"></i> Tildel forløb</a>
-  </div>
+  {% set active_hr_page = 'learning_paths' %}{% include 'fm/_hr_subnav.html' %}
 
   {% if not paths %}
   <div class="fm-card" style="padding:48px 24px;text-align:center;margin-top:8px">

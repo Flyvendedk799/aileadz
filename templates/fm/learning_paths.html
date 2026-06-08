@@ -5,7 +5,7 @@
 {% block topbar_sub %}{{ paths|length }} forløb · strukturerede udviklingsprogrammer.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav"><a class="pg-tab" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Overblik</a><a class="pg-tab" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a><a class="pg-tab" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a><a class="pg-tab" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a><a class="pg-tab" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-clipboard-check"></i> Godkendelser</a><a class="pg-tab active" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Forløb</a><a class="pg-tab" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a><a class="pg-tab" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-line"></i> ROI</a><a class="pg-tab" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a></div>
+{% set active_hr_page = 'learning_paths' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set can_create = session.get('company_role') in ['company_admin', 'hr_manager', 'department_head'] %}
   {% set can_manage = session.get('company_role') in ['company_admin', 'hr_manager'] %}

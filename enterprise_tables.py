@@ -713,6 +713,7 @@ def ensure_enterprise_tables(app):
                     language VARCHAR(10) DEFAULT 'da',
                     timezone VARCHAR(50) DEFAULT 'Europe/Copenhagen',
                     currency VARCHAR(10) DEFAULT 'DKK',
+                    learning_deadline_reminders_enabled TINYINT DEFAULT 0,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id)

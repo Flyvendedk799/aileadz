@@ -940,6 +940,155 @@ def ask():
         ]}), 500
 
 
+# ── Voice input (push-to-talk → Whisper transcription) ──
+# User-initiated only: the chat UI records audio, POSTs the blob here, we
+# transcribe it with OpenAI Whisper and return the Danish transcript as JSON.
+# The frontend drops `text` into the existing chat input and sends it through
+# the normal /app1/ask SSE flow, so no agent logic changes are needed here.
+#
+# Auth posture mirrors /app1/ask exactly: no decorator → anonymous chat allowed.
+# Everything is guarded: missing key, oversize, empty or failed transcription all
+# degrade to a clean JSON error with a Danish message — never an uncaught 500.
+
+# Whisper's hard upload limit is 25 MB; cap here so we reject early and cheaply.
+VOICE_MAX_BYTES = 25 * 1024 * 1024
+
+
+def _voice_input_enabled():
+    """Feature flag for voice input. Defaults ON; set VOICE_INPUT_ENABLED=0 to disable."""
+    val = os.getenv("VOICE_INPUT_ENABLED")
+    if val is None:
+        return True
+    return val.strip().lower() not in ("0", "false", "no", "off", "")
+
+
+def _voice_audio_from_request():
+    """Extract (filename, bytes) from a multipart `audio` field or a raw body.
+
+    Returns (filename, data, error_message). On any problem `data` is None and
+    `error_message` is a Danish, user-safe string.
+    """
+    # Preferred: multipart/form-data with an `audio` (or `file`) field.
+    f = request.files.get("audio") or request.files.get("file")
+    if f is not None:
+        filename = f.filename or "optagelse.webm"
+        try:
+            data = f.read()
+        except Exception:
+            return None, None, "Lydfilen kunne ikke læses."
+        return filename, data, None
+
+    # Fallback: raw audio body (e.g. fetch with a Blob and audio/* content-type).
+    raw = request.get_data(cache=False) or b""
+    if raw:
+        ctype = (request.content_type or "").lower()
+        ext = "webm"
+        for token, candidate in (("mp4", "mp4"), ("mpeg", "mp3"), ("mp3", "mp3"),
+                                 ("wav", "wav"), ("ogg", "ogg"), ("m4a", "m4a"),
+                                 ("webm", "webm")):
+            if token in ctype:
+                ext = candidate
+                break
+        return f"optagelse.{ext}", raw, None
+
+    return None, None, "Ingen lyd modtaget. Optag en besked og prøv igen."
+
+
+@app1_bp.route("/voice", methods=["POST"])
+def voice():
+    """Transcribe an uploaded audio blob with OpenAI Whisper and return the text.
+
+    Request: multipart/form-data with an `audio` file field, OR a raw audio body.
+    Success: 200 {"text": "...", "ok": true}
+    Failure: 4xx/503 {"text": "", "ok": false, "error": "<dansk besked>"}
+    """
+    # Feature guard: return a clean disabled response (200, ok:false) so the UI
+    # can simply not show / silently ignore push-to-talk when it's turned off.
+    if not _voice_input_enabled():
+        return jsonify({
+            "ok": False,
+            "text": "",
+            "error": "Stemmeinput er ikke aktiveret.",
+        }), 200
+
+    try:
+        filename, data, err = _voice_audio_from_request()
+        if err:
+            return jsonify({"ok": False, "text": "", "error": err}), 400
+
+        if not data:
+            return jsonify({
+                "ok": False,
+                "text": "",
+                "error": "Ingen lyd modtaget. Optag en besked og prøv igen.",
+            }), 400
+
+        if len(data) > VOICE_MAX_BYTES:
+            return jsonify({
+                "ok": False,
+                "text": "",
+                "error": "Optagelsen er for stor (maks. 25 MB). Prøv en kortere besked.",
+            }), 413
+
+        # Reuse the shared OpenAI client construction (ai_runtime._openai_client),
+        # which reads OPENAI_API_KEY the same way as the chat agent. Degrade
+        # gracefully if the key is missing or the client can't be built.
+        if not os.getenv("OPENAI_API_KEY"):
+            return jsonify({
+                "ok": False,
+                "text": "",
+                "error": "Stemmeinput er midlertidigt utilgængeligt. Skriv venligst din besked.",
+            }), 503
+
+        try:
+            from ai_runtime import _openai_client
+            client = _openai_client()
+        except Exception as exc:
+            print(f"[Voice] client init error: {exc}")
+            return jsonify({
+                "ok": False,
+                "text": "",
+                "error": "Stemmeinput er midlertidigt utilgængeligt. Skriv venligst din besked.",
+            }), 503
+
+        model = os.getenv("VOICE_WHISPER_MODEL", "whisper-1")
+        try:
+            import io
+            audio_file = io.BytesIO(data)
+            audio_file.name = filename  # OpenAI infers the format from the name.
+            result = client.audio.transcriptions.create(
+                model=model,
+                file=audio_file,
+                language="da",  # Danish hint where supported.
+            )
+            text = (getattr(result, "text", None) or "").strip()
+        except Exception as exc:
+            print(f"[Voice] transcription error: {exc}")
+            return jsonify({
+                "ok": False,
+                "text": "",
+                "error": "Lyden kunne ikke transskriberes. Prøv igen, eller skriv din besked.",
+            }), 502
+
+        if not text:
+            return jsonify({
+                "ok": False,
+                "text": "",
+                "error": "Vi kunne ikke høre nogen tale. Prøv at optage igen.",
+            }), 200
+
+        return jsonify({"ok": True, "text": text}), 200
+
+    except Exception as ex:
+        # Catch-all so this endpoint never raises an uncaught 500.
+        print(f"[Voice] unexpected error: {ex}")
+        return jsonify({
+            "ok": False,
+            "text": "",
+            "error": "Der opstod en uventet fejl. Prøv venligst igen.",
+        }), 500
+
+
 # Phase 6: Feedback endpoint
 @app1_bp.route("/feedback", methods=["POST"])
 def feedback():

@@ -696,6 +696,48 @@ HR_TOOLS.extend([
             }
         }
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "hr_compare_cohorts",
+            "description": (
+                "Sammenlign to kohorter (afdeling, rolle og/eller tidsperiode) i ÉT svar — fx "
+                "'Salg vs Marketing', 'ledere vs medarbejdere', 'dette kvartal vs sidste'. Returnerer "
+                "AGGREGEREDE træningsnøgletal for begge sider (antal medlemmer, gennemførte/igangværende/"
+                "afventende kurser, samlet spend, gennemførselsrate, spend pr. medarbejder, gns. "
+                "gennemførelsestid) plus forskellen (B minus A). K-ANONYMITET: en kohorte med færre end "
+                "k medarbejdere får sine tal skjult, og forskellen beregnes kun når BEGGE kohorter er "
+                "store nok. Bruges ved 'sammenlign', 'X vs Y', 'hvordan klarer afdeling/rolle A sig mod B', "
+                "'dette kvartal mod sidste'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "cohort_a": {
+                        "type": "object",
+                        "description": "Den første kohorte. Angiv mindst ét af felterne; tomt = hele virksomheden.",
+                        "properties": {
+                            "department": {"type": "string", "description": "Afdeling, fx 'Salg'."},
+                            "role": {"type": "string", "description": "Rolle, fx 'manager' eller 'employee'."},
+                            "period_days": {"type": "integer", "description": "Tilbageblik i dage for ordrevinduet. Standard 90."}
+                        },
+                        "required": []
+                    },
+                    "cohort_b": {
+                        "type": "object",
+                        "description": "Den anden kohorte. Angiv mindst ét af felterne; tomt = hele virksomheden.",
+                        "properties": {
+                            "department": {"type": "string", "description": "Afdeling, fx 'Marketing'."},
+                            "role": {"type": "string", "description": "Rolle, fx 'manager' eller 'employee'."},
+                            "period_days": {"type": "integer", "description": "Tilbageblik i dage for ordrevinduet. Standard 90."}
+                        },
+                        "required": []
+                    }
+                },
+                "required": ["cohort_a", "cohort_b"]
+            }
+        }
+    },
 ])
 
 
@@ -2924,6 +2966,245 @@ def _execute_hr_explain_insights(args):
     }, default=str)
 
 
+# ── Cohort comparison (plan #14) ──
+#
+# Comparison ("Sales vs Marketing", "managers vs ICs", "this quarter vs last") is
+# the native shape of strategic HR questions, but every read tool takes at most a
+# single department filter, so the advisor must serially call and hand-diff —
+# slow, error-prone and ungrounded. hr_compare_cohorts runs ONE self-contained
+# company-scoped aggregate per side and returns both sides + the delta in a single
+# grounded turn.
+#
+# NET-NEW per-cohort k-anon (the get_* tools have NO suppression — see the
+# HR_VALUE_PLAN risk register #323/#344/#360): each cohort carries its own
+# member_count and is run through kanon.suppress_small_groups. A cohort below the
+# floor has its metrics REDACTED (not silently shown) and the delta is computed
+# ONLY when BOTH cohorts are k-safe — comparing a sub-k cohort would let a single
+# person's numbers be read straight off the "aggregate" diff.
+
+# The cohort-level metrics that are safe to compare. company-wide-level scalars
+# whose denominator is the cohort's own (k-safe) member count — never per-person.
+_COHORT_METRIC_KEYS = (
+    'members', 'completed', 'in_progress', 'pending',
+    'total_spend', 'completion_rate', 'avg_completion_days',
+    'spend_per_member',
+)
+
+
+def _cohort_label(sel):
+    """Human-readable Danish label for a cohort selector dict."""
+    dept = (sel.get('department') or '').strip()
+    role = (sel.get('role') or '').strip()
+    bits = []
+    if dept:
+        bits.append(dept)
+    if role:
+        bits.append(f"rolle: {role}")
+    if not bits:
+        return "Hele virksomheden"
+    return " / ".join(bits)
+
+
+def _compute_cohort_metrics(cur, company_id, sel):
+    """Run ONE company-scoped aggregate for a cohort selector.
+
+    Strictly company_id-scoped. The cohort is defined by optional department and
+    role filters on company_users; period_days bounds the order window. Returns a
+    plain dict carrying ``members`` (the cohort size — the k-anon cohort count)
+    and aggregate training metrics whose only denominator is that cohort size.
+    NO per-person rows are ever returned.
+    """
+    department = (sel.get('department') or '').strip()
+    role = (sel.get('role') or '').strip()
+    try:
+        period_days = int(sel.get('period_days') or 90)
+    except (TypeError, ValueError):
+        period_days = 90
+    if period_days <= 0:
+        period_days = 90
+
+    conditions = ["cu.company_id = %s", "cu.status = 'active'"]
+    params = [company_id]
+    if department:
+        conditions.append("cu.department = %s")
+        params.append(department)
+    if role:
+        conditions.append("cu.role = %s")
+        params.append(role)
+    where = " AND ".join(conditions)
+
+    # One aggregate over the cohort. course_orders is joined per company_id so a
+    # cross-company order can never bleed in. members counts the ACTIVE cohort
+    # (the k-anon cohort size), independent of whether they ordered anything.
+    cur.execute(f"""
+        SELECT
+            COUNT(DISTINCT cu.user_id) AS members,
+            COUNT(DISTINCT CASE WHEN co.status = 'completed' THEN co.id END) AS completed,
+            COUNT(DISTINCT CASE WHEN co.status IN ('confirmed','processing') THEN co.id END) AS in_progress,
+            COUNT(DISTINCT CASE WHEN co.status = 'pending_approval' THEN co.id END) AS pending,
+            COALESCE(SUM(CASE WHEN co.status != 'cancelled' THEN co.price ELSE 0 END), 0) AS total_spend,
+            AVG(CASE WHEN co.status = 'completed' AND co.completion_date IS NOT NULL
+                THEN DATEDIFF(co.completion_date, co.created_at) END) AS avg_completion_days,
+            COUNT(DISTINCT CASE WHEN co.status != 'cancelled' THEN co.id END) AS active_orders
+        FROM company_users cu
+        LEFT JOIN course_orders co
+            ON co.user_id = cu.user_id AND co.company_id = cu.company_id
+            AND co.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+        WHERE {where}
+    """, tuple(params + [period_days]))
+    row = cur.fetchone() or {}
+
+    members = int(row.get('members') or 0)
+    completed = int(row.get('completed') or 0)
+    in_progress = int(row.get('in_progress') or 0)
+    pending = int(row.get('pending') or 0)
+    active_orders = int(row.get('active_orders') or 0)
+    total_spend = float(row.get('total_spend') or 0)
+    avg_days = row.get('avg_completion_days')
+
+    # completion_rate = completed orders / non-cancelled orders in the window.
+    completion_rate = round(completed / active_orders * 100, 1) if active_orders else 0.0
+    # spend_per_member is a cohort-level scalar (denominator = k-safe member count).
+    spend_per_member = round(total_spend / members, 2) if members else 0.0
+
+    return {
+        'label': _cohort_label(sel),
+        'department': department or None,
+        'role': role or None,
+        'period_days': period_days,
+        'members': members,
+        'completed': completed,
+        'in_progress': in_progress,
+        'pending': pending,
+        'total_spend': round(total_spend, 2),
+        'completion_rate': completion_rate,
+        'avg_completion_days': round(float(avg_days), 1) if avg_days is not None else None,
+        'spend_per_member': spend_per_member,
+    }
+
+
+def _execute_hr_compare_cohorts(args):
+    """Compare two cohorts (department / role / time period) in ONE grounded turn.
+
+    Runs one self-contained, strictly company-scoped aggregate per side and
+    returns both sides plus the per-metric delta. NET-NEW per-cohort k-anon: each
+    cohort's member_count is run through kanon.suppress_small_groups; a cohort
+    below the floor has its metrics REDACTED and the diff is computed ONLY when
+    BOTH cohorts are k-safe (see HR_VALUE_PLAN risk register — the get_* tools
+    have no suppression, so this is net-new, not reuse).
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    cohort_a = args.get('cohort_a')
+    cohort_b = args.get('cohort_b')
+    if not isinstance(cohort_a, dict) or not isinstance(cohort_b, dict):
+        return json.dumps({
+            "error": "Angiv to kohorter at sammenligne (cohort_a og cohort_b), "
+                     "hver med fx department, role eller period_days."
+        })
+
+    cur = _get_cursor()
+    try:
+        side_a = _compute_cohort_metrics(cur, company_id, cohort_a)
+        side_b = _compute_cohort_metrics(cur, company_id, cohort_b)
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][compare_cohorts] aggregate failed: {exc}")
+        return json.dumps({"error": "Kunne ikke sammenligne kohorterne lige nu."})
+    cur.close()
+
+    # ── NET-NEW per-cohort k-anon. Each cohort is a grouped aggregate carrying
+    # its own member count; suppress_small_groups tells us which survive the
+    # floor. We keep the cohort LABEL either way (so the model can say "for lille
+    # til at sammenligne") but REDACT the metrics of any sub-k cohort. ──
+    try:
+        import kanon
+        k = kanon.K_DEFAULT
+        rows = [
+            {'_idx': 0, 'members': side_a['members']},
+            {'_idx': 1, 'members': side_b['members']},
+        ]
+        kept, note = kanon.suppress_small_groups(rows, 'members', k=k)
+        safe_idx = {r.get('_idx') for r in kept if isinstance(r, dict)}
+        anon_note = note.get('note_da')
+    except Exception as exc:
+        # Fail CLOSED: if kanon is unavailable, suppress any cohort below the
+        # constant default rather than leak a small cohort's numbers.
+        print(f"[HR_TOOLS][compare_cohorts] kanon unavailable, local floor: {exc}")
+        k = 5
+        safe_idx = {i for i, s in enumerate((side_a, side_b)) if s['members'] >= k}
+        anon_note = f'Grupper under k={k} er skjult af hensyn til anonymitet'
+
+    a_safe = 0 in safe_idx
+    b_safe = 1 in safe_idx
+
+    def _present(side, is_safe):
+        out = {
+            'label': side['label'],
+            'department': side['department'],
+            'role': side['role'],
+            'period_days': side['period_days'],
+            'members': side['members'],
+            'k_safe': is_safe,
+        }
+        if is_safe:
+            for key in _COHORT_METRIC_KEYS:
+                if key == 'members':
+                    continue
+                out[key] = side[key]
+        else:
+            # Sub-k cohort: NEVER surface its metrics. The label + count stay so
+            # the model can route the user, but the numbers are withheld.
+            out['suppressed'] = True
+            out['suppressed_reason_da'] = (
+                f"Kohorten '{side['label']}' har færre end {k} medarbejdere og vises "
+                "ikke af hensyn til anonymitet (GDPR/k-anonymitet)."
+            )
+        return out
+
+    out_a = _present(side_a, a_safe)
+    out_b = _present(side_b, b_safe)
+
+    result = {
+        "cohort_a": out_a,
+        "cohort_b": out_b,
+        "k": k,
+        "anon_note": anon_note,
+        "comparable": bool(a_safe and b_safe),
+    }
+
+    # The delta is computed ONLY when BOTH cohorts cleared the floor — diffing a
+    # sub-k cohort would re-expose the individual it represents.
+    if a_safe and b_safe:
+        deltas = {}
+        for key in _COHORT_METRIC_KEYS:
+            av = side_a.get(key)
+            bv = side_b.get(key)
+            if isinstance(av, (int, float)) and isinstance(bv, (int, float)):
+                deltas[key] = round(bv - av, 2)
+            else:
+                deltas[key] = None
+        result["delta_b_minus_a"] = deltas
+        result["summary_da"] = (
+            f"Sammenligning: '{out_a['label']}' ({side_a['members']} medl.) vs "
+            f"'{out_b['label']}' ({side_b['members']} medl.). "
+            f"Gennemførselsrate {side_a['completion_rate']}% vs {side_b['completion_rate']}%, "
+            f"spend pr. medarbejder {side_a['spend_per_member']} vs {side_b['spend_per_member']} kr."
+        )
+    else:
+        too_small = [s['label'] for s, ok in ((out_a, a_safe), (out_b, b_safe)) if not ok]
+        result["summary_da"] = (
+            "Kan ikke sammenligne: "
+            + ", ".join(f"'{lbl}'" for lbl in too_small)
+            + f" er for lille(e) (under k={k}) til at vises af hensyn til anonymitet. "
+            "Vælg bredere kohorter (fx en hel afdeling) eller spørg din kundeansvarlige."
+        )
+
+    return json.dumps(result, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -2961,6 +3242,7 @@ def execute_hr_tool(tool_call):
         "hr_explain_insights": _execute_hr_explain_insights,
         "set_skill_target": _execute_set_skill_target,
         "create_compliance_requirement": _execute_create_compliance_requirement,
+        "hr_compare_cohorts": _execute_hr_compare_cohorts,
     }
 
     fn = router.get(name)

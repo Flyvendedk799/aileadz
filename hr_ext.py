@@ -304,3 +304,49 @@ def deadline_ics(progress_id):
     except Exception as e:
         logger.warning("hr_ext: deadline_ics failed: %s", e)
         return ("Kalenderhændelse kunne ikke genereres.", 500)
+
+
+@hr_ext_bp.route('/calendar/feed.ics')
+def calendar_feed():
+    """Session-authed, company-scoped subscribable ICS feed of upcoming courses
+    and deadlines ('Abonnér på virksomhedens kurser').
+
+    Reuses the enterprise feed builder (enterprise_api.build_company_calendar_events
+    + calendar_service.build_ics_feed) so the in-app feed exposes IDENTICAL data
+    to the API-key feed — but behind the SESSION gate (the HR-role / company-scope
+    rule the other hr_ext pages use), NOT the enterprise API key. No new
+    people-level data surface: it is the same company-scoped order/deadline data
+    the HR order tables already render. Always returns a valid (possibly empty)
+    calendar so a subscribed client never sees a 500.
+    """
+    if not _hr_ok():
+        return redirect(url_for('dashboard.dashboard'))
+    company_id = session.get('company_id')
+    try:
+        import MySQLdb.cursors
+        from calendar_service import build_ics_feed
+        from enterprise_api import build_company_calendar_events
+    except Exception as e:
+        logger.warning("hr_ext: calendar feed deps unavailable: %s", e)
+        return Response(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            "PRODID:-//aileadz//calendar_service//DA\r\nEND:VCALENDAR\r\n",
+            mimetype='text/calendar',
+        )
+    events = []
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            events = build_company_calendar_events(cur, company_id)
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+    except Exception as e:
+        logger.warning("hr_ext: calendar feed failed: %s", e)
+        events = []
+    ics = build_ics_feed(events, cal_name='Kurser & frister')
+    resp = Response(ics, mimetype='text/calendar')
+    resp.headers['Content-Disposition'] = 'inline; filename="aileadz-kalender.ics"'
+    return resp

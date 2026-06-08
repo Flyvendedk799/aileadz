@@ -10,6 +10,44 @@
 
   {% set r = roi or {} %}
 
+  <!-- ===== MEASURED SKILL UPLIFT vs SPEND (skill-uplift loop, plan #19) ===== -->
+  {# The product's core promise made measurable: how much skill level the year's
+     training actually BOUGHT, from the employee_skill_history trajectory — not a
+     hypothetical multiplier. Surfaced FIRST and OUTSIDE the has_data gate so the
+     measured-outcome evidence shows even before commerce ROI exists. Aggregate +
+     k-anon-safe: when fewer than k distinct employees contributed measured lift
+     the figure is suppressed and only the privacy note shows. #}
+  {% set up = uplift or {} %}
+  {% if up.suppressed %}
+  <div class="fm-card" style="margin-top:16px;border:1px dashed color-mix(in srgb,var(--fm-ink-3) 45%,transparent)">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-arrow-trend-up"></i></span>
+      <h3>Målt kompetenceløft pr. krone</h3>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);display:flex;align-items:center;gap:8px">
+        <i class="fa-solid fa-user-shield" style="opacity:.6"></i>
+        <span>{{ up.anon_note or 'Tallet er skjult af hensyn til anonymitet, da datagrundlaget er for lille.' }}</span>
+      </div>
+    </div>
+  </div>
+  {% elif up.has_data %}
+  <div class="fm-card" style="margin-top:16px;border:1px solid color-mix(in srgb,var(--fm-success) 30%,transparent)">
+    <div class="fm-card-head">
+      <span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success)"><i class="fa-solid fa-arrow-trend-up"></i></span>
+      <h3>Målt kompetenceløft — faktiske resultater</h3>
+    </div>
+    <div class="fm-card-body" style="padding-top:6px">
+      <div class="muted" style="font-size:12.5px;color:var(--fm-ink-3);margin-bottom:10px">Samlet stigning i målt kompetenceniveau registreret i {{ up.fiscal_year or fiscal_year }}, holdt op mod årets uddannelsesudgift. Dette er <strong>målte</strong> tal fra kompetencehistorikken — ikke en fremskrivning.</div>
+      <div class="kpi-row" style="margin-top:0">
+        <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-arrow-up-right-dots"></i></span><div><div class="kl">Niveauløft pr. 1.000 kr</div><div class="kv tnum">{{ up.lift_per_1000_kr|default(0) }}</div><div class="kd">kompetencepoint pr. 1.000 kr</div></div></div>
+        <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-layer-group"></i></span><div><div class="kl">Samlet niveauløft</div><div class="kv tnum">+{{ up.total_lift|default(0) }}</div><div class="kd">kompetencepoint i alt</div></div></div>
+        <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-users"></i></span><div><div class="kl">Medarbejdere løftet</div><div class="kv tnum">{{ up.employees|default(0) }}</div><div class="kd">{{ up.levels_raised|default(0) }} niveauopgraderinger</div></div></div>
+      </div>
+    </div>
+  </div>
+  {% endif %}
+
   {% if not r.has_data %}
   <div class="fm-empty" style="text-align:center;padding:48px 16px;color:var(--fm-ink-3);margin-top:16px">
     <div style="font-size:32px;margin-bottom:10px"><i class="fa-solid fa-chart-line" style="opacity:.4"></i></div>

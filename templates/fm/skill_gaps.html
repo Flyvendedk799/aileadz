@@ -9,6 +9,7 @@
 
   {% set sd = skill_dashboard or {} %}
   <div class="fm-flex fm-gap8" style="margin-bottom:14px;justify-content:flex-end;flex-wrap:wrap">
+    <button class="btn btn-ghost btn-sm" onclick="openModal('confirmUpliftModal')"><i class="fa-solid fa-arrow-trend-up"></i> Bekræft løft</button>
     <button class="btn btn-ghost btn-sm" onclick="openModal('assignSkillModal')"><i class="fa-solid fa-user-plus"></i> Tildel</button>
     <button class="btn btn-primary btn-sm" onclick="openModal('addTargetModal')"><i class="fa-solid fa-plus"></i> Nyt mål</button>
   </div>
@@ -36,6 +37,21 @@
   <div class="fm-card" style="padding:18px;margin-bottom:8px">
     <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px">Gennemsnitligt faktisk niveau sammenlignet med fastsat målniveau, pr. kompetence (skala 0–5).</p>
     <div style="position:relative;height:360px;max-width:560px;margin:0 auto"><canvas id="skillRadar" aria-label="Radardiagram: gennemsnitligt faktisk kompetenceniveau mod målniveau pr. kompetence" role="img"></canvas></div>
+  </div>
+
+  <!-- Skill-growth trend: measured level over time (skill-uplift loop) -->
+  {% set gt = growth_trend or {} %}
+  <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-arrow-trend-up"></i> Måling, ikke kun forbrug</span><h2 class="fm-section-title">Kompetenceudvikling over tid</h2></div></div>
+  <div class="fm-card" style="padding:18px;margin-bottom:8px">
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 12px">Virksomhedens gennemsnitlige <strong>målte</strong> kompetenceniveau pr. måned (skala 0–5) — dokumenteret bevis for at træning faktisk hæver niveauet, ikke blot et forbrug.</p>
+    {% if gt.has_data %}
+    <div class="fm-chart-wrap" style="min-height:240px"><canvas id="skillGrowthChart" aria-label="Linjediagram: gennemsnitligt målt kompetenceniveau pr. måned" role="img"></canvas></div>
+    {% else %}
+    <div style="text-align:center;padding:28px 16px;color:var(--fm-ink-3);font-size:13px"><i class="fa-solid fa-chart-line" style="opacity:.4;font-size:24px;display:block;margin-bottom:8px"></i>Endnu ingen kompetencehistorik. Når kompetenceniveauer opdateres eller bekræftes efter kurser, tegnes udviklingskurven her.</div>
+    {% endif %}
+    {% if gt.anon_note %}
+    <div class="muted" style="font-size:11.5px;color:var(--fm-ink-3);margin-top:10px;display:flex;align-items:center;gap:6px"><i class="fa-solid fa-user-shield" style="opacity:.6"></i><span>{{ gt.anon_note }}</span></div>
+    {% endif %}
   </div>
 
   <!-- Critical gaps from heatmap -->
@@ -106,6 +122,24 @@
   </div>
 </div>
 
+<!-- Confirm Skill Uplift Modal (skill-uplift loop, plan #19) -->
+<div id="confirmUpliftModal" class="sg-modal" style="display:none">
+  <div class="fm-card" style="max-width:480px;width:90%;padding:22px">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:4px">Bekræft kompetenceløft</h3>
+    <p style="font-size:12px;color:var(--fm-ink-3);margin:0 0 14px">Registrér en medarbejders nye niveau efter gennemført kursus. Dette dokumenterer det <strong>målte</strong> løft, ikke blot forbruget.</p>
+    <label class="fm-field"><span>Medarbejder *</span>
+      <select class="fm-input" id="upliftEmployee" onchange="upliftSkillsFor(this.value)">
+        <option value="">-- Vælg medarbejder --</option>
+        {% for emp in (all_employee_skills | groupby('user_id')) %}{% if emp.grouper %}<option value="{{ emp.grouper }}">{{ emp.list[0].username }}{% if emp.list[0].department %} · {{ emp.list[0].department }}{% endif %}</option>{% endif %}{% endfor %}
+      </select>
+    </label>
+    <label class="fm-field"><span>Kompetence *</span><input type="text" class="fm-input" id="upliftSkill" list="upliftSkillsList" placeholder="Vælg eller indtast kompetence..." autocomplete="off"></label>
+    <datalist id="upliftSkillsList"></datalist>
+    <label class="fm-field"><span>Nyt niveau: <strong id="upliftLevelDisplay">3</strong> / 5</span><input type="range" id="upliftLevel" min="1" max="5" value="3" oninput="document.getElementById('upliftLevelDisplay').textContent=this.value"></label>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="closeModal('confirmUpliftModal')">Annuller</button><button class="btn btn-primary btn-sm" onclick="confirmUplift()"><i class="fa-solid fa-check"></i> Bekræft løft</button></div>
+  </div>
+</div>
+
 <datalist id="skillNamesList">{% for s in all_skill_names %}<option value="{{ s }}">{% endfor %}</datalist>
 {% endblock %}
 {% block extra_head %}
@@ -155,6 +189,19 @@
     ],
     empty: 'Ingen kompetencemål defineret endnu'
   });
+
+  // Skill-growth trend: measured company-wide average level per month. The
+  // payload is already k-anon-suppressed server-side (sub-k months dropped), so
+  // the line only ever plots company-level aggregates.
+  var gt = {{ (growth_trend or {})|tojson|safe }};
+  if (gt && gt.labels && gt.labels.length) {
+    FMChart.line('skillGrowthChart', {
+      labels: gt.labels,
+      max: 5,
+      series: [{ label: 'Gns. målt niveau', data: gt.avg_levels || [], color: FMChart.cssVar('--fm-primary', '#0f766e') }],
+      empty: 'Endnu ingen kompetencehistorik'
+    });
+  }
 })();
 </script>
 <script>
@@ -199,6 +246,39 @@ function assignSkill(){
   if(!dept){ alert('Vælg en afdeling.'); return; }
   fetch('{{ url_for("hr_dashboard.assign_employee_skill") }}', {
     method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({skill_name:skill, level:level, department:dept})
+  }).then(r=>r.json()).then(d=>{ if(d.success){ alert(d.message); location.reload(); } else alert('Fejl: '+(d.message||'Ukendt fejl')); });
+}
+
+// ── Confirm skill uplift (plan #19): post-training, per-employee capture ──
+// Per-employee skill map so the skill datalist narrows to skills the chosen
+// employee already has (the manager may also type a new one).
+var UPLIFT_SKILLS = (function () {
+  var m = {};
+  var rows = {{ (all_employee_skills or [])|tojson|safe }};
+  rows.forEach(function (r) {
+    if (!r || r.user_id == null) return;
+    var uid = String(r.user_id);
+    if (!m[uid]) m[uid] = [];
+    if (r.skill_name && m[uid].indexOf(r.skill_name) === -1) m[uid].push(r.skill_name);
+  });
+  return m;
+})();
+function upliftSkillsFor(uid){
+  var dl = document.getElementById('upliftSkillsList');
+  dl.innerHTML = '';
+  (UPLIFT_SKILLS[String(uid)] || []).forEach(function (s) {
+    var o = document.createElement('option'); o.value = s; dl.appendChild(o);
+  });
+}
+function confirmUplift(){
+  var uid = document.getElementById('upliftEmployee').value;
+  var skill = document.getElementById('upliftSkill').value.trim();
+  var level = parseInt(document.getElementById('upliftLevel').value);
+  if(!uid){ alert('Vælg en medarbejder.'); return; }
+  if(!skill){ alert('Angiv kompetencenavn.'); return; }
+  fetch('{{ url_for("hr_dashboard.confirm_skill_uplift") }}', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({employee_id:parseInt(uid), skill_name:skill, level:level})
   }).then(r=>r.json()).then(d=>{ if(d.success){ alert(d.message); location.reload(); } else alert('Fejl: '+(d.message||'Ukendt fejl')); });
 }
 </script>

@@ -1616,53 +1616,41 @@ def create_order_api():
 # CALENDAR FEED (subscribable ICS) + AUDIT-LOG EXPORT
 # =====================================================
 
-@api_enterprise_bp.route('/api/v1/calendar/ics')
-@require_api_auth('read:orders')
-def calendar_ics_feed():
-    """Subscribable ICS feed of upcoming courses / deadlines (text/calendar).
+def build_company_calendar_events(cur, company_id, *, user_ids=None):
+    """Build the forward-looking course/deadline event list for a company.
 
-    Company-scoped via the API key (g.company_id). Optional ?employee_id=...
-    narrows to one employee's course orders (verified to belong to the company).
-    Builds VEVENTs from course_orders' scheduled start dates and completion
-    deadlines using the battle-tested calendar_service. Always returns a valid
-    calendar (even when empty) so a subscribed client never sees a 500.
+    Shared by the API-key feed (``calendar_ics_feed``) and the session-authed
+    in-app feed (``hr_ext.calendar_feed``) so both expose IDENTICAL calendar data
+    from the SAME query — the in-app surface adds NO new data beyond what the HR
+    order tables already render, only a different (session) gate.
+
+    Args:
+        cur:        an open DictCursor (caller owns its lifecycle).
+        company_id: strict company scope (never None).
+        user_ids:   optional iterable — narrow to one or more employees' course
+                    orders (course_orders.user_id IN (...)). None = whole company.
+
+    Returns:
+        a list of event dicts ready for ``calendar_service.build_ics_feed``.
+        Never raises; returns ``[]`` on any query failure.
     """
     try:
-        from calendar_service import build_ics_feed, parse_danish_date
-    except Exception as e:
+        from calendar_service import parse_danish_date
+    except Exception as e:  # pragma: no cover - import-safety guard
         logging.warning("enterprise_api: calendar_service unavailable: %s", e)
-        return Response(
-            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
-            "PRODID:-//aileadz//calendar_service//DA\r\nEND:VCALENDAR\r\n",
-            mimetype='text/calendar',
-        )
-
-    employee_id = request.args.get('employee_id')
+        return []
 
     where = ['company_id = %s']
-    params = [g.company_id]
+    params = [company_id]
+    if user_ids is not None:
+        ids = [u for u in user_ids if u is not None]
+        if not ids:
+            return []
+        placeholders = ','.join(['%s'] * len(ids))
+        where.append('user_id IN (%s)' % placeholders)
+        params.extend(ids)
 
-    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     try:
-        # If scoped to one employee, verify membership in THIS company first.
-        if employee_id:
-            try:
-                eid = int(employee_id)
-            except (TypeError, ValueError):
-                cur.close()
-                return jsonify({'error': 'Invalid employee_id'}), 400
-            cur.execute(
-                "SELECT user_id FROM company_users WHERE id = %s AND company_id = %s",
-                (eid, g.company_id),
-            )
-            emp = cur.fetchone()
-            if not emp:
-                cur.close()
-                return jsonify({'error': 'Employee not found'}), 404
-            # course_orders link employees by user_id (or by id where no user_id).
-            where.append('(user_id = %s OR user_id = %s)')
-            params.extend([emp.get('user_id'), eid])
-
         # Only future/active courses + open deadlines — a forward-looking feed.
         # Cancelled/rejected orders are excluded.
         cur.execute(
@@ -1677,14 +1665,9 @@ def calendar_ics_feed():
             params,
         )
         rows = cur.fetchall() or []
-        cur.close()
     except Exception as e:
-        try:
-            cur.close()
-        except Exception:
-            pass
         logging.warning("enterprise_api: calendar feed query failed: %s", e)
-        rows = []
+        return []
 
     events = []
     for r in rows:
@@ -1712,9 +1695,63 @@ def calendar_ics_feed():
                 'description': 'Gennemførelsesfrist for %s' % title,
                 'uid': 'order-%s-deadline@aileadz' % r.get('order_id'),
             })
+    return events
 
-    cal_name = 'Kurser & frister'
-    ics = build_ics_feed(events, cal_name=cal_name)
+
+@api_enterprise_bp.route('/api/v1/calendar/ics')
+@require_api_auth('read:orders')
+def calendar_ics_feed():
+    """Subscribable ICS feed of upcoming courses / deadlines (text/calendar).
+
+    Company-scoped via the API key (g.company_id). Optional ?employee_id=...
+    narrows to one employee's course orders (verified to belong to the company).
+    Builds VEVENTs from course_orders' scheduled start dates and completion
+    deadlines using the battle-tested calendar_service. Always returns a valid
+    calendar (even when empty) so a subscribed client never sees a 500.
+    """
+    try:
+        from calendar_service import build_ics_feed
+    except Exception as e:
+        logging.warning("enterprise_api: calendar_service unavailable: %s", e)
+        return Response(
+            "BEGIN:VCALENDAR\r\nVERSION:2.0\r\n"
+            "PRODID:-//aileadz//calendar_service//DA\r\nEND:VCALENDAR\r\n",
+            mimetype='text/calendar',
+        )
+
+    employee_id = request.args.get('employee_id')
+
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        scoped_user_ids = None
+        # If scoped to one employee, verify membership in THIS company first.
+        if employee_id:
+            try:
+                eid = int(employee_id)
+            except (TypeError, ValueError):
+                cur.close()
+                return jsonify({'error': 'Invalid employee_id'}), 400
+            cur.execute(
+                "SELECT user_id FROM company_users WHERE id = %s AND company_id = %s",
+                (eid, g.company_id),
+            )
+            emp = cur.fetchone()
+            if not emp:
+                cur.close()
+                return jsonify({'error': 'Employee not found'}), 404
+            # course_orders link employees by user_id (or by id where no user_id).
+            scoped_user_ids = [emp.get('user_id'), eid]
+
+        events = build_company_calendar_events(
+            cur, g.company_id, user_ids=scoped_user_ids,
+        )
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+    ics = build_ics_feed(events, cal_name='Kurser & frister')
     resp = Response(ics, mimetype='text/calendar')
     resp.headers['Content-Disposition'] = 'inline; filename="aileadz-calendar.ics"'
     return resp

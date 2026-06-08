@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Læringsforløb{% endblock %}
@@ -19,7 +20,10 @@
   </div>
 
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-route"></i> Udvikling</span><h2 class="fm-section-title">Læringsforløb</h2></div>
-    {% if can_create %}<button class="btn btn-primary btn-sm" onclick="openCreatePath()"><i class="fa-solid fa-plus"></i> Opret forløb</button>{% endif %}
+    <div class="fm-flex fm-ac fm-gap8">
+      {{ ui.addtocal(url_for('hr_ext.calendar_feed'), 'Abonnér på kalender') }}
+      {% if can_create %}<button class="btn btn-primary btn-sm" onclick="openCreatePath()"><i class="fa-solid fa-plus"></i> Opret forløb</button>{% endif %}
+    </div>
   </div>
 
   {% if paths %}
@@ -53,7 +57,7 @@
       {% set path_enrollments = enrollments.get(path.id, []) %}
       {% if path_enrollments %}
       <div class="fm-table-wrap" style="max-height:240px;overflow-y:auto;margin:0">
-        <table class="fm-table"><thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Status</th><th>Fremskridt</th></tr></thead><tbody>
+        <table class="fm-table"><thead><tr><th>Medarbejder</th><th>Afdeling</th><th>Status</th><th>Fremskridt</th><th>Frist</th></tr></thead><tbody>
           {% for e in path_enrollments %}
           <tr>
             <td style="font-weight:600">{{ e.full_name or e.username }}</td>
@@ -64,6 +68,10 @@
               {% else %}<span class="fm-chip">Ikke startet</span>{% endif %}
             </td>
             <td style="min-width:110px"><div class="fm-prog thin" style="margin-bottom:3px"><span style="width:{{ e.progress_percentage|round(0)|int }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ e.progress_percentage|round(0)|int }}%</span></td>
+            <td style="white-space:nowrap">
+              {% if e.due_date and not e.completed_at %}{{ ui.addtocal(url_for('hr_ext.deadline_ics', progress_id=e.id), 'Tilføj frist') }}
+              {% else %}<span style="font-size:11px;color:var(--fm-ink-3)">—</span>{% endif %}
+            </td>
           </tr>
           {% endfor %}
         </tbody></table>

@@ -11,7 +11,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-{% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
+{% set active_hr_page = 'learning_analytics' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set total_enroll = 0 %}{% set total_complete = 0 %}
   {% for c in (popular_courses or []) %}{% set total_enroll = total_enroll + (c.enrollments or 0) %}{% set total_complete = total_complete + (c.completions or 0) %}{% endfor %}

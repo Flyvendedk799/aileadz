@@ -1,20 +1,29 @@
 {# Canonical HR sub-navigation. Single source of truth — include at the top of the
    content block on every HR page and set `active_hr_page` (string) in the view:
        {% set active_hr_page = 'roi' %}{% include 'fm/_hr_subnav.html' %}
-   Replaces the per-page inlined .pg-subnav blocks so tabs never drift. #}
+   Replaces the per-page inlined .pg-subnav blocks so tabs never drift.
+   active_hr_page keys (one per destination): dashboard, team, employees, departments,
+   approvals, approval_policies, budgets, roi, learning_analytics, benchmarking,
+   skill_gaps, training_plan, learning_paths, internal_courses, compliance,
+   suppliers, procurement, engagement, ai_quality, reports. #}
 {% set _hp = active_hr_page | default('') %}
 <nav class="pg-subnav" aria-label="HR-navigation">
   <a class="pg-tab {{ 'active' if _hp == 'dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Oversigt</a>
   <a class="pg-tab {{ 'active' if _hp == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i> Mit team</a>
+  <a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
+  <a class="pg-tab {{ 'active' if _hp == 'departments' }}" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
   <a class="pg-tab {{ 'active' if _hp == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i> Godkendelser</a>
   <a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-robot"></i> Auto-godkendelse</a>
   <a class="pg-tab {{ 'active' if _hp == 'budgets' }}" href="{{ url_for('hr_dashboard.department_budgets') }}"><i class="fa-solid fa-wallet"></i> Budgetter</a>
   <a class="pg-tab {{ 'active' if _hp == 'roi' }}" href="{{ url_for('hr_dashboard.roi_dashboard') }}"><i class="fa-solid fa-chart-pie"></i> ROI</a>
+  <a class="pg-tab {{ 'active' if _hp == 'learning_analytics' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-line"></i> Læringsanalyse</a>
   <a class="pg-tab {{ 'active' if _hp == 'benchmarking' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i> Benchmarking</a>
   <a class="pg-tab {{ 'active' if _hp == 'skill_gaps' }}" href="{{ url_for('hr_dashboard.skill_gaps_view') }}"><i class="fa-solid fa-brain"></i> Kompetencer</a>
   <a class="pg-tab {{ 'active' if _hp == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i> Træningsplan</a>
   <a class="pg-tab {{ 'active' if _hp == 'learning_paths' }}" href="{{ url_for('hr_dashboard.learning_paths') }}"><i class="fa-solid fa-route"></i> Læringsforløb</a>
+  <a class="pg-tab {{ 'active' if _hp == 'internal_courses' }}" href="{{ url_for('hr_dashboard.internal_courses') }}"><i class="fa-solid fa-book-open"></i> Interne kurser</a>
   <a class="pg-tab {{ 'active' if _hp == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i> Compliance</a>
+  <a class="pg-tab {{ 'active' if _hp == 'suppliers' }}" href="{{ url_for('hr_dashboard.supplier_management') }}"><i class="fa-solid fa-truck"></i> Leverandører</a>
   <a class="pg-tab {{ 'active' if _hp == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i> Indkøb</a>
   <a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>
   <a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>

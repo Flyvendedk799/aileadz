@@ -248,6 +248,177 @@ def _job_weekly_manager_digest(app):
             'skipped': skipped, 'errors': errors}
 
 
+def company_analytics_snapshot(conn, company_id, day=None):
+    """Roll up one company's KPIs for a single day into ``company_analytics``.
+
+    Idempotent upsert keyed on ``(company_id, date)`` (the UNIQUE key added in
+    enterprise_tables.py): re-running for the same day UPDATEs the existing row
+    rather than inserting a duplicate, so a re-run or two workers racing produce
+    the same final row.
+
+    The rolled-up KPIs mirror the heavy per-request GROUP-BYs in
+    multitenant_reports.reports() and exactly fill the columns the table already
+    declares + the enterprise_analytics / enterprise_api readers already read:
+
+      * ``total_queries``                — chatbot interactions that day
+      * ``active_users``                 — distinct users with ANY learning
+                                           activity that day (chatbot OR a course
+                                           order OR learning-progress access),
+                                           the same unified last-learning signal
+                                           plan #10 standardised on
+      * ``courses_started``              — course orders placed that day
+      * ``courses_completed``            — orders/progress completed that day
+      * ``employee_satisfaction_score``  — AVG non-zero feedback_rating that day
+
+    This is aggregate, company-scoped, count-only data (no people-level rows),
+    so it carries no k-anon exposure. Returns True on a successful upsert, False
+    otherwise. NEVER raises — a single company's failure must not abort the
+    nightly batch.
+    """
+    if conn is None or company_id is None:
+        return False
+    cur = conn.cursor()
+    try:
+        cid = int(company_id)
+
+        # `day` defaults to "yesterday" (CURDATE() - 1) so a nightly run that
+        # fires just after midnight captures a fully-closed day; callers (and
+        # tests) can pass an explicit 'YYYY-MM-DD' string for a specific day.
+        if day is None:
+            day_sql = "DATE_SUB(CURDATE(), INTERVAL 1 DAY)"
+            day_params = ()
+        else:
+            day_sql = "%s"
+            day_params = (day,)
+
+        # Chatbot volume + satisfaction for the day (single pass over
+        # chatbot_interactions, company-scoped).
+        cur.execute(
+            """
+            SELECT
+                COUNT(*)                                   AS total_queries,
+                AVG(NULLIF(feedback_rating, 0))            AS avg_feedback
+            FROM chatbot_interactions
+            WHERE company_id = %s AND DATE(created_at) = """ + day_sql,
+            (cid,) + day_params,
+        )
+        row = cur.fetchone() or {}
+        total_queries = int((row.get('total_queries') if isinstance(row, dict) else row[0]) or 0)
+        avg_feedback = (row.get('avg_feedback') if isinstance(row, dict) else row[1])
+        try:
+            satisfaction = round(float(avg_feedback), 2) if avg_feedback is not None else None
+        except Exception:
+            satisfaction = None
+
+        # Course throughput for the day from course_orders (started = placed,
+        # completed = completion_date on that day).
+        cur.execute(
+            """
+            SELECT
+                SUM(CASE WHEN DATE(created_at) = """ + day_sql + """ THEN 1 ELSE 0 END)        AS started,
+                SUM(CASE WHEN completion_status = 'completed'
+                          AND DATE(completion_date) = """ + day_sql + """ THEN 1 ELSE 0 END)   AS completed
+            FROM course_orders
+            WHERE company_id = %s
+              AND (DATE(created_at) = """ + day_sql + """ OR DATE(completion_date) = """ + day_sql + """)
+            """,
+            day_params + day_params + (cid,) + day_params + day_params,
+        )
+        row = cur.fetchone() or {}
+        courses_started = int((row.get('started') if isinstance(row, dict) else row[0]) or 0)
+        courses_completed = int((row.get('completed') if isinstance(row, dict) else row[1]) or 0)
+
+        # Distinct active users that day across the unified learning signals
+        # (chatbot, order, progress access) — a count, never the user ids.
+        # All three legs are normalised onto users.id so a person who both
+        # chatted and ordered isn't double-counted: the chatbot leg resolves
+        # its `username` to a user id via the users table (the same
+        # username->users.id join the rest of multitenant_reports uses), while
+        # the order/progress legs already key on user_id.
+        cur.execute(
+            """
+            SELECT COUNT(*) AS active_users FROM (
+                SELECT u.id AS uid FROM chatbot_interactions ci
+                  JOIN users u ON ci.username = u.username
+                  WHERE ci.company_id = %s AND ci.username IS NOT NULL AND ci.username <> ''
+                    AND DATE(ci.created_at) = """ + day_sql + """
+                UNION
+                SELECT user_id AS uid FROM course_orders
+                  WHERE company_id = %s AND user_id IS NOT NULL
+                    AND DATE(created_at) = """ + day_sql + """
+                UNION
+                SELECT user_id AS uid FROM employee_learning_progress
+                  WHERE company_id = %s AND user_id IS NOT NULL
+                    AND DATE(last_accessed) = """ + day_sql + """
+            ) t
+            """,
+            (cid,) + day_params + (cid,) + day_params + (cid,) + day_params,
+        )
+        row = cur.fetchone() or {}
+        active_users = int((row.get('active_users') if isinstance(row, dict) else row[0]) or 0)
+
+        # Idempotent upsert on the (company_id, date) UNIQUE key.
+        cur.execute(
+            """
+            INSERT INTO company_analytics
+                (company_id, date, employee_satisfaction_score, active_users,
+                 total_queries, courses_started, courses_completed)
+            VALUES (%s, """ + day_sql + """, %s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                employee_satisfaction_score = VALUES(employee_satisfaction_score),
+                active_users                = VALUES(active_users),
+                total_queries               = VALUES(total_queries),
+                courses_started             = VALUES(courses_started),
+                courses_completed           = VALUES(courses_completed)
+            """,
+            (cid,) + day_params + (satisfaction, active_users, total_queries,
+                                   courses_started, courses_completed),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.warning("scheduler: company_analytics_snapshot failed for company %s: %s",
+                       company_id, e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        try:
+            cur.close()
+        except Exception:
+            pass
+
+
+def _job_company_analytics_rollup(app):
+    """Nightly: roll up each active company's daily KPIs into company_analytics.
+
+    Writer for the previously-writer-less company_analytics table (the table the
+    enterprise_analytics ML reader and enterprise_api dashboard already read).
+    Bounded per pass by ``active_company_ids`` (DEFAULT_COMPANY_BATCH); the
+    remaining companies are picked up on the next pass. Each company's snapshot
+    is fully guarded so one failure never aborts the batch.
+    """
+    companies = 0
+    written = 0
+    errors = 0
+    with app.app_context():
+        ids = active_company_ids()
+        conn = app.mysql.connection
+        for cid in ids:
+            companies += 1
+            try:
+                if company_analytics_snapshot(conn, cid):
+                    written += 1
+                else:
+                    errors += 1
+            except Exception as e:
+                errors += 1
+                logger.warning("scheduler: analytics rollup failed for company %s: %s", cid, e)
+    return {'companies': companies, 'snapshots': written, 'errors': errors}
+
+
 def _job_compliance_recheck(app):
     """Re-derive compliance state on a cadence (thin guarded pass for now).
 
@@ -296,6 +467,12 @@ JOBS = [
         'name': 'compliance_recheck',
         'interval_seconds': 86400,        # daily
         'fn': _job_compliance_recheck,
+        'enabled': True,
+    },
+    {
+        'name': 'company_analytics_rollup',
+        'interval_seconds': 86400,        # daily — writes the per-company daily KPI snapshot
+        'fn': _job_company_analytics_rollup,
         'enabled': True,
     },
     {

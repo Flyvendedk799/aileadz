@@ -21,13 +21,29 @@
   </div>
 
   {% if (t.compliant|default(0)) + (t.expiring|default(0)) + (t.overdue|default(0)) > 0 %}
-  <div class="fm-card" style="margin-bottom:16px;padding:18px">
-    <div class="fm-flex fm-ac fm-gap12" style="margin-bottom:4px">
-      <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-pie"></i></span>
-      <h3 style="font-size:14.5px;font-weight:700">Samlet compliance-status</h3>
+  <div class="fm-grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px;margin-bottom:16px">
+    <div class="fm-card" style="padding:18px">
+      <div class="fm-flex fm-ac fm-gap12" style="margin-bottom:4px">
+        <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-pie"></i></span>
+        <h3 style="font-size:14.5px;font-weight:700">Samlet compliance-status</h3>
+      </div>
+      <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Fordeling af alle medarbejder-krav på opfyldt, udløber snart og mangler/udløbet.</p>
+      <div style="position:relative;height:260px"><canvas id="complianceDonut" aria-label="Doughnut-diagram: andel af medarbejder-krav der er opfyldt, udløber snart eller mangler/udløbet" role="img"></canvas></div>
     </div>
-    <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Fordeling af alle medarbejder-krav på opfyldt, udløber snart og mangler/udløbet.</p>
-    <div style="position:relative;height:260px"><canvas id="complianceDonut" aria-label="Doughnut-diagram: andel af medarbejder-krav der er opfyldt, udløber snart eller mangler/udløbet" role="img"></canvas></div>
+
+    {% if at_risk_chart %}
+    <div class="fm-card" style="padding:18px">
+      <div class="fm-flex fm-ac fm-gap12" style="margin-bottom:4px">
+        <span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-danger-tint, color-mix(in srgb, var(--fm-danger) 14%, transparent));color:var(--fm-danger)"><i class="fa-solid fa-triangle-exclamation"></i></span>
+        <h3 style="font-size:14.5px;font-weight:700">Mest udsatte krav</h3>
+      </div>
+      <p style="font-size:12px;color:var(--fm-ink-2);margin:0 0 12px">Krav med flest medarbejdere der mangler dækning eller snart udløber — sorteret efter risiko.</p>
+      <div style="position:relative;height:260px"><canvas id="complianceAtRisk" aria-label="Liggende søjlediagram: krav rangeret efter antal medarbejdere der mangler eller snart udløber dækning" role="img"></canvas></div>
+      {% if compliance_anon %}
+      <p style="font-size:11px;color:var(--fm-ink-3);margin:10px 0 0;display:flex;align-items:center;gap:6px"><i class="fa-solid fa-user-shield"></i> {{ compliance_anon }}</p>
+      {% endif %}
+    </div>
+    {% endif %}
   </div>
   {% endif %}
 
@@ -203,6 +219,23 @@
     ],
     empty: 'Ingen compliance-data endnu'
   });
+
+  // Most-at-risk requirements — horizontal stacked bar (overdue + expiring),
+  // already k-anon-suppressed and sorted server-side. Data are aggregate
+  // counts only (no employee names); sub-k requirements never reach here.
+  var atRisk = {{ (at_risk_chart or [])|list|tojson|safe }};
+  if (atRisk.length) {
+    FMChart.bar('complianceAtRisk', {
+      horizontal: true,
+      stacked: true,
+      labels: atRisk.map(function (r) { return r.title; }),
+      series: [
+        { label: 'Mangler / udløbet', data: atRisk.map(function (r) { return Number(r.overdue) || 0; }), color: FMChart.cssVar('--fm-danger', '#dc2626') },
+        { label: 'Udløber snart', data: atRisk.map(function (r) { return Number(r.expiring) || 0; }), color: FMChart.cssVar('--fm-warning', '#d97706') }
+      ],
+      empty: 'Ingen udsatte krav'
+    });
+  }
 })();
 </script>
 <script>

@@ -15,6 +15,16 @@ import io
 from perf_cache import ttl_cache
 from auth_decorators import require_company_role
 
+# k-anon helpers for small-cohort suppression on per-requirement breakdowns.
+# Guarded import: a missing k-anon module must NEVER crash an HR dashboard render
+# (mirrors insights_engine.py). Without it the visuals still compute, but the
+# per-requirement at-risk bar is then suppressed entirely (fail-closed) so we can
+# never expose a sub-k cohort just because the helper failed to load.
+try:
+    import kanon as _kanon
+except Exception:  # pragma: no cover - boot-safety guard
+    _kanon = None
+
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
 
@@ -4373,12 +4383,69 @@ def create_hr_dashboard_blueprint():
             flash("Fejl ved indlaesning af compliance-matrix.", "danger")
             matrix, totals = [], {'requirements': 0, 'compliant': 0, 'expiring': 0, 'overdue': 0}
 
+        # ── "Most-at-risk requirements" bar data (k-anon-safe) ───────────────
+        # The donut shows company-wide totals (already aggregated → safe). This
+        # bar is a PER-REQUIREMENT breakdown, so a requirement that applies to a
+        # tiny group (e.g. one person in a department) could re-identify that
+        # individual from an "X mangler" bar. The cohort whose smallness matters
+        # is row['applicable'] (how many employees the requirement covers), so we
+        # suppress any requirement applicable to fewer than k employees BEFORE it
+        # reaches the chart. The route's own totals/matrix table are unchanged;
+        # only this aggregate visual is k-floored.
+        at_risk_chart = []
+        compliance_anon = None
+        try:
+            # Candidate rows: requirements that actually have at-risk employees
+            # (expiring or overdue), carrying the applicable-cohort size used by
+            # the k-anon floor and an explicit at-risk total used for sorting.
+            candidates = []
+            for row in matrix:
+                ex = int(row.get('expiring') or 0)
+                ov = int(row.get('overdue') or 0)
+                if (ex + ov) <= 0:
+                    continue
+                req = row.get('requirement') or {}
+                candidates.append({
+                    'title': (req.get('title') or 'Uden titel'),
+                    'is_statutory': bool(req.get('is_statutory')),
+                    'expiring': ex,
+                    'overdue': ov,
+                    'at_risk': ex + ov,
+                    '_cohort': int(row.get('applicable') or 0),
+                })
+
+            if _kanon is not None:
+                # Drop (not merge) sub-k requirements: a merged "Anonymiseret"
+                # bar across heterogeneous requirements has no meaning, and the
+                # donut already carries the true company-wide at-risk totals.
+                kept, note = _kanon.suppress_small_groups(candidates, '_cohort')
+                kept = [r for r in kept if isinstance(r, dict) and '_cohort' in r]
+                if note and note.get('suppressed'):
+                    compliance_anon = note.get('note_da')
+            else:
+                # Fail closed: without the k-anon helper we cannot prove any
+                # per-requirement cohort is >= k, so we surface nothing rather
+                # than risk exposing a single-person requirement.
+                kept = []
+                if candidates:
+                    compliance_anon = ('Krav for små grupper er skjult af hensyn '
+                                       'til anonymitet')
+
+            # Sort most-at-risk first; cap to keep the chart legible.
+            kept.sort(key=lambda r: (r.get('at_risk', 0), r.get('overdue', 0)), reverse=True)
+            at_risk_chart = kept[:8]
+        except Exception as e:
+            current_app.logger.error(f"Error building compliance at-risk chart: {e}")
+            at_risk_chart = []
+
         return render_template('fm/compliance.html',
                                company=company,
                                matrix=matrix,
                                totals=totals,
                                departments=departments,
                                roles=roles,
+                               at_risk_chart=at_risk_chart,
+                               compliance_anon=compliance_anon,
                                active_hr_page='compliance')
 
     @hr_dashboard_bp.route('/compliance/add', methods=['POST'])

@@ -2983,11 +2983,14 @@ def create_hr_dashboard_blueprint():
             """, (company_id,))
             departments = [r['department'] for r in cur.fetchall()]
 
-            # Detailed enrollment per path
+            # Detailed enrollment per path. elp.id + elp.due_date are selected so
+            # the template can offer an add-to-calendar (.ics) link on rows that
+            # carry a deadline (deadline_ics reads employee_learning_progress.id).
             cur.execute("""
-                SELECT elp.learning_path_id, elp.user_id,
+                SELECT elp.id, elp.learning_path_id, elp.user_id,
                     cu.username, cu.full_name, cu.department,
-                    elp.progress_percentage, elp.status, elp.started_at, elp.completed_at
+                    elp.progress_percentage, elp.status, elp.started_at,
+                    elp.completed_at, elp.due_date
                 FROM employee_learning_progress elp
                 JOIN company_users cu ON elp.user_id = cu.user_id AND elp.company_id = cu.company_id
                 WHERE elp.company_id = %s AND elp.learning_path_id IS NOT NULL

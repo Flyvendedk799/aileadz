@@ -1826,6 +1826,22 @@ PROFILE_TOOLS = [
             },
             "strict": False
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "remember_about_user",
+            "description": "Gem en løs, fritekst-kendsgerning om brugeren i langtidshukommelsen: en præference, livssituation, et personlighedstræk, en interesse eller et blødt mål, der IKKE passer i et struktureret profilfelt (kompetence/erfaring/uddannelse/certificering/sprog). Brug det når brugeren afslører noget personligt, der er værd at huske på tværs af samtaler (fx 'foretrækker aftenundervisning', 'skifter karriere til data science', 'lærer bedst praktisk'). Brug IKKE til strukturerede data — der bruges update_user_profile.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "label": {"type": "string", "description": "Kort kendsgerning i 3.-persons-stil, fx 'Foretrækker aftenundervisning'."},
+                    "category": {"type": "string", "enum": ["praeference", "maal", "kontekst", "personlighed", "interesse", "andet"], "description": "Kategori for hukommelsen."},
+                    "detail": {"type": "string", "description": "Valgfri kort uddybning."}
+                },
+                "required": ["label"]
+            }
+        }
     }
 ]
 
@@ -1845,6 +1861,30 @@ def _execute_get_user_profile(args, username):
         )
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
+
+
+def _execute_remember_about_user(args, username):
+    """Save a free-form atomic memory about the user (immediate, not proposed).
+
+    Memories are low-stakes and the user can review/delete them on the Mind-Map,
+    so unlike structured profile writes these save directly and surface a
+    'memory_saved' chip rather than a confirm card."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    label = (args.get("label") or "").strip()
+    if not label or len(label) < 3:
+        return json.dumps({"status": "error", "message": "label mangler eller er for kort."})
+    category = (args.get("category") or "andet").strip()
+    detail = (args.get("detail") or "").strip() or None
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        db.add_memory(username, label[:200], category=category, detail=detail,
+                      source="ai", confidence=0.9)
+        return json.dumps({"status": "memory_saved", "label": label[:200],
+                           "category": category, "message": f"Husket: {label[:200]}"})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Kunne ikke gemme hukommelse: {e}"})
 
 
 _FIELD_MAX_LENGTHS = {
@@ -3897,6 +3937,8 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_get_user_profile(args, username)
         elif function_name == "update_user_profile":
             return _execute_update_user_profile(args, username)
+        elif function_name == "remember_about_user":
+            return _execute_remember_about_user(args, username)
         elif function_name == "recommend_for_profile":
             return _execute_recommend_for_profile(args, username)
         elif function_name == "suggest_learning_path":

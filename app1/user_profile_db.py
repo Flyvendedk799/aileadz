@@ -133,6 +133,27 @@ _TABLES_SQL = [
         added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_username (username)
     )""",
+    # Atomic, free-form facts the AI learns about the user (preferences, life
+    # context, personality, interests) — distinct from the structured profile
+    # sections above. Powers the Mind-Map and the "what I know about you" context
+    # injected into every chat turn. `used_count`/`last_used_at` track when a
+    # memory actually informs a conversation so the UI can surface it in realtime.
+    """CREATE TABLE IF NOT EXISTS user_memories (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        category VARCHAR(60) NOT NULL DEFAULT 'andet',
+        label VARCHAR(200) NOT NULL,
+        detail TEXT DEFAULT NULL,
+        source VARCHAR(40) DEFAULT 'ai',
+        confidence FLOAT DEFAULT 0.8,
+        used_count INT DEFAULT 0,
+        last_used_at DATETIME DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_memory (username, label),
+        INDEX idx_username (username),
+        INDEX idx_cat (username, category)
+    )""",
 ]
 
 
@@ -551,6 +572,199 @@ def remove_portfolio_link(username, link_id):
     current_app.mysql.connection.commit()
     cur.close()
     return affected > 0
+
+
+# ── User Memories (atomic free-form facts) ──
+# The AI's working memory ABOUT the user — preferences, life context, traits,
+# interests that don't fit a structured profile section. Surfaced on the
+# Mind-Map and injected (relevance-filtered) into every chat turn.
+
+_MEMORY_CATEGORIES = ("praeference", "maal", "kontekst", "personlighed", "interesse", "andet")
+
+# Danish + English stopwords for the lightweight relevance scorer. Small on
+# purpose — this is keyword overlap, not NLP.
+_MEMORY_STOPWORDS = {
+    "og", "i", "jeg", "det", "at", "en", "den", "til", "er", "som", "på", "de",
+    "med", "han", "af", "for", "ikke", "der", "var", "mig", "men", "et", "har",
+    "om", "vi", "min", "havde", "ham", "hun", "nu", "over", "da", "fra", "du",
+    "ud", "sin", "dem", "os", "op", "man", "hans", "hvor", "eller", "hvad", "skal",
+    "kan", "vil", "være", "blev", "her", "dig", "din", "the", "a", "to", "of",
+    "and", "is", "in", "it", "you", "my", "me", "we", "for", "on", "with",
+}
+
+
+def _memory_tokens(text):
+    """Lowercase alnum tokens minus stopwords (for the relevance scorer)."""
+    import re
+    toks = re.findall(r"[a-zA-ZæøåÆØÅ0-9]+", (text or "").lower())
+    return {t for t in toks if len(t) > 2 and t not in _MEMORY_STOPWORDS}
+
+
+def get_memories(username):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, category, label, detail, source, confidence, used_count, "
+        "last_used_at, created_at, updated_at "
+        "FROM user_memories WHERE username = %s ORDER BY updated_at DESC",
+        (username,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return list(rows)
+
+
+def add_memory(username, label, category="andet", detail=None, source="ai", confidence=0.8):
+    label = (label or "").strip()
+    if not label:
+        return None
+    if category not in _MEMORY_CATEGORIES:
+        category = "andet"
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_memories (username, category, label, detail, source, confidence) "
+        "VALUES (%s, %s, %s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE category = VALUES(category), detail = VALUES(detail), "
+        "source = VALUES(source), confidence = VALUES(confidence)",
+        (username, category, label[:200], (detail or None), source, float(confidence or 0.8))
+    )
+    current_app.mysql.connection.commit()
+    new_id = cur.lastrowid
+    cur.close()
+    return new_id
+
+
+def update_memory(username, memory_id, **fields):
+    allowed = {"category", "label", "detail", "confidence"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if "category" in updates and updates["category"] not in _MEMORY_CATEGORIES:
+        updates.pop("category")
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    values = list(updates.values()) + [memory_id, username]
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(f"UPDATE user_memories SET {set_clause} WHERE id = %s AND username = %s", tuple(values))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def remove_memory(username, memory_id):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM user_memories WHERE id = %s AND username = %s", (memory_id, username))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def touch_memories(username, memory_ids):
+    """Mark memories as used this turn: bump used_count + last_used_at. Guarded."""
+    ids = [int(i) for i in (memory_ids or []) if str(i).strip().isdigit()]
+    if not ids:
+        return 0
+    placeholders = ", ".join(["%s"] * len(ids))
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        f"UPDATE user_memories SET used_count = used_count + 1, last_used_at = NOW() "
+        f"WHERE username = %s AND id IN ({placeholders})",
+        tuple([username] + ids)
+    )
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected
+
+
+def select_relevant_memories(username, query_text, limit=6):
+    """Return the memories most relevant to `query_text` (token overlap), falling
+    back to the most-recently-updated when nothing overlaps. Used to inject a
+    focused 'what I know about you' block per turn rather than dumping everything.
+    """
+    try:
+        memories = get_memories(username)
+    except Exception:
+        return []
+    if not memories:
+        return []
+    q_tokens = _memory_tokens(query_text)
+    scored = []
+    for m in memories:
+        m_tokens = _memory_tokens((m.get("label") or "") + " " + (m.get("detail") or ""))
+        overlap = len(q_tokens & m_tokens)
+        scored.append((overlap, m))
+    # Anything with overlap is relevant; sort by overlap desc, then recency (input
+    # order is already updated_at DESC). Stable sort preserves recency tie-break.
+    relevant = [m for ov, m in sorted(scored, key=lambda x: x[0], reverse=True) if ov > 0]
+    if relevant:
+        return relevant[:limit]
+    # No keyword hit — fall back to the most recent few so personalization still
+    # happens (e.g. "what should I take next?" with no shared tokens).
+    return memories[: min(limit, 4)]
+
+
+_MEMORY_CATEGORY_LABELS = {
+    "praeference": "Præference", "maal": "Mål", "kontekst": "Kontekst",
+    "personlighed": "Personlighed", "interesse": "Interesse", "andet": "Andet",
+}
+
+
+def format_memories_for_ai(memories):
+    """Compact text block of memories for the system context. Empty -> ''."""
+    if not memories:
+        return ""
+    lines = []
+    for m in memories[:12]:
+        cat = _MEMORY_CATEGORY_LABELS.get(m.get("category"), "Andet")
+        line = f"- [{cat}] {m.get('label')}"
+        if m.get("detail"):
+            line += f": {m['detail']}"
+        lines.append(line)
+    return "\n".join(lines)
+
+
+# ── Profile completeness (drives the AI Profiler) ──
+
+# (key, human label, predicate over the full-profile dict)
+_COMPLETENESS_SECTIONS = [
+    ("headline", "Overskrift", lambda p: bool((p.get("headline") or "").strip())),
+    ("skills", "Kompetencer", lambda p: len(p.get("skills") or []) > 0),
+    ("experience", "Erfaring", lambda p: len(p.get("experience") or []) > 0),
+    ("education", "Uddannelse", lambda p: len(p.get("education") or []) > 0),
+    ("certifications", "Certificeringer", lambda p: len(p.get("certifications") or []) > 0),
+    ("languages", "Sprog", lambda p: len(p.get("languages") or []) > 0),
+    ("goals", "Karrieremål", lambda p: bool((p.get("goals") or "").strip()) or len(p.get("learning_goals") or []) > 0),
+    ("preferred_format", "Læringspræferencer", lambda p: bool((p.get("preferred_format") or "").strip()) or bool((p.get("preferred_location") or "").strip())),
+]
+
+
+def profile_completeness(username, profile=None):
+    """Return {'pct', 'done', 'total', 'sections':[{key,label,done}], 'missing':[label]}.
+
+    Drives the AI Profiler's "complete me to 100%" loop. Accepts a pre-fetched
+    full-profile dict (to avoid a second DB round-trip) or fetches it.
+    """
+    try:
+        p = profile if profile is not None else get_full_profile(username)
+    except Exception:
+        p = {}
+    sections = []
+    for key, label, pred in _COMPLETENESS_SECTIONS:
+        try:
+            done = bool(pred(p))
+        except Exception:
+            done = False
+        sections.append({"key": key, "label": label, "done": done})
+    done_count = sum(1 for s in sections if s["done"])
+    total = len(sections)
+    return {
+        "pct": round(done_count / total * 100) if total else 0,
+        "done": done_count,
+        "total": total,
+        "sections": sections,
+        "missing": [s["label"] for s in sections if not s["done"]],
+    }
 
 
 # ── Profile Summary CRUD ──

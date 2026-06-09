@@ -74,6 +74,8 @@
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
       </ul>
       {% else %}
@@ -81,6 +83,8 @@
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'index' }}" href="{{ url_for('dashboard.dashboard') }}"><i class="fa-solid fa-house"></i><span>Oversigt</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'analytics' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-chart-line"></i><span>Analyse</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'reports' }}" href="{{ url_for('reports.reports') }}"><i class="fa-solid fa-file-lines"></i><span>Rapporter</span></a></li>

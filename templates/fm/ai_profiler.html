@@ -1,0 +1,137 @@
+{% extends "fm_base.html" %}
+{% block page_id %}profiler{% endblock %}
+{% block title %}AI Profiler · Futurematch{% endblock %}
+{% block topbar_title %}AI Profiler{% endblock %}
+{% block topbar_sub %}Samme AI — fokuseret på at gøre din profil 100% komplet{% endblock %}
+{% block body_class %}chat-page profiler-page{% endblock %}
+
+{% block extra_head %}
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=3" />
+<style>
+  /* Reuse the chat shell's variable remap (chat.css is a self-contained dark
+     theme driven by variables). Identical to fm/chat.html. */
+  body.chat-page {
+    --bg: var(--fm-bg); --rail: var(--fm-surface); --panel: var(--fm-surface);
+    --card: var(--fm-surface); --card-2: var(--fm-surface-2); --card-3: var(--fm-surface-3);
+    --line: var(--fm-line); --line-2: var(--fm-line-2); --line-3: var(--fm-line-2);
+    --ink: var(--fm-ink); --ink-2: var(--fm-ink-2); --ink-3: var(--fm-ink-3); --ink-4: var(--fm-ink-3);
+    --teal: var(--fm-primary); --teal-2: var(--fm-primary); --teal-3: var(--fm-primary);
+    --teal-glow: color-mix(in srgb, var(--fm-primary) 12%, transparent);
+    --teal-glow-2: color-mix(in srgb, var(--fm-primary) 20%, transparent);
+    --clay: var(--fm-clay); --clay-glow: color-mix(in srgb, var(--fm-clay) 14%, transparent);
+    --gold: var(--fm-clay); --red: #dc2626; --red-glow: rgba(220,38,38,.10);
+  }
+  html, body.chat-page { height: 100%; }
+  body.chat-page { overflow: hidden; }
+  body.chat-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
+  body.chat-page .fm-foot { display: none; }
+  .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
+  .chatx .scroll { flex: 1; min-height: 0; }
+  .fm-side .chat-newbtn { width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 11px; margin: 2px 0 4px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 13.5px; }
+  .fm-side .chat-newbtn:hover { border-color: var(--fm-primary); color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .fm-side .chat-newbtn svg { width: 16px; height: 16px; flex: 0 0 16px; }
+  .fm-side #convList { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
+
+  /* Profiler progress banner */
+  .prof-banner { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--fm-line); background: linear-gradient(100deg, var(--fm-primary-tint), transparent 60%), var(--fm-surface); }
+  .prof-ring { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 999px; display: grid; place-items: center; background: conic-gradient(var(--fm-primary) calc(var(--p,0)*1%), var(--fm-surface-3) 0); transition: background .8s var(--ease); }
+  .prof-ring > span { width: 44px; height: 44px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; font-family: var(--ff-display); font-weight: 700; font-size: 14px; color: var(--fm-primary); }
+  .prof-info { flex: 1; min-width: 0; }
+  .prof-title { font-family: var(--ff-display); font-weight: 700; font-size: 15.5px; }
+  .prof-sub { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 2px; }
+  .prof-missing { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 5px; }
+  .prof-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 7px; background: var(--fm-surface-2); border: 1px solid var(--fm-line); color: var(--fm-ink-2); }
+  .prof-tag.done { background: color-mix(in srgb,var(--fm-success) 14%,transparent); border-color: transparent; color: var(--fm-success); }
+  .prof-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: none; background: var(--fm-primary); color: #fff; font-weight: 650; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
+  [data-theme="dark"] .prof-cta { color: #06201d; }
+  .prof-link { font-size: 12px; font-weight: 600; color: var(--fm-primary); white-space: nowrap; text-decoration: none; }
+  @media (max-width: 640px) { .prof-link { display: none; } .prof-sub { display: none; } }
+</style>
+{% endblock %}
+
+{% block sidebar_extra %}
+<div class="fm-nav-label">Samtaler</div>
+<button class="chat-newbtn" data-new>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+  <span>Ny samtale</span>
+</button>
+<div class="conv-group" id="convList"></div>
+{% endblock %}
+
+{% block content %}
+<div class="prof-banner">
+  <div class="prof-ring" id="profRing" style="--p:0"><span id="profPct">0%</span></div>
+  <div class="prof-info">
+    <div class="prof-title">Lad os gøre din profil komplet</div>
+    <div class="prof-sub">Svar på et par spørgsmål — jeg gemmer det hele på din profil og i din hukommelse undervejs.</div>
+    <div class="prof-missing" id="profMissing"></div>
+  </div>
+  <button class="prof-cta" id="profStart"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Start</button>
+  <a class="prof-link" href="{{ url_for('futurematch.mind_map') }}">Se min hukommelse →</a>
+</div>
+<div class="chatx">
+  <div class="nudge" id="nudge">
+    <div class="nudge-inner">
+      <span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
+      <a class="nt" href="#" id="nudgeLink"></a>
+      <button class="nudge-x" id="nudgeX" aria-label="Luk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>
+    </div>
+  </div>
+
+  <div class="scroll" id="scroll">
+    <div class="thread" id="thread"></div>
+    <button class="fab" id="fab" aria-label="Scroll ned"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></button>
+  </div>
+
+  <div class="input-wrap">
+    <div class="ref-bar" id="refBar"></div>
+    <div class="composer">
+      <button class="plus" title="Vedhæft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
+      <textarea id="input" rows="1" placeholder="Fortæl om din baggrund — eller tryk Start, så spørger jeg…"></textarea>
+      <button class="stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
+      <button class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>
+    </div>
+    <div class="hint">AI Profiler · gemmer dine svar på profilen · kan tage fejl — bekræft vigtige detaljer</div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script>window.CHAT_MODE = 'profiler';</script>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=8"></script>
+<script>
+  (function () {
+    window.onProfilerProgress = function (c) {
+      if (!c) return;
+      var ring = document.getElementById('profRing');
+      if (ring) ring.style.setProperty('--p', c.pct);
+      var pct = document.getElementById('profPct'); if (pct) pct.textContent = c.pct + '%';
+      var miss = document.getElementById('profMissing');
+      if (!miss) return;
+      if (c.missing && c.missing.length) {
+        miss.innerHTML = '<span style="font-size:11px;color:var(--fm-ink-3);align-self:center;margin-right:2px">Mangler:</span>' +
+          c.missing.map(function (m) { return '<span class="prof-tag">' + m + '</span>'; }).join('');
+      } else {
+        miss.innerHTML = '<span class="prof-tag done">Profilen er komplet 🎉</span>';
+      }
+    };
+    // Seed the ring from the current profile before the first message.
+    fetch('/api/profile/mindmap', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.completeness) window.onProfilerProgress(d.completeness); })
+      .catch(function () { });
+    // "Start" → ask the profiler to drive the conversation.
+    var startBtn = document.getElementById('profStart');
+    if (startBtn) startBtn.addEventListener('click', function () {
+      var input = document.getElementById('input');
+      var send = document.getElementById('send');
+      if (input && send) {
+        input.value = 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+        send.click();
+      }
+    });
+  })();
+</script>
+{% endblock %}

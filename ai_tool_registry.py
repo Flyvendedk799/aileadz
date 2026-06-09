@@ -80,6 +80,13 @@ _EMPLOYEE_META = {
         parallel_safe=False,
         toolset_tags=("profile", "ui"),
     ),
+    "remember_about_user": ToolMeta(
+        "remember_about_user",
+        auth_required=True,
+        side_effect=True,
+        parallel_safe=False,
+        toolset_tags=("profile", "memory", "mutation"),
+    ),
     "suggest_learning_path": ToolMeta(
         "suggest_learning_path",
         auth_required=True,
@@ -305,7 +312,7 @@ def get_employee_tool_selection(
     # always available. Cost is tiny (a few small schemas) and worth the reliability.
     names.add("catalog_search")  # can always search the catalog
     if logged_in:
-        names.update({"get_user_profile", "request_user_input", "update_user_profile"})
+        names.update({"get_user_profile", "request_user_input", "update_user_profile", "remember_about_user"})
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
     # signal. Anything mentioning the catalog OR the user's own background falls through
@@ -419,7 +426,7 @@ def get_employee_tool_selection(
             continue
         if meta.company_required and not company_id:
             continue
-        if meta.side_effect and name not in ("create_course_order", "update_user_profile", "mark_course_complete") and not _explicit_order_confirmation(query):
+        if meta.side_effect and name not in ("create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user") and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)
 

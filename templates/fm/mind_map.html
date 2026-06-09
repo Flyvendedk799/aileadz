@@ -1,0 +1,107 @@
+{% extends "fm_base.html" %}
+{% block page_id %}mindmap{% endblock %}
+{% block title %}Mind-Map · Futurematch{% endblock %}
+{% block topbar_title %}Mind-Map{% endblock %}
+{% block topbar_sub %}Alt hvad AI’en husker om dig — og hvornår den bruger det{% endblock %}
+{% block body_class %}mindmap-page{% endblock %}
+
+{% block extra_head %}
+<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.29.0/dist/cytoscape.min.js"></script>
+<style>
+  html, body.mindmap-page { height: 100%; }
+  body.mindmap-page { overflow: hidden; }
+  body.mindmap-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
+  body.mindmap-page .fm-foot { display: none; }
+
+  .mm-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .mm-bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); flex-wrap: wrap; }
+  .mm-stats { display: flex; gap: 18px; flex-wrap: wrap; }
+  .mm-stat { display: flex; flex-direction: column; }
+  .mm-stat .v { font-family: var(--ff-display); font-weight: 700; font-size: 18px; line-height: 1; }
+  .mm-stat .v.accent { color: var(--fm-primary); }
+  .mm-stat .l { font-size: 11px; color: var(--fm-ink-3); margin-top: 3px; }
+  .mm-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .mm-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 12.5px; cursor: pointer; text-decoration: none; }
+  .mm-btn:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .mm-btn.primary { background: var(--fm-primary); color: #fff; border-color: var(--fm-primary); }
+  [data-theme="dark"] .mm-btn.primary { color: #06201d; }
+
+  .mm-add { display: none; gap: 10px; align-items: flex-end; padding: 12px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface-2); flex-wrap: wrap; }
+  .mm-add.show { display: flex; }
+  .mm-add .fm-field { margin: 0; }
+
+  .mm-stage { flex: 1; display: flex; min-height: 0; position: relative; }
+  #cy { flex: 1; min-width: 0; height: 100%; background:
+        radial-gradient(circle at 1px 1px, var(--fm-line) 1px, transparent 0) 0 0 / 26px 26px,
+        var(--fm-bg); }
+  .mm-panel { width: 300px; flex: 0 0 300px; border-left: 1px solid var(--fm-line); background: var(--fm-surface); padding: 18px; overflow-y: auto; }
+  .mm-panel .ph { color: var(--fm-ink-3); font-size: 13px; text-align: center; margin-top: 40px; }
+  .mm-pk { display: inline-flex; align-items: center; gap: 6px; font-family: var(--ff-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--fm-ink-3); }
+  .mm-pdot { width: 9px; height: 9px; border-radius: 999px; }
+  .mm-ptitle { font-family: var(--ff-display); font-weight: 700; font-size: 17px; margin: 8px 0 4px; line-height: 1.25; }
+  .mm-pdetail { font-size: 13px; color: var(--fm-ink-2); line-height: 1.55; }
+  .mm-prow { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 7px 0; border-top: 1px solid var(--fm-line); }
+  .mm-prow .k { color: var(--fm-ink-3); }
+  .mm-prow .val { color: var(--fm-ink); font-weight: 600; text-align: right; }
+  .mm-pdel { margin-top: 16px; width: 100%; padding: 9px; border-radius: 10px; border: 1px solid color-mix(in srgb,var(--fm-danger) 30%,transparent); background: transparent; color: var(--fm-danger); font-weight: 650; font-size: 12.5px; cursor: pointer; }
+  .mm-pdel:hover { background: color-mix(in srgb,var(--fm-danger) 10%,transparent); }
+  .mm-used { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb,var(--fm-primary) 8%,transparent); border: 1px solid color-mix(in srgb,var(--fm-primary) 20%,transparent); font-size: 12px; color: var(--fm-ink-2); }
+
+  .mm-legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--fm-line); background: var(--fm-surface); font-size: 11.5px; }
+  .mm-leg { display: inline-flex; align-items: center; gap: 6px; color: var(--fm-ink-2); }
+  .mm-leg i { width: 11px; height: 11px; border-radius: 999px; }
+  .mm-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--fm-ink-3); pointer-events: none; }
+  .mm-empty .inner { pointer-events: auto; }
+
+  @media (max-width: 760px) { .mm-panel { display: none; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="mm-wrap">
+  <div class="mm-bar">
+    <div class="mm-stats" id="mmStats">
+      <div class="mm-stat"><span class="v accent" id="mmPct">—</span><span class="l">Profil komplet</span></div>
+      <div class="mm-stat"><span class="v" id="mmNodes">—</span><span class="l">Datapunkter</span></div>
+      <div class="mm-stat"><span class="v" id="mmMem">—</span><span class="l">Hukommelser</span></div>
+    </div>
+    <div class="mm-actions">
+      <button class="mm-btn" id="mmAddBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Hukommelse</button>
+      <a class="mm-btn primary" href="{{ url_for('futurematch.ai_profiler') }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> AI Profiler</a>
+    </div>
+  </div>
+
+  <div class="mm-add" id="mmAdd">
+    <div class="fm-field" style="flex:2;min-width:200px"><label>Hvad skal AI’en huske?</label><input class="fm-input" id="mmLabel" placeholder="F.eks. Foretrækker aftenundervisning" /></div>
+    <div class="fm-field" style="flex:1;min-width:150px"><label>Kategori</label>
+      <select class="fm-select" id="mmCat">
+        <option value="praeference">Præference</option>
+        <option value="maal">Mål</option>
+        <option value="kontekst">Kontekst</option>
+        <option value="personlighed">Personlighed</option>
+        <option value="interesse">Interesse</option>
+        <option value="andet" selected>Andet</option>
+      </select>
+    </div>
+    <button class="mm-btn primary" id="mmSave">Gem</button>
+    <button class="mm-btn" id="mmCancel">Annullér</button>
+  </div>
+
+  <div class="mm-stage">
+    <div id="cy"></div>
+    <div class="mm-empty" id="mmEmpty" hidden><div class="inner">
+      <div style="font-size:28px;margin-bottom:8px">🧠</div>
+      <div style="font-weight:700;color:var(--fm-ink-2)">Din mind-map er tom endnu</div>
+      <p style="font-size:13px;margin:6px 0 14px">Udfyld din profil, så dukker dine data op her som et hukommelseskort.</p>
+      <a class="mm-btn primary" href="{{ url_for('futurematch.ai_profiler') }}">Start AI Profiler</a>
+    </div></div>
+    <aside class="mm-panel" id="mmPanel"><div class="ph">Klik på en node for at se hvad der er gemt — og hvornår AI’en sidst brugte det.</div></aside>
+  </div>
+
+  <div class="mm-legend" id="mmLegend"></div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+<script src="{{ url_for('static', filename='futurematch/assets/mind-map.js') }}?v=1"></script>
+{% endblock %}

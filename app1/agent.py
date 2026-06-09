@@ -210,12 +210,15 @@ FORETRUKKEN METODE — request_user_input:
 - Job/erfaring → ui_type=form, section=experience, save_action=add_experience
 - Uddannelse → section=education, save_action=add_education
 - Kompetencer → ui_type=confirm, section=skills, save_action=add_skill
-- Certifikat/kursus → section=courses, save_action=add_course
+- Gennemført kursus (uden bevis) → section=courses, save_action=add_course
+- Certificering/bevis (PRINCE2, AWS, Google Ads, kørekort m.m.) → update_user_profile action=add_certification (name + evt. issuer/issue_date/expiry_date/credential_id/credential_url)
+- Sprog → update_user_profile action=add_language (language + proficiency: begynder/mellem/flydende/modersmaal)
 - Simple mål → update_user_profile
 
 HVORNÅR BRUGE HVAD:
 - request_user_input: Når info mangler detaljer (årstal, institution).
-- update_user_profile: Simple opdateringer. Hent profil med get_user_profile for id'er.
+- update_user_profile: Simple opdateringer + certificeringer + sprog. Hent profil med get_user_profile for id'er.
+- Skel mellem kursus og certificering: en certificering har en udsteder eller en udløbsdato → brug add_certification, ikke add_course.
 
 CV-ONBOARDING (når brugeren beder om CV/profil):
 Guid naturligt: erfaring → uddannelse → skills → kurser → mål. Spring udfyldte trin over."""

@@ -10,6 +10,18 @@ from db_compat import refresh_flask_mysql_connection
 
 # ── Table Creation (run once) ──
 
+# Extracted so the wrong-schema migration path below can re-create exactly this
+# table by name. (It used to reference `_TABLES_SQL[-1]`, which silently pointed
+# at whatever happened to be last in the list — a latent bug that grows every
+# time a new table is appended.)
+_USER_CONVERSATIONS_SQL = """CREATE TABLE IF NOT EXISTS user_conversations (
+        username VARCHAR(255) PRIMARY KEY,
+        session_id VARCHAR(100) NOT NULL,
+        messages LONGTEXT,
+        summary TEXT DEFAULT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    )"""
+
 _TABLES_SQL = [
     """CREATE TABLE IF NOT EXISTS user_skills (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -65,13 +77,7 @@ _TABLES_SQL = [
         budget_range VARCHAR(100) DEFAULT '',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )""",
-    """CREATE TABLE IF NOT EXISTS user_conversations (
-        username VARCHAR(255) PRIMARY KEY,
-        session_id VARCHAR(100) NOT NULL,
-        messages LONGTEXT,
-        summary TEXT DEFAULT NULL,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
-    )""",
+    _USER_CONVERSATIONS_SQL,
     """CREATE TABLE IF NOT EXISTS conversation_history (
         id INT AUTO_INCREMENT PRIMARY KEY,
         username VARCHAR(255) NOT NULL,
@@ -91,6 +97,40 @@ _TABLES_SQL = [
         status ENUM('aktiv','fuldfoert','paa_pause') DEFAULT 'aktiv',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_username (username)
+    )""",
+    """CREATE TABLE IF NOT EXISTS user_certifications (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        name VARCHAR(255) NOT NULL,
+        issuer VARCHAR(255) DEFAULT '',
+        issue_date VARCHAR(20) DEFAULT NULL,
+        expiry_date VARCHAR(20) DEFAULT NULL,
+        credential_id VARCHAR(255) DEFAULT NULL,
+        credential_url VARCHAR(500) DEFAULT NULL,
+        source VARCHAR(50) DEFAULT 'manual',
+        expiry_reminded_for VARCHAR(20) DEFAULT NULL,
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_username (username)
+    )""",
+    """CREATE TABLE IF NOT EXISTS user_languages (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        language VARCHAR(100) NOT NULL,
+        proficiency ENUM('begynder','mellem','flydende','modersmaal') DEFAULT 'mellem',
+        source VARCHAR(50) DEFAULT 'manual',
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY unique_language (username, language),
+        INDEX idx_username (username)
+    )""",
+    """CREATE TABLE IF NOT EXISTS user_portfolio_links (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        label VARCHAR(150) NOT NULL,
+        url VARCHAR(500) NOT NULL,
+        kind VARCHAR(40) DEFAULT 'link',
+        source VARCHAR(50) DEFAULT 'manual',
+        added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_username (username)
     )""",
 ]
@@ -148,11 +188,28 @@ def ensure_tables():
             current_app.mysql.connection.rollback()
             try:
                 cur.execute("DROP TABLE IF EXISTS user_conversations")
-                cur.execute(_TABLES_SQL[-1])  # Re-create with correct schema
+                cur.execute(_USER_CONVERSATIONS_SQL)  # Re-create with correct schema
                 current_app.mysql.connection.commit()
                 print("[UserProfileDB] Recreated user_conversations table with correct schema")
             except Exception as e2:
                 print(f"[UserProfileDB] Migration error for user_conversations: {e2}")
+
+        # Idempotent migration: add the cert-expiry reminder marker to an existing
+        # user_certifications table (so the daily cert-expiry job can dedupe). Safe
+        # to run every boot — a duplicate-column error just rolls back and is ignored.
+        try:
+            cur.execute("SELECT expiry_reminded_for FROM user_certifications LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("ALTER TABLE user_certifications ADD COLUMN expiry_reminded_for VARCHAR(20) DEFAULT NULL")
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] expiry_reminded_for column migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
 
         cur.close()
         _tables_ensured = True
@@ -332,6 +389,170 @@ def remove_completed_course(username, course_title):
     return affected > 0
 
 
+# ── Certifications CRUD ──
+# First-class certifications (distinct from completed courses): a real credential
+# with an issuer, optional issue/expiry dates, credential id and verify URL. The
+# profile UI derives a validity state (gyldig / udløber snart / udløbet) from
+# expiry_date. Dates are stored as free-form strings ('YYYY', 'YYYY-MM' or
+# 'YYYY-MM-DD') so partial dates from a CV survive round-trips.
+
+def get_certifications(username):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, name, issuer, issue_date, expiry_date, credential_id, credential_url "
+        "FROM user_certifications WHERE username = %s ORDER BY added_at DESC",
+        (username,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return list(rows)
+
+
+def add_certification(username, name, issuer="", issue_date=None, expiry_date=None,
+                      credential_id=None, credential_url=None, source="manual"):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_certifications "
+        "(username, name, issuer, issue_date, expiry_date, credential_id, credential_url, source) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s)",
+        (username, name.strip()[:255], (issuer or "").strip()[:255],
+         (issue_date or None), (expiry_date or None),
+         (credential_id or None), (credential_url or None), source)
+    )
+    current_app.mysql.connection.commit()
+    new_id = cur.lastrowid
+    cur.close()
+    return new_id
+
+
+def remove_certification(username, certification_id):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM user_certifications WHERE id = %s AND username = %s", (certification_id, username))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def update_certification(username, certification_id, **fields):
+    allowed = {"name", "issuer", "issue_date", "expiry_date", "credential_id", "credential_url"}
+    updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
+    if not updates:
+        return False
+    set_clause = ", ".join(f"{k} = %s" for k in updates)
+    values = list(updates.values()) + [certification_id, username]
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(f"UPDATE user_certifications SET {set_clause} WHERE id = %s AND username = %s", tuple(values))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+# ── Languages CRUD ──
+
+_LANGUAGE_LEVELS = ("begynder", "mellem", "flydende", "modersmaal")
+
+
+def get_languages(username):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, language, proficiency FROM user_languages WHERE username = %s "
+        "ORDER BY FIELD(proficiency,'modersmaal','flydende','mellem','begynder'), language",
+        (username,)
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return list(rows)
+
+
+def add_language(username, language, proficiency="mellem", source="manual"):
+    if proficiency not in _LANGUAGE_LEVELS:
+        proficiency = "mellem"
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_languages (username, language, proficiency, source) VALUES (%s, %s, %s, %s) "
+        "ON DUPLICATE KEY UPDATE proficiency = VALUES(proficiency), source = VALUES(source)",
+        (username, language.strip()[:100], proficiency, source)
+    )
+    current_app.mysql.connection.commit()
+    cur.close()
+    return True
+
+
+def remove_language(username, language):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM user_languages WHERE username = %s AND language = %s", (username, language.strip()))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+def update_language_level(username, language, new_level):
+    if new_level not in _LANGUAGE_LEVELS:
+        return False
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("UPDATE user_languages SET proficiency = %s WHERE username = %s AND language = %s",
+                (new_level, username, language.strip()))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
+# ── Portfolio Links CRUD ──
+# External links the learner wants on their profile: LinkedIn, GitHub, a
+# portfolio site, a published cert, etc. `kind` drives the icon in the UI.
+
+_PORTFOLIO_KINDS = ("linkedin", "github", "portfolio", "website", "certificate", "other", "link")
+
+
+def _infer_link_kind(url):
+    u = (url or "").lower()
+    if "linkedin." in u:
+        return "linkedin"
+    if "github." in u or "gitlab." in u:
+        return "github"
+    if "behance." in u or "dribbble." in u or "portfolio" in u:
+        return "portfolio"
+    return "website"
+
+
+def get_portfolio_links(username):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute("SELECT id, label, url, kind FROM user_portfolio_links WHERE username = %s ORDER BY added_at DESC", (username,))
+    rows = cur.fetchall()
+    cur.close()
+    return list(rows)
+
+
+def add_portfolio_link(username, label, url, kind=None, source="manual"):
+    url = (url or "").strip()
+    if not url:
+        return None
+    if kind not in _PORTFOLIO_KINDS:
+        kind = _infer_link_kind(url)
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "INSERT INTO user_portfolio_links (username, label, url, kind, source) VALUES (%s, %s, %s, %s, %s)",
+        (username, (label or "").strip()[:150] or url[:150], url[:500], kind, source)
+    )
+    current_app.mysql.connection.commit()
+    new_id = cur.lastrowid
+    cur.close()
+    return new_id
+
+
+def remove_portfolio_link(username, link_id):
+    cur = current_app.mysql.connection.cursor()
+    cur.execute("DELETE FROM user_portfolio_links WHERE id = %s AND username = %s", (link_id, username))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
 # ── Profile Summary CRUD ──
 
 def get_profile_summary(username):
@@ -448,6 +669,18 @@ def get_full_profile(username):
         goals = get_learning_goals(username)
     except Exception:
         goals = []
+    try:
+        certifications = get_certifications(username)
+    except Exception:
+        certifications = []
+    try:
+        languages = get_languages(username)
+    except Exception:
+        languages = []
+    try:
+        portfolio_links = get_portfolio_links(username)
+    except Exception:
+        portfolio_links = []
 
     return {
         "username": username,
@@ -479,6 +712,20 @@ def get_full_profile(username):
              "completed_date": c.get("completed_date", ""), "handle": c.get("course_handle", ""),
              "certificate_note": c.get("certificate_note", "")}
             for c in courses
+        ],
+        "certifications": [
+            {"id": c["id"], "name": c["name"], "issuer": c.get("issuer") or "",
+             "issue_date": c.get("issue_date") or "", "expiry_date": c.get("expiry_date") or "",
+             "credential_id": c.get("credential_id") or "", "credential_url": c.get("credential_url") or ""}
+            for c in certifications
+        ],
+        "languages": [
+            {"id": l["id"], "language": l["language"], "proficiency": l["proficiency"]}
+            for l in languages
+        ],
+        "portfolio_links": [
+            {"id": p["id"], "label": p["label"], "url": p["url"], "kind": p.get("kind") or "link"}
+            for p in portfolio_links
         ],
     }
 
@@ -528,6 +775,23 @@ def format_profile_for_ai(profile_data):
     if courses:
         course_strs = [f"{c['title']} ({c['vendor']})" for c in courses[:10]]
         parts.append(f"Gennemførte kurser: {', '.join(course_strs)}")
+
+    certs = profile_data.get("certifications", [])
+    if certs:
+        cert_strs = []
+        for c in certs[:10]:
+            s = c["name"]
+            if c.get("issuer"):
+                s += f" ({c['issuer']})"
+            if c.get("expiry_date"):
+                s += f", udløber {c['expiry_date']}"
+            cert_strs.append(s)
+        parts.append(f"Certificeringer: {'; '.join(cert_strs)}")
+
+    languages = profile_data.get("languages", [])
+    if languages:
+        lang_strs = [f"{l['language']} ({l['proficiency']})" for l in languages[:10]]
+        parts.append(f"Sprog: {', '.join(lang_strs)}")
 
     return "\n".join(parts) if parts else ""
 

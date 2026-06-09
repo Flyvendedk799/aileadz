@@ -43,7 +43,8 @@
   .rev-fields { display: grid; gap: 8px; }
   .rev-fields.cols-3 { grid-template-columns: 1.3fr 1fr .7fr; }
   .rev-fields.cols-skill { grid-template-columns: 1.6fr .9fr; }
-  @media (max-width: 620px) { .rev-fields.cols-3, .rev-fields.cols-skill { grid-template-columns: 1fr; } }
+  .rev-fields.cols-cert { grid-template-columns: 1.4fr 1fr .7fr .7fr; }
+  @media (max-width: 620px) { .rev-fields.cols-3, .rev-fields.cols-skill, .rev-fields.cols-cert { grid-template-columns: 1fr; } }
   .rev-fields label { display: block; font-family: var(--ff-mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--fm-ink-3); margin-bottom: 3px; }
   .rev-fields .fm-input, .rev-fields .fm-select { width: 100%; }
 
@@ -83,7 +84,7 @@
   </div>
   {% endif %}
 
-  {% if not (skills or experience or education) %}
+  {% if not (skills or experience or education or certifications or languages) %}
   <section class="fm-card">
     <div class="cvu-empty">
       <div class="ei"><i class="fa-regular fa-circle-question"></i></div>
@@ -184,6 +185,71 @@
             <div>
               <label>År</label>
               <input class="fm-input" name="edu_year_{{ ed.idx }}" value="{{ ed.year }}" maxlength="20" placeholder="F.eks. 2018">
+            </div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if certifications %}
+    <section class="rev-section">
+      <div class="rev-head">
+        <span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Certificeringer</span>
+        <span class="rev-count">{{ certifications|length }} forslag</span>
+      </div>
+      <div class="rev-list">
+        {% for c in certifications %}
+        <label class="rev-item">
+          <input type="checkbox" class="rev-chk" name="accept_certification" value="{{ c.idx }}" checked>
+          <div class="rev-fields cols-cert">
+            <div>
+              <label>Certificering</label>
+              <input class="fm-input" name="crt_name_{{ c.idx }}" value="{{ c.name }}" maxlength="255">
+            </div>
+            <div>
+              <label>Udsteder</label>
+              <input class="fm-input" name="crt_issuer_{{ c.idx }}" value="{{ c.issuer }}" maxlength="255">
+            </div>
+            <div>
+              <label>Udstedt</label>
+              <input class="fm-input" name="crt_issued_{{ c.idx }}" value="{{ c.issue_date }}" maxlength="20" placeholder="2022">
+            </div>
+            <div>
+              <label>Udløber</label>
+              <input class="fm-input" name="crt_expiry_{{ c.idx }}" value="{{ c.expiry_date }}" maxlength="20" placeholder="tom = aldrig">
+            </div>
+          </div>
+        </label>
+        {% endfor %}
+      </div>
+    </section>
+    {% endif %}
+
+    {% if languages %}
+    <section class="rev-section">
+      <div class="rev-head">
+        <span class="fm-eyebrow"><i class="fa-solid fa-language"></i> Sprog</span>
+        <span class="rev-count">{{ languages|length }} forslag</span>
+      </div>
+      <div class="rev-list">
+        {% for lg in languages %}
+        <label class="rev-item">
+          <input type="checkbox" class="rev-chk" name="accept_language" value="{{ lg.idx }}" checked>
+          <div class="rev-fields cols-skill">
+            <div>
+              <label>Sprog</label>
+              <input class="fm-input" name="lang_name_{{ lg.idx }}" value="{{ lg.language }}" maxlength="80">
+            </div>
+            <div>
+              <label>Niveau</label>
+              <select class="fm-select" name="lang_level_{{ lg.idx }}">
+                <option value="begynder" {{ 'selected' if lg.proficiency == 'begynder' }}>Begynder</option>
+                <option value="mellem" {{ 'selected' if lg.proficiency == 'mellem' }}>Mellem</option>
+                <option value="flydende" {{ 'selected' if lg.proficiency == 'flydende' }}>Flydende</option>
+                <option value="modersmaal" {{ 'selected' if lg.proficiency == 'modersmaal' }}>Modersmål</option>
+              </select>
             </div>
           </div>
         </label>

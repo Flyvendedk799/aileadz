@@ -1359,6 +1359,38 @@ def confirm_profile_update():
             )
             return _success("Kursus tilføjet")
 
+        elif action == "add_certification":
+            from app1.user_profile_db import add_certification
+            name = (payload.get("name") or "").strip()
+            if not name:
+                return jsonify({"status": "error", "message": "Certificeringens navn mangler"}), 400
+            add_certification(
+                logged_in_user,
+                name=name,
+                issuer=payload.get("issuer", ""),
+                issue_date=payload.get("issue_date"),
+                expiry_date=payload.get("expiry_date"),
+                credential_id=payload.get("credential_id"),
+                credential_url=payload.get("credential_url"),
+            )
+            return _success("Certificering tilføjet")
+
+        elif action == "add_language":
+            from app1.user_profile_db import add_language
+            language = (payload.get("language") or "").strip()
+            if not language:
+                return jsonify({"status": "error", "message": "Sprog mangler"}), 400
+            add_language(logged_in_user, language, proficiency=payload.get("proficiency", "mellem"))
+            return _success("Sprog tilføjet")
+
+        elif action == "add_link":
+            from app1.user_profile_db import add_portfolio_link
+            url = (payload.get("url") or "").strip()
+            if not url:
+                return jsonify({"status": "error", "message": "URL mangler"}), 400
+            add_portfolio_link(logged_in_user, payload.get("label", ""), url, kind=payload.get("kind"))
+            return _success("Link tilføjet")
+
         elif action == "update_experience":
             from app1.user_profile_db import update_experience
             exp_id = payload.get("id")

@@ -18,6 +18,7 @@ from ai_tool_registry import (
     responses_tool_choice,
     sanitize_args_for_tool,
     tool_cache_ttl,
+    tool_display_metadata,
     to_responses_tool,
     tool_name,
 )
@@ -41,6 +42,7 @@ class ToolCallResult:
     latency_ms: int
     status: str = "ok"
     error: str = ""
+    cache_hit: bool = False
 
 
 @dataclass
@@ -59,6 +61,174 @@ class AgentRunResult:
     stream_messages: List[Dict[str, Any]] = field(default_factory=list)
     compaction_level: str = "normal"
     runtime_path: str = ""
+
+
+ToolEventCallback = Callable[[Dict[str, Any]], None]
+
+
+def _parse_tool_output(output: Any) -> Dict[str, Any]:
+    if isinstance(output, dict):
+        return output
+    try:
+        parsed = json.loads(output or "{}")
+        return parsed if isinstance(parsed, dict) else {}
+    except Exception:
+        return {}
+
+
+def _tool_result_count(parsed: Dict[str, Any]) -> int:
+    if not isinstance(parsed, dict):
+        return 0
+    scalar_keys = (
+        "count",
+        "total",
+        "total_count",
+        "results_count",
+        "order_count",
+        "orders_count",
+        "employee_count",
+        "course_count",
+    )
+    for key in scalar_keys:
+        try:
+            value = parsed.get(key)
+            if value is not None:
+                return max(0, int(value))
+        except (TypeError, ValueError):
+            pass
+    list_keys = (
+        "results",
+        "items",
+        "courses",
+        "products",
+        "top_courses",
+        "categories",
+        "comparables",
+        "employees",
+        "actions",
+        "alerts",
+        "gaps",
+        "series",
+        "orders",
+    )
+    for key in list_keys:
+        value = parsed.get(key)
+        if isinstance(value, list):
+            return len(value)
+    if isinstance(parsed.get("product"), dict):
+        return 1
+    return 0
+
+
+def _has_empty_collection_result(parsed: Dict[str, Any]) -> bool:
+    if not isinstance(parsed, dict):
+        return False
+    if parsed.get("count") == 0:
+        return True
+    for key in ("results", "items", "courses", "products", "comparables", "employees", "actions", "gaps"):
+        value = parsed.get(key)
+        if isinstance(value, list) and not value:
+            return True
+    return False
+
+
+def _normalize_tool_event_status(result: ToolCallResult, parsed: Dict[str, Any], count: int) -> str:
+    raw = str(parsed.get("status") or result.status or "success").strip().lower()
+    if result.status == "error" or raw in {"error", "failed", "failure"} or parsed.get("error"):
+        return "error"
+    if raw in {"proposed", "ui_card", "memory_saved"}:
+        return raw
+    if raw == "already_exists":
+        return "success"
+    if _has_empty_collection_result(parsed) and count == 0:
+        return "empty"
+    return "success"
+
+
+def _tool_event_message(status: str, cache_hit: bool) -> str:
+    if status == "error":
+        return "Værktøjet kunne ikke gennemføres."
+    if status == "empty":
+        return "Ingen resultater."
+    if status == "proposed":
+        return "Afventer bekræftelse."
+    if status == "ui_card":
+        return "Mangler input."
+    if status == "memory_saved":
+        return "Hukommelse gemt."
+    if cache_hit:
+        return "Brugte cache."
+    return "Færdig."
+
+
+def build_tool_call_event(
+    result: ToolCallResult,
+    *,
+    agent_scope: str = "employee",
+    phase: str = "finish",
+) -> Dict[str, Any]:
+    """Build the browser-safe SSE payload for a completed tool call.
+
+    The event intentionally excludes raw arguments and raw tool output. Those can
+    contain private user/profile/company data and belong only in redacted server
+    telemetry.
+    """
+    parsed = _parse_tool_output(result.output)
+    count = _tool_result_count(parsed)
+    status = _normalize_tool_event_status(result, parsed, count)
+    display = tool_display_metadata(result.name, agent_scope)
+    cache_hit = bool(result.cache_hit or result.status == "cached")
+    try:
+        latency_ms = max(0, int(round(float(result.latency_ms or 0))))
+    except (TypeError, ValueError):
+        latency_ms = 0
+    return {
+        "type": "tool_call",
+        "id": result.call_id or "",
+        "agent": agent_scope or display.get("agent") or "employee",
+        "name": result.name,
+        "label": display.get("label") or result.name,
+        "category": display.get("category") or "",
+        "category_key": display.get("category_key") or "",
+        "ui_icon": display.get("ui_icon") or "fa-wand-magic-sparkles",
+        "phase": phase or "finish",
+        "status": status,
+        "results_count": count,
+        "latency_ms": latency_ms,
+        "cache_hit": cache_hit,
+        "side_effect": bool(display.get("side_effect")),
+        "message": _tool_event_message(status, cache_hit),
+    }
+
+
+def build_tool_start_event(name: str, call_id: str = "", *, agent_scope: str = "employee") -> Dict[str, Any]:
+    display = tool_display_metadata(name, agent_scope)
+    return {
+        "type": "tool_call",
+        "id": call_id or "",
+        "agent": agent_scope or display.get("agent") or "employee",
+        "name": name,
+        "label": display.get("label") or name,
+        "category": display.get("category") or "",
+        "category_key": display.get("category_key") or "",
+        "ui_icon": display.get("ui_icon") or "fa-wand-magic-sparkles",
+        "phase": "start",
+        "status": "running",
+        "results_count": 0,
+        "latency_ms": 0,
+        "cache_hit": False,
+        "side_effect": bool(display.get("side_effect")),
+        "message": "Kører værktøj.",
+    }
+
+
+def _emit_tool_event(callback: Optional[ToolEventCallback], event: Dict[str, Any]) -> None:
+    if callback is None:
+        return
+    try:
+        callback(event)
+    except Exception:
+        pass
 
 
 def main_model() -> str:
@@ -1504,6 +1674,7 @@ def _execute_one_tool(
                 output=cached[1],
                 latency_ms=0,
                 status="cached",
+                cache_hit=True,
             )
     try:
         output = executor(_ChatToolCall(call_id, name, arguments), username=username, session_id=session_id)
@@ -1539,6 +1710,8 @@ def _execute_tool_calls_parallel(
     tool_executor: Callable[..., str],
     username: Optional[str],
     session_id: Optional[str],
+    agent_scope: str = "employee",
+    on_tool_event: Optional[ToolEventCallback] = None,
 ) -> List[ToolCallResult]:
     """Execute tool calls with safe parallelization for read-only tools."""
     normalized = []
@@ -1576,6 +1749,11 @@ def _execute_tool_calls_parallel(
         with ThreadPoolExecutor(max_workers=min(4, len(parallel_calls))) as pool:
             futures = {}
             for call in parallel_calls:
+                _emit_tool_event(on_tool_event, build_tool_start_event(
+                    call["name"],
+                    call["id"],
+                    agent_scope=agent_scope,
+                ))
                 futures[pool.submit(
                     _execute_one_tool,
                     executor=tool_executor,
@@ -1587,14 +1765,25 @@ def _execute_tool_calls_parallel(
                     company_scope=company_scope,
                 )] = call["id"]
             for future, call_id in futures.items():
-                result_by_id[call_id] = future.result()
+                result = future.result()
+                result_by_id[call_id] = result
+                _emit_tool_event(on_tool_event, build_tool_call_event(
+                    result,
+                    agent_scope=agent_scope,
+                    phase="finish",
+                ))
     else:
         serial_calls = parallel_calls + serial_calls
 
     for call in serial_calls:
         if call["id"] in result_by_id:
             continue
-        result_by_id[call["id"]] = _execute_one_tool(
+        _emit_tool_event(on_tool_event, build_tool_start_event(
+            call["name"],
+            call["id"],
+            agent_scope=agent_scope,
+        ))
+        result = _execute_one_tool(
             executor=tool_executor,
             name=call["name"],
             call_id=call["id"],
@@ -1603,6 +1792,12 @@ def _execute_tool_calls_parallel(
             session_id=session_id,
             company_scope=company_scope,
         )
+        result_by_id[call["id"]] = result
+        _emit_tool_event(on_tool_event, build_tool_call_event(
+            result,
+            agent_scope=agent_scope,
+            phase="finish",
+        ))
 
     return [result_by_id[call["id"]] for call in normalized if call["id"] in result_by_id]
 
@@ -1716,6 +1911,8 @@ def run_chat_agent(
     tool_choice: Any = "auto",
     max_iterations: int = 5,
     defer_final_stream: bool = False,
+    agent_scope: str = "employee",
+    on_tool_event: Optional[ToolEventCallback] = None,
 ) -> AgentRunResult:
     model = model or main_model()
     start = time.time()
@@ -1791,6 +1988,8 @@ def run_chat_agent(
             tool_executor=tool_executor,
             username=username,
             session_id=session_id,
+            agent_scope=agent_scope,
+            on_tool_event=on_tool_event,
         )
         for result in executed:
             tool_results.append(result)
@@ -1853,6 +2052,8 @@ def run_responses_agent(
     max_iterations: int = 5,
     prompt_cache_key: str = "",
     defer_final_stream: bool = False,
+    agent_scope: str = "employee",
+    on_tool_event: Optional[ToolEventCallback] = None,
 ) -> AgentRunResult:
     model = model or main_model()
     start = time.time()
@@ -1934,6 +2135,8 @@ def run_responses_agent(
             tool_executor=tool_executor,
             username=username,
             session_id=session_id,
+            agent_scope=agent_scope,
+            on_tool_event=on_tool_event,
         )
         outputs = []
         for call, result in zip(calls, executed):
@@ -2006,6 +2209,8 @@ def run_agent_with_fallback(
     max_iterations: int = 5,
     prompt_cache_key: str = "",
     defer_final_stream: bool = True,
+    agent_scope: str = "employee",
+    on_tool_event: Optional[ToolEventCallback] = None,
 ) -> AgentRunResult:
     if runtime_mode() == "chat":
         return run_chat_agent(
@@ -2018,6 +2223,8 @@ def run_agent_with_fallback(
             tool_choice=tool_choice,
             max_iterations=max_iterations,
             defer_final_stream=defer_final_stream,
+            agent_scope=agent_scope,
+            on_tool_event=on_tool_event,
         )
     try:
         return run_responses_agent(
@@ -2031,6 +2238,8 @@ def run_agent_with_fallback(
             max_iterations=max_iterations,
             prompt_cache_key=prompt_cache_key,
             defer_final_stream=defer_final_stream,
+            agent_scope=agent_scope,
+            on_tool_event=on_tool_event,
         )
     except Exception as exc:
         fallback = run_chat_agent(
@@ -2043,6 +2252,8 @@ def run_agent_with_fallback(
             tool_choice=tool_choice,
             max_iterations=max_iterations,
             defer_final_stream=defer_final_stream,
+            agent_scope=agent_scope,
+            on_tool_event=on_tool_event,
         )
         fallback.fallback_reason = str(exc)[:1000]
         fallback.runtime_path = "chat-fallback"

@@ -580,6 +580,7 @@ def get_mindmap_api():
             'completeness': completeness,
             'counts': {
                 'memories': len(memories),
+                'used_memories': sum(1 for m in memories if (m.get('used_count') or 0) > 0),
                 'leaves': sum(1 for n in nodes if n['type'] == 'leaf'),
             },
         })
@@ -810,7 +811,6 @@ def unread_notifications_list():
     except Exception as e:
         current_app.logger.error("Error fetching unread notifications list: %s", e)
         return jsonify({'notifications': []})
-
 
 
 

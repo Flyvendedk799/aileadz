@@ -12,6 +12,7 @@
   // so they must be restricted to a safe token charset (no quotes/brackets) to
   // prevent breakout. Falls back to a neutral icon when empty/invalid.
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
+  const isProfiler = window.CHAT_MODE === "profiler";
 
   /* ---------------- HTML sanitizer ----------------
      Agent/assistant content (markdown-rendered chunks, profile_update messages,
@@ -83,6 +84,34 @@
     } catch (e) {
       // As a last resort, fall back to text-only (escaped) rendering.
       return esc(str);
+    }
+  }
+
+  async function refreshWorkspaceStatus() {
+    const bar = $("#aiWorkspaceStatus");
+    if (!bar) return;
+    try {
+      const resp = await fetch("/api/profile/mindmap", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!resp.ok) throw new Error("workspace " + resp.status);
+      const data = await resp.json();
+      if (!data || data.success === false) throw new Error("workspace_shape");
+      const c = data.completeness || {};
+      const counts = data.counts || {};
+      const pct = $("#aiWsPct"), mem = $("#aiWsMem"), used = $("#aiWsUsed"), nodes = $("#aiWsNodes"), missing = $("#aiWsMissing");
+      if (pct) pct.textContent = c.pct != null ? c.pct + "%" : "—";
+      if (mem) mem.textContent = counts.memories != null ? counts.memories : "—";
+      if (used) used.textContent = counts.used_memories != null ? counts.used_memories : "—";
+      if (nodes) nodes.textContent = counts.leaves != null ? counts.leaves : "—";
+      if (missing) {
+        const missingItems = Array.isArray(c.missing) ? c.missing : [];
+        missing.textContent = missingItems.length ? "Mangler: " + missingItems.slice(0, 3).join(", ") : "Profilen er komplet";
+      }
+      bar.hidden = false;
+    } catch (e) {
+      bar.hidden = true;
     }
   }
 
@@ -322,6 +351,7 @@
     if (!resp.ok) throw new Error("save_failed");
     const r = await resp.json();
     if (!r || r.status !== "success") throw new Error((r && r.message) || "save_failed");
+    refreshWorkspaceStatus();
     return r;
   }
 
@@ -447,8 +477,9 @@
      REAL AI — talks to app1's streaming /ask endpoint (SSE)
      POST /app1/ask  {query}  →  data: {json}\n\n ... data: [DONE]
      event types: meta | chunk | product | suggestions | notice |
-                  thinking | ping | profile_confirm_request |
-                  profile_update | ui_card
+                  thinking | ping | tool_call | profile_confirm_request |
+                  profile_update | ui_card | memory_used |
+                  memory_saved | profiler_progress
      ============================================================ */
   const ASK_URL = "/app1/ask";
 
@@ -465,6 +496,73 @@
   function showError(body, query) {
     body.innerHTML = `<div class="err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Der opstod en fejl. Prøv igen.</span><button class="retry">Prøv igen</button></div>`;
     body.querySelector(".retry").onclick = () => { body.closest(".msg").remove(); run(query, { skipUser: true }); };
+  }
+
+  /* ---------------- tool activity ---------------- */
+  const TOOL_LABELS = {
+    catalog_search: "Katalogsøgning",
+    catalog_get_product: "Kursusdetaljer",
+    catalog_get_category: "Kategoriopslag",
+    catalog_get_vendor: "Leverandøropslag",
+    catalog_compare_products: "Sammenligning",
+    get_learning_context: "Læringskontekst",
+    check_course_readiness: "Tilmeldingscheck",
+    prepare_course_order: "Ordrekladde",
+    create_course_order: "Opret ordre",
+    check_order_approval_status: "Godkendelsesstatus",
+    analyze_skill_gaps: "Kompetencegab",
+    get_department_budget: "Budgetopslag",
+    search_courses: "Kursussøgning",
+    filter_courses: "Kursusfilter",
+    get_course_details: "Kursusdetaljer",
+    compare_courses: "Sammenligning",
+    get_vendor_info: "Leverandørinfo",
+    get_user_profile: "Hent profil",
+    update_user_profile: "Opdater profil",
+    request_user_input: "Profilkort",
+    remember_about_user: "Gem hukommelse",
+    recommend_for_profile: "Profilmatch",
+    suggest_learning_path: "Læringssti",
+    set_learning_goal: "Opret mål",
+    get_learning_goals: "Hent mål",
+    update_learning_goal: "Opdater mål",
+    get_my_course_status: "Kursusstatus",
+    get_negotiated_discount: "Aftalepris",
+    check_course_prerequisites: "Forudsætninger",
+    get_course_sequel: "Næste kursus",
+    find_certification_path: "Certificeringsvej",
+    track_goal_progress: "Målfremdrift",
+    add_to_calendar: "Kalender",
+    mark_course_complete: "Markér fuldført",
+  };
+  function toolLabel(tool) {
+    const name = typeof tool === "string" ? tool : tool && tool.name;
+    const label = typeof tool === "object" && tool ? tool.label : "";
+    return label || TOOL_LABELS[name] || String(name || "Værktøj").replace(/_/g, " ");
+  }
+  function renderToolCall(body, data) {
+    if (!data || !data.name) return;
+    let box = body.querySelector(".tool-run");
+    if (!box) {
+      box = document.createElement("div");
+      box.className = "tool-run";
+      box.innerHTML = '<div class="tool-run-head"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-værktøjer</span><span class="tool-count">0</span></div><div class="tool-run-list"></div>';
+      body.appendChild(box);
+    }
+    const list = box.querySelector(".tool-run-list");
+    const chip = document.createElement("span");
+    chip.className = "tool-chip" + (data.status === "error" ? " error" : "") + (data.phase === "start" || data.status === "running" ? " running" : "");
+    const meta = [];
+    if (data.category) meta.push(data.category);
+    if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + " resultater");
+    if (data.cache_hit) meta.push("cache");
+    if (data.side_effect) meta.push("ændrer data");
+    if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + "ms");
+    const icon = data.ui_icon ? `<i class="fa-solid ${esc(data.ui_icon)}"></i>` : "";
+    chip.innerHTML = `${icon}<span>${esc(toolLabel(data))}</span>${meta.length ? `<span class="meta">${esc(meta.join(" · "))}</span>` : ""}`;
+    list.appendChild(chip);
+    box.querySelector(".tool-count").textContent = String(list.children.length);
+    down();
   }
 
   /* ---------------- memory transparency ---------------- */
@@ -540,6 +638,8 @@
           fullText += (data.content || "");
           textEl.innerHTML = md(fullText);
           down();
+        } else if (data.type === "tool_call") {
+          renderToolCall(body, data);
         } else if (data.type === "course_cards") {
           // Structured course data -> render with the native Futurematch courseCard design.
           if (data.items && data.items.length) { cardsSeen++; addCourses(body, data.items); }
@@ -559,6 +659,7 @@
           note.className = "md";
           note.innerHTML = md(data.message || "Profil opdateret");
           body.appendChild(note); down();
+          refreshWorkspaceStatus();
         } else if (data.type === "profile_confirm_request") {
           // Proposed profile change -> native confirm card, wired to the real save.
           const conf = data.confirm || {};
@@ -577,10 +678,13 @@
             data.save_action ? (values) => saveProfileUpdate(data.save_action, Object.assign({}, prefilled, values)) : null);
         } else if (data.type === "memory_used") {
           renderMemoryUsed(body, data.memories || []);
+          refreshWorkspaceStatus();
         } else if (data.type === "memory_saved") {
           renderMemorySaved(body, data);
+          refreshWorkspaceStatus();
         } else if (data.type === "profiler_progress") {
           if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
+          refreshWorkspaceStatus();
         }
       }
     }
@@ -628,6 +732,24 @@
 
   /* ---------------- welcome ---------------- */
   function welcome() {
+    if (isProfiler) {
+      thread.innerHTML = `
+        <div class="welcome profiler-welcome">
+          <div class="w-logo">${BOT}</div>
+          <div class="w-eyebrow">AI Profiler</div>
+          <div class="w-title">Gør din profil komplet</div>
+          <div class="w-sub">Fortæl om dine kompetencer, erfaringer og mål — så bygger jeg en profil, der kan bruges til bedre anbefalinger.</div>
+          <div class="w-hint">Profilmode · svar gemmes som profilforslag</div>
+          <div class="w-grid">
+            <button class="w-card" data-q="Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål."><span class="ic"><i class="fa-solid fa-user-check"></i></span><span><div class="t">Start profiler</div><div class="h">Svar på målrettede spørgsmål</div></span></button>
+            <button class="w-card" data-q="Jeg vil opdatere mine kompetencer og niveauer"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Kompetencer</div><div class="h">Tilføj skills og niveauer</div></span></button>
+            <button class="w-card" data-q="Jeg vil fortælle om min erfaring og tidligere roller"><span class="ic"><i class="fa-solid fa-briefcase"></i></span><span><div class="t">Erfaring</div><div class="h">Gem roller og resultater</div></span></button>
+            <button class="w-card" data-q="Jeg vil sætte mine læringsmål"><span class="ic"><i class="fa-solid fa-bullseye"></i></span><span><div class="t">Læringsmål</div><div class="h">Definer hvad du vil opnå</div></span></button>
+          </div>
+        </div>`;
+      thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => ask(c.dataset.q));
+      return;
+    }
     thread.innerHTML = `
       <div class="welcome">
         <div class="w-logo">${BOT}</div>
@@ -824,6 +946,7 @@
   refreshConv();
   welcome();
   renderRef();
+  refreshWorkspaceStatus();
   loadProfile();
   loadNudges();
   input.focus();

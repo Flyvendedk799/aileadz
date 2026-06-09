@@ -4,6 +4,8 @@ import db_compat  # noqa: F401
 from ai_tool_registry import (
     get_employee_tool_selection,
     get_hr_tool_selection,
+    get_tool_meta,
+    tool_display_metadata,
     tool_name,
 )
 
@@ -146,6 +148,18 @@ class AIToolRegistryTests(unittest.TestCase):
         self.assertIn("hr_recommend_training_plan", names)
         self.assertIn("get_company_skill_gaps", names)
         self.assertEqual(meta["forced_tool"], "get_company_skill_gaps")
+
+    def test_display_metadata_covers_all_agent_scopes(self):
+        employee = tool_display_metadata("remember_about_user", "employee")
+        hr = tool_display_metadata("get_budget_overview", "hr")
+        vendor = tool_display_metadata("vendor_performance_summary", "vendor")
+
+        self.assertEqual(employee["label"], "Gem hukommelse")
+        self.assertEqual(employee["category"], "Hukommelse")
+        self.assertEqual(hr["label"], "Budgetoverblik")
+        self.assertEqual(hr["agent"], "hr")
+        self.assertEqual(vendor["label"], "Salgsperformance")
+        self.assertEqual(get_tool_meta("vendor_performance_summary", "vendor").agent_scope, "vendor")
 
 
 if __name__ == "__main__":

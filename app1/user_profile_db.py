@@ -153,7 +153,7 @@ _TABLES_SQL = [
         UNIQUE KEY unique_memory (username, label),
         INDEX idx_username (username),
         INDEX idx_cat (username, category)
-    )""",
+    ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
 ]
 
 
@@ -600,32 +600,42 @@ def _memory_tokens(text):
     return {t for t in toks if len(t) > 2 and t not in _MEMORY_STOPWORDS}
 
 
-def get_memories(username):
+def get_memories(username, limit=None):
+    """List a user's memories (newest first). `limit` caps the row scan — the
+    Mind-Map/CRUD callers want everything (limit=None); the per-turn relevance
+    selector passes a cap so cost stays bounded as the store grows."""
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute(
-        "SELECT id, category, label, detail, source, confidence, used_count, "
-        "last_used_at, created_at, updated_at "
-        "FROM user_memories WHERE username = %s ORDER BY updated_at DESC",
-        (username,)
-    )
+    sql = ("SELECT id, category, label, detail, source, confidence, used_count, "
+           "last_used_at, created_at, updated_at "
+           "FROM user_memories WHERE username = %s ORDER BY updated_at DESC")
+    params = [username]
+    if limit:
+        sql += " LIMIT %s"
+        params.append(int(limit))
+    cur.execute(sql, tuple(params))
     rows = cur.fetchall()
     cur.close()
     return list(rows)
 
 
 def add_memory(username, label, category="andet", detail=None, source="ai", confidence=0.8):
-    label = (label or "").strip()
+    """Upsert a memory (INSERT ... ON DUPLICATE KEY UPDATE on (username, label)).
+    Authoritative truncation point: label -> 200 chars, detail -> 5000, empty
+    detail -> NULL. Re-calling with the same label overwrites its
+    category/detail/source/confidence."""
+    label = (label or "").strip()[:200]
     if not label:
         return None
     if category not in _MEMORY_CATEGORIES:
         category = "andet"
+    detail = str(detail)[:5000] if detail else None
     cur = current_app.mysql.connection.cursor()
     cur.execute(
         "INSERT INTO user_memories (username, category, label, detail, source, confidence) "
         "VALUES (%s, %s, %s, %s, %s, %s) "
         "ON DUPLICATE KEY UPDATE category = VALUES(category), detail = VALUES(detail), "
         "source = VALUES(source), confidence = VALUES(confidence)",
-        (username, category, label[:200], (detail or None), source, float(confidence or 0.8))
+        (username, category, label, detail, source, float(confidence or 0.8))
     )
     current_app.mysql.connection.commit()
     new_id = cur.lastrowid
@@ -638,6 +648,13 @@ def update_memory(username, memory_id, **fields):
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if "category" in updates and updates["category"] not in _MEMORY_CATEGORIES:
         updates.pop("category")
+    # Enforce the same column limits as add_memory (the PUT path reaches here).
+    if "label" in updates:
+        updates["label"] = str(updates["label"]).strip()[:200]
+        if not updates["label"]:
+            updates.pop("label")
+    if "detail" in updates:
+        updates["detail"] = str(updates["detail"])[:5000]
     if not updates:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in updates)
@@ -677,31 +694,40 @@ def touch_memories(username, memory_ids):
     return affected
 
 
-def select_relevant_memories(username, query_text, limit=6):
-    """Return the memories most relevant to `query_text` (token overlap), falling
-    back to the most-recently-updated when nothing overlaps. Used to inject a
-    focused 'what I know about you' block per turn rather than dumping everything.
+def select_relevant_memories(username, query_text, limit=6, scan_cap=120, min_confidence=0.5):
+    """Pick the memories to inject for one turn. Each returned dict carries a
+    `_relevant` flag: True when it actually matched the query (keyword overlap),
+    False for the recency fallback. Callers inject all of them for ambient
+    personalisation but only count the `_relevant` ones as "used" — so used_count
+    stays meaningful and the memory_used signal isn't noisy.
+
+    Bounds cost: scans at most `scan_cap` rows and drops very-low-confidence
+    inferences (`min_confidence`). NOTE: the tokenizer is Danish/Latin-optimised,
+    so non-Latin-script memories never keyword-match and only appear via the
+    recency fallback — which is safe (just not relevance-boosted).
     """
     try:
-        memories = get_memories(username)
+        memories = get_memories(username, limit=scan_cap)
     except Exception:
         return []
+    memories = [m for m in memories
+                if m.get("confidence") is None or float(m.get("confidence") or 0) >= min_confidence]
     if not memories:
         return []
     q_tokens = _memory_tokens(query_text)
     scored = []
     for m in memories:
         m_tokens = _memory_tokens((m.get("label") or "") + " " + (m.get("detail") or ""))
-        overlap = len(q_tokens & m_tokens)
-        scored.append((overlap, m))
+        scored.append((len(q_tokens & m_tokens), m))
     # Anything with overlap is relevant; sort by overlap desc, then recency (input
     # order is already updated_at DESC). Stable sort preserves recency tie-break.
-    relevant = [m for ov, m in sorted(scored, key=lambda x: x[0], reverse=True) if ov > 0]
+    relevant = [dict(m, _relevant=True)
+                for ov, m in sorted(scored, key=lambda x: x[0], reverse=True) if ov > 0]
     if relevant:
         return relevant[:limit]
-    # No keyword hit — fall back to the most recent few so personalization still
-    # happens (e.g. "what should I take next?" with no shared tokens).
-    return memories[: min(limit, 4)]
+    # No keyword hit — inject a couple of recent memories for ambient
+    # personalisation, tagged _relevant=False so they aren't counted as "used".
+    return [dict(m, _relevant=False) for m in memories[: min(limit, 3)]]
 
 
 _MEMORY_CATEGORY_LABELS = {

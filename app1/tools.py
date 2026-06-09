@@ -1879,7 +1879,8 @@ def _execute_remember_about_user(args, username):
     try:
         from app1 import user_profile_db as db
         db.ensure_tables()
-        db.add_memory(username, label[:200], category=category, detail=detail,
+        # add_memory is the authoritative truncation point (label->200, detail->5000).
+        db.add_memory(username, label, category=category, detail=detail,
                       source="ai", confidence=0.9)
         return json.dumps({"status": "memory_saved", "label": label[:200],
                            "category": category, "message": f"Husket: {label[:200]}"})

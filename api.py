@@ -404,6 +404,190 @@ def manage_portfolio_links_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@api_bp.route('/api/profile/memories', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@login_required
+def manage_memories_api():
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import (
+            get_memories, add_memory, update_memory, remove_memory, ensure_tables
+        )
+        ensure_tables()
+
+        if request.method == 'GET':
+            return jsonify({'success': True, 'memories': get_memories(username)})
+
+        data = request.get_json() or {}
+        if request.method == 'POST':
+            label = (data.get('label') or '').strip()
+            if not label:
+                return jsonify({'success': False, 'error': 'label required'}), 400
+            new_id = add_memory(
+                username, label,
+                category=data.get('category', 'andet'),
+                detail=data.get('detail'),
+                source=data.get('source', 'user'),
+                confidence=data.get('confidence', 1.0),
+            )
+            return jsonify({'success': True, 'id': new_id})
+
+        if request.method == 'PUT':
+            mem_id = data.get('id')
+            if not mem_id:
+                return jsonify({'success': False, 'error': 'id required'}), 400
+            fields = {k: v for k, v in data.items() if k != 'id'}
+            updated = update_memory(username, mem_id, **fields)
+            return jsonify({'success': True, 'updated': updated})
+
+        if request.method == 'DELETE':
+            mem_id = data.get('id')
+            if not mem_id:
+                return jsonify({'success': False, 'error': 'id required'}), 400
+            removed = remove_memory(username, mem_id)
+            return jsonify({'success': True, 'removed': removed})
+    except Exception as e:
+        current_app.logger.error("Memories API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/mindmap')
+@login_required
+def get_mindmap_api():
+    """Graph data for the Mind-Map page: a root -> category -> fact tree built
+    from the structured profile, the atomic user_memories, and the rolling
+    conversation summary. Strictly scoped to the logged-in user.
+    """
+    username = session.get('user')
+
+    def _iso(v):
+        try:
+            return v.isoformat()
+        except Exception:
+            return str(v) if v else None
+
+    try:
+        from app1.user_profile_db import (
+            get_full_profile, get_memories, profile_completeness,
+            load_conversation_summary, _MEMORY_CATEGORY_LABELS, ensure_tables
+        )
+        ensure_tables()
+        profile = get_full_profile(username)
+        memories = get_memories(username)
+        completeness = profile_completeness(username, profile=profile)
+        try:
+            summary = load_conversation_summary(username)
+        except Exception:
+            summary = ""
+
+        nodes = [{'id': 'root', 'label': username, 'type': 'root', 'category': 'root'}]
+        edges = []
+
+        def add_branch(branch_id, label, icon):
+            nodes.append({'id': branch_id, 'label': label, 'type': 'branch',
+                          'category': branch_id, 'icon': icon})
+            edges.append({'source': 'root', 'target': branch_id})
+
+        def add_leaf(branch_id, leaf_id, label, meta):
+            nodes.append({'id': leaf_id, 'label': label, 'type': 'leaf',
+                          'category': branch_id, 'meta': meta})
+            edges.append({'source': branch_id, 'target': leaf_id})
+
+        # Structured profile branches.
+        if profile.get('headline') or profile.get('bio') or profile.get('preferred_format') or profile.get('preferred_location'):
+            add_branch('om', 'Om mig', 'user')
+            if profile.get('headline'):
+                add_leaf('om', 'om:headline', profile['headline'], {'source': 'profil', 'kind': 'Overskrift'})
+            if profile.get('bio'):
+                add_leaf('om', 'om:bio', (profile['bio'] or '')[:80], {'source': 'profil', 'kind': 'Bio', 'detail': profile['bio']})
+            pref = ' · '.join([x for x in [profile.get('preferred_format'), profile.get('preferred_location'), profile.get('budget_range')] if x])
+            if pref:
+                add_leaf('om', 'om:pref', pref, {'source': 'profil', 'kind': 'Præferencer'})
+
+        skills = profile.get('skills') or []
+        if skills:
+            add_branch('kompetencer', 'Kompetencer', 'layer-group')
+            for i, s in enumerate(skills):
+                add_leaf('kompetencer', f'skill:{i}', s.get('name', ''),
+                         {'source': 'profil', 'kind': 'Kompetence', 'level': s.get('level')})
+
+        exp = profile.get('experience') or []
+        if exp:
+            add_branch('erfaring', 'Erfaring', 'briefcase')
+            for e in exp:
+                lbl = e.get('title') or ''
+                if e.get('company'):
+                    lbl += f" @ {e['company']}"
+                add_leaf('erfaring', f"exp:{e.get('id')}", lbl, {'source': 'profil', 'kind': 'Erfaring'})
+
+        edu = profile.get('education') or []
+        if edu:
+            add_branch('uddannelse', 'Uddannelse', 'graduation-cap')
+            for e in edu:
+                add_leaf('uddannelse', f"edu:{e.get('id')}", e.get('degree', ''),
+                         {'source': 'profil', 'kind': 'Uddannelse', 'detail': e.get('institution')})
+
+        certs = profile.get('certifications') or []
+        if certs:
+            add_branch('certificeringer', 'Certificeringer', 'shield-halved')
+            for c in certs:
+                add_leaf('certificeringer', f"cert:{c.get('id')}", c.get('name', ''),
+                         {'source': 'profil', 'kind': 'Certificering', 'detail': c.get('issuer'),
+                          'expiry': c.get('expiry_date')})
+
+        langs = profile.get('languages') or []
+        if langs:
+            add_branch('sprog', 'Sprog', 'language')
+            for l in langs:
+                add_leaf('sprog', f"lang:{l.get('id')}", l.get('language', ''),
+                         {'source': 'profil', 'kind': 'Sprog', 'level': l.get('proficiency')})
+
+        goals = profile.get('learning_goals') or []
+        gtext = (profile.get('goals') or '').strip()
+        if goals or gtext:
+            add_branch('maal', 'Mål', 'bullseye')
+            if gtext:
+                add_leaf('maal', 'goal:summary', gtext[:80], {'source': 'profil', 'kind': 'Karrieremål', 'detail': gtext})
+            for g in goals:
+                add_leaf('maal', f"goal:{g.get('id')}", g.get('title', ''),
+                         {'source': 'profil', 'kind': 'Mål', 'status': g.get('status')})
+
+        # Atomic memories branch, sub-labelled by their own category.
+        if memories:
+            add_branch('hukommelse', 'Hukommelse', 'brain')
+            for m in memories:
+                add_leaf('hukommelse', f"mem:{m.get('id')}", m.get('label', ''), {
+                    'source': m.get('source') or 'ai',
+                    'kind': _MEMORY_CATEGORY_LABELS.get(m.get('category'), 'Andet'),
+                    'detail': m.get('detail'),
+                    'confidence': m.get('confidence'),
+                    'used_count': m.get('used_count'),
+                    'last_used_at': _iso(m.get('last_used_at')),
+                    'created_at': _iso(m.get('created_at')),
+                    'memory_id': m.get('id'),
+                })
+
+        if summary:
+            add_branch('samtale', 'Samtale-resumé', 'comments')
+            add_leaf('samtale', 'samtale:summary', summary[:80],
+                     {'source': 'samtale', 'kind': 'Rullende resumé', 'detail': summary})
+
+        return jsonify({
+            'success': True,
+            'nodes': nodes,
+            'edges': edges,
+            'completeness': completeness,
+            'counts': {
+                'memories': len(memories),
+                'leaves': sum(1 for n in nodes if n['type'] == 'leaf'),
+            },
+        })
+    except Exception as e:
+        current_app.logger.error("Mindmap API error: %s", e)
+        return jsonify({'success': False, 'error': str(e),
+                        'nodes': [{'id': 'root', 'label': username or 'Dig', 'type': 'root', 'category': 'root'}],
+                        'edges': []}), 200
+
+
 @api_bp.route('/api/profile/orders')
 @login_required
 def get_profile_orders_api():

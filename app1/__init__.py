@@ -931,7 +931,11 @@ def ask():
         if len(user_query) > 2000:
             user_query = user_query[:2000]
 
-        return handle_agentic_ask(user_query, session)
+        mode = (request.json.get("mode") or "default").strip().lower()
+        if mode not in ("default", "profiler"):
+            mode = "default"
+
+        return handle_agentic_ask(user_query, session, mode=mode)
 
     except Exception as ex:
         print(f"Unexpected error: {ex}")

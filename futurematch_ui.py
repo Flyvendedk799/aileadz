@@ -27,6 +27,24 @@ def chat():
     return render_template('fm/chat.html')
 
 
+@futurematch_bp.route('/ai-profiler')
+def ai_profiler():
+    """AI Profiler — the same chat engine in profile-completion mode."""
+    if not session.get('user'):
+        flash('Log ind for at bruge AI Profiler.', 'danger')
+        return redirect(url_for('auth.login'))
+    return render_template('fm/ai_profiler.html')
+
+
+@futurematch_bp.route('/mind-map')
+def mind_map():
+    """Mind-Map — visualises the memories/data the AI has stored about the user."""
+    if not session.get('user'):
+        flash('Log ind for at se din mind-map.', 'danger')
+        return redirect(url_for('auth.login'))
+    return render_template('fm/mind_map.html')
+
+
 # How many cards each employee-home section ever renders (cheap, bounded).
 _HOME_ACTIVE_LIMIT = 4
 _HOME_ORDER_LIMIT = 5

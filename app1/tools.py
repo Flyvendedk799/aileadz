@@ -1765,7 +1765,7 @@ PROFILE_TOOLS = [
         "type": "function",
         "function": {
             "name": "update_user_profile",
-            "description": "Opdater brugerens profil: tilføj/fjern kompetencer, erfaring, uddannelse, gennemførte kurser, eller opdater profiloversigt (headline, bio, mål, præferencer). Brug dette når brugeren fortæller om sig selv, tilføjer en kompetence, eller vil opdatere sin profil.",
+            "description": "Opdater brugerens profil: tilføj/fjern kompetencer, erfaring, uddannelse, gennemførte kurser, certificeringer, sprog, eller opdater profiloversigt (headline, bio, mål, præferencer). Brug dette når brugeren fortæller om sig selv, tilføjer en kompetence/certificering/sprog, eller vil opdatere sin profil. Brug add_certification (ikke add_course) når der er tale om en rigtig certificering med udsteder eller udløbsdato (fx PRINCE2, AWS, Google Ads, kørekort).",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -1775,12 +1775,15 @@ PROFILE_TOOLS = [
                                  "add_experience", "remove_experience", "update_experience",
                                  "add_education", "remove_education", "update_education",
                                  "add_course", "remove_course", "update_course",
+                                 "add_certification", "remove_certification", "update_certification",
+                                 "add_language", "remove_language", "update_language_level",
+                                 "add_link", "remove_link",
                                  "update_summary"],
                         "description": "The profile update action to perform."
                     },
                     "data": {
                         "type": "object",
-                        "description": "Fields for the action — include ONLY the relevant ones. add_skill: skill_name (required), skill_level. add_experience: title (required), company, start_year, end_year, is_current, description. add_education: degree (required), institution, year_completed. add_course: course_title (required), vendor, completed_date. update_summary: headline, bio, goals, preferred_location, preferred_format, budget_range. remove_*/update_*: include id or the name/title.",
+                        "description": "Fields for the action — include ONLY the relevant ones. add_skill: skill_name (required), skill_level. add_experience: title (required), company, start_year, end_year, is_current, description. add_education: degree (required), institution, year_completed. add_course: course_title (required), vendor, completed_date. add_certification: name (required), issuer, issue_date, expiry_date (tomt = udløber ikke), credential_id, credential_url. add_language: language (required), proficiency. add_link: url (required), label, kind. update_summary: headline, bio, goals, preferred_location, preferred_format, budget_range. remove_*/update_*: include id or the name/title.",
                         "properties": {
                             "skill_name": {"type": "string"},
                             "skill_level": {"type": "string", "enum": ["begynder", "mellem", "avanceret", "ekspert"]},
@@ -1798,6 +1801,17 @@ PROFILE_TOOLS = [
                             "vendor": {"type": "string"},
                             "completed_date": {"type": "string"},
                             "certificate_note": {"type": "string"},
+                            "name": {"type": "string", "description": "Certificeringens navn (add_certification)."},
+                            "issuer": {"type": "string", "description": "Udsteder af certificeringen, fx Microsoft, AWS, PMI."},
+                            "issue_date": {"type": "string", "description": "Udstedt (YYYY, YYYY-MM eller YYYY-MM-DD)."},
+                            "expiry_date": {"type": "string", "description": "Udløber (YYYY, YYYY-MM eller YYYY-MM-DD). Tom = udløber ikke."},
+                            "credential_id": {"type": "string", "description": "Credential-/bevis-ID."},
+                            "credential_url": {"type": "string", "description": "Verificerings-URL."},
+                            "language": {"type": "string", "description": "Sprog (add_language/remove_language)."},
+                            "proficiency": {"type": "string", "enum": ["begynder", "mellem", "flydende", "modersmaal"], "description": "Sprogniveau."},
+                            "label": {"type": "string", "description": "Vist tekst for et link (add_link), fx 'LinkedIn'."},
+                            "url": {"type": "string", "description": "URL for et portfolio-link (add_link)."},
+                            "kind": {"type": "string", "enum": ["linkedin", "github", "portfolio", "website", "certificate", "other"], "description": "Linktype (valgfri — udledes ellers af URL'en)."},
                             "id": {"type": "integer"},
                             "headline": {"type": "string"},
                             "bio": {"type": "string"},
@@ -1838,6 +1852,8 @@ _FIELD_MAX_LENGTHS = {
     "degree": 150, "institution": 150, "course_title": 200, "vendor": 150,
     "headline": 100, "bio": 500, "goals": 500, "budget_range": 50,
     "preferred_location": 100, "preferred_format": 50,
+    "name": 200, "issuer": 150, "issue_date": 20, "expiry_date": 20,
+    "credential_id": 120, "credential_url": 500, "language": 80,
 }
 
 def _clean_profile_data(data):
@@ -1986,6 +2002,148 @@ def _execute_update_user_profile(args, username):
             return json.dumps({"status": "proposed", "section": "courses",
                 "message": f'Tilføj kursus: {label}',
                 "confirm": {"action": "add_course", "data": data}})
+
+        elif action == "add_certification":
+            name = data.get("name", "").strip()
+            if not name:
+                # Incomplete — show a prefilled input card instead of erroring.
+                return json.dumps({
+                    "status": "ui_card", "ui_type": "form", "section": "certifications",
+                    "message": "Udfyld certificeringen, så gemmer jeg den på din profil:",
+                    "save_action": "add_certification",
+                    "prefilled": {k: v for k, v in data.items() if v},
+                    "fields": [
+                        {"name": "name", "label": "Certificering", "type": "text", "placeholder": "F.eks. PRINCE2 Foundation"},
+                        {"name": "issuer", "label": "Udsteder", "type": "text", "placeholder": "F.eks. AXELOS"},
+                        {"name": "issue_date", "label": "Udstedt (år)", "type": "text", "placeholder": "2023"},
+                        {"name": "expiry_date", "label": "Udløber (tom = udløber ikke)", "type": "text", "placeholder": "2026"},
+                    ],
+                })
+            issuer = data.get("issuer", "").strip()
+            try:
+                existing = db.get_certifications(username)
+                for c in existing:
+                    if c["name"].lower() == name.lower() and (c.get("issuer", "") or "").lower() == issuer.lower():
+                        return json.dumps({"status": "already_exists",
+                            "message": f'Certificeringen "{name}"' + (f' fra {issuer}' if issuer else '') + ' findes allerede.'})
+            except Exception as dup_err:
+                print(f"[ProfileUpdate] Certification duplicate check failed (proceeding): {dup_err}")
+                try:
+                    from flask import current_app as _app
+                    _app.mysql.connection.rollback()
+                except Exception:
+                    pass
+            label = name + (f' — {issuer}' if issuer else '')
+            return json.dumps({"status": "proposed", "section": "certifications",
+                "message": f'Tilføj certificering: {label}',
+                "confirm": {"action": "add_certification", "data": data}})
+
+        elif action == "add_language":
+            language = data.get("language", "").strip()
+            if not language:
+                return json.dumps({"status": "error", "message": "language mangler."})
+            proficiency = data.get("proficiency", "mellem")
+            if proficiency not in ("begynder", "mellem", "flydende", "modersmaal"):
+                proficiency = "mellem"
+            try:
+                existing = db.get_languages(username)
+                for l in existing:
+                    if l["language"].lower() == language.lower():
+                        return json.dumps({"status": "already_exists",
+                            "message": f'Sproget "{language}" findes allerede ({l["proficiency"]}).'})
+            except Exception as dup_err:
+                print(f"[ProfileUpdate] Language duplicate check failed (proceeding): {dup_err}")
+                try:
+                    from flask import current_app as _app
+                    _app.mysql.connection.rollback()
+                except Exception:
+                    pass
+            return json.dumps({"status": "proposed", "section": "languages",
+                "message": f'Tilføj sprog: {language} ({proficiency})',
+                "confirm": {"action": "add_language", "data": {"language": language, "proficiency": proficiency}}})
+
+        elif action == "remove_certification":
+            cert_id = data.get("id")
+            name = data.get("name", "").strip()
+            if not cert_id and name:
+                try:
+                    for c in db.get_certifications(username):
+                        if c["name"].lower() == name.lower():
+                            cert_id = c["id"]
+                            break
+                except Exception:
+                    pass
+            if not cert_id:
+                return json.dumps({"status": "error", "message": "id eller name mangler."})
+            removed = db.remove_certification(username, cert_id)
+            if removed:
+                return json.dumps({"status": "success", "section": "certifications", "message": "Certificering fjernet."})
+            return json.dumps({"status": "not_found", "message": "Certificering ikke fundet."})
+
+        elif action == "update_certification":
+            cert_id = data.get("id")
+            if not cert_id:
+                return json.dumps({"status": "error", "message": "id mangler."})
+            fields = {k: v for k, v in data.items() if k != "id" and v is not None and str(v).strip()}
+            if not fields:
+                return json.dumps({"status": "error", "message": "Ingen felter at opdatere."})
+            updated = db.update_certification(username, cert_id, **fields)
+            if updated:
+                return json.dumps({"status": "success", "section": "certifications", "message": "Certificering opdateret."})
+            return json.dumps({"status": "not_found", "message": "Certificering ikke fundet."})
+
+        elif action == "remove_language":
+            language = data.get("language", "").strip()
+            if not language:
+                return json.dumps({"status": "error", "message": "language mangler."})
+            removed = db.remove_language(username, language)
+            if removed:
+                return json.dumps({"status": "success", "section": "languages", "message": f'"{language}" fjernet fra sprog.'})
+            return json.dumps({"status": "not_found", "message": f'Sproget "{language}" blev ikke fundet.'})
+
+        elif action == "update_language_level":
+            language = data.get("language", "").strip()
+            level = data.get("proficiency", "")
+            if not language or not level:
+                return json.dumps({"status": "error", "message": "language og proficiency kræves."})
+            if level not in ("begynder", "mellem", "flydende", "modersmaal"):
+                return json.dumps({"status": "error", "message": f'Ugyldigt niveau: "{level}". Brug: begynder/mellem/flydende/modersmaal.'})
+            updated = db.update_language_level(username, language, level)
+            if updated:
+                return json.dumps({"status": "success", "section": "languages", "message": f'"{language}" opdateret til {level}.'})
+            return json.dumps({"status": "not_found", "message": f'Sproget "{language}" blev ikke fundet.'})
+
+        elif action == "add_link":
+            url = data.get("url", "").strip()
+            if not url:
+                return json.dumps({"status": "error", "message": "url mangler."})
+            if not (url.startswith("http://") or url.startswith("https://")):
+                url = "https://" + url
+            label = data.get("label", "").strip() or url
+            payload = {"url": url, "label": label}
+            if data.get("kind"):
+                payload["kind"] = data.get("kind")
+            return json.dumps({"status": "proposed", "section": "links",
+                "message": f'Tilføj link: {label}',
+                "confirm": {"action": "add_link", "data": payload}})
+
+        elif action == "remove_link":
+            link_id = data.get("id")
+            url = data.get("url", "").strip()
+            if not link_id and url:
+                try:
+                    for p in db.get_portfolio_links(username):
+                        if (p.get("url") or "").rstrip("/") == url.rstrip("/"):
+                            link_id = p["id"]
+                            break
+                except Exception:
+                    pass
+            if not link_id:
+                return json.dumps({"status": "error", "message": "id eller url mangler."})
+            removed = db.remove_portfolio_link(username, link_id)
+            if removed:
+                return json.dumps({"status": "success", "section": "links", "message": "Link fjernet."})
+            return json.dumps({"status": "not_found", "message": "Link ikke fundet."})
 
         # ── Remove/update actions: execute immediately (no confirmation needed) ──
 

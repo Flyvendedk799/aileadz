@@ -34,19 +34,23 @@
   .bd-row.ok i { color: var(--fm-success); } .bd-row.ok .bd-bar span { background: var(--fm-success); }
 
   /* stat band */
-  .cv-stats { display: grid; grid-template-columns: repeat(5,1fr); gap: 14px; margin-bottom: 18px; }
+  .cv-stats { display: grid; grid-template-columns: repeat(6,1fr); gap: 14px; margin-bottom: 18px; }
   .cv-stat { padding: 16px 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); }
   .cv-stat .v { font-family: var(--ff-display); font-size: 26px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
   .cv-stat .l { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 5px; }
   .cv-stat .v.accent { color: var(--fm-primary); }
 
-  /* competency layout */
-  .comp-grid { display: grid; grid-template-columns: 1fr 1.1fr; gap: 16px; margin-bottom: 18px; align-items: stretch; }
-  .radar-legend { display: flex; gap: 16px; justify-content: center; margin-top: 6px; }
-  .radar-legend span { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--fm-ink-2); }
-  .radar-legend i { width: 12px; height: 4px; border-radius: 2px; }
+  /* card head action button (inline add toggles) */
+  .ch-add { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--r-pill); border: 1px dashed var(--fm-line-2); background: transparent; color: var(--fm-primary); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: var(--t); }
+  .ch-add:hover { background: var(--fm-primary-tint); border-color: var(--fm-primary); }
 
-  /* proficiency matrix */
+  /* generic inline add form (used by skills, experience, education, certs, languages) */
+  .inline-add { display: none; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 14px; padding: 14px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
+  .inline-add.show { display: flex; animation: fmReveal .3s var(--ease) both; }
+  .inline-add .fm-field { margin: 0; }
+  .inline-add .chk { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; color: var(--fm-ink-2); height: 38px; }
+
+  /* competency / proficiency matrix */
   .lv-group { margin-bottom: 16px; }
   .lv-group:last-child { margin-bottom: 0; }
   .lv-head { display: flex; align-items: center; gap: 9px; margin-bottom: 9px; }
@@ -62,21 +66,6 @@
   .sk .x { width: 20px; height: 20px; border: none; background: transparent; color: var(--fm-ink-3); border-radius: 6px; display: grid; place-items: center; opacity: 0; transition: var(--t); cursor: pointer; }
   .sk:hover .x { opacity: 1; }
   .sk .x:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
-  .sk-add { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 14px; border-radius: var(--r-pill); border: 1px dashed var(--fm-line-2); background: transparent; color: var(--fm-primary); font-size: 13px; font-weight: 600; cursor: pointer; transition: var(--t); }
-  .sk-add:hover { background: var(--fm-primary-tint); border-color: var(--fm-primary); }
-
-  .add-skill { display: none; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 14px; padding: 14px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
-  .add-skill.show { display: flex; animation: fmReveal .3s var(--ease) both; }
-
-  /* competency progression bars */
-  .prog-skill { margin-bottom: 15px; }
-  .prog-skill:last-child { margin-bottom: 0; }
-  .prog-skill .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7px; }
-  .prog-skill .nm { font-size: 13.5px; font-weight: 650; display: flex; align-items: center; gap: 8px; }
-  .prog-skill .trend { font-size: 11px; font-weight: 700; color: var(--fm-success); display: inline-flex; align-items: center; gap: 3px; }
-  .prog-skill .track { height: 9px; border-radius: 999px; background: var(--fm-surface-3); overflow: hidden; position: relative; }
-  .prog-skill .track span { display: block; height: 100%; border-radius: 999px; background: linear-gradient(90deg, var(--fm-primary), var(--fm-primary-300)); }
-  .prog-skill .target { position: absolute; top: -3px; bottom: -3px; width: 2px; background: var(--fm-clay); }
 
   /* timeline */
   .cv-timeline { position: relative; padding-left: 28px; }
@@ -95,16 +84,82 @@
   .tlx-period { font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); white-space: nowrap; }
   .tlx-dur { display: inline-block; margin-top: 8px; font-size: 11px; font-weight: 600; color: var(--fm-primary); background: var(--fm-primary-tint); padding: 2px 8px; border-radius: 6px; white-space: nowrap; }
   .tlx-desc { font-size: 13px; color: var(--fm-ink-2); margin-top: 8px; line-height: 1.55; }
+  .row-x { width: 22px; height: 22px; border: none; background: transparent; color: var(--fm-ink-3); border-radius: 6px; cursor: pointer; opacity: 0; transition: var(--t); display: grid; place-items: center; }
+  .tlx-card:hover .row-x, .edu-card:hover .row-x { opacity: 1; }
+  .row-x:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
 
-  /* education + cert cards */
+  /* education cards */
   .edu-card { display: flex; gap: 13px; align-items: flex-start; padding: 14px 16px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
   .edu-ic { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 11px; display: grid; place-items: center; font-size: 15px; background: color-mix(in srgb,var(--fm-gold) 16%,transparent); color: var(--fm-gold); }
+
+  /* completed-course cards */
   .cert-card { display: flex; flex-direction: column; gap: 10px; padding: 16px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); position: relative; overflow: hidden; }
   .cert-card::after { content: ""; position: absolute; top: -20px; right: -20px; width: 70px; height: 70px; border-radius: 999px; background: var(--fm-primary-tint); opacity: .6; }
   .cert-card > * { position: relative; }
   .cert-ic { width: 40px; height: 40px; border-radius: 11px; display: grid; place-items: center; font-size: 16px; background: var(--fm-primary-tint); color: var(--fm-primary); }
   .cert-card.gold .cert-ic { background: color-mix(in srgb,var(--fm-gold) 18%,transparent); color: var(--fm-gold); }
   .cert-card.gold::after { background: color-mix(in srgb,var(--fm-gold) 14%,transparent); }
+
+  /* first-class certifications */
+  .crt { position: relative; display: flex; flex-direction: column; gap: 9px; padding: 16px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); box-shadow: var(--sh-xs); border-left: 3px solid var(--fm-primary); transition: var(--t); }
+  .crt:hover { box-shadow: var(--sh-sm); transform: translateY(-1px); }
+  .crt[data-s="expired"] { border-left-color: var(--fm-danger); }
+  .crt[data-s="soon"] { border-left-color: var(--fm-warning); }
+  .crt[data-s="valid"], .crt[data-s="permanent"] { border-left-color: var(--fm-success); }
+  .crt-top { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+  .crt-ic { width: 38px; height: 38px; flex: 0 0 38px; border-radius: 11px; display: grid; place-items: center; font-size: 15px; background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .crt-name { font-size: 14.5px; font-weight: 700; line-height: 1.25; }
+  .crt-issuer { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 2px; }
+  .crt-dates { display: flex; gap: 14px; flex-wrap: wrap; font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); }
+  .crt-foot { display: flex; align-items: center; gap: 10px; margin-top: 2px; }
+  .crt-foot a { font-size: 12px; font-weight: 600; color: var(--fm-primary); display: inline-flex; align-items: center; gap: 5px; }
+  .crt-id { font-family: var(--ff-mono); font-size: 10.5px; color: var(--fm-ink-3); }
+  .val-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: var(--r-pill); white-space: nowrap; }
+  .val-badge[data-s="valid"], .val-badge[data-s="permanent"] { color: var(--fm-success); background: color-mix(in srgb,var(--fm-success) 14%,transparent); }
+  .val-badge[data-s="soon"] { color: var(--fm-warning); background: color-mix(in srgb,var(--fm-warning) 16%,transparent); }
+  .val-badge[data-s="expired"] { color: var(--fm-danger); background: color-mix(in srgb,var(--fm-danger) 13%,transparent); }
+
+  /* language chips */
+  .lang-wrap { display: flex; flex-wrap: wrap; gap: 8px; }
+  .lang { display: inline-flex; align-items: center; gap: 8px; height: 34px; padding: 0 8px 0 12px; border-radius: var(--r-pill); border: 1px solid var(--fm-line); background: var(--fm-surface-2); font-size: 13px; font-weight: 600; }
+  .lang .bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 13px; }
+  .lang .bars i { width: 3px; border-radius: 2px; background: var(--fm-line-2); }
+  .lang .bars i.on { background: var(--fm-primary); }
+  .lang .x { width: 20px; height: 20px; border: none; background: transparent; color: var(--fm-ink-3); border-radius: 6px; display: grid; place-items: center; opacity: 0; transition: var(--t); cursor: pointer; }
+  .lang:hover .x { opacity: 1; }
+  .lang .x:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
+
+  /* portfolio links */
+  .link-wrap { display: flex; flex-direction: column; gap: 8px; }
+  .lnk { display: flex; align-items: center; gap: 10px; padding: 9px 12px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); transition: var(--t); }
+  .lnk:hover { border-color: var(--fm-line-2); box-shadow: var(--sh-xs); }
+  .lnk .lnk-ic { width: 28px; height: 28px; flex: 0 0 28px; border-radius: 8px; display: grid; place-items: center; font-size: 13px; background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .lnk .lnk-main { flex: 1; min-width: 0; text-decoration: none; color: inherit; }
+  .lnk .lnk-label { font-size: 13px; font-weight: 650; }
+  .lnk .lnk-url { font-size: 11px; color: var(--fm-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-family: var(--ff-mono); }
+  .lnk .x { width: 22px; height: 22px; border: none; background: transparent; color: var(--fm-ink-3); border-radius: 6px; display: grid; place-items: center; opacity: 0; transition: var(--t); cursor: pointer; }
+  .lnk:hover .x { opacity: 1; }
+  .lnk .x:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
+
+  /* my orders card */
+  .ord-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 14px; }
+  .ord-kpi { padding: 11px 13px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
+  .ord-kpi .v { font-family: var(--ff-display); font-size: 20px; font-weight: 700; line-height: 1; }
+  .ord-kpi .l { font-size: 11px; color: var(--fm-ink-3); margin-top: 4px; }
+  .ord-kpi.alert .v { color: var(--fm-danger); }
+  .ord-list { display: flex; flex-direction: column; gap: 8px; }
+  .ord-row { display: flex; align-items: center; gap: 12px; padding: 11px 14px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface); transition: var(--t); }
+  .ord-row:hover { border-color: var(--fm-line-2); box-shadow: var(--sh-xs); }
+  .ord-row .ord-main { flex: 1; min-width: 0; }
+  .ord-row .ord-title { font-size: 13.5px; font-weight: 650; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .ord-row .ord-sub { font-size: 11.5px; color: var(--fm-ink-3); margin-top: 2px; font-family: var(--ff-mono); }
+  .ord-row .ord-sub .over { color: var(--fm-danger); font-weight: 700; }
+  .ord-price { font-family: var(--ff-mono); font-size: 12.5px; color: var(--fm-ink-2); white-space: nowrap; }
+  .ord-badge { display: inline-flex; align-items: center; gap: 5px; font-size: 11px; font-weight: 700; padding: 3px 9px; border-radius: var(--r-pill); white-space: nowrap; }
+  .ord-badge[data-s="gennemfoert"] { color: var(--fm-success); background: color-mix(in srgb,var(--fm-success) 14%,transparent); }
+  .ord-badge[data-s="godkendt"] { color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .ord-badge[data-s="afventer"], .ord-badge[data-s="afventer_godkendelse"] { color: var(--fm-warning); background: color-mix(in srgb,var(--fm-warning) 15%,transparent); }
+  .ord-badge[data-s="afvist"], .ord-badge[data-s="annulleret"] { color: var(--fm-danger); background: color-mix(in srgb,var(--fm-danger) 12%,transparent); }
 
   /* AI nudge */
   .ai-nudge { display: flex; align-items: center; gap: 16px; padding: 18px 22px; border-radius: var(--r-card); border: 1px solid var(--fm-primary-300); background: linear-gradient(100deg, var(--fm-primary-tint), transparent 70%), var(--fm-surface); box-shadow: var(--sh-sm); margin-bottom: 18px; }
@@ -116,8 +171,9 @@
   .toast { display: flex; align-items: center; gap: 10px; padding: 12px 15px; border-radius: 12px; background: var(--fm-surface); border: 1px solid var(--fm-line); border-left: 3px solid var(--fm-success); box-shadow: var(--sh-md); font-size: 13px; font-weight: 600; animation: fmReveal .3s var(--ease) both; }
   .toast i { color: var(--fm-success); }
 
-  @media (max-width: 1080px){ .cv-hero { grid-template-columns: 1fr; } .comp-grid { grid-template-columns: 1fr; } .cv-stats { grid-template-columns: repeat(2,1fr); } }
-  @media (max-width: 560px){ .cv-stats { grid-template-columns: 1fr; } .cv-id { flex-direction: column; text-align: center; } }
+  @media (max-width: 1080px){ .cv-hero { grid-template-columns: 1fr; } .cv-stats { grid-template-columns: repeat(3,1fr); } }
+  @media (max-width: 720px){ .ord-kpis { grid-template-columns: repeat(2,1fr); } }
+  @media (max-width: 560px){ .cv-stats { grid-template-columns: repeat(2,1fr); } .cv-id { flex-direction: column; text-align: center; } }
 </style>
 {% endblock %}
 {% block content %}
@@ -151,9 +207,10 @@
         <section class="cv-stats">
           <div class="cv-stat" data-reveal data-d="1"><div class="v accent tnum" id="statSkills">0</div><div class="l">Kompetencer</div></div>
           <div class="cv-stat" data-reveal data-d="2"><div class="v tnum" id="statYears">0</div><div class="l">Års erfaring</div></div>
-          <div class="cv-stat" data-reveal data-d="3"><div class="v tnum" id="statRoles">0</div><div class="l">Stillinger</div></div>
+          <div class="cv-stat" data-reveal data-d="3"><div class="v tnum" id="statCerts">0</div><div class="l">Certificeringer</div></div>
           <div class="cv-stat" data-reveal data-d="4"><div class="v tnum" id="statCourses">0</div><div class="l">Kurser</div></div>
-          <div class="cv-stat" data-reveal data-d="5"><div class="v tnum" id="statEdu">0</div><div class="l">Uddannelser</div></div>
+          <div class="cv-stat" data-reveal data-d="5"><div class="v tnum" id="statLangs">0</div><div class="l">Sprog</div></div>
+          <div class="cv-stat" data-reveal data-d="6"><div class="v tnum" id="statEdu">0</div><div class="l">Uddannelser</div></div>
         </section>
 
         <!-- AI nudge -->
@@ -163,38 +220,101 @@
           <a href="{{ url_for('futurematch.chat') }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
         </div>
 
+        <!-- My orders -->
+        <div class="fm-card" data-reveal id="ordersCard">
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bag-shopping"></i></span><h3>Mine bestillinger</h3><a href="{{ url_for('futurematch.timeline') }}" class="fm-badge teal" style="margin-left:auto">Se tidslinje</a></div>
+          <div class="fm-card-body">
+            <div class="ord-kpis" id="ordKpis"></div>
+            <div class="ord-list" id="ordList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+          </div>
+        </div>
+
         <!-- Proficiency matrix -->
-        <div class="fm-card" data-reveal><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span></div>
+        <div class="fm-card" data-reveal style="margin-top:18px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span></div>
           <div class="fm-card-body">
             <div id="skillMatrix"><div class="muted" style="font-size:13px;padding:8px 0">Indlæser…</div></div>
-            <div class="add-skill" id="addSkill">
-              <div class="fm-field" style="flex:2;margin:0;min-width:180px"><label>Kompetence</label><input class="fm-input" id="skName" placeholder="fx Power BI, Forhandling…" /></div>
-              <div class="fm-field" style="flex:1;margin:0;min-width:140px"><label>Niveau</label><select class="fm-select" id="skLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="avanceret">Avanceret</option><option value="ekspert">Ekspert</option></select></div>
+            <div class="inline-add" id="addSkill">
+              <div class="fm-field" style="flex:2;min-width:180px"><label>Kompetence</label><input class="fm-input" id="skName" placeholder="fx Power BI, Forhandling…" /></div>
+              <div class="fm-field" style="flex:1;min-width:140px"><label>Niveau</label><select class="fm-select" id="skLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="avanceret">Avanceret</option><option value="ekspert">Ekspert</option></select></div>
               <button class="btn btn-primary" onclick="addSkill()">Tilføj</button>
               <button class="btn btn-ghost" onclick="openAdd(false)">Annullér</button>
             </div>
           </div>
         </div>
 
-        <!-- Career + education -->
+        <!-- Career + education/languages -->
         <div class="split" style="margin-top:18px">
-          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3></div>
+          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="ch-add" onclick="toggleForm('addExp')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
             <div class="fm-card-body">
+              <div class="inline-add" id="addExp" style="margin-top:0;margin-bottom:14px">
+                <div class="fm-field" style="flex:2;min-width:160px"><label>Stilling / titel</label><input class="fm-input" id="expTitle" placeholder="F.eks. Projektleder" /></div>
+                <div class="fm-field" style="flex:2;min-width:160px"><label>Virksomhed</label><input class="fm-input" id="expCompany" placeholder="F.eks. Nordi A/S" /></div>
+                <div class="fm-field" style="flex:1;min-width:90px"><label>Startår</label><input class="fm-input" id="expStart" type="number" placeholder="2020" /></div>
+                <div class="fm-field" style="flex:1;min-width:90px"><label>Slutår</label><input class="fm-input" id="expEnd" type="number" placeholder="2024" /></div>
+                <label class="chk"><input type="checkbox" id="expCurrent" /> Nuværende</label>
+                <button class="btn btn-primary" onclick="addExperience()">Gem</button>
+                <button class="btn btn-ghost" onclick="toggleForm('addExp', false)">Annullér</button>
+              </div>
               <div class="cv-timeline" id="expList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
             </div>
           </div>
           <div class="stack">
-            <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3></div>
-              <div class="fm-card-body" id="eduList" style="display:flex;flex-direction:column;gap:10px"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+            <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3><button class="ch-add" onclick="toggleForm('addEdu')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+              <div class="fm-card-body">
+                <div class="inline-add" id="addEdu" style="margin-top:0;margin-bottom:12px">
+                  <div class="fm-field" style="flex:2;min-width:160px"><label>Uddannelse / grad</label><input class="fm-input" id="eduDegree" placeholder="F.eks. Cand.merc." /></div>
+                  <div class="fm-field" style="flex:2;min-width:160px"><label>Institution</label><input class="fm-input" id="eduInst" placeholder="F.eks. CBS" /></div>
+                  <div class="fm-field" style="flex:1;min-width:90px"><label>Afsluttet år</label><input class="fm-input" id="eduYear" type="number" placeholder="2020" /></div>
+                  <button class="btn btn-primary" onclick="addEducation()">Gem</button>
+                  <button class="btn btn-ghost" onclick="toggleForm('addEdu', false)">Annullér</button>
+                </div>
+                <div id="eduList" style="display:flex;flex-direction:column;gap:10px"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+              </div>
             </div>
-            <div class="fm-card" data-reveal data-d="3"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
+            <div class="fm-card" data-reveal data-d="3"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-language"></i></span><h3>Sprog</h3><button class="ch-add" onclick="toggleForm('addLang')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+              <div class="fm-card-body">
+                <div class="inline-add" id="addLang" style="margin-top:0;margin-bottom:12px">
+                  <div class="fm-field" style="flex:2;min-width:140px"><label>Sprog</label><input class="fm-input" id="langName" placeholder="F.eks. Engelsk" /></div>
+                  <div class="fm-field" style="flex:1;min-width:130px"><label>Niveau</label><select class="fm-select" id="langLevel"><option value="begynder">Begynder</option><option value="mellem" selected>Mellem</option><option value="flydende">Flydende</option><option value="modersmaal">Modersmål</option></select></div>
+                  <button class="btn btn-primary" onclick="addLanguage()">Gem</button>
+                  <button class="btn btn-ghost" onclick="toggleForm('addLang', false)">Annullér</button>
+                </div>
+                <div class="lang-wrap" id="langList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+              </div>
+            </div>
+            <div class="fm-card" data-reveal data-d="4"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-clay) 16%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-link"></i></span><h3>Portfolio &amp; links</h3><button class="ch-add" onclick="toggleForm('addLink')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+              <div class="fm-card-body">
+                <div class="inline-add" id="addLink" style="margin-top:0;margin-bottom:12px">
+                  <div class="fm-field" style="flex:1;min-width:120px"><label>Tekst</label><input class="fm-input" id="lnkLabel" placeholder="F.eks. LinkedIn" /></div>
+                  <div class="fm-field" style="flex:2;min-width:170px"><label>URL</label><input class="fm-input" id="lnkUrl" placeholder="https://…" /></div>
+                  <button class="btn btn-primary" onclick="addLink()">Gem</button>
+                  <button class="btn btn-ghost" onclick="toggleForm('addLink', false)">Annullér</button>
+                </div>
+                <div class="link-wrap" id="linkList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+              </div>
+            </div>
+            <div class="fm-card" data-reveal data-d="5"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
               <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.chat') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</a></div>
             </div>
           </div>
         </div>
 
-        <!-- Certifications / completed courses -->
-        <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser &amp; certifikater</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>
+        <!-- Certifications (first-class) -->
+        <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Beviser</span><h2 class="fm-section-title">Certificeringer</h2></div><button class="ch-add" onclick="toggleForm('addCert')"><i class="fa-solid fa-plus"></i> Tilføj certificering</button></div>
+        <div class="inline-add" id="addCert" style="margin-bottom:16px">
+          <div class="fm-field" style="flex:2;min-width:180px"><label>Certificering</label><input class="fm-input" id="crtName" placeholder="F.eks. PRINCE2 Foundation" /></div>
+          <div class="fm-field" style="flex:2;min-width:160px"><label>Udsteder</label><input class="fm-input" id="crtIssuer" placeholder="F.eks. AXELOS" /></div>
+          <div class="fm-field" style="flex:1;min-width:110px"><label>Udstedt</label><input class="fm-input" id="crtIssued" placeholder="2023" /></div>
+          <div class="fm-field" style="flex:1;min-width:140px"><label>Udløber (tom = aldrig)</label><input class="fm-input" id="crtExpiry" placeholder="2026" /></div>
+          <div class="fm-field" style="flex:1;min-width:120px"><label>Bevis-ID</label><input class="fm-input" id="crtCredId" placeholder="Valgfri" /></div>
+          <div class="fm-field" style="flex:2;min-width:160px"><label>Verificerings-URL</label><input class="fm-input" id="crtCredUrl" placeholder="Valgfri" /></div>
+          <button class="btn btn-primary" onclick="addCertification()">Gem</button>
+          <button class="btn btn-ghost" onclick="toggleForm('addCert', false)">Annullér</button>
+        </div>
+        <div class="fm-grid" id="certList" style="grid-template-columns:repeat(3,1fr)"><div class="muted" style="font-size:13px">Indlæser…</div></div>
+
+        <!-- Completed courses -->
+        <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>
         <div class="fm-grid" id="courseList" style="grid-template-columns:repeat(4,1fr)"><div class="muted" style="font-size:13px">Indlæser…</div></div>
 
       </div>
@@ -205,12 +325,16 @@
     const LEVEL_LABELS = { begynder: 'Begynder', mellem: 'Mellem', avanceret: 'Avanceret', ekspert: 'Ekspert' };
     const LEVEL_VARS = { begynder: 'var(--lv-begynder)', mellem: 'var(--lv-mellem)', avanceret: 'var(--lv-avanceret)', ekspert: 'var(--lv-ekspert)' };
     const LEVEL_ORDER = ['ekspert', 'avanceret', 'mellem', 'begynder'];
+    const LANG_LABELS = { begynder: 'Begynder', mellem: 'Mellem', flydende: 'Flydende', modersmaal: 'Modersmål' };
+    const LANG_ORDER = { begynder: 1, mellem: 2, flydende: 3, modersmaal: 4 };
 
     function esc(s) {
       const d = document.createElement('div');
       d.appendChild(document.createTextNode(s == null ? '' : String(s)));
       return d.innerHTML;
     }
+
+    function setText(id, val) { const el = document.getElementById(id); if (el) el.textContent = val; }
 
     function toast(msg, ok) {
       const c = document.getElementById('toasts');
@@ -228,10 +352,11 @@
       return fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts || {})).then(r => r.json());
     }
 
+    // ── Skills ──
     function renderSkills(skills) {
       const wrap = document.getElementById('skillMatrix');
       const badge = document.getElementById('skBadge');
-      document.getElementById('statSkills').textContent = skills.length;
+      setText('statSkills', skills.length);
       badge.textContent = skills.length + ' i alt';
       if (!skills.length) {
         wrap.innerHTML = '<div class="muted" style="font-size:13px;padding:8px 0">Ingen kompetencer endnu. Tilføj din første ovenfor.</div>';
@@ -254,43 +379,116 @@
       wrap.innerHTML = html;
     }
 
+    // ── Experience ──
     function renderExperience(exp) {
       const list = document.getElementById('expList');
-      document.getElementById('statRoles').textContent = exp.length;
       let years = 0;
       exp.forEach(e => {
         const start = e.start_year || null;
         const end = e.is_current ? new Date().getFullYear() : (e.end_year || null);
         if (start && end && end >= start) years += (end - start);
       });
-      document.getElementById('statYears').textContent = years;
+      setText('statYears', years);
       if (!exp.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen erfaring tilføjet endnu.</div>'; return; }
       list.innerHTML = exp.map(e => {
         const period = (e.start_year || '?') + ' – ' + (e.is_current ? 'nu' : (e.end_year || '?'));
         const dur = (e.start_year && (e.is_current || e.end_year)) ? ((e.is_current ? new Date().getFullYear() : e.end_year) - e.start_year) : null;
         return '<div class="tlx ' + (e.is_current ? 'current' : '') + '"><div class="tlx-card"><div class="tlx-top">' +
           '<div><div class="tlx-title">' + esc(e.title) + '</div><div class="tlx-sub">' + esc(e.company || '') + '</div></div>' +
-          '<span class="tlx-period">' + esc(period) + '</span></div>' +
+          '<div style="display:flex;align-items:center;gap:6px"><span class="tlx-period">' + esc(period) + '</span>' +
+          '<button class="row-x" title="Fjern" onclick="removeExperience(' + Number(e.id) + ')"><i class="fa-solid fa-xmark"></i></button></div></div>' +
           (dur != null ? '<span class="tlx-dur">' + dur + ' år</span>' : '') +
           (e.description ? '<div class="tlx-desc">' + esc(e.description) + '</div>' : '') +
           '</div></div>';
       }).join('');
     }
 
+    // ── Education ──
     function renderEducation(edu) {
       const list = document.getElementById('eduList');
-      document.getElementById('statEdu').textContent = edu.length;
+      setText('statEdu', edu.length);
       if (!edu.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen uddannelse tilføjet endnu.</div>'; return; }
       list.innerHTML = edu.map(e =>
         '<div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-user-graduate"></i></span>' +
-        '<div><div style="font-weight:700;font-size:14px">' + esc(e.degree) + '</div>' +
-        '<div style="font-size:12.5px;color:var(--fm-ink-2)">' + esc(e.institution || '') + (e.year_completed ? ' · ' + esc(e.year_completed) : '') + '</div></div></div>'
+        '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">' + esc(e.degree) + '</div>' +
+        '<div style="font-size:12.5px;color:var(--fm-ink-2)">' + esc(e.institution || '') + (e.year_completed ? ' · ' + esc(e.year_completed) : '') + '</div></div>' +
+        '<button class="row-x" title="Fjern" onclick="removeEducation(' + Number(e.id) + ')"><i class="fa-solid fa-xmark"></i></button></div>'
       ).join('');
     }
 
+    // ── Certifications ──
+    function certValidity(expiry) {
+      if (!expiry) return { s: 'permanent', label: 'Ingen udløb' };
+      const parts = String(expiry).split('-');
+      const y = parseInt(parts[0], 10);
+      if (!y || y < 1900) return { s: 'permanent', label: 'Ingen udløb' };
+      const m = parts[1] ? parseInt(parts[1], 10) : 12;
+      const d = parts[2] ? parseInt(parts[2], 10) : 28;
+      const exp = new Date(y, (m || 12) - 1, d || 28);
+      const days = Math.round((exp - new Date()) / 86400000);
+      if (days < 0) return { s: 'expired', label: 'Udløbet' };
+      if (days <= 90) return { s: 'soon', label: 'Udløber snart' };
+      return { s: 'valid', label: 'Gyldig' };
+    }
+
+    function renderCertifications(certs) {
+      const list = document.getElementById('certList');
+      setText('statCerts', certs.length);
+      if (!certs.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen certificeringer endnu. Tilføj en ovenfor — eller bed AI’en gøre det.</div>'; return; }
+      list.innerHTML = certs.map(c => {
+        const v = certValidity(c.expiry_date);
+        const dates = [];
+        if (c.issue_date) dates.push('Udstedt ' + esc(c.issue_date));
+        dates.push(c.expiry_date ? ('Udløber ' + esc(c.expiry_date)) : 'Udløber ikke');
+        const foot = [];
+        if (c.credential_url) foot.push('<a href="' + esc(c.credential_url) + '" target="_blank" rel="noopener"><i class="fa-solid fa-up-right-from-square"></i> Verificér</a>');
+        if (c.credential_id) foot.push('<span class="crt-id">ID: ' + esc(c.credential_id) + '</span>');
+        return '<div class="crt" data-s="' + v.s + '"><div class="crt-top">' +
+          '<span class="crt-ic"><i class="fa-solid fa-shield-halved"></i></span>' +
+          '<div style="display:flex;align-items:center;gap:6px"><span class="val-badge" data-s="' + v.s + '">' + esc(v.label) + '</span>' +
+          '<button class="row-x" style="opacity:.6" title="Fjern" onclick="removeCertification(' + Number(c.id) + ')"><i class="fa-solid fa-xmark"></i></button></div></div>' +
+          '<div><div class="crt-name">' + esc(c.name) + '</div>' + (c.issuer ? '<div class="crt-issuer">' + esc(c.issuer) + '</div>' : '') + '</div>' +
+          '<div class="crt-dates">' + dates.join('<span>·</span>') + '</div>' +
+          (foot.length ? '<div class="crt-foot">' + foot.join('') + '</div>' : '') +
+          '</div>';
+      }).join('');
+    }
+
+    // ── Languages ──
+    function renderLanguages(langs) {
+      const list = document.getElementById('langList');
+      setText('statLangs', langs.length);
+      if (!langs.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen sprog tilføjet endnu.</div>'; return; }
+      list.innerHTML = langs.map(l => {
+        const lvl = LANG_ORDER[l.proficiency] || 2;
+        let bars = '';
+        for (let i = 1; i <= 4; i++) bars += '<i class="' + (i <= lvl ? 'on' : '') + '" style="height:' + (4 + i * 2) + 'px"></i>';
+        return '<span class="lang" title="' + esc(LANG_LABELS[l.proficiency] || l.proficiency) + '"><span class="bars">' + bars + '</span>' +
+          esc(l.language) +
+          '<button class="x" title="Fjern" onclick="removeLanguage(' + JSON.stringify(l.language).replace(/"/g, '&quot;') + ')"><i class="fa-solid fa-xmark"></i></button></span>';
+      }).join('');
+    }
+
+    // ── Portfolio links ──
+    const LINK_ICONS = { linkedin: 'fa-brands fa-linkedin-in', github: 'fa-brands fa-github', portfolio: 'fa-solid fa-palette', website: 'fa-solid fa-globe', certificate: 'fa-solid fa-certificate', other: 'fa-solid fa-link', link: 'fa-solid fa-link' };
+    function renderPortfolio(links) {
+      const list = document.getElementById('linkList');
+      if (!links.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen links endnu. Tilføj fx LinkedIn eller en portfolio.</div>'; return; }
+      list.innerHTML = links.map(l => {
+        const ic = LINK_ICONS[l.kind] || LINK_ICONS.link;
+        let host = l.url;
+        try { host = new URL((l.url || '').startsWith('http') ? l.url : 'https://' + l.url).host.replace(/^www\./, ''); } catch (e) { }
+        return '<div class="lnk"><span class="lnk-ic"><i class="' + ic + '"></i></span>' +
+          '<a class="lnk-main" href="' + esc(l.url) + '" target="_blank" rel="noopener">' +
+          '<div class="lnk-label">' + esc(l.label) + '</div><div class="lnk-url">' + esc(host) + '</div></a>' +
+          '<button class="x" title="Fjern" onclick="removeLink(' + Number(l.id) + ')"><i class="fa-solid fa-xmark"></i></button></div>';
+      }).join('');
+    }
+
+    // ── Completed courses ──
     function renderCourses(courses) {
       const list = document.getElementById('courseList');
-      document.getElementById('statCourses').textContent = courses.length;
+      setText('statCourses', courses.length);
       if (!courses.length) { list.innerHTML = '<div class="muted" style="font-size:13px">Ingen gennemførte kurser endnu.</div>'; return; }
       list.innerHTML = courses.map((c, i) => {
         const cert = c.certificate_note && c.certificate_note.trim();
@@ -302,6 +500,35 @@
         return '<div class="cert-card' + gold + '" data-reveal data-d="' + ((i % 4) + 1) + '"><span class="cert-ic"><i class="fa-solid fa-' + (cert ? 'certificate' : 'diagram-project') + '"></i></span>' +
           '<div><div style="font-weight:700;font-size:14px">' + esc(c.title) + '</div>' +
           '<div style="font-size:12px;color:var(--fm-ink-2);margin-top:2px">' + sub + '</div></div>' + badge + '</div>';
+      }).join('');
+    }
+
+    // ── Orders (loaded separately) ──
+    function renderOrders(data) {
+      const kpis = document.getElementById('ordKpis');
+      const list = document.getElementById('ordList');
+      const orders = (data && data.orders) || [];
+      const sum = (data && data.summary) || {};
+      if (!orders.length) {
+        kpis.innerHTML = '';
+        list.innerHTML = '<div class="muted" style="font-size:13px;padding:4px 0">Du har ingen bestillinger endnu. ' +
+          '<a href="{{ url_for('catalog.catalog_index') }}" style="color:var(--fm-primary);font-weight:600">Find et kursus</a> for at komme i gang.</div>';
+        return;
+      }
+      kpis.innerHTML =
+        '<div class="ord-kpi"><div class="v">' + (sum.total || 0) + '</div><div class="l">Bestillinger</div></div>' +
+        '<div class="ord-kpi"><div class="v">' + (sum.afventer || 0) + '</div><div class="l">Afventer</div></div>' +
+        '<div class="ord-kpi"><div class="v">' + (sum.aktive || 0) + '</div><div class="l">Aktive</div></div>' +
+        '<div class="ord-kpi ' + (sum.overdue ? 'alert' : '') + '"><div class="v">' + (sum.overdue || 0) + '</div><div class="l">Overskredet</div></div>';
+      list.innerHTML = orders.map(o => {
+        const sub = [];
+        if (o.deadline) sub.push((o.overdue ? '<span class="over">Frist overskredet</span>' : 'Frist ' + esc((o.deadline || '').slice(0, 10))));
+        if (o.approval_label) sub.push(esc(o.approval_label));
+        const price = (o.price != null) ? (Number(o.price).toLocaleString('da-DK') + ' kr.') : '';
+        return '<div class="ord-row"><div class="ord-main"><div class="ord-title">' + esc(o.title) + '</div>' +
+          (sub.length ? '<div class="ord-sub">' + sub.join(' · ') + '</div>' : '') + '</div>' +
+          (price ? '<span class="ord-price">' + price + '</span>' : '') +
+          '<span class="ord-badge" data-s="' + esc(o.state) + '">' + esc(o.status_label) + '</span></div>';
       }).join('');
     }
 
@@ -322,6 +549,7 @@
         { key: 'Kompetencer', done: (p.skills || []).length > 0 },
         { key: 'Erfaring', done: (p.experience || []).length > 0 },
         { key: 'Uddannelse', done: (p.education || []).length > 0 },
+        { key: 'Certificeringer', done: (p.certifications || []).length > 0 },
         { key: 'Mål', done: !!p.goals }
       ];
       const doneCount = sections.filter(s => s.done).length;
@@ -343,6 +571,9 @@
       renderSkills(p.skills || []);
       renderExperience(p.experience || []);
       renderEducation(p.education || []);
+      renderCertifications(p.certifications || []);
+      renderLanguages(p.languages || []);
+      renderPortfolio(p.portfolio_links || []);
       renderCourses(p.completed_courses || []);
       renderCompleteness(p);
     }
@@ -359,32 +590,108 @@
       });
     }
 
-    window.openAdd = function (show) {
-      const box = document.getElementById('addSkill');
+    function loadOrders() {
+      api('/api/profile/orders').then(renderOrders).catch(() => {
+        document.getElementById('ordList').innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke indlæse bestillinger.</div>';
+      });
+    }
+
+    // ── form toggles ──
+    window.toggleForm = function (id, show) {
+      const box = document.getElementById(id);
+      if (!box) return;
       if (show === false) { box.classList.remove('show'); return; }
       box.classList.toggle('show');
-      if (box.classList.contains('show')) { const i = document.getElementById('skName'); if (i) i.focus(); }
+      if (box.classList.contains('show')) { const i = box.querySelector('input'); if (i) i.focus(); }
     };
+    window.openAdd = function (show) { window.toggleForm('addSkill', show); };
+
+    // ── mutations ──
+    function val(id) { const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; }
 
     window.addSkill = function () {
-      const name = (document.getElementById('skName').value || '').trim();
-      const level = document.getElementById('skLevel').value;
+      const name = val('skName'), level = document.getElementById('skLevel').value;
       if (!name) { toast('Angiv en kompetence.', false); return; }
       api('/api/profile/skills', { method: 'POST', body: JSON.stringify({ skill_name: name, skill_level: level }) })
-        .then(d => {
-          if (d && d.success !== false) { document.getElementById('skName').value = ''; openAdd(false); toast('Kompetence tilføjet.'); load(); }
-          else { toast((d && d.error) || 'Kunne ikke tilføje.', false); }
-        })
+        .then(d => { if (d && d.success !== false) { document.getElementById('skName').value = ''; toggleForm('addSkill', false); toast('Kompetence tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
-
     window.removeSkill = function (name) {
       api('/api/profile/skills', { method: 'DELETE', body: JSON.stringify({ skill_name: name }) })
         .then(d => { if (d && d.success !== false) { toast('Kompetence fjernet.'); load(); } else { toast((d && d.error) || 'Kunne ikke fjerne.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
 
+    window.addExperience = function () {
+      const title = val('expTitle');
+      if (!title) { toast('Angiv en stilling/titel.', false); return; }
+      const body = { title, company: val('expCompany'), start_year: val('expStart') || null, end_year: val('expEnd') || null, is_current: document.getElementById('expCurrent').checked };
+      api('/api/profile/experience', { method: 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { ['expTitle', 'expCompany', 'expStart', 'expEnd'].forEach(i => document.getElementById(i).value = ''); document.getElementById('expCurrent').checked = false; toggleForm('addExp', false); toast('Erfaring tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+    window.removeExperience = function (id) {
+      api('/api/profile/experience', { method: 'DELETE', body: JSON.stringify({ id }) })
+        .then(d => { if (d && d.success !== false) { toast('Erfaring fjernet.'); load(); } else { toast('Kunne ikke fjerne.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.addEducation = function () {
+      const degree = val('eduDegree');
+      if (!degree) { toast('Angiv en uddannelse.', false); return; }
+      const body = { degree, institution: val('eduInst'), year_completed: val('eduYear') || null };
+      api('/api/profile/education', { method: 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { ['eduDegree', 'eduInst', 'eduYear'].forEach(i => document.getElementById(i).value = ''); toggleForm('addEdu', false); toast('Uddannelse tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+    window.removeEducation = function (id) {
+      api('/api/profile/education', { method: 'DELETE', body: JSON.stringify({ id }) })
+        .then(d => { if (d && d.success !== false) { toast('Uddannelse fjernet.'); load(); } else { toast('Kunne ikke fjerne.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.addCertification = function () {
+      const name = val('crtName');
+      if (!name) { toast('Angiv certificeringens navn.', false); return; }
+      const body = { name, issuer: val('crtIssuer'), issue_date: val('crtIssued') || null, expiry_date: val('crtExpiry') || null, credential_id: val('crtCredId') || null, credential_url: val('crtCredUrl') || null };
+      api('/api/profile/certifications', { method: 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { ['crtName', 'crtIssuer', 'crtIssued', 'crtExpiry', 'crtCredId', 'crtCredUrl'].forEach(i => document.getElementById(i).value = ''); toggleForm('addCert', false); toast('Certificering tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+    window.removeCertification = function (id) {
+      api('/api/profile/certifications', { method: 'DELETE', body: JSON.stringify({ id }) })
+        .then(d => { if (d && d.success !== false) { toast('Certificering fjernet.'); load(); } else { toast('Kunne ikke fjerne.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.addLanguage = function () {
+      const language = val('langName'), proficiency = document.getElementById('langLevel').value;
+      if (!language) { toast('Angiv et sprog.', false); return; }
+      api('/api/profile/languages', { method: 'POST', body: JSON.stringify({ language, proficiency }) })
+        .then(d => { if (d && d.success !== false) { document.getElementById('langName').value = ''; toggleForm('addLang', false); toast('Sprog tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+    window.removeLanguage = function (language) {
+      api('/api/profile/languages', { method: 'DELETE', body: JSON.stringify({ language }) })
+        .then(d => { if (d && d.success !== false) { toast('Sprog fjernet.'); load(); } else { toast('Kunne ikke fjerne.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.addLink = function () {
+      const url = val('lnkUrl'), label = val('lnkLabel');
+      if (!url) { toast('Angiv en URL.', false); return; }
+      api('/api/profile/links', { method: 'POST', body: JSON.stringify({ url, label }) })
+        .then(d => { if (d && d.success !== false) { document.getElementById('lnkUrl').value = ''; document.getElementById('lnkLabel').value = ''; toggleForm('addLink', false); toast('Link tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+    window.removeLink = function (id) {
+      api('/api/profile/links', { method: 'DELETE', body: JSON.stringify({ id }) })
+        .then(d => { if (d && d.success !== false) { toast('Link fjernet.'); load(); } else { toast('Kunne ikke fjerne.', false); } })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
     load();
+    loadOrders();
   })();
 </script>
 {% endblock %}

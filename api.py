@@ -281,6 +281,206 @@ def manage_profile_summary_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@api_bp.route('/api/profile/certifications', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@login_required
+def manage_certifications_api():
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import (
+            get_certifications, add_certification, remove_certification,
+            update_certification, ensure_tables
+        )
+        ensure_tables()
+
+        if request.method == 'GET':
+            return jsonify({'success': True, 'certifications': get_certifications(username)})
+
+        data = request.get_json() or {}
+        if request.method == 'POST':
+            name = (data.get('name') or '').strip()
+            if not name:
+                return jsonify({'success': False, 'error': 'name required'}), 400
+            new_id = add_certification(
+                username, name,
+                issuer=data.get('issuer', ''),
+                issue_date=data.get('issue_date'),
+                expiry_date=data.get('expiry_date'),
+                credential_id=data.get('credential_id'),
+                credential_url=data.get('credential_url'),
+                source=data.get('source', 'manual'),
+            )
+            return jsonify({'success': True, 'id': new_id})
+
+        if request.method == 'PUT':
+            cert_id = data.get('id')
+            if not cert_id:
+                return jsonify({'success': False, 'error': 'id required'}), 400
+            fields = {k: v for k, v in data.items() if k != 'id'}
+            updated = update_certification(username, cert_id, **fields)
+            return jsonify({'success': True, 'updated': updated})
+
+        if request.method == 'DELETE':
+            cert_id = data.get('id')
+            if not cert_id:
+                return jsonify({'success': False, 'error': 'id required'}), 400
+            removed = remove_certification(username, cert_id)
+            return jsonify({'success': True, 'removed': removed})
+    except Exception as e:
+        current_app.logger.error("Certifications API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/languages', methods=['GET', 'POST', 'PUT', 'DELETE'])
+@login_required
+def manage_languages_api():
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import (
+            get_languages, add_language, remove_language, update_language_level, ensure_tables
+        )
+        ensure_tables()
+
+        if request.method == 'GET':
+            return jsonify({'success': True, 'languages': get_languages(username)})
+
+        data = request.get_json() or {}
+        if request.method == 'POST':
+            language = (data.get('language') or '').strip()
+            if not language:
+                return jsonify({'success': False, 'error': 'language required'}), 400
+            add_language(username, language,
+                         proficiency=data.get('proficiency', 'mellem'),
+                         source=data.get('source', 'manual'))
+            return jsonify({'success': True, 'message': f'Language "{language}" added'})
+
+        if request.method == 'PUT':
+            language = (data.get('language') or '').strip()
+            level = (data.get('proficiency') or '').strip()
+            if not language or not level:
+                return jsonify({'success': False, 'error': 'language and proficiency required'}), 400
+            updated = update_language_level(username, language, level)
+            return jsonify({'success': True, 'updated': updated})
+
+        if request.method == 'DELETE':
+            language = (data.get('language') or '').strip()
+            if not language:
+                return jsonify({'success': False, 'error': 'language required'}), 400
+            removed = remove_language(username, language)
+            return jsonify({'success': True, 'removed': removed})
+    except Exception as e:
+        current_app.logger.error("Languages API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/links', methods=['GET', 'POST', 'DELETE'])
+@login_required
+def manage_portfolio_links_api():
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import (
+            get_portfolio_links, add_portfolio_link, remove_portfolio_link, ensure_tables
+        )
+        ensure_tables()
+
+        if request.method == 'GET':
+            return jsonify({'success': True, 'links': get_portfolio_links(username)})
+
+        data = request.get_json() or {}
+        if request.method == 'POST':
+            url = (data.get('url') or '').strip()
+            if not url:
+                return jsonify({'success': False, 'error': 'url required'}), 400
+            new_id = add_portfolio_link(username, data.get('label', ''), url, kind=data.get('kind'))
+            return jsonify({'success': True, 'id': new_id})
+
+        if request.method == 'DELETE':
+            link_id = data.get('id')
+            if not link_id:
+                return jsonify({'success': False, 'error': 'id required'}), 400
+            removed = remove_portfolio_link(username, link_id)
+            return jsonify({'success': True, 'removed': removed})
+    except Exception as e:
+        current_app.logger.error("Portfolio links API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/orders')
+@login_required
+def get_profile_orders_api():
+    """Compact "my orders" feed for the profile page.
+
+    Reuses the exact same strictly-user-scoped query and status mappings as the
+    /min-tidslinje timeline so the profile card and the full page never disagree.
+    Always degrades to an empty list so the profile page never breaks on a DB hiccup.
+    """
+    import datetime
+    username = session.get('user')
+    user_id = session.get('user_id')
+    limit = request.args.get('limit', default=5, type=int) or 5
+    limit = max(1, min(limit, 25))
+    items = []
+    try:
+        import MySQLdb.cursors
+        from db_compat import refresh_flask_mysql_connection
+        from futurematch_ui import _ORDER_STATE, _ORDER_STATUS_LABELS, _ensure_timeline_tables
+        mysql = getattr(current_app, 'mysql', None)
+        refresh_flask_mysql_connection(mysql)
+        conn = mysql.connection if mysql else None
+        if conn is not None:
+            _ensure_timeline_tables(conn)
+            cur = conn.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute(
+                """
+                SELECT co.order_id, co.product_title, co.price, co.status,
+                       co.created_at, co.completion_deadline, co.completion_status,
+                       oa.status AS approval_status
+                FROM course_orders co
+                LEFT JOIN order_approvals oa ON oa.order_id = co.order_id
+                WHERE (co.username = %s OR (co.user_id IS NOT NULL AND co.user_id = %s))
+                ORDER BY co.created_at DESC
+                """,
+                (username, user_id),
+            )
+            rows = cur.fetchall() or []
+            cur.close()
+            now = datetime.datetime.now()
+            for r in rows:
+                raw_status = (r.get('status') or 'pending')
+                deadline = r.get('completion_deadline')
+                state = _ORDER_STATE.get(raw_status, 'afventer')
+                overdue = bool(
+                    deadline and state not in ('gennemfoert', 'annulleret', 'afvist')
+                    and deadline < now
+                )
+                price = r.get('price')
+                items.append({
+                    'order_id': r.get('order_id'),
+                    'title': r.get('product_title') or 'Ukendt kursus',
+                    'created_at': r.get('created_at').isoformat() if r.get('created_at') else None,
+                    'status': raw_status,
+                    'status_label': _ORDER_STATUS_LABELS.get(raw_status, raw_status),
+                    'state': state,
+                    'approval_label': _ORDER_STATUS_LABELS.get(
+                        r.get('approval_status'), r.get('approval_status')
+                    ) if r.get('approval_status') else None,
+                    'deadline': r.get('completion_deadline').isoformat() if r.get('completion_deadline') else None,
+                    'overdue': overdue,
+                    'price': float(price) if price is not None else None,
+                })
+    except Exception as e:
+        current_app.logger.warning("Profile orders API: %s", e)
+        return jsonify({'success': True, 'orders': [], 'total': 0, 'summary': {}})
+
+    summary = {
+        'total': len(items),
+        'afventer': sum(1 for i in items if i['state'] in ('afventer', 'afventer_godkendelse')),
+        'aktive': sum(1 for i in items if i['state'] == 'godkendt'),
+        'gennemfoert': sum(1 for i in items if i['state'] == 'gennemfoert'),
+        'overdue': sum(1 for i in items if i['overdue']),
+    }
+    return jsonify({'success': True, 'orders': items[:limit], 'total': len(items), 'summary': summary})
+
+
 # ── Company notification center (company_notifications, recipient-scoped) ──
 #
 # These power the fm notification center + bell badge. They read the

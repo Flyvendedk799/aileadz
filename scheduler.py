@@ -500,6 +500,29 @@ def _job_learning_deadline_reminders(app):
             'learner_reminders': learner_reminders, 'errors': errors}
 
 
+def _job_cert_expiry_reminders(app):
+    """Daily: nudge learners whose certifications are about to expire or have
+    just lapsed (first-class certifications feature).
+
+    Per-USER, not company-scoped — certs live in the username-scoped
+    ``user_certifications`` table. Delegates to
+    ``cert_expiry_service.remind_expiring_certifications`` which raises ONE
+    learner notification per cert and is idempotent via
+    ``user_certifications.expiry_reminded_for`` (so a renewed cert gets a fresh
+    reminder, but the same expiry is never re-sent). Fully guarded.
+    """
+    try:
+        from cert_expiry_service import remind_expiring_certifications
+    except Exception as e:
+        return {'error': "cert_expiry_service import failed: %s" % e}
+    with app.app_context():
+        try:
+            return remind_expiring_certifications()
+        except Exception as e:
+            logger.warning("scheduler: cert expiry reminders failed: %s", e)
+            return {'error': str(e)}
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -532,6 +555,12 @@ JOBS = [
         'name': 'learning_deadline_reminders',
         'interval_seconds': 86400,        # daily — nudge before learning deadlines lapse
         'fn': _job_learning_deadline_reminders,
+        'enabled': True,
+    },
+    {
+        'name': 'cert_expiry_reminders',
+        'interval_seconds': 86400,        # daily — nudge before certifications expire
+        'fn': _job_cert_expiry_reminders,
         'enabled': True,
     },
     {

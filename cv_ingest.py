@@ -27,6 +27,8 @@ _MAX_INPUT_CHARS = 16000
 
 # Levels we ask the model to use and that downstream user_profile_db understands.
 _ALLOWED_LEVELS = {"begynder", "mellem", "avanceret", "ekspert"}
+# Language proficiency scale that downstream user_languages understands.
+_ALLOWED_LANG_LEVELS = {"begynder", "mellem", "flydende", "modersmaal"}
 
 # Extensions we can read as plain text without any optional dependency.
 _TEXT_EXTS = {".txt", ".md", ".markdown", ".text", ".csv", ".rtf"}
@@ -221,9 +223,15 @@ _EXTRACTION_SYSTEM_PROMPT = (
     '  "summary": "kort dansk opsummering (maks 2-3 sætninger)",\n'
     '  "skills": [{"name": "kompetence", "level": "begynder|mellem|avanceret|ekspert"}],\n'
     '  "experience": [{"title": "stillingsbetegnelse", "company": "virksomhed", "years": "2019-2023 eller fx 4"}],\n'
-    '  "education": [{"degree": "uddannelse/grad", "institution": "institution", "year": "2018"}]\n'
+    '  "education": [{"degree": "uddannelse/grad", "institution": "institution", "year": "2018"}],\n'
+    '  "certifications": [{"name": "certificering", "issuer": "udsteder", "issue_date": "2022", "expiry_date": "2025 eller tom"}],\n'
+    '  "languages": [{"language": "sprog", "proficiency": "begynder|mellem|flydende|modersmaal"}]\n'
     "}\n"
     "Regler: Brug kun de fire kompetenceniveauer begynder, mellem, avanceret, ekspert. "
+    "Sprogniveauer SKAL være ét af: begynder, mellem, flydende, modersmaal (modersmål = modersmaal). "
+    "En certificering er et formelt bevis med en udsteder eller en udløbsdato (fx PRINCE2, AWS, "
+    "Google Ads, kørekort, ISTQB) — adskil dem fra almindelige gennemførte kurser. Hvis en "
+    "certificering ikke udløber, så lad expiry_date være tom. "
     "Oversæt felter til dansk hvor det er naturligt. Find på INTET — udelad felter du ikke kan udlede, "
     "og brug tomme strenge hvor en værdi mangler. Returnér tomme lister hvis intet kan udledes."
 )
@@ -243,6 +251,21 @@ def _coerce_level(value) -> str:
     return mapping.get(v, "mellem")
 
 
+def _coerce_lang_level(value) -> str:
+    v = (str(value or "")).strip().lower()
+    if v in _ALLOWED_LANG_LEVELS:
+        return v
+    mapping = {
+        "modersmål": "modersmaal", "native": "modersmaal", "mother tongue": "modersmaal",
+        "flydende": "flydende", "fluent": "flydende", "c2": "flydende", "c1": "flydende",
+        "professional": "flydende", "forhandlingsniveau": "flydende", "avanceret": "flydende",
+        "mellem": "mellem", "intermediate": "mellem", "b1": "mellem", "b2": "mellem", "middel": "mellem",
+        "begynder": "begynder", "basic": "begynder", "beginner": "begynder",
+        "a1": "begynder", "a2": "begynder", "grundlæggende": "begynder",
+    }
+    return mapping.get(v, "mellem")
+
+
 def _clean_str(value, max_len: int = 255) -> str:
     if value is None:
         return ""
@@ -254,7 +277,8 @@ def _normalise_profile(data) -> dict:
     """Coerce arbitrary model JSON into our strict proposal shape. Guarded."""
     if not isinstance(data, dict):
         return {}
-    out = {"summary": "", "skills": [], "experience": [], "education": []}
+    out = {"summary": "", "skills": [], "experience": [], "education": [],
+           "certifications": [], "languages": []}
     try:
         out["summary"] = _clean_str(data.get("summary"), 600)
     except Exception:
@@ -295,6 +319,34 @@ def _normalise_profile(data) -> dict:
                 out["education"].append(
                     {"degree": degree, "institution": institution, "year": year}
                 )
+    except Exception:
+        pass
+
+    try:
+        for c in (data.get("certifications") or [])[:40]:
+            if not isinstance(c, dict):
+                continue
+            name = _clean_str(c.get("name") or c.get("navn") or c.get("certification") or c.get("certificering"))
+            issuer = _clean_str(c.get("issuer") or c.get("udsteder") or c.get("organisation"))
+            issue_date = _clean_str(c.get("issue_date") or c.get("udstedt") or c.get("year") or c.get("år"), 20)
+            expiry_date = _clean_str(c.get("expiry_date") or c.get("udløber") or c.get("expires") or c.get("expiry"), 20)
+            if name:
+                out["certifications"].append({
+                    "name": name, "issuer": issuer,
+                    "issue_date": issue_date, "expiry_date": expiry_date,
+                })
+    except Exception:
+        pass
+
+    try:
+        for lg in (data.get("languages") or [])[:30]:
+            if isinstance(lg, dict):
+                language = _clean_str(lg.get("language") or lg.get("sprog") or lg.get("name"), 80)
+                proficiency = _coerce_lang_level(lg.get("proficiency") or lg.get("niveau") or lg.get("level"))
+            else:
+                language, proficiency = _clean_str(lg, 80), "mellem"
+            if language:
+                out["languages"].append({"language": language, "proficiency": proficiency})
     except Exception:
         pass
 

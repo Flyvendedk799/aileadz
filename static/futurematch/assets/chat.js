@@ -467,6 +467,37 @@
     body.querySelector(".retry").onclick = () => { body.closest(".msg").remove(); run(query, { skipUser: true }); };
   }
 
+  /* ---------------- memory transparency ---------------- */
+  // Shows which stored memories the AI used this turn, and confirms new ones it
+  // saved — so the "what does it know about me" loop is visible in realtime.
+  function renderMemoryUsed(body, memories) {
+    if (!memories || !memories.length) return;
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "margin:8px 0 2px;";
+    const head = document.createElement("button");
+    head.type = "button";
+    head.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--fm-primary) 9%,transparent);color:var(--fm-primary);border:1px solid color-mix(in srgb,var(--fm-primary) 22%,transparent);border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:650;cursor:pointer;";
+    head.innerHTML = "🧠 Brugte hukommelse om dig (" + memories.length + ")";
+    const chips = document.createElement("div");
+    chips.style.cssText = "display:none;flex-wrap:wrap;gap:6px;margin-top:8px;";
+    memories.forEach((m) => {
+      const c = document.createElement("span");
+      c.style.cssText = "font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-ink-2);";
+      c.textContent = m.label || "";
+      chips.appendChild(c);
+    });
+    head.onclick = () => { chips.style.display = chips.style.display === "none" ? "flex" : "none"; };
+    wrap.appendChild(head); wrap.appendChild(chips);
+    body.appendChild(wrap); down();
+  }
+
+  function renderMemorySaved(body, data) {
+    const wrap = document.createElement("div");
+    wrap.style.cssText = "display:inline-flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:12px;font-weight:600;color:var(--fm-primary);background:color-mix(in srgb,var(--fm-primary) 9%,transparent);border:1px solid color-mix(in srgb,var(--fm-primary) 22%,transparent);border-radius:10px;padding:6px 11px;";
+    wrap.innerHTML = "🧠 <span>" + esc(data.message || ("Husket: " + (data.label || ""))) + "</span>";
+    body.appendChild(wrap); down();
+  }
+
   async function streamFromBackend(body, query) {
     // Reference any attached products the same way the real app1 UI does.
     let actualQuery = query;
@@ -478,7 +509,7 @@
     const resp = await fetch(ASK_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: actualQuery }),
+      body: JSON.stringify({ query: actualQuery, mode: (window.CHAT_MODE || "default") }),
     });
     if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
 
@@ -544,6 +575,12 @@
           const prefilled = data.prefilled || {};
           uiCard(body, { section: data.section, message: data.message || "", fields: fields, prefilled: prefilled },
             data.save_action ? (values) => saveProfileUpdate(data.save_action, Object.assign({}, prefilled, values)) : null);
+        } else if (data.type === "memory_used") {
+          renderMemoryUsed(body, data.memories || []);
+        } else if (data.type === "memory_saved") {
+          renderMemorySaved(body, data);
+        } else if (data.type === "profiler_progress") {
+          if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
         }
       }
     }

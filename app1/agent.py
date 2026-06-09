@@ -239,6 +239,16 @@ SYSTEM_PLAYBOOK_SITUATION = """SITUATIONSHÅNDTERING:
 - Engelsk input: Forstå det, svar på dansk.
 - Vedhæftet kursus [VEDHÆFTET KURSUS: ...]: Besvar specifikt om det kursus."""
 
+SYSTEM_PLAYBOOK_PROFILER = """PROFILER-MODE (byg brugerens profil til 100%):
+Du er i profiler-mode. Målet er en komplet, handlingsbar profil — uden at det føles som en formular.
+- Stil ÉT skarpt, samtalende spørgsmål ad gangen, målrettet et MANGLENDE felt (se AKTUEL PROFIL nedenfor).
+- Når brugeren svarer, GEM straks: brug update_user_profile / request_user_input til strukturerede felter
+  (kompetencer, erfaring, uddannelse, certificeringer, sprog, mål), og remember_about_user til løse fakta,
+  præferencer, livssituation, personlighedstræk og interesser der ikke passer i et struktureret felt.
+- Anerkend kort fremskridt ("Så er din erfaring på plads ✓") og nævn hvad der mangler.
+- Vær varm og nysgerrig, ikke udspørgende. Maks 1-2 sætninger plus selve spørgsmålet.
+- Når profilen er 100%, sig det og tilbyd at finde kurser der matcher profilen."""
+
 SYSTEM_PROMPT = SYSTEM_CORE
 
 
@@ -1072,7 +1082,7 @@ def _strip_course_listings(text):
 
 # ── Main Agent Loop ──
 
-def handle_agentic_ask(user_query, session):
+def handle_agentic_ask(user_query, session, mode="default"):
     """
     Core Agent Loop with all 6 phases integrated.
     """
@@ -1539,6 +1549,8 @@ def handle_agentic_ask(user_query, session):
             buffered_ui_html = []
             buffered_course_cards = []   # structured course data for the Futurematch chat
             buffered_profile_events = []
+            _memories_injected = []   # memories surfaced into context this turn (for memory_used)
+            _profiler_completeness = None  # profile completeness snapshot (profiler mode)
             _tools_used = []          # Phase 1.1: track tool names
             _total_results = 0        # Phase 1.1: total search results
             _products_shown_handles = []  # Phase 1.1: product handles shown
@@ -1594,6 +1606,47 @@ def handle_agentic_ask(user_query, session):
                         insert_idx += 1
                 except Exception as e:
                     print(f"[DB Profile Error] {e}")
+
+            # Atomic memories ("what I know about you") + profiler context.
+            # Relevance-filtered so we inject a focused set, not the whole store,
+            # and so the memory_used event reflects what actually informed the turn.
+            if logged_in_user:
+                try:
+                    from app1.user_profile_db import select_relevant_memories, format_memories_for_ai
+                    rel_mem = select_relevant_memories(logged_in_user, user_query, limit=6)
+                    mem_text = format_memories_for_ai(rel_mem)
+                    if mem_text:
+                        ephemeral_messages.insert(insert_idx, {
+                            "role": "system",
+                            "content": "HVAD JEG VED OM DIG (hukommelse — personalisér ud fra dette, nævn naturligt når relevant):\n"
+                                       + _fence("HUKOMMELSE", mem_text)
+                        })
+                        insert_idx += 1
+                        _memories_injected = [
+                            {"id": m["id"], "label": m["label"], "category": m.get("category"),
+                             "relevant": bool(m.get("_relevant", True))}
+                            for m in rel_mem
+                        ]
+                except Exception as e:
+                    print(f"[Memory inject] {e}")
+                    try:
+                        current_app.mysql.connection.rollback()
+                    except Exception:
+                        pass
+
+                if mode == "profiler":
+                    try:
+                        from app1.user_profile_db import profile_completeness
+                        _profiler_completeness = profile_completeness(logged_in_user)
+                        missing = ", ".join(_profiler_completeness["missing"]) or "ingenting — profilen er komplet"
+                        ephemeral_messages.insert(insert_idx, {
+                            "role": "system",
+                            "content": SYSTEM_PLAYBOOK_PROFILER
+                                       + f"\n\nAKTUEL PROFIL: {_profiler_completeness['pct']}% udfyldt. Mangler stadig: {missing}."
+                        })
+                        insert_idx += 1
+                    except Exception as e:
+                        print(f"[Profiler ctx] {e}")
 
             # Fallback: session-based profile if no DB profile
             if not db_profile_text:
@@ -1976,6 +2029,15 @@ def handle_agentic_ask(user_query, session):
                             'choices': tool_result_dict.get('choices', []),
                         }))
 
+                elif fn == "remember_about_user":
+                    if tool_result_dict.get("status") == "memory_saved":
+                        buffered_profile_events.append(json.dumps({
+                            'type': 'memory_saved',
+                            'label': tool_result_dict.get('label', ''),
+                            'category': tool_result_dict.get('category', 'andet'),
+                            'message': tool_result_dict.get('message', 'Husket'),
+                        }))
+
                 elif fn == "request_user_input":
                     if tool_result_dict.get("status") == "ui_card":
                         buffered_profile_events.append(json.dumps({
@@ -2127,6 +2189,28 @@ def handle_agentic_ask(user_query, session):
             # ── Stream profile events AFTER text (natural reading order) ──
             for evt in buffered_profile_events:
                 yield f"data: {evt}\n\n"
+
+            # ── Memory transparency: which stored memories informed this turn ──
+            # Fires in EVERY mode (normal chat + profiler) so the user can see the
+            # AI using its memory in realtime. Only memories that actually matched
+            # the user's query (relevant=True) are counted as "used" and surfaced —
+            # the ambient recency-fallback ones are injected but not counted, so
+            # used_count stays meaningful and the signal isn't noisy.
+            if logged_in_user:
+                _used = [m for m in _memories_injected if m.get("relevant")]
+                if _used:
+                    try:
+                        from app1.user_profile_db import touch_memories
+                        touch_memories(logged_in_user, [m["id"] for m in _used])
+                    except Exception:
+                        try:
+                            current_app.mysql.connection.rollback()
+                        except Exception:
+                            pass
+                    _payload = [{"id": m["id"], "label": m["label"], "category": m.get("category")} for m in _used]
+                    yield f"data: {json.dumps({'type': 'memory_used', 'memories': _payload}, ensure_ascii=False)}\n\n"
+            if _profiler_completeness is not None:
+                yield f"data: {json.dumps({'type': 'profiler_progress', 'completeness': _profiler_completeness}, ensure_ascii=False)}\n\n"
 
             # ── Stream product cards AFTER text + profile events ──
             # Emit structured course_cards (Futurematch chat builder) first, then

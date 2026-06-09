@@ -26,6 +26,11 @@ class ToolMeta:
     parallel_safe: bool = True
     cache_ttl: int = 0
     toolset_tags: Tuple[str, ...] = ()
+    label: str = ""
+    category: str = ""
+    ui_icon: str = ""
+    ui_description: str = ""
+    safe_to_show: bool = True
 
 
 _EMPLOYEE_META = {
@@ -183,6 +188,184 @@ _HR_META = {
         "hr_compare_cohorts", "hr", company_required=True, cache_ttl=120, toolset_tags=("compare", "report"),
     ),
 }
+
+_VENDOR_META = {
+    "vendor_performance_summary": ToolMeta(
+        "vendor_performance_summary",
+        "vendor",
+        toolset_tags=("vendor", "analytics", "orders"),
+        cache_ttl=60,
+    ),
+    "get_demand_by_category": ToolMeta(
+        "get_demand_by_category",
+        "vendor",
+        toolset_tags=("vendor", "analytics", "market"),
+        cache_ttl=120,
+    ),
+    "get_comparable_courses": ToolMeta(
+        "get_comparable_courses",
+        "vendor",
+        toolset_tags=("vendor", "catalog", "compare"),
+        cache_ttl=120,
+    ),
+}
+
+_TOOL_LABELS = {
+    # Employee catalog/order tools
+    "catalog_search": "Søg katalog",
+    "catalog_get_product": "Hent kursus",
+    "catalog_get_category": "Hent kategori",
+    "catalog_get_vendor": "Hent udbyder",
+    "catalog_compare_products": "Sammenlign kurser",
+    "get_learning_context": "Læringskontekst",
+    "check_course_readiness": "Tjek parathed",
+    "prepare_course_order": "Forbered bestilling",
+    "search_courses": "Søg kurser",
+    "filter_courses": "Filtrér kurser",
+    "get_course_details": "Kursusdetaljer",
+    "compare_courses": "Sammenlign kurser",
+    "get_vendor_info": "Udbyderinfo",
+    "create_course_order": "Opret bestilling",
+    "check_order_approval_status": "Godkendelsesstatus",
+    "analyze_skill_gaps": "Kompetencegab",
+    "get_department_budget": "Budget",
+    # Employee profile/memory tools
+    "get_user_profile": "Hent profil",
+    "update_user_profile": "Opdater profil",
+    "request_user_input": "Profilkort",
+    "remember_about_user": "Gem hukommelse",
+    "suggest_learning_path": "Læringssti",
+    "recommend_for_profile": "Profilmatch",
+    "set_learning_goal": "Opret mål",
+    "get_learning_goals": "Hent mål",
+    "update_learning_goal": "Opdater mål",
+    "get_my_course_status": "Kursusstatus",
+    "get_negotiated_discount": "Aftalepris",
+    "check_course_prerequisites": "Forudsætninger",
+    "get_course_sequel": "Næste kursus",
+    "find_certification_path": "Certificeringsvej",
+    "track_goal_progress": "Målfremdrift",
+    "add_to_calendar": "Kalender",
+    "mark_course_complete": "Markér fuldført",
+    # HR tools
+    "get_team_training_status": "Træningsstatus",
+    "get_company_skill_gaps": "Kompetencegab",
+    "get_budget_overview": "Budgetoverblik",
+    "get_employee_overview": "Medarbejdere",
+    "get_training_report": "Træningsrapport",
+    "get_pending_actions": "Ventende handlinger",
+    "search_courses_for_team": "Kurser til team",
+    "get_chatbot_usage_stats": "AI-brug",
+    "hr_get_company_learning_context": "Virksomhedskontekst",
+    "hr_recommend_training_plan": "Træningsplan",
+    "hr_get_supplier_coverage": "Leverandørdækning",
+    "hr_get_ai_usage_risks": "AI-risici",
+    "get_compliance_status": "Compliance",
+    "get_team_non_starters": "Ikke startet",
+    "hr_team_compliance": "Team-compliance",
+    "hr_roi_summary": "ROI-overblik",
+    "hr_benchmark": "Benchmark",
+    "hr_trial_and_seat_status": "Licenser",
+    "approve_order_from_chat": "Godkend ordre",
+    "assign_learning_path_to_team": "Tildel læringssti",
+    "hr_inactive_employees": "Inaktive medarbejdere",
+    "hr_expiring_agreements": "Aftaler udløber",
+    "get_workforce_risk": "Workforce-risiko",
+    "hr_explain_insights": "Forklar indsigter",
+    "set_skill_target": "Sæt kompetencemål",
+    "create_compliance_requirement": "Opret compliancekrav",
+    "hr_compare_cohorts": "Sammenlign grupper",
+    # Vendor tools
+    "vendor_performance_summary": "Salgsperformance",
+    "get_demand_by_category": "Markedsefterspørgsel",
+    "get_comparable_courses": "Sammenlign kurser",
+}
+
+_CATEGORY_META = {
+    "catalog": ("Katalog", "fa-magnifying-glass"),
+    "profile": ("Profil", "fa-user-pen"),
+    "memory": ("Hukommelse", "fa-brain"),
+    "order": ("Bestilling", "fa-cart-shopping"),
+    "approval": ("Godkendelse", "fa-circle-check"),
+    "budget": ("Budget", "fa-wallet"),
+    "skills": ("Kompetencer", "fa-chart-simple"),
+    "compliance": ("Compliance", "fa-shield-halved"),
+    "analytics": ("Analyse", "fa-chart-line"),
+    "vendor": ("Leverandør", "fa-store"),
+    "hr": ("HR", "fa-users-gear"),
+    "calendar": ("Kalender", "fa-calendar-plus"),
+    "goals": ("Mål", "fa-bullseye"),
+    "course": ("Kursus", "fa-graduation-cap"),
+    "report": ("Rapport", "fa-file-lines"),
+}
+
+_CATEGORY_PRIORITY = (
+    "memory",
+    "profile",
+    "order",
+    "approval",
+    "budget",
+    "compliance",
+    "skills",
+    "catalog",
+    "course",
+    "calendar",
+    "goals",
+    "report",
+    "analytics",
+    "vendor",
+    "hr",
+)
+
+
+def _humanize_tool_name(name: str) -> str:
+    text = str(name or "Værktøj").replace("_", " ").strip()
+    return text[:1].upper() + text[1:] if text else "Værktøj"
+
+
+def get_tool_meta(name: str, agent_scope: Optional[str] = None) -> ToolMeta:
+    """Return metadata for any AI tool exposed by employee, HR, or vendor agents."""
+    registries = {
+        "employee": _EMPLOYEE_META,
+        "hr": _HR_META,
+        "vendor": _VENDOR_META,
+    }
+    ordered_scopes = [agent_scope] if agent_scope in registries else []
+    ordered_scopes.extend(scope for scope in ("employee", "hr", "vendor") if scope not in ordered_scopes)
+    for scope in ordered_scopes:
+        meta = registries[scope].get(name)
+        if meta:
+            return meta
+    return ToolMeta(name, agent_scope or "employee")
+
+
+def tool_display_metadata(name: str, agent_scope: Optional[str] = None) -> Dict[str, Any]:
+    """Browser-safe display metadata for tool-call UI and telemetry events."""
+    meta = get_tool_meta(name, agent_scope)
+    tags = tuple(meta.toolset_tags or ())
+    category_key = meta.category
+    if not category_key:
+        for key in _CATEGORY_PRIORITY:
+            if key in tags:
+                category_key = key
+                break
+    if not category_key:
+        category_key = meta.agent_scope if meta.agent_scope in _CATEGORY_META else "catalog"
+    category_label, category_icon = _CATEGORY_META.get(category_key, (_humanize_tool_name(category_key), "fa-wand-magic-sparkles"))
+    return {
+        "name": name,
+        "agent": meta.agent_scope,
+        "label": meta.label or _TOOL_LABELS.get(name) or _humanize_tool_name(name),
+        "category": category_label,
+        "category_key": category_key,
+        "ui_icon": meta.ui_icon or category_icon,
+        "ui_description": meta.ui_description or category_label,
+        "side_effect": bool(meta.side_effect),
+        "safe_to_show": bool(meta.safe_to_show),
+        "cache_ttl": int(meta.cache_ttl or 0),
+        "parallel_safe": bool(meta.parallel_safe and not meta.side_effect),
+        "tags": list(tags),
+    }
 
 
 def _property_type(prop: Dict[str, Any]) -> Any:
@@ -564,13 +747,12 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
 
 
 def is_parallel_safe(name: str) -> bool:
-    meta = _EMPLOYEE_META.get(name) or _HR_META.get(name)
-    return True if meta is None else meta.parallel_safe and not meta.side_effect
+    meta = get_tool_meta(name)
+    return bool(meta.parallel_safe and not meta.side_effect)
 
 
 def tool_cache_ttl(name: str) -> int:
-    meta = _EMPLOYEE_META.get(name) or _HR_META.get(name)
-    return 0 if meta is None else meta.cache_ttl
+    return int(get_tool_meta(name).cache_ttl or 0)
 
 
 def make_tool_choice(tool_name_value: Optional[str]) -> Any:

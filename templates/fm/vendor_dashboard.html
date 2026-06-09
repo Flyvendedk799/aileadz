@@ -74,7 +74,19 @@
     .vp-ai-msg.user { align-self: flex-end; background: var(--fm-primary); color: #fff; border-bottom-right-radius: 4px; }
     .vp-ai-msg.bot { align-self: flex-start; background: var(--fm-bg); color: var(--fm-ink); border: 1px solid var(--fm-line); border-bottom-left-radius: 4px; }
     .vp-ai-msg.bot.thinking { color: var(--fm-ink-3); font-style: italic; }
-    .vp-ai-tool { align-self: flex-start; font-size: 11px; color: var(--fm-ink-3); padding: 0 4px; }
+    .vp-ai-toolrun { align-self: flex-start; max-width: 92%; padding: 8px 10px; border: 1px solid var(--fm-line);
+                     border-radius: 12px; background: var(--fm-surface, #fff); color: var(--fm-ink-2);
+                     box-shadow: 0 3px 12px rgba(0,0,0,.05); }
+    .vp-ai-toolhead { display: flex; align-items: center; gap: 7px; font-size: 11.5px; font-weight: 800; color: var(--fm-ink); }
+    .vp-ai-toolhead i { color: var(--fm-primary); }
+    .vp-ai-toolcount { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; color: var(--fm-ink-3); font-size: 10.5px; }
+    .vp-ai-toollist { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .vp-ai-toolchip { display: inline-flex; align-items: center; gap: 6px; min-height: 25px; padding: 0 9px;
+                      border: 1px solid var(--fm-line); border-radius: 8px; background: var(--fm-bg);
+                      font-size: 11.5px; font-weight: 700; color: var(--fm-ink-2); }
+    .vp-ai-toolchip i { color: var(--fm-primary); font-size: 11px; }
+    .vp-ai-toolchip .meta { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; color: var(--fm-ink-3); font-size: 10px; }
+    .vp-ai-toolchip.error { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
     .vp-ai-form { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--fm-line); }
     .vp-ai-form input { flex: 1; padding: 10px 12px; border: 1px solid var(--fm-line-2); border-radius: 10px;
                         font: inherit; font-size: 13.5px; background: var(--fm-bg); color: var(--fm-ink); }
@@ -218,6 +230,7 @@
     if (!fab) return;
     var ASK = "{{ url_for('vendor.vendor_ask') }}";
     var busy = false;
+    var activeToolRun = null;
 
     function toggle(open) {
       panel.hidden = !open;
@@ -240,12 +253,50 @@
       return d;
     }
 
+    function safeHtml(value) {
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+
+    function toolLabel(data) {
+      var labels = {
+        vendor_performance_summary: 'Salgsperformance',
+        get_demand_by_category: 'Markedsefterspørgsel',
+        get_comparable_courses: 'Sammenlign kurser'
+      };
+      return (data && data.label) || labels[data && data.name] || String((data && data.name) || 'Værktøj').replace(/_/g, ' ');
+    }
+
+    function renderToolCall(out, data) {
+      if (!data || !data.name) return;
+      if (!activeToolRun || !activeToolRun.isConnected) {
+        activeToolRun = document.createElement('div');
+        activeToolRun.className = 'vp-ai-toolrun';
+        activeToolRun.innerHTML = '<div class="vp-ai-toolhead"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-værktøjer</span><span class="vp-ai-toolcount">0</span></div><div class="vp-ai-toollist"></div>';
+        body.insertBefore(activeToolRun, out);
+      }
+      var list = activeToolRun.querySelector('.vp-ai-toollist');
+      var chip = document.createElement('span');
+      chip.className = 'vp-ai-toolchip' + (data.status === 'error' ? ' error' : '');
+      var meta = [];
+      if (data.category) meta.push(data.category);
+      if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + ' resultater');
+      if (data.cache_hit) meta.push('cache');
+      if (data.side_effect) meta.push('ændrer data');
+      if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + 'ms');
+      var icon = data.ui_icon ? '<i class="fa-solid ' + safeHtml(data.ui_icon) + '"></i>' : '';
+      chip.innerHTML = icon + '<span>' + safeHtml(toolLabel(data)) + '</span>' + (meta.length ? '<span class="meta">' + safeHtml(meta.join(' · ')) + '</span>' : '');
+      list.appendChild(chip);
+      activeToolRun.querySelector('.vp-ai-toolcount').textContent = String(list.children.length);
+      body.scrollTop = body.scrollHeight;
+    }
+
     form.addEventListener('submit', function (e) {
       e.preventDefault();
       if (busy) return;
       var q = (input.value || '').trim();
       if (!q) return;
       busy = true;
+      activeToolRun = null;
       addMsg('user', q);
       input.value = '';
       var out = addMsg('bot thinking', 'Arbejder…');
@@ -281,11 +332,7 @@
                 if (d.type === 'thinking' && !acc) {
                   out.textContent = d.content || 'Arbejder…';
                 } else if (d.type === 'tool_call') {
-                  // Show which vendor tool ran, kept above the answer line.
-                  var t = document.createElement('div');
-                  t.className = 'vp-ai-tool';
-                  t.textContent = 'Slår op: ' + (d.name || 'data');
-                  body.insertBefore(t, out);
+                  renderToolCall(out, d);
                 } else if (d.type === 'text' && d.content) {
                   acc += d.content;
                   out.classList.remove('thinking');

@@ -30,6 +30,15 @@
 .hr-suggestion-chip:hover{background:var(--fm-primary);color:#fff;border-color:var(--fm-primary)}
 .hr-alert-bar{padding:10px 14px;border-radius:12px;margin-bottom:12px;display:flex;align-items:center;gap:11px;font-size:13px;cursor:pointer;border:1px solid var(--fm-line)}
 .hr-alert-bar:hover{opacity:.92}
+.hr-tool-run{width:fit-content;max-width:85%;margin:0 0 12px 43px;padding:8px 10px;border:1px solid var(--fm-line);border-radius:12px;background:var(--fm-surface);color:var(--fm-ink-2);box-shadow:var(--sh-xs)}
+.hr-tool-head{display:flex;align-items:center;gap:7px;font-size:11.5px;font-weight:800;color:var(--fm-ink)}
+.hr-tool-head i{color:var(--fm-primary)}
+.hr-tool-count{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fm-ink-3);font-size:10.5px}
+.hr-tool-list{display:flex;flex-wrap:wrap;gap:6px;margin-top:7px}
+.hr-tool-chip{display:inline-flex;align-items:center;gap:6px;min-height:25px;padding:0 9px;border:1px solid var(--fm-line);border-radius:8px;background:var(--fm-surface-2);font-size:11.5px;font-weight:700;color:var(--fm-ink-2)}
+.hr-tool-chip i{font-size:11px;color:var(--fm-primary)}
+.hr-tool-chip .meta{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fm-ink-3);font-size:10px}
+.hr-tool-chip.error{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
 </style>
 {% endblock %}
 {% block content %}
@@ -79,6 +88,7 @@ const chatInput = document.getElementById('chatInput');
 const typingIndicator = document.getElementById('typingIndicator');
 const typingText = document.getElementById('typingText');
 let isProcessing = false;
+let activeToolRun = null;
 
 function sendSuggestion(el){ chatInput.value = el.textContent; sendMessage(); }
 
@@ -88,6 +98,7 @@ function sendMessage(){
   isProcessing = true;
   chatInput.value = '';
   document.getElementById('sendBtn').disabled = true;
+  activeToolRun = null;
   appendMessage('user', query);
   typingIndicator.classList.add('active');
   typingText.textContent = 'Analyserer...';
@@ -112,7 +123,8 @@ function sendMessage(){
           try {
             const data = JSON.parse(line.substring(6));
             if (data.type === 'tool_call'){
-              typingText.textContent = `Kører: ${formatToolName(data.name)}...`;
+              typingText.textContent = `Kører: ${formatToolName(data)}...`;
+              renderToolCall(data);
             } else if (data.type === 'text'){
               if (!currentBubble){
                 typingIndicator.classList.remove('active');
@@ -148,6 +160,7 @@ function sendMessage(){
 function finishMessage(text){
   typingIndicator.classList.remove('active');
   isProcessing = false;
+  activeToolRun = null;
   document.getElementById('sendBtn').disabled = false;
   chatInput.focus();
   const sugMatch = text.match(/<suggestions>\s*(\[.*?\])\s*<\/suggestions>/s);
@@ -201,7 +214,13 @@ function formatMarkdown(text){
   return html;
 }
 
-function formatToolName(name){
+function safeHtml(value){
+  return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function formatToolName(tool){
+  const name = typeof tool === 'string' ? tool : tool && tool.name;
+  const label = typeof tool === 'object' && tool ? tool.label : '';
   const names = {
     'get_team_training_status': 'Træningsstatus',
     'get_company_skill_gaps': 'Kompetencegab',
@@ -212,7 +231,31 @@ function formatToolName(name){
     'search_courses_for_team': 'Kurser',
     'get_chatbot_usage_stats': 'Brugsstatistik'
   };
-  return names[name] || name;
+  return label || names[name] || String(name || 'Værktøj').replace(/_/g, ' ');
+}
+
+function renderToolCall(data){
+  if (!data || !data.name) return;
+  if (!activeToolRun || !activeToolRun.isConnected){
+    activeToolRun = document.createElement('div');
+    activeToolRun.className = 'hr-tool-run';
+    activeToolRun.innerHTML = '<div class="hr-tool-head"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-værktøjer</span><span class="hr-tool-count">0</span></div><div class="hr-tool-list"></div>';
+    chatMessages.appendChild(activeToolRun);
+  }
+  const list = activeToolRun.querySelector('.hr-tool-list');
+  const chip = document.createElement('span');
+  chip.className = 'hr-tool-chip' + (data.status === 'error' ? ' error' : '');
+  const meta = [];
+  if (data.category) meta.push(data.category);
+  if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + ' resultater');
+  if (data.cache_hit) meta.push('cache');
+  if (data.side_effect) meta.push('ændrer data');
+  if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + 'ms');
+  const icon = data.ui_icon ? '<i class="fa-solid ' + safeHtml(data.ui_icon) + '"></i>' : '';
+  chip.innerHTML = icon + '<span>' + safeHtml(formatToolName(data)) + '</span>' + (meta.length ? '<span class="meta">' + safeHtml(meta.join(' · ')) + '</span>' : '');
+  list.appendChild(chip);
+  activeToolRun.querySelector('.hr-tool-count').textContent = String(list.children.length);
+  chatMessages.scrollTop = chatMessages.scrollHeight;
 }
 
 function resetChat(){

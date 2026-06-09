@@ -6,7 +6,7 @@
 {% block body_class %}chat-page profiler-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=3" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=7" />
 <style>
   /* Reuse the chat shell's variable remap (chat.css is a self-contained dark
      theme driven by variables). Identical to fm/chat.html. */
@@ -37,11 +37,17 @@
   .prof-ring { width: 56px; height: 56px; flex: 0 0 56px; border-radius: 999px; display: grid; place-items: center; background: conic-gradient(var(--fm-primary) calc(var(--p,0)*1%), var(--fm-surface-3) 0); transition: background .8s var(--ease); }
   .prof-ring > span { width: 44px; height: 44px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; font-family: var(--ff-display); font-weight: 700; font-size: 14px; color: var(--fm-primary); }
   .prof-info { flex: 1; min-width: 0; }
-  .prof-title { font-family: var(--ff-display); font-weight: 700; font-size: 15.5px; }
+  .prof-kicker { display: inline-flex; align-items: center; gap: 6px; height: 24px; padding: 0 9px; margin-bottom: 6px; border-radius: 999px; background: var(--fm-primary); color: #fff; font-size: 10.5px; font-family: var(--ff-mono); font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
+  [data-theme="dark"] .prof-kicker { color: #06201d; }
+  .prof-title { font-family: var(--ff-display); font-weight: 700; font-size: 16.5px; }
   .prof-sub { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 2px; }
   .prof-missing { margin-top: 7px; display: flex; flex-wrap: wrap; gap: 5px; }
   .prof-tag { font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 7px; background: var(--fm-surface-2); border: 1px solid var(--fm-line); color: var(--fm-ink-2); }
   .prof-tag.done { background: color-mix(in srgb,var(--fm-success) 14%,transparent); border-color: transparent; color: var(--fm-success); }
+  .prof-metrics { margin-top: 9px; display: flex; flex-wrap: wrap; gap: 7px; }
+  .prof-metric { display: inline-flex; align-items: baseline; gap: 6px; min-height: 30px; padding: 5px 9px; border-radius: 9px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); }
+  .prof-metric .v { font-family: var(--ff-display); font-weight: 700; font-size: 14px; color: var(--fm-ink); }
+  .prof-metric .l { font-size: 11px; color: var(--fm-ink-3); white-space: nowrap; }
   .prof-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: none; background: var(--fm-primary); color: #fff; font-weight: 650; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
   [data-theme="dark"] .prof-cta { color: #06201d; }
   .prof-link { font-size: 12px; font-weight: 600; color: var(--fm-primary); white-space: nowrap; text-decoration: none; }
@@ -59,12 +65,24 @@
 {% endblock %}
 
 {% block content %}
+<nav class="ai-modebar" aria-label="AI arbejdsområde">
+  <a href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Kursusrådgiver</a>
+  <a class="active" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> AI Profiler</a>
+  <a href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i> Mind-Map</a>
+</nav>
 <div class="prof-banner">
   <div class="prof-ring" id="profRing" style="--p:0"><span id="profPct">0%</span></div>
   <div class="prof-info">
-    <div class="prof-title">Lad os gøre din profil komplet</div>
+    <div class="prof-kicker"><i class="fa-solid fa-user-check"></i> Profilmode</div>
+    <div class="prof-title">AI Profiler — profil, erfaring og mål</div>
     <div class="prof-sub">Svar på et par spørgsmål — jeg gemmer det hele på din profil og i din hukommelse undervejs.</div>
     <div class="prof-missing" id="profMissing"></div>
+    <div class="prof-metrics" aria-label="Profil og hukommelsesstatus">
+      <span class="prof-metric"><span class="v" id="profDone">0/0</span><span class="l">felter</span></span>
+      <span class="prof-metric"><span class="v" id="profMem">—</span><span class="l">hukommelser</span></span>
+      <span class="prof-metric"><span class="v" id="profUsed">—</span><span class="l">brugt af AI</span></span>
+      <span class="prof-metric"><span class="v" id="profNodes">—</span><span class="l">datapunkter</span></span>
+    </div>
   </div>
   <button class="prof-cta" id="profStart"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Start</button>
   <a class="prof-link" href="{{ url_for('futurematch.mind_map') }}">Se min hukommelse →</a>
@@ -99,14 +117,29 @@
 {% block extra_scripts %}
 <script>window.CHAT_MODE = 'profiler';</script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=12"></script>
 <script>
   (function () {
+    function setProfilerStats(d) {
+      if (!d) return;
+      var counts = d.counts || {};
+      var completeness = d.completeness || {};
+      var done = document.getElementById('profDone');
+      if (done && completeness.total) done.textContent = (completeness.done || 0) + '/' + completeness.total;
+      var mem = document.getElementById('profMem');
+      if (mem && counts.memories != null) mem.textContent = counts.memories;
+      var used = document.getElementById('profUsed');
+      if (used && counts.used_memories != null) used.textContent = counts.used_memories;
+      var nodes = document.getElementById('profNodes');
+      if (nodes && counts.leaves != null) nodes.textContent = counts.leaves;
+    }
     window.onProfilerProgress = function (c) {
       if (!c) return;
       var ring = document.getElementById('profRing');
       if (ring) ring.style.setProperty('--p', c.pct);
       var pct = document.getElementById('profPct'); if (pct) pct.textContent = c.pct + '%';
+      var done = document.getElementById('profDone');
+      if (done && c.total) done.textContent = (c.done || 0) + '/' + c.total;
       var miss = document.getElementById('profMissing');
       if (!miss) return;
       if (c.missing && c.missing.length) {
@@ -119,7 +152,7 @@
     // Seed the ring from the current profile before the first message.
     fetch('/api/profile/mindmap', { credentials: 'same-origin' })
       .then(function (r) { return r.json(); })
-      .then(function (d) { if (d && d.completeness) window.onProfilerProgress(d.completeness); })
+      .then(function (d) { setProfilerStats(d); if (d && d.completeness) window.onProfilerProgress(d.completeness); })
       .catch(function () { });
     // "Start" → ask the profiler to drive the conversation.
     var startBtn = document.getElementById('profStart');

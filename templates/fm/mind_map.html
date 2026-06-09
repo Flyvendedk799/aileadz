@@ -14,6 +14,11 @@
   body.mindmap-page .fm-foot { display: none; }
 
   .mm-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .ai-modebar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); overflow-x: auto; }
+  .ai-modebar a { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); color: var(--fm-ink-2); font-size: 12.5px; font-weight: 650; white-space: nowrap; text-decoration: none; }
+  .ai-modebar a:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .ai-modebar a.active { border-color: var(--fm-primary); background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .ai-modebar i { font-size: 13px; }
   .mm-bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); flex-wrap: wrap; }
   .mm-stats { display: flex; gap: 18px; flex-wrap: wrap; }
   .mm-stat { display: flex; flex-direction: column; }
@@ -21,6 +26,9 @@
   .mm-stat .v.accent { color: var(--fm-primary); }
   .mm-stat .l { font-size: 11px; color: var(--fm-ink-3); margin-top: 3px; }
   .mm-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+  .mm-search { display: flex; align-items: center; gap: 7px; min-width: 220px; height: 36px; padding: 0 11px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); color: var(--fm-ink-2); }
+  .mm-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fm-ink); font: inherit; font-size: 13px; }
+  .mm-filter { height: 36px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); color: var(--fm-ink); font: inherit; font-size: 12.5px; font-weight: 600; padding: 0 9px; }
   .mm-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 12.5px; cursor: pointer; text-decoration: none; }
   .mm-btn:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
   .mm-btn.primary { background: var(--fm-primary); color: #fff; border-color: var(--fm-primary); }
@@ -53,26 +61,49 @@
   .mm-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--fm-ink-3); pointer-events: none; }
   .mm-empty .inner { pointer-events: auto; }
 
+  @media (max-width: 980px) {
+    .mm-actions { width: 100%; margin-left: 0; }
+    .mm-search { flex: 1; min-width: 180px; }
+  }
   @media (max-width: 760px) { .mm-panel { display: none; } }
 </style>
 {% endblock %}
 
 {% block content %}
 <div class="mm-wrap">
+  <nav class="ai-modebar" aria-label="AI arbejdsområde">
+    <a href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Kursusrådgiver</a>
+    <a href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> AI Profiler</a>
+    <a class="active" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i> Mind-Map</a>
+  </nav>
   <div class="mm-bar">
     <div class="mm-stats" id="mmStats">
       <div class="mm-stat"><span class="v accent" id="mmPct">—</span><span class="l">Profil komplet</span></div>
       <div class="mm-stat"><span class="v" id="mmNodes">—</span><span class="l">Datapunkter</span></div>
       <div class="mm-stat"><span class="v" id="mmMem">—</span><span class="l">Hukommelser</span></div>
+      <div class="mm-stat"><span class="v" id="mmUsed">—</span><span class="l">Brugt af AI</span></div>
     </div>
     <div class="mm-actions">
-      <button class="mm-btn" id="mmAddBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Hukommelse</button>
+      <label class="mm-search" aria-label="Søg i mind-map"><i class="fa-solid fa-magnifying-glass"></i><input id="mmSearch" placeholder="Søg i profil og hukommelse"></label>
+      <select class="mm-filter" id="mmFilter" aria-label="Filtrer mind-map">
+        <option value="all">Alle data</option>
+        <option value="profile">Profilfelter</option>
+        <option value="hukommelse">Hukommelse</option>
+        <option value="used">Brugt af AI</option>
+        <option value="kompetencer">Kompetencer</option>
+        <option value="erfaring">Erfaring</option>
+        <option value="maal">Mål</option>
+      </select>
+      <button class="mm-btn" id="mmFitBtn" title="Tilpas visning"><i class="fa-solid fa-expand"></i></button>
+      <button class="mm-btn" id="mmReloadBtn" title="Genindlæs"><i class="fa-solid fa-rotate-right"></i></button>
+      <button class="mm-btn" id="mmAddBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Tilføj hukommelse</button>
       <a class="mm-btn primary" href="{{ url_for('futurematch.ai_profiler') }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> AI Profiler</a>
     </div>
   </div>
 
   <div class="mm-add" id="mmAdd">
     <div class="fm-field" style="flex:2;min-width:200px"><label>Hvad skal AI’en huske?</label><input class="fm-input" id="mmLabel" placeholder="F.eks. Foretrækker aftenundervisning" /></div>
+    <div class="fm-field" style="flex:2;min-width:220px"><label>Detalje</label><input class="fm-input" id="mmDetail" placeholder="Valgfrit: hvornår, hvorfor eller kontekst" /></div>
     <div class="fm-field" style="flex:1;min-width:150px"><label>Kategori</label>
       <select class="fm-select" id="mmCat">
         <option value="praeference">Præference</option>
@@ -90,7 +121,7 @@
   <div class="mm-stage">
     <div id="cy"></div>
     <div class="mm-empty" id="mmEmpty" hidden><div class="inner">
-      <div style="font-size:28px;margin-bottom:8px">🧠</div>
+      <i class="fa-solid fa-brain" style="font-size:28px;margin-bottom:8px;color:var(--fm-primary)"></i>
       <div style="font-weight:700;color:var(--fm-ink-2)">Din mind-map er tom endnu</div>
       <p style="font-size:13px;margin:6px 0 14px">Udfyld din profil, så dukker dine data op her som et hukommelseskort.</p>
       <a class="mm-btn primary" href="{{ url_for('futurematch.ai_profiler') }}">Start AI Profiler</a>
@@ -103,5 +134,5 @@
 {% endblock %}
 
 {% block extra_scripts %}
-<script src="{{ url_for('static', filename='futurematch/assets/mind-map.js') }}?v=1"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/mind-map.js') }}?v=2"></script>
 {% endblock %}

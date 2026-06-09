@@ -668,11 +668,17 @@ def vendor_ask():
 
             from db_compat import close_flask_mysql_connection
             from ai_runtime import (
+                PROMPT_VERSION as AI_PROMPT_VERSION,
+                build_tool_call_event,
                 iter_completion_stream,
+                log_agent_run,
+                log_tool_run,
+                main_model,
                 make_run_id,
                 run_agent_with_fallback,
                 user_facing_error_message,
             )
+            from ai_tool_registry import tool_name
 
             # Strip private "_ts" bookkeeping before sending to the model.
             clean_messages = [
@@ -701,10 +707,47 @@ def vendor_ask():
                 session_id=sid,
                 max_iterations=4,
                 prompt_cache_key="futurematch-vendor",
+                agent_scope="vendor",
             )
 
+            try:
+                log_agent_run(
+                    getattr(current_app, "mysql", None),
+                    run_id=run_id,
+                    session_id=sid,
+                    company_id=None,
+                    username=f"vendor:{vendor_id}",
+                    agent_scope="vendor",
+                    runtime=runtime_result.runtime,
+                    model=main_model(),
+                    prompt_version=AI_PROMPT_VERSION,
+                    toolset_version="futurematch-vendor-tools-v1",
+                    tool_names=[tool_name(t) for t in VENDOR_TOOLS],
+                    response_id=runtime_result.response_id,
+                    status="ok",
+                    fallback_reason=runtime_result.fallback_reason,
+                    latency_ms=runtime_result.latency_ms,
+                    usage=runtime_result.usage,
+                    compaction_level=runtime_result.compaction_level,
+                    runtime_path=runtime_result.runtime_path or runtime_result.runtime,
+                )
+            except Exception:
+                pass
+
             for tool_result in runtime_result.tool_results:
-                yield _vendor_sse({"type": "tool_call", "name": tool_result.name})
+                yield _vendor_sse(build_tool_call_event(tool_result, agent_scope="vendor"))
+                try:
+                    log_tool_run(
+                        getattr(current_app, "mysql", None),
+                        run_id=run_id,
+                        session_id=sid,
+                        company_id=None,
+                        username=f"vendor:{vendor_id}",
+                        agent_scope="vendor",
+                        result=tool_result,
+                    )
+                except Exception:
+                    pass
 
             close_flask_mysql_connection()
 

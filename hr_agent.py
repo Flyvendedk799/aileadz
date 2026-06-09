@@ -190,6 +190,7 @@ def handle_hr_ask(user_query, flask_session):
             from ai_context import build_few_shot_message, choose_max_iterations, few_shot_mode, prune_conversation_memory, run_chitchat_turn
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
+                build_tool_call_event,
                 check_turn_token_budget,
                 choose_turn_model,
                 estimate_messages_tokens,
@@ -270,6 +271,7 @@ def handle_hr_ask(user_query, flask_session):
                     tool_choice=make_tool_choice(toolset_meta.get("forced_tool")),
                     max_iterations=choose_max_iterations(intent, scope="hr"),
                     prompt_cache_key=f"futurematch-hr:{toolset_meta.get('version')}:{AI_PROMPT_VERSION}",
+                    agent_scope="hr",
                 )
             final_text = runtime_result.text or ""
             if in_rate_limit_cooldown():
@@ -300,7 +302,7 @@ def handle_hr_ask(user_query, flask_session):
                 pass
 
             for tool_result in runtime_result.tool_results:
-                yield f"data: {json.dumps({'type': 'tool_call', 'name': tool_result.name})}\n\n"
+                yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='hr'), ensure_ascii=False)}\n\n"
                 try:
                     log_tool_run(
                         getattr(current_app, "mysql", None),

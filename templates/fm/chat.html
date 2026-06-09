@@ -6,7 +6,7 @@
 {% block body_class %}chat-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=3" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=7" />
 <style>
   /* chat.css is a self-contained dark theme driven entirely by CSS variables.
      Remap those variables to the platform's light --fm-* tokens so the chat
@@ -72,6 +72,22 @@
 
 {% block content %}
 <div class="chatx">
+  <nav class="ai-modebar" aria-label="AI arbejdsområde">
+    <a class="active" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Kursusrådgiver</a>
+    <a href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> AI Profiler</a>
+    <a href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i> Mind-Map</a>
+  </nav>
+  <div class="ai-statusbar" id="aiWorkspaceStatus" hidden>
+    <div class="ai-status-title"><i class="fa-solid fa-circle-nodes"></i> Fælles AI-kontekst</div>
+    <div class="ai-status-items">
+      <span class="ai-status-item"><span class="v" id="aiWsPct">—</span><span class="l">profil</span></span>
+      <span class="ai-status-item"><span class="v" id="aiWsMem">—</span><span class="l">hukommelser</span></span>
+      <span class="ai-status-item"><span class="v" id="aiWsUsed">—</span><span class="l">brugt af AI</span></span>
+      <span class="ai-status-item"><span class="v" id="aiWsNodes">—</span><span class="l">datapunkter</span></span>
+    </div>
+    <div class="ai-status-missing" id="aiWsMissing"></div>
+    <a class="ai-status-link" href="{{ url_for('futurematch.mind_map') }}">Åbn Mind-Map</a>
+  </div>
   <div class="nudge" id="nudge">
     <div class="nudge-inner">
       <span class="ni"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></span>
@@ -100,5 +116,5 @@
 
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=8"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=12"></script>
 {% endblock %}

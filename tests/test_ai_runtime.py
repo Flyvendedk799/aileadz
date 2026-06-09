@@ -4,6 +4,8 @@ import unittest
 from unittest.mock import patch
 
 from ai_runtime import (
+    ToolCallResult,
+    build_tool_call_event,
     choose_turn_model,
     check_turn_token_budget,
     compact_messages_for_api,
@@ -193,6 +195,71 @@ class AIRuntimeTests(unittest.TestCase):
             main_model(),
         )
 
+    def test_tool_call_event_is_sanitized_and_display_ready(self):
+        event = build_tool_call_event(
+            ToolCallResult(
+                call_id="call_1",
+                name="catalog_search",
+                arguments={"query": "person@example.com"},
+                output=json.dumps({"status": "success", "count": 2, "results": [{"title": "A"}, {"title": "B"}]}),
+                latency_ms=42,
+                cache_hit=True,
+            ),
+            agent_scope="employee",
+        )
+
+        self.assertEqual(event["type"], "tool_call")
+        self.assertEqual(event["name"], "catalog_search")
+        self.assertEqual(event["label"], "Søg katalog")
+        self.assertEqual(event["category"], "Katalog")
+        self.assertEqual(event["status"], "success")
+        self.assertEqual(event["results_count"], 2)
+        self.assertTrue(event["cache_hit"])
+        self.assertNotIn("arguments", event)
+        self.assertNotIn("output", event)
+
+    def test_tool_lifecycle_callback_emits_start_and_finish(self):
+        first = type("Resp", (), {
+            "id": "resp_1",
+            "output": [{
+                "type": "function_call",
+                "name": "catalog_get_product",
+                "call_id": "call_1",
+                "arguments": json.dumps({"handle": "course-a"}),
+            }],
+            "usage": {"input_tokens": 10, "output_tokens": 3},
+        })()
+        second = type("Resp", (), {
+            "id": "resp_2",
+            "output": [{"type": "message", "content": [{"text": "done"}]}],
+            "usage": {"input_tokens": 12, "output_tokens": 5},
+        })()
+        _FakeClient.responses = _FakeResponses([first, second])
+        events = []
+
+        with patch("ai_runtime.OpenAI", _FakeClient):
+            result = run_responses_agent(
+                messages=[{"role": "system", "content": "sys"}, {"role": "user", "content": "u"}],
+                tools=[{
+                    "type": "function",
+                    "function": {
+                        "name": "catalog_get_product",
+                        "description": "Get product",
+                        "parameters": {"type": "object", "properties": {"handle": {"type": "string"}}, "required": ["handle"], "additionalProperties": False},
+                        "strict": True,
+                    },
+                }],
+                tool_executor=lambda *a, **k: json.dumps({"status": "success", "product": {"handle": "course-a"}}),
+                username="u",
+                session_id="s",
+                on_tool_event=events.append,
+            )
+
+        self.assertEqual(result.text, "done")
+        self.assertEqual([event["phase"] for event in events], ["start", "finish"])
+        self.assertEqual(events[0]["status"], "running")
+        self.assertEqual(events[1]["label"], "Hent kursus")
+        self.assertEqual(events[1]["results_count"], 1)
 
     def test_responses_defer_final_stream_when_requested(self):
         first = type("Resp", (), {

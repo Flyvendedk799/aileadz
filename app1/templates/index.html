@@ -467,7 +467,7 @@
     .bot-avatar svg { width: 14px; height: 14px; color: #fff; }
     .bot-content { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 12px; max-width: calc(100% - 38px); }
     .bot-text { font-size: 14.5px; line-height: 1.65; color: var(--text-secondary); word-wrap: break-word; }
-    .light-mode .bot-text { color: #374151; }
+    .light-mode .bot-text { color: #111827; }
     .bot-cards {
       display: flex;
       flex-direction: column;
@@ -520,6 +520,44 @@
     .thinking-row .dot:nth-child(2) { animation-delay: 0.15s; }
     .thinking-row .dot:nth-child(3) { animation-delay: 0.3s; }
     .chat-notice { font-size: 12px; color: var(--text-muted, #6b7280); padding: 6px 0 2px; font-style: italic; }
+    .memory-chip {
+      display: inline-flex; align-items: center; gap: 7px; width: fit-content;
+      margin: 7px 0 2px; padding: 6px 11px; border-radius: 999px;
+      border: 1px solid var(--purple-border); background: var(--purple-glow);
+      color: var(--purple); font-size: 12px; font-weight: 650;
+    }
+    .memory-chip svg { width: 13px; height: 13px; flex: 0 0 13px; }
+    .memory-chip.toggle { cursor: pointer; }
+    .memory-list { display: none; flex-wrap: wrap; gap: 6px; margin: 6px 0 2px; }
+    .memory-list.open { display: flex; }
+    .memory-list span {
+      max-width: 280px; padding: 4px 9px; border-radius: 8px;
+      border: 1px solid var(--border); background: var(--card-bg);
+      color: var(--text-secondary); font-size: 11.5px; font-weight: 500;
+      overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    }
+    .tool-run {
+      width: fit-content; max-width: 100%; margin: 6px 0 2px; padding: 8px 10px;
+      border-radius: 10px; border: 1px solid var(--border); background: var(--card-bg);
+      color: var(--text-secondary);
+    }
+    .tool-run-head {
+      display: flex; align-items: center; gap: 7px;
+      font-size: 11.5px; font-weight: 700; color: var(--text);
+    }
+    .tool-run-head svg { width: 13px; height: 13px; color: var(--purple); flex: 0 0 13px; }
+    .tool-count { font-family: 'SF Mono', 'Fira Code', monospace; color: var(--text-muted); font-size: 10.5px; }
+    .tool-run-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 7px; }
+    .tool-chip {
+      display: inline-flex; align-items: center; gap: 6px; min-height: 25px; padding: 0 9px;
+      border-radius: 8px; border: 1px solid var(--border); background: rgba(255,255,255,0.025);
+      color: var(--text-secondary); font-size: 11.5px; font-weight: 650;
+    }
+    .light-mode .tool-chip { background: #f9fafb; }
+    .tool-chip i { color: var(--purple); font-size: 10px; }
+    .tool-chip .meta { color: var(--text-muted); font-family: 'SF Mono', 'Fira Code', monospace; font-size: 10px; }
+    .tool-chip.error { color: var(--red); border-color: rgba(239,68,68,0.25); background: rgba(239,68,68,0.08); }
+    .tool-chip.running { color: var(--text-muted); background: rgba(255,255,255,0.02); }
     @keyframes dotBounce {
       0%, 80%, 100% { opacity: 0.2; transform: translateY(0); }
       40% { opacity: 1; transform: translateY(-3px); }
@@ -1056,7 +1094,13 @@
 
     /* ── Markdown ── */
     .markdown-body { font-size: 14.5px; line-height: 1.65; color: var(--text-secondary); }
-    .light-mode .markdown-body { color: #374151; }
+    .light-mode .markdown-body,
+    .light-mode .markdown-body p,
+    .light-mode .markdown-body li,
+    .light-mode .markdown-body td,
+    .light-mode .markdown-body blockquote {
+      color: #111827;
+    }
     .markdown-body p { margin: 0 0 10px; }
     .markdown-body p:last-child { margin-bottom: 0; }
     .markdown-body ul, .markdown-body ol { margin: 0 0 10px; padding-left: 20px; }
@@ -1086,7 +1130,7 @@
     .markdown-body td { padding: 6px 10px; border-bottom: 1px solid var(--border); color: var(--text-secondary); }
     .light-mode .markdown-body code { background: rgba(15,118,110,0.06); color: var(--purple-dark); }
     .light-mode .markdown-body pre { background: #f3f4f6; border-color: #e5e7eb; }
-    .light-mode .markdown-body pre code { color: #374151; }
+    .light-mode .markdown-body pre code { color: #111827; }
 
     /* Card animations */
     @keyframes cardIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -1595,6 +1639,103 @@
       courses: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#ff512f" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>',
       summary: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#2575fc" stroke-width="2"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>',
     };
+    const MEMORY_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5a3 3 0 0 0-5.83 1.02A3.5 3.5 0 0 0 4 12.5a3.5 3.5 0 0 0 2.17 6.48A3 3 0 0 0 12 19"/><path d="M12 5a3 3 0 0 1 5.83 1.02A3.5 3.5 0 0 1 20 12.5a3.5 3.5 0 0 1-2.17 6.48A3 3 0 0 1 12 19"/><path d="M12 5v14"/><path d="M8 12h8"/></svg>';
+    const TOOL_SVG = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 4V2"/><path d="M15 16v-2"/><path d="M8 9h2"/><path d="M20 9h2"/><path d="M17.8 11.8 19 13"/><path d="M15 9h.01"/><path d="M17.8 6.2 19 5"/><path d="M3 21l9-9"/><path d="M12.2 6.2 11 5"/></svg>';
+    const TOOL_LABELS = {
+      catalog_search: 'Katalogsøgning',
+      catalog_get_product: 'Kursusdetaljer',
+      catalog_get_category: 'Kategoriopslag',
+      catalog_get_vendor: 'Leverandøropslag',
+      catalog_compare_products: 'Sammenligning',
+      get_learning_context: 'Læringskontekst',
+      check_course_readiness: 'Tilmeldingscheck',
+      prepare_course_order: 'Ordrekladde',
+      create_course_order: 'Opret ordre',
+      check_order_approval_status: 'Godkendelsesstatus',
+      analyze_skill_gaps: 'Kompetencegab',
+      get_department_budget: 'Budgetopslag',
+      search_courses: 'Kursussøgning',
+      filter_courses: 'Kursusfilter',
+      get_course_details: 'Kursusdetaljer',
+      compare_courses: 'Sammenligning',
+      get_vendor_info: 'Leverandørinfo',
+      get_user_profile: 'Hent profil',
+      update_user_profile: 'Opdater profil',
+      request_user_input: 'Profilkort',
+      remember_about_user: 'Gem hukommelse',
+      recommend_for_profile: 'Profilmatch',
+      suggest_learning_path: 'Læringssti',
+      set_learning_goal: 'Opret mål',
+      get_learning_goals: 'Hent mål',
+      update_learning_goal: 'Opdater mål',
+      get_my_course_status: 'Kursusstatus',
+      get_negotiated_discount: 'Aftalepris',
+      check_course_prerequisites: 'Forudsætninger',
+      get_course_sequel: 'Næste kursus',
+      find_certification_path: 'Certificeringsvej',
+      track_goal_progress: 'Målfremdrift',
+      add_to_calendar: 'Kalender',
+      mark_course_complete: 'Markér fuldført',
+    };
+    function _safeText(value) {
+      return String(value || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+    }
+    function toolLabel(tool) {
+      const name = typeof tool === 'string' ? tool : tool && tool.name;
+      const label = typeof tool === 'object' && tool ? tool.label : '';
+      return label || TOOL_LABELS[name] || String(name || 'Værktøj').replace(/_/g, ' ');
+    }
+
+    function renderToolCall(botContent, data) {
+      if (!data || !data.name) return;
+      let box = botContent.querySelector('.tool-run');
+      if (!box) {
+        box = document.createElement('div');
+        box.className = 'tool-run';
+        box.innerHTML = '<div class="tool-run-head">' + TOOL_SVG + '<span>AI-værktøjer</span><span class="tool-count">0</span></div><div class="tool-run-list"></div>';
+        botContent.appendChild(box);
+      }
+      const list = box.querySelector('.tool-run-list');
+      const chip = document.createElement('span');
+      chip.className = 'tool-chip' + (data.status === 'error' ? ' error' : '') + ((data.phase === 'start' || data.status === 'running') ? ' running' : '');
+      const meta = [];
+      if (data.category) meta.push(data.category);
+      if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + ' resultater');
+      if (data.cache_hit) meta.push('cache');
+      if (data.side_effect) meta.push('ændrer data');
+      if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + 'ms');
+      const icon = '';
+      chip.innerHTML = icon + '<span>' + _safeText(toolLabel(data)) + '</span>' + (meta.length ? '<span class="meta">' + _safeText(meta.join(' · ')) + '</span>' : '');
+      list.appendChild(chip);
+      box.querySelector('.tool-count').textContent = String(list.children.length);
+    }
+
+    function renderMemoryUsed(botContent, memories) {
+      if (!memories || !memories.length) return;
+      const wrap = document.createElement('div');
+      const btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'memory-chip toggle';
+      btn.innerHTML = MEMORY_SVG + '<span>Brugte hukommelse (' + memories.length + ')</span>';
+      const list = document.createElement('div');
+      list.className = 'memory-list';
+      for (const memory of memories) {
+        const chip = document.createElement('span');
+        chip.textContent = memory.label || '';
+        list.appendChild(chip);
+      }
+      btn.addEventListener('click', () => list.classList.toggle('open'));
+      wrap.appendChild(btn);
+      wrap.appendChild(list);
+      botContent.appendChild(wrap);
+    }
+
+    function renderMemorySaved(botContent, data) {
+      const chip = document.createElement('div');
+      chip.className = 'memory-chip';
+      chip.innerHTML = MEMORY_SVG + '<span>' + _safeText(data.message || ('Husket: ' + (data.label || ''))) + '</span>';
+      botContent.appendChild(chip);
+    }
 
     function showProfileToast(msg, section) {
       const stack = _getToastStack();
@@ -2188,6 +2329,9 @@
                 wrap.innerHTML = data.html;
                 cardsEl.appendChild(wrap);
                 saveChatState();
+              } else if (data.type === 'tool_call') {
+                renderToolCall(botContent, data);
+                saveChatState();
               } else if (data.type === 'profile_confirm_request') {
                 const card = document.createElement('div');
                 card.className = 'profile-confirm-card animate-slide-in';
@@ -2265,6 +2409,12 @@
                   submitBtn.addEventListener('click', () => _submitUiCard(submitBtn, card, cardData));
                 }
                 botContent.appendChild(card);
+                saveChatState();
+              } else if (data.type === 'memory_used') {
+                renderMemoryUsed(botContent, data.memories || []);
+                saveChatState();
+              } else if (data.type === 'memory_saved') {
+                renderMemorySaved(botContent, data);
                 saveChatState();
               } else if (data.type === 'suggestions') {
                 addSuggestionChips(botContent, data.items || []);

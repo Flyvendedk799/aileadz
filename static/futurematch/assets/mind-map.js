@@ -35,6 +35,7 @@
   var SOURCE_LABEL = { ai: "AI lærte det", profiler: "AI Profiler", user: "Du tilføjede det", cv: "Fra dit CV", profil: "Din profil", samtale: "Samtale" };
   var CAT_DOT;
   var cy = null;
+  var currentData = null;
 
   function esc(s) {
     var d = document.createElement("div");
@@ -61,6 +62,8 @@
     document.getElementById("mmPct").textContent = (c.pct != null ? c.pct + "%" : "—");
     document.getElementById("mmNodes").textContent = (counts.leaves != null ? counts.leaves : "—");
     document.getElementById("mmMem").textContent = (counts.memories != null ? counts.memories : "—");
+    var used = document.getElementById("mmUsed");
+    if (used) used.textContent = (counts.used_memories != null ? counts.used_memories : "—");
   }
 
   function buildLegend(nodes) {
@@ -94,7 +97,7 @@
 
     var usedBlock = "";
     if (meta.used_count != null) {
-      usedBlock = '<div class="mm-used">🧠 Brugt i samtaler <b>' + (meta.used_count || 0) + "</b> gang" + (meta.used_count === 1 ? "" : "e") +
+      usedBlock = '<div class="mm-used"><i class="fa-solid fa-brain"></i> Brugt i samtaler <b>' + (meta.used_count || 0) + "</b> gang" + (meta.used_count === 1 ? "" : "e") +
         (meta.last_used_at ? " · sidst " + fmtDate(meta.last_used_at) : " · endnu ikke brugt") + "</div>";
     }
     var delBtn = (meta.memory_id ? '<button class="mm-pdel" data-del="' + meta.memory_id + '">Slet denne hukommelse</button>' : "");
@@ -121,12 +124,57 @@
     });
   }
 
-  function loadGraph() {
+  function textForNode(n) {
+    var meta = n.meta || {};
+    return [n.label, n.category, meta.kind, meta.detail, meta.source].join(" ").toLowerCase();
+  }
+
+  function filteredGraph(data) {
+    var nodes = data.nodes || [];
+    var edges = data.edges || [];
+    var qEl = document.getElementById("mmSearch");
+    var fEl = document.getElementById("mmFilter");
+    var q = ((qEl && qEl.value) || "").trim().toLowerCase();
+    var filter = (fEl && fEl.value) || "all";
+    if (!q && filter === "all") return { nodes: nodes, edges: edges };
+
+    var keep = {};
+    function categoryMatches(n) {
+      if (filter === "all") return true;
+      if (filter === "profile") return n.category !== "hukommelse" && n.category !== "samtale";
+      if (filter === "used") return ((n.meta || {}).used_count || 0) > 0;
+      return n.category === filter || n.id === filter;
+    }
+    function queryMatches(n) {
+      return !q || textForNode(n).indexOf(q) !== -1;
+    }
+
+    nodes.forEach(function (n) {
+      if (n.type === "root") { keep[n.id] = true; return; }
+      if (n.type === "leaf" && categoryMatches(n) && queryMatches(n)) keep[n.id] = true;
+    });
+    edges.forEach(function (e) {
+      if (keep[e.target]) keep[e.source] = true;
+    });
+    nodes.forEach(function (n) {
+      if (n.type === "branch" && categoryMatches(n) && queryMatches(n)) keep[n.id] = true;
+    });
+    edges.forEach(function (e) {
+      if (keep[e.source] || keep[e.target]) keep[e.source] = keep[e.target] = true;
+    });
+
+    var outNodes = nodes.filter(function (n) { return keep[n.id]; });
+    var outEdges = edges.filter(function (e) { return keep[e.source] && keep[e.target]; });
+    return { nodes: outNodes, edges: outEdges };
+  }
+
+  function renderGraph() {
+    if (!currentData) return;
     CAT_DOT = palette();
-    return api("/api/profile/mindmap").then(function (data) {
-      setStats(data);
-      var nodes = data.nodes || [];
-      var edges = data.edges || [];
+    setStats(currentData);
+    var filtered = filteredGraph(currentData);
+    var nodes = filtered.nodes || [];
+    var edges = filtered.edges || [];
       buildLegend(nodes);
 
       var leafCount = nodes.filter(function (n) { return n.type === "leaf"; }).length;
@@ -190,6 +238,13 @@
       cy.on("tap", function (evt) {
         if (evt.target === cy) { cy.elements().removeClass("dim"); showPanel(null); }
       });
+      if (cy.nodes().length) cy.fit(undefined, 36);
+  }
+
+  function loadGraph() {
+    return api("/api/profile/mindmap").then(function (data) {
+      currentData = data || {};
+      renderGraph();
       return data;
     }).catch(function (e) {
       console.warn("mindmap load failed", e);
@@ -203,6 +258,10 @@
     var form = document.getElementById("mmAdd");
     var save = document.getElementById("mmSave");
     var cancel = document.getElementById("mmCancel");
+    var search = document.getElementById("mmSearch");
+    var filter = document.getElementById("mmFilter");
+    var fit = document.getElementById("mmFitBtn");
+    var reload = document.getElementById("mmReloadBtn");
     if (addBtn) addBtn.addEventListener("click", function () {
       form.classList.toggle("show");
       if (form.classList.contains("show")) document.getElementById("mmLabel").focus();
@@ -210,17 +269,23 @@
     if (cancel) cancel.addEventListener("click", function () { form.classList.remove("show"); });
     if (save) save.addEventListener("click", function () {
       var label = (document.getElementById("mmLabel").value || "").trim();
+      var detail = (document.getElementById("mmDetail").value || "").trim();
       var category = document.getElementById("mmCat").value;
       if (!label) { document.getElementById("mmLabel").focus(); return; }
-      api("/api/profile/memories", { method: "POST", body: JSON.stringify({ label: label, category: category, source: "user" }) })
+      api("/api/profile/memories", { method: "POST", body: JSON.stringify({ label: label, detail: detail, category: category, source: "user" }) })
         .then(function (d) {
           if (d && d.success !== false) {
             document.getElementById("mmLabel").value = "";
+            document.getElementById("mmDetail").value = "";
             form.classList.remove("show");
             loadGraph();
           }
         }).catch(function () { });
     });
+    if (search) search.addEventListener("input", renderGraph);
+    if (filter) filter.addEventListener("change", renderGraph);
+    if (fit) fit.addEventListener("click", function () { if (cy) cy.fit(undefined, 42); });
+    if (reload) reload.addEventListener("click", loadGraph);
   }
 
   document.addEventListener("DOMContentLoaded", function () {

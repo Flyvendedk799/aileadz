@@ -177,12 +177,18 @@ VÆRKTØJER:
 - catalog_compare_products: Sammenlign 2-4 produkter fra kataloget.
 - check_course_readiness / prepare_course_order / create_course_order: Bestillingsflow.
 - get_user_profile / update_user_profile / request_user_input: Profil og CV-opdateringer.
+- remember_about_user: Gem holdbare præferencer, kontekst, interesser og bløde mål som hukommelse, når brugeren deler noget der bør bruges på tværs af samtaler. Brug ikke til strukturerede profilfelter.
 - set_learning_goal / get_learning_goals / update_learning_goal: Opret, vis og opdatér brugerens udviklingsmål (markér som fuldført, sæt på pause, slet). Bekræft altid kort når et mål er oprettet/opdateret, og foreslå relevante kurser til målet.
 - recommend_for_profile / suggest_learning_path: Personaliserede anbefalinger (login).
 - analyze_skill_gaps / get_department_budget / check_order_approval_status: Virksomhedskontekst.
 
 KARRIERE & OPKVALIFICERING (vigtigt):
 - Ved spørgsmål som "hvad skal jeg lære for at blive X", "hvilke kompetencer mangler jeg til Y", "lav en læringssti til Z" eller "hvordan bliver jeg bedre til …": SØG ALTID i kataloget (catalog_search) efter konkrete kurser om emnet og anbefal dem — nøjes ALDRIG med generelle råd uden at vise rigtige kurser. En læringssti SKAL indeholde rigtige kurser fundet med et værktøj.
+
+PROFIL & HUKOMMELSE (normal chat):
+- Hvis brugeren fortæller noget struktureret om sig selv (job, erfaring, uddannelse, kompetence, certificering, sprog, mål), brug request_user_input/update_user_profile.
+- Hvis brugeren fortæller en varig præference eller kontekst (fx læringsstil, tidspunkter, lokation, karriereskift, interesser, arbejdssituation), brug remember_about_user i samme tur.
+- Når hukommelse påvirker en anbefaling, nævn det naturligt og kort — ikke som intern teknik.
 
 DATAREGEL:
 Nævn aldrig konkrete kursusnavne, priser, datoer eller ordrestatus uden relevant værktøj i samme tur. Brug interne /products/<handle> links.
@@ -1779,6 +1785,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
             from ai_context import choose_max_iterations, run_chitchat_turn
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
+                build_tool_call_event,
                 check_turn_token_budget,
                 choose_turn_model,
                 compaction_level_for_messages,
@@ -1876,6 +1883,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     tool_choice=tool_choice,
                     max_iterations=max_iterations,
                     prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
+                    agent_scope="employee",
                 )
             _log_latency(sid, "ai_runtime_turn", api_start)
             iteration = max(1, len(runtime_result.tool_results))
@@ -1941,6 +1949,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         _products_shown_handles.append(_h)
                 if tool_result_dict.get("product", {}).get("handle"):
                     _products_shown_handles.append(tool_result_dict["product"]["handle"])
+
+                yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='employee'), ensure_ascii=False)}\n\n"
 
                 try:
                     _get_store().log_event(sid, "tool_call",

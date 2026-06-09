@@ -1623,11 +1623,16 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         })
                         insert_idx += 1
                         _memories_injected = [
-                            {"id": m["id"], "label": m["label"], "category": m.get("category")}
+                            {"id": m["id"], "label": m["label"], "category": m.get("category"),
+                             "relevant": bool(m.get("_relevant", True))}
                             for m in rel_mem
                         ]
                 except Exception as e:
                     print(f"[Memory inject] {e}")
+                    try:
+                        current_app.mysql.connection.rollback()
+                    except Exception:
+                        pass
 
                 if mode == "profiler":
                     try:
@@ -2187,14 +2192,23 @@ def handle_agentic_ask(user_query, session, mode="default"):
 
             # ── Memory transparency: which stored memories informed this turn ──
             # Fires in EVERY mode (normal chat + profiler) so the user can see the
-            # AI using its memory in realtime; bumps usage stats for the Mind-Map.
-            if _memories_injected and logged_in_user:
-                try:
-                    from app1.user_profile_db import touch_memories
-                    touch_memories(logged_in_user, [m["id"] for m in _memories_injected])
-                except Exception:
-                    pass
-                yield f"data: {json.dumps({'type': 'memory_used', 'memories': _memories_injected}, ensure_ascii=False)}\n\n"
+            # AI using its memory in realtime. Only memories that actually matched
+            # the user's query (relevant=True) are counted as "used" and surfaced —
+            # the ambient recency-fallback ones are injected but not counted, so
+            # used_count stays meaningful and the signal isn't noisy.
+            if logged_in_user:
+                _used = [m for m in _memories_injected if m.get("relevant")]
+                if _used:
+                    try:
+                        from app1.user_profile_db import touch_memories
+                        touch_memories(logged_in_user, [m["id"] for m in _used])
+                    except Exception:
+                        try:
+                            current_app.mysql.connection.rollback()
+                        except Exception:
+                            pass
+                    _payload = [{"id": m["id"], "label": m["label"], "category": m.get("category")} for m in _used]
+                    yield f"data: {json.dumps({'type': 'memory_used', 'memories': _payload}, ensure_ascii=False)}\n\n"
             if _profiler_completeness is not None:
                 yield f"data: {json.dumps({'type': 'profiler_progress', 'completeness': _profiler_completeness}, ensure_ascii=False)}\n\n"
 

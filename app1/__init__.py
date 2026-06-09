@@ -934,6 +934,10 @@ def ask():
         mode = (request.json.get("mode") or "default").strip().lower()
         if mode not in ("default", "profiler"):
             mode = "default"
+        # Profiler is per-profile; an anonymous caller (e.g. hitting /ask directly)
+        # silently degrades to normal chat rather than getting an empty profiler.
+        if mode == "profiler" and not session.get("user"):
+            mode = "default"
 
         return handle_agentic_ask(user_query, session, mode=mode)
 

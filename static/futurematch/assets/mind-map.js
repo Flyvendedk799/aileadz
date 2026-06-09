@@ -109,8 +109,15 @@
     if (del) del.addEventListener("click", function () {
       if (!confirm("Slet denne hukommelse?")) return;
       api("/api/profile/memories", { method: "DELETE", body: JSON.stringify({ id: Number(del.getAttribute("data-del")) }) })
-        .then(function () { loadGraph(); })
-        .catch(function () { });
+        .then(function (d) {
+          if (d && d.success === false) throw new Error(d.error || "fejl");
+          loadGraph();
+        })
+        .catch(function (e) {
+          console.warn("memory delete failed", e);
+          var p = document.getElementById("mmPanel");
+          if (p) p.innerHTML = '<div style="color:var(--fm-danger);font-size:13px;padding:8px 0">Sletning fejlede. Prøv igen.</div>';
+        });
     });
   }
 

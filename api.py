@@ -432,17 +432,19 @@ def manage_memories_api():
             return jsonify({'success': True, 'id': new_id})
 
         if request.method == 'PUT':
-            mem_id = data.get('id')
-            if not mem_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+            try:
+                mem_id = int(data.get('id'))
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'valid integer id required'}), 400
             fields = {k: v for k, v in data.items() if k != 'id'}
             updated = update_memory(username, mem_id, **fields)
             return jsonify({'success': True, 'updated': updated})
 
         if request.method == 'DELETE':
-            mem_id = data.get('id')
-            if not mem_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+            try:
+                mem_id = int(data.get('id'))
+            except (TypeError, ValueError):
+                return jsonify({'success': False, 'error': 'valid integer id required'}), 400
             removed = remove_memory(username, mem_id)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -583,9 +585,11 @@ def get_mindmap_api():
         })
     except Exception as e:
         current_app.logger.error("Mindmap API error: %s", e)
+        # 500 status (correct REST), but still include a usable root node so the
+        # client degrades to an empty-but-valid graph rather than a hard error.
         return jsonify({'success': False, 'error': str(e),
                         'nodes': [{'id': 'root', 'label': username or 'Dig', 'type': 'root', 'category': 'root'}],
-                        'edges': []}), 200
+                        'edges': []}), 500
 
 
 @api_bp.route('/api/profile/orders')

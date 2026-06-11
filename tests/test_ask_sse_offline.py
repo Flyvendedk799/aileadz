@@ -495,5 +495,34 @@ class AskSSEOfflineTests(unittest.TestCase):
         self.assertEqual(tool_events[start_idx[0]]["status"], "running")
 
 
+    # Resume fidelity: a tool turn that showed course cards must CAPTURE them so a
+    # reopened conversation can replay them — not just the tool chips.
+    def test_tool_turn_captures_cards_and_tools_for_resume(self):
+        import app1.agent as agent_mod
+        self._drive_turn(
+            "Find kurser i projektledelse",
+            final_text=_HAPPY_FULL,
+            stream_chunks=_HAPPY_CHUNKS,
+        )
+        # Exactly one session ran; its captured artifacts must carry BOTH the tool
+        # chips AND the course cards (the cards-not-reappearing bug).
+        self.assertTrue(agent_mod.SHOWN_ARTIFACTS, "no turn artifacts captured")
+        turns = list(agent_mod.SHOWN_ARTIFACTS.values())[0]
+        art = list(turns.values())[0]
+        self.assertTrue(art["tools"], f"no tool chips captured: {art}")
+        self.assertTrue(art["cards"], f"no course cards captured: {art}")
+        self.assertEqual(
+            [c.get("handle") for c in art["cards"]],
+            ["projektledelse-grund", "agil-projektledelse"],
+        )
+        # And reattachment surfaces them as _cards/_tools for the frontend replay.
+        sid = list(agent_mod.SHOWN_ARTIFACTS.keys())[0]
+        answer = list(turns.keys())[0]
+        persisted = agent_mod._messages_with_artifacts(
+            sid, [{"role": "assistant", "content": answer}])
+        self.assertIn("_cards", persisted[0])
+        self.assertIn("_tools", persisted[0])
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -23,6 +23,12 @@
   }
   html, body.chat-page { height: 100%; }
   body.chat-page { overflow: hidden; }
+  /* fm.css gives .fm-shell `min-height: 100vh`, so content taller than the
+     viewport grows the whole shell and the inner .scroll never becomes the
+     overflow region (it can't scroll, and body{overflow:hidden} clips the rest).
+     Pin the shell to a definite viewport height so .scroll owns the overflow. */
+  body.chat-page .fm-shell { height: 100vh; min-height: 0; overflow: hidden; }
+  body.chat-page .fm-main { min-height: 0; }
   body.chat-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.chat-page .fm-foot { display: none; }
   .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }

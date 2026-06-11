@@ -1073,9 +1073,7 @@
         </div>`).join("");
     }).join("");
     list.querySelectorAll(".conv").forEach((el) => el.onclick = () => {
-      activeConvId = el.dataset.id;
-      renderConv();
-      if (rail && window.innerWidth <= 860) rail.classList.remove("open");
+      openConversation(el.dataset.id);
     });
     list.querySelectorAll(".conv-del").forEach((b) => b.onclick = (e) => {
       e.stopPropagation();
@@ -1105,6 +1103,59 @@
       CONVS = [];
     }
     renderConv();
+  }
+
+  // Paint a stored conversation's messages into the thread. Stored history only
+  // keeps user + assistant turns (see save_conversation_history); assistant text
+  // is rendered as markdown, the same as a live answer.
+  function renderHistory(messages) {
+    document.querySelector(".welcome")?.remove();
+    thread.innerHTML = "";
+    (messages || []).forEach((m) => {
+      const role = m && m.role, content = (m && m.content) || "";
+      if (!content) return;
+      if (role === "user") {
+        addUser(content);
+      } else if (role === "assistant") {
+        const body = addBot();
+        const el = document.createElement("div");
+        el.className = "md";
+        el.innerHTML = md(content);
+        body.appendChild(el);
+      }
+    });
+    down(false, true);
+  }
+
+  // Open a past conversation: resume it server-side (so the next /ask continues
+  // it) and render its transcript. Falls back to read-only render if resume fails.
+  async function openConversation(id) {
+    if (!id || sending) return;
+    activeConvId = id;
+    renderConv();
+    if (rail && window.innerWidth <= 860) rail.classList.remove("open");
+    try {
+      const resp = await fetch("/app1/conversations/" + encodeURIComponent(id) + "/resume", {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.status === "ok") { renderHistory(data.messages); input.focus(); return; }
+      }
+    } catch (e) { /* fall through to read-only load */ }
+    // Resume unavailable (offline/older backend): still show the transcript.
+    try {
+      const r2 = await fetch("/app1/conversations/" + encodeURIComponent(id), {
+        headers: { "X-Requested-With": "XMLHttpRequest" }, credentials: "same-origin",
+      });
+      if (r2.ok) {
+        const d2 = await r2.json();
+        const conv = d2 && (d2.conversation || d2);
+        if (conv && conv.messages) renderHistory(conv.messages);
+      }
+    } catch (e) { /* leave current view untouched */ }
   }
 
   /* ---------------- real profile completeness ----------------

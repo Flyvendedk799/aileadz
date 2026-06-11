@@ -108,6 +108,76 @@ class ConversationResumeTest(unittest.TestCase):
             resp = self._client(user="alice").post("/app1/conversations/999/resume")
             self.assertEqual(resp.status_code, 404)
 
+    def test_resume_returns_stored_ui_artifacts(self):
+        """Cards/tool chips persisted on an assistant turn survive the round-trip
+        so the frontend can replay the rich UI (the bug this change fixes)."""
+        conv = dict(_CONV)
+        conv["messages"] = [
+            {"role": "user", "content": "Find projektledelseskurser."},
+            {"role": "assistant", "content": "Her er et match.",
+             "_cards": [{"title": "PRINCE2 Foundation", "meta": []}],
+             "_tools": [{"type": "tool_call", "name": "catalog_search",
+                         "label": "Katalogsøgning", "results_count": 3}]},
+        ]
+        agent.SHOWN_ARTIFACTS.pop("stored-sid-7", None)
+        with patch("app1.user_profile_db.ensure_tables", lambda: None), \
+             patch("app1.user_profile_db.load_conversation_by_id", return_value=conv), \
+             patch("app1.user_profile_db.save_conversation", lambda *a, **k: None):
+            resp = self._client(user="alice").post("/app1/conversations/7/resume")
+            self.assertEqual(resp.status_code, 200)
+            asst = [m for m in resp.get_json()["messages"] if m["role"] == "assistant"][0]
+            self.assertEqual(asst["_cards"][0]["title"], "PRINCE2 Foundation")
+            self.assertEqual(asst["_tools"][0]["name"], "catalog_search")
+            # The artifact cache is re-seeded so a follow-up turn's save preserves
+            # these earlier cards/chips instead of dropping them.
+            seeded = agent.SHOWN_ARTIFACTS.get("stored-sid-7", {})
+            self.assertIn("Her er et match.", seeded)
+            self.assertEqual(seeded["Her er et match."]["cards"][0]["title"], "PRINCE2 Foundation")
+        agent.SHOWN_ARTIFACTS.pop("stored-sid-7", None)
+
+
+class TurnArtifactHelpersTest(unittest.TestCase):
+    """Unit tests for the agent helpers that capture/reattach UI artifacts."""
+
+    def setUp(self):
+        self._sid = "art-sid"
+        agent.SHOWN_ARTIFACTS.pop(self._sid, None)
+
+    def tearDown(self):
+        agent.SHOWN_ARTIFACTS.pop(self._sid, None)
+
+    def test_reattach_keeps_live_messages_clean(self):
+        agent._record_turn_artifacts(
+            self._sid, "Her er et match.",
+            [{"title": "X", "meta": []}],
+            [{"type": "tool_call", "name": "catalog_search"}],
+        )
+        live = [
+            {"role": "user", "content": "find kurser"},
+            {"role": "assistant", "content": "Her er et match."},
+        ]
+        persisted = agent._messages_with_artifacts(self._sid, live)
+        # Persisted copy carries artifacts...
+        pa = [m for m in persisted if m["role"] == "assistant"][0]
+        self.assertIn("_cards", pa)
+        self.assertIn("_tools", pa)
+        # ...but the live message dict is untouched (no keys reach the API).
+        self.assertNotIn("_cards", live[1])
+        self.assertNotIn("_tools", live[1])
+
+    def test_reattach_matches_by_answer_text_across_turns(self):
+        agent._record_turn_artifacts(self._sid, "svar A", [{"title": "A", "meta": []}], [])
+        agent._record_turn_artifacts(self._sid, "svar B", [{"title": "B", "meta": []}], [])
+        live = [
+            {"role": "assistant", "content": "svar A"},
+            {"role": "user", "content": "mere"},
+            {"role": "assistant", "content": "svar B"},
+        ]
+        persisted = agent._messages_with_artifacts(self._sid, live)
+        asst = [m for m in persisted if m["role"] == "assistant"]
+        self.assertEqual(asst[0]["_cards"][0]["title"], "A")
+        self.assertEqual(asst[1]["_cards"][0]["title"], "B")
+
 
 if __name__ == "__main__":
     unittest.main()

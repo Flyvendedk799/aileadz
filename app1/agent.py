@@ -42,6 +42,8 @@ def _fence(label, text):
 import uuid
 import re as _re
 import random as _random
+import threading
+import queue
 from typing import Optional
 
 # 5.4: Prompt versioning for A/B testing
@@ -353,15 +355,15 @@ def _detect_conversation_stage(sid, messages):
 _STAGE_HINTS = {
     "greeting": "Kort, varm velkomst. Spørg hvad de leder efter — ét spørgsmål.",
     "needs_discovery": "Stil ét præcist spørgsmål der ville gøre din næste søgning markant bedre.",
-    "searching": "SØG NU med search_courses eller filter_courses. Brug search_courses til brede forespørgsler, filter_courses når der er pris/lokation/format-krav. Kombiner parametre intelligent: 'billigt i Aarhus om ledelse' = filter_courses(price_max=5000, location='Aarhus', query='ledelse'). Stil IKKE flere spørgsmål — søg med det du har. Hvis brugeren også nævner sin baggrund, gem den med request_user_input SAMTIDIG med søgningen.",
-    "comparing": "Brug compare_courses. Fremhæv den vigtigste forskel for denne bruger. Giv en klar anbefaling.",
+    "searching": "SØG NU med catalog_search. Kombiner parametre intelligent: 'billigt i Aarhus om ledelse' = catalog_search(query=\"ledelse\", price_max=5000, location=\"Aarhus\"). Brug filtrene category/vendor/format/location/price_min/price_max når brugeren nævner krav. Stil IKKE flere spørgsmål — søg med det du har. Hvis brugeren også nævner sin baggrund, gem den med request_user_input SAMTIDIG med søgningen.",
+    "comparing": "Brug catalog_compare_products med 2-4 handles fra de viste kurser. Fremhæv den vigtigste forskel for denne bruger. Giv en klar anbefaling.",
     "deciding": "Giv en tydelig anbefaling med begrundelse. Hjælp dem med at tage skridtet.",
-    "ready_to_buy": "HANDLINGS-mode. Hent detaljer med get_course_details: startdato, lokation, pris, hvad er inkluderet. Gør tilmelding let.",
+    "ready_to_buy": "HANDLINGS-mode. Hent detaljer med catalog_get_product (handle eller titel): startdato, lokation, pris, hvad er inkluderet. Tjek derefter bestillingsparathed med check_course_readiness. Gør tilmelding let.",
     "browsing": "Research-mode — pres IKKE. Inspirer med karriereværdi og læringsudbytte.",
     "correcting": "ANERKEND fejlen. Spørg hvad der ikke passede (emne/niveau/pris/format). Søg ANDERLEDES.",
     "team_buying": "Tænk i gruppe: antal, fælles datoer, grupperabat, in-house muligheder. Spørg hvad de mangler.",
     "profile_update": "Brugeren nævner egen erfaring/kompetence/uddannelse. Brug request_user_input til at vise et UI-kort der samler info. Kald ALTID værktøjet — svar IKKE kun med tekst.",
-    "profile_and_search": "Brugeren nævner BÅDE sin baggrund OG et læringsbehov. Gør BEGGE dele i samme svar: 1) Brug request_user_input til at gemme profil-info (erfaring/stilling/kompetence). 2) Søg OGSÅ kurser med search_courses/filter_courses baseret på deres læringsbehov. Kald BEGGE værktøjer.",
+    "profile_and_search": "Brugeren nævner BÅDE sin baggrund OG et læringsbehov. Gør BEGGE dele i samme svar: 1) Brug request_user_input til at gemme profil-info (erfaring/stilling/kompetence). 2) Søg OGSÅ kurser med catalog_search baseret på deres læringsbehov. Kald BEGGE værktøjer.",
 }
 
 
@@ -459,6 +461,22 @@ _TEAM_PATTERNS = _re.compile(
 
 # ── Per-session negative context tracking (3.3) ──
 REJECTED_SEARCHES = {}  # {sid: [{"query": "...", "reason": "..."}]}
+# AG-01: sidste udførte katalogsøgning per session, så afvisningskonteksten kan
+# vise 'Søgning: …' selv når samtalehukommelsen ikke gemmer tool_calls-beskeder.
+LAST_SEARCH_QUERIES = {}  # {sid: "seneste catalog_search-query"}
+
+
+def _remember_search_query(sid, tool_name, arguments):
+    """AG-01: Gem den seneste søge-query fra et udført søgeværktøj."""
+    if tool_name not in ("catalog_search", "search_courses", "filter_courses"):
+        return
+    try:
+        args = arguments if isinstance(arguments, dict) else json.loads(arguments or "{}")
+    except (json.JSONDecodeError, TypeError):
+        return
+    query = (args.get("query") or "").strip() if isinstance(args, dict) else ""
+    if query:
+        LAST_SEARCH_QUERIES[sid] = query
 
 
 def _track_rejection(sid, user_query, messages):
@@ -480,12 +498,21 @@ def _track_rejection(sid, user_query, messages):
         if m.get("role") == "assistant" and m.get("tool_calls"):
             for tc in m.get("tool_calls", []):
                 fn = tc.get("function", {})
-                if fn.get("name") in ("search_courses", "filter_courses"):
+                if fn.get("name") in ("catalog_search", "catalog_compare_products",
+                                      "search_courses", "filter_courses"):
                     try:
                         args = json.loads(fn.get("arguments", "{}"))
-                        last_search_query = args.get("query", "")
+                        # catalog_compare_products har ingen 'query' — overskriv
+                        # aldrig en allerede fundet query med en tom streng.
+                        last_search_query = args.get("query", "") or last_search_query
                     except (json.JSONDecodeError, TypeError):
                         pass
+
+    # AG-01: fallback til den session-gemte query — samtalehukommelsen indeholder
+    # typisk ikke assistant-beskeder med tool_calls, så scanningen ovenfor finder
+    # sjældent noget i praksis.
+    if not last_search_query:
+        last_search_query = LAST_SEARCH_QUERIES.get(sid, "")
 
     # Get titles of recently shown products
     shown_titles = [p.get("title", "") for p in SHOWN_PRODUCTS.get(sid, {}).get("products", [])[-5:]]
@@ -615,6 +642,7 @@ def _cleanup_stale_sessions():
         USER_PROFILES.pop(sid, None)
         CONVERSATION_STAGES.pop(sid, None)
         REJECTED_SEARCHES.pop(sid, None)
+        LAST_SEARCH_QUERIES.pop(sid, None)
         _SESSION_VERSIONS.pop(sid, None)
         ANONYMOUS_PROFILES.pop(sid, None)
     # Also clean persistent store
@@ -887,6 +915,23 @@ def _grounding_recall_enabled():
     )
 
 
+def _known_course_titles():
+    """AG-03: katalog-titler til groundings titel-validering.
+
+    Injiceres som known_titles_fn i grounding.grounding_disclaimer (grounding.py
+    forbliver dependency-fri for eval-harnesset): en TitleCase-sekvens i svaret
+    tæller kun som et kursustitel-claim, når den fuzzy-matcher en rigtig
+    katalogtitel — stopper 'God Fornøjelse'-agtige falske disclaimers. Læser
+    det in-process rag-indeks (JSON-fil-cache — ingen DB/API-kald). Guarded:
+    enhver fejl giver [] så grounding falder tilbage til heuristikken.
+    """
+    try:
+        from app1.rag import load_augmented_products
+        return [p.get("title") for p in (load_augmented_products() or []) if p.get("title")]
+    except Exception:
+        return []
+
+
 def _collect_turn_evidence(tool_results, buffered_course_cards):
     """Build the chain-of-custody evidence base for THIS turn.
 
@@ -1084,6 +1129,101 @@ def _strip_course_listings(text):
     result = '\n'.join(cleaned).strip()
     result = _re.sub(r'\n{3,}', '\n\n', result)
     return result
+
+
+# ── AG-02: Live tool-events fra agent-loopet (worker-tråd + bounded queue) ──
+
+def _live_agent_timeout_seconds():
+    """Hård øvre grænse for hvor længe live-event-stien venter på agent-loopet.
+
+    Skal rumme flere completions (AI_OPENAI_TIMEOUT_SECONDS er 45s pr. kald)
+    plus tool-latens, så legitime lange ture aldrig kappes unødigt. Env-tunbar
+    via AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS.
+    """
+    import os as _os
+    try:
+        return max(15.0, float(_os.getenv("AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS", "90")))
+    except ValueError:
+        return 90.0
+
+
+def _iter_agent_with_live_tool_events(agent_kwargs):
+    """AG-02 (AI_LIVE_TOOL_EVENTS, default ON): kør run_agent_with_fallback i en
+    worker-tråd og yield tool start/finish-events LIVE mens loopet kører, i
+    stedet for først efter loopet er færdigt.
+
+    Yields ``("tool_event", dict)`` for hvert event fra runtime-callbacken,
+    ``("ping", None)`` ved ~0.5s stilhed (dræn-timeout der samtidig fungerer som
+    SSE-heartbeat), og afslutter med ``("result", AgentRunResult)``. Exceptions
+    fra worker-tråden re-raises i kalde-tråden, så fejlhåndteringen i
+    stream_generator opfører sig præcis som den direkte (ikke-trådede) sti.
+
+    Request-konteksten kopieres ind i worker-tråden (copy_current_request_context)
+    så tool-executors stadig kan læse Flask-session (company_id/user_id) og åbne
+    deres egen MySQL-forbindelse. Tenant-cache-scope resolves desuden af kalderen
+    i request-tråden og threades ind via agent_kwargs["company_scope"], så
+    tool-cachens tenant-nøgle er korrekt selv hvis kontekst-kopien fejler.
+    """
+    from ai_runtime import run_agent_with_fallback
+
+    event_q = queue.Queue(maxsize=100)
+    done = object()
+    box = {}
+
+    def _on_tool_event(evt):
+        try:
+            event_q.put_nowait(evt)
+        except queue.Full:
+            pass  # drop eventet frem for at blokere agent-loopet
+
+    def _worker():
+        try:
+            box["result"] = run_agent_with_fallback(on_tool_event=_on_tool_event, **agent_kwargs)
+        except BaseException as exc:  # re-raises i kalde-tråden nedenfor
+            box["error"] = exc
+        finally:
+            try:
+                event_q.put(done, timeout=5)
+            except Exception:
+                pass
+
+    target = _worker
+    try:
+        from flask import copy_current_request_context, has_request_context
+        if has_request_context():
+            target = copy_current_request_context(_worker)
+    except Exception:
+        pass  # uden request-kontekst (tests/batch) køres workeren direkte
+
+    worker = threading.Thread(target=target, daemon=True, name="ai-agent-live")
+    worker.start()
+
+    deadline = time.time() + _live_agent_timeout_seconds()
+    finished = False
+    while time.time() <= deadline:
+        try:
+            item = event_q.get(timeout=0.5)
+        except queue.Empty:
+            yield ("ping", None)
+            continue
+        if item is done:
+            finished = True
+            break
+        if isinstance(item, dict):
+            yield ("tool_event", item)
+
+    # Kort grace-join: var loopet netop færdigt omkring deadline, samles
+    # resultatet stadig op i stedet for at fejle.
+    worker.join(timeout=2 if finished else 5)
+    if "error" in box:
+        raise box["error"]
+    if "result" not in box:
+        # Hård timeout: daemon-workeren efterlades; brugeren får den normale
+        # timeout-fejlbesked via stream_generators except-håndtering.
+        raise TimeoutError(
+            "live tool events timeout: agent-loopet blev ikke færdigt inden for tidsgrænsen"
+        )
+    yield ("result", box["result"])
 
 
 # ── Main Agent Loop ──
@@ -1792,7 +1932,9 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 estimate_messages_tokens,
                 fast_model,
                 in_rate_limit_cooldown,
+                iter_buffered_text_chunks,
                 iter_completion_stream,
+                live_tool_events_enabled,
                 log_agent_run,
                 log_tool_run,
                 main_model,
@@ -1870,21 +2012,48 @@ def handle_agentic_ask(user_query, session, mode="default"):
             api_start = time.time()
             if all_tools:
                 yield f"data: {json.dumps({'type': 'thinking', 'content': 'Søger og analyserer…'})}\n\n"
+            # AG-02: call_ids hvis tool_call-events allerede er streamet live —
+            # post-hoc-loopet nedenfor springer dem over (telemetri/kort kører
+            # stadig for alle tool-resultater).
+            _live_tool_call_ids = set()
+            agent_kwargs = dict(
+                messages=ephemeral_messages,
+                tools=all_tools,
+                tool_executor=execute_tool,
+                username=logged_in_user,
+                session_id=sid,
+                model=turn_model,
+                tool_choice=tool_choice,
+                max_iterations=max_iterations,
+                prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
+                agent_scope="employee",
+            )
             if not all_tools and intent == "chit_chat":
                 runtime_result = run_chitchat_turn(ephemeral_messages, intent=intent)
+            elif all_tools and live_tool_events_enabled():
+                # AG-02 (AI_LIVE_TOOL_EVENTS, default 1): agent-loopet kører i
+                # en worker-tråd, og tool start/finish-events streames live til
+                # klienten mens værktøjerne kører — den langsomste del af turen
+                # viser fremdrift i stedet for en statisk spinner. Tenant-scope
+                # resolves HER i request-tråden (Flask-kontekst er ikke synlig i
+                # worker-tråden) og threades ind i tool-cachens nøgle.
+                agent_kwargs["company_scope"] = str(company_id) if company_id else ""
+                runtime_result = None
+                for _kind, _payload in _iter_agent_with_live_tool_events(agent_kwargs):
+                    if _kind == "tool_event":
+                        if _payload.get("id"):
+                            _live_tool_call_ids.add(_payload["id"])
+                        yield f"data: {json.dumps(_payload, ensure_ascii=False)}\n\n"
+                    elif _kind == "ping":
+                        # Heartbeat så proxyer/klient-watchdogs ikke dræber
+                        # forbindelsen under lange tool-kørsler.
+                        yield f"data: {json.dumps({'type': 'ping', 'content': 'working'})}\n\n"
+                    elif _kind == "result":
+                        runtime_result = _payload
+                if runtime_result is None:
+                    raise RuntimeError("live tool events: agent-loopet leverede intet resultat")
             else:
-                runtime_result = run_agent_with_fallback(
-                    messages=ephemeral_messages,
-                    tools=all_tools,
-                    tool_executor=execute_tool,
-                    username=logged_in_user,
-                    session_id=sid,
-                    model=turn_model,
-                    tool_choice=tool_choice,
-                    max_iterations=max_iterations,
-                    prompt_cache_key=f"futurematch:{toolset_meta.get('version')}:{_get_prompt_version(sid)}",
-                    agent_scope="employee",
-                )
+                runtime_result = run_agent_with_fallback(**agent_kwargs)
             _log_latency(sid, "ai_runtime_turn", api_start)
             iteration = max(1, len(runtime_result.tool_results))
             had_tool_calls = bool(runtime_result.tool_results)
@@ -1942,6 +2111,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
 
                 results_count = tool_result_dict.get("count", len(tool_result_dict.get("results", [])))
                 _tools_used.append(tool_result.name)
+                # AG-01: husk seneste søge-query til afvisningskontekstens 'Søgning: …'
+                _remember_search_query(sid, tool_result.name, tool_result.arguments)
                 _total_results += results_count
                 for _rp in tool_result_dict.get("results", []) or []:
                     _h = _rp.get("handle") if isinstance(_rp, dict) else None
@@ -1950,7 +2121,11 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 if tool_result_dict.get("product", {}).get("handle"):
                     _products_shown_handles.append(tool_result_dict["product"]["handle"])
 
-                yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='employee'), ensure_ascii=False)}\n\n"
+                # AG-02: spring events over der allerede er streamet live fra
+                # worker-tråden — telemetri og kort-bygning ovenfor/nedenfor
+                # kører stadig for ALLE tool-resultater.
+                if tool_result.call_id not in _live_tool_call_ids:
+                    yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='employee'), ensure_ascii=False)}\n\n"
 
                 try:
                     _get_store().log_event(sid, "tool_call",
@@ -2142,7 +2317,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
             ):
                 try:
                     _pre = _grounding.grounding_disclaimer(
-                        runtime_result.text, _turn_evidence
+                        runtime_result.text, _turn_evidence,
+                        known_titles_fn=_known_course_titles,
                     )
                     if _pre.get("violation"):
                         _grounding_violation = True
@@ -2177,7 +2353,12 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     ):
                         yield sse
                 else:
-                    for sse in _stream_tokens_to_client(iter([runtime_result.text])):
+                    # RT-02: the runtime captured the final answer (one
+                    # completion saved) — chunk it ~3 ord ad gangen so the
+                    # buffered text still feels typewriter-streamed.
+                    for sse in _stream_tokens_to_client(
+                        iter_buffered_text_chunks(runtime_result.text)
+                    ):
                         yield sse
                 _log_latency(sid, "llm_stream_response", stream_start)
             else:
@@ -2252,7 +2433,10 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     and visible_text.strip()
                     and not _grounding_handled
                 ):
-                    _verdict = _grounding.grounding_disclaimer(visible_text, _turn_evidence)
+                    _verdict = _grounding.grounding_disclaimer(
+                        visible_text, _turn_evidence,
+                        known_titles_fn=_known_course_titles,
+                    )
                     if _verdict.get("violation"):
                         _grounding_violation = True
                         _grounding_handled = True
@@ -2472,7 +2656,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 if _tools_used:
                     # Track last tool that showed results (for recommended_by_tool)
                     for _t in reversed(_tools_used):
-                        if _t in ('search_courses', 'filter_courses', 'recommend_for_profile', 'suggest_learning_path'):
+                        if _t in ('catalog_search', 'catalog_compare_products',
+                                  'search_courses', 'filter_courses', 'recommend_for_profile', 'suggest_learning_path'):
                             session['_last_recommending_tool'] = _t
                             break
                 session.modified = True

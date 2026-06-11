@@ -2,6 +2,7 @@
 RAG module with hybrid search: Vector (semantic) + BM25 (keyword) + Reciprocal Rank Fusion.
 Phase 5 upgrade from pure vector search.
 """
+import copy
 import json
 import math
 import os
@@ -735,8 +736,8 @@ def profile_candidate_limit(profile_boost, base_limit, cap=PROFILE_CANDIDATE_LIM
     return max(base, min(scaled, max(base, int(cap))))
 
 
-def semantic_search_courses(query, limit=5, min_score=0.35, shown_handles=None, user_prefs=None):
-    detailed = semantic_search_courses_detailed(query, limit=limit, min_score=min_score,
+def semantic_search_courses(query, limit=5, shown_handles=None, user_prefs=None):
+    detailed = semantic_search_courses_detailed(query, limit=limit,
                                                  shown_handles=shown_handles, user_prefs=user_prefs)
     if isinstance(detailed, dict) and "error" in detailed:
         return detailed
@@ -863,7 +864,139 @@ def _get_search_cache_key(query, limit, shown_handles, user_prefs):
     return hashlib.md5(key.encode()).hexdigest()
 
 
-def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handles=None,
+# 2.6: Soft demotion for already-shown products (not excluded, just ranked lower).
+# Used both on the live ranking path and when re-applying the penalty on a
+# search-cache hit, so the two paths can never drift apart.
+_SHOWN_HANDLE_PENALTY = -0.04
+
+
+def _copy_product(product):
+    """Copy a product payload so callers can mutate results freely without
+    corrupting the search cache or the global product index. The (large,
+    never-mutated-in-practice) embedding vector is shared by reference so
+    cache hits stay cheap."""
+    if not isinstance(product, dict):
+        return product
+    return {k: (v if k == "embedding" else copy.deepcopy(v)) for k, v in product.items()}
+
+
+def _build_cache_hit_result(cached_result, cached_candidates, shown_handles, pool):
+    """Assemble the payload for a search-cache hit (RG-02).
+
+    The cache stores the ranked candidate list with SESSION-NEUTRAL scores
+    (any shown_handles penalty from the original call stripped at store time).
+    Every hit re-applies the CURRENT caller's already-shown penalty, re-sorts
+    and re-slices — so "vis mig flere" inside the TTL actually rotates results
+    instead of replaying the exact same list. All returned products are copies,
+    so mutating the payload never leaks back into the cache.
+    """
+    result = dict(cached_result)
+    result["debug"] = copy.deepcopy(cached_result.get("debug") or {})
+    result["debug"]["cache_hit"] = True
+
+    shown_handles = shown_handles or set()
+    if cached_candidates:
+        rescored = []
+        for cand in cached_candidates:
+            handle = cand.get("handle", "")
+            penalty = _SHOWN_HANDLE_PENALTY if handle in shown_handles else 0.0
+            explain = copy.deepcopy(cand.get("explain") or {})
+            explain["shown_penalty"] = round(penalty, 4)
+            reasons = [r for r in explain.get("pref_reasons") or [] if r != "already_shown"]
+            if penalty:
+                reasons.append("already_shown")
+            explain["pref_reasons"] = reasons
+            rescored.append((cand, cand.get("score", 0.0) + penalty, explain))
+        rescored.sort(key=lambda item: item[1], reverse=True)
+        rescored = rescored[:pool]
+        result["products"] = [_copy_product(cand.get("product")) for cand, _, _ in rescored]
+        result["debug"]["selected"] = [
+            {
+                "handle": cand.get("handle"),
+                "title": (cand.get("product") or {}).get("title"),
+                "score": round(score, 4),
+                "explain": explain,
+            }
+            for cand, score, explain in rescored
+        ]
+    else:
+        # Defensive fallback for entries without a candidate list — still
+        # decouple the products from the cached payload.
+        result["products"] = [_copy_product(p) for p in cached_result.get("products") or []]
+    result["debug"]["shown_handles_count"] = len(shown_handles)
+    return result
+
+
+# ── Relevance floor (step 10) ──
+# Absolute floor for SINGLE-SOURCE candidate lists (cosine/BM25 scale, where a
+# decent vector hit scores ~0.3-0.8). RRF-FUSED scores live on a much smaller
+# scale (1/(60+rank) per leg ⇒ top ≈ 0.03-0.05), so the absolute floor would
+# silently filter EVERY fused candidate — the vector leg could never surface a
+# Danish paraphrase on its own. Fused lists therefore use a relative-to-top
+# floor instead.
+_MIN_COMBINED_SCORE = 0.12
+# Relative floor for RRF-fused (BM25+vector) lists: keep candidates within 25%
+# of the top score; 0.02 is a hard bottom so noise never passes on a very weak top.
+_RRF_RELATIVE_FLOOR_RATIO = 0.25
+_RRF_FLOOR_MIN = 0.02
+# Pure-semantic queries (zero lexical hits on the core query tokens) keep this
+# many top vector candidates regardless of floor — compound-heavy Danish
+# paraphrases share no token with the right course but still match semantically.
+_PURE_SEMANTIC_KEEP = 3
+# Graceful backoff: when the floor filters EVERYTHING but the index did have
+# candidates, surface this many of the best pre-filter candidates (marked
+# below_threshold) instead of claiming the catalog holds nothing.
+_BELOW_THRESHOLD_KEEP = 2
+
+
+def _apply_score_floor(reranked, *, both_sources, pure_semantic=False):
+    """Apply the minimum-relevance floor (step 10) — pure, unit-testable helper.
+
+    Args:
+        reranked: best-first list of tuples whose SECOND element is the
+            combined score (typically ``(doc_idx, score, explain)``).
+        both_sources: True when the list was RRF-fused from BOTH BM25 and
+            vector results (small RRF score scale) → relative-to-top floor.
+            False for single-source lists (cosine/BM25 scale) → the legacy
+            absolute floor ``_MIN_COMBINED_SCORE`` applies unchanged.
+        pure_semantic: True when zero candidates had any lexical hit on the
+            core query tokens — the top ``_PURE_SEMANTIC_KEEP`` candidates are
+            then retained regardless of floor.
+
+    Returns:
+        ``(kept, meta)`` where meta has keys:
+            floor: the numeric floor that was applied
+            filtered_below_threshold: how many candidates the floor removed
+            below_threshold: True when the floor removed everything and the
+                best pre-filter candidates were returned as a low-confidence
+                backoff (caller should set confidence='low' and hedge).
+    """
+    meta = {"floor": 0.0, "filtered_below_threshold": 0, "below_threshold": False}
+    if not reranked:
+        return [], meta
+
+    if both_sources:
+        top_score = max(item[1] for item in reranked)
+        floor = max(_RRF_FLOOR_MIN, top_score * _RRF_RELATIVE_FLOOR_RATIO)
+    else:
+        floor = _MIN_COMBINED_SCORE
+    meta["floor"] = floor
+
+    keep_top_n = _PURE_SEMANTIC_KEEP if pure_semantic else 0
+    kept = [item for pos, item in enumerate(reranked)
+            if item[1] >= floor or pos < keep_top_n]
+    meta["filtered_below_threshold"] = len(reranked) - len(kept)
+
+    if not kept:
+        # Graceful backoff: better to show the closest matches we DO have,
+        # clearly marked below-threshold, than to return an empty result.
+        kept = list(reranked[:_BELOW_THRESHOLD_KEEP])
+        meta["below_threshold"] = True
+        meta["filtered_below_threshold"] = len(reranked) - len(kept)
+    return kept, meta
+
+
+def semantic_search_courses_detailed(query, limit=5, shown_handles=None,
                                      user_prefs=None, candidate_limit=None):
     """
     Hybrid search: combines vector similarity with BM25 keyword matching
@@ -898,21 +1031,18 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     pool = max(int(limit or 1), int(candidate_limit) if candidate_limit else 0)
     retrieval_width = max(20, pool)
 
-    # 5.3: Check search cache (shown_handles excluded from key — applied as post-filter)
+    # 5.3: Check search cache (shown_handles excluded from key — the cache holds
+    # session-neutral candidate scores, so every hit re-applies the caller's own
+    # already-shown penalty, re-sorts and re-slices in _build_cache_hit_result)
     cache_key = _get_search_cache_key(query, pool, shown_handles, user_prefs)
     now = time.time()
     if cache_key in _search_cache:
-        cached_result, cached_at = _search_cache[cache_key]
+        cached_result, cached_candidates, cached_at = _search_cache[cache_key]
         if now - cached_at < _SEARCH_CACHE_TTL:
-            _search_cache[cache_key] = (cached_result, now)  # LRU: refresh access time
-            # Re-apply shown_handles penalty on cached results (since it's session-specific)
-            if shown_handles:
-                result_copy = dict(cached_result)
-                result_copy["debug"] = dict(cached_result.get("debug", {}))
-                result_copy["debug"]["cache_hit"] = True
-                return result_copy
-            cached_result.setdefault("debug", {})["cache_hit"] = True
-            return cached_result
+            # LRU: refresh access time
+            _search_cache[cache_key] = (cached_result, cached_candidates, now)
+            return _build_cache_hit_result(cached_result, cached_candidates,
+                                           shown_handles, pool)
         else:
             del _search_cache[cache_key]
 
@@ -965,6 +1095,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
     # ── 5. Title-match scoring + topical sanity check ──
     # Strong differentiation: courses where query tokens appear in the TITLE
     # are much more relevant than courses where they only appear in body text
+    pure_semantic = False  # zero lexical hits → protect top vector candidates in step 10
     if core_query_tokens and fused and _title_token_sets:
         title_scored = []
         for doc_idx, base_score in fused:
@@ -985,8 +1116,11 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
 
         title_scored.sort(key=lambda x: x[1], reverse=True)
 
-        # Prefer results with at least some lexical match
+        # Prefer results with at least some lexical match. When NO candidate
+        # has a lexical hit the query is pure-semantic (Danish paraphrase /
+        # compound mismatch) — the floor in step 10 must not empty the result.
         with_hits = [x for x in title_scored if x[2] > 0]
+        pure_semantic = not with_hits
         chosen = with_hits if with_hits else title_scored
         fused = [(doc_idx, score) for doc_idx, score, _hits, _th in chosen]
 
@@ -1032,7 +1166,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         shown_penalty = 0.0
         handle = products[doc_idx].get("handle", "")
         if handle in shown_handles:
-            shown_penalty = -0.04
+            shown_penalty = _SHOWN_HANDLE_PENALTY
             pref_reasons.append("already_shown")
 
         final_score = base_score + pref_bonus + phrase_bonus + shown_penalty
@@ -1065,6 +1199,7 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         else "medium" if top_vector_score > 0.45
         else "low"
     )
+    cross_encoder_applied = False
     if len(reranked) >= 2 and core_query_tokens:
         if _should_run_cross_encoder(query, core_query_tokens, reranked, pre_confidence, top_vector_score):
             # Let the reranker reorder the head it scores, but preserve the tail
@@ -1074,21 +1209,38 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
             reranked_head = _crossencoder_rerank(
                 query, reranked[:rerank_head_len], products, limit=rerank_head_len
             )
+            # RG-02: record reality AT THE CALL SITE — the rerank only counts as
+            # applied when the reranker actually scored the head (its error
+            # fallback returns the input unchanged, without cross_encoder_score
+            # markers). The old post-hoc re-derivation could disagree with what
+            # actually happened and corrupt AI_RERANK_AMBIGUITY_MARGIN tuning data.
+            cross_encoder_applied = any(
+                isinstance(explain, dict) and "cross_encoder_score" in explain
+                for _, _, explain in reranked_head
+            )
             reranked = reranked_head + reranked[rerank_head_len:]
 
     # ── 9. Confidence signal for AI ──
     confidence = pre_confidence
 
-    # ── 10. Apply minimum relevance threshold + return top N ──
-    _MIN_COMBINED_SCORE = 0.12
-    pre_filter_count = len(reranked)
-    reranked = [(idx, score, explain) for idx, score, explain in reranked if score >= _MIN_COMBINED_SCORE]
-    filtered_below_threshold = pre_filter_count - len(reranked)
-
-    # Track if cross-encoder was applied
-    cross_encoder_applied = _should_run_cross_encoder(
-        query, core_query_tokens, reranked[:limit], confidence, top_vector_score
-    ) and any("cross_encoder_score" in explain for _, _, explain in reranked[:3])
+    # ── 10. Apply relevance floor (relative for RRF-fused, absolute for
+    # single-source) + graceful below-threshold backoff + return top N ──
+    reranked, floor_meta = _apply_score_floor(
+        reranked,
+        both_sources=bool(vector_ranked and bm25_ranked),
+        pure_semantic=pure_semantic,
+    )
+    filtered_below_threshold = floor_meta["filtered_below_threshold"]
+    below_threshold = floor_meta["below_threshold"]
+    if below_threshold:
+        # Everything fell below the floor but the index DID have candidates —
+        # surface the closest matches as an explicit low-confidence suggestion
+        # so the model hedges ("tættest på, men ikke et præcist match") instead
+        # of claiming kataloget intet har.
+        confidence = "low"
+        for _doc_idx, _score, explain in reranked:
+            if isinstance(explain, dict):
+                explain["below_threshold"] = True
 
     # Return up to `pool` ranked products. When pool == limit (the default for
     # every legacy caller) this is byte-for-byte the old behaviour; a rich-profile
@@ -1108,6 +1260,9 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
         "bm25_candidates": len(bm25_ranked),
         "fused_candidates": len(fused),
         "filtered_below_threshold": filtered_below_threshold,
+        "score_floor": round(floor_meta["floor"], 4),
+        "below_threshold": below_threshold,
+        "pure_semantic": pure_semantic,
         "cross_encoder_applied": cross_encoder_applied,
         "embedding_skipped": skip_embedding,
         "top_vector_score": round(top_vector_score, 4),
@@ -1125,15 +1280,36 @@ def semantic_search_courses_detailed(query, limit=5, min_score=0.35, shown_handl
             for idx, score, explain in reranked[:pool]
         ]
     }
-    result = {"products": selected_products, "debug": diagnostics, "confidence": confidence}
+    result = {"products": selected_products, "debug": diagnostics,
+              "confidence": confidence, "below_threshold": below_threshold}
 
-    # 5.3: Store in search cache
+    # 5.3: Store in search cache. The candidate list is stored with SESSION-
+    # NEUTRAL scores (this call's shown_handles penalty stripped) so later hits
+    # — possibly from sessions with different shown_handles — can re-apply
+    # their own penalty, re-sort and re-slice (see _build_cache_hit_result).
+    cached_candidates = []
+    for doc_idx, score, explain in reranked:
+        if doc_idx >= len(products):
+            continue
+        explain_dict = explain if isinstance(explain, dict) else {}
+        neutral_score = score - (explain_dict.get("shown_penalty") or 0.0)
+        cached_candidates.append({
+            "handle": products[doc_idx].get("handle", ""),
+            "score": neutral_score,
+            "explain": explain_dict,
+            "product": products[doc_idx],
+        })
     if len(_search_cache) >= _SEARCH_CACHE_MAX:
-        oldest_key = min(_search_cache, key=lambda k: _search_cache[k][1])
+        oldest_key = min(_search_cache, key=lambda k: _search_cache[k][-1])
         del _search_cache[oldest_key]
-    _search_cache[cache_key] = (result, time.time())
+    _search_cache[cache_key] = (result, cached_candidates, time.time())
 
-    return result
+    # Return a payload decoupled from the cache and the global product index,
+    # so callers can mutate it freely without corrupting later cache hits.
+    result_out = dict(result)
+    result_out["products"] = [_copy_product(p) for p in selected_products]
+    result_out["debug"] = copy.deepcopy(diagnostics)
+    return result_out
 
 
 def _normalize_profile_boost(profile_boost):
@@ -1251,9 +1427,13 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5, profil
 
     query_tokens = _tokenize(query)
     # Use the true topical/core tokens for the BM25 confidence gate (matching
-    # semantic_search_courses_detailed); the synonym-expanded set is recomputed
-    # separately below for scoring.
+    # semantic_search_courses_detailed); the synonym-expanded set is used for
+    # BM25 scoring below.
     core_query_tokens = _core_query_tokens(query_tokens)
+    # RG-02: synonym expansion depends only on the query (loop-invariant) —
+    # compute it ONCE here instead of inside the per-product loop (it runs
+    # fuzzywuzzy scans over the whole synonym table, O(synonyms × tokens)).
+    expanded_query_tokens, _ = _expand_query_tokens(query_tokens)
 
     # Build index mapping from filtered products to their global indices
     handle_to_product = {p.get("handle"): p for p in filtered_products}
@@ -1284,7 +1464,6 @@ def hybrid_rank_products(filtered_products, query, all_products, limit=5, profil
         for tok in doc_tokens:
             tf_map[tok] += 1
         score = 0.0
-        expanded_query_tokens, _ = _expand_query_tokens(query_tokens)
         for qt in expanded_query_tokens:
             tf = tf_map.get(qt, 0)
             if tf == 0:

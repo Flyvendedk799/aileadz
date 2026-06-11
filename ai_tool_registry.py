@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from copy import deepcopy
 from dataclasses import dataclass
+import json
 import os
 import re
 from typing import Any, Dict, Iterable, List, Optional, Tuple
@@ -469,6 +470,85 @@ def _explicit_order_confirmation(text: str) -> bool:
     return any(token in text for token in strong)
 
 
+# --- Forced-tool gating helpers (TR-01) -------------------------------------
+# Keyword-grenene må gerne LÆGGE værktøjer på menuen, men kun et utvetydigt
+# signal må TVINGE et kald: en forkert tvang spilder en hel iteration og viser
+# en irrelevant værktøjs-chip i UI'et.
+
+_VENDOR_TOKENS = ("udbyder", "leverandør", "leverandor", "vendor")
+
+_KNOWN_VENDOR_NAMES_CACHE: Optional[Tuple[str, ...]] = None
+
+
+def _known_vendor_names() -> Tuple[str, ...]:
+    """Lowercase kendte udbydernavne fra app1/vendor_profiles.json (fil-baseret, offline-sikker)."""
+    global _KNOWN_VENDOR_NAMES_CACHE
+    if _KNOWN_VENDOR_NAMES_CACHE is None:
+        names: Tuple[str, ...] = ()
+        try:
+            path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "app1", "vendor_profiles.json")
+            with open(path, "r", encoding="utf-8") as fh:
+                payload = json.load(fh)
+            if isinstance(payload, dict):
+                names = tuple(sorted(
+                    key.strip().lower()
+                    for key in payload.keys()
+                    if isinstance(key, str) and key.strip() and not key.startswith("_")
+                ))
+        except Exception:
+            names = ()
+        _KNOWN_VENDOR_NAMES_CACHE = names
+    return _KNOWN_VENDOR_NAMES_CACHE
+
+
+def _mentions_known_vendor(text: str) -> bool:
+    text = (text or "").lower()
+    if not text:
+        return False
+    for name in _known_vendor_names():
+        if re.search(r"(?<!\w)" + re.escape(name) + r"(?!\w)", text):
+            return True
+    return False
+
+
+def _is_self_directed_who_query(text: str) -> bool:
+    """'hvem er du/I/jer' handler om assistenten selv, aldrig om en udbyder."""
+    return bool(re.search(r"\bhvem er (du|i|jer)\b", (text or "").lower()))
+
+
+_BUDGET_QUESTION_STARTS = (
+    "budget",
+    "hvad er mit budget", "hvad er vores budget", "hvad er budgettet",
+    "hvor meget budget", "hvor stort er budgettet",
+    "er der budget", "har jeg budget", "har vi budget",
+    "hvor meget har jeg tilbage", "hvor meget har vi tilbage",
+    "resterende midler",
+)
+
+
+def _starts_with_budget_question(text: str) -> bool:
+    """Kun forespørgsler der STARTER som et budgetspørgsmål må tvinge budgetværktøjet.
+
+    Et midt-i-sætningen 'råd' ("giv mig et godt råd") eller "har jeg råd til at
+    vente?" lægger stadig værktøjet på menuen, men modellen vælger selv.
+    """
+    text = (text or "").lower().strip()
+    return any(text.startswith(token) for token in _BUDGET_QUESTION_STARTS)
+
+
+def _resolve_forced_tool(candidates: List[str], selected_names: Iterable[str]) -> Optional[str]:
+    """Afgør tvang til sidst: tving kun når PRÆCIS én gren pegede på ét værktøj.
+
+    Fixer det gamle last-match-wins-overskriv, hvor den sidst matchende
+    keyword-gren vandt uanset hvor tvetydig forespørgslen var. Ved flere
+    distinkte kandidater demoteres tvangen til None — værktøjerne bliver på
+    menuen, og modellen vælger selv.
+    """
+    selected = set(selected_names)
+    distinct = [name for name in dict.fromkeys(candidates) if name in selected]
+    return distinct[0] if len(distinct) == 1 else None
+
+
 def get_employee_tool_selection(
     *,
     logged_in: bool,
@@ -483,7 +563,9 @@ def get_employee_tool_selection(
     tool_map = _by_name(OPENAI_TOOLS + (PROFILE_TOOLS if logged_in else []))
     query = user_query or ""
     names = set()
-    forced_tool = None
+    # Tvang samles som kandidater og afgøres til sidst i _resolve_forced_tool:
+    # kun præcis én matchende gren må tvinge (TR-01).
+    forced_candidates: List[str] = []
     is_approval_query = _has_any(query, ("godkend", "approval", "afventer", "ordrestatus"))
 
     # CORE tools are ALWAYS on the menu so the MODEL — not a brittle keyword/regex
@@ -514,7 +596,7 @@ def get_employee_tool_selection(
     if intent in {"detail"} or _has_any(query, ("[vedhæftet kursus", "handle:", "produkt", "kurset", "detaljer", "hvornår", "dato", "start", "hvor foregår")):
         names.add("catalog_get_product")
         if _has_any(query, ("[vedhæftet kursus", "handle:")):
-            forced_tool = "catalog_get_product"
+            forced_candidates.append("catalog_get_product")
     if intent in {"comparison"} or _has_any(query, ("sammenlign", "forskel", "bedst", "versus", "vs")):
         names.update({"catalog_compare_products", "catalog_get_product"})
     # Refined intents from the LLM router (item #2). These abstract labels only ever
@@ -527,20 +609,26 @@ def get_employee_tool_selection(
         names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path"})
     if _has_any(query, ("kategori", "category", "type kurser")):
         names.add("catalog_get_category")
-        forced_tool = "catalog_get_category"
-    if _has_any(query, ("udbyder", "leverandør", "leverandor", "vendor", "hvem er", "fra hvem")):
+        forced_candidates.append("catalog_get_category")
+    vendor_signal = _has_any(query, _VENDOR_TOKENS) or _mentions_known_vendor(query)
+    if vendor_signal or _has_any(query, ("hvem er", "fra hvem")):
         names.add("catalog_get_vendor")
-        forced_tool = "catalog_get_vendor"
+        # Kun et reelt udbyderspørgsmål må TVINGE opslaget: "hvem er du/I?"
+        # handler om assistenten, og et "hvem er …" uden udbyder-token eller
+        # kendt udbydernavn er for tvetydigt til en tvungen vendor-lookup.
+        if vendor_signal and not _is_self_directed_who_query(query):
+            forced_candidates.append("catalog_get_vendor")
     if (intent in {"buying", "team_buying"} or _has_any(query, ("tilmeld", "bestil", "ordre", "køb", "koeb", "plads"))) and not is_approval_query:
         names.update({"catalog_get_product", "check_course_readiness", "prepare_course_order"})
         if _explicit_order_confirmation(query):
             names.add("create_course_order")
     if is_approval_query:
         names.add("check_order_approval_status")
-        forced_tool = "check_order_approval_status"
+        forced_candidates.append("check_order_approval_status")
     if _has_any(query, ("budget", "råd", "raad", "resterende midler")):
         names.add("get_department_budget")
-        forced_tool = "get_department_budget" if company_id else forced_tool
+        if company_id and _starts_with_budget_question(query):
+            forced_candidates.append("get_department_budget")
     if _has_any(query, ("kompetencegab", "skill gap", "skills gap", "hvad skal jeg lære", "laere",
                         "hvad skal jeg lære for", "kompetencer mangler", "mangler jeg", "mangler kompetence",
                         "for at blive", "for at arbejde med", "hvilke kompetencer", "blive bedre til")):
@@ -616,10 +704,11 @@ def get_employee_tool_selection(
     if not selected:
         selected = [tool_map[name] for name in ("catalog_search", "catalog_get_product") if name in tool_map]
 
+    selected_names = [tool_name(t) for t in selected]
     return selected, {
         "version": TOOLSET_VERSION,
-        "tool_names": [tool_name(t) for t in selected],
-        "forced_tool": forced_tool if forced_tool in {tool_name(t) for t in selected} else None,
+        "tool_names": selected_names,
+        "forced_tool": _resolve_forced_tool(forced_candidates, selected_names),
     }
 
 
@@ -629,15 +718,17 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
     tool_map = _by_name(HR_TOOLS)
     query = user_query or ""
     names = {"hr_get_company_learning_context", "get_pending_actions"}
-    forced_tool = None
+    # Tvang samles som kandidater og afgøres til sidst i _resolve_forced_tool:
+    # kun præcis én matchende gren må tvinge (TR-01).
+    forced_candidates: List[str] = []
     if _has_any(query, ("hej", "hello", "tak", "thanks", "godmorgen", "god aften")) and len(query.split()) <= 4:
         return [], {"version": TOOLSET_VERSION, "tool_names": [], "forced_tool": None}
     if _has_any(query, ("budget", "forbrug", "økonomi", "remaining", "resterende")):
         names.update({"get_budget_overview", "hr_get_company_learning_context"})
-        forced_tool = "get_budget_overview"
+        forced_candidates.append("get_budget_overview")
     if _has_any(query, ("kompetence", "skill", "gap", "mangler", "mål", "maal")):
         names.update({"get_company_skill_gaps", "hr_recommend_training_plan"})
-        forced_tool = "get_company_skill_gaps"
+        forced_candidates.append("get_company_skill_gaps")
     if _has_any(query, ("træning", "training", "status", "gennemført", "igang", "medarbejder")):
         names.update({"get_team_training_status", "get_employee_overview"})
     if _has_any(query, ("rapport", "roi", "spend", "udgifter", "effekt")):
@@ -646,12 +737,12 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
         names.update({"search_courses_for_team", "hr_recommend_training_plan"})
     if _has_any(query, ("leverandør", "leverandor", "supplier", "vendor", "udbyder", "aftale")):
         names.update({"hr_get_supplier_coverage", "search_courses_for_team"})
-        forced_tool = "hr_get_supplier_coverage"
+        forced_candidates.append("hr_get_supplier_coverage")
     if _has_any(query, ("chatbot", "ai", "brug", "usage", "risiko", "dårlige", "daarlige")):
         names.update({"get_chatbot_usage_stats", "hr_get_ai_usage_risks"})
     if _has_any(query, ("compliance", "overholdelse", "certificering", "recertificering", "lovpligtig", "obligatorisk", "arbejdsmiljø", "arbejdsmiljo", "gdpr-kursus")):
         names.add("get_compliance_status")
-        forced_tool = "get_compliance_status"
+        forced_candidates.append("get_compliance_status")
     # --- Specialised HR tools: keyword-gated only, NOT in the core seed. Each
     # stays off the menu until a matching Danish keyword activates it. ---
     if _has_any(query, (
@@ -693,7 +784,7 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "hvad bør jeg handle på", "hvad skal jeg gøre denne uge", "churn",
             "frafald", "risiko-overblik", "risikooverblik")):
         names.add("get_workforce_risk")
-        forced_tool = "get_workforce_risk"
+        forced_candidates.append("get_workforce_risk")
     if _has_any(query, (
             "indsigt", "indsigter", "ai-indsigt", "hvad bør jeg vide",
             "forklar advarsler", "forklar advarslerne", "hvad sker der på platformen",
@@ -725,7 +816,7 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "i forhold til", "dette kvartal mod", "sidste kvartal", "denne periode mod",
             "ledere vs", "afdelinger mod", "hvordan klarer", "klarer sig mod")):
         names.add("hr_compare_cohorts")
-        forced_tool = "hr_compare_cohorts"
+        forced_candidates.append("hr_compare_cohorts")
 
     selected = []
     for name in sorted(names):
@@ -739,10 +830,11 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
 
     if not selected:
         selected = [tool for tool in tool_map.values() if tool_name(tool) in {"hr_get_company_learning_context", "get_pending_actions"}]
+    selected_names = [tool_name(t) for t in selected]
     return selected, {
         "version": TOOLSET_VERSION,
-        "tool_names": [tool_name(t) for t in selected],
-        "forced_tool": forced_tool if forced_tool in {tool_name(t) for t in selected} else None,
+        "tool_names": selected_names,
+        "forced_tool": _resolve_forced_tool(forced_candidates, selected_names),
     }
 
 

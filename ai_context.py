@@ -47,18 +47,27 @@ def build_few_shot_message(full_examples: str) -> Optional[Dict[str, str]]:
     return {"role": "system", "content": content}
 
 
+# Pseudo-user prefix used by prune_conversation_memory to carry an earlier
+# prune-summary into the next summarization pass.
+_CARRYFORWARD_PREFIX = "Tidligere opsummering:"
+
+
 def summarize_pruned_messages_rule_based(messages_to_prune: List[Dict[str, Any]]) -> Optional[str]:
     """Fast local summary — no API call."""
     user_bits: List[str] = []
     assistant_bits: List[str] = []
     course_titles: List[str] = []
+    carry_bits: List[str] = []
     for msg in messages_to_prune:
         role = msg.get("role", "")
         content = str(msg.get("content") or "").strip()
         if not content or role == "system":
             continue
         if role == "user":
-            user_bits.append(content[:160])
+            if content.startswith(_CARRYFORWARD_PREFIX):
+                carry_bits.append(content[:600])
+            else:
+                user_bits.append(content[:160])
         elif role == "assistant":
             assistant_bits.append(content[:120])
         elif role == "tool":
@@ -71,10 +80,12 @@ def summarize_pruned_messages_rule_based(messages_to_prune: List[Dict[str, Any]]
             except (json.JSONDecodeError, TypeError, AttributeError):
                 pass
 
-    if not user_bits and not assistant_bits and not course_titles:
+    if not user_bits and not assistant_bits and not course_titles and not carry_bits:
         return None
 
     lines = ["SAMTALEOVERSIGT (kompakt):"]
+    if carry_bits:
+        lines.append(carry_bits[-1])
     if user_bits:
         lines.append("Bruger sagde: " + " | ".join(user_bits[-4:]))
     if course_titles:
@@ -95,7 +106,10 @@ def summarize_pruned_messages_gpt(messages_to_prune: List[Dict[str, Any]]) -> Op
         if not content or role == "system":
             continue
         if role == "user":
-            transcript_parts.append(f"Bruger: {content[:300]}")
+            # Earlier prune-summaries are carried forward as pseudo-user lines;
+            # give them more room so old facts survive the GPT pass too.
+            limit = 600 if str(content).startswith(_CARRYFORWARD_PREFIX) else 300
+            transcript_parts.append(f"Bruger: {str(content)[:limit]}")
         elif role == "assistant":
             transcript_parts.append(f"Rådgiver: {content[:300]}")
         elif role == "tool":
@@ -166,13 +180,28 @@ def prune_conversation_memory(
     system_msg = messages[0]
     protected: List[Dict[str, Any]] = []
     to_prune: List[Dict[str, Any]] = []
+    prior_summaries: List[str] = []
     for msg in messages[1:-keep_recent]:
-        if msg.get("role") == "system" and any(m in (msg.get("content") or "") for m in profile_markers):
+        content = str(msg.get("content") or "")
+        if msg.get("role") == "system" and any(m in content for m in profile_markers):
             protected.append(msg)
+        elif msg.get("role") == "system" and content.startswith("SAMTALEOVERSIGT"):
+            # En tidligere prunings SAMTALEOVERSIGT: bær indholdet videre i den
+            # nye oversigt i stedet for at lade summarizernes system-skip slette
+            # samtalens første tredjedel (budget, mål, afviste kurser).
+            prior_summaries.append(content)
         else:
             to_prune.append(msg)
     recent = messages[-keep_recent:]
+    if prior_summaries:
+        to_prune.insert(0, {
+            "role": "user",
+            "content": _CARRYFORWARD_PREFIX + " " + " | ".join(prior_summaries),
+        })
     summary_text = summarize_pruned_messages_smart(to_prune)
+    if not summary_text and prior_summaries:
+        # Summarizer produced nothing — keep the latest earlier summary as-is.
+        summary_text = prior_summaries[-1]
     new_messages = [system_msg] + protected
     if summary_text:
         new_messages.append({"role": "system", "content": summary_text})

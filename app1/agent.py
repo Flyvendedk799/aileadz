@@ -1006,6 +1006,30 @@ def _messages_with_artifacts(sid, messages):
     return out
 
 
+def seed_artifacts_from_messages(sid, messages):
+    """Rehydrate this worker's artifact cache from a persisted transcript.
+
+    Each gunicorn worker has its own SHOWN_ARTIFACTS. Without this, a worker that
+    never handled an earlier turn would, on the next save (a full-transcript
+    overwrite), drop that turn's cards/chips — the "cards don't reappear" bug
+    across workers/turns. Seeding from the stored `_cards`/`_tools` on restore
+    makes every worker preserve the whole conversation's UI on save. Never raises."""
+    try:
+        store = SHOWN_ARTIFACTS.setdefault(sid, {})
+        for m in messages or []:
+            if m.get("role") != "assistant":
+                continue
+            if m.get("_cards") or m.get("_tools"):
+                store[(m.get("content") or "").strip()] = {
+                    "cards": m.get("_cards") or [],
+                    "tools": m.get("_tools") or [],
+                }
+        if not store:
+            SHOWN_ARTIFACTS.pop(sid, None)
+    except Exception:
+        pass
+
+
 def _build_learning_context_message(logged_in_user, company_id, sid, supplier_agreements=None):
     """Inject company learning context without a tool call."""
     if not logged_in_user or not company_id:
@@ -1521,6 +1545,10 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     for msg in saved_conv["messages"]:
                         if msg.get("role") in ("user", "assistant") and msg.get("content"):
                             CHAT_MEMORY[sid].append({"role": msg["role"], "content": msg["content"]})
+                    # Rehydrate this worker's artifact cache from the persisted
+                    # transcript so a follow-up turn's save preserves earlier turns'
+                    # cards/chips (cross-worker fidelity).
+                    seed_artifacts_from_messages(sid, saved_conv["messages"])
             except Exception as e:
                 print(f"[Conversation Restore Error] {e}")
                 try:

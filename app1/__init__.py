@@ -1327,13 +1327,8 @@ def resume_conversation_endpoint(conv_id):
         # user sends a NEW message in this conversation, the next save still
         # preserves the earlier turns' cards/chips (save rebuilds full history and
         # reattaches from this cache — without seeding, old turns would lose them).
-        seeded = {}
-        for m in messages:
-            if m.get("role") == "assistant" and (m.get("_cards") or m.get("_tools")):
-                seeded[(m.get("content") or "").strip()] = {
-                    "cards": m.get("_cards") or [], "tools": m.get("_tools") or []}
-        if seeded:
-            SHOWN_ARTIFACTS[target_sid] = seeded
+        from app1.agent import seed_artifacts_from_messages
+        seed_artifacts_from_messages(target_sid, messages)
 
         return jsonify({"status": "ok", "session_id": target_sid,
                         "title": conv.get("title"), "messages": messages})

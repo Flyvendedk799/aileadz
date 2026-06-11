@@ -5,9 +5,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import json
 import os
+import threading
 import time
 import uuid
-from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple
+from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tuple
 
 from openai import OpenAI
 
@@ -27,6 +28,10 @@ from ai_tool_registry import (
 PROMPT_VERSION = "futurematch-ai-v3"
 _TOOL_CACHE: Dict[str, Tuple[float, str]] = {}
 _TOOL_CACHE_MAX = 512
+# AG-02: tool-cachen læses/skrives både fra request-tråden, fra ThreadPool-
+# workers (parallel-sikre tools) og nu også fra live-event worker-tråden
+# (AI_LIVE_TOOL_EVENTS) — al get/set/eviction sker derfor under denne lås.
+_TOOL_CACHE_LOCK = threading.Lock()
 _LOG_TABLES_READY = set()
 _OPENAI_CLIENT: Optional[OpenAI] = None
 _OPENAI_CLIENT_KEY = None
@@ -446,6 +451,39 @@ def max_output_tokens() -> int:
         return max(120, int(os.getenv("AI_MAX_OUTPUT_TOKENS", "600")))
     except ValueError:
         return 600
+
+
+def capture_final_enabled() -> bool:
+    """RT-02 gate: capture the final answer the model already produced on the
+    no-tool-calls iteration instead of discarding it and paying a second
+    full completion in the caller's deferred stream. Set AI_CAPTURE_FINAL=0
+    to restore the old discard+regenerate path (rollback)."""
+    return (os.getenv("AI_CAPTURE_FINAL", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def live_tool_events_enabled() -> bool:
+    """AG-02 gate: stream tool start/finish-events LIVE fra agent-loopet (kørt
+    i en worker-tråd) mens det stadig kører, i stedet for først efter loopet
+    er færdigt. Sæt AI_LIVE_TOOL_EVENTS=0 for at gendanne den gamle post-hoc
+    emissionssti (rollback)."""
+    return (os.getenv("AI_LIVE_TOOL_EVENTS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def iter_buffered_text_chunks(text: str, words_per_chunk: int = 3) -> Iterator[str]:
+    """Split a buffered (already complete) answer into ~N-word pieces so the
+    captured final answer (RT-02) still feels typewriter-streamed in the SSE
+    UI. Concatenating the pieces yields the exact original text — whitespace
+    is preserved on the chunk boundaries."""
+    if not text:
+        return
+    tokens = _re.findall(r"\s*\S+\s*", text)
+    if not tokens:
+        # Pure-whitespace input: emit as-is so nothing is silently dropped.
+        yield text
+        return
+    step = max(1, int(words_per_chunk))
+    for i in range(0, len(tokens), step):
+        yield "".join(tokens[i:i + step])
 
 
 def max_output_tokens_for_turn(has_tools: bool) -> int:
@@ -909,6 +947,9 @@ ROUTER_INTENT_ENUM = (
 
 _ROUTER_CACHE: Dict[str, str] = {}
 _ROUTER_CACHE_MAX = 256
+# AG-02: beskytter router-cachen mod samtidige læs/skriv når agent-loopet
+# kører i en worker-tråd (AI_LIVE_TOOL_EVENTS).
+_ROUTER_CACHE_LOCK = threading.Lock()
 
 _ROUTER_SYSTEM_PROMPT = (
     "Du klassificerer en brugers besked til en dansk kursus- og kompetencerådgiver. "
@@ -975,7 +1016,8 @@ def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
         return fallback
 
     cache_key = str(hash(query))
-    cached = _ROUTER_CACHE.get(cache_key)
+    with _ROUTER_CACHE_LOCK:
+        cached = _ROUTER_CACHE.get(cache_key)
     if cached is not None:
         return cached
 
@@ -1003,12 +1045,13 @@ def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
         label = fallback
 
     # Bounded cache: drop oldest-ish entry when full (simple, no LRU needed).
-    if len(_ROUTER_CACHE) >= _ROUTER_CACHE_MAX:
-        try:
-            _ROUTER_CACHE.pop(next(iter(_ROUTER_CACHE)))
-        except StopIteration:
-            pass
-    _ROUTER_CACHE[cache_key] = label
+    with _ROUTER_CACHE_LOCK:
+        if len(_ROUTER_CACHE) >= _ROUTER_CACHE_MAX:
+            try:
+                _ROUTER_CACHE.pop(next(iter(_ROUTER_CACHE)))
+            except StopIteration:
+                pass
+        _ROUTER_CACHE[cache_key] = label
     return label
 
 
@@ -1202,10 +1245,11 @@ def _current_tenant_cache_scope() -> str:
 def _cache_tool_result(cache_key: str, ttl: int, output: str) -> None:
     if not cache_key or ttl <= 0:
         return
-    if len(_TOOL_CACHE) >= _TOOL_CACHE_MAX:
-        oldest_key = min(_TOOL_CACHE, key=lambda k: _TOOL_CACHE[k][0])
-        _TOOL_CACHE.pop(oldest_key, None)
-    _TOOL_CACHE[cache_key] = (time.time() + ttl, output)
+    with _TOOL_CACHE_LOCK:
+        if len(_TOOL_CACHE) >= _TOOL_CACHE_MAX:
+            oldest_key = min(_TOOL_CACHE, key=lambda k: _TOOL_CACHE[k][0])
+            _TOOL_CACHE.pop(oldest_key, None)
+        _TOOL_CACHE[cache_key] = (time.time() + ttl, output)
 
 
 def _chat_completion_with_resilience(
@@ -1215,6 +1259,7 @@ def _chat_completion_with_resilience(
     source_messages: List[Dict[str, Any]],
     tools: List[Dict[str, Any]],
     tool_choice: Any,
+    output_cap: Optional[int] = None,
 ) -> Tuple[Any, str, List[Dict[str, Any]]]:
     attempts = [
         (model, False),
@@ -1229,8 +1274,10 @@ def _chat_completion_with_resilience(
             "messages": working,
             "stream": False,
             # Tool-deciding turns only emit a short tool-call payload; cap them
-            # tighter (env-tunable) so we don't pay for over-generation.
-            "max_tokens": max_output_tokens_for_turn(bool(tools)),
+            # tighter (env-tunable) so we don't pay for over-generation. The
+            # caller lifts the cap (output_cap) once tools have executed so a
+            # captured final answer (RT-02) is never truncated at the tool cap.
+            "max_tokens": int(output_cap) if output_cap else max_output_tokens_for_turn(bool(tools)),
         }
         if tools:
             kwargs["tools"] = tools
@@ -1274,6 +1321,7 @@ def _responses_create_with_resilience(
     prompt_cache_key: str,
     previous_response_id: Optional[str],
     input_items: Optional[List[Dict[str, Any]]],
+    output_cap: Optional[int] = None,
 ) -> Tuple[Any, str, List[Dict[str, Any]], List[Dict[str, Any]]]:
     is_continuation = bool(previous_response_id and input_items)
     if is_continuation:
@@ -1304,8 +1352,10 @@ def _responses_create_with_resilience(
             "store": True,
             "stream": False,
             # Tool-deciding turns only emit a short tool-call payload; cap them
-            # tighter (env-tunable) so we don't pay for over-generation.
-            "max_output_tokens": max_output_tokens_for_turn(bool(response_tools)),
+            # tighter (env-tunable) so we don't pay for over-generation. The
+            # caller lifts the cap (output_cap) once tools have executed so a
+            # captured final answer (RT-02) is never truncated at the tool cap.
+            "max_output_tokens": int(output_cap) if output_cap else max_output_tokens_for_turn(bool(response_tools)),
         }
         if response_tools:
             kwargs["tools"] = response_tools
@@ -1665,7 +1715,8 @@ def _execute_one_tool(
             "username": username or "",
             "session_id": session_id or "",
         })
-        cached = _TOOL_CACHE.get(cache_key)
+        with _TOOL_CACHE_LOCK:
+            cached = _TOOL_CACHE.get(cache_key)
         if cached and cached[0] > time.time():
             return ToolCallResult(
                 call_id=call_id,
@@ -1712,6 +1763,7 @@ def _execute_tool_calls_parallel(
     session_id: Optional[str],
     agent_scope: str = "employee",
     on_tool_event: Optional[ToolEventCallback] = None,
+    company_scope: Optional[str] = None,
 ) -> List[ToolCallResult]:
     """Execute tool calls with safe parallelization for read-only tools."""
     normalized = []
@@ -1741,9 +1793,12 @@ def _execute_tool_calls_parallel(
     serial_calls = [call for call in normalized if not is_parallel_safe(call["name"])]
     result_by_id: Dict[str, ToolCallResult] = {}
 
-    # Resolve the tenant cache scope once, here in the request thread, because
+    # Resolve the tenant cache scope once, here in the calling thread, because
     # Flask's request context is not visible inside ThreadPoolExecutor workers.
-    company_scope = _current_tenant_cache_scope()
+    # AG-02: når hele agent-loopet kører i en worker-tråd (live tool events)
+    # resolver kalderen scope i request-tråden og threader det ind i stedet.
+    if company_scope is None:
+        company_scope = _current_tenant_cache_scope()
 
     if len(parallel_calls) > 1:
         with ThreadPoolExecutor(max_workers=min(4, len(parallel_calls))) as pool:
@@ -1809,7 +1864,30 @@ def _messages_to_responses_input(messages: List[Dict[str, Any]]) -> List[Dict[st
         if role == "system":
             converted.append({"role": "developer", "content": msg.get("content") or ""})
         elif role in {"user", "assistant"}:
-            converted.append({"role": role, "content": msg.get("content") or ""})
+            content = msg.get("content") or ""
+            if content or role == "user":
+                converted.append({"role": role, "content": content})
+            # Assistant tool_calls survive _sanitize_tool_sequence now that the
+            # responses loop appends the parent message; emit matching
+            # function_call items so the function_call_output items below are
+            # never orphaned in a freshly built Responses request.
+            if role == "assistant":
+                for call in msg.get("tool_calls") or []:
+                    if not isinstance(call, dict) or not call.get("id"):
+                        continue
+                    fn = call.get("function") or {}
+                    args = fn.get("arguments")
+                    if not isinstance(args, str):
+                        try:
+                            args = json.dumps(args or {}, ensure_ascii=False, default=str)
+                        except Exception:
+                            args = "{}"
+                    converted.append({
+                        "type": "function_call",
+                        "call_id": call["id"],
+                        "name": fn.get("name") or "",
+                        "arguments": args,
+                    })
         elif role == "tool":
             converted.append({
                 "type": "function_call_output",
@@ -1831,6 +1909,19 @@ def _response_text(resp: Any) -> str:
             if value:
                 parts.append(value)
     return "".join(parts)
+
+
+def _response_truncated(resp: Any) -> bool:
+    """True when a Responses API result stopped before completing its output
+    (status='incomplete', typically reason='max_output_tokens'). A truncated
+    answer must NOT be captured as the final answer (RT-02) — fall back to the
+    deferred regeneration path instead."""
+    status = getattr(resp, "status", None)
+    if status is None and isinstance(resp, dict):
+        status = resp.get("status")
+    # Any incomplete status (max_output_tokens, content_filter, …) means the
+    # text is unreliable; treat it as truncated.
+    return status == "incomplete"
 
 
 def _response_tool_calls(resp: Any) -> List[Dict[str, Any]]:
@@ -1913,6 +2004,7 @@ def run_chat_agent(
     defer_final_stream: bool = False,
     agent_scope: str = "employee",
     on_tool_event: Optional[ToolEventCallback] = None,
+    company_scope: Optional[str] = None,
 ) -> AgentRunResult:
     model = model or main_model()
     start = time.time()
@@ -1939,6 +2031,10 @@ def run_chat_agent(
             source_messages=source_messages,
             tools=tools,
             tool_choice=current_tool_choice,
+            # RT-02: once a tool has executed, the next iteration may well be
+            # the final answer — lift the tight tool-turn cap so the captured
+            # answer is never truncated at 320 tokens.
+            output_cap=max_output_tokens() if (tool_results and capture_final_enabled()) else None,
         )
         iter_usage = _usage_to_dict(getattr(resp, "usage", None))
         usage = iter_usage or usage
@@ -1947,6 +2043,28 @@ def run_chat_agent(
         calls = getattr(msg, "tool_calls", None) or []
         if not calls:
             if defer_final_stream:
+                # RT-02 (AI_CAPTURE_FINAL, default on): the model already wrote
+                # the final answer in THIS completion — capture it instead of
+                # discarding it and paying a second full completion in the
+                # caller's deferred stream. Fall back to the old discard+
+                # regenerate path when the text is empty or was cut off.
+                captured = (msg.content or "") if capture_final_enabled() else ""
+                finish_reason = str(getattr(resp.choices[0], "finish_reason", "") or "")
+                truncated = finish_reason in ("length", "max_output_tokens")
+                if captured.strip() and not truncated:
+                    return AgentRunResult(
+                        text=captured,
+                        messages=source_messages,
+                        tool_results=tool_results,
+                        tool_messages=tool_messages,
+                        runtime="chat",
+                        usage=usage,
+                        latency_ms=int((time.time() - start) * 1000),
+                        needs_final_stream=False,
+                        stream_messages=list(source_messages),
+                        compaction_level=compaction_level,
+                        runtime_path=runtime_path,
+                    )
                 return AgentRunResult(
                     text="",
                     messages=source_messages,
@@ -1990,6 +2108,7 @@ def run_chat_agent(
             session_id=session_id,
             agent_scope=agent_scope,
             on_tool_event=on_tool_event,
+            company_scope=company_scope,
         )
         for result in executed:
             tool_results.append(result)
@@ -2054,6 +2173,7 @@ def run_responses_agent(
     defer_final_stream: bool = False,
     agent_scope: str = "employee",
     on_tool_event: Optional[ToolEventCallback] = None,
+    company_scope: Optional[str] = None,
 ) -> AgentRunResult:
     model = model or main_model()
     start = time.time()
@@ -2087,6 +2207,10 @@ def run_responses_agent(
             prompt_cache_key=prompt_cache_key,
             previous_response_id=previous_response_id,
             input_items=input_items,
+            # RT-02: once a tool has executed, the next iteration may well be
+            # the final answer — lift the tight tool-turn cap so the captured
+            # answer is never truncated at 320 tokens.
+            output_cap=max_output_tokens() if (tool_results and capture_final_enabled()) else None,
         )
         raw_response = resp
         response_id = getattr(resp, "id", "") or response_id
@@ -2097,6 +2221,28 @@ def run_responses_agent(
         calls = _response_tool_calls(resp)
         if not calls:
             if defer_final_stream:
+                # RT-02 (AI_CAPTURE_FINAL, default on): the model already wrote
+                # the final answer in THIS completion — capture it instead of
+                # discarding it and paying a second full completion in the
+                # caller's deferred stream. Fall back to the old discard+
+                # regenerate path when the text is empty or was cut off.
+                captured = _response_text(resp) if capture_final_enabled() else ""
+                if captured.strip() and not _response_truncated(resp):
+                    return AgentRunResult(
+                        text=captured,
+                        messages=source_messages,
+                        tool_results=tool_results,
+                        tool_messages=tool_messages,
+                        response_id=response_id,
+                        runtime="responses",
+                        usage=usage,
+                        latency_ms=int((time.time() - start) * 1000),
+                        raw_response=raw_response,
+                        needs_final_stream=False,
+                        stream_messages=list(source_messages),
+                        compaction_level=compaction_level,
+                        runtime_path=runtime_path,
+                    )
                 return AgentRunResult(
                     text="",
                     messages=source_messages,
@@ -2137,7 +2283,29 @@ def run_responses_agent(
             session_id=session_id,
             agent_scope=agent_scope,
             on_tool_event=on_tool_event,
+            company_scope=company_scope,
         )
+        # Append a synthetic chat-format assistant message carrying this turn's
+        # tool_calls BEFORE the tool outputs. Without it the tool messages are
+        # orphaned and _sanitize_tool_sequence drops them from stream_messages,
+        # so the deferred final stream never sees this turn's tool results (the
+        # chat path already does this via _assistant_message_from_chat).
+        source_messages.append({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": c["id"],
+                    "type": "function",
+                    "function": {
+                        "name": c["name"],
+                        "arguments": json.dumps(c["arguments"] or {}, ensure_ascii=False, default=str),
+                    },
+                }
+                for c in calls
+                if c.get("id")
+            ],
+        })
         outputs = []
         for call, result in zip(calls, executed):
             tool_results.append(result)
@@ -2211,6 +2379,7 @@ def run_agent_with_fallback(
     defer_final_stream: bool = True,
     agent_scope: str = "employee",
     on_tool_event: Optional[ToolEventCallback] = None,
+    company_scope: Optional[str] = None,
 ) -> AgentRunResult:
     if runtime_mode() == "chat":
         return run_chat_agent(
@@ -2225,6 +2394,7 @@ def run_agent_with_fallback(
             defer_final_stream=defer_final_stream,
             agent_scope=agent_scope,
             on_tool_event=on_tool_event,
+            company_scope=company_scope,
         )
     try:
         return run_responses_agent(
@@ -2240,6 +2410,7 @@ def run_agent_with_fallback(
             defer_final_stream=defer_final_stream,
             agent_scope=agent_scope,
             on_tool_event=on_tool_event,
+            company_scope=company_scope,
         )
     except Exception as exc:
         fallback = run_chat_agent(
@@ -2254,6 +2425,7 @@ def run_agent_with_fallback(
             defer_final_stream=defer_final_stream,
             agent_scope=agent_scope,
             on_tool_event=on_tool_event,
+            company_scope=company_scope,
         )
         fallback.fallback_reason = str(exc)[:1000]
         fallback.runtime_path = "chat-fallback"

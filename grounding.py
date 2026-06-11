@@ -103,6 +103,12 @@ _TITLECASE_RE = _re.compile(
     r"\s+){1,5}[A-ZÆØÅ][\wÆØÅæøå0-9&+/.-]{1,}\b"
 )
 
+# AG-03: keys/attributes that carry the model's tool-call INPUT (often echoing
+# the user's own words/numbers back). They must never enter the evidence
+# haystack — a user-typed budget echoed into catalog_search's max_price argument
+# would otherwise "support" the same price in the answer (argument-echo loophole).
+_ARGUMENT_KEYS = {"arguments", "args", "input", "tool_input", "parameters", "params"}
+
 # Words that, alone or as a 2-word phrase, are NOT a course title (sentence
 # openers, advisor persona words, etc.) — filters _TITLECASE_RE false positives.
 _TITLE_STOPWORDS = {
@@ -151,11 +157,63 @@ def _normalize_number(token: str) -> str:
         return ""
 
 
-def extract_factual_claims(text):
+def _known_title_keys(known_titles_fn):
+    """AG-03: resolve the optional catalog-title lookup into normalised keys.
+
+    `known_titles_fn` is an injected zero-arg callable returning an iterable of
+    canonical course titles (e.g. app1/agent.py passes a lookup over the
+    in-process rag index) — kept as a callable so this module stays
+    dependency-free for the eval harness. Guarded: any failure yields [] and
+    the caller degrades to the legacy TitleCase heuristic.
+    """
+    try:
+        if known_titles_fn is None:
+            return []
+        keys = []
+        for t in (known_titles_fn() or []):
+            key = _normalize(_coerce_text(t))
+            if key:
+                keys.append(key)
+        return keys
+    except Exception:
+        return []
+
+
+def _matches_known_title(cand, title_keys) -> bool:
+    """AG-03: does a TitleCase run fuzzy-match one of the catalog titles?
+
+    Substring either way, or >=75% of the candidate's significant words present
+    in a single title (min 2 hits) — mirrors _title_supported's tolerance so
+    minor model rephrasing still counts. Never raises.
+    """
+    try:
+        key = _normalize(cand)
+        if not key:
+            return False
+        words = [w for w in _re.findall(r"[\wæøå0-9]{3,}", key) if w not in _TITLE_STOPWORDS]
+        for tkey in title_keys:
+            if key == tkey or key in tkey or tkey in key:
+                return True
+            if words:
+                hits = sum(1 for w in words if w in tkey)
+                if hits >= max(2, int(round(0.75 * len(words)))):
+                    return True
+        return False
+    except Exception:
+        return False
+
+
+def extract_factual_claims(text, known_titles_fn=None):
     """Pull concrete, checkable claims out of an answer.
 
     Returns a dict with three deduped, order-preserving lists:
         {"titles": [...], "prices": [...], "dates": [...]}
+
+    AG-03: when `known_titles_fn` (an optional zero-arg callable returning the
+    catalog's course titles) is provided and yields a non-empty list, a bare
+    TitleCase run only counts as a course-title claim if it fuzzy-matches a
+    known title — ordinary Danish prose like "God Fornøjelse" stops flagging.
+    Quoted/bold title extraction is unchanged (high precision already).
 
     Guarded: any failure yields the empty shape. Pure function; reusable by the
     eval harness to enumerate what an answer asserts before checking support.
@@ -189,7 +247,10 @@ def extract_factual_claims(text):
             cand = (m.group("bold") or m.group("quote") or "").strip(" .,:;!?-")
             _add_title(cand, out["titles"], seen_t)
 
-        # Titles — TitleCase runs (lower precision, filtered by stopwords)
+        # Titles — TitleCase runs (lower precision, filtered by stopwords).
+        # AG-03: catalog-validated when a title lookup is injected — a run that
+        # matches no known course title is just capitalised prose, not a claim.
+        title_keys = _known_title_keys(known_titles_fn)
         for m in _TITLECASE_RE.finditer(s):
             cand = m.group(0).strip(" .,:;!?-")
             words = [w for w in cand.split() if w]
@@ -201,6 +262,8 @@ def extract_factual_claims(text):
                 continue
             # reject runs that start with a sentence-opener stopword and are short
             if len(words) == 2 and lowered[0] in _TITLE_STOPWORDS:
+                continue
+            if title_keys and not _matches_known_title(cand, title_keys):
                 continue
             _add_title(cand, out["titles"], seen_t)
 
@@ -229,6 +292,37 @@ def _add_title(cand, bucket, seen):
 
 # ── Chain-of-custody support check ──────────────────────────────────────────
 
+def _tool_item_to_text(item) -> str:
+    """Flatten ONE tool-result item to searchable evidence text.
+
+    AG-03: only the tool's OUTPUT counts as evidence — never the call
+    arguments. The arguments echo the model's (often user-supplied) input, so
+    letting them into the haystack would let a user-typed price "support" an
+    unverified claim. For dict shapes: an "output" key wins outright; otherwise
+    every argument-ish key (_ARGUMENT_KEYS) is dropped before coercion.
+    Never raises.
+    """
+    try:
+        if item is None:
+            return ""
+        if isinstance(item, str):
+            return item
+        if isinstance(item, dict):
+            if "output" in item:
+                return _coerce_text(item.get("output"))
+            return " ".join(
+                _coerce_text(v)
+                for k, v in item.items()
+                if str(k).lower() not in _ARGUMENT_KEYS
+            )
+        # ToolResult-like object: only .output, never .arguments
+        if hasattr(item, "output"):
+            return _coerce_text(getattr(item, "output", ""))
+        return _coerce_text(item)
+    except Exception:
+        return ""
+
+
 def _tool_results_to_text(tool_results) -> str:
     """Flatten heterogeneous tool-result shapes into one searchable haystack.
 
@@ -236,8 +330,9 @@ def _tool_results_to_text(tool_results) -> str:
       - a string (already-joined results / JSON text),
       - a dict (single tool result),
       - a list of dicts / strings,
-      - objects exposing a `.output` attribute (e.g. ToolResult), in which case
-        the `.output` (and `.name`/`.arguments` when present) are used.
+      - objects exposing a `.output` attribute (e.g. ToolCallResult), in which
+        case ONLY the `.output` is used — `.arguments` never enters the
+        haystack (AG-03 argument-echo loophole).
     Never raises.
     """
     try:
@@ -245,25 +340,11 @@ def _tool_results_to_text(tool_results) -> str:
             return ""
         if isinstance(tool_results, str):
             return tool_results
-        # Single object with .output (ToolResult-like)
-        if hasattr(tool_results, "output") and not isinstance(tool_results, (list, tuple, set, dict)):
-            return _coerce_text(getattr(tool_results, "output", ""))
-        parts = []
-        if isinstance(tool_results, dict):
-            iterable = [tool_results]
-        elif isinstance(tool_results, (list, tuple, set)):
+        if isinstance(tool_results, (list, tuple, set)):
             iterable = list(tool_results)
         else:
             iterable = [tool_results]
-        for item in iterable:
-            if item is None:
-                continue
-            if isinstance(item, str):
-                parts.append(item)
-            elif hasattr(item, "output"):
-                parts.append(_coerce_text(getattr(item, "output", "")))
-            else:
-                parts.append(_coerce_text(item))
+        parts = [_tool_item_to_text(item) for item in iterable]
         return " ".join(p for p in parts if p)
     except Exception:
         return ""
@@ -288,9 +369,12 @@ def _title_supported(title: str, hay: str) -> bool:
         return False
 
 
-def claims_supported(answer, tool_results):
+def claims_supported(answer, tool_results, known_titles_fn=None):
     """Chain-of-custody check: does every concrete claim in `answer` appear in
     the `tool_results` from the same turn?
+
+    `known_titles_fn` (optional, AG-03) is forwarded to extract_factual_claims
+    so bare TitleCase runs are catalog-validated before counting as claims.
 
     Returns:
         {
@@ -306,7 +390,7 @@ def claims_supported(answer, tool_results):
     """
     result = {"supported": [], "unsupported": [], "ok": True, "checked": 0}
     try:
-        claims = extract_factual_claims(answer)
+        claims = extract_factual_claims(answer, known_titles_fn=known_titles_fn)
         hay = _normalize(_tool_results_to_text(tool_results))
 
         # Prices/dates: compare on normalised digits / normalised text.
@@ -342,19 +426,29 @@ def claims_supported(answer, tool_results):
         return {"supported": [], "unsupported": [], "ok": True, "checked": 0}
 
 
-def grounding_disclaimer(answer, tool_results):
+def grounding_disclaimer(answer, tool_results, known_titles_fn=None):
     """Runtime circuit-breaker decision for the live agent loop.
 
     Runs the pure chain-of-custody check and decides whether the streamed answer
     needs a guarded disclaimer because it asserts a price/date/course-title that
     is NOT present in THIS turn's tool results (a likely hallucination).
 
+    AG-03 threshold: ONE unsupported price/date is a hard factual error and
+    trips the breaker immediately; titles only trip at >=2 because TitleCase
+    extraction is false-positive-prone — a single weak title mismatch must not
+    nag the user with a disclaimer. `known_titles_fn` (optional zero-arg
+    callable returning the catalog's course titles) further tightens title
+    extraction; app1/agent.py injects a rag-index lookup, the eval harness may
+    omit it.
+
     Returns:
         {
-          "violation":  bool,            # True when at least one unsupported
-                                         #   price/date/title claim was found
+          "violation":  bool,            # True when the threshold is crossed
           "disclaimer": str,             # the Danish note to append (or "")
-          "unsupported": [ {...}, ... ], # the offending claims (for telemetry)
+          "unsupported": [ {...}, ... ], # ALL unsupported claims (telemetry —
+                                         #   populated even below the threshold;
+                                         #   the eval scorer re-applies the
+                                         #   threshold on this list)
           "checked":    int,             # total claims examined
         }
 
@@ -364,15 +458,16 @@ def grounding_disclaimer(answer, tool_results):
     """
     safe = {"violation": False, "disclaimer": "", "unsupported": [], "checked": 0}
     try:
-        report = claims_supported(answer, tool_results)
+        report = claims_supported(answer, tool_results, known_titles_fn=known_titles_fn)
         unsupported = report.get("unsupported") or []
         # Only volatile, user-relevant facts should trip the breaker.
         flagged = [u for u in unsupported if u.get("type") in ("price", "date", "title")]
-        if not flagged:
-            return {**safe, "checked": int(report.get("checked") or 0)}
+        hard = [u for u in flagged if u.get("type") in ("price", "date")]
+        soft_titles = [u for u in flagged if u.get("type") == "title"]
+        violation = bool(hard) or len(soft_titles) >= 2
         return {
-            "violation": True,
-            "disclaimer": GROUNDING_DISCLAIMER_DA,
+            "violation": violation,
+            "disclaimer": GROUNDING_DISCLAIMER_DA if violation else "",
             "unsupported": flagged,
             "checked": int(report.get("checked") or 0),
         }

@@ -153,28 +153,41 @@ def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], O
     latency: Optional[int] = None
     tokens: Optional[Dict[str, int]] = None
     tool_jsons: List[str] = []
+
+    # Tool names + raw tool-result evidence from the agent's own debug log.
+    # NOTE: debug_logs lives in the SQLite ai_memory.db (app1/memory_store.py),
+    # NOT MySQL — querying MySQL here always returned nothing (table absent),
+    # which made the eval false-report tool:F for every non-card tool. Read the
+    # real source — and do it OUTSIDE the MySQL block so a missing MySQLdb
+    # never wipes the tool/evidence telemetry too.
+    try:
+        import app1.memory_store as _mem
+        entries = _mem.get_debug_logs_for_session(session_id) or []
+        names = []
+        for e in entries:
+            step = e.get("step")
+            d = e.get("data")
+            if step == "tool_call":
+                if isinstance(d, dict) and d.get("tool"):
+                    names.append(d["tool"])
+            elif step == "tool_result":
+                # Raw tool-result payload → grounding evidence (tool_jsons).
+                if isinstance(d, (dict, list)):
+                    try:
+                        tool_jsons.append(json.dumps(d, ensure_ascii=False, default=str))
+                    except Exception:
+                        tool_jsons.append(str(d))
+                elif isinstance(d, str) and d.strip():
+                    tool_jsons.append(d)
+        tools = list(dict.fromkeys(names)) or None  # de-dup, keep order
+    except Exception:
+        tools = None
+
     try:
         with app.app_context():
             import MySQLdb
             conn = app.mysql.connection
             cur = conn.cursor(MySQLdb.cursors.DictCursor)
-
-            # Tool names from the agent's own debug log. NOTE: debug_logs lives in
-            # the SQLite ai_memory.db (app1/memory_store.py), NOT MySQL — querying
-            # MySQL here always returned nothing (table absent), which made the
-            # eval false-report tool:F for every non-card tool. Read the real source.
-            try:
-                import app1.memory_store as _mem
-                entries = _mem.get_debug_logs_for_session(session_id) or []
-                names = []
-                for e in entries:
-                    if e.get("step") == "tool_call":
-                        d = e.get("data") or {}
-                        if isinstance(d, dict) and d.get("tool"):
-                            names.append(d["tool"])
-                tools = list(dict.fromkeys(names)) or None  # de-dup, keep order
-            except Exception:
-                tools = None
 
             # Latency + tokens from ai_agent_runs (the agentic-loop telemetry).
             try:
@@ -323,6 +336,7 @@ def aggregate(per_case: List[Dict[str, Any]]) -> Dict[str, Any]:
     metric_den = {k: 0 for k in S.METRIC_KEYS}
     judge_scores: List[float] = []
     latencies: List[float] = []
+    retrieval_precisions: List[float] = []
     total_tokens = 0
     cases_with_tokens = 0
     passed = 0
@@ -341,6 +355,8 @@ def aggregate(per_case: List[Dict[str, Any]]) -> Dict[str, Any]:
                 metric_den[k] += 1
                 if r.get("score") == S.PASS:
                     metric_num[k] += 1
+                if k == "retrieval" and isinstance(r.get("precision"), (int, float)):
+                    retrieval_precisions.append(float(r["precision"]))
         lat = pc["collected"].get("latency_ms")
         if isinstance(lat, (int, float)):
             latencies.append(float(lat))
@@ -353,6 +369,12 @@ def aggregate(per_case: List[Dict[str, Any]]) -> Dict[str, Any]:
         "tool_selection_pct": _pct(metric_num["tool_selection"], metric_den["tool_selection"]),
         "refusal_pct": _pct(metric_num["refusal"], metric_den["refusal"]),
         "retrieval_pct": _pct(metric_num["retrieval"], metric_den["retrieval"]),
+        # Mean per-case card precision (matched/len(cards)) across applicable
+        # retrieval cases — finer-grained than the binary retrieval_pct.
+        "retrieval_precision_pct": (
+            round(100.0 * sum(retrieval_precisions) / len(retrieval_precisions), 1)
+            if retrieval_precisions else None
+        ),
         "grounding_pct": _pct(metric_num["grounding"], metric_den["grounding"]),
         "profile_event_pct": _pct(metric_num["profile_event"], metric_den["profile_event"]),
         "order_confirmation_pct": _pct(metric_num["order_confirmation"], metric_den["order_confirmation"]),
@@ -376,6 +398,7 @@ _METRIC_LABELS = [
     ("tool_selection_pct", "Tool selection"),
     ("refusal_pct", "Refusal/redirect"),
     ("retrieval_pct", "Retrieval relevance"),
+    ("retrieval_precision_pct", "Retrieval precision"),
     ("grounding_pct", "Grounding"),
     ("profile_event_pct", "Profile events"),
     ("order_confirmation_pct", "Order confirmation"),
@@ -446,8 +469,8 @@ def _short(metric_key: str) -> str:
 
 # Metrics that gate (higher = better). Latency is reported but not gated by default.
 _GATED_METRICS = (
-    "tool_selection_pct", "refusal_pct", "retrieval_pct", "grounding_pct",
-    "profile_event_pct", "order_confirmation_pct", "overall_pass_pct",
+    "tool_selection_pct", "refusal_pct", "retrieval_pct", "retrieval_precision_pct",
+    "grounding_pct", "profile_event_pct", "order_confirmation_pct", "overall_pass_pct",
 )
 
 

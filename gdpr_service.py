@@ -34,6 +34,8 @@ Column names below were confirmed against the live schema:
   - user_skills / user_experience / user_education / user_completed_courses /
     user_profile_summary / user_conversations / conversation_history /
     user_learning_goals  -> keyed by `username`
+  - user_certifications / user_languages / user_portfolio_links /
+    user_memories (2026-06 profile tables + AI-dossier) -> keyed by `username`
   - notifications        -> `user_id` column HOLDS the username (not an int id)
   - course_orders        -> `username`, `user_email`, `user_name`, `user_phone`
   - chatbot_interactions -> `username`
@@ -153,6 +155,13 @@ _EXPORT_QUERIES = [
     ("user_conversations", "SELECT * FROM user_conversations WHERE username=%s"),
     ("conversation_history", "SELECT * FROM conversation_history WHERE username=%s"),
     ("user_learning_goals", "SELECT * FROM user_learning_goals WHERE username=%s"),
+    # 2026-06 profile tables (certificeringer, sprog, portfolio-links).
+    ("user_certifications", "SELECT * FROM user_certifications WHERE username=%s"),
+    ("user_languages", "SELECT * FROM user_languages WHERE username=%s"),
+    ("user_portfolio_links", "SELECT * FROM user_portfolio_links WHERE username=%s"),
+    # AI'ens fritekst-dossier (præferencer, livskontekst, personlighed) — det
+    # mest følsomme lager; SKAL med i både eksport og sletning.
+    ("user_memories", "SELECT * FROM user_memories WHERE username=%s"),
     # notifications.user_id HOLDS the username (platform convention).
     ("notifications", "SELECT * FROM notifications WHERE user_id=%s"),
     ("course_orders", "SELECT * FROM course_orders WHERE username=%s"),
@@ -310,6 +319,12 @@ _DELETE_TABLES = [
     ("user_conversations", "username"),
     ("conversation_history", "username"),
     ("user_learning_goals", "username"),
+    # 2026-06 profile tables (certificeringer, sprog, portfolio-links).
+    ("user_certifications", "username"),
+    ("user_languages", "username"),
+    ("user_portfolio_links", "username"),
+    # AI'ens fritekst-dossier — ren profil, ingen regnskabs-/revisionsværdi.
+    ("user_memories", "username"),
     # notifications.user_id holds the username.
     ("notifications", "user_id"),
 ]

@@ -16,6 +16,7 @@ Contract:
   * a missing conversation                  -> 404.
 """
 
+import json
 import os
 import sys
 import unittest
@@ -177,6 +178,35 @@ class TurnArtifactHelpersTest(unittest.TestCase):
         asst = [m for m in persisted if m["role"] == "assistant"]
         self.assertEqual(asst[0]["_cards"][0]["title"], "A")
         self.assertEqual(asst[1]["_cards"][0]["title"], "B")
+
+    def test_seed_then_save_preserves_across_workers(self):
+        """The cards-don't-reappear regression: a worker that never handled an
+        earlier turn must still preserve that turn's cards when it saves the full
+        transcript after a new turn. Seeding from the persisted transcript fixes
+        it. Simulates worker hand-off without any in-process carry-over."""
+        sid = self._sid
+        # --- Worker 1: turn 1 produces a card, persisted with _cards. ---
+        agent._record_turn_artifacts(sid, "svar 1", [{"title": "Kursus 1", "meta": []}],
+                                     [{"type": "tool_call", "name": "catalog_search"}])
+        persisted_t1 = agent._messages_with_artifacts(
+            sid, [{"role": "user", "content": "q1"}, {"role": "assistant", "content": "svar 1"}])
+        # JSON round-trip, exactly like save_conversation_history -> load.
+        stored = json.loads(json.dumps(persisted_t1, ensure_ascii=False))
+
+        # --- Worker 2: fresh process, no in-memory artifacts/memory. ---
+        agent.SHOWN_ARTIFACTS.pop(sid, None)
+        agent.seed_artifacts_from_messages(sid, stored)
+        self.assertIn("svar 1", agent.SHOWN_ARTIFACTS.get(sid, {}))
+
+        # Worker 2 handles turn 2; CHAT_MEMORY is the clean (stripped) restore.
+        agent._record_turn_artifacts(sid, "svar 2", [{"title": "Kursus 2", "meta": []}], [])
+        clean = [{"role": m["role"], "content": m["content"]} for m in stored]
+        clean += [{"role": "user", "content": "q2"}, {"role": "assistant", "content": "svar 2"}]
+        persisted_t2 = agent._messages_with_artifacts(sid, clean)
+        asst = [m for m in persisted_t2 if m["role"] == "assistant"]
+        # BOTH turns keep their cards — turn 1's are not lost by the overwrite.
+        self.assertEqual(asst[0]["_cards"][0]["title"], "Kursus 1")
+        self.assertEqual(asst[1]["_cards"][0]["title"], "Kursus 2")
 
 
 if __name__ == "__main__":

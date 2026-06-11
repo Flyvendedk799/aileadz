@@ -1156,16 +1156,20 @@ def feedback():
 @app1_bp.route("/new_session", methods=["POST"])
 def new_session():
     """Start a fresh conversation — saves current to history, then clears."""
-    from app1.agent import CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES, REJECTED_SEARCHES
+    from app1.agent import (CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES,
+                            REJECTED_SEARCHES, SHOWN_ARTIFACTS, _messages_with_artifacts)
     old_sid = session.get("session_id")
     logged_in_user = session.get("user")
 
-    # Save current conversation to history before clearing
+    # Save current conversation to history before clearing (with UI artifacts so
+    # the saved transcript can later replay its cards/chips on resume).
     if logged_in_user and old_sid and old_sid in CHAT_MEMORY:
         try:
             from app1.user_profile_db import save_conversation_history, ensure_tables
             ensure_tables()
-            save_conversation_history(logged_in_user, old_sid, CHAT_MEMORY[old_sid])
+            save_conversation_history(
+                logged_in_user, old_sid,
+                _messages_with_artifacts(old_sid, CHAT_MEMORY[old_sid]))
         except Exception as e:
             print(f"[Save History Error] {e}")
 
@@ -1175,6 +1179,7 @@ def new_session():
         SHOWN_PRODUCTS.pop(old_sid, None)
         CONVERSATION_STAGES.pop(old_sid, None)
         REJECTED_SEARCHES.pop(old_sid, None)
+        SHOWN_ARTIFACTS.pop(old_sid, None)
 
     # Generate new session ID
     new_sid = str(uuid.uuid4())
@@ -1273,7 +1278,8 @@ def resume_conversation_endpoint(conv_id):
     conversation on the next turn (see agent.py load_conversation restore), so
     we drop any stale in-memory state for that session id here.
     """
-    from app1.agent import CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES, REJECTED_SEARCHES
+    from app1.agent import (CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES,
+                            REJECTED_SEARCHES, SHOWN_ARTIFACTS)
     logged_in_user = session.get("user")
     if not logged_in_user:
         return jsonify({"status": "error"}), 401
@@ -1309,11 +1315,25 @@ def resume_conversation_endpoint(conv_id):
             SHOWN_PRODUCTS.pop(old_sid, None)
             CONVERSATION_STAGES.pop(old_sid, None)
             REJECTED_SEARCHES.pop(old_sid, None)
+            SHOWN_ARTIFACTS.pop(old_sid, None)
         CHAT_MEMORY.pop(target_sid, None)
         SHOWN_PRODUCTS.pop(target_sid, None)
         CONVERSATION_STAGES.pop(target_sid, None)
         REJECTED_SEARCHES.pop(target_sid, None)
+        SHOWN_ARTIFACTS.pop(target_sid, None)
         session["session_id"] = target_sid
+
+        # Re-seed the artifact cache from the restored transcript so that when the
+        # user sends a NEW message in this conversation, the next save still
+        # preserves the earlier turns' cards/chips (save rebuilds full history and
+        # reattaches from this cache — without seeding, old turns would lose them).
+        seeded = {}
+        for m in messages:
+            if m.get("role") == "assistant" and (m.get("_cards") or m.get("_tools")):
+                seeded[(m.get("content") or "").strip()] = {
+                    "cards": m.get("_cards") or [], "tools": m.get("_tools") or []}
+        if seeded:
+            SHOWN_ARTIFACTS[target_sid] = seeded
 
         return jsonify({"status": "ok", "session_id": target_sid,
                         "title": conv.get("title"), "messages": messages})

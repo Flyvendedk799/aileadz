@@ -1118,10 +1118,16 @@
         addUser(content);
       } else if (role === "assistant") {
         const body = addBot();
+        // Replay the same rich UI the user saw live: tool chips at the top, then
+        // the answer text, then course cards (matching the live stream order).
+        if (Array.isArray(m._tools) && m._tools.length) {
+          m._tools.forEach((t) => renderToolCall(body, t));
+        }
         const el = document.createElement("div");
         el.className = "md";
         el.innerHTML = md(content);
         body.appendChild(el);
+        if (Array.isArray(m._cards) && m._cards.length) addCourses(body, m._cards);
       }
     });
     down(false, true);

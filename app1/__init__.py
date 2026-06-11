@@ -1262,6 +1262,72 @@ def load_conversation_history_endpoint(conv_id):
         return jsonify({"status": "error"}), 500
 
 
+@app1_bp.route("/conversations/<int:conv_id>/resume", methods=["POST"])
+def resume_conversation_endpoint(conv_id):
+    """Reopen a past conversation: make it the active session so the next /ask
+    continues it, and return its messages for the frontend to render.
+
+    Mirrors new_session() in reverse — instead of clearing the active
+    conversation, it promotes the selected history row to active. The agent
+    rebuilds CHAT_MEMORY for the (restored) session id from the active
+    conversation on the next turn (see agent.py load_conversation restore), so
+    we drop any stale in-memory state for that session id here.
+    """
+    from app1.agent import CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES, REJECTED_SEARCHES
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error"}), 401
+    try:
+        from app1.user_profile_db import (load_conversation_by_id, save_conversation,
+                                           ensure_tables)
+        ensure_tables()
+        conv = load_conversation_by_id(logged_in_user, conv_id)
+        if not conv:
+            return jsonify({"status": "not_found"}), 404
+
+        messages = conv.get("messages") or []
+        # A stored conversation always has a session_id; fall back to a fresh one
+        # so the restore path still has a valid key if the column was ever empty.
+        target_sid = conv.get("session_id") or str(uuid.uuid4())
+
+        # Promote this conversation to the user's active conversation so the
+        # agent's restore path (load_conversation) rehydrates it next turn.
+        try:
+            save_conversation(logged_in_user, target_sid, messages)
+        except Exception as e:
+            print(f"[Resume Save Active Error] {e}")
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
+
+        # Point the session at the restored conversation and drop any stale
+        # in-memory state so the next /ask rebuilds memory from the active row.
+        old_sid = session.get("session_id")
+        if old_sid and old_sid != target_sid:
+            CHAT_MEMORY.pop(old_sid, None)
+            SHOWN_PRODUCTS.pop(old_sid, None)
+            CONVERSATION_STAGES.pop(old_sid, None)
+            REJECTED_SEARCHES.pop(old_sid, None)
+        CHAT_MEMORY.pop(target_sid, None)
+        SHOWN_PRODUCTS.pop(target_sid, None)
+        CONVERSATION_STAGES.pop(target_sid, None)
+        REJECTED_SEARCHES.pop(target_sid, None)
+        session["session_id"] = target_sid
+
+        return jsonify({"status": "ok", "session_id": target_sid,
+                        "title": conv.get("title"), "messages": messages})
+    except Exception as e:
+        import traceback
+        print(f"[Resume Conversation Error] {e}")
+        traceback.print_exc()
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({"status": "error"}), 500
+
+
 @app1_bp.route("/conversations/<int:conv_id>", methods=["DELETE"])
 def delete_conversation_endpoint(conv_id):
     """Delete a conversation from history."""

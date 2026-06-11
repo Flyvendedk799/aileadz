@@ -101,6 +101,13 @@ CHAT_MEMORY = {}
 SHOWN_PRODUCTS = {}  # {session_id: {"products": [...], "last_active": timestamp}}
 USER_PROFILES = {}   # {session_id: {"summary": str, "last_updated": float}}
 CONVERSATION_STAGES = {}  # Phase 3: {session_id: "greeting"|"needs_discovery"|...}
+# Per-turn UI artifacts (course cards + tool chips) so a resumed conversation can
+# replay the same rich UI the user originally saw — keyed by assistant answer text
+# (prune-safe; the text survives summarisation/ordinal shifts). Reattached onto a
+# COPY of the messages at persistence time; the live CHAT_MEMORY dicts stay clean
+# so these keys never reach the OpenAI API. Bounded per session.
+SHOWN_ARTIFACTS = {}  # {session_id: {answer_text: {"cards": [...], "tools": [...]}}}
+_SHOWN_ARTIFACTS_MAX = 40  # cap distinct assistant turns kept per session
 
 # 6.3: Anonymous profile cache (in-memory, backed by SQLite)
 ANONYMOUS_PROFILES = {}  # {browser_token: profile_dict}
@@ -959,6 +966,46 @@ def _collect_turn_evidence(tool_results, buffered_course_cards):
     return evidence
 
 
+def _record_turn_artifacts(sid, answer_text, cards, tools):
+    """Remember the course cards + tool chips shown for one assistant turn so a
+    resumed conversation can replay them. Keyed by the (stripped) answer text,
+    which is stable across pruning. Bounded; never raises."""
+    key = (answer_text or "").strip()
+    if not key or (not cards and not tools):
+        return
+    try:
+        store = SHOWN_ARTIFACTS.setdefault(sid, {})
+        store[key] = {"cards": cards or [], "tools": tools or []}
+        if len(store) > _SHOWN_ARTIFACTS_MAX:
+            # Drop oldest insertions (dicts preserve insertion order).
+            for old in list(store.keys())[: len(store) - _SHOWN_ARTIFACTS_MAX]:
+                store.pop(old, None)
+    except Exception:
+        pass
+
+
+def _messages_with_artifacts(sid, messages):
+    """Return a COPY of messages with each assistant turn's stored UI artifacts
+    (`_cards`/`_tools`) reattached, for persistence only. The live CHAT_MEMORY
+    dicts are never mutated, so these keys never reach the OpenAI API. Falls back
+    to the original list if there is nothing to attach."""
+    store = SHOWN_ARTIFACTS.get(sid)
+    if not store:
+        return messages
+    out = []
+    for m in messages:
+        if m.get("role") == "assistant":
+            art = store.get((m.get("content") or "").strip())
+            if art and (art.get("cards") or art.get("tools")):
+                m = dict(m)
+                if art.get("cards"):
+                    m["_cards"] = art["cards"]
+                if art.get("tools"):
+                    m["_tools"] = art["tools"]
+        out.append(m)
+    return out
+
+
 def _build_learning_context_message(logged_in_user, company_id, sid, supplier_agreements=None):
     """Inject company learning context without a tool call."""
     if not logged_in_user or not company_id:
@@ -1467,10 +1514,13 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 from app1.user_profile_db import load_conversation
                 saved_conv = load_conversation(logged_in_user)
                 if saved_conv and saved_conv.get("messages"):
-                    # Re-inject saved user/assistant messages into memory
+                    # Re-inject saved user/assistant messages into memory. Rebuild a
+                    # clean {role, content} dict so any persisted UI-only keys
+                    # (_cards/_tools, attached for resume rendering) never reach the
+                    # OpenAI API.
                     for msg in saved_conv["messages"]:
                         if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                            CHAT_MEMORY[sid].append(msg)
+                            CHAT_MEMORY[sid].append({"role": msg["role"], "content": msg["content"]})
             except Exception as e:
                 print(f"[Conversation Restore Error] {e}")
                 try:
@@ -2377,6 +2427,21 @@ def handle_agentic_ask(user_query, session, mode="default"):
 
             messages.append({"role": "assistant", "content": _strip_suggestions_tag(full_text)})
 
+            # Remember this turn's rich UI (course cards + tool chips) keyed by the
+            # answer text, so a resumed conversation replays the same cards/chips
+            # the user saw — stored history only keeps text otherwise.
+            try:
+                _turn_cards = [c for grp in buffered_course_cards for c in (grp or [])]
+                _turn_tools = [
+                    build_tool_call_event(_tr, agent_scope="employee")
+                    for _tr in (runtime_result.tool_results or [])
+                ]
+                _record_turn_artifacts(
+                    sid, _strip_suggestions_tag(full_text), _turn_cards, _turn_tools
+                )
+            except Exception as _art_err:
+                print(f"[Turn Artifacts Error] {_art_err}")
+
             # ── Stream profile events AFTER text (natural reading order) ──
             for evt in buffered_profile_events:
                 yield f"data: {evt}\n\n"
@@ -2568,8 +2633,11 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     from app1.user_profile_db import save_conversation, save_conversation_history, ensure_tables
                     refresh_flask_mysql_connection(getattr(current_app, "mysql", None))
                     ensure_tables()
-                    save_conversation(logged_in_user, sid, messages)
-                    save_conversation_history(logged_in_user, sid, messages)
+                    # Persist with each assistant turn's UI artifacts reattached on a
+                    # copy; CHAT_MEMORY stays clean (artifact keys never hit the API).
+                    _persist_messages = _messages_with_artifacts(sid, messages)
+                    save_conversation(logged_in_user, sid, _persist_messages)
+                    save_conversation_history(logged_in_user, sid, _persist_messages)
                 except Exception as e:
                     print(f"[Conversation Save Error] {e}")
                     try:

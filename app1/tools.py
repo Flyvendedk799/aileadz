@@ -32,6 +32,68 @@ def _normalize_price(price_raw):
         return "Pris på forespørgsel"
 
 
+def _date_filter_enabled():
+    """Env gate for TL-02 expired-date filtering (AI_FILTER_PAST_DATES, default on).
+    Set AI_FILTER_PAST_DATES=0 to fall back to the old unfiltered behavior."""
+    return _os.environ.get("AI_FILTER_PAST_DATES", "1").strip().lower() not in ("0", "false", "no")
+
+
+def _hard_filter_enabled():
+    """Env gate for TL-03: carry hard filters into catalog_search's RAG fallback
+    + progressive filter relaxation (AI_SEARCH_HARD_FILTERS, default on).
+    Set AI_SEARCH_HARD_FILTERS=0 to fall back to the old behavior."""
+    return _os.environ.get("AI_SEARCH_HARD_FILTERS", "1").strip().lower() not in ("0", "false", "no")
+
+
+def _filter_upcoming_date_strings(dates):
+    """TL-02: Drop date strings that parse strictly before today (parse_danish_date).
+
+    Unparseable strings are KEPT — en ukendt dato er ikke det samme som en overstået.
+    Year-less Danish dates parse with the current year (existing parse_danish_date
+    semantics); no year-rolling heuristics here.
+
+    Returns (kept_dates, no_upcoming_dates) where no_upcoming_dates is True when
+    the input had dates but every single one was a parseable, past date — so the
+    caller can tell the model 'ingen kommende datoer — kontakt udbyderen'.
+    """
+    dates = [d for d in (dates or []) if d and str(d).strip()]
+    if not _date_filter_enabled():
+        return dates, False
+    from app1 import parse_danish_date  # lazy: app1/__init__ imports at runtime only
+    today = datetime.date.today()
+    kept = []
+    for raw in dates:
+        dt = parse_danish_date(str(raw))
+        if dt is not None and dt < today:
+            continue  # udløbet dato — må aldrig vises som kommende
+        kept.append(raw)
+    return kept, bool(dates) and not kept
+
+
+def _upcoming_dates(variants):
+    """TL-02: Variant dates (option2) with strictly-past dates filtered out.
+    Returns (dates, no_upcoming_dates) — see _filter_upcoming_date_strings."""
+    return _filter_upcoming_date_strings(
+        [v.get("option2") for v in (variants or []) if isinstance(v, dict) and v.get("option2")]
+    )
+
+
+def _date_data_stale(product, max_age_days=90):
+    """TL-02 (optional): True when the product's catalog data (updated_at /
+    published_at) is older than ~90 days, so the model hedges about date freshness.
+    Conservative: missing/unparseable timestamp -> not stale (we don't know)."""
+    raw = product.get("raw") if isinstance(product.get("raw"), dict) else product
+    ts = raw.get("updated_at") or raw.get("published_at")
+    if not ts:
+        return False
+    try:
+        dt = datetime.datetime.fromisoformat(str(ts).replace("Z", "+00:00"))
+    except (ValueError, TypeError):
+        return False
+    now = datetime.datetime.now(dt.tzinfo) if dt.tzinfo else datetime.datetime.now()
+    return (now - dt).days > max_age_days
+
+
 # Tags to exclude from compact results (too generic or region-based)
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
 _EXCLUDED_TAGS = {"kursus", "kurser", "uddannelse", "training", "course", "denmark", "danmark"}
@@ -161,25 +223,19 @@ def _extract_compact_fields(product):
     """Extract enriched compact fields from a product."""
     variants = product.get("variants", [])
     raw_price = variants[0].get("price") if variants else None
-    price = _normalize_price(raw_price)
 
-    # Apply supplier agreement discount if available
+    # Apply supplier agreement discount if available (shared helper: price_view)
     vendor = product.get("vendor", "")
-    discounted, original, agreement_name = apply_discount(raw_price, vendor)
-    discount_info = None
-    if discounted is not None and original is not None:
-        discount_info = {
-            "original_price": _normalize_price(original),
-            "discounted_price": _normalize_price(discounted),
-            "agreement_name": agreement_name,
-            "savings": _normalize_price(original - discounted),
-        }
-        price = _normalize_price(discounted)  # Show discounted price as main price
+    pv = price_view(raw_price, vendor)
+    price = pv["price"]  # Discounted price shown as main price when an agreement applies
+    discount_info = pv["discount"]
 
     raw_locations = [v.get("option1") for v in variants if v.get("option1")]
     cities = list(dict.fromkeys(extract_city_name(loc) for loc in raw_locations if extract_city_name(loc)))[:3]
 
-    dates = [v.get("option2") for v in variants if v.get("option2")][:4]
+    # TL-02: never surface expired dates as bookable
+    dates, no_upcoming_dates = _upcoming_dates(variants)
+    dates = dates[:4]
     product_type = product.get("product_type", "")
 
     all_tags = product.get("tags", [])
@@ -212,6 +268,8 @@ def _extract_compact_fields(product):
     }
     if discount_info:
         result["discount"] = discount_info
+    if no_upcoming_dates:
+        result["no_upcoming_dates"] = True
 
     # 4.2: Include structured metadata if available
     meta = product.get("structured_metadata", {})
@@ -819,6 +877,35 @@ def apply_discount(price_raw, vendor_name):
         return None, None, None
 
 
+def price_view(raw_price, vendor_name):
+    """Single price-resolution helper so search, details and comparison all quote
+    the same negotiated price. Applies the per-turn supplier agreement (set via
+    set_search_context) when one exists for the vendor.
+
+    Returns a dict:
+      price    -> display string (discounted when an agreement applies)
+      amount   -> numeric price actually quoted (None when unparseable)
+      discount -> None, or {original_price, discounted_price, savings, agreement_name}
+    """
+    discounted, original, agreement_name = apply_discount(raw_price, vendor_name)
+    if discounted is None or original is None:
+        try:
+            amount = float(raw_price) if raw_price not in (None, "") else None
+        except (ValueError, TypeError):
+            amount = None
+        return {"price": _normalize_price(raw_price), "amount": amount, "discount": None}
+    return {
+        "price": _normalize_price(discounted),
+        "amount": discounted,
+        "discount": {
+            "original_price": _normalize_price(original),
+            "discounted_price": _normalize_price(discounted),
+            "agreement_name": agreement_name,
+            "savings": _normalize_price(original - discounted),
+        },
+    }
+
+
 def _filter_blocked_vendors(products):
     """Remove products from deactivated vendors."""
     if not _current_blocked_vendors:
@@ -882,7 +969,9 @@ def _catalog_legacy_raw(product):
 
 
 def _catalog_compact_fields(product):
-    return {
+    # TL-02: never surface expired dates as bookable
+    dates, no_upcoming_dates = _filter_upcoming_date_strings(product.get("dates", []))
+    fields = {
         "title": product.get("title"),
         "handle": product.get("handle"),
         "vendor": product.get("vendor"),
@@ -895,11 +984,21 @@ def _catalog_compact_fields(product):
         "format": product.get("format"),
         "summary": _truncate_summary(product.get("summary") or product.get("description_excerpt")),
         "locations": product.get("locations", [])[:5],
-        "dates": product.get("dates", [])[:5],
+        "dates": dates[:5],
         "categories": _catalog_category_urls(product),
         "image_url": product.get("image_url"),
         "source": product.get("source"),
     }
+    # Apply supplier agreement discount so catalog results quote the same
+    # negotiated price as the legacy search path (shared helper: price_view).
+    pv = price_view(product.get("price_min"), product.get("vendor"))
+    if pv["discount"]:
+        fields["price"] = pv["price"]
+        fields["price_min"] = pv["amount"]
+        fields["discount"] = pv["discount"]
+    if no_upcoming_dates:
+        fields["no_upcoming_dates"] = True
+    return fields
 
 
 def _resolve_category_slug(value):
@@ -984,6 +1083,71 @@ def _demote_completed_results(compact, completed_titles, completed_handles):
         else:
             fresh.append(r)
     return fresh + done
+
+
+def _mark_previously_shown(compact):
+    """Mark re-included/re-shown results so the model can address it (matches
+    the legacy _execute_search_courses behaviour). Mutates in place, returns
+    the list for chaining."""
+    for cr in compact:
+        if cr.get("handle") in _current_shown_handles:
+            cr["previously_shown"] = True
+    return compact
+
+
+def _product_passes_hard_filters(product, *, price_min=None, price_max=None, location="", fmt=""):
+    """TL-03: the same hard-filter predicates _execute_filter_courses uses
+    (variant price, _location_matches, format/product_type substring), applied
+    to a single raw/augmented product. Used to carry catalog_search's hard
+    constraints into the RAG fallback, som ellers ignorerer dem."""
+    variants = product.get("variants", []) or []
+
+    if location:
+        variant_locs = [v.get("option1", "") for v in variants if isinstance(v, dict) and v.get("option1")]
+        if not any(_location_matches(location, vloc) for vloc in variant_locs):
+            return False
+
+    if price_min is not None or price_max is not None:
+        try:
+            price_val = float(variants[0].get("price", 0)) if variants else 0
+        except (ValueError, TypeError):
+            price_val = 0
+        if price_min is not None and price_val < float(price_min):
+            return False
+        if price_max is not None and price_val > float(price_max):
+            return False
+
+    if fmt:
+        pt = (product.get("product_type") or product.get("format") or "").lower()
+        if fmt.lower().strip() not in pt:
+            return False
+
+    return True
+
+
+def _apply_hard_filters(products, *, price_min=None, price_max=None, location="", fmt=""):
+    """TL-03: post-filter a RAG result set with catalog_search's hard constraints.
+
+    Returns (filtered_products, active_filters) where active_filters names the
+    constraints that were in play — used to populate relaxed_filters when the
+    constrained set is empty and the caller honestly falls back to the
+    unfiltered results (filters_relaxed: true)."""
+    active = []
+    if price_min is not None:
+        active.append("price_min")
+    if price_max is not None:
+        active.append("price_max")
+    if location:
+        active.append("location")
+    if fmt:
+        active.append("format")
+    if not active:
+        return products, []
+    filtered = [
+        p for p in products
+        if _product_passes_hard_filters(p, price_min=price_min, price_max=price_max, location=location, fmt=fmt)
+    ]
+    return filtered, active
 
 
 _PROFILE_GOAL_STOPWORDS = {
@@ -1138,6 +1302,29 @@ def _execute_catalog_search(args, username=None):
         if isinstance(detailed, dict) and "error" not in detailed:
             confidence = detailed.get("confidence", confidence)
             rag_products = _filter_blocked_vendors(detailed.get("products", []))
+            # TL-03: carry the hard constraints (pris/lokation/format) into the
+            # RAG fallback — semantisk søgning kender ikke filtrene, så uden
+            # dette kan "under 5.000 kr i Aarhus" returnere kurser over budget
+            # i den forkerte by. Tømmer filtrene resultatsættet, falder vi
+            # ærligt tilbage til de ufiltrerede resultater med
+            # filters_relaxed: true + relaxed_filters, så modellen kan
+            # fortælle præcist hvad der blev løsnet (samme flag-familie som
+            # retrieval-lagets below_threshold).
+            filters_relaxed = False
+            relaxed_filters = []
+            if rag_products and _hard_filter_enabled():
+                constrained, active_filters = _apply_hard_filters(
+                    rag_products,
+                    price_min=filters["price_min"],
+                    price_max=filters["price_max"],
+                    location=filters["location"],
+                    fmt=filters["format"],
+                )
+                if constrained:
+                    rag_products = constrained
+                elif active_filters:
+                    filters_relaxed = True
+                    relaxed_filters = [f"{name}_dropped" for name in active_filters]
             # Profile-conditioned re-rank for logged-in users: boost products
             # matching the learner's target skills/goals and demote completed
             # courses. profile_boost is None for anonymous users → no-op.
@@ -1152,7 +1339,12 @@ def _execute_catalog_search(args, username=None):
             if rag_products:
                 compact = [_extract_compact_fields(p) for p in rag_products[:limit]]
                 compact = _demote_completed_results(compact, completed_titles, completed_handles)
+                compact = _mark_previously_shown(compact)
                 debug = detailed.get("debug") or {}
+                extra = {}
+                if filters_relaxed:
+                    extra["filters_relaxed"] = True
+                    extra["relaxed_filters"] = relaxed_filters
                 return _model_tool_json(
                     status="success",
                     count=len(compact),
@@ -1163,10 +1355,14 @@ def _execute_catalog_search(args, username=None):
                         "embedding_skipped": debug.get("embedding_skipped"),
                         "cross_encoder_applied": debug.get("cross_encoder_applied"),
                     } if debug else None,
+                    **extra,
                 )
 
     compact = [_catalog_compact_fields(p) for p in products[:limit]]
     compact = _demote_completed_results(compact, completed_titles, completed_handles)
+    # TL-03: re-included fallback results (shown-handle re-include above) are
+    # marked previously_shown, matching the legacy search path.
+    compact = _mark_previously_shown(compact)
     return _model_tool_json(
         status="success" if compact else "no_results",
         count=len(compact),
@@ -1293,7 +1489,9 @@ def _execute_catalog_compare_products(args):
         return json.dumps({"status": "error", "message": "Mindst to gyldige produkter kræves for sammenligning."}, ensure_ascii=False)
     comparison = []
     for product in products:
-        comparison.append({
+        # TL-02: never surface expired dates as bookable
+        dates, no_upcoming_dates = _filter_upcoming_date_strings(product.get("dates", []))
+        entry = {
             "title": product["title"],
             "handle": product["handle"],
             "url": _catalog_product_url(product),
@@ -1302,10 +1500,18 @@ def _execute_catalog_compare_products(args):
             "price": product["price_label"],
             "format": product["format"],
             "locations": product["locations"][:4],
-            "dates": product["dates"][:4],
+            "dates": dates[:4],
             "categories": [c["name"] for c in _catalog_category_urls(product)[:4]],
             "summary": _truncate_summary(product.get("summary") or product.get("description_excerpt")),
-        })
+        }
+        # Same negotiated price here as in search/details (shared helper: price_view).
+        pv = price_view(product.get("price_min"), product.get("vendor"))
+        if pv["discount"]:
+            entry["price"] = pv["price"]
+            entry["discount"] = pv["discount"]
+        if no_upcoming_dates:
+            entry["no_upcoming_dates"] = True
+        comparison.append(entry)
 
     # Guardrails: cap-truncation note + single-vendor (no diversity) notice.
     guards = _comparison_guardrails(requested_count, [c["vendor"] for c in comparison])
@@ -1558,33 +1764,11 @@ def _execute_search_courses(args):
     )
 
 
-def _execute_filter_courses(args):
-    """Handle filter_courses tool execution with hybrid ranking."""
-    location = args.get("location", "").lower().strip()
-    price_min = args.get("price_min")
-    price_max = args.get("price_max")
-    product_type = args.get("product_type", "").lower().strip()
-    tag = args.get("tag", "").lower().strip()
-    start_after_str = args.get("start_after", "").strip()
-    start_before_str = args.get("start_before", "").strip()
-    query = args.get("query", "").strip()
-    limit = args.get("limit", 5)
-
-    # Parse date filters
-    start_after = None
-    start_before = None
-    try:
-        if start_after_str:
-            start_after = datetime.date.fromisoformat(start_after_str)
-        if start_before_str:
-            start_before = datetime.date.fromisoformat(start_before_str)
-    except ValueError:
-        pass  # Ignore invalid date formats
-
-    products = _filter_blocked_vendors(load_augmented_products())
-    if not products:
-        return json.dumps({"status": "error", "message": "Produktindekset er ikke indlæst."})
-
+def _filter_products_by_constraints(products, *, location="", price_min=None, price_max=None,
+                                    product_type="", tag="", start_after=None, start_before=None):
+    """filter_courses' hard-filter predicates as a reusable pass (TL-03), so
+    progressive relaxation can re-run the same predicates with loosened
+    constraints. Behaviour is byte-identical to the previous inline loop."""
     filtered = []
     for p in products:
         variants = p.get("variants", [])
@@ -1636,6 +1820,80 @@ def _execute_filter_courses(args):
                 continue
 
         filtered.append(p)
+    return filtered
+
+
+def _execute_filter_courses(args):
+    """Handle filter_courses tool execution with hybrid ranking."""
+    location = args.get("location", "").lower().strip()
+    price_min = args.get("price_min")
+    price_max = args.get("price_max")
+    product_type = args.get("product_type", "").lower().strip()
+    tag = args.get("tag", "").lower().strip()
+    start_after_str = args.get("start_after", "").strip()
+    start_before_str = args.get("start_before", "").strip()
+    query = args.get("query", "").strip()
+    limit = args.get("limit", 5)
+
+    # Parse date filters
+    start_after = None
+    start_before = None
+    try:
+        if start_after_str:
+            start_after = datetime.date.fromisoformat(start_after_str)
+        if start_before_str:
+            start_before = datetime.date.fromisoformat(start_before_str)
+    except ValueError:
+        pass  # Ignore invalid date formats
+
+    products = _filter_blocked_vendors(load_augmented_products())
+    if not products:
+        return json.dumps({"status": "error", "message": "Produktindekset er ikke indlæst."})
+
+    filtered = _filter_products_by_constraints(
+        products, location=location, price_min=price_min, price_max=price_max,
+        product_type=product_type, tag=tag, start_after=start_after, start_before=start_before,
+    )
+
+    # TL-03: progressive relaxation i stedet for et dødt no_results — løsn ét
+    # hårdt filter ad gangen (datointerval → pris +25% → lokation) og fortæl
+    # modellen præcist hvad der blev løsnet via relaxed_filters, så den kan
+    # narrere det ærligt i stedet for at dead-ende.
+    relaxed_filters = []
+    if not filtered and _hard_filter_enabled():
+        if start_after or start_before:
+            start_after = start_before = None
+            relaxed_filters.append("date_range_dropped")
+            filtered = _filter_products_by_constraints(
+                products, location=location, price_min=price_min, price_max=price_max,
+                product_type=product_type, tag=tag, start_after=start_after, start_before=start_before,
+            )
+        if not filtered and price_max is not None:
+            try:
+                price_max = float(price_max) * 1.25
+                relaxed_filters.append("price_max_widened_25pct")
+                filtered = _filter_products_by_constraints(
+                    products, location=location, price_min=price_min, price_max=price_max,
+                    product_type=product_type, tag=tag, start_after=start_after, start_before=start_before,
+                )
+            except (ValueError, TypeError):
+                pass
+        if not filtered and location:
+            location = ""
+            relaxed_filters.append("location_dropped")
+            filtered = _filter_products_by_constraints(
+                products, location=location, price_min=price_min, price_max=price_max,
+                product_type=product_type, tag=tag, start_after=start_after, start_before=start_before,
+            )
+        if not filtered and relaxed_filters:
+            # Lempelsen hjalp ikke — sig det eksplicit, så listen aldrig er
+            # uforklaret tom.
+            return json.dumps({
+                "status": "no_results",
+                "message": "Ingen kurser matchede dine filtre — heller ikke efter lempelse af dato, pris og lokation.",
+                "relaxation_attempted": True,
+                "relaxed_filters": relaxed_filters,
+            }, ensure_ascii=False)
 
     # Use hybrid ranking when query is provided (Phase 5)
     if query and filtered:
@@ -1661,11 +1919,20 @@ def _execute_filter_courses(args):
     compact_results = [_extract_compact_fields(r) for r in filtered]
 
     # Mark re-shown products
-    for cr in compact_results:
-        if cr.get("handle") in _current_shown_handles:
-            cr["previously_shown"] = True
+    _mark_previously_shown(compact_results)
 
-    return _model_tool_json(status="success", count=len(compact_results), results=compact_results)
+    # TL-03: tell the model exactly which filters were loosened to produce
+    # these results (samme flag-familie som catalog_search/RAG-fallback).
+    extra = {}
+    if relaxed_filters:
+        extra["filters_relaxed"] = True
+        extra["relaxed_filters"] = relaxed_filters
+        if "location_dropped" in relaxed_filters:
+            extra["relaxation_hint"] = (
+                "Ingen kurser matchede lokationen — foreslå evt. e-learning, som kan tages uanset by."
+            )
+
+    return _model_tool_json(status="success", count=len(compact_results), results=compact_results, **extra)
 
 
 def _execute_get_course_details(args):
@@ -1677,18 +1944,29 @@ def _execute_get_course_details(args):
         if p.get("handle") == handle:
             raw_locs = [v.get("option1") for v in p.get("variants", []) if v.get("option1")]
             locations = list(dict.fromkeys(extract_city_name(loc) for loc in raw_locs if extract_city_name(loc)))
-            dates = [v.get("option2") for v in p.get("variants", []) if v.get("option2")]
+            # TL-02: never label expired dates as "upcoming"
+            dates, no_upcoming_dates = _upcoming_dates(p.get("variants", []))
             meta = p.get("structured_metadata", {}) or {}
+            # Same negotiated price here as in search results (shared helper: price_view).
+            pv = price_view(p.get("variants", [{}])[0].get("price") if p.get("variants") else None, p.get("vendor", ""))
             result = {
                 "status": "success",
                 "title": p.get("title"),
                 "handle": handle,
-                "price": _normalize_price(p.get("variants", [{}])[0].get("price") if p.get("variants") else None),
+                "price": pv["price"],
                 "vendor": p.get("vendor"),
                 "locations": locations,
                 "upcoming_dates": dates[:4],
                 "summary": _truncate_summary(p.get("ai_summary", p.get("body_html", "")[:200])),
             }
+            if pv["discount"]:
+                result["discount"] = pv["discount"]
+            if no_upcoming_dates:
+                result["no_upcoming_dates"] = True
+            elif dates and _date_data_stale(p):
+                # Datoerne stammer fra et >90 dage gammelt katalog-sync — bed
+                # modellen tage forbehold for dem.
+                result["date_data_stale"] = True
             if meta.get("duration_days"):
                 result["duration_days"] = meta["duration_days"]
             return _model_tool_json(**result)
@@ -1714,12 +1992,16 @@ def _execute_compare_courses(args):
             continue
         variants = p.get("variants", [])
         locations = list(set(extract_city_name(v.get("option1", "")) for v in variants if v.get("option1") and extract_city_name(v.get("option1"))))
-        dates = [v.get("option2") for v in variants if v.get("option2")][:3]
+        # TL-02: never label expired dates as "upcoming"
+        dates, no_upcoming_dates = _upcoming_dates(variants)
+        dates = dates[:3]
 
+        # Same negotiated price here as in search/details (shared helper: price_view).
+        pv = price_view(variants[0].get("price") if variants else None, p.get("vendor", ""))
         comp = {
             "title": p.get("title"),
             "handle": p.get("handle"),
-            "price": _normalize_price(variants[0].get("price") if variants else None),
+            "price": pv["price"],
             "vendor": p.get("vendor"),
             "product_type": p.get("product_type", ""),
             "locations": locations[:3],
@@ -1727,6 +2009,10 @@ def _execute_compare_courses(args):
             "summary": _truncate_summary(p.get("ai_summary", "")),
             "variant_count": len(variants),
         }
+        if pv["discount"]:
+            comp["discount"] = pv["discount"]
+        if no_upcoming_dates:
+            comp["no_upcoming_dates"] = True
         meta = (p.get("structured_metadata") or {})
         if meta.get("duration_days"):
             comp["duration_days"] = meta["duration_days"]
@@ -3405,8 +3691,9 @@ def _execute_add_to_calendar(args, username):
             title = title or product.get("title") or ""
             url = f"/products/{handle}"
             if not date_str:
-                variants = product.get("variants", [])
-                date_str = next((v.get("option2") for v in variants if v.get("option2")), "") or ""
+                # TL-02: foreslå kun en kommende dato — aldrig en udløbet
+                upcoming, _ = _upcoming_dates(product.get("variants", []))
+                date_str = (upcoming[0] if upcoming else "") or ""
             if not location:
                 variants = product.get("variants", [])
                 location = next((v.get("option1") for v in variants if v.get("option1")), "") or ""

@@ -162,5 +162,86 @@ class AIToolRegistryTests(unittest.TestCase):
         self.assertEqual(get_tool_meta("vendor_performance_summary", "vendor").agent_scope, "vendor")
 
 
+class ForcedToolGateTests(unittest.TestCase):
+    """TR-01: over-brede forced_tool-gates strammet.
+
+    Keyword-grenene må gerne lægge værktøjer på MENUEN, men kun et utvetydigt
+    signal må TVINGE et kald — og kun når præcis én gren matchede (ingen
+    last-match-wins-overskriv).
+    """
+
+    def _select(self, query, intent="discovery", company_id=1, logged_in=True):
+        return get_employee_tool_selection(
+            logged_in=logged_in,
+            company_id=company_id,
+            intent=intent,
+            user_query=query,
+            shown_count=0,
+        )
+
+    def test_hvem_er_du_does_not_force_vendor_lookup(self):
+        for query in ("Hvem er du?", "Hvem er I egentlig?", "hvem er du, og hvad kan du hjælpe med?"):
+            with self.subTest(query=query):
+                _, meta = self._select(query)
+                self.assertIsNone(meta["forced_tool"])
+
+    def test_plain_hvem_er_keeps_vendor_tool_on_menu_without_forcing(self):
+        tools, meta = self._select("Hvem er den bedste underviser i ledelse?")
+        self.assertIn("catalog_get_vendor", {tool_name(t) for t in tools})
+        self.assertIsNone(meta["forced_tool"])
+
+    def test_vendor_token_forces_vendor_lookup(self):
+        tools, meta = self._select("Hvem er udbyderen Mannaz?")
+        self.assertIn("catalog_get_vendor", {tool_name(t) for t in tools})
+        self.assertEqual(meta["forced_tool"], "catalog_get_vendor")
+
+    def test_known_vendor_name_counts_as_vendor_signal(self):
+        tools, meta = self._select("Hvem er Teknologisk Institut?")
+        self.assertIn("catalog_get_vendor", {tool_name(t) for t in tools})
+        self.assertEqual(meta["forced_tool"], "catalog_get_vendor")
+
+    def test_budget_question_start_forces_budget_tool(self):
+        for query in ("Hvad er mit budget?", "Har vi budget til flere kurser?", "Budget: hvor meget har jeg?"):
+            with self.subTest(query=query):
+                _, meta = self._select(query)
+                self.assertEqual(meta["forced_tool"], "get_department_budget")
+
+    def test_mid_sentence_raad_does_not_force_budget(self):
+        for query in ("Har jeg råd til at vente til efteråret?", "Giv mig et godt råd om ledelseskurser"):
+            with self.subTest(query=query):
+                tools, meta = self._select(query)
+                # Værktøjet bliver på menuen — kun tvangen demoteres.
+                self.assertIn("get_department_budget", {tool_name(t) for t in tools})
+                self.assertIsNone(meta["forced_tool"])
+
+    def test_budget_not_forced_without_company(self):
+        _, meta = self._select("Hvad er mit budget?", company_id=None)
+        self.assertIsNone(meta["forced_tool"])
+
+    def test_multiple_matching_branches_force_nothing(self):
+        tools, meta = self._select("Hvilken kategori dækker udbyderen Teknologisk Institut?")
+        names = {tool_name(t) for t in tools}
+        self.assertIn("catalog_get_category", names)
+        self.assertIn("catalog_get_vendor", names)
+        self.assertIsNone(meta["forced_tool"])
+
+    def test_hr_multiple_forced_branches_force_nothing(self):
+        tools, meta = get_hr_tool_selection(
+            company_id=1,
+            user_query="Sammenlign budgetforbruget mellem Salg og Marketing",
+        )
+        names = {tool_name(t) for t in tools}
+        self.assertIn("get_budget_overview", names)
+        self.assertIn("hr_compare_cohorts", names)
+        self.assertIsNone(meta["forced_tool"])
+
+    def test_hr_single_branch_still_forces(self):
+        _, meta = get_hr_tool_selection(
+            company_id=1,
+            user_query="Hvordan ser vores budgetforbrug ud?",
+        )
+        self.assertEqual(meta["forced_tool"], "get_budget_overview")
+
+
 if __name__ == "__main__":
     unittest.main()

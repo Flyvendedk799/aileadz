@@ -128,6 +128,13 @@
   const rail = $("#rail");
 
   let sending = false, aborted = false;
+  let currentAbort = null;            // AbortController for the in-flight /ask stream
+  // No-event watchdog. Once content streams, gaps are tiny (chunks/heartbeats),
+  // so 25s safely detects a dead connection. Before the first content event the
+  // backend may legitimately be silent for the whole tool loop (the live
+  // tool-event heartbeat is env-gated server-side), so allow far longer there.
+  const WATCHDOG_MS = 25000;
+  const WATCHDOG_FIRST_MS = 90000;
   const BOT = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
   const ic = {
     skills:'<svg viewBox="0 0 24 24" fill="none" stroke="#2bb6a6" stroke-width="2"><polygon points="12 2 15.1 8.3 22 9.3 17 14.1 18.2 21 12 17.8 5.8 21 7 14.1 2 9.3 8.9 8.3 12 2"/></svg>',
@@ -141,13 +148,22 @@
   };
   const chevDown = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
 
-  /* ---------------- scroll helpers ---------------- */
-  function down(smooth) { scroll.scrollTo({ top: scroll.scrollHeight, behavior: smooth ? "smooth" : "auto" }); }
+  /* ---------------- scroll helpers ----------------
+     Anchored autoscroll: only follow the stream while the user is (near) the
+     bottom. Scrolling up to read detaches the anchor, so new chunks never yank
+     the viewport; the fab (or a new question) re-attaches it. */
+  let stickToBottom = true;
+  function down(smooth, force) {
+    if (force) stickToBottom = true;
+    if (!stickToBottom) return;
+    scroll.scrollTo({ top: scroll.scrollHeight, behavior: smooth ? "smooth" : "auto" });
+  }
   scroll.addEventListener("scroll", () => {
     const d = scroll.scrollHeight - scroll.scrollTop - scroll.clientHeight;
+    stickToBottom = d < 120;
     fab.classList.toggle("show", d > 160);
   });
-  $("#fab").addEventListener("click", () => down(true));
+  $("#fab").addEventListener("click", () => down(true, true));
 
   /* ---------------- toast ---------------- */
   let toastStack;
@@ -183,7 +199,7 @@
     r.className = "msg user";
     r.innerHTML = `<div class="bubble"></div>`;
     r.querySelector(".bubble").textContent = text;
-    thread.appendChild(r); down();
+    thread.appendChild(r); down(false, true);
   }
   function addBot() {
     const r = document.createElement("div");
@@ -198,6 +214,25 @@
     t.innerHTML = `<span class="d"></span><span class="d"></span><span class="d"></span>`;
     body.appendChild(t); down();
     return t;
+  }
+  // Backend 'thinking' events carry a status line ("Søger og analyserer…").
+  // Show it next to the dots instead of dropping it on the floor.
+  function thinkStatus(body, text) {
+    const t = body.querySelector(".think");
+    if (!t) return;
+    let s = t.querySelector(".think-status");
+    if (!s) {
+      s = document.createElement("span");
+      s.className = "think-status";
+      s.style.cssText = "margin-left:8px;font-size:12px;color:var(--ink-3);font-style:italic;";
+      t.appendChild(s);
+    }
+    s.textContent = String(text || "");
+  }
+  // First real content event makes the dots redundant — remove them.
+  function clearThinking(body) {
+    const t = body.querySelector(".think");
+    if (t) t.remove();
   }
 
   /* ---------------- course cards ---------------- */
@@ -249,15 +284,29 @@
       const b = e.currentTarget; b.classList.add("attached"); b.innerHTML = '<i class="fa-solid fa-check"></i> Vedhæftet';
       setTimeout(() => { b.classList.remove("attached"); b.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> Vedhæft'; }, 1600);
     });
+    // "Bestil til team" hands the order off to the agent instead of dead-ending
+    // in CSS: the composed message triggers the existing confirm-gated
+    // check_course_readiness → prepare_course_order flow server-side, so no new
+    // side-effect surface is opened here.
+    let selectedVariant = null;
     card.querySelector(".c-primary").addEventListener("click", function (e) {
       e.stopPropagation();
-      this.classList.add("done"); this.innerHTML = '<i class="fa-solid fa-check"></i> Tilføjet til ordre';
-      toast("Tilføjet til ordrekurv · " + c.title, "courses");
+      if (!isLoggedIn()) { toast("Log ind for at bestille kurser til dit team", "courses"); return; }
+      if (sending) { toast("Vent venligst — assistenten svarer stadig", "courses"); return; }
+      const v = selectedVariant;
+      const hold = v && v.date ? ` — holdet ${v.date}${v.loc ? " i " + v.loc : ""}` : "";
+      ask(`Jeg vil gerne bestille "${c.title}"${hold} til mit team`);
+      const btn = this;
+      btn.classList.add("done"); btn.innerHTML = '<i class="fa-solid fa-check"></i> Sendt til rådgiveren';
+      setTimeout(() => { btn.classList.remove("done"); btn.innerHTML = '<i class="fa-solid fa-cart-plus"></i> Bestil til team'; }, 2600);
     });
-    card.querySelectorAll(".vbook").forEach((b) => b.addEventListener("click", function (e) {
+    // "Vælg" stores the chosen variant so "Bestil til team" can compose a
+    // precise order message (date + location) for the agent.
+    card.querySelectorAll(".vbook").forEach((b, vi) => b.addEventListener("click", function (e) {
       e.stopPropagation();
       card.querySelectorAll(".vbook").forEach((x) => { x.textContent = "Vælg"; x.style.background = ""; x.style.color = ""; });
       this.textContent = "Valgt ✓"; this.style.background = "var(--teal)"; this.style.color = "#042320";
+      selectedVariant = (c.variants || [])[vi] || null;
     }));
     // "Side" opens the real catalog product page when we have a handle.
     const det = card.querySelector(".det");
@@ -287,7 +336,49 @@
   }
 
   /* ---------------- feedback ---------------- */
-  function addFeedback(body, query) {
+  // Fire-and-forget POST to the real app1 feedback endpoint. Never blocks or
+  // breaks the UI — feedback is telemetry, not a user-visible transaction.
+  function postFeedback(payload) {
+    try {
+      fetch("/app1/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+        body: JSON.stringify(payload),
+      }).catch(() => {});
+    } catch (e) { /* ignore */ }
+  }
+
+  // Copy with the modern clipboard API, falling back to execCommand for
+  // non-secure contexts / older browsers.
+  function execCopy(text) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.setAttribute("readonly", "");
+    ta.style.cssText = "position:fixed;left:-9999px;top:0;opacity:0;";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    ta.remove();
+    return ok;
+  }
+  function copyText(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => execCopy(text));
+    }
+    return Promise.resolve(execCopy(text));
+  }
+
+  function addFeedback(body, query, result) {
+    const res = result || {};
+    const answerText = String(res.fullText || "");
+    const base = {
+      message_index: res.messageIndex != null ? res.messageIndex : 0,
+      query_text: query || "",
+      assistant_response: answerText.slice(0, 300),
+    };
+    let lastRating = 0;
     const row = document.createElement("div");
     row.className = "fb";
     row.innerHTML = `
@@ -310,13 +401,32 @@
       });
       const ta = document.createElement("textarea"); ta.className = "fb-comment"; ta.placeholder = "Valgfri kommentar — hjælper os med at forbedre svarene";
       const sb = document.createElement("button"); sb.className = "fb-send"; sb.textContent = "Send feedback";
-      sb.onclick = () => { sb.disabled = true; sb.textContent = "Tak for din feedback ✓"; };
+      sb.onclick = () => {
+        sb.disabled = true; sb.textContent = "Tak for din feedback ✓";
+        postFeedback(Object.assign({ rating: lastRating || -1, reason: sel, comment: (ta.value || "").trim() }, base));
+      };
       details.append(wrap, ta, sb);
     }
-    row.querySelector(".up").onclick = function () { row.querySelectorAll(".up,.down").forEach((b) => b.classList.add("voted")); this.classList.add("on"); toast("Tak for din feedback", "summary"); };
-    row.querySelector(".down").onclick = function () { row.querySelectorAll(".up,.down").forEach((b) => b.classList.add("voted")); this.classList.add("on"); showDown(); };
+    row.querySelector(".up").onclick = function () {
+      row.querySelectorAll(".up,.down").forEach((b) => b.classList.add("voted")); this.classList.add("on");
+      lastRating = 1;
+      postFeedback(Object.assign({ rating: 1, reason: "", comment: "" }, base));
+      toast("Tak for din feedback", "summary");
+    };
+    row.querySelector(".down").onclick = function () {
+      row.querySelectorAll(".up,.down").forEach((b) => b.classList.add("voted")); this.classList.add("on");
+      lastRating = -1;
+      postFeedback(Object.assign({ rating: -1, reason: "", comment: "" }, base));
+      showDown();
+    };
     row.querySelector(".regen").onclick = () => { const r = body.closest(".msg"); const q = query; if (r) r.remove(); run(q, { skipUser: true }); };
-    row.querySelector(".copy").onclick = function () { this.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#34c98a" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>'; setTimeout(() => { this.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'; }, 1400); };
+    row.querySelector(".copy").onclick = function () {
+      const btn = this;
+      copyText(answerText).then(() => {
+        btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="#34c98a" stroke-width="2.4"><polyline points="20 6 9 17 4 12"/></svg>';
+        setTimeout(() => { btn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>'; }, 1400);
+      });
+    };
     body.appendChild(row); body.appendChild(details); down();
   }
 
@@ -493,9 +603,35 @@
     down();
   }
 
-  function showError(body, query) {
-    body.innerHTML = `<div class="err"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Der opstod en fejl. Prøv igen.</span><button class="retry">Prøv igen</button></div>`;
-    body.querySelector(".retry").onclick = () => { body.closest(".msg").remove(); run(query, { skipUser: true }); };
+  // APPEND an error row instead of wiping the body — already-streamed content
+  // (partial answer, cards, tool chips) must survive a dropped connection.
+  function appendError(body, query) {
+    const row = document.createElement("div");
+    row.className = "err";
+    row.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Forbindelsen blev afbrudt — Prøv igen.</span><button class="retry">Prøv igen</button>`;
+    row.querySelector(".retry").onclick = () => { row.remove(); run(query, { skipUser: true }); };
+    body.appendChild(row); down();
+  }
+
+  // Muted marker when the user stops generation — the feedback row still
+  // renders afterwards so aborts are measurable.
+  function addStopMarker(body) {
+    const m = document.createElement("div");
+    m.className = "md";
+    m.style.cssText = "opacity:.55;font-style:italic;font-size:12.5px;";
+    m.textContent = "— stoppet —";
+    body.appendChild(m); down();
+  }
+
+  // Balance dangling markdown while streaming so half-arrived constructs don't
+  // flash as broken markup: strip a trailing half-link, close an odd code fence.
+  function balanceMarkdown(t) {
+    let s = String(t || "");
+    s = s.replace(/!?\[[^\]]*$/, "");            // "[Se kurset" (no closing ])
+    s = s.replace(/!?\[[^\]]*\]\([^)]*$/, "");   // "[Se kurset](https://…" (no closing ))
+    const fences = (s.match(/```/g) || []).length;
+    if (fences % 2 === 1) s += "\n```";
+    return s;
   }
 
   /* ---------------- tool activity ---------------- */
@@ -550,8 +686,23 @@
       body.appendChild(box);
     }
     const list = box.querySelector(".tool-run-list");
-    const chip = document.createElement("span");
-    chip.className = "tool-chip" + (data.status === "error" ? " error" : "") + (data.phase === "start" || data.status === "running" ? " running" : "");
+    const running = data.phase === "start" || data.status === "running";
+    // Live events carry a call id: phase:'start' creates a running chip, the
+    // finish event upgrades that same chip in place (label/latency/results)
+    // instead of appending a duplicate. Without an id (or without a prior
+    // start event — backend may not emit live events) we just append.
+    const callId = String(data.id || "");
+    let chip = null;
+    if (callId) {
+      chip = Array.prototype.find.call(list.children, (el) => el.getAttribute("data-call-id") === callId) || null;
+    }
+    if (chip && running) return; // duplicate start for an already-rendered chip
+    if (!chip) {
+      chip = document.createElement("span");
+      if (callId) chip.setAttribute("data-call-id", callId);
+      list.appendChild(chip);
+    }
+    chip.className = "tool-chip" + (data.status === "error" ? " error" : "") + (running ? " running" : "");
     const meta = [];
     if (data.category) meta.push(data.category);
     if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + " resultater");
@@ -560,9 +711,13 @@
     if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + "ms");
     const icon = data.ui_icon ? `<i class="fa-solid ${esc(data.ui_icon)}"></i>` : "";
     chip.innerHTML = `${icon}<span>${esc(toolLabel(data))}</span>${meta.length ? `<span class="meta">${esc(meta.join(" · "))}</span>` : ""}`;
-    list.appendChild(chip);
     box.querySelector(".tool-count").textContent = String(list.children.length);
     down();
+  }
+  // A turn that ends mid-tool (error / user Stop) must not leave chips in the
+  // muted "running" state — settle them so the UI doesn't imply ongoing work.
+  function settleToolChips(body) {
+    body.querySelectorAll(".tool-chip.running").forEach((c) => c.classList.remove("running"));
   }
 
   /* ---------------- memory transparency ---------------- */
@@ -596,101 +751,159 @@
     body.appendChild(wrap); down();
   }
 
-  async function streamFromBackend(body, query) {
-    // Reference any attached products the same way the real app1 UI does.
-    let actualQuery = query;
-    if (attached.length) {
-      const refs = attached.map((t) => `[VEDHÆFTET KURSUS: "${t}"]`).join(" ");
-      actualQuery = refs + "\n" + query;
-    }
+  async function streamFromBackend(body, actualQuery) {
+    // Abort plumbing: the Stop button aborts via currentAbort; a no-event
+    // watchdog aborts a silently dead connection (backend emits an initial
+    // ping and heartbeats far below this threshold).
+    const controller = new AbortController();
+    currentAbort = controller;
+    let timedOut = false, watchdog = null, sawContent = false;
+    const armWatchdog = () => {
+      if (watchdog) clearTimeout(watchdog);
+      watchdog = setTimeout(() => { timedOut = true; try { controller.abort(); } catch (e) {} },
+        sawContent ? WATCHDOG_MS : WATCHDOG_FIRST_MS);
+    };
 
-    const resp = await fetch(ASK_URL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query: actualQuery, mode: (window.CHAT_MODE || "default") }),
-    });
-    if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
-
-    const reader = resp.body.getReader();
     const decoder = new TextDecoder("utf-8");
     let buffer = "", textEl = null, fullText = "", suggestions = null, done = false;
+    let messageIndex = null;              // from the meta event; used by the feedback POST
     let cardsSeen = 0, productSeen = 0;   // pair structured course_cards with fallback product HTML
+    let eventsReceived = 0;               // meaningful events (excl. ping) — gates the silent retry
 
-    while (!done) {
-      if (aborted) { try { reader.cancel(); } catch (e) {} break; }
-      const r = await reader.read();
-      if (r.done) break;
-      buffer += decoder.decode(r.value, { stream: true });
-      const parts = buffer.split("\n\n");
-      buffer = parts.pop();
-      for (const part of parts) {
-        const line = part.split("\n").find((l) => l.startsWith("data: "));
-        if (!line) continue;
-        const raw = line.slice(6).trim();
-        if (raw === "[DONE]") { done = true; break; }
-        let data;
-        try { data = JSON.parse(raw); } catch (e) { continue; }
+    // rAF-throttled rendering: buffer chunks and re-parse markdown at most once
+    // per animation frame instead of on every chunk.
+    let renderQueued = false, finalized = false;
+    const renderStream = () => {
+      if (finalized || !textEl) return;
+      textEl.innerHTML = md(balanceMarkdown(fullText));
+      down();
+    };
+    const queueRender = () => {
+      if (renderQueued) return;
+      renderQueued = true;
+      requestAnimationFrame(() => { renderQueued = false; renderStream(); });
+    };
+    const renderFinal = () => {
+      if (finalized) return;
+      finalized = true;
+      if (textEl) { textEl.innerHTML = md(fullText); down(); }
+    };
 
-        if (data.type === "ping" || data.type === "meta" || data.type === "thinking") continue;
+    try {
+      armWatchdog();
+      const resp = await fetch(ASK_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ query: actualQuery, mode: (window.CHAT_MODE || "default") }),
+        signal: controller.signal,
+      });
+      if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
 
-        if (data.type === "chunk") {
-          if (!textEl) { textEl = document.createElement("div"); textEl.className = "md"; body.appendChild(textEl); }
-          fullText += (data.content || "");
-          textEl.innerHTML = md(fullText);
-          down();
-        } else if (data.type === "tool_call") {
-          renderToolCall(body, data);
-        } else if (data.type === "course_cards") {
-          // Structured course data -> render with the native Futurematch courseCard design.
-          if (data.items && data.items.length) { cardsSeen++; addCourses(body, data.items); }
-        } else if (data.type === "product") {
-          // Fallback: only inject the legacy pre-rendered HTML if this batch had no course_cards.
-          productSeen++;
-          if (productSeen > cardsSeen) injectProductHtml(body, data.html);
-        } else if (data.type === "suggestions") {
-          suggestions = data.items || [];
-        } else if (data.type === "notice") {
-          const note = document.createElement("div");
-          note.className = "md"; note.style.opacity = ".7"; note.style.fontStyle = "italic";
-          note.textContent = data.content || "";
-          body.appendChild(note); down();
-        } else if (data.type === "profile_update") {
-          const note = document.createElement("div");
-          note.className = "md";
-          note.innerHTML = md(data.message || "Profil opdateret");
-          body.appendChild(note); down();
-          refreshWorkspaceStatus();
-        } else if (data.type === "profile_confirm_request") {
-          // Proposed profile change -> native confirm card, wired to the real save.
-          const conf = data.confirm || {};
-          const tags = (conf.data && typeof conf.data === "object")
-            ? Object.values(conf.data).filter(Boolean).map(String) : [];
-          profileConfirm(body, { section: data.section, message: data.message || "", tags: tags, section_label: data.section },
-            conf.action ? () => saveProfileUpdate(conf.action, conf.data || {}) : null);
-        } else if (data.type === "ui_card") {
-          // Form card -> native uiCard design, wired to the real save endpoint.
-          const fields = (data.fields || []).map((f) => ({
-            name: f.name, label: f.label, type: f.type,
-            ph: f.placeholder || f.ph, hint: f.hint, options: f.options || [],
-          }));
-          const prefilled = data.prefilled || {};
-          uiCard(body, { section: data.section, message: data.message || "", fields: fields, prefilled: prefilled },
-            data.save_action ? (values) => saveProfileUpdate(data.save_action, Object.assign({}, prefilled, values)) : null);
-        } else if (data.type === "memory_used") {
-          renderMemoryUsed(body, data.memories || []);
-          refreshWorkspaceStatus();
-        } else if (data.type === "memory_saved") {
-          renderMemorySaved(body, data);
-          refreshWorkspaceStatus();
-        } else if (data.type === "profiler_progress") {
-          if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
-          refreshWorkspaceStatus();
+      const reader = resp.body.getReader();
+
+      while (!done) {
+        if (aborted) { try { reader.cancel(); } catch (e) {} break; }
+        const r = await reader.read();
+        if (r.done) break;
+        armWatchdog();
+        buffer += decoder.decode(r.value, { stream: true });
+        const parts = buffer.split("\n\n");
+        buffer = parts.pop();
+        for (const part of parts) {
+          const line = part.split("\n").find((l) => l.startsWith("data: "));
+          if (!line) continue;
+          const raw = line.slice(6).trim();
+          if (raw === "[DONE]") { done = true; break; }
+          let data;
+          try { data = JSON.parse(raw); } catch (e) { continue; }
+
+          if (data.type === "ping") continue;
+          eventsReceived++;
+          if (data.type === "meta") {
+            if (data.message_index != null) messageIndex = data.message_index;
+            continue;
+          }
+          if (data.type === "thinking") {
+            // Status line next to the dots ("Søger og analyserer…") instead of dead air.
+            thinkStatus(body, data.content);
+            continue;
+          }
+          // Any real content event makes the dots placeholder redundant.
+          sawContent = true;
+          clearThinking(body);
+
+          if (data.type === "chunk") {
+            if (!textEl) { textEl = document.createElement("div"); textEl.className = "md"; body.appendChild(textEl); }
+            fullText += (data.content || "");
+            queueRender();
+          } else if (data.type === "tool_call") {
+            renderToolCall(body, data);
+          } else if (data.type === "course_cards") {
+            // Structured course data -> render with the native Futurematch courseCard design.
+            if (data.items && data.items.length) { cardsSeen++; addCourses(body, data.items); }
+          } else if (data.type === "product") {
+            // Fallback: only inject the legacy pre-rendered HTML if this batch had no course_cards.
+            productSeen++;
+            if (productSeen > cardsSeen) injectProductHtml(body, data.html);
+          } else if (data.type === "suggestions") {
+            suggestions = data.items || [];
+          } else if (data.type === "notice") {
+            const note = document.createElement("div");
+            note.className = "md"; note.style.opacity = ".7"; note.style.fontStyle = "italic";
+            note.textContent = data.content || "";
+            body.appendChild(note); down();
+          } else if (data.type === "profile_update") {
+            const note = document.createElement("div");
+            note.className = "md";
+            note.innerHTML = md(data.message || "Profil opdateret");
+            body.appendChild(note); down();
+            refreshWorkspaceStatus();
+          } else if (data.type === "profile_confirm_request") {
+            // Proposed profile change -> native confirm card, wired to the real save.
+            const conf = data.confirm || {};
+            const tags = (conf.data && typeof conf.data === "object")
+              ? Object.values(conf.data).filter(Boolean).map(String) : [];
+            profileConfirm(body, { section: data.section, message: data.message || "", tags: tags, section_label: data.section },
+              conf.action ? () => saveProfileUpdate(conf.action, conf.data || {}) : null);
+          } else if (data.type === "ui_card") {
+            // Form card -> native uiCard design, wired to the real save endpoint.
+            const fields = (data.fields || []).map((f) => ({
+              name: f.name, label: f.label, type: f.type,
+              ph: f.placeholder || f.ph, hint: f.hint, options: f.options || [],
+            }));
+            const prefilled = data.prefilled || {};
+            uiCard(body, { section: data.section, message: data.message || "", fields: fields, prefilled: prefilled },
+              data.save_action ? (values) => saveProfileUpdate(data.save_action, Object.assign({}, prefilled, values)) : null);
+          } else if (data.type === "memory_used") {
+            renderMemoryUsed(body, data.memories || []);
+            refreshWorkspaceStatus();
+          } else if (data.type === "memory_saved") {
+            renderMemorySaved(body, data);
+            refreshWorkspaceStatus();
+          } else if (data.type === "profiler_progress") {
+            if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
+            refreshWorkspaceStatus();
+          }
         }
       }
+    } catch (e) {
+      // User Stop aborts the fetch — that is a graceful end, return the partial
+      // result. Watchdog timeouts and network errors propagate to run(), but
+      // the already-streamed DOM content stays untouched.
+      if (!(aborted && !timedOut)) {
+        renderFinal();
+        const err = e instanceof Error ? e : new Error(String(e));
+        err.eventsReceived = eventsReceived;
+        throw err;
+      }
+    } finally {
+      if (watchdog) clearTimeout(watchdog);
+      if (currentAbort === controller) currentAbort = null;
     }
+    renderFinal();
     // Render suggestion chips last, like the source UI.
     if (suggestions && suggestions.length) addChips(body, suggestions);
-    return fullText;
+    return { fullText: fullText, messageIndex: messageIndex, eventsReceived: eventsReceived };
   }
 
   /* ---------------- send / run ---------------- */
@@ -699,17 +912,44 @@
     sending = true; aborted = false;
     document.querySelector(".welcome")?.remove();
     if (!opts.skipUser) addUser(query);
+    // Reference any attached products the same way the real app1 UI does.
+    // Composed ONCE per turn (before the retry loop) so the silent auto-retry
+    // and the manual "Prøv igen" resend the same effective query; refs are
+    // consumed by this send so stale course attachments stop steering
+    // retrieval on the next question.
+    let actualQuery = query;
+    if (attached.length) {
+      const refs = attached.map((t) => `[VEDHÆFTET KURSUS: "${t}"]`).join(" ");
+      actualQuery = refs + "\n" + query;
+      attached = []; renderRef();
+    }
     input.value = ""; resize(); toggleSend();
     setSending(true);
     const body = addBot();
     const th = thinking(body);
-    try {
-      await streamFromBackend(body, query);
-      th.remove();
-      if (!aborted) addFeedback(body, query);
-    } catch (e) {
-      th.remove();
-      showError(body, query);
+    let result = null, lastErr = null;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        result = await streamFromBackend(body, actualQuery);
+        lastErr = null;
+        break;
+      } catch (e) {
+        lastErr = e;
+        // One silent auto-retry, only when the stream died before delivering
+        // anything (zero events) and the user didn't stop it themselves.
+        if (attempt === 0 && !aborted && !(e && e.eventsReceived > 0)) continue;
+        break;
+      }
+    }
+    th.remove();
+    if (lastErr) {
+      settleToolChips(body);
+      appendError(body, actualQuery);
+    } else {
+      // User Stop: mark the cut-off, but still render the feedback row so
+      // aborted answers are measurable.
+      if (aborted) { settleToolChips(body); addStopMarker(body); }
+      addFeedback(body, query, result || {});
     }
     finish();
   }
@@ -721,7 +961,11 @@
     send.style.display = on ? "none" : "grid";
     stop.classList.toggle("show", on);
   }
-  stop.onclick = () => { aborted = true; };
+  stop.onclick = () => {
+    aborted = true;
+    // Abort the in-flight fetch immediately instead of waiting for the next chunk.
+    if (currentAbort) { try { currentAbort.abort(); } catch (e) {} }
+  };
 
   /* ---------------- input ---------------- */
   function resize() { input.style.height = "auto"; input.style.height = Math.min(input.scrollHeight, 150) + "px"; }
@@ -766,7 +1010,24 @@
       </div>`;
     thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => ask(c.dataset.q));
   }
-  function newChat() { attached = []; renderRef(); welcome(); refreshConv(); input.value = ""; toggleSend(); }
+  async function newChat() {
+    attached = []; renderRef(); input.value = ""; toggleSend();
+    // Honest reset: clear the server-side session (CHAT_MEMORY, shown products,
+    // stage, rejections) BEFORE painting the welcome screen, so a "new" chat
+    // never silently inherits the previous conversation's context. A failed
+    // call still resets the UI — better a fresh screen than a stuck button.
+    try {
+      await fetch("/app1/new_session", {
+        method: "POST",
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+    } catch (e) { /* offline / anonymous: still reset the UI */ }
+    activeConvId = null;
+    welcome();
+    refreshConv();
+    input.focus();
+  }
   window.fmNewChat = newChat;
 
   /* ---------------- conversation list ----------------
@@ -890,6 +1151,16 @@
   // Re-sync the ring from the live profile after a save (used by profile cards).
   // Only re-fetches when the profile loaded successfully in the first place.
   function refreshRing() { if (profileLoaded) loadProfile(); }
+
+  /* ---------------- login state ----------------
+     Positive signal: the profile fetch succeeded (profileLoaded). Negative
+     signal: the fm_base shell renders a "Log ind" userchip for anonymous
+     sessions. Unknown (standalone layout, fetch race) -> assume logged in;
+     order creation is still confirm-gated server-side either way. */
+  function isLoggedIn() {
+    if (profileLoaded) return true;
+    return !document.querySelector('.fm-userchip[href*="login"]');
+  }
 
   /* ---------------- real nudge banner ----------------
      Banner text/link come from the first item of GET /app1/nudges. No nudges

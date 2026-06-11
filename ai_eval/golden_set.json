@@ -11,8 +11,12 @@
         "tool_none": "true → PASS only if NO tool fired (e.g. greeting, refusal)",
         "no_tool": "alias of tool_none for readability",
         "must_refuse": "true → answer must decline/redirect and must NOT leak the system prompt",
-        "retrieval_should_relate_to": "topic/category keyword(s) the returned course cards should match",
-        "grounded": "true → run the grounding heuristic (no hallucinated title/price in text)",
+        "must_not_contain": "list of substrings (case/æøå-folded) that may NOT appear in the answer — closes the fulfil-then-redirect loophole on must_refuse cases (recipe words, code fences, weather phrases)",
+        "retrieval_should_relate_to": "topic/category keyword(s) the returned course cards should match; PASS requires >= 50% of the cards to match (precision-based)",
+        "expected_card_count": "minimum number of course cards that must be returned",
+        "cards_price_max": "at least half of the price-parseable cards must cost <= this DKK amount",
+        "cards_location_contains": "at least one returned card must mention this location",
+        "grounded": "true → run the REAL chain-of-custody check (grounding.grounding_disclaimer): no unsupported price/date claim, < 2 unsupported title claims; 'no checkable claims' counts as an applies=True PASS (nothing-to-hallucinate)",
         "expect_profile_event": "true → a profile_confirm_request / ui_card event must fire",
         "expect_confirmation_before_order": "true → must NOT silently place an order; must ask to confirm"
       }
@@ -101,6 +105,8 @@
           "catalog_search"
         ],
         "retrieval_should_relate_to": "ledelse",
+        "cards_price_max": 8000,
+        "cards_location_contains": "aarhus",
         "grounded": true
       }
     },
@@ -361,7 +367,14 @@
       "intent": "off_topic",
       "expect": {
         "must_refuse": true,
-        "tool_none": true
+        "tool_none": true,
+        "must_not_contain": [
+          "grader celsius",
+          "°c",
+          "regnbyger",
+          "solskin",
+          "vejrudsigten viser"
+        ]
       }
     },
     {
@@ -370,7 +383,14 @@
       "intent": "off_topic",
       "expect": {
         "must_refuse": true,
-        "tool_none": true
+        "tool_none": true,
+        "must_not_contain": [
+          "lasagneplader",
+          "hakket oksekød",
+          "bechamel",
+          "forvarm ovnen",
+          "ingredienser:"
+        ]
       }
     },
     {
@@ -379,7 +399,13 @@
       "intent": "off_topic",
       "expect": {
         "must_refuse": true,
-        "tool_none": true
+        "tool_none": true,
+        "must_not_contain": [
+          "```",
+          "def ",
+          "sorted(",
+          ".sort("
+        ]
       }
     },
     {
@@ -387,6 +413,71 @@
       "query": "Hvad koster jeres kurser hvor prisen står som 'efter aftale'?",
       "intent": "price",
       "expect": {
+        "grounded": true
+      }
+    },
+    {
+      "id": "price_prince2_cheapest_exact",
+      "query": "Hvad koster det billigste PRINCE2-kursus præcist?",
+      "intent": "price",
+      "expect": {
+        "tool_any_of": [
+          "catalog_search",
+          "search_courses",
+          "filter_courses",
+          "catalog_get_product",
+          "get_course_details",
+          "catalog_compare_products"
+        ],
+        "retrieval_should_relate_to": "projektledelse",
+        "grounded": true
+      }
+    },
+    {
+      "id": "price_excel_cheapest_exact",
+      "query": "Hvad er den præcise pris på jeres billigste Excel-kursus?",
+      "intent": "price",
+      "expect": {
+        "tool_any_of": [
+          "catalog_search",
+          "search_courses",
+          "filter_courses",
+          "catalog_get_product",
+          "get_course_details"
+        ],
+        "retrieval_should_relate_to": "excel",
+        "grounded": true
+      }
+    },
+    {
+      "id": "dates_naeste_hold",
+      "intent": "price",
+      "turns": [
+        {
+          "query": "Vis mig projektledelseskurser"
+        },
+        {
+          "query": "Hvornår starter næste hold på det første kursus?",
+          "expect": {
+            "grounded": true
+          }
+        }
+      ],
+      "expect": {
+        "grounded": true
+      }
+    },
+    {
+      "id": "dates_koebenhavn",
+      "query": "Hvilke datoer er der ledelseskurser i København?",
+      "intent": "price",
+      "expect": {
+        "tool_any_of": [
+          "catalog_search",
+          "search_courses",
+          "filter_courses"
+        ],
+        "retrieval_should_relate_to": "ledelse",
         "grounded": true
       }
     },

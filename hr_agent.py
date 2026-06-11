@@ -195,6 +195,7 @@ def handle_hr_ask(user_query, flask_session):
                 choose_turn_model,
                 estimate_messages_tokens,
                 in_rate_limit_cooldown,
+                iter_buffered_text_chunks,
                 iter_completion_stream,
                 log_agent_run,
                 log_tool_run,
@@ -326,7 +327,11 @@ def handle_hr_ask(user_query, flask_session):
                     full_text += token
                     yield f"data: {json.dumps({'type': 'text', 'content': token})}\n\n"
             elif full_text:
-                yield f"data: {json.dumps({'type': 'text', 'content': full_text})}\n\n"
+                # RT-02: the runtime captured the final answer (one completion
+                # saved) — chunk it ~3 ord ad gangen so the buffered text still
+                # feels typewriter-streamed (concatenation is identical).
+                for piece in iter_buffered_text_chunks(full_text):
+                    yield f"data: {json.dumps({'type': 'text', 'content': piece})}\n\n"
 
             # ── Grounding circuit-breaker (HR money-quoting path) ──
             # HR answers quote real budgets, spend, ROI and headcount. After the

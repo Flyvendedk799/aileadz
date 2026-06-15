@@ -5,6 +5,7 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import json
 import os
+import queue
 import threading
 import time
 import uuid
@@ -467,6 +468,87 @@ def live_tool_events_enabled() -> bool:
     er færdigt. Sæt AI_LIVE_TOOL_EVENTS=0 for at gendanne den gamle post-hoc
     emissionssti (rollback)."""
     return (os.getenv("AI_LIVE_TOOL_EVENTS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def live_agent_timeout_seconds() -> float:
+    """Hard upper bound for the live-event worker path.
+
+    The timeout needs to cover several model/tool iterations, so keep it much
+    higher than the per-call OpenAI timeout. Env-tunable for slow deployments.
+    """
+    try:
+        return max(15.0, float(os.getenv("AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS", "90")))
+    except ValueError:
+        return 90.0
+
+
+def iter_agent_with_live_tool_events(
+    agent_kwargs: Dict[str, Any],
+    *,
+    timeout_seconds: Optional[float] = None,
+    thread_name: str = "ai-agent-live",
+) -> Iterator[Tuple[str, Any]]:
+    """Run the agent loop in a worker and stream tool events as they happen.
+
+    Yields ``("tool_event", event)`` for runtime start/finish events,
+    ``("ping", None)`` after short idle periods, and finally
+    ``("result", AgentRunResult)``. Worker exceptions are re-raised in the
+    caller thread so existing SSE error handling still applies.
+    """
+    event_q: "queue.Queue[Any]" = queue.Queue(maxsize=100)
+    done = object()
+    box: Dict[str, Any] = {}
+
+    def _on_tool_event(evt: Dict[str, Any]) -> None:
+        try:
+            event_q.put_nowait(evt)
+        except queue.Full:
+            pass
+
+    def _worker() -> None:
+        try:
+            box["result"] = run_agent_with_fallback(on_tool_event=_on_tool_event, **agent_kwargs)
+        except BaseException as exc:  # re-raised in caller thread below
+            box["error"] = exc
+        finally:
+            try:
+                event_q.put(done, timeout=5)
+            except Exception:
+                pass
+
+    target = _worker
+    try:
+        from flask import copy_current_request_context, has_request_context
+        if has_request_context():
+            target = copy_current_request_context(_worker)
+    except Exception:
+        pass
+
+    worker = threading.Thread(target=target, daemon=True, name=thread_name)
+    worker.start()
+
+    deadline = time.time() + (timeout_seconds if timeout_seconds is not None else live_agent_timeout_seconds())
+    finished = False
+    while time.time() <= deadline:
+        try:
+            item = event_q.get(timeout=0.5)
+        except queue.Empty:
+            yield ("ping", None)
+            continue
+        if item is done:
+            finished = True
+            break
+        if isinstance(item, dict):
+            yield ("tool_event", item)
+
+    worker.join(timeout=2 if finished else 5)
+    if "error" in box:
+        raise box["error"]
+    if "result" not in box:
+        raise TimeoutError(
+            "live tool events timeout: agent-loopet blev ikke færdigt inden for tidsgrænsen"
+        )
+    yield ("result", box["result"])
 
 
 def iter_buffered_text_chunks(text: str, words_per_chunk: int = 3) -> Iterator[str]:

@@ -670,7 +670,9 @@ def vendor_ask():
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
                 build_tool_call_event,
+                iter_agent_with_live_tool_events,
                 iter_completion_stream,
+                live_tool_events_enabled,
                 log_agent_run,
                 log_tool_run,
                 main_model,
@@ -699,16 +701,35 @@ def vendor_ask():
             run_id = make_run_id()
             yield _vendor_sse({"type": "thinking", "content": "Analyserer…"})
 
-            runtime_result = run_agent_with_fallback(
-                messages=clean_messages,
-                tools=VENDOR_TOOLS,
-                tool_executor=_vendor_executor,
-                username=f"vendor:{vendor_id}",
-                session_id=sid,
-                max_iterations=4,
-                prompt_cache_key="futurematch-vendor",
-                agent_scope="vendor",
-            )
+            agent_kwargs = {
+                "messages": clean_messages,
+                "tools": VENDOR_TOOLS,
+                "tool_executor": _vendor_executor,
+                "username": f"vendor:{vendor_id}",
+                "session_id": sid,
+                "max_iterations": 4,
+                "prompt_cache_key": "futurematch-vendor",
+                "agent_scope": "vendor",
+                "company_scope": f"vendor:{vendor_id}",
+            }
+            live_tool_call_ids = set()
+            if live_tool_events_enabled():
+                runtime_result = None
+                for _kind, _payload in iter_agent_with_live_tool_events(
+                    agent_kwargs, thread_name="vendor-agent-live"
+                ):
+                    if _kind == "tool_event":
+                        if _payload.get("id"):
+                            live_tool_call_ids.add(_payload["id"])
+                        yield _vendor_sse(_payload)
+                    elif _kind == "ping":
+                        yield _vendor_sse({"type": "ping", "content": "working"})
+                    elif _kind == "result":
+                        runtime_result = _payload
+                if runtime_result is None:
+                    raise RuntimeError("live tool events: vendor agent-loopet leverede intet resultat")
+            else:
+                runtime_result = run_agent_with_fallback(**agent_kwargs)
 
             try:
                 log_agent_run(
@@ -735,7 +756,8 @@ def vendor_ask():
                 pass
 
             for tool_result in runtime_result.tool_results:
-                yield _vendor_sse(build_tool_call_event(tool_result, agent_scope="vendor"))
+                if tool_result.call_id not in live_tool_call_ids:
+                    yield _vendor_sse(build_tool_call_event(tool_result, agent_scope="vendor"))
                 try:
                     log_tool_run(
                         getattr(current_app, "mysql", None),

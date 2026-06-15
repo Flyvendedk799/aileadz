@@ -38,6 +38,8 @@
 .hr-tool-chip{display:inline-flex;align-items:center;gap:6px;min-height:25px;padding:0 9px;border:1px solid var(--fm-line);border-radius:8px;background:var(--fm-surface-2);font-size:11.5px;font-weight:700;color:var(--fm-ink-2)}
 .hr-tool-chip i{font-size:11px;color:var(--fm-primary)}
 .hr-tool-chip .meta{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:var(--fm-ink-3);font-size:10px}
+.hr-tool-chip.running{opacity:.78;position:relative}
+.hr-tool-chip.running:after{content:"";width:6px;height:6px;border-radius:50%;background:var(--fm-primary);animation:hrTyping 1.2s infinite}
 .hr-tool-chip.error{color:#b91c1c;border-color:#fecaca;background:#fef2f2}
 </style>
 {% endblock %}
@@ -243,8 +245,19 @@ function renderToolCall(data){
     chatMessages.appendChild(activeToolRun);
   }
   const list = activeToolRun.querySelector('.hr-tool-list');
-  const chip = document.createElement('span');
-  chip.className = 'hr-tool-chip' + (data.status === 'error' ? ' error' : '');
+  const running = data.phase === 'start' || data.status === 'running';
+  const callId = String(data.id || '');
+  let chip = null;
+  if (callId){
+    chip = Array.prototype.find.call(list.children, function(el){ return el.getAttribute('data-call-id') === callId; }) || null;
+  }
+  if (chip && running) return;
+  if (!chip){
+    chip = document.createElement('span');
+    if (callId) chip.setAttribute('data-call-id', callId);
+    list.appendChild(chip);
+  }
+  chip.className = 'hr-tool-chip' + (data.status === 'error' ? ' error' : '') + (running ? ' running' : '');
   const meta = [];
   if (data.category) meta.push(data.category);
   if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + ' resultater');
@@ -253,7 +266,6 @@ function renderToolCall(data){
   if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + 'ms');
   const icon = data.ui_icon ? '<i class="fa-solid ' + safeHtml(data.ui_icon) + '"></i>' : '';
   chip.innerHTML = icon + '<span>' + safeHtml(formatToolName(data)) + '</span>' + (meta.length ? '<span class="meta">' + safeHtml(meta.join(' · ')) + '</span>' : '');
-  list.appendChild(chip);
   activeToolRun.querySelector('.hr-tool-count').textContent = String(list.children.length);
   chatMessages.scrollTop = chatMessages.scrollHeight;
 }

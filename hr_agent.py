@@ -195,8 +195,10 @@ def handle_hr_ask(user_query, flask_session):
                 choose_turn_model,
                 estimate_messages_tokens,
                 in_rate_limit_cooldown,
+                iter_agent_with_live_tool_events,
                 iter_buffered_text_chunks,
                 iter_completion_stream,
+                live_tool_events_enabled,
                 log_agent_run,
                 log_tool_run,
                 make_run_id,
@@ -257,23 +259,42 @@ def handle_hr_ask(user_query, flask_session):
             def _hr_executor(tool_call, username=None, session_id=None):
                 return execute_hr_tool(tool_call)
 
+            live_tool_call_ids = set()
             if not hr_tools and intent == "chit_chat":
                 runtime_result = run_chitchat_turn(clean_messages, intent=intent)
             else:
                 if hr_tools:
                     yield f"data: {json.dumps({'type': 'thinking', 'content': 'Analyserer…'})}\n\n"
-                runtime_result = run_agent_with_fallback(
-                    messages=clean_messages,
-                    tools=hr_tools,
-                    tool_executor=_hr_executor,
-                    username=flask_session.get("user"),
-                    session_id=hr_sid,
-                    model=turn_model,
-                    tool_choice=make_tool_choice(toolset_meta.get("forced_tool")),
-                    max_iterations=choose_max_iterations(intent, scope="hr"),
-                    prompt_cache_key=f"futurematch-hr:{toolset_meta.get('version')}:{AI_PROMPT_VERSION}",
-                    agent_scope="hr",
-                )
+                agent_kwargs = {
+                    "messages": clean_messages,
+                    "tools": hr_tools,
+                    "tool_executor": _hr_executor,
+                    "username": flask_session.get("user"),
+                    "session_id": hr_sid,
+                    "model": turn_model,
+                    "tool_choice": make_tool_choice(toolset_meta.get("forced_tool")),
+                    "max_iterations": choose_max_iterations(intent, scope="hr"),
+                    "prompt_cache_key": f"futurematch-hr:{toolset_meta.get('version')}:{AI_PROMPT_VERSION}",
+                    "agent_scope": "hr",
+                    "company_scope": str(flask_session.get("company_id") or ""),
+                }
+                if hr_tools and live_tool_events_enabled():
+                    runtime_result = None
+                    for _kind, _payload in iter_agent_with_live_tool_events(
+                        agent_kwargs, thread_name="hr-agent-live"
+                    ):
+                        if _kind == "tool_event":
+                            if _payload.get("id"):
+                                live_tool_call_ids.add(_payload["id"])
+                            yield f"data: {json.dumps(_payload, ensure_ascii=False)}\n\n"
+                        elif _kind == "ping":
+                            yield f"data: {json.dumps({'type': 'ping', 'content': 'working'})}\n\n"
+                        elif _kind == "result":
+                            runtime_result = _payload
+                    if runtime_result is None:
+                        raise RuntimeError("live tool events: HR agent-loopet leverede intet resultat")
+                else:
+                    runtime_result = run_agent_with_fallback(**agent_kwargs)
             final_text = runtime_result.text or ""
             if in_rate_limit_cooldown():
                 compaction_level = "cooldown"
@@ -303,7 +324,8 @@ def handle_hr_ask(user_query, flask_session):
                 pass
 
             for tool_result in runtime_result.tool_results:
-                yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='hr'), ensure_ascii=False)}\n\n"
+                if tool_result.call_id not in live_tool_call_ids:
+                    yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='hr'), ensure_ascii=False)}\n\n"
                 try:
                     log_tool_run(
                         getattr(current_app, "mysql", None),

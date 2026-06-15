@@ -4,6 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from ai_runtime import (
+    AgentRunResult,
     ToolCallResult,
     build_tool_call_event,
     choose_turn_model,
@@ -12,6 +13,7 @@ from ai_runtime import (
     consolidate_system_layers,
     estimate_messages_tokens,
     fast_model,
+    iter_agent_with_live_tool_events,
     iter_buffered_text_chunks,
     main_model,
     max_output_tokens,
@@ -70,6 +72,34 @@ class _FakeClient:
     def __init__(self, *args, **kwargs):
         self.responses = self.__class__.responses
         self.chat = type("Chat", (), {"completions": _FakeChatCompletions()})()
+
+
+class LiveToolEventRunnerTests(unittest.TestCase):
+    def test_shared_live_runner_streams_events_before_result(self):
+        def fake_run_agent_with_fallback(on_tool_event=None, **kwargs):
+            on_tool_event({"type": "tool_call", "id": "call_1", "name": "catalog_search", "phase": "start"})
+            on_tool_event({"type": "tool_call", "id": "call_1", "name": "catalog_search", "phase": "finish"})
+            return AgentRunResult(text="done", messages=[])
+
+        with patch("ai_runtime.run_agent_with_fallback", side_effect=fake_run_agent_with_fallback):
+            items = list(iter_agent_with_live_tool_events({}, timeout_seconds=2, thread_name="test-agent-live"))
+
+        event_items = [payload for kind, payload in items if kind == "tool_event"]
+        result_items = [payload for kind, payload in items if kind == "result"]
+        self.assertEqual([e["phase"] for e in event_items], ["start", "finish"])
+        self.assertEqual(result_items[0].text, "done")
+        self.assertLess(
+            items.index(("tool_event", event_items[0])),
+            items.index(("result", result_items[0])),
+        )
+
+    def test_shared_live_runner_reraises_worker_errors(self):
+        def fake_run_agent_with_fallback(on_tool_event=None, **kwargs):
+            raise RuntimeError("boom")
+
+        with patch("ai_runtime.run_agent_with_fallback", side_effect=fake_run_agent_with_fallback):
+            with self.assertRaisesRegex(RuntimeError, "boom"):
+                list(iter_agent_with_live_tool_events({}, timeout_seconds=2, thread_name="test-agent-live"))
 
 
 class AIRuntimeTests(unittest.TestCase):

@@ -391,6 +391,75 @@ class AIRuntimeTests(unittest.TestCase):
         with patch.dict(os.environ, {"AI_TOOLER2": "on"}):
             self.assertTrue(ai_tooler2_enabled())
 
+    def test_tool_turn_temperature_env(self):
+        from ai_runtime import tool_turn_temperature
+
+        with patch.dict(os.environ, {"AI_TOOL_TURN_TEMPERATURE": "0.2"}):
+            self.assertEqual(tool_turn_temperature(), 0.2)
+        with patch.dict(os.environ, {"AI_TOOL_TURN_TEMPERATURE": ""}):
+            self.assertIsNone(tool_turn_temperature())  # empty => API default
+        with patch.dict(os.environ, {"AI_TOOL_TURN_TEMPERATURE": "9"}):
+            self.assertEqual(tool_turn_temperature(), 2.0)  # clamped
+
+    def test_tool_turn_sets_low_temperature(self):
+        first = type("Resp", (), {
+            "id": "resp_1",
+            "output": [{
+                "type": "function_call",
+                "name": "catalog_get_product",
+                "call_id": "call_1",
+                "arguments": json.dumps({"handle": "course-a"}),
+            }],
+            "usage": {"input_tokens": 10, "output_tokens": 3},
+        })()
+        second = type("Resp", (), {
+            "id": "resp_2",
+            "output": [{"type": "message", "content": [{"text": "done"}]}],
+            "usage": {"input_tokens": 12, "output_tokens": 5},
+        })()
+        _FakeClient.responses = _FakeResponses([first, second])
+        with patch.dict(os.environ, {"AI_TOOL_TURN_TEMPERATURE": "0.2"}):
+            with patch("ai_runtime.OpenAI", _FakeClient):
+                run_responses_agent(
+                    messages=[{"role": "system", "content": "sys"}, {"role": "user", "content": "u"}],
+                    tools=[{
+                        "type": "function",
+                        "function": {
+                            "name": "catalog_get_product",
+                            "description": "Get product",
+                            "parameters": {"type": "object", "properties": {"handle": {"type": "string"}}, "required": ["handle"], "additionalProperties": False},
+                            "strict": True,
+                        },
+                    }],
+                    tool_executor=lambda *a, **k: json.dumps({"status": "success", "product": {"handle": "course-a"}}),
+                    username="u",
+                    session_id="s",
+                )
+        # The tool-deciding turn must carry the low temperature.
+        first_call = _FakeClient.responses.calls[0]
+        self.assertIn("tools", first_call)
+        self.assertEqual(first_call.get("temperature"), 0.2)
+
+    def test_run_cost_uses_cost_model_when_model_known(self):
+        from ai_runtime import _approx_cost_usd
+
+        usage_in, usage_out = 100000, 50000
+        # Known model resolves through ai_cost_model's per-model table.
+        priced = _approx_cost_usd(usage_in, usage_out, model="gpt-4o")
+        self.assertGreater(priced, 0.0)
+        # Unknown model falls back to the legacy flat env rate (still monotonic).
+        fallback = _approx_cost_usd(usage_in, usage_out, model="totally-unknown-model")
+        self.assertGreater(fallback, 0.0)
+
+    def test_token_divisor_env_configurable(self):
+        from ai_runtime import _estimate_text_tokens
+
+        text = "x" * 40
+        with patch.dict(os.environ, {"AI_TOKEN_CHARS_PER_TOKEN": "4.0"}):
+            self.assertEqual(_estimate_text_tokens(text), 10)
+        with patch.dict(os.environ, {"AI_TOKEN_CHARS_PER_TOKEN": "2.0"}):
+            self.assertEqual(_estimate_text_tokens(text), 20)
+
     def test_tool_lifecycle_callback_emits_start_and_finish(self):
         first = type("Resp", (), {
             "id": "resp_1",

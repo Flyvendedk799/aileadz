@@ -42,8 +42,6 @@ def _fence(label, text):
 import uuid
 import re as _re
 import random as _random
-import threading
-import queue
 from typing import Optional
 
 # 5.4: Prompt versioning for A/B testing
@@ -1211,11 +1209,8 @@ def _live_agent_timeout_seconds():
     plus tool-latens, så legitime lange ture aldrig kappes unødigt. Env-tunbar
     via AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS.
     """
-    import os as _os
-    try:
-        return max(15.0, float(_os.getenv("AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS", "90")))
-    except ValueError:
-        return 90.0
+    from ai_runtime import live_agent_timeout_seconds
+    return live_agent_timeout_seconds()
 
 
 def _iter_agent_with_live_tool_events(agent_kwargs):
@@ -1235,66 +1230,8 @@ def _iter_agent_with_live_tool_events(agent_kwargs):
     i request-tråden og threades ind via agent_kwargs["company_scope"], så
     tool-cachens tenant-nøgle er korrekt selv hvis kontekst-kopien fejler.
     """
-    from ai_runtime import run_agent_with_fallback
-
-    event_q = queue.Queue(maxsize=100)
-    done = object()
-    box = {}
-
-    def _on_tool_event(evt):
-        try:
-            event_q.put_nowait(evt)
-        except queue.Full:
-            pass  # drop eventet frem for at blokere agent-loopet
-
-    def _worker():
-        try:
-            box["result"] = run_agent_with_fallback(on_tool_event=_on_tool_event, **agent_kwargs)
-        except BaseException as exc:  # re-raises i kalde-tråden nedenfor
-            box["error"] = exc
-        finally:
-            try:
-                event_q.put(done, timeout=5)
-            except Exception:
-                pass
-
-    target = _worker
-    try:
-        from flask import copy_current_request_context, has_request_context
-        if has_request_context():
-            target = copy_current_request_context(_worker)
-    except Exception:
-        pass  # uden request-kontekst (tests/batch) køres workeren direkte
-
-    worker = threading.Thread(target=target, daemon=True, name="ai-agent-live")
-    worker.start()
-
-    deadline = time.time() + _live_agent_timeout_seconds()
-    finished = False
-    while time.time() <= deadline:
-        try:
-            item = event_q.get(timeout=0.5)
-        except queue.Empty:
-            yield ("ping", None)
-            continue
-        if item is done:
-            finished = True
-            break
-        if isinstance(item, dict):
-            yield ("tool_event", item)
-
-    # Kort grace-join: var loopet netop færdigt omkring deadline, samles
-    # resultatet stadig op i stedet for at fejle.
-    worker.join(timeout=2 if finished else 5)
-    if "error" in box:
-        raise box["error"]
-    if "result" not in box:
-        # Hård timeout: daemon-workeren efterlades; brugeren får den normale
-        # timeout-fejlbesked via stream_generators except-håndtering.
-        raise TimeoutError(
-            "live tool events timeout: agent-loopet blev ikke færdigt inden for tidsgrænsen"
-        )
-    yield ("result", box["result"])
+    from ai_runtime import iter_agent_with_live_tool_events
+    yield from iter_agent_with_live_tool_events(agent_kwargs)
 
 
 # ── Main Agent Loop ──

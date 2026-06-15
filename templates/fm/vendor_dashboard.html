@@ -86,7 +86,10 @@
                       font-size: 11.5px; font-weight: 700; color: var(--fm-ink-2); }
     .vp-ai-toolchip i { color: var(--fm-primary); font-size: 11px; }
     .vp-ai-toolchip .meta { font-family: ui-monospace,SFMono-Regular,Menlo,monospace; color: var(--fm-ink-3); font-size: 10px; }
+    .vp-ai-toolchip.running { opacity: .78; position: relative; }
+    .vp-ai-toolchip.running:after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--fm-primary); animation: vpPulse 1.2s infinite; }
     .vp-ai-toolchip.error { color: #b91c1c; border-color: #fecaca; background: #fef2f2; }
+    @keyframes vpPulse { 0%,60%,100% { opacity: .25; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-2px); } }
     .vp-ai-form { display: flex; gap: 8px; padding: 12px 14px; border-top: 1px solid var(--fm-line); }
     .vp-ai-form input { flex: 1; padding: 10px 12px; border: 1px solid var(--fm-line-2); border-radius: 10px;
                         font: inherit; font-size: 13.5px; background: var(--fm-bg); color: var(--fm-ink); }
@@ -275,8 +278,19 @@
         body.insertBefore(activeToolRun, out);
       }
       var list = activeToolRun.querySelector('.vp-ai-toollist');
-      var chip = document.createElement('span');
-      chip.className = 'vp-ai-toolchip' + (data.status === 'error' ? ' error' : '');
+      var running = data.phase === 'start' || data.status === 'running';
+      var callId = String(data.id || '');
+      var chip = null;
+      if (callId) {
+        chip = Array.prototype.find.call(list.children, function (el) { return el.getAttribute('data-call-id') === callId; }) || null;
+      }
+      if (chip && running) return;
+      if (!chip) {
+        chip = document.createElement('span');
+        if (callId) chip.setAttribute('data-call-id', callId);
+        list.appendChild(chip);
+      }
+      chip.className = 'vp-ai-toolchip' + (data.status === 'error' ? ' error' : '') + (running ? ' running' : '');
       var meta = [];
       if (data.category) meta.push(data.category);
       if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + ' resultater');
@@ -285,7 +299,6 @@
       if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + 'ms');
       var icon = data.ui_icon ? '<i class="fa-solid ' + safeHtml(data.ui_icon) + '"></i>' : '';
       chip.innerHTML = icon + '<span>' + safeHtml(toolLabel(data)) + '</span>' + (meta.length ? '<span class="meta">' + safeHtml(meta.join(' · ')) + '</span>' : '');
-      list.appendChild(chip);
       activeToolRun.querySelector('.vp-ai-toolcount').textContent = String(list.children.length);
       body.scrollTop = body.scrollHeight;
     }

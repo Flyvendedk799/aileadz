@@ -32,6 +32,12 @@ class ToolMeta:
     ui_icon: str = ""
     ui_description: str = ""
     safe_to_show: bool = True
+    # AI Tooler 2 additions — all default to backward-compatible values so existing
+    # ToolMeta call sites are unchanged.
+    confirm_required: bool = False  # tool must round-trip a confirm card before executing
+    audit_action: str = ""  # audit_log action name written on a confirmed mutation
+    manager_only: bool = False  # only company managers may run this tool
+    progress_label: str = ""  # Danish "running" verb for long tools (per-tool progress UI)
 
 
 _EMPLOYEE_META = {
@@ -366,6 +372,10 @@ def tool_display_metadata(name: str, agent_scope: Optional[str] = None) -> Dict[
         "cache_ttl": int(meta.cache_ttl or 0),
         "parallel_safe": bool(meta.parallel_safe and not meta.side_effect),
         "tags": list(tags),
+        "confirm_required": bool(meta.confirm_required),
+        "audit_action": meta.audit_action or "",
+        "manager_only": bool(meta.manager_only),
+        "progress_label": meta.progress_label or "",
     }
 
 

@@ -2413,37 +2413,36 @@ def _execute_assign_learning_path_to_team(args):
 _SKILL_TARGET_PRIORITIES = ('low', 'medium', 'high', 'critical')
 
 
-def _hr_manager_ctx():
+def _hr_manager_ctx(message="Kun ledere/HR-managere kan ændre kompetencemål eller compliance-krav."):
     """Resolve the HR actor; (ctx, error_json_or_None). error is set for a
-    non-manager so callers refuse the mutation explicitly."""
-    try:
-        from order_service import OrderContext
-        ctx = OrderContext.from_session(source='hr_chat')
-    except Exception as exc:
-        print(f"[HR_TOOLS][write] OrderContext import/build failed: {exc}")
-        return None, json.dumps({"error": "Brugerkontekst er ikke tilgængelig lige nu."})
-    if not ctx.is_manager:
-        return ctx, json.dumps({
-            "error": "not_authorized",
-            "message": "Kun ledere/HR-managere kan ændre kompetencemål eller compliance-krav.",
-        })
+    non-manager so callers refuse the mutation explicitly.
+
+    Thin wrapper over the shared ``tool_confirm.manager_guard`` (AI Tooler 2); keeps
+    the historical JSON-string error contract HR callers expect.
+    """
+    from tool_confirm import manager_guard
+    ctx, err = manager_guard(source='hr_chat', message=message)
+    if err is not None:
+        return ctx, json.dumps(err)
     return ctx, None
 
 
 def _hr_write_audit(cur, *, company_id, user_id, action, resource_id, description=""):
-    """Best-effort audit row for an HR chat mutation. Never breaks the op."""
-    try:
-        cur.execute(
-            """
-            INSERT INTO audit_log
-                (company_id, user_id, action, action_type, resource_type,
-                 resource_id, description)
-            VALUES (%s, %s, %s, %s, 'hr_chat', %s, %s)
-            """,
-            (company_id, user_id, action, action, str(resource_id), description),
-        )
-    except Exception as exc:  # pragma: no cover - audit must never fail the op
-        print(f"[HR_TOOLS][write] audit_log skipped ({action}): {exc}")
+    """Best-effort audit row for an HR chat mutation. Never breaks the op.
+
+    Delegates to the shared ``tool_confirm.audit_chat_mutation`` (AI Tooler 2) with the
+    historical ``resource_type='hr_chat'`` so existing audit rows are unchanged.
+    """
+    from tool_confirm import audit_chat_mutation
+    audit_chat_mutation(
+        cur,
+        company_id=company_id,
+        user_id=user_id,
+        action=action,
+        resource_id=resource_id,
+        description=description,
+        resource_type='hr_chat',
+    )
 
 
 def _execute_set_skill_target(args):

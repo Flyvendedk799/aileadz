@@ -167,6 +167,22 @@ def _tool_event_message(status: str, cache_hit: bool) -> str:
     return "Færdig."
 
 
+def _safe_tool_error(parsed: Dict[str, Any]) -> str:
+    """Short, browser-safe error blurb for a failed tool call.
+
+    Prefers an explicit Danish message the tool authored; otherwise falls back to a
+    generic line. Truncated so it can never leak large payloads into the SSE stream.
+    """
+    if not isinstance(parsed, dict):
+        return ""
+    for key in ("message_da", "message", "error_message", "error"):
+        value = parsed.get(key)
+        if isinstance(value, str) and value.strip():
+            text = value.strip()
+            return text if len(text) <= 200 else text[:197] + "…"
+    return ""
+
+
 def build_tool_call_event(
     result: ToolCallResult,
     *,
@@ -188,7 +204,7 @@ def build_tool_call_event(
         latency_ms = max(0, int(round(float(result.latency_ms or 0))))
     except (TypeError, ValueError):
         latency_ms = 0
-    return {
+    event = {
         "type": "tool_call",
         "id": result.call_id or "",
         "agent": agent_scope or display.get("agent") or "employee",
@@ -202,13 +218,25 @@ def build_tool_call_event(
         "results_count": count,
         "latency_ms": latency_ms,
         "cache_hit": cache_hit,
+        "cache_ttl": int(display.get("cache_ttl") or 0),
         "side_effect": bool(display.get("side_effect")),
+        "confirm_required": bool(display.get("confirm_required")),
         "message": _tool_event_message(status, cache_hit),
     }
+    # AI Tooler 2: surface a partial-failure flag (some sub-operations failed) and a
+    # redaction-safe short error string, but only when the tool is marked safe_to_show.
+    if isinstance(parsed, dict) and parsed.get("partial_failure"):
+        event["partial_failure"] = True
+    if status == "error" and display.get("safe_to_show"):
+        safe_error = _safe_tool_error(parsed)
+        if safe_error:
+            event["safe_error"] = safe_error
+    return event
 
 
 def build_tool_start_event(name: str, call_id: str = "", *, agent_scope: str = "employee") -> Dict[str, Any]:
     display = tool_display_metadata(name, agent_scope)
+    progress_label = display.get("progress_label") or ""
     return {
         "type": "tool_call",
         "id": call_id or "",
@@ -224,7 +252,42 @@ def build_tool_start_event(name: str, call_id: str = "", *, agent_scope: str = "
         "latency_ms": 0,
         "cache_hit": False,
         "side_effect": bool(display.get("side_effect")),
-        "message": "Kører værktøj.",
+        "confirm_required": bool(display.get("confirm_required")),
+        "progress_label": progress_label,
+        "message": progress_label or "Kører værktøj.",
+    }
+
+
+def build_tool_progress_event(
+    name: str,
+    call_id: str = "",
+    *,
+    agent_scope: str = "employee",
+    percent: Optional[float] = None,
+    note: str = "",
+) -> Dict[str, Any]:
+    """Mid-execution progress beat for a long-running tool (e.g. insights recompute).
+
+    Browser-safe like the start/finish events — carries no raw args or output.
+    """
+    display = tool_display_metadata(name, agent_scope)
+    pct: Optional[int] = None
+    if percent is not None:
+        try:
+            pct = max(0, min(100, int(round(float(percent)))))
+        except (TypeError, ValueError):
+            pct = None
+    return {
+        "type": "tool_progress",
+        "id": call_id or "",
+        "agent": agent_scope or display.get("agent") or "employee",
+        "name": name,
+        "label": display.get("label") or name,
+        "ui_icon": display.get("ui_icon") or "fa-wand-magic-sparkles",
+        "phase": "progress",
+        "status": "running",
+        "percent": pct,
+        "message": note or display.get("progress_label") or "Arbejder…",
     }
 
 
@@ -468,6 +531,16 @@ def live_tool_events_enabled() -> bool:
     er færdigt. Sæt AI_LIVE_TOOL_EVENTS=0 for at gendanne den gamle post-hoc
     emissionssti (rollback)."""
     return (os.getenv("AI_LIVE_TOOL_EVENTS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
+
+
+def ai_tooler2_enabled() -> bool:
+    """Master kill-switch for the AI Tooler 2 batch.
+
+    Gates every new platform-control tool and the new confirm/progress UI wiring so
+    the whole batch can be disabled with a single flag. Default OFF until the batch
+    is verified in an environment; flip AI_TOOLER2=on (or 1/true/yes) to enable.
+    """
+    return (os.getenv("AI_TOOLER2", "") or "").strip().lower() in {"1", "true", "yes", "on"}
 
 
 def live_agent_timeout_seconds() -> float:

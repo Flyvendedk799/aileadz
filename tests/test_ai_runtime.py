@@ -352,6 +352,45 @@ class AIRuntimeTests(unittest.TestCase):
         self.assertNotIn("arguments", event)
         self.assertNotIn("output", event)
 
+    def test_tooler2_event_fields_and_progress_builder(self):
+        from ai_runtime import build_tool_start_event, build_tool_progress_event
+
+        # side-effect tool start event carries the new confirm_required flag
+        start = build_tool_start_event("create_course_order", "call_x", agent_scope="employee")
+        self.assertIn("confirm_required", start)
+        self.assertIn("progress_label", start)
+        self.assertEqual(start["status"], "running")
+
+        # partial_failure + redaction-safe error string surface on a failed call
+        event = build_tool_call_event(
+            ToolCallResult(
+                call_id="call_e",
+                name="catalog_search",
+                arguments={"query": "x"},
+                output=json.dumps({"status": "error", "message_da": "Kunne ikke hente data", "partial_failure": True}),
+                latency_ms=5,
+            ),
+            agent_scope="employee",
+        )
+        self.assertEqual(event["status"], "error")
+        self.assertTrue(event.get("partial_failure"))
+        self.assertEqual(event.get("safe_error"), "Kunne ikke hente data")
+
+        # progress event is browser-safe and clamps percent to 0..100
+        prog = build_tool_progress_event("catalog_search", "call_p", percent=150, note="Analyserer…")
+        self.assertEqual(prog["type"], "tool_progress")
+        self.assertEqual(prog["percent"], 100)
+        self.assertEqual(prog["message"], "Analyserer…")
+        self.assertNotIn("output", prog)
+
+    def test_tooler2_master_flag(self):
+        from ai_runtime import ai_tooler2_enabled
+
+        with patch.dict(os.environ, {"AI_TOOLER2": "off"}):
+            self.assertFalse(ai_tooler2_enabled())
+        with patch.dict(os.environ, {"AI_TOOLER2": "on"}):
+            self.assertTrue(ai_tooler2_enabled())
+
     def test_tool_lifecycle_callback_emits_start_and_finish(self):
         first = type("Resp", (), {
             "id": "resp_1",

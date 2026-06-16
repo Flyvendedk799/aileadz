@@ -2251,6 +2251,28 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             'choices': tool_result_dict.get('choices', []),
                         }))
 
+                elif tool_result_dict.get("needs_confirmation"):
+                    # Generic confirm_card: any tool that returned needs_confirmation=True
+                    # (Phase 5-7 side-effect tools). Store args server-side so the
+                    # client only receives an opaque token — args never hit the wire.
+                    try:
+                        from app1 import confirm_store as _cs
+                        _token = _cs.store_pending(
+                            sid, "employee", fn, tool_result.arguments or {}
+                        )
+                        _confirm_payload = {
+                            "type": "confirm_card",
+                            "token": _token,
+                            "action": tool_result_dict.get("action", fn),
+                            "summary_da": tool_result_dict.get("message_da", ""),
+                            "details": tool_result_dict.get("details"),
+                            "recipient_count": tool_result_dict.get("recipient_count"),
+                            "price": tool_result_dict.get("price"),
+                        }
+                        buffered_profile_events.append(json.dumps(_confirm_payload))
+                    except Exception as _ce:
+                        print(f"[confirm_store error] {fn}: {_ce}")
+
             close_flask_mysql_connection()
             final_messages = list(
                 runtime_result.stream_messages or runtime_result.messages or ephemeral_messages

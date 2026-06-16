@@ -129,6 +129,7 @@
 
   let sending = false, aborted = false;
   let currentAbort = null;            // AbortController for the in-flight /ask stream
+  let lastActualQuery = null;         // last query submitted (after course-ref expansion)
   // No-event watchdog. Once content streams, gaps are tiny (chunks/heartbeats),
   // so 25s safely detects a dead connection. Before the first content event the
   // backend may legitimately be silent for the whole tool loop (the live
@@ -670,6 +671,18 @@
     track_goal_progress: "Målfremdrift",
     add_to_calendar: "Kalender",
     mark_course_complete: "Markér fuldført",
+    // Phase 5-7 new tools
+    schedule_recurring_report: "Planlæg rapport",
+    recheck_compliance: "Tjek compliance",
+    generate_fresh_insights: "Analyser samtaler",
+    bulk_calendar_invites: "Kalenderinvitationer",
+    send_company_email: "Send virksomhedsmail",
+    send_deadline_reminders: "Send påmindelser",
+    create_order_for_employee: "Opret medarbejderordre",
+    save_course_for_later: "Gem til senere",
+    set_course_reminder: "Sæt påmindelse",
+    manage_my_order: "Administrer ordre",
+    request_manager_approval: "Anmod om godkendelse",
   };
   function toolLabel(tool) {
     const name = typeof tool === "string" ? tool : tool && tool.name;
@@ -702,15 +715,72 @@
       if (callId) chip.setAttribute("data-call-id", callId);
       list.appendChild(chip);
     }
-    chip.className = "tool-chip" + (data.status === "error" ? " error" : "") + (running ? " running" : "");
+    const partialFail = !running && data.partial_failure;
+    chip.className = "tool-chip"
+      + (data.status === "error" ? " error" : "")
+      + (partialFail ? " partial-failure" : "")
+      + (running ? " running" : "");
     const meta = [];
     if (data.category) meta.push(data.category);
     if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + " resultater");
-    if (data.cache_hit) meta.push("cache");
+    if (data.cache_hit) {
+      const ttl = data.cache_ttl ? Math.round(data.cache_ttl) + "s" : "";
+      meta.push(ttl ? "cache " + ttl : "cache");
+    }
+    if (partialFail) meta.push("delvis fejl");
     if (data.side_effect) meta.push("ændrer data");
     if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + "ms");
     const icon = data.ui_icon ? `<i class="fa-solid ${esc(data.ui_icon)}"></i>` : "";
     chip.innerHTML = `${icon}<span>${esc(toolLabel(data))}</span>${meta.length ? `<span class="meta">${esc(meta.join(" · "))}</span>` : ""}`;
+    // Progress bar for running chips (shown when progress_label is set or always for running)
+    if (running) {
+      const progWrap = document.createElement("div");
+      progWrap.className = "tool-chip-progress";
+      if (data.progress_label) {
+        const lbl = document.createElement("div");
+        lbl.className = "tool-chip-progress-label";
+        lbl.textContent = data.progress_label;
+        progWrap.appendChild(lbl);
+      }
+      const barWrap = document.createElement("div");
+      barWrap.className = "tool-chip-progress-bar-wrap";
+      const bar = document.createElement("div");
+      bar.className = "tool-chip-progress-bar";
+      if (data.percent != null) bar.setAttribute("data-pct", "1");
+      bar.style.width = (data.percent != null ? Math.min(100, data.percent) : 0) + "%";
+      barWrap.appendChild(bar);
+      progWrap.appendChild(barWrap);
+      chip.appendChild(progWrap);
+    }
+    // Error detail + retry: shown when safe_error is present on finished chips.
+    if (!running && data.status === "error" && data.safe_error) {
+      const errToggle = document.createElement("button");
+      errToggle.type = "button";
+      errToggle.className = "tool-chip-err-toggle";
+      errToggle.title = "Vis fejldetalje";
+      errToggle.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+      const errDetail = document.createElement("span");
+      errDetail.className = "tool-chip-err-detail";
+      errDetail.style.display = "none";
+      errDetail.textContent = data.safe_error;
+      errToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        errDetail.style.display = errDetail.style.display === "none" ? "inline" : "none";
+      });
+      chip.appendChild(errToggle);
+      chip.appendChild(errDetail);
+
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "tool-chip-retry";
+      retryBtn.title = "Prøv igen";
+      retryBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Prøv igen';
+      retryBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (lastActualQuery && !sending) run(lastActualQuery, { skipUser: true });
+      });
+      chip.appendChild(retryBtn);
+    }
     box.querySelector(".tool-count").textContent = String(list.children.length);
     down();
   }
@@ -720,23 +790,139 @@
     body.querySelectorAll(".tool-chip.running").forEach((c) => c.classList.remove("running"));
   }
 
+  // Update an in-flight chip's progress bar from a tool_progress SSE event.
+  function updateToolProgress(body, data) {
+    const callId = String(data.id || "");
+    if (!callId) return;
+    const list = body.querySelector(".tool-run-list");
+    if (!list) return;
+    const chip = Array.prototype.find.call(list.children,
+      (el) => el.getAttribute("data-call-id") === callId) || null;
+    if (!chip) return;
+    const bar = chip.querySelector(".tool-chip-progress-bar");
+    if (bar && data.percent != null) {
+      bar.setAttribute("data-pct", "1");
+      bar.style.width = Math.min(100, data.percent) + "%";
+    }
+    const lbl = chip.querySelector(".tool-chip-progress-label");
+    if (lbl && data.note) lbl.textContent = data.note;
+    down();
+  }
+
+  // Render a confirm card for a side-effect tool and wire Bekræft/Afvis.
+  function renderConfirmCard(body, data) {
+    const card = document.createElement("div");
+    card.className = "confirm-card";
+    const action = data.action || "";
+    const summaryDa = data.summary_da || "";
+    const details = data.details || "";
+    const recipientCount = data.recipient_count != null ? data.recipient_count : null;
+    const price = data.price != null ? data.price : null;
+
+    const metaParts = [];
+    if (recipientCount != null) metaParts.push(recipientCount + " modtagere");
+    if (price != null) metaParts.push(Number(price).toLocaleString("da-DK") + " kr.");
+
+    card.innerHTML = `
+      <div class="confirm-card-head">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>Bekræft handling</span>
+      </div>
+      <div class="confirm-card-body">${esc(summaryDa)}</div>
+      ${details ? `<div class="confirm-card-details">${esc(details)}</div>` : ""}
+      ${metaParts.length ? `<div class="confirm-card-meta">${esc(metaParts.join(" · "))}</div>` : ""}
+      <div class="confirm-card-actions">
+        <button class="confirm-card-ok" type="button">Bekræft</button>
+        <button class="confirm-card-cancel" type="button">Afvis</button>
+      </div>
+    `;
+
+    const okBtn = card.querySelector(".confirm-card-ok");
+    const cancelBtn = card.querySelector(".confirm-card-cancel");
+    const showResult = (cls, msg) => {
+      okBtn.disabled = true; cancelBtn.disabled = true;
+      const res = document.createElement("div");
+      res.className = "confirm-card-result " + cls;
+      res.textContent = msg;
+      card.appendChild(res);
+      down();
+    };
+
+    okBtn.addEventListener("click", async () => {
+      okBtn.disabled = true; cancelBtn.disabled = true;
+      okBtn.textContent = "Bekræfter…";
+      try {
+        const resp = await fetch("/app1/confirm_tool_action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: data.token }),
+        });
+        const result = await resp.json();
+        if (result.status === "success" || result.status === "already_confirmed") {
+          showResult("ok", result.message_da || result.message || "Bekræftet");
+        } else if (result.status === "already_confirmed") {
+          showResult("ok", "Allerede bekræftet");
+        } else {
+          showResult("err", result.message_da || result.message || "Fejl");
+        }
+      } catch (e) {
+        showResult("err", "Netværksfejl — prøv igen");
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      showResult("err", "Afvist");
+    });
+
+    body.appendChild(card);
+    down();
+  }
+
   /* ---------------- memory transparency ---------------- */
   // Shows which stored memories the AI used this turn, and confirms new ones it
   // saved — so the "what does it know about me" loop is visible in realtime.
+  // Phase 10: each memory chip has a × delete button that removes it from the store.
   function renderMemoryUsed(body, memories) {
     if (!memories || !memories.length) return;
+    let remaining = memories.length;
     const wrap = document.createElement("div");
     wrap.style.cssText = "margin:8px 0 2px;";
     const head = document.createElement("button");
     head.type = "button";
     head.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--fm-primary) 9%,transparent);color:var(--fm-primary);border:1px solid color-mix(in srgb,var(--fm-primary) 22%,transparent);border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:650;cursor:pointer;";
-    head.innerHTML = "🧠 Brugte hukommelse om dig (" + memories.length + ")";
+    const headLabel = document.createElement("span");
+    headLabel.textContent = "Brugte hukommelse om dig (" + remaining + ")";
+    head.innerHTML = "🧠 ";
+    head.appendChild(headLabel);
     const chips = document.createElement("div");
     chips.style.cssText = "display:none;flex-wrap:wrap;gap:6px;margin-top:8px;";
     memories.forEach((m) => {
       const c = document.createElement("span");
-      c.style.cssText = "font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-ink-2);";
-      c.textContent = m.label || "";
+      c.style.cssText = "display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-ink-2);";
+      const lbl = document.createElement("span");
+      lbl.textContent = (m.category ? "[" + m.category + "] " : "") + (m.label || "");
+      c.appendChild(lbl);
+      if (m.id) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.title = "Slet hukommelse";
+        del.style.cssText = "border:none;background:none;color:var(--fm-ink-3);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;";
+        del.innerHTML = "×";
+        del.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const r = await fetch("/app1/memory/" + m.id, { method: "DELETE" });
+            const res = await r.json();
+            if (res.status === "ok") {
+              c.style.opacity = ".35";
+              del.disabled = true;
+              remaining = Math.max(0, remaining - 1);
+              headLabel.textContent = "Brugte hukommelse om dig (" + remaining + ")";
+            }
+          } catch (_) {}
+        });
+        c.appendChild(del);
+      }
       chips.appendChild(c);
     });
     head.onclick = () => { chips.style.display = chips.style.display === "none" ? "flex" : "none"; };
@@ -883,6 +1069,12 @@
           } else if (data.type === "profiler_progress") {
             if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
             refreshWorkspaceStatus();
+          } else if (data.type === "tool_progress") {
+            // In-flight chip progress update from build_tool_progress_event (Phase 1/9)
+            updateToolProgress(body, data);
+          } else if (data.type === "confirm_card") {
+            // Side-effect tool preview: render Bekræft/Afvis card (Phase 8/9)
+            renderConfirmCard(body, data);
           }
         }
       }
@@ -923,6 +1115,7 @@
       actualQuery = refs + "\n" + query;
       attached = []; renderRef();
     }
+    lastActualQuery = actualQuery;
     input.value = ""; resize(); toggleSend();
     setSending(true);
     const body = addBot();

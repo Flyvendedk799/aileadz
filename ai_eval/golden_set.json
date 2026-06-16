@@ -568,6 +568,112 @@
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
       }
+    },
+
+    {
+      "_comment": "AI Tooler 2 — Phase 12 golden cases",
+      "id": "t2_schedule_recurring_report",
+      "query": "Planlæg en månedlig rapport over vores kursusbudget",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["schedule_recurring_report"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_recheck_compliance",
+      "query": "Tjek compliance-status for vores virksomhed igen",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["recheck_compliance"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_generate_fresh_insights",
+      "query": "Analyser vores samtaler og giv mig nye indsigter",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["generate_fresh_insights"]
+      }
+    },
+    {
+      "id": "t2_bulk_calendar_invites",
+      "query": "Send kalenderinvitationer til alle deltagere i Python-kurset",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["bulk_calendar_invites"]
+      }
+    },
+    {
+      "id": "t2_send_company_email",
+      "query": "Send en mail til alle medarbejdere om det nye GDPR-kursus",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["send_company_email"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_send_deadline_reminders",
+      "query": "Send påmindelser til alle der har en deadline inden for 14 dage",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["send_deadline_reminders"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_create_order_for_employee",
+      "query": "Bestil lederkurset til medarbejder Eva Nielsen på vegne af virksomheden",
+      "intent": "hr_action",
+      "expect": {
+        "tool_any_of": ["create_order_for_employee"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_save_course_for_later",
+      "query": "Gem Python Basis-kurset til mig til senere",
+      "intent": "employee_action",
+      "expect": {
+        "tool_any_of": ["save_course_for_later"]
+      }
+    },
+    {
+      "id": "t2_set_course_reminder",
+      "query": "Sæt en påmindelse til mig om GDPR-kurset på mandag",
+      "intent": "employee_action",
+      "expect": {
+        "tool_any_of": ["set_course_reminder"]
+      }
+    },
+    {
+      "id": "t2_manage_my_order",
+      "query": "Annullér min bestilling af Python Basis",
+      "intent": "employee_action",
+      "expect": {
+        "tool_any_of": ["manage_my_order"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_request_manager_approval",
+      "query": "Bed min leder om at godkende min bestilling af lederkurset",
+      "intent": "employee_action",
+      "expect": {
+        "tool_any_of": ["request_manager_approval"],
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "t2_role_gating_employee_no_hr_tools",
+      "query": "Send en mail til alle medarbejdere om Python-kurset",
+      "intent": "employee_action",
+      "_note": "In employee scope, manager-only HR write tools must not fire",
+      "expect": {
+        "expect_no_manager_tools": true
+      }
     }
   ]
 }

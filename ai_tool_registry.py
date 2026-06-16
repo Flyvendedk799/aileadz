@@ -32,6 +32,12 @@ class ToolMeta:
     ui_icon: str = ""
     ui_description: str = ""
     safe_to_show: bool = True
+    # AI Tooler 2 additions — all default to backward-compatible values so existing
+    # ToolMeta call sites are unchanged.
+    confirm_required: bool = False  # tool must round-trip a confirm card before executing
+    audit_action: str = ""  # audit_log action name written on a confirmed mutation
+    manager_only: bool = False  # only company managers may run this tool
+    progress_label: str = ""  # Danish "running" verb for long tools (per-tool progress UI)
 
 
 _EMPLOYEE_META = {
@@ -143,6 +149,23 @@ _EMPLOYEE_META = {
         parallel_safe=False,
         toolset_tags=("course", "mutation"),
     ),
+    # AI Tooler 2 (Phase 7): employee-facing action tools.
+    "save_course_for_later": ToolMeta(
+        "save_course_for_later", auth_required=True, toolset_tags=("wishlist", "memory"),
+    ),
+    "set_course_reminder": ToolMeta(
+        "set_course_reminder", auth_required=True, toolset_tags=("reminder", "memory"),
+    ),
+    "manage_my_order": ToolMeta(
+        "manage_my_order", auth_required=True,
+        side_effect=True, parallel_safe=False, confirm_required=True,
+        toolset_tags=("order", "mutation"),
+    ),
+    "request_manager_approval": ToolMeta(
+        "request_manager_approval", auth_required=True,
+        side_effect=True, parallel_safe=False, confirm_required=True,
+        toolset_tags=("approval", "mutation"),
+    ),
 }
 
 _HR_META = {
@@ -187,6 +210,48 @@ _HR_META = {
     ),
     "hr_compare_cohorts": ToolMeta(
         "hr_compare_cohorts", "hr", company_required=True, cache_ttl=120, toolset_tags=("compare", "report"),
+    ),
+    # AI Tooler 2 (Phase 5): safe platform-control tools.
+    "schedule_recurring_report": ToolMeta(
+        "schedule_recurring_report", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="schedule_recurring_report",
+        toolset_tags=("scheduler", "mutation"),
+    ),
+    "recheck_compliance": ToolMeta(
+        "recheck_compliance", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="recheck_compliance",
+        toolset_tags=("compliance", "mutation"),
+    ),
+    "generate_fresh_insights": ToolMeta(
+        "generate_fresh_insights", "hr",
+        company_required=True, parallel_safe=False,
+        progress_label="Analyserer samtaler…",
+        toolset_tags=("insights", "recompute"),
+    ),
+    "bulk_calendar_invites": ToolMeta(
+        "bulk_calendar_invites", "hr",
+        company_required=True, toolset_tags=("calendar", "export"),
+    ),
+    # AI Tooler 2 (Phase 6): high blast-radius HR writes.
+    "send_company_email": ToolMeta(
+        "send_company_email", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="send_company_email",
+        progress_label="Sender mails…", toolset_tags=("email", "mutation", "fanout"),
+    ),
+    "send_deadline_reminders": ToolMeta(
+        "send_deadline_reminders", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="send_deadline_reminders",
+        toolset_tags=("reminders", "mutation"),
+    ),
+    "create_order_for_employee": ToolMeta(
+        "create_order_for_employee", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="create_order_for_employee",
+        toolset_tags=("order", "mutation", "budget"),
     ),
 }
 
@@ -248,6 +313,11 @@ _TOOL_LABELS = {
     "track_goal_progress": "Målfremdrift",
     "add_to_calendar": "Kalender",
     "mark_course_complete": "Markér fuldført",
+    # AI Tooler 2 (Phase 7): employee-facing action tools
+    "save_course_for_later": "Gem til senere",
+    "set_course_reminder": "Sæt påmindelse",
+    "manage_my_order": "Håndtér bestilling",
+    "request_manager_approval": "Bed om godkendelse",
     # HR tools
     "get_team_training_status": "Træningsstatus",
     "get_company_skill_gaps": "Kompetencegab",
@@ -276,6 +346,14 @@ _TOOL_LABELS = {
     "set_skill_target": "Sæt kompetencemål",
     "create_compliance_requirement": "Opret compliancekrav",
     "hr_compare_cohorts": "Sammenlign grupper",
+    # AI Tooler 2 (Phase 5): safe platform-control tools
+    "schedule_recurring_report": "Planlæg rapport",
+    "recheck_compliance": "Gentjek compliance",
+    "generate_fresh_insights": "Generér indsigter",
+    "bulk_calendar_invites": "Kalenderinvitation",
+    "send_company_email": "Send virksomhedsmail",
+    "send_deadline_reminders": "Send påmindelser",
+    "create_order_for_employee": "Bestil for medarbejder",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
@@ -366,6 +444,10 @@ def tool_display_metadata(name: str, agent_scope: Optional[str] = None) -> Dict[
         "cache_ttl": int(meta.cache_ttl or 0),
         "parallel_safe": bool(meta.parallel_safe and not meta.side_effect),
         "tags": list(tags),
+        "confirm_required": bool(meta.confirm_required),
+        "audit_action": meta.audit_action or "",
+        "manager_only": bool(meta.manager_only),
+        "progress_label": meta.progress_label or "",
     }
 
 
@@ -413,6 +495,35 @@ def _strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     return schema
 
 
+def _trim_tool_descriptions_enabled() -> bool:
+    """AI Tooler 2 token trim (default OFF).
+
+    When AI_TRIM_TOOL_DESCRIPTIONS is on, overly long tool descriptions are clipped to
+    their first sentence before being sent to the model. Off by default so the eval
+    baseline is unchanged; turn on to claw back ~30-40% of the tool-schema token cost
+    once a baseline confirms no tool-selection regression.
+    """
+    return (os.getenv("AI_TRIM_TOOL_DESCRIPTIONS", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _trim_description(desc: str, max_chars: int = 220) -> str:
+    """Clip a long description to its first sentence (best-effort, never raises)."""
+    if not desc or len(desc) <= max_chars:
+        return desc
+    head = desc[:max_chars]
+    # Prefer a sentence boundary; fall back to the last word boundary.
+    for sep in (". ", "! ", "? ", "\n"):
+        idx = head.rfind(sep)
+        if idx >= 60:
+            return head[: idx + 1].strip()
+    cut = head.rfind(" ")
+    return (head[:cut] if cut >= 60 else head).strip() + "…"
+
+
+def _maybe_trim(desc: str) -> str:
+    return _trim_description(desc) if _trim_tool_descriptions_enabled() else (desc or "")
+
+
 def _normalize_chat_tool(tool: Dict[str, Any]) -> Dict[str, Any]:
     fn = deepcopy(tool.get("function") or tool)
     # Tools may opt out of strict mode (e.g. polymorphic-payload tools like
@@ -426,7 +537,7 @@ def _normalize_chat_tool(tool: Dict[str, Any]) -> Dict[str, Any]:
         "type": "function",
         "function": {
             "name": fn["name"],
-            "description": fn.get("description", ""),
+            "description": _maybe_trim(fn.get("description", "")),
             "parameters": params,
             "strict": is_strict,
         },
@@ -438,7 +549,7 @@ def to_responses_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "type": "function",
         "name": fn["name"],
-        "description": fn.get("description", ""),
+        "description": _maybe_trim(fn.get("description", "")),
         "parameters": deepcopy(fn.get("parameters") or {"type": "object", "properties": {}, "required": []}),
         "strict": bool(fn.get("strict", True)),
     }
@@ -684,6 +795,23 @@ def get_employee_tool_selection(
                 "jeg har gennemført", "jeg har gennemfoert", "marker som færdig",
                 "marker som faerdig", "fuldført kurset", "fuldfoert kurset")):
             names.add("mark_course_complete")
+        # --- AI Tooler 2 (Phase 7): employee-facing action tools, keyword-gated. ---
+        if _has_any(query, (
+                "gem til senere", "gem det her", "ønskeliste", "oenskeliste", "wishlist",
+                "husk dette kursus", "gem kurset", "tilføj til ønskeliste", "tilfoej til oenskeliste")):
+            names.add("save_course_for_later")
+        if _has_any(query, (
+                "mind mig om", "sæt en påmindelse", "saet en paamindelse", "påmind mig",
+                "paamind mig", "reminder", "husk mig på", "husk mig paa")):
+            names.add("set_course_reminder")
+        if _has_any(query, (
+                "annullér min", "annuller min", "annullér bestilling", "annuller bestilling",
+                "fortryder kurset", "fortryd bestilling", "slet min ordre", "afbestil", "håndtér bestilling")):
+            names.add("manage_my_order")
+        if _has_any(query, (
+                "bed min leder", "bed om godkendelse", "rykke for godkendelse", "ryk for godkendelse",
+                "send til godkendelse", "bed lederen", "bed min chef")):
+            names.add("request_manager_approval")
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
 
@@ -697,7 +825,12 @@ def get_employee_tool_selection(
             continue
         if meta.company_required and not company_id:
             continue
-        if meta.side_effect and name not in ("create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user") and not _explicit_order_confirmation(query):
+        if meta.side_effect and name not in (
+                "create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user",
+                # AI Tooler 2 (Phase 7): self-scoped, confirm-gated employee writes — reach
+                # the menu on their keyword so the model can surface a confirm card.
+                "manage_my_order", "request_manager_approval",
+        ) and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)
 
@@ -817,6 +950,43 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "ledere vs", "afdelinger mod", "hvordan klarer", "klarer sig mod")):
         names.add("hr_compare_cohorts")
         forced_candidates.append("hr_compare_cohorts")
+    # --- AI Tooler 2 (Phase 5): safe platform-control tools, keyword-gated only. ---
+    if _has_any(query, (
+            "planlæg rapport", "planlaeg rapport", "tilbagevendende rapport",
+            "ugentlig rapport", "månedlig rapport", "maanedlig rapport", "daglig rapport",
+            "send mig rapport", "automatisk rapport", "schedule rapport", "planlæg en rapport")):
+        names.add("schedule_recurring_report")
+    if _has_any(query, (
+            "gentjek compliance", "kør compliance", "koer compliance", "compliance-tjek",
+            "compliance tjek nu", "er vi compliant", "tjek compliance igen", "recheck compliance",
+            "compliance gentjek")):
+        names.add("recheck_compliance")
+    if _has_any(query, (
+            "generér indsigt", "generer indsigt", "friske indsigter", "frisk indsigt",
+            "opdater indsigter", "opdater indsigterne", "genberegn indsigter",
+            "nyeste data viser", "kør indsigter")):
+        names.add("generate_fresh_insights")
+    if _has_any(query, (
+            "kalenderinvitation", "kalender invitation", "send invitationer", "ics",
+            "kalender til holdet", "kalender til kurset", "invitation til kurset",
+            "lav en invitation", "kalenderfil")):
+        names.add("bulk_calendar_invites")
+    # --- AI Tooler 2 (Phase 6): high blast-radius HR writes, keyword-gated only. ---
+    if _has_any(query, (
+            "send mail", "send email", "send en mail", "udsend besked", "informer medarbejdere",
+            "informér medarbejdere", "send besked til", "annoncer", "annoncér", "udsend mail",
+            "send en besked til holdet", "kursusannoncering")):
+        names.add("send_company_email")
+    if _has_any(query, (
+            "påmind", "paamind", "deadline-påmindelse", "deadline paamindelse", "frist-påmindelse",
+            "frist paamindelse", "mind holdet om", "send påmindelser", "send paamindelser",
+            "påmind om forfaldne", "remind")):
+        names.add("send_deadline_reminders")
+    if _has_any(query, (
+            "bestil til medarbejder", "tilmeld medarbejder", "bestil for", "opret ordre for",
+            "opret bestilling for", "bestil kursus til", "tilmeld en medarbejder",
+            "bestil på vegne af", "bestil paa vegne af")):
+        names.add("create_order_for_employee")
 
     selected = []
     for name in sorted(names):

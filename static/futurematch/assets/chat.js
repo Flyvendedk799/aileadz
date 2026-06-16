@@ -129,6 +129,7 @@
 
   let sending = false, aborted = false;
   let currentAbort = null;            // AbortController for the in-flight /ask stream
+  let lastActualQuery = null;         // last query submitted (after course-ref expansion)
   // No-event watchdog. Once content streams, gaps are tiny (chunks/heartbeats),
   // so 25s safely detects a dead connection. Before the first content event the
   // backend may legitimately be silent for the whole tool loop (the live
@@ -751,6 +752,35 @@
       progWrap.appendChild(barWrap);
       chip.appendChild(progWrap);
     }
+    // Error detail + retry: shown when safe_error is present on finished chips.
+    if (!running && data.status === "error" && data.safe_error) {
+      const errToggle = document.createElement("button");
+      errToggle.type = "button";
+      errToggle.className = "tool-chip-err-toggle";
+      errToggle.title = "Vis fejldetalje";
+      errToggle.innerHTML = '<i class="fa-solid fa-circle-info"></i>';
+      const errDetail = document.createElement("span");
+      errDetail.className = "tool-chip-err-detail";
+      errDetail.style.display = "none";
+      errDetail.textContent = data.safe_error;
+      errToggle.addEventListener("click", (e) => {
+        e.stopPropagation();
+        errDetail.style.display = errDetail.style.display === "none" ? "inline" : "none";
+      });
+      chip.appendChild(errToggle);
+      chip.appendChild(errDetail);
+
+      const retryBtn = document.createElement("button");
+      retryBtn.type = "button";
+      retryBtn.className = "tool-chip-retry";
+      retryBtn.title = "Prøv igen";
+      retryBtn.innerHTML = '<i class="fa-solid fa-rotate-right"></i> Prøv igen';
+      retryBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (lastActualQuery && !sending) run(lastActualQuery, { skipUser: true });
+      });
+      chip.appendChild(retryBtn);
+    }
     box.querySelector(".tool-count").textContent = String(list.children.length);
     down();
   }
@@ -851,20 +881,48 @@
   /* ---------------- memory transparency ---------------- */
   // Shows which stored memories the AI used this turn, and confirms new ones it
   // saved — so the "what does it know about me" loop is visible in realtime.
+  // Phase 10: each memory chip has a × delete button that removes it from the store.
   function renderMemoryUsed(body, memories) {
     if (!memories || !memories.length) return;
+    let remaining = memories.length;
     const wrap = document.createElement("div");
     wrap.style.cssText = "margin:8px 0 2px;";
     const head = document.createElement("button");
     head.type = "button";
     head.style.cssText = "display:inline-flex;align-items:center;gap:6px;background:color-mix(in srgb,var(--fm-primary) 9%,transparent);color:var(--fm-primary);border:1px solid color-mix(in srgb,var(--fm-primary) 22%,transparent);border-radius:999px;padding:4px 11px;font-size:11.5px;font-weight:650;cursor:pointer;";
-    head.innerHTML = "🧠 Brugte hukommelse om dig (" + memories.length + ")";
+    const headLabel = document.createElement("span");
+    headLabel.textContent = "Brugte hukommelse om dig (" + remaining + ")";
+    head.innerHTML = "🧠 ";
+    head.appendChild(headLabel);
     const chips = document.createElement("div");
     chips.style.cssText = "display:none;flex-wrap:wrap;gap:6px;margin-top:8px;";
     memories.forEach((m) => {
       const c = document.createElement("span");
-      c.style.cssText = "font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-ink-2);";
-      c.textContent = m.label || "";
+      c.style.cssText = "display:inline-flex;align-items:center;gap:5px;font-size:11.5px;padding:3px 9px;border-radius:8px;background:var(--fm-surface-2);border:1px solid var(--fm-line);color:var(--fm-ink-2);";
+      const lbl = document.createElement("span");
+      lbl.textContent = (m.category ? "[" + m.category + "] " : "") + (m.label || "");
+      c.appendChild(lbl);
+      if (m.id) {
+        const del = document.createElement("button");
+        del.type = "button";
+        del.title = "Slet hukommelse";
+        del.style.cssText = "border:none;background:none;color:var(--fm-ink-3);cursor:pointer;font-size:10px;padding:0 2px;line-height:1;";
+        del.innerHTML = "×";
+        del.addEventListener("click", async (e) => {
+          e.stopPropagation();
+          try {
+            const r = await fetch("/app1/memory/" + m.id, { method: "DELETE" });
+            const res = await r.json();
+            if (res.status === "ok") {
+              c.style.opacity = ".35";
+              del.disabled = true;
+              remaining = Math.max(0, remaining - 1);
+              headLabel.textContent = "Brugte hukommelse om dig (" + remaining + ")";
+            }
+          } catch (_) {}
+        });
+        c.appendChild(del);
+      }
       chips.appendChild(c);
     });
     head.onclick = () => { chips.style.display = chips.style.display === "none" ? "flex" : "none"; };
@@ -1057,6 +1115,7 @@
       actualQuery = refs + "\n" + query;
       attached = []; renderRef();
     }
+    lastActualQuery = actualQuery;
     input.value = ""; resize(); toggleSend();
     setSending(true);
     const body = addBot();

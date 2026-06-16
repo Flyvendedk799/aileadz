@@ -1543,6 +1543,47 @@ def confirm_profile_update():
         return jsonify({"status": "error", "message": "Fejl ved opdatering"}), 500
 
 
+@app1_bp.route("/memory", methods=["GET"])
+def list_memories():
+    """Return the logged-in user's stored memories (newest first)."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error", "message": "Ikke logget ind"}), 401
+    try:
+        from app1.user_profile_db import get_memories, ensure_tables
+        ensure_tables()
+        rows = get_memories(logged_in_user)
+        safe = [
+            {
+                "id": r["id"],
+                "category": r.get("category") or "andet",
+                "label": r.get("label") or "",
+                "detail": r.get("detail") or "",
+            }
+            for r in (rows or [])
+        ]
+        return jsonify({"status": "ok", "memories": safe})
+    except Exception as e:
+        logging.error("list_memories error: %s", e)
+        return jsonify({"status": "error", "message": "Fejl ved hentning"}), 500
+
+
+@app1_bp.route("/memory/<int:memory_id>", methods=["DELETE"])
+def delete_memory(memory_id):
+    """Delete a single memory owned by the logged-in user."""
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error", "message": "Ikke logget ind"}), 401
+    try:
+        from app1.user_profile_db import remove_memory, ensure_tables
+        ensure_tables()
+        ok = remove_memory(logged_in_user, memory_id)
+        return jsonify({"status": "ok" if ok else "not_found"})
+    except Exception as e:
+        logging.error("delete_memory error: %s", e)
+        return jsonify({"status": "error", "message": "Fejl ved sletning"}), 500
+
+
 @app1_bp.route("/confirm_tool_action", methods=["POST"])
 def confirm_tool_action():
     """Re-execute a held side-effect tool after the user clicks Bekræft.

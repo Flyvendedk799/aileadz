@@ -145,6 +145,18 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'announcement': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">{{ heading or subject }}</h2>
+    <p>Hej {{ recipient_name or 'medarbejder' }},</p>
+    <div style="font-size:15px;line-height:1.6;white-space:pre-line;">{{ message }}</div>
+    <p style="font-size:13px;color:#64748b;margin-top:20px;">Sendt af {{ company_name }}.</p>
+  </div>
+</body></html>
+""",
     }
     body_tpl = templates.get(template_name, templates['welcome'])
     ctx = {

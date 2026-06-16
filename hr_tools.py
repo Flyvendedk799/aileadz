@@ -878,6 +878,83 @@ HR_TOOLS.extend([
 ])
 
 
+# ── AI Tooler 2 (Phase 6): high blast-radius HR writes ────────────────────────
+HR_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "send_company_email",
+            "description": (
+                "MUTATION (fan-out): Send en brandet besked på mail til en målgruppe i virksomheden "
+                "(alle, ledere eller en afdeling) — fx en kursusannoncering eller onboarding-besked. "
+                "Kræver confirm=true OG manager. Forhåndsvisningen viser antal modtagere og emne. "
+                "Virksomheds-scoped. Bekræft ALTID emne og målgruppe med brugeren før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "Emnelinjen på mailen."},
+                    "message": {"type": "string", "description": "Selve beskeden (almindelig tekst, linjeskift bevares)."},
+                    "audience": {
+                        "type": "string",
+                        "enum": ["all", "managers", "department"],
+                        "description": "Hvem mailen sendes til. Standard 'all'."
+                    },
+                    "department": {"type": "string", "description": "Afdeling, påkrævet når audience='department'."},
+                    "confirm": {"type": "boolean", "description": "Skal være true for at sende. Uden dette returneres kun en forhåndsvisning med modtagerantal."}
+                },
+                "required": ["subject", "message"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_deadline_reminders",
+            "description": (
+                "MUTATION: Udsend deadline-påmindelser NU til medarbejdere med forestående "
+                "kursusfrister og deres ledere (samme som det daglige job, men på forespørgsel). "
+                "Kræver confirm=true OG manager. Virksomheds-scoped. Bruges ved 'mind holdet om "
+                "deadlines', 'send frist-påmindelser nu', 'påmind om forfaldne kurser'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirm": {"type": "boolean", "description": "Skal være true for at udsende. Uden dette returneres kun en forhåndsvisning."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_order_for_employee",
+            "description": (
+                "MUTATION (trækker budget): Opret en kursusbestilling PÅ VEGNE AF en medarbejder. "
+                "Beløbet trækkes fra virksomhedens budget. Kræver confirm=true OG manager; "
+                "medarbejderen valideres mod virksomheden (fremmede id'er afvises). Brug ALTID "
+                "product_handle, product_title og price fra et forudgående katalogopslag — gæt aldrig "
+                "prisen. Bekræft ALTID medarbejder, kursus og pris med brugeren før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": "integer", "description": "user_id på medarbejderen i virksomheden."},
+                    "product_handle": {"type": "string", "description": "Kursets handle fra kataloget."},
+                    "product_title": {"type": "string", "description": "Kursets titel fra kataloget."},
+                    "price": {"type": "number", "description": "Prisen fra kataloget (kr.). Gæt aldrig."},
+                    "variant_date": {"type": "string", "description": "Valgfri valgt dato-variant."},
+                    "variant_location": {"type": "string", "description": "Valgfri valgt sted-variant."},
+                    "confirm": {"type": "boolean", "description": "Skal være true for at oprette bestillingen. Uden dette returneres kun en forhåndsvisning."}
+                },
+                "required": ["employee_id", "product_handle", "product_title", "price"]
+            }
+        }
+    },
+])
+
+
 # ── Tool execution functions ──
 
 def _get_cursor():
@@ -3572,6 +3649,309 @@ def _execute_bulk_calendar_invites(args):
     }, default=str)
 
 
+# ── AI Tooler 2 (Phase 6): high blast-radius HR writes ────────────────────────
+
+def _resolve_company_recipients(cur, company_id, *, audience, department=None):
+    """Return [{user_id, full_name, email}] active company_users for an audience.
+
+    audience: 'all' | 'managers' | 'department'. Strictly company-scoped — only
+    rows for the session company are ever returned (cross-tenant guard).
+    """
+    base = (
+        "SELECT user_id, full_name, username AS email, role "
+        "FROM company_users WHERE company_id = %s AND status = 'active'"
+    )
+    params = [company_id]
+    aud = (audience or "all").strip().lower()
+    if aud == "managers":
+        base += " AND role IN ('manager', 'admin', 'hr')"
+    elif aud == "department" and department:
+        base += " AND department = %s"
+        params.append(department)
+    cur.execute(base, tuple(params))
+    rows = cur.fetchall() or []
+    out = []
+    for r in rows:
+        email = (r.get("email") or "").strip()
+        if email:
+            out.append({"user_id": r.get("user_id"), "full_name": r.get("full_name") or email, "email": email})
+    return out
+
+
+def _execute_send_company_email(args):
+    """MUTATION (fan-out) — send a branded announcement to a company audience.
+
+    Highest blast radius after create_order_for_employee: the preview MUST echo the
+    recipient count + subject so a human sees the scale before confirm. Confirm +
+    manager + company-scoped + audited. SMTP failures are tolerated per-recipient.
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan sende virksomhedsmails.")
+    if err:
+        return err
+
+    subject = (args.get('subject') or '').strip()
+    message = (args.get('message') or '').strip()
+    if not subject or not message:
+        return json.dumps({"error": "Angiv både et emne (subject) og en besked (message)."})
+    audience = (args.get('audience') or 'all').strip().lower()
+    if audience not in ('all', 'managers', 'department'):
+        return json.dumps({"error": "audience skal være 'all', 'managers' eller 'department'."})
+    department = (args.get('department') or '').strip() or None
+    if audience == 'department' and not department:
+        return json.dumps({"error": "Angiv en afdeling når audience er 'department'."})
+
+    cur = _get_cursor()
+    try:
+        recipients = _resolve_company_recipients(cur, company_id, audience=audience, department=department)
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][send_company_email] recipient resolve failed: {exc}")
+        return json.dumps({"error": "Kunne ikke slå modtagere op."})
+
+    if not recipients:
+        cur.close()
+        return json.dumps({"error": "Ingen aktive modtagere fundet for den valgte målgruppe."})
+
+    if not bool(args.get('confirm')):
+        cur.close()
+        return json.dumps(needs_confirmation_payload(
+            action="send_company_email",
+            summary_da=(
+                f"Bekræft at du vil sende mailen '{subject}' til {len(recipients)} modtager"
+                f"{'e' if len(recipients) != 1 else ''} ({audience}). Send confirm=true for at sende."
+            ),
+            details={"subject": subject, "audience": audience, "department": department},
+            recipient_count=len(recipients),
+        ), default=str)
+
+    branding = {}
+    try:
+        from branding_service import get_branding
+        branding = get_branding(company_id) or {}
+    except Exception:
+        branding = {}
+
+    sent = 0
+    try:
+        from email_service import send_branded_email
+        for r in recipients:
+            try:
+                ok = send_branded_email(
+                    r["email"], subject, "announcement", branding,
+                    company_id=company_id, recipient_name=r["full_name"],
+                    heading=subject, subject=subject, message=message,
+                )
+                if ok:
+                    sent += 1
+            except Exception as exc:
+                print(f"[HR_TOOLS][send_company_email] send to {r['email']} failed: {exc}")
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][send_company_email] mail backend unavailable: {exc}")
+        return json.dumps({"error": "Mailtjenesten er ikke tilgængelig lige nu."})
+
+    try:
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="send_company_email", resource_id=audience,
+            description=f"'{subject}' -> {sent}/{len(recipients)}",
+        )
+        current_app.mysql.connection.commit()
+    except Exception as exc:
+        print(f"[HR_TOOLS][send_company_email] audit skipped: {exc}")
+    finally:
+        cur.close()
+
+    failed = len(recipients) - sent
+    return json.dumps({
+        "success": True,
+        "recipient_count": len(recipients),
+        "sent": sent,
+        "partial_failure": failed > 0,
+        "message_da": (
+            f"Mailen '{subject}' er sendt til {sent} af {len(recipients)} modtagere."
+            + (f" {failed} kunne ikke sendes." if failed else "")
+        ),
+    }, default=str)
+
+
+def _execute_send_deadline_reminders(args):
+    """MUTATION — trigger learner + manager deadline reminders on demand.
+
+    Confirm + manager + company-scoped + audited. Delegates to
+    deadline_service.remind_company (the same routine the daily job uses).
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan udsende deadline-påmindelser.")
+    if err:
+        return err
+
+    if not bool(args.get('confirm')):
+        return json.dumps(needs_confirmation_payload(
+            action="send_deadline_reminders",
+            summary_da=(
+                "Bekræft at du vil udsende deadline-påmindelser nu til medarbejdere med "
+                "forestående kursusfrister og deres ledere. Send confirm=true for at sende."
+            ),
+        ), default=str)
+
+    try:
+        from deadline_service import remind_company
+        summary = remind_company(company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][send_deadline_reminders] failed: {exc}")
+        return json.dumps({"error": "Påmindelserne kunne ikke udsendes lige nu."})
+
+    try:
+        cur = _get_cursor()
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="send_deadline_reminders", resource_id=str(company_id),
+            description="ad-hoc deadline reminders",
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][send_deadline_reminders] audit skipped: {exc}")
+
+    learner = int((summary or {}).get('learner_reminders') or 0)
+    manager = int((summary or {}).get('manager_cards') or 0)
+    return json.dumps({
+        "success": True,
+        "learner_reminders": learner,
+        "manager_cards": manager,
+        "message_da": (
+            f"Deadline-påmindelser udsendt: {learner} til medarbejdere og {manager} til ledere."
+        ),
+    }, default=str)
+
+
+def _execute_create_order_for_employee(args):
+    """MUTATION (charges budget) — HR creates a course order for an employee.
+
+    The highest-stakes write: confirm + manager + company-scoped employee validation
+    (cross-tenant ids rejected) + audited. Product handle/title/price are supplied by
+    the model from a prior grounded catalog tool call. Delegates the actual order +
+    budget charge to order_service.create_order (the single authorized path).
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan oprette bestillinger for medarbejdere.")
+    if err:
+        return err
+
+    try:
+        employee_id = int(args.get('employee_id'))
+    except (TypeError, ValueError):
+        return json.dumps({"error": "Angiv et gyldigt employee_id."})
+
+    product_handle = (args.get('product_handle') or '').strip()
+    product_title = (args.get('product_title') or '').strip()
+    if not product_handle or not product_title:
+        return json.dumps({"error": "Angiv både product_handle og product_title (fra et katalogopslag)."})
+    try:
+        price = float(args.get('price'))
+    except (TypeError, ValueError):
+        return json.dumps({"error": "Angiv en gyldig pris (price)."})
+
+    # ── Validate the employee belongs to THIS company (cross-tenant guard). ──
+    cur = _get_cursor()
+    try:
+        cur.execute(
+            """
+            SELECT user_id, full_name, username AS email
+            FROM company_users
+            WHERE company_id = %s AND status = 'active' AND user_id = %s
+            """,
+            (company_id, employee_id),
+        )
+        emp = cur.fetchone()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][create_order_for_employee] validation failed: {exc}")
+        return json.dumps({"error": "Kunne ikke validere medarbejderen."})
+    if not emp:
+        cur.close()
+        return json.dumps({"error": "Medarbejderen blev ikke fundet i din virksomhed.", "rejected_user_id": employee_id})
+
+    emp_name = emp.get("full_name") or emp.get("email") or str(employee_id)
+
+    if not bool(args.get('confirm')):
+        cur.close()
+        return json.dumps(needs_confirmation_payload(
+            action="create_order_for_employee",
+            summary_da=(
+                f"Bekræft at du vil bestille '{product_title}' til {emp_name} for {price:.0f} kr. "
+                f"Beløbet trækkes fra virksomhedens budget. Send confirm=true for at bestille."
+            ),
+            details={"employee": emp_name, "product_title": product_title, "price": price},
+            price=price,
+        ), default=str)
+    cur.close()
+
+    try:
+        from order_service import create_order
+        result = create_order(
+            ctx,
+            product_handle=product_handle,
+            product_title=product_title,
+            price=price,
+            variant_date=(args.get('variant_date') or '').strip(),
+            variant_location=(args.get('variant_location') or '').strip(),
+            user_email=emp.get("email") or "",
+            user_name=emp_name,
+            extra={"on_behalf_of": employee_id, "created_by_hr": getattr(ctx, 'user_id', None)},
+        )
+    except Exception as exc:
+        print(f"[HR_TOOLS][create_order_for_employee] create failed: {exc}")
+        return json.dumps({"error": "Bestillingen kunne ikke oprettes."})
+
+    if not isinstance(result, dict) or not result.get('success'):
+        return json.dumps({
+            "error": "order_failed",
+            "message": (result or {}).get('message', 'Bestillingen kunne ikke oprettes.') if isinstance(result, dict) else "Bestillingen kunne ikke oprettes.",
+        })
+
+    try:
+        cur2 = _get_cursor()
+        _hr_write_audit(
+            cur2, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="create_order_for_employee", resource_id=str(result.get('order_id')),
+            description=f"'{product_title}' for {emp_name} ({price:.0f} kr.)",
+        )
+        current_app.mysql.connection.commit()
+        cur2.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][create_order_for_employee] audit skipped: {exc}")
+
+    return json.dumps({
+        "success": True,
+        "order_id": result.get('order_id'),
+        "status": result.get('status'),
+        "employee": emp_name,
+        "price": price,
+        "message_da": (
+            f"Bestillingen af '{product_title}' til {emp_name} er oprettet"
+            + (f" (status: {result.get('status')})." if result.get('status') else ".")
+        ),
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -3615,6 +3995,10 @@ def execute_hr_tool(tool_call):
         "recheck_compliance": _execute_recheck_compliance,
         "generate_fresh_insights": _execute_generate_fresh_insights,
         "bulk_calendar_invites": _execute_bulk_calendar_invites,
+        # AI Tooler 2 (Phase 6): high blast-radius HR writes
+        "send_company_email": _execute_send_company_email,
+        "send_deadline_reminders": _execute_send_deadline_reminders,
+        "create_order_for_employee": _execute_create_order_for_employee,
     }
 
     fn = router.get(name)

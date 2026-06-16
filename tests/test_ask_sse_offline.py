@@ -495,5 +495,151 @@ class AskSSEOfflineTests(unittest.TestCase):
         self.assertEqual(tool_events[start_idx[0]]["status"], "running")
 
 
+class ConfirmStoreUnitTests(unittest.TestCase):
+    """Unit-tests for app1.confirm_store (pure in-memory, no Flask needed)."""
+
+    def setUp(self):
+        from app1 import confirm_store
+        confirm_store.clear_all()
+
+    def test_store_and_pop_round_trip(self):
+        from app1 import confirm_store
+        token = confirm_store.store_pending("sess-1", "employee", "manage_my_order", {"order_id": "o1"})
+        self.assertTrue(token)
+        entry = confirm_store.pop_pending("sess-1", token)
+        self.assertIsNotNone(entry)
+        self.assertEqual(entry["tool_name"], "manage_my_order")
+        self.assertEqual(entry["scope"], "employee")
+        self.assertEqual(entry["args"]["order_id"], "o1")
+
+    def test_second_pop_returns_none(self):
+        from app1 import confirm_store
+        token = confirm_store.store_pending("sess-1", "employee", "manage_my_order", {})
+        confirm_store.pop_pending("sess-1", token)
+        self.assertIsNone(confirm_store.pop_pending("sess-1", token))
+
+    def test_wrong_session_is_rejected(self):
+        from app1 import confirm_store
+        token = confirm_store.store_pending("sess-A", "hr", "send_company_email", {})
+        self.assertIsNone(confirm_store.pop_pending("sess-B", token))
+        # Original session can still consume it
+        self.assertIsNotNone(confirm_store.pop_pending("sess-A", token))
+
+    def test_unknown_token_returns_none(self):
+        from app1 import confirm_store
+        self.assertIsNone(confirm_store.pop_pending("sess-1", "nonexistent-token"))
+
+
+class ConfirmCardSSETests(unittest.TestCase):
+    """Phase 8: a side-effect tool response emits a confirm_card SSE event."""
+
+    _CONFIRM_TOOL_PAYLOAD = json.dumps({
+        "needs_confirmation": True,
+        "action": "manage_my_order",
+        "message_da": "Annuller bestillingen Python Basis?",
+        "details": "Bestillingen Python Basis vil blive annulleret.",
+    }, ensure_ascii=False)
+
+    def setUp(self):
+        import ai_runtime
+        import app1.agent as agent_mod
+        from app1 import confirm_store
+        for cache in (
+            agent_mod.CHAT_MEMORY,
+            agent_mod.SHOWN_PRODUCTS,
+            agent_mod.USER_PROFILES,
+            agent_mod.CONVERSATION_STAGES,
+            agent_mod.ANONYMOUS_PROFILES,
+            agent_mod.REJECTED_SEARCHES,
+        ):
+            cache.clear()
+        ai_runtime._OPENAI_CLIENT = None
+        ai_runtime._OPENAI_CLIENT_KEY = None
+        ai_runtime._TOOL_CACHE.clear()
+        confirm_store.clear_all()
+
+    def _drive_side_effect_turn(self):
+        """Drive a turn where manage_my_order returns needs_confirmation."""
+        fake_responses = _ScriptedResponses([
+            _tool_call_response("resp_1", "manage_my_order", "call_1", {"order_id": "o1"}),
+            _final_response("resp_2", "Din bestilling afventer bekræftelse."),
+        ])
+        fake_stream = _ScriptedStream(["Din bestilling afventer bekræftelse."])
+        fake_execute = _FakeExecuteTool({"manage_my_order": self._CONFIRM_TOOL_PAYLOAD})
+        env = {
+            "AI_RUNTIME": "responses",
+            "AI_LLM_ROUTER": "0",
+            "AI_GROUNDING_RECALL": "0",
+            "OPENAI_API_KEY": "sk-test",
+        }
+        with patch("ai_runtime.OpenAI", _make_fake_client_cls(fake_responses)), \
+                patch("ai_runtime.iter_completion_stream", fake_stream), \
+                patch("app1.agent.execute_tool", fake_execute), \
+                patch("app1.tools.resolve_products_for_ui", lambda **kwargs: []), \
+                patch.dict(os.environ, env):
+            client = _APP.test_client()
+            with client.session_transaction() as sess:
+                sess["user"] = "eva"
+            resp = client.post("/app1/ask", json={"query": "annullér min bestilling"})
+            self.assertEqual(resp.status_code, 200)
+            raw = resp.get_data(as_text=True)
+            session_cookie = client.get_cookie("session")
+        return _parse_sse(raw), client, session_cookie
+
+    def test_confirm_card_event_emitted(self):
+        """A needs_confirmation tool result produces exactly one confirm_card event."""
+        events, _, _ = self._drive_side_effect_turn()
+        cards = _of_type(events, "confirm_card")
+        self.assertEqual(len(cards), 1, f"expected 1 confirm_card, got {cards}")
+        card = cards[0]
+        self.assertEqual(card["action"], "manage_my_order")
+        self.assertIn("Annuller", card["summary_da"])
+        self.assertTrue(card["token"], "token must be non-empty")
+
+    def test_confirm_route_redispatches_with_confirm_true(self):
+        """POST /app1/confirm_tool_action re-executes the tool with confirm=True."""
+        events, client, _ = self._drive_side_effect_turn()
+        card = _of_type(events, "confirm_card")[0]
+        token = card["token"]
+
+        confirmed_payload = json.dumps({"status": "success", "message_da": "Annulleret"})
+
+        with patch("app1.tools.execute_tool") as mock_exec, \
+                patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            mock_exec.return_value = confirmed_payload
+            resp2 = client.post(
+                "/app1/confirm_tool_action",
+                json={"token": token},
+                content_type="application/json",
+            )
+
+        self.assertEqual(resp2.status_code, 200)
+        body = resp2.get_json()
+        self.assertIsNotNone(body, resp2.get_data(as_text=True))
+        self.assertEqual(body.get("status"), "success")
+
+        # Verify confirm=True was injected into args
+        self.assertTrue(mock_exec.called)
+        tc = mock_exec.call_args[0][0]  # positional tool_call arg
+        self.assertTrue(tc.arguments.get("confirm"), "confirm=True must be set")
+        self.assertEqual(tc.name, "manage_my_order")
+
+    def test_double_confirm_is_idempotent(self):
+        """Second POST with same token returns already_confirmed, not an error."""
+        events, client, _ = self._drive_side_effect_turn()
+        token = _of_type(events, "confirm_card")[0]["token"]
+
+        confirmed_payload = json.dumps({"status": "success"})
+        with patch("app1.tools.execute_tool", return_value=confirmed_payload), \
+                patch.dict(os.environ, {"OPENAI_API_KEY": "sk-test"}):
+            client.post("/app1/confirm_tool_action",
+                        json={"token": token}, content_type="application/json")
+            resp2 = client.post("/app1/confirm_tool_action",
+                                json={"token": token}, content_type="application/json")
+
+        body2 = resp2.get_json()
+        self.assertEqual(body2.get("status"), "already_confirmed")
+
+
 if __name__ == "__main__":
     unittest.main()

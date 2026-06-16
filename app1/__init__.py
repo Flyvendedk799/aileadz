@@ -1543,6 +1543,71 @@ def confirm_profile_update():
         return jsonify({"status": "error", "message": "Fejl ved opdatering"}), 500
 
 
+@app1_bp.route("/confirm_tool_action", methods=["POST"])
+def confirm_tool_action():
+    """Re-execute a held side-effect tool after the user clicks Bekræft.
+
+    The client sends back the opaque token that was emitted in the confirm_card
+    SSE event.  The server looks up the stored (scope, tool_name, args) entry,
+    injects confirm=True, and re-dispatches to the correct executor.
+
+    Idempotent: if the token has already been consumed (or never existed),
+    returns {"status": "already_confirmed"} so double-clicks are harmless.
+    """
+    logged_in_user = session.get("user")
+    if not logged_in_user:
+        return jsonify({"status": "error", "message": "Ikke logget ind"}), 401
+
+    data = request.json or {}
+    token = (data.get("token") or "").strip()
+    if not token:
+        return jsonify({"status": "error", "message": "token mangler"}), 400
+
+    # Resolve the session_id used when the confirm_card was emitted.
+    # Employee path uses session["session_id"]; HR path uses hr_chat_session_id.
+    # We try both so one route handles both scopes.
+    employee_sid = session.get("session_id", "")
+    hr_sid = session.get("hr_chat_session_id", "")
+
+    from app1 import confirm_store as _cs
+    entry = _cs.pop_pending(employee_sid, token) or _cs.pop_pending(hr_sid, token)
+    if entry is None:
+        return jsonify({"status": "already_confirmed"})
+
+    scope = entry["scope"]
+    tool_name = entry["tool_name"]
+    args = dict(entry["args"])
+    args["confirm"] = True  # inject the confirmation flag
+
+    import types
+    tool_call = types.SimpleNamespace(name=tool_name, arguments=args)
+
+    try:
+        if scope == "hr":
+            from hr_tools import execute_hr_tool
+            raw = execute_hr_tool(tool_call)
+        else:
+            from app1.tools import execute_tool
+            raw = execute_tool(tool_call, username=logged_in_user,
+                               session_id=employee_sid)
+
+        result = json.loads(raw) if isinstance(raw, str) else raw
+        try:
+            from app1.memory_store import log_event
+            log_event(
+                employee_sid or hr_sid, "confirm_tool_action",
+                tool_used=tool_name,
+                extra={"status": result.get("status", "ok"), "scope": scope},
+            )
+        except Exception:
+            pass
+        return jsonify(result)
+
+    except Exception as e:
+        logging.error("confirm_tool_action error [%s]: %s", tool_name, e)
+        return jsonify({"status": "error", "message": "Fejl ved bekræftelse"}), 500
+
+
 @app1_bp.route("/adminlog")
 def adminlog():
     from app1.memory_store import get_debug_sessions, get_debug_logs_for_session

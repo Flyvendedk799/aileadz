@@ -338,6 +338,29 @@ def handle_hr_ask(user_query, flask_session):
                     )
                 except Exception:
                     pass
+                # Generic confirm_card for HR side-effect tools (Phase 8).
+                try:
+                    _hr_tr_dict = json.loads(tool_result.output or "{}")
+                except (json.JSONDecodeError, TypeError):
+                    _hr_tr_dict = {}
+                if _hr_tr_dict.get("needs_confirmation"):
+                    try:
+                        from app1 import confirm_store as _cs
+                        _token = _cs.store_pending(
+                            hr_sid, "hr", tool_result.name, tool_result.arguments or {}
+                        )
+                        _confirm_payload = {
+                            "type": "confirm_card",
+                            "token": _token,
+                            "action": _hr_tr_dict.get("action", tool_result.name),
+                            "summary_da": _hr_tr_dict.get("message_da", ""),
+                            "details": _hr_tr_dict.get("details"),
+                            "recipient_count": _hr_tr_dict.get("recipient_count"),
+                            "price": _hr_tr_dict.get("price"),
+                        }
+                        yield f"data: {json.dumps(_confirm_payload, ensure_ascii=False)}\n\n"
+                    except Exception as _ce:
+                        print(f"[HR confirm_store error] {tool_result.name}: {_ce}")
 
             close_flask_mysql_connection()
             final_messages = list(

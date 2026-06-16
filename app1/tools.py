@@ -830,6 +830,89 @@ OPENAI_TOOLS.extend([
 ])
 
 
+# ── AI Tooler 2 (Phase 7): employee-facing action tools ───────────────────────
+OPENAI_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "save_course_for_later",
+            "description": (
+                "Gem et kursus på brugerens ønskeliste til senere (gemmes med det samme, lav risiko, "
+                "kan slettes igen). Brug ved 'gem det her til senere', 'tilføj til min ønskeliste', "
+                "'husk dette kursus'. Kun for indloggede brugere."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_title": {"type": "string", "description": "Kursets titel."},
+                    "product_handle": {"type": "string", "description": "Valgfrit kursus-handle."},
+                },
+                "required": ["product_title"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "set_course_reminder",
+            "description": (
+                "Sæt en personlig påmindelse om et kursus (gemmes med det samme, kan slettes igen). "
+                "Brug ved 'mind mig om det her', 'sæt en påmindelse til på mandag', 'påmind mig om "
+                "tilmelding'. Kun for indloggede brugere."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "product_title": {"type": "string", "description": "Kursets titel."},
+                    "remind_on": {"type": "string", "description": "Hvornår der skal mindes (fx 'på mandag', '2026-09-01')."},
+                    "product_handle": {"type": "string", "description": "Valgfrit kursus-handle."},
+                },
+                "required": ["product_title", "remind_on"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "manage_my_order",
+            "description": (
+                "MUTATION: Annullér brugerens EGEN bestilling. Kræver confirm=true; uden returneres kun "
+                "en forhåndsvisning. Kun brugerens egne ordrer (fremmede ordrer afvises). Brug ved "
+                "'annullér min bestilling', 'jeg fortryder kurset', 'slet min ordre'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string", "description": "Ordre-id på brugerens egen bestilling."},
+                    "action": {"type": "string", "enum": ["cancel"], "description": "Handlingen. Lige nu kun 'cancel'."},
+                    "confirm": {"type": "boolean", "description": "Skal være true for at annullere. Uden dette returneres kun en forhåndsvisning."},
+                },
+                "required": ["order_id"],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "request_manager_approval",
+            "description": (
+                "MUTATION: Bed brugerens leder om at godkende en af brugerens afventende bestillinger "
+                "(sender en påmindelse på mail til lederne). Kræver confirm=true. Kun brugerens egen ordre. "
+                "Brug ved 'bed min leder om at godkende', 'kan du rykke for godkendelse', 'send det til godkendelse'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "order_id": {"type": "string", "description": "Ordre-id på brugerens egen afventende bestilling."},
+                    "confirm": {"type": "boolean", "description": "Skal være true for at sende. Uden dette returneres kun en forhåndsvisning."},
+                },
+                "required": ["order_id"],
+            },
+        },
+    },
+])
+
+
 # ── Tool Execution ──
 
 # Module-level state for contextual search (set by agent before tool execution)
@@ -2149,12 +2232,50 @@ def _execute_get_user_profile(args, username):
         return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
 
 
+def _normalize_memory_label(label):
+    """Normalize a memory label for near-duplicate detection."""
+    import re as _re
+    return _re.sub(r"\s+", " ", label.lower().strip())
+
+
+def _find_supersedable_memory(existing_memories, new_label_norm, min_len=4):
+    """Find an existing memory that should be superseded by the new label.
+
+    Returns (memory_id, old_label) when:
+    - The existing normalized label is a substring of the new (new is more specific), OR
+    - The new normalized label is a substring of the existing one AND at least 70% as
+      long (new is a slightly shorter variant of the same fact).
+    Returns (None, None) when no near-duplicate is found.
+    """
+    if len(new_label_norm) < min_len:
+        return None, None
+    for m in existing_memories:
+        old_norm = _normalize_memory_label(m.get("label") or "")
+        if len(old_norm) < min_len:
+            continue
+        if old_norm == new_label_norm:
+            # Exact duplicate — add_memory's UNIQUE constraint handles this,
+            # return early so we don't supersede with the same text.
+            return m["id"], m["label"]
+        # Substring supersede: old is contained in new → new is more specific
+        if old_norm in new_label_norm:
+            return m["id"], m["label"]
+        # Partial supersede: new is contained in old AND new is ≥70% of old's length
+        if new_label_norm in old_norm and len(new_label_norm) >= 0.70 * len(old_norm):
+            return m["id"], m["label"]
+    return None, None
+
+
 def _execute_remember_about_user(args, username):
     """Save a free-form atomic memory about the user (immediate, not proposed).
 
     Memories are low-stakes and the user can review/delete them on the Mind-Map,
     so unlike structured profile writes these save directly and surface a
-    'memory_saved' chip rather than a confirm card."""
+    'memory_saved' chip rather than a confirm card.
+
+    Phase 11: near-duplicate detection supersedes stale/redundant entries rather
+    than growing the store unboundedly. Exact duplicates are already handled by
+    add_memory's UNIQUE(username, label) constraint."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
     label = (args.get("label") or "").strip()
@@ -2165,6 +2286,21 @@ def _execute_remember_about_user(args, username):
     try:
         from app1 import user_profile_db as db
         db.ensure_tables()
+        # Near-duplicate check: scan existing memories for a supersedable entry.
+        try:
+            existing = db.get_memories(username, limit=200)
+            new_norm = _normalize_memory_label(label)
+            sup_id, sup_label = _find_supersedable_memory(existing, new_norm)
+            if sup_id is not None and sup_label != label:
+                # Supersede: update category/detail/label in place.
+                db.update_memory(username, sup_id,
+                                 label=label, category=category, detail=detail)
+                return json.dumps({"status": "memory_saved", "label": label[:200],
+                                   "category": category,
+                                   "message": f"Opdateret hukommelse: {label[:200]}"})
+        except Exception as dedup_err:
+            # Dedup is best-effort — fall through to normal add_memory on failure.
+            print(f"[MemoryDedup] {dedup_err}")
         # add_memory is the authoritative truncation point (label->200, detail->5000).
         db.add_memory(username, label, category=category, detail=detail,
                       source="ai", confidence=0.9)
@@ -4184,6 +4320,169 @@ def _execute_get_department_budget(args):
     })
 
 
+# ── AI Tooler 2 (Phase 7): employee-facing action tools ───────────────────────
+
+def _execute_save_course_for_later(args, username):
+    """Save a course to the user's wishlist (immediate, low-stakes, reviewable).
+
+    Backed by the same memory store as remember_about_user (category 'wishlist'), so
+    the user can review/delete it from the Mind-Map / memory drill-down. Returns a
+    'memory_saved' chip rather than a confirm card.
+    """
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind for at gemme kurser."})
+    title = (args.get("product_title") or "").strip()
+    handle = (args.get("product_handle") or "").strip() or None
+    if not title:
+        return json.dumps({"status": "error", "message": "Angiv et kursusnavn (product_title)."})
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        db.add_memory(username, f"Vil gerne tage: {title}", category="wishlist",
+                      detail=handle, source="ai", confidence=0.9)
+        return json.dumps({"status": "memory_saved", "label": title[:200], "category": "wishlist",
+                           "message": f"Gemt til senere: {title[:200]}"})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Kunne ikke gemme kurset: {e}"})
+
+
+def _execute_set_course_reminder(args, username):
+    """Set a personal reminder for a course (immediate, self-scoped, reviewable).
+
+    Stored in the user's memory store (category 'reminder'); low-stakes and reversible,
+    so it saves directly like remember_about_user.
+    """
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind for at sætte påmindelser."})
+    title = (args.get("product_title") or "").strip()
+    when = (args.get("remind_on") or "").strip()
+    if not title or not when:
+        return json.dumps({"status": "error", "message": "Angiv både et kursus og en dato (remind_on)."})
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        db.add_memory(username, f"Påmindelse: {title} ({when})", category="reminder",
+                      detail=(args.get("product_handle") or "").strip() or None,
+                      source="ai", confidence=0.9)
+        return json.dumps({"status": "memory_saved", "label": f"{title} – {when}", "category": "reminder",
+                           "message": f"Påmindelse sat for {title[:160]} den {when}."})
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Kunne ikke sætte påmindelsen: {e}"})
+
+
+def _execute_manage_my_order(args, username):
+    """MUTATION — cancel the logged-in user's OWN pending order. Confirm-gated.
+
+    Strictly self-scoped: order_service.cancel_order enforces owner-or-same-company-
+    manager ownership, so a foreign order_id behaves like not-found. Without confirm
+    a preview is returned.
+    """
+    from tool_confirm import needs_confirmation_payload
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind."})
+    action = (args.get("action") or "cancel").strip().lower()
+    if action != "cancel":
+        return json.dumps({"status": "error", "message": "Kun 'cancel' understøttes lige nu."})
+    order_id = (args.get("order_id") or "").strip()
+    if not order_id:
+        return json.dumps({"status": "error", "message": "Angiv et order_id."})
+
+    try:
+        from order_service import OrderContext, get_order, cancel_order
+    except Exception:
+        return json.dumps({"status": "error", "message": "Ordrehåndtering er ikke tilgængelig lige nu."})
+    ctx = OrderContext.from_session(source="chat")
+
+    order = get_order(ctx, order_id)
+    if not isinstance(order, dict) or not order.get("success"):
+        return json.dumps({"status": "error", "message": "Ordren blev ikke fundet."})
+    o = order.get("order") or order
+
+    if not bool(args.get("confirm")):
+        return json.dumps(needs_confirmation_payload(
+            action="manage_my_order",
+            summary_da=(
+                f"Bekræft at du vil annullere din bestilling '{o.get('product_title') or order_id}'. "
+                f"Send confirm=true for at annullere."
+            ),
+            details={"order_id": order_id, "product_title": o.get("product_title")},
+        ))
+
+    result = cancel_order(ctx, order_id)
+    if not isinstance(result, dict) or not result.get("success"):
+        return json.dumps({"status": "error",
+                           "message": (result or {}).get("message", "Annulleringen fejlede.")})
+    return json.dumps({
+        "status": "success",
+        "order_id": order_id,
+        "refunded": result.get("refunded"),
+        "message": "Din bestilling er annulleret." + (" Budgettet er refunderet." if result.get("refunded") else ""),
+    }, default=str)
+
+
+def _execute_request_manager_approval(args, username):
+    """MUTATION — nudge the company's managers to review the user's pending order.
+
+    Confirm-gated. Self-scoped: only the user's own order is referenced. Sends a
+    branded 'order_approval_needed' reminder to manager recipients via email_service.
+    """
+    from tool_confirm import needs_confirmation_payload
+    from flask import session as flask_session
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind."})
+    company_id = flask_session.get("company_id")
+    if not company_id:
+        return json.dumps({"status": "error", "message": "Ingen virksomhed fundet."})
+    order_id = (args.get("order_id") or "").strip()
+    if not order_id:
+        return json.dumps({"status": "error", "message": "Angiv et order_id."})
+
+    try:
+        from order_service import OrderContext, get_order
+    except Exception:
+        return json.dumps({"status": "error", "message": "Ordrehåndtering er ikke tilgængelig lige nu."})
+    ctx = OrderContext.from_session(source="chat")
+    order = get_order(ctx, order_id)
+    if not isinstance(order, dict) or not order.get("success"):
+        return json.dumps({"status": "error", "message": "Ordren blev ikke fundet."})
+    o = order.get("order") or order
+    product_title = o.get("product_title") or order_id
+
+    if not bool(args.get("confirm")):
+        return json.dumps(needs_confirmation_payload(
+            action="request_manager_approval",
+            summary_da=(
+                f"Bekræft at du vil bede din leder om at godkende '{product_title}'. "
+                f"Send confirm=true for at sende påmindelsen."
+            ),
+            details={"order_id": order_id, "product_title": product_title},
+        ))
+
+    try:
+        from order_service import _manager_recipient_emails
+        from email_service import send_branded_email
+        managers = _manager_recipient_emails(company_id) or []
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Kunne ikke finde ledere: {e}"})
+    if not managers:
+        return json.dumps({"status": "error", "message": "Ingen ledere fundet at sende påmindelsen til."})
+
+    sent = 0
+    for email in managers:
+        try:
+            if send_branded_email(email, "Kursusbestilling afventer godkendelse",
+                                  "order_approval_needed", {}, company_id=company_id,
+                                  product_title=product_title, requester=username):
+                sent += 1
+        except Exception:
+            continue
+    return json.dumps({
+        "status": "success",
+        "sent": sent,
+        "message": f"Påmindelse sendt til {sent} leder(e) om '{product_title}'.",
+    }, default=str)
+
+
 def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
@@ -4263,6 +4562,15 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_add_to_calendar(args, username)
         elif function_name == "mark_course_complete":
             return _execute_mark_course_complete(args, username)
+        # AI Tooler 2 (Phase 7): employee-facing action tools
+        elif function_name == "save_course_for_later":
+            return _execute_save_course_for_later(args, username)
+        elif function_name == "set_course_reminder":
+            return _execute_set_course_reminder(args, username)
+        elif function_name == "manage_my_order":
+            return _execute_manage_my_order(args, username)
+        elif function_name == "request_manager_approval":
+            return _execute_request_manager_approval(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

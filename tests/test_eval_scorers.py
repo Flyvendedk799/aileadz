@@ -488,7 +488,9 @@ class DriftGuardTests(unittest.TestCase):
         # Every tool named in a golden case's tool_any_of must be a real tool —
         # otherwise the case can never match what actually fired.
         from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS
-        real = {t["function"]["name"] for t in (OPENAI_TOOLS + PROFILE_TOOLS)
+        from hr_tools import HR_TOOLS
+        all_tools = list(OPENAI_TOOLS) + list(PROFILE_TOOLS) + list(HR_TOOLS)
+        real = {t["function"]["name"] for t in all_tools
                 if isinstance(t, dict) and t.get("function")}
         golden = json.loads(
             open(os.path.join(_REPO_ROOT, "ai_eval", "golden_set.json"),

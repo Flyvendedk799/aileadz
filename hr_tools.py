@@ -3,6 +3,7 @@ HR Chatbot Tools — Company-level analytics tools for HR managers.
 Separate from employee chatbot tools. Only available in HR dashboard chatbot.
 """
 import json
+import re
 import db_compat  # noqa: F401
 import MySQLdb.cursors
 from flask import current_app, session
@@ -742,6 +743,212 @@ HR_TOOLS.extend([
                     }
                 },
                 "required": ["cohort_a", "cohort_b"]
+            }
+        }
+    },
+])
+
+
+# ── AI Tooler 2 (Phase 5): safe platform-control tools ────────────────────────
+# These wire previously backend-only services (scheduler, compliance recheck,
+# insights regeneration, calendar feed) into the HR chat. The two that change
+# state (schedule_recurring_report, recheck_compliance) reuse the proven
+# confirm+manager+company-scope+audit contract; the two read/recompute tools
+# (generate_fresh_insights, bulk_calendar_invites) write no rows.
+HR_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_recurring_report",
+            "description": (
+                "MUTATION: Planlæg en tilbagevendende rapport for virksomheden (fx ugentlig "
+                "kompetencegab-rapport eller månedlig ROI-oversigt) der sendes automatisk. "
+                "Kræver confirm=true OG at HR-brugeren er manager. Virksomheds-scoped. Bruges ved "
+                "'planlæg en ugentlig rapport', 'send mig compliance hver måned', 'tilbagevendende rapport'. "
+                "Bekræft ALTID rapporttype og kadence med brugeren før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "report_type": {
+                        "type": "string",
+                        "enum": ["training_status", "skill_gaps", "compliance", "roi", "budget"],
+                        "description": "Hvilken rapport der skal sendes tilbagevendende."
+                    },
+                    "cadence": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"],
+                        "description": "Hvor ofte rapporten skal sendes."
+                    },
+                    "department": {
+                        "type": "string",
+                        "description": "Valgfri afdeling rapporten afgrænses til. Udeladt = hele virksomheden."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at gemme planen. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": ["report_type", "cadence"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recheck_compliance",
+            "description": (
+                "MUTATION: Kør et øjeblikkeligt compliance-gentjek for virksomheden — opdaterer "
+                "compliance-kort og eskalerer kritiske mangler til ledere (samme som det daglige "
+                "automatiske tjek, men på forespørgsel). Kræver confirm=true OG manager. Virksomheds-scoped. "
+                "Bruges ved 'gentjek compliance nu', 'kør compliance-tjekket igen', 'er vi compliant lige nu'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "note": {
+                        "type": "string",
+                        "description": "Valgfri note til revisionssporet (fx hvorfor gentjekket køres)."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at køre gentjekket. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_fresh_insights",
+            "description": (
+                "Generér friske AI-indsigter for virksomheden NU ud fra de seneste samtaler og data "
+                "(populære emner, lav tilfredshed, udækkede behov, faldende engagement). Tung beregning — "
+                "ingen skrivning til medarbejderdata. Bruges ved 'opdater indsigterne', 'generér friske "
+                "indsigter', 'hvad viser de nyeste data'. Forskellig fra hr_explain_insights, som kun "
+                "forklarer allerede beregnede indsigter."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bulk_calendar_invites",
+            "description": (
+                "Lav en kalenderinvitation (.ics) til et hold/virksomheden for et kursus eller en "
+                "træningsbegivenhed, som HR kan downloade og sende videre. Ingen skrivning til databasen. "
+                "Bruges ved 'lav en kalenderinvitation til holdet', 'send invitationer til kurset', "
+                "'kalender til onboarding'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Titlen på begivenheden, fx 'GDPR-kursus for Salg'."
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Startdato/-tid (fx '2026-09-01 09:00' eller dansk dato)."
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Valgfri slutdato/-tid."
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Valgfrit sted (fysisk adresse eller online-link)."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Valgfri beskrivelse af begivenheden."
+                    }
+                },
+                "required": ["title", "start_date"]
+            }
+        }
+    },
+])
+
+
+# ── AI Tooler 2 (Phase 6): high blast-radius HR writes ────────────────────────
+HR_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "send_company_email",
+            "description": (
+                "MUTATION (fan-out): Send en brandet besked på mail til en målgruppe i virksomheden "
+                "(alle, ledere eller en afdeling) — fx en kursusannoncering eller onboarding-besked. "
+                "Kræver confirm=true OG manager. Forhåndsvisningen viser antal modtagere og emne. "
+                "Virksomheds-scoped. Bekræft ALTID emne og målgruppe med brugeren før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "subject": {"type": "string", "description": "Emnelinjen på mailen."},
+                    "message": {"type": "string", "description": "Selve beskeden (almindelig tekst, linjeskift bevares)."},
+                    "audience": {
+                        "type": "string",
+                        "enum": ["all", "managers", "department"],
+                        "description": "Hvem mailen sendes til. Standard 'all'."
+                    },
+                    "department": {"type": "string", "description": "Afdeling, påkrævet når audience='department'."},
+                    "confirm": {"type": "boolean", "description": "Skal være true for at sende. Uden dette returneres kun en forhåndsvisning med modtagerantal."}
+                },
+                "required": ["subject", "message"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "send_deadline_reminders",
+            "description": (
+                "MUTATION: Udsend deadline-påmindelser NU til medarbejdere med forestående "
+                "kursusfrister og deres ledere (samme som det daglige job, men på forespørgsel). "
+                "Kræver confirm=true OG manager. Virksomheds-scoped. Bruges ved 'mind holdet om "
+                "deadlines', 'send frist-påmindelser nu', 'påmind om forfaldne kurser'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "confirm": {"type": "boolean", "description": "Skal være true for at udsende. Uden dette returneres kun en forhåndsvisning."}
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_order_for_employee",
+            "description": (
+                "MUTATION (trækker budget): Opret en kursusbestilling PÅ VEGNE AF en medarbejder. "
+                "Beløbet trækkes fra virksomhedens budget. Kræver confirm=true OG manager; "
+                "medarbejderen valideres mod virksomheden (fremmede id'er afvises). Brug ALTID "
+                "product_handle, product_title og price fra et forudgående katalogopslag — gæt aldrig "
+                "prisen. Bekræft ALTID medarbejder, kursus og pris med brugeren før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "employee_id": {"type": "integer", "description": "user_id på medarbejderen i virksomheden."},
+                    "product_handle": {"type": "string", "description": "Kursets handle fra kataloget."},
+                    "product_title": {"type": "string", "description": "Kursets titel fra kataloget."},
+                    "price": {"type": "number", "description": "Prisen fra kataloget (kr.). Gæt aldrig."},
+                    "variant_date": {"type": "string", "description": "Valgfri valgt dato-variant."},
+                    "variant_location": {"type": "string", "description": "Valgfri valgt sted-variant."},
+                    "confirm": {"type": "boolean", "description": "Skal være true for at oprette bestillingen. Uden dette returneres kun en forhåndsvisning."}
+                },
+                "required": ["employee_id", "product_handle", "product_title", "price"]
             }
         }
     },
@@ -2413,37 +2620,36 @@ def _execute_assign_learning_path_to_team(args):
 _SKILL_TARGET_PRIORITIES = ('low', 'medium', 'high', 'critical')
 
 
-def _hr_manager_ctx():
+def _hr_manager_ctx(message="Kun ledere/HR-managere kan ændre kompetencemål eller compliance-krav."):
     """Resolve the HR actor; (ctx, error_json_or_None). error is set for a
-    non-manager so callers refuse the mutation explicitly."""
-    try:
-        from order_service import OrderContext
-        ctx = OrderContext.from_session(source='hr_chat')
-    except Exception as exc:
-        print(f"[HR_TOOLS][write] OrderContext import/build failed: {exc}")
-        return None, json.dumps({"error": "Brugerkontekst er ikke tilgængelig lige nu."})
-    if not ctx.is_manager:
-        return ctx, json.dumps({
-            "error": "not_authorized",
-            "message": "Kun ledere/HR-managere kan ændre kompetencemål eller compliance-krav.",
-        })
+    non-manager so callers refuse the mutation explicitly.
+
+    Thin wrapper over the shared ``tool_confirm.manager_guard`` (AI Tooler 2); keeps
+    the historical JSON-string error contract HR callers expect.
+    """
+    from tool_confirm import manager_guard
+    ctx, err = manager_guard(source='hr_chat', message=message)
+    if err is not None:
+        return ctx, json.dumps(err)
     return ctx, None
 
 
 def _hr_write_audit(cur, *, company_id, user_id, action, resource_id, description=""):
-    """Best-effort audit row for an HR chat mutation. Never breaks the op."""
-    try:
-        cur.execute(
-            """
-            INSERT INTO audit_log
-                (company_id, user_id, action, action_type, resource_type,
-                 resource_id, description)
-            VALUES (%s, %s, %s, %s, 'hr_chat', %s, %s)
-            """,
-            (company_id, user_id, action, action, str(resource_id), description),
-        )
-    except Exception as exc:  # pragma: no cover - audit must never fail the op
-        print(f"[HR_TOOLS][write] audit_log skipped ({action}): {exc}")
+    """Best-effort audit row for an HR chat mutation. Never breaks the op.
+
+    Delegates to the shared ``tool_confirm.audit_chat_mutation`` (AI Tooler 2) with the
+    historical ``resource_type='hr_chat'`` so existing audit rows are unchanged.
+    """
+    from tool_confirm import audit_chat_mutation
+    audit_chat_mutation(
+        cur,
+        company_id=company_id,
+        user_id=user_id,
+        action=action,
+        resource_id=resource_id,
+        description=description,
+        resource_type='hr_chat',
+    )
 
 
 def _execute_set_skill_target(args):
@@ -3212,6 +3418,540 @@ def _execute_hr_compare_cohorts(args):
     return json.dumps(result, default=str)
 
 
+# ── AI Tooler 2 (Phase 5): safe platform-control executors ────────────────────
+
+_REPORT_SCHEDULES_DDL = """CREATE TABLE IF NOT EXISTS company_report_schedules (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company_id INT NOT NULL,
+    report_type VARCHAR(64) NOT NULL,
+    cadence VARCHAR(16) NOT NULL,
+    department VARCHAR(100) NULL,
+    created_by INT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_company_report (company_id, report_type, department)
+)"""
+
+_REPORT_TYPE_LABELS_DA = {
+    "training_status": "Træningsstatus",
+    "skill_gaps": "Kompetencegab",
+    "compliance": "Compliance",
+    "roi": "ROI",
+    "budget": "Budget",
+}
+_CADENCE_LABELS_DA = {"daily": "dagligt", "weekly": "ugentligt", "monthly": "månedligt"}
+
+
+def _execute_schedule_recurring_report(args):
+    """MUTATION — persist a per-company recurring-report schedule.
+
+    Confirm + manager + company-scoped + audited. Writes ONLY a per-company schedule
+    row (company_report_schedules); it never mutates the global scheduler JOBS list —
+    the existing digest job picks these rows up.
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan planlægge rapporter.")
+    if err:
+        return err
+
+    report_type = (args.get('report_type') or '').strip().lower()
+    if report_type not in _REPORT_TYPE_LABELS_DA:
+        return json.dumps({"error": "report_type skal være en af: " + ", ".join(_REPORT_TYPE_LABELS_DA)})
+    cadence = (args.get('cadence') or '').strip().lower()
+    if cadence not in _CADENCE_LABELS_DA:
+        return json.dumps({"error": "cadence skal være 'daily', 'weekly' eller 'monthly'."})
+    department = (args.get('department') or '').strip() or None
+    if department:
+        department = department[:100]
+
+    rt_label = _REPORT_TYPE_LABELS_DA[report_type]
+    cad_label = _CADENCE_LABELS_DA[cadence]
+    scope_da = f" for {department}" if department else ""
+
+    if not bool(args.get('confirm')):
+        return json.dumps(needs_confirmation_payload(
+            action="schedule_recurring_report",
+            summary_da=(
+                f"Bekræft at {rt_label}-rapporten{scope_da} skal sendes {cad_label}. "
+                f"Send confirm=true for at gemme planen."
+            ),
+            details={"report_type": report_type, "cadence": cadence, "department": department},
+        ), default=str)
+
+    cur = _get_cursor()
+    try:
+        cur.execute(_REPORT_SCHEDULES_DDL)
+        cur.execute(
+            """
+            INSERT INTO company_report_schedules
+                (company_id, report_type, cadence, department, created_by, enabled)
+            VALUES (%s, %s, %s, %s, %s, 1)
+            ON DUPLICATE KEY UPDATE cadence = VALUES(cadence), enabled = 1, created_by = VALUES(created_by)
+            """,
+            (company_id, report_type, cadence, department, getattr(ctx, 'user_id', None)),
+        )
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="schedule_recurring_report", resource_id=f"{report_type}:{department or 'all'}",
+            description=f"{rt_label} {cad_label}{scope_da}",
+        )
+        current_app.mysql.connection.commit()
+    except Exception as exc:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        print(f"[HR_TOOLS][schedule_recurring_report] write failed: {exc}")
+        return json.dumps({"error": "Kunne ikke gemme rapportplanen."})
+    finally:
+        cur.close()
+
+    return json.dumps({
+        "success": True,
+        "report_type": report_type,
+        "cadence": cadence,
+        "department": department,
+        "message_da": f"{rt_label}-rapporten{scope_da} er planlagt til at blive sendt {cad_label}.",
+    }, default=str)
+
+
+def _execute_recheck_compliance(args):
+    """MUTATION — run an on-demand compliance recheck (cards + critical escalation).
+
+    Confirm + manager + company-scoped + audited. Delegates the actual work to
+    compliance_service.recheck_company (the same routine the daily job uses).
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan køre et compliance-gentjek.")
+    if err:
+        return err
+
+    if not bool(args.get('confirm')):
+        return json.dumps(needs_confirmation_payload(
+            action="recheck_compliance",
+            summary_da=(
+                "Bekræft at du vil køre et compliance-gentjek for hele virksomheden nu. "
+                "Det opdaterer compliance-kort og kan eskalere kritiske mangler til ledere. "
+                "Send confirm=true for at køre."
+            ),
+        ), default=str)
+
+    try:
+        from compliance_service import recheck_company
+        summary = recheck_company(company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][recheck_compliance] failed: {exc}")
+        return json.dumps({"error": "Compliance-gentjekket kunne ikke gennemføres."})
+
+    try:
+        cur = _get_cursor()
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="recheck_compliance", resource_id=str(company_id),
+            description=(args.get('note') or '')[:255],
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][recheck_compliance] audit skipped: {exc}")
+
+    notifications = int((summary or {}).get('notifications') or 0)
+    emails = int((summary or {}).get('emails') or 0)
+    return json.dumps({
+        "success": True,
+        "notifications": notifications,
+        "emails": emails,
+        "message_da": (
+            f"Compliance-gentjekket er kørt: {notifications} kort opdateret"
+            + (f", {emails} kritiske eskaleringer sendt." if emails else ".")
+        ),
+    }, default=str)
+
+
+def _execute_generate_fresh_insights(args):
+    """READ/RECOMPUTE — regenerate company AI insights on demand (no row writes).
+
+    Heavy recompute, so the live runtime emits a progress beat for this tool. Needs
+    the Flask app object for its own DB access.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+    try:
+        app = current_app._get_current_object()
+    except Exception:
+        app = current_app
+    try:
+        from insights_engine import generate_company_insights
+        result = generate_company_insights(app, company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][generate_fresh_insights] failed: {exc}")
+        return json.dumps({"error": "Indsigterne kunne ikke genberegnes lige nu."})
+
+    count = 0
+    if isinstance(result, dict):
+        count = int(result.get('count') or len(result.get('insights') or []) or 0)
+    elif isinstance(result, list):
+        count = len(result)
+    return json.dumps({
+        "success": True,
+        "insights_count": count,
+        "message_da": (
+            f"Friske indsigter er genberegnet ({count} fundet)." if count
+            else "Indsigterne er genberegnet — ingen nye mønstre fundet lige nu."
+        ),
+    }, default=str)
+
+
+def _execute_bulk_calendar_invites(args):
+    """READ — build a downloadable .ics invite for a team training event (no writes)."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    title = (args.get('title') or '').strip()
+    start_date = (args.get('start_date') or '').strip()
+    if not title or not start_date:
+        return json.dumps({"error": "Angiv mindst en titel og en startdato."})
+
+    event = {
+        "title": title[:200],
+        "start": start_date,
+        "end": (args.get('end_date') or '').strip() or None,
+        "location": (args.get('location') or '').strip(),
+        "description": (args.get('description') or '').strip(),
+    }
+    try:
+        from calendar_service import build_ics_feed
+        ics = build_ics_feed([event], cal_name=title[:200])
+    except Exception as exc:
+        print(f"[HR_TOOLS][bulk_calendar_invites] failed: {exc}")
+        return json.dumps({"error": "Kalenderinvitationen kunne ikke laves."})
+
+    safe_name = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "kursus"
+    return json.dumps({
+        "status": "ui_card",
+        "ui_type": "download",
+        "filename": f"{safe_name}.ics",
+        "mime_type": "text/calendar",
+        "content": ics,
+        "message_da": f"Kalenderinvitation til '{title}' er klar — download og send den til holdet.",
+    }, default=str)
+
+
+# ── AI Tooler 2 (Phase 6): high blast-radius HR writes ────────────────────────
+
+def _resolve_company_recipients(cur, company_id, *, audience, department=None):
+    """Return [{user_id, full_name, email}] active company_users for an audience.
+
+    audience: 'all' | 'managers' | 'department'. Strictly company-scoped — only
+    rows for the session company are ever returned (cross-tenant guard).
+    """
+    base = (
+        "SELECT user_id, full_name, username AS email, role "
+        "FROM company_users WHERE company_id = %s AND status = 'active'"
+    )
+    params = [company_id]
+    aud = (audience or "all").strip().lower()
+    if aud == "managers":
+        base += " AND role IN ('manager', 'admin', 'hr')"
+    elif aud == "department" and department:
+        base += " AND department = %s"
+        params.append(department)
+    cur.execute(base, tuple(params))
+    rows = cur.fetchall() or []
+    out = []
+    for r in rows:
+        email = (r.get("email") or "").strip()
+        if email:
+            out.append({"user_id": r.get("user_id"), "full_name": r.get("full_name") or email, "email": email})
+    return out
+
+
+def _execute_send_company_email(args):
+    """MUTATION (fan-out) — send a branded announcement to a company audience.
+
+    Highest blast radius after create_order_for_employee: the preview MUST echo the
+    recipient count + subject so a human sees the scale before confirm. Confirm +
+    manager + company-scoped + audited. SMTP failures are tolerated per-recipient.
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan sende virksomhedsmails.")
+    if err:
+        return err
+
+    subject = (args.get('subject') or '').strip()
+    message = (args.get('message') or '').strip()
+    if not subject or not message:
+        return json.dumps({"error": "Angiv både et emne (subject) og en besked (message)."})
+    audience = (args.get('audience') or 'all').strip().lower()
+    if audience not in ('all', 'managers', 'department'):
+        return json.dumps({"error": "audience skal være 'all', 'managers' eller 'department'."})
+    department = (args.get('department') or '').strip() or None
+    if audience == 'department' and not department:
+        return json.dumps({"error": "Angiv en afdeling når audience er 'department'."})
+
+    cur = _get_cursor()
+    try:
+        recipients = _resolve_company_recipients(cur, company_id, audience=audience, department=department)
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][send_company_email] recipient resolve failed: {exc}")
+        return json.dumps({"error": "Kunne ikke slå modtagere op."})
+
+    if not recipients:
+        cur.close()
+        return json.dumps({"error": "Ingen aktive modtagere fundet for den valgte målgruppe."})
+
+    if not bool(args.get('confirm')):
+        cur.close()
+        return json.dumps(needs_confirmation_payload(
+            action="send_company_email",
+            summary_da=(
+                f"Bekræft at du vil sende mailen '{subject}' til {len(recipients)} modtager"
+                f"{'e' if len(recipients) != 1 else ''} ({audience}). Send confirm=true for at sende."
+            ),
+            details={"subject": subject, "audience": audience, "department": department},
+            recipient_count=len(recipients),
+        ), default=str)
+
+    branding = {}
+    try:
+        from branding_service import get_branding
+        branding = get_branding(company_id) or {}
+    except Exception:
+        branding = {}
+
+    sent = 0
+    try:
+        from email_service import send_branded_email
+        for r in recipients:
+            try:
+                ok = send_branded_email(
+                    r["email"], subject, "announcement", branding,
+                    company_id=company_id, recipient_name=r["full_name"],
+                    heading=subject, subject=subject, message=message,
+                )
+                if ok:
+                    sent += 1
+            except Exception as exc:
+                print(f"[HR_TOOLS][send_company_email] send to {r['email']} failed: {exc}")
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][send_company_email] mail backend unavailable: {exc}")
+        return json.dumps({"error": "Mailtjenesten er ikke tilgængelig lige nu."})
+
+    try:
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="send_company_email", resource_id=audience,
+            description=f"'{subject}' -> {sent}/{len(recipients)}",
+        )
+        current_app.mysql.connection.commit()
+    except Exception as exc:
+        print(f"[HR_TOOLS][send_company_email] audit skipped: {exc}")
+    finally:
+        cur.close()
+
+    failed = len(recipients) - sent
+    return json.dumps({
+        "success": True,
+        "recipient_count": len(recipients),
+        "sent": sent,
+        "partial_failure": failed > 0,
+        "message_da": (
+            f"Mailen '{subject}' er sendt til {sent} af {len(recipients)} modtagere."
+            + (f" {failed} kunne ikke sendes." if failed else "")
+        ),
+    }, default=str)
+
+
+def _execute_send_deadline_reminders(args):
+    """MUTATION — trigger learner + manager deadline reminders on demand.
+
+    Confirm + manager + company-scoped + audited. Delegates to
+    deadline_service.remind_company (the same routine the daily job uses).
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan udsende deadline-påmindelser.")
+    if err:
+        return err
+
+    if not bool(args.get('confirm')):
+        return json.dumps(needs_confirmation_payload(
+            action="send_deadline_reminders",
+            summary_da=(
+                "Bekræft at du vil udsende deadline-påmindelser nu til medarbejdere med "
+                "forestående kursusfrister og deres ledere. Send confirm=true for at sende."
+            ),
+        ), default=str)
+
+    try:
+        from deadline_service import remind_company
+        summary = remind_company(company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][send_deadline_reminders] failed: {exc}")
+        return json.dumps({"error": "Påmindelserne kunne ikke udsendes lige nu."})
+
+    try:
+        cur = _get_cursor()
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="send_deadline_reminders", resource_id=str(company_id),
+            description="ad-hoc deadline reminders",
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][send_deadline_reminders] audit skipped: {exc}")
+
+    learner = int((summary or {}).get('learner_reminders') or 0)
+    manager = int((summary or {}).get('manager_cards') or 0)
+    return json.dumps({
+        "success": True,
+        "learner_reminders": learner,
+        "manager_cards": manager,
+        "message_da": (
+            f"Deadline-påmindelser udsendt: {learner} til medarbejdere og {manager} til ledere."
+        ),
+    }, default=str)
+
+
+def _execute_create_order_for_employee(args):
+    """MUTATION (charges budget) — HR creates a course order for an employee.
+
+    The highest-stakes write: confirm + manager + company-scoped employee validation
+    (cross-tenant ids rejected) + audited. Product handle/title/price are supplied by
+    the model from a prior grounded catalog tool call. Delegates the actual order +
+    budget charge to order_service.create_order (the single authorized path).
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan oprette bestillinger for medarbejdere.")
+    if err:
+        return err
+
+    try:
+        employee_id = int(args.get('employee_id'))
+    except (TypeError, ValueError):
+        return json.dumps({"error": "Angiv et gyldigt employee_id."})
+
+    product_handle = (args.get('product_handle') or '').strip()
+    product_title = (args.get('product_title') or '').strip()
+    if not product_handle or not product_title:
+        return json.dumps({"error": "Angiv både product_handle og product_title (fra et katalogopslag)."})
+    try:
+        price = float(args.get('price'))
+    except (TypeError, ValueError):
+        return json.dumps({"error": "Angiv en gyldig pris (price)."})
+
+    # ── Validate the employee belongs to THIS company (cross-tenant guard). ──
+    cur = _get_cursor()
+    try:
+        cur.execute(
+            """
+            SELECT user_id, full_name, username AS email
+            FROM company_users
+            WHERE company_id = %s AND status = 'active' AND user_id = %s
+            """,
+            (company_id, employee_id),
+        )
+        emp = cur.fetchone()
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][create_order_for_employee] validation failed: {exc}")
+        return json.dumps({"error": "Kunne ikke validere medarbejderen."})
+    if not emp:
+        cur.close()
+        return json.dumps({"error": "Medarbejderen blev ikke fundet i din virksomhed.", "rejected_user_id": employee_id})
+
+    emp_name = emp.get("full_name") or emp.get("email") or str(employee_id)
+
+    if not bool(args.get('confirm')):
+        cur.close()
+        return json.dumps(needs_confirmation_payload(
+            action="create_order_for_employee",
+            summary_da=(
+                f"Bekræft at du vil bestille '{product_title}' til {emp_name} for {price:.0f} kr. "
+                f"Beløbet trækkes fra virksomhedens budget. Send confirm=true for at bestille."
+            ),
+            details={"employee": emp_name, "product_title": product_title, "price": price},
+            price=price,
+        ), default=str)
+    cur.close()
+
+    try:
+        from order_service import create_order
+        result = create_order(
+            ctx,
+            product_handle=product_handle,
+            product_title=product_title,
+            price=price,
+            variant_date=(args.get('variant_date') or '').strip(),
+            variant_location=(args.get('variant_location') or '').strip(),
+            user_email=emp.get("email") or "",
+            user_name=emp_name,
+            extra={"on_behalf_of": employee_id, "created_by_hr": getattr(ctx, 'user_id', None)},
+        )
+    except Exception as exc:
+        print(f"[HR_TOOLS][create_order_for_employee] create failed: {exc}")
+        return json.dumps({"error": "Bestillingen kunne ikke oprettes."})
+
+    if not isinstance(result, dict) or not result.get('success'):
+        return json.dumps({
+            "error": "order_failed",
+            "message": (result or {}).get('message', 'Bestillingen kunne ikke oprettes.') if isinstance(result, dict) else "Bestillingen kunne ikke oprettes.",
+        })
+
+    try:
+        cur2 = _get_cursor()
+        _hr_write_audit(
+            cur2, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="create_order_for_employee", resource_id=str(result.get('order_id')),
+            description=f"'{product_title}' for {emp_name} ({price:.0f} kr.)",
+        )
+        current_app.mysql.connection.commit()
+        cur2.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][create_order_for_employee] audit skipped: {exc}")
+
+    return json.dumps({
+        "success": True,
+        "order_id": result.get('order_id'),
+        "status": result.get('status'),
+        "employee": emp_name,
+        "price": price,
+        "message_da": (
+            f"Bestillingen af '{product_title}' til {emp_name} er oprettet"
+            + (f" (status: {result.get('status')})." if result.get('status') else ".")
+        ),
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -3250,6 +3990,15 @@ def execute_hr_tool(tool_call):
         "set_skill_target": _execute_set_skill_target,
         "create_compliance_requirement": _execute_create_compliance_requirement,
         "hr_compare_cohorts": _execute_hr_compare_cohorts,
+        # AI Tooler 2 (Phase 5): safe platform-control tools
+        "schedule_recurring_report": _execute_schedule_recurring_report,
+        "recheck_compliance": _execute_recheck_compliance,
+        "generate_fresh_insights": _execute_generate_fresh_insights,
+        "bulk_calendar_invites": _execute_bulk_calendar_invites,
+        # AI Tooler 2 (Phase 6): high blast-radius HR writes
+        "send_company_email": _execute_send_company_email,
+        "send_deadline_reminders": _execute_send_deadline_reminders,
+        "create_order_for_employee": _execute_create_order_for_employee,
     }
 
     fn = router.get(name)

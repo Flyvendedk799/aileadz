@@ -167,6 +167,22 @@ def _tool_event_message(status: str, cache_hit: bool) -> str:
     return "Færdig."
 
 
+def _safe_tool_error(parsed: Dict[str, Any]) -> str:
+    """Short, browser-safe error blurb for a failed tool call.
+
+    Prefers an explicit Danish message the tool authored; otherwise falls back to a
+    generic line. Truncated so it can never leak large payloads into the SSE stream.
+    """
+    if not isinstance(parsed, dict):
+        return ""
+    for key in ("message_da", "message", "error_message", "error"):
+        value = parsed.get(key)
+        if isinstance(value, str) and value.strip():
+            text = value.strip()
+            return text if len(text) <= 200 else text[:197] + "…"
+    return ""
+
+
 def build_tool_call_event(
     result: ToolCallResult,
     *,
@@ -188,7 +204,7 @@ def build_tool_call_event(
         latency_ms = max(0, int(round(float(result.latency_ms or 0))))
     except (TypeError, ValueError):
         latency_ms = 0
-    return {
+    event = {
         "type": "tool_call",
         "id": result.call_id or "",
         "agent": agent_scope or display.get("agent") or "employee",
@@ -202,13 +218,25 @@ def build_tool_call_event(
         "results_count": count,
         "latency_ms": latency_ms,
         "cache_hit": cache_hit,
+        "cache_ttl": int(display.get("cache_ttl") or 0),
         "side_effect": bool(display.get("side_effect")),
+        "confirm_required": bool(display.get("confirm_required")),
         "message": _tool_event_message(status, cache_hit),
     }
+    # AI Tooler 2: surface a partial-failure flag (some sub-operations failed) and a
+    # redaction-safe short error string, but only when the tool is marked safe_to_show.
+    if isinstance(parsed, dict) and parsed.get("partial_failure"):
+        event["partial_failure"] = True
+    if status == "error" and display.get("safe_to_show"):
+        safe_error = _safe_tool_error(parsed)
+        if safe_error:
+            event["safe_error"] = safe_error
+    return event
 
 
 def build_tool_start_event(name: str, call_id: str = "", *, agent_scope: str = "employee") -> Dict[str, Any]:
     display = tool_display_metadata(name, agent_scope)
+    progress_label = display.get("progress_label") or ""
     return {
         "type": "tool_call",
         "id": call_id or "",
@@ -224,7 +252,42 @@ def build_tool_start_event(name: str, call_id: str = "", *, agent_scope: str = "
         "latency_ms": 0,
         "cache_hit": False,
         "side_effect": bool(display.get("side_effect")),
-        "message": "Kører værktøj.",
+        "confirm_required": bool(display.get("confirm_required")),
+        "progress_label": progress_label,
+        "message": progress_label or "Kører værktøj.",
+    }
+
+
+def build_tool_progress_event(
+    name: str,
+    call_id: str = "",
+    *,
+    agent_scope: str = "employee",
+    percent: Optional[float] = None,
+    note: str = "",
+) -> Dict[str, Any]:
+    """Mid-execution progress beat for a long-running tool (e.g. insights recompute).
+
+    Browser-safe like the start/finish events — carries no raw args or output.
+    """
+    display = tool_display_metadata(name, agent_scope)
+    pct: Optional[int] = None
+    if percent is not None:
+        try:
+            pct = max(0, min(100, int(round(float(percent)))))
+        except (TypeError, ValueError):
+            pct = None
+    return {
+        "type": "tool_progress",
+        "id": call_id or "",
+        "agent": agent_scope or display.get("agent") or "employee",
+        "name": name,
+        "label": display.get("label") or name,
+        "ui_icon": display.get("ui_icon") or "fa-wand-magic-sparkles",
+        "phase": "progress",
+        "status": "running",
+        "percent": pct,
+        "message": note or display.get("progress_label") or "Arbejder…",
     }
 
 
@@ -470,6 +533,16 @@ def live_tool_events_enabled() -> bool:
     return (os.getenv("AI_LIVE_TOOL_EVENTS", "1") or "1").strip().lower() not in {"0", "false", "no", "off"}
 
 
+def ai_tooler2_enabled() -> bool:
+    """Master kill-switch for the AI Tooler 2 batch.
+
+    Gates every new platform-control tool and the new confirm/progress UI wiring so
+    the whole batch can be disabled with a single flag. Default OFF until the batch
+    is verified in an environment; flip AI_TOOLER2=on (or 1/true/yes) to enable.
+    """
+    return (os.getenv("AI_TOOLER2", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def live_agent_timeout_seconds() -> float:
     """Hard upper bound for the live-event worker path.
 
@@ -655,12 +728,23 @@ def max_run_tokens() -> int:
         return 0
 
 
-def _approx_cost_usd(input_tokens: int, output_tokens: int) -> float:
-    """Rough USD estimate from token counts using configurable per-1K rates.
+def _approx_cost_usd(input_tokens: int, output_tokens: int, model: Optional[str] = None,
+                     cached_tokens: int = 0) -> float:
+    """USD estimate from token counts for the soft cost ceiling.
 
-    Defaults track gpt-4o pricing tiers; only used for the soft cost ceiling, so
-    precision is not important — it just needs to be monotonic in token use.
+    AI Tooler 2 unifies this on the canonical ``ai_cost_model`` price table: when a
+    model is known there, its per-model rates (with cached-input discount) are used so
+    the ceiling matches the billing dashboard. Falls back to the legacy flat per-1K
+    env rates when the model is unknown/unset, preserving the old monotonic behaviour.
     """
+    if model:
+        try:
+            from ai_cost_model import estimate_cost
+            est = estimate_cost(model, input_tokens, output_tokens, cached_tokens)
+            if est.get("known"):
+                return float(est.get("usd") or 0.0)
+        except Exception:
+            pass
     try:
         in_rate = float(os.getenv("AI_COST_PER_1K_INPUT", "0.0025"))
         out_rate = float(os.getenv("AI_COST_PER_1K_OUTPUT", "0.01"))
@@ -669,24 +753,25 @@ def _approx_cost_usd(input_tokens: int, output_tokens: int) -> float:
     return (max(0, input_tokens) / 1000.0) * in_rate + (max(0, output_tokens) / 1000.0) * out_rate
 
 
-def _usage_run_cost(usage: Dict[str, Any]) -> Tuple[int, float]:
+def _usage_run_cost(usage: Dict[str, Any], model: Optional[str] = None) -> Tuple[int, float]:
     """Return (total_tokens, approx_usd_cost) for an accumulated usage dict."""
     try:
         input_tokens = int(usage.get("input_tokens") or usage.get("prompt_tokens") or 0)
         output_tokens = int(usage.get("output_tokens") or usage.get("completion_tokens") or 0)
+        cached_tokens = int(usage.get("cached_tokens") or usage.get("cached_input_tokens") or 0)
     except Exception:
         return 0, 0.0
     total = input_tokens + output_tokens
-    return total, _approx_cost_usd(input_tokens, output_tokens)
+    return total, _approx_cost_usd(input_tokens, output_tokens, model=model, cached_tokens=cached_tokens)
 
 
-def _run_cost_exceeded(usage: Dict[str, Any]) -> bool:
+def _run_cost_exceeded(usage: Dict[str, Any], model: Optional[str] = None) -> bool:
     """True when the accumulated run usage breaches the cost/token ceiling."""
     cost_cap = max_run_cost_usd()
     token_cap = max_run_tokens()
     if cost_cap <= 0 and token_cap <= 0:
         return False
-    total_tokens, cost = _usage_run_cost(usage)
+    total_tokens, cost = _usage_run_cost(usage, model=model)
     if cost_cap > 0 and cost >= cost_cap:
         return True
     if token_cap > 0 and total_tokens >= token_cap:
@@ -740,12 +825,43 @@ def in_rate_limit_cooldown() -> bool:
     return time.time() < _RATE_LIMIT_COOLDOWN_UNTIL
 
 
+def tool_turn_temperature() -> Optional[float]:
+    """Temperature for tool-deciding turns (turns that expose tools to the model).
+
+    Lower temperature makes function-call selection more deterministic — the model
+    is choosing which tool to call, not writing prose, so randomness only hurts.
+    Default 0.2. Set AI_TOOL_TURN_TEMPERATURE to an empty string to omit the param
+    entirely and fall back to the API default (rollback).
+    """
+    raw = os.getenv("AI_TOOL_TURN_TEMPERATURE", "0.2")
+    if raw is None or not raw.strip():
+        return None
+    try:
+        return max(0.0, min(2.0, float(raw)))
+    except ValueError:
+        return 0.2
+
+
+def _chars_per_token() -> float:
+    """Characters-per-token divisor for the rough token estimator.
+
+    English averages ~4 chars/token, but Danish (and other compound languages)
+    tokenizes worse, so the default slightly under-divides to stay conservative for
+    the budget/compaction gates. Env-tunable; default 4.0 preserves legacy counts.
+    """
+    try:
+        val = float(os.getenv("AI_TOKEN_CHARS_PER_TOKEN", "4.0"))
+        return val if val >= 1.0 else 4.0
+    except ValueError:
+        return 4.0
+
+
 def _estimate_text_tokens(text: Any) -> int:
     if text is None:
         return 0
     if not isinstance(text, str):
         text = _safe_json(text)
-    return max(1, len(text) // 4)
+    return max(1, int(len(text) / _chars_per_token()))
 
 
 def estimate_messages_tokens(messages: List[Dict[str, Any]]) -> int:
@@ -1443,6 +1559,11 @@ def _responses_create_with_resilience(
             kwargs["tools"] = response_tools
             kwargs["tool_choice"] = responses_tool_choice(tool_choice)
             kwargs["parallel_tool_calls"] = True
+            # Tool-deciding turn: pin a low temperature so tool selection is
+            # deterministic (env-tunable; empty AI_TOOL_TURN_TEMPERATURE = API default).
+            tool_temp = tool_turn_temperature()
+            if tool_temp is not None:
+                kwargs["temperature"] = tool_temp
         if prompt_cache_key and not is_continuation:
             kwargs["prompt_cache_key"] = prompt_cache_key
         if prev_id:
@@ -2206,7 +2327,7 @@ def run_chat_agent(
         current_tool_choice = "auto"
 
         # --- Cost guard: stop if the run breaches the cost/token ceiling ---
-        if _run_cost_exceeded(run_usage):
+        if _run_cost_exceeded(run_usage, model=model):
             final_text = _OVER_BUDGET_DA
             return AgentRunResult(
                 text=final_text,
@@ -2409,7 +2530,7 @@ def run_responses_agent(
         tool_choice = "auto"
 
         # --- Cost guard: stop if the run breaches the cost/token ceiling ---
-        if _run_cost_exceeded(run_usage):
+        if _run_cost_exceeded(run_usage, model=model):
             final_text = _OVER_BUDGET_DA
             return AgentRunResult(
                 text=final_text,

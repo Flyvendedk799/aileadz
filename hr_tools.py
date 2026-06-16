@@ -3,6 +3,7 @@ HR Chatbot Tools — Company-level analytics tools for HR managers.
 Separate from employee chatbot tools. Only available in HR dashboard chatbot.
 """
 import json
+import re
 import db_compat  # noqa: F401
 import MySQLdb.cursors
 from flask import current_app, session
@@ -742,6 +743,135 @@ HR_TOOLS.extend([
                     }
                 },
                 "required": ["cohort_a", "cohort_b"]
+            }
+        }
+    },
+])
+
+
+# ── AI Tooler 2 (Phase 5): safe platform-control tools ────────────────────────
+# These wire previously backend-only services (scheduler, compliance recheck,
+# insights regeneration, calendar feed) into the HR chat. The two that change
+# state (schedule_recurring_report, recheck_compliance) reuse the proven
+# confirm+manager+company-scope+audit contract; the two read/recompute tools
+# (generate_fresh_insights, bulk_calendar_invites) write no rows.
+HR_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "schedule_recurring_report",
+            "description": (
+                "MUTATION: Planlæg en tilbagevendende rapport for virksomheden (fx ugentlig "
+                "kompetencegab-rapport eller månedlig ROI-oversigt) der sendes automatisk. "
+                "Kræver confirm=true OG at HR-brugeren er manager. Virksomheds-scoped. Bruges ved "
+                "'planlæg en ugentlig rapport', 'send mig compliance hver måned', 'tilbagevendende rapport'. "
+                "Bekræft ALTID rapporttype og kadence med brugeren før confirm=true."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "report_type": {
+                        "type": "string",
+                        "enum": ["training_status", "skill_gaps", "compliance", "roi", "budget"],
+                        "description": "Hvilken rapport der skal sendes tilbagevendende."
+                    },
+                    "cadence": {
+                        "type": "string",
+                        "enum": ["daily", "weekly", "monthly"],
+                        "description": "Hvor ofte rapporten skal sendes."
+                    },
+                    "department": {
+                        "type": "string",
+                        "description": "Valgfri afdeling rapporten afgrænses til. Udeladt = hele virksomheden."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at gemme planen. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": ["report_type", "cadence"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "recheck_compliance",
+            "description": (
+                "MUTATION: Kør et øjeblikkeligt compliance-gentjek for virksomheden — opdaterer "
+                "compliance-kort og eskalerer kritiske mangler til ledere (samme som det daglige "
+                "automatiske tjek, men på forespørgsel). Kræver confirm=true OG manager. Virksomheds-scoped. "
+                "Bruges ved 'gentjek compliance nu', 'kør compliance-tjekket igen', 'er vi compliant lige nu'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "note": {
+                        "type": "string",
+                        "description": "Valgfri note til revisionssporet (fx hvorfor gentjekket køres)."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "Skal være true for at køre gentjekket. Uden dette returneres kun en forhåndsvisning."
+                    }
+                },
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "generate_fresh_insights",
+            "description": (
+                "Generér friske AI-indsigter for virksomheden NU ud fra de seneste samtaler og data "
+                "(populære emner, lav tilfredshed, udækkede behov, faldende engagement). Tung beregning — "
+                "ingen skrivning til medarbejderdata. Bruges ved 'opdater indsigterne', 'generér friske "
+                "indsigter', 'hvad viser de nyeste data'. Forskellig fra hr_explain_insights, som kun "
+                "forklarer allerede beregnede indsigter."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": []
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "bulk_calendar_invites",
+            "description": (
+                "Lav en kalenderinvitation (.ics) til et hold/virksomheden for et kursus eller en "
+                "træningsbegivenhed, som HR kan downloade og sende videre. Ingen skrivning til databasen. "
+                "Bruges ved 'lav en kalenderinvitation til holdet', 'send invitationer til kurset', "
+                "'kalender til onboarding'."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "title": {
+                        "type": "string",
+                        "description": "Titlen på begivenheden, fx 'GDPR-kursus for Salg'."
+                    },
+                    "start_date": {
+                        "type": "string",
+                        "description": "Startdato/-tid (fx '2026-09-01 09:00' eller dansk dato)."
+                    },
+                    "end_date": {
+                        "type": "string",
+                        "description": "Valgfri slutdato/-tid."
+                    },
+                    "location": {
+                        "type": "string",
+                        "description": "Valgfrit sted (fysisk adresse eller online-link)."
+                    },
+                    "description": {
+                        "type": "string",
+                        "description": "Valgfri beskrivelse af begivenheden."
+                    }
+                },
+                "required": ["title", "start_date"]
             }
         }
     },
@@ -3211,6 +3341,237 @@ def _execute_hr_compare_cohorts(args):
     return json.dumps(result, default=str)
 
 
+# ── AI Tooler 2 (Phase 5): safe platform-control executors ────────────────────
+
+_REPORT_SCHEDULES_DDL = """CREATE TABLE IF NOT EXISTS company_report_schedules (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    company_id INT NOT NULL,
+    report_type VARCHAR(64) NOT NULL,
+    cadence VARCHAR(16) NOT NULL,
+    department VARCHAR(100) NULL,
+    created_by INT NULL,
+    enabled TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uniq_company_report (company_id, report_type, department)
+)"""
+
+_REPORT_TYPE_LABELS_DA = {
+    "training_status": "Træningsstatus",
+    "skill_gaps": "Kompetencegab",
+    "compliance": "Compliance",
+    "roi": "ROI",
+    "budget": "Budget",
+}
+_CADENCE_LABELS_DA = {"daily": "dagligt", "weekly": "ugentligt", "monthly": "månedligt"}
+
+
+def _execute_schedule_recurring_report(args):
+    """MUTATION — persist a per-company recurring-report schedule.
+
+    Confirm + manager + company-scoped + audited. Writes ONLY a per-company schedule
+    row (company_report_schedules); it never mutates the global scheduler JOBS list —
+    the existing digest job picks these rows up.
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan planlægge rapporter.")
+    if err:
+        return err
+
+    report_type = (args.get('report_type') or '').strip().lower()
+    if report_type not in _REPORT_TYPE_LABELS_DA:
+        return json.dumps({"error": "report_type skal være en af: " + ", ".join(_REPORT_TYPE_LABELS_DA)})
+    cadence = (args.get('cadence') or '').strip().lower()
+    if cadence not in _CADENCE_LABELS_DA:
+        return json.dumps({"error": "cadence skal være 'daily', 'weekly' eller 'monthly'."})
+    department = (args.get('department') or '').strip() or None
+    if department:
+        department = department[:100]
+
+    rt_label = _REPORT_TYPE_LABELS_DA[report_type]
+    cad_label = _CADENCE_LABELS_DA[cadence]
+    scope_da = f" for {department}" if department else ""
+
+    if not bool(args.get('confirm')):
+        return json.dumps(needs_confirmation_payload(
+            action="schedule_recurring_report",
+            summary_da=(
+                f"Bekræft at {rt_label}-rapporten{scope_da} skal sendes {cad_label}. "
+                f"Send confirm=true for at gemme planen."
+            ),
+            details={"report_type": report_type, "cadence": cadence, "department": department},
+        ), default=str)
+
+    cur = _get_cursor()
+    try:
+        cur.execute(_REPORT_SCHEDULES_DDL)
+        cur.execute(
+            """
+            INSERT INTO company_report_schedules
+                (company_id, report_type, cadence, department, created_by, enabled)
+            VALUES (%s, %s, %s, %s, %s, 1)
+            ON DUPLICATE KEY UPDATE cadence = VALUES(cadence), enabled = 1, created_by = VALUES(created_by)
+            """,
+            (company_id, report_type, cadence, department, getattr(ctx, 'user_id', None)),
+        )
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="schedule_recurring_report", resource_id=f"{report_type}:{department or 'all'}",
+            description=f"{rt_label} {cad_label}{scope_da}",
+        )
+        current_app.mysql.connection.commit()
+    except Exception as exc:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        print(f"[HR_TOOLS][schedule_recurring_report] write failed: {exc}")
+        return json.dumps({"error": "Kunne ikke gemme rapportplanen."})
+    finally:
+        cur.close()
+
+    return json.dumps({
+        "success": True,
+        "report_type": report_type,
+        "cadence": cadence,
+        "department": department,
+        "message_da": f"{rt_label}-rapporten{scope_da} er planlagt til at blive sendt {cad_label}.",
+    }, default=str)
+
+
+def _execute_recheck_compliance(args):
+    """MUTATION — run an on-demand compliance recheck (cards + critical escalation).
+
+    Confirm + manager + company-scoped + audited. Delegates the actual work to
+    compliance_service.recheck_company (the same routine the daily job uses).
+    """
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    ctx, err = _hr_manager_ctx("Kun ledere/HR-managere kan køre et compliance-gentjek.")
+    if err:
+        return err
+
+    if not bool(args.get('confirm')):
+        return json.dumps(needs_confirmation_payload(
+            action="recheck_compliance",
+            summary_da=(
+                "Bekræft at du vil køre et compliance-gentjek for hele virksomheden nu. "
+                "Det opdaterer compliance-kort og kan eskalere kritiske mangler til ledere. "
+                "Send confirm=true for at køre."
+            ),
+        ), default=str)
+
+    try:
+        from compliance_service import recheck_company
+        summary = recheck_company(company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][recheck_compliance] failed: {exc}")
+        return json.dumps({"error": "Compliance-gentjekket kunne ikke gennemføres."})
+
+    try:
+        cur = _get_cursor()
+        _hr_write_audit(
+            cur, company_id=company_id, user_id=getattr(ctx, 'user_id', None),
+            action="recheck_compliance", resource_id=str(company_id),
+            description=(args.get('note') or '')[:255],
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception as exc:
+        print(f"[HR_TOOLS][recheck_compliance] audit skipped: {exc}")
+
+    notifications = int((summary or {}).get('notifications') or 0)
+    emails = int((summary or {}).get('emails') or 0)
+    return json.dumps({
+        "success": True,
+        "notifications": notifications,
+        "emails": emails,
+        "message_da": (
+            f"Compliance-gentjekket er kørt: {notifications} kort opdateret"
+            + (f", {emails} kritiske eskaleringer sendt." if emails else ".")
+        ),
+    }, default=str)
+
+
+def _execute_generate_fresh_insights(args):
+    """READ/RECOMPUTE — regenerate company AI insights on demand (no row writes).
+
+    Heavy recompute, so the live runtime emits a progress beat for this tool. Needs
+    the Flask app object for its own DB access.
+    """
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+    try:
+        app = current_app._get_current_object()
+    except Exception:
+        app = current_app
+    try:
+        from insights_engine import generate_company_insights
+        result = generate_company_insights(app, company_id)
+    except Exception as exc:
+        print(f"[HR_TOOLS][generate_fresh_insights] failed: {exc}")
+        return json.dumps({"error": "Indsigterne kunne ikke genberegnes lige nu."})
+
+    count = 0
+    if isinstance(result, dict):
+        count = int(result.get('count') or len(result.get('insights') or []) or 0)
+    elif isinstance(result, list):
+        count = len(result)
+    return json.dumps({
+        "success": True,
+        "insights_count": count,
+        "message_da": (
+            f"Friske indsigter er genberegnet ({count} fundet)." if count
+            else "Indsigterne er genberegnet — ingen nye mønstre fundet lige nu."
+        ),
+    }, default=str)
+
+
+def _execute_bulk_calendar_invites(args):
+    """READ — build a downloadable .ics invite for a team training event (no writes)."""
+    company_id = session.get('company_id')
+    if not company_id:
+        return json.dumps({"error": "Ingen virksomhed fundet."})
+
+    title = (args.get('title') or '').strip()
+    start_date = (args.get('start_date') or '').strip()
+    if not title or not start_date:
+        return json.dumps({"error": "Angiv mindst en titel og en startdato."})
+
+    event = {
+        "title": title[:200],
+        "start": start_date,
+        "end": (args.get('end_date') or '').strip() or None,
+        "location": (args.get('location') or '').strip(),
+        "description": (args.get('description') or '').strip(),
+    }
+    try:
+        from calendar_service import build_ics_feed
+        ics = build_ics_feed([event], cal_name=title[:200])
+    except Exception as exc:
+        print(f"[HR_TOOLS][bulk_calendar_invites] failed: {exc}")
+        return json.dumps({"error": "Kalenderinvitationen kunne ikke laves."})
+
+    safe_name = re.sub(r"[^a-z0-9]+", "-", title.lower()).strip("-") or "kursus"
+    return json.dumps({
+        "status": "ui_card",
+        "ui_type": "download",
+        "filename": f"{safe_name}.ics",
+        "mime_type": "text/calendar",
+        "content": ics,
+        "message_da": f"Kalenderinvitation til '{title}' er klar — download og send den til holdet.",
+    }, default=str)
+
+
 # ── Tool router ──
 
 def execute_hr_tool(tool_call):
@@ -3249,6 +3610,11 @@ def execute_hr_tool(tool_call):
         "set_skill_target": _execute_set_skill_target,
         "create_compliance_requirement": _execute_create_compliance_requirement,
         "hr_compare_cohorts": _execute_hr_compare_cohorts,
+        # AI Tooler 2 (Phase 5): safe platform-control tools
+        "schedule_recurring_report": _execute_schedule_recurring_report,
+        "recheck_compliance": _execute_recheck_compliance,
+        "generate_fresh_insights": _execute_generate_fresh_insights,
+        "bulk_calendar_invites": _execute_bulk_calendar_invites,
     }
 
     fn = router.get(name)

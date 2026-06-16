@@ -149,6 +149,23 @@ _EMPLOYEE_META = {
         parallel_safe=False,
         toolset_tags=("course", "mutation"),
     ),
+    # AI Tooler 2 (Phase 7): employee-facing action tools.
+    "save_course_for_later": ToolMeta(
+        "save_course_for_later", auth_required=True, toolset_tags=("wishlist", "memory"),
+    ),
+    "set_course_reminder": ToolMeta(
+        "set_course_reminder", auth_required=True, toolset_tags=("reminder", "memory"),
+    ),
+    "manage_my_order": ToolMeta(
+        "manage_my_order", auth_required=True,
+        side_effect=True, parallel_safe=False, confirm_required=True,
+        toolset_tags=("order", "mutation"),
+    ),
+    "request_manager_approval": ToolMeta(
+        "request_manager_approval", auth_required=True,
+        side_effect=True, parallel_safe=False, confirm_required=True,
+        toolset_tags=("approval", "mutation"),
+    ),
 }
 
 _HR_META = {
@@ -296,6 +313,11 @@ _TOOL_LABELS = {
     "track_goal_progress": "Målfremdrift",
     "add_to_calendar": "Kalender",
     "mark_course_complete": "Markér fuldført",
+    # AI Tooler 2 (Phase 7): employee-facing action tools
+    "save_course_for_later": "Gem til senere",
+    "set_course_reminder": "Sæt påmindelse",
+    "manage_my_order": "Håndtér bestilling",
+    "request_manager_approval": "Bed om godkendelse",
     # HR tools
     "get_team_training_status": "Træningsstatus",
     "get_company_skill_gaps": "Kompetencegab",
@@ -773,6 +795,23 @@ def get_employee_tool_selection(
                 "jeg har gennemført", "jeg har gennemfoert", "marker som færdig",
                 "marker som faerdig", "fuldført kurset", "fuldfoert kurset")):
             names.add("mark_course_complete")
+        # --- AI Tooler 2 (Phase 7): employee-facing action tools, keyword-gated. ---
+        if _has_any(query, (
+                "gem til senere", "gem det her", "ønskeliste", "oenskeliste", "wishlist",
+                "husk dette kursus", "gem kurset", "tilføj til ønskeliste", "tilfoej til oenskeliste")):
+            names.add("save_course_for_later")
+        if _has_any(query, (
+                "mind mig om", "sæt en påmindelse", "saet en paamindelse", "påmind mig",
+                "paamind mig", "reminder", "husk mig på", "husk mig paa")):
+            names.add("set_course_reminder")
+        if _has_any(query, (
+                "annullér min", "annuller min", "annullér bestilling", "annuller bestilling",
+                "fortryder kurset", "fortryd bestilling", "slet min ordre", "afbestil", "håndtér bestilling")):
+            names.add("manage_my_order")
+        if _has_any(query, (
+                "bed min leder", "bed om godkendelse", "rykke for godkendelse", "ryk for godkendelse",
+                "send til godkendelse", "bed lederen", "bed min chef")):
+            names.add("request_manager_approval")
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
 
@@ -786,7 +825,12 @@ def get_employee_tool_selection(
             continue
         if meta.company_required and not company_id:
             continue
-        if meta.side_effect and name not in ("create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user") and not _explicit_order_confirmation(query):
+        if meta.side_effect and name not in (
+                "create_course_order", "update_user_profile", "mark_course_complete", "remember_about_user",
+                # AI Tooler 2 (Phase 7): self-scoped, confirm-gated employee writes — reach
+                # the menu on their keyword so the model can surface a confirm card.
+                "manage_my_order", "request_manager_approval",
+        ) and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)
 

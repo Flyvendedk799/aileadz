@@ -2232,12 +2232,50 @@ def _execute_get_user_profile(args, username):
         return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
 
 
+def _normalize_memory_label(label):
+    """Normalize a memory label for near-duplicate detection."""
+    import re as _re
+    return _re.sub(r"\s+", " ", label.lower().strip())
+
+
+def _find_supersedable_memory(existing_memories, new_label_norm, min_len=4):
+    """Find an existing memory that should be superseded by the new label.
+
+    Returns (memory_id, old_label) when:
+    - The existing normalized label is a substring of the new (new is more specific), OR
+    - The new normalized label is a substring of the existing one AND at least 70% as
+      long (new is a slightly shorter variant of the same fact).
+    Returns (None, None) when no near-duplicate is found.
+    """
+    if len(new_label_norm) < min_len:
+        return None, None
+    for m in existing_memories:
+        old_norm = _normalize_memory_label(m.get("label") or "")
+        if len(old_norm) < min_len:
+            continue
+        if old_norm == new_label_norm:
+            # Exact duplicate — add_memory's UNIQUE constraint handles this,
+            # return early so we don't supersede with the same text.
+            return m["id"], m["label"]
+        # Substring supersede: old is contained in new → new is more specific
+        if old_norm in new_label_norm:
+            return m["id"], m["label"]
+        # Partial supersede: new is contained in old AND new is ≥70% of old's length
+        if new_label_norm in old_norm and len(new_label_norm) >= 0.70 * len(old_norm):
+            return m["id"], m["label"]
+    return None, None
+
+
 def _execute_remember_about_user(args, username):
     """Save a free-form atomic memory about the user (immediate, not proposed).
 
     Memories are low-stakes and the user can review/delete them on the Mind-Map,
     so unlike structured profile writes these save directly and surface a
-    'memory_saved' chip rather than a confirm card."""
+    'memory_saved' chip rather than a confirm card.
+
+    Phase 11: near-duplicate detection supersedes stale/redundant entries rather
+    than growing the store unboundedly. Exact duplicates are already handled by
+    add_memory's UNIQUE(username, label) constraint."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
     label = (args.get("label") or "").strip()
@@ -2248,6 +2286,21 @@ def _execute_remember_about_user(args, username):
     try:
         from app1 import user_profile_db as db
         db.ensure_tables()
+        # Near-duplicate check: scan existing memories for a supersedable entry.
+        try:
+            existing = db.get_memories(username, limit=200)
+            new_norm = _normalize_memory_label(label)
+            sup_id, sup_label = _find_supersedable_memory(existing, new_norm)
+            if sup_id is not None and sup_label != label:
+                # Supersede: update category/detail/label in place.
+                db.update_memory(username, sup_id,
+                                 label=label, category=category, detail=detail)
+                return json.dumps({"status": "memory_saved", "label": label[:200],
+                                   "category": category,
+                                   "message": f"Opdateret hukommelse: {label[:200]}"})
+        except Exception as dedup_err:
+            # Dedup is best-effort — fall through to normal add_memory on failure.
+            print(f"[MemoryDedup] {dedup_err}")
         # add_memory is the authoritative truncation point (label->200, detail->5000).
         db.add_memory(username, label, category=category, detail=detail,
                       source="ai", confidence=0.9)

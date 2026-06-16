@@ -157,6 +157,55 @@ def _normalize_number(token: str) -> str:
         return ""
 
 
+# AI Tooler 2: common Danish base words that frequently appear as the tail of a
+# training-domain compound. Used by decompound_da to split a compound so its parts
+# can also match the catalog (e.g. "erhvervserfaring" -> "erhverv" + "erfaring"),
+# closing the paraphrase-recall hole without a full morphological dictionary.
+_DA_COMPOUND_BASES = (
+    "uddannelse", "erfaring", "ledelse", "kursus", "kurser", "udvikling",
+    "kompetence", "kompetencer", "forløb", "certificering", "projekt",
+    "ledelse", "analyse", "strategi", "sikkerhed", "økonomi", "regnskab",
+    "kommunikation", "rådgivning", "undervisning", "træning",
+)
+
+
+def decompound_da(word: str, min_part: int = 4):
+    """Best-effort split of a Danish compound into its parts (never raises).
+
+    Returns a list of sub-tokens (length >= ``min_part``) when ``word`` ends with a
+    known base word, stripping an optional linking ``s``. Always includes the original
+    word so callers can treat the result as an expanded match set. Conservative: only
+    splits on the curated base list, so it can't fabricate spurious tokens.
+    """
+    try:
+        w = (word or "").lower().strip()
+        parts = [w] if w else []
+        if len(w) < (min_part * 2):
+            return parts
+        for base in _DA_COMPOUND_BASES:
+            if w != base and w.endswith(base) and len(w) > len(base) + 1:
+                head = w[: len(w) - len(base)]
+                if head.endswith("s"):  # linking morpheme (fuge-s)
+                    head = head[:-1]
+                if len(head) >= min_part and len(base) >= min_part:
+                    if head not in parts:
+                        parts.append(head)
+                    if base not in parts:
+                        parts.append(base)
+                    break
+        return parts
+    except Exception:
+        return [word] if word else []
+
+
+def _grounding_decompound_enabled() -> bool:
+    """Default OFF. Turn on AI_GROUNDING_DECOMPOUND to let the title-overlap heuristic
+    also match decompounded Danish compound words (reduces false 'unsupported title'
+    disclaimers). Off by default so the grounding baseline is unchanged."""
+    import os as _os
+    return (_os.getenv("AI_GROUNDING_DECOMPOUND", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
 def _known_title_keys(known_titles_fn):
     """AG-03: resolve the optional catalog-title lookup into normalised keys.
 
@@ -191,11 +240,18 @@ def _matches_known_title(cand, title_keys) -> bool:
         if not key:
             return False
         words = [w for w in _re.findall(r"[\wæøå0-9]{3,}", key) if w not in _TITLE_STOPWORDS]
+        decompound = _grounding_decompound_enabled()
         for tkey in title_keys:
             if key == tkey or key in tkey or tkey in key:
                 return True
             if words:
-                hits = sum(1 for w in words if w in tkey)
+                if decompound:
+                    hits = sum(
+                        1 for w in words
+                        if any(part in tkey for part in decompound_da(w))
+                    )
+                else:
+                    hits = sum(1 for w in words if w in tkey)
                 if hits >= max(2, int(round(0.75 * len(words)))):
                     return True
         return False

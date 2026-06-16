@@ -423,6 +423,35 @@ def _strict_schema(schema: Dict[str, Any]) -> Dict[str, Any]:
     return schema
 
 
+def _trim_tool_descriptions_enabled() -> bool:
+    """AI Tooler 2 token trim (default OFF).
+
+    When AI_TRIM_TOOL_DESCRIPTIONS is on, overly long tool descriptions are clipped to
+    their first sentence before being sent to the model. Off by default so the eval
+    baseline is unchanged; turn on to claw back ~30-40% of the tool-schema token cost
+    once a baseline confirms no tool-selection regression.
+    """
+    return (os.getenv("AI_TRIM_TOOL_DESCRIPTIONS", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _trim_description(desc: str, max_chars: int = 220) -> str:
+    """Clip a long description to its first sentence (best-effort, never raises)."""
+    if not desc or len(desc) <= max_chars:
+        return desc
+    head = desc[:max_chars]
+    # Prefer a sentence boundary; fall back to the last word boundary.
+    for sep in (". ", "! ", "? ", "\n"):
+        idx = head.rfind(sep)
+        if idx >= 60:
+            return head[: idx + 1].strip()
+    cut = head.rfind(" ")
+    return (head[:cut] if cut >= 60 else head).strip() + "…"
+
+
+def _maybe_trim(desc: str) -> str:
+    return _trim_description(desc) if _trim_tool_descriptions_enabled() else (desc or "")
+
+
 def _normalize_chat_tool(tool: Dict[str, Any]) -> Dict[str, Any]:
     fn = deepcopy(tool.get("function") or tool)
     # Tools may opt out of strict mode (e.g. polymorphic-payload tools like
@@ -436,7 +465,7 @@ def _normalize_chat_tool(tool: Dict[str, Any]) -> Dict[str, Any]:
         "type": "function",
         "function": {
             "name": fn["name"],
-            "description": fn.get("description", ""),
+            "description": _maybe_trim(fn.get("description", "")),
             "parameters": params,
             "strict": is_strict,
         },
@@ -448,7 +477,7 @@ def to_responses_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "type": "function",
         "name": fn["name"],
-        "description": fn.get("description", ""),
+        "description": _maybe_trim(fn.get("description", "")),
         "parameters": deepcopy(fn.get("parameters") or {"type": "object", "properties": {}, "required": []}),
         "strict": bool(fn.get("strict", True)),
     }

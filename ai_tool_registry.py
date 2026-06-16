@@ -217,6 +217,25 @@ _HR_META = {
         "bulk_calendar_invites", "hr",
         company_required=True, toolset_tags=("calendar", "export"),
     ),
+    # AI Tooler 2 (Phase 6): high blast-radius HR writes.
+    "send_company_email": ToolMeta(
+        "send_company_email", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="send_company_email",
+        progress_label="Sender mails…", toolset_tags=("email", "mutation", "fanout"),
+    ),
+    "send_deadline_reminders": ToolMeta(
+        "send_deadline_reminders", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="send_deadline_reminders",
+        toolset_tags=("reminders", "mutation"),
+    ),
+    "create_order_for_employee": ToolMeta(
+        "create_order_for_employee", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="create_order_for_employee",
+        toolset_tags=("order", "mutation", "budget"),
+    ),
 }
 
 _VENDOR_META = {
@@ -310,6 +329,9 @@ _TOOL_LABELS = {
     "recheck_compliance": "Gentjek compliance",
     "generate_fresh_insights": "Generér indsigter",
     "bulk_calendar_invites": "Kalenderinvitation",
+    "send_company_email": "Send virksomhedsmail",
+    "send_deadline_reminders": "Send påmindelser",
+    "create_order_for_employee": "Bestil for medarbejder",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
@@ -905,6 +927,22 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "kalender til holdet", "kalender til kurset", "invitation til kurset",
             "lav en invitation", "kalenderfil")):
         names.add("bulk_calendar_invites")
+    # --- AI Tooler 2 (Phase 6): high blast-radius HR writes, keyword-gated only. ---
+    if _has_any(query, (
+            "send mail", "send email", "send en mail", "udsend besked", "informer medarbejdere",
+            "informér medarbejdere", "send besked til", "annoncer", "annoncér", "udsend mail",
+            "send en besked til holdet", "kursusannoncering")):
+        names.add("send_company_email")
+    if _has_any(query, (
+            "påmind", "paamind", "deadline-påmindelse", "deadline paamindelse", "frist-påmindelse",
+            "frist paamindelse", "mind holdet om", "send påmindelser", "send paamindelser",
+            "påmind om forfaldne", "remind")):
+        names.add("send_deadline_reminders")
+    if _has_any(query, (
+            "bestil til medarbejder", "tilmeld medarbejder", "bestil for", "opret ordre for",
+            "opret bestilling for", "bestil kursus til", "tilmeld en medarbejder",
+            "bestil på vegne af", "bestil paa vegne af")):
+        names.add("create_order_for_employee")
 
     selected = []
     for name in sorted(names):

@@ -670,6 +670,18 @@
     track_goal_progress: "Målfremdrift",
     add_to_calendar: "Kalender",
     mark_course_complete: "Markér fuldført",
+    // Phase 5-7 new tools
+    schedule_recurring_report: "Planlæg rapport",
+    recheck_compliance: "Tjek compliance",
+    generate_fresh_insights: "Analyser samtaler",
+    bulk_calendar_invites: "Kalenderinvitationer",
+    send_company_email: "Send virksomhedsmail",
+    send_deadline_reminders: "Send påmindelser",
+    create_order_for_employee: "Opret medarbejderordre",
+    save_course_for_later: "Gem til senere",
+    set_course_reminder: "Sæt påmindelse",
+    manage_my_order: "Administrer ordre",
+    request_manager_approval: "Anmod om godkendelse",
   };
   function toolLabel(tool) {
     const name = typeof tool === "string" ? tool : tool && tool.name;
@@ -702,15 +714,43 @@
       if (callId) chip.setAttribute("data-call-id", callId);
       list.appendChild(chip);
     }
-    chip.className = "tool-chip" + (data.status === "error" ? " error" : "") + (running ? " running" : "");
+    const partialFail = !running && data.partial_failure;
+    chip.className = "tool-chip"
+      + (data.status === "error" ? " error" : "")
+      + (partialFail ? " partial-failure" : "")
+      + (running ? " running" : "");
     const meta = [];
     if (data.category) meta.push(data.category);
     if (Number(data.results_count) > 0) meta.push(Number(data.results_count) + " resultater");
-    if (data.cache_hit) meta.push("cache");
+    if (data.cache_hit) {
+      const ttl = data.cache_ttl ? Math.round(data.cache_ttl) + "s" : "";
+      meta.push(ttl ? "cache " + ttl : "cache");
+    }
+    if (partialFail) meta.push("delvis fejl");
     if (data.side_effect) meta.push("ændrer data");
     if (Number(data.latency_ms) > 0) meta.push(Number(data.latency_ms) + "ms");
     const icon = data.ui_icon ? `<i class="fa-solid ${esc(data.ui_icon)}"></i>` : "";
     chip.innerHTML = `${icon}<span>${esc(toolLabel(data))}</span>${meta.length ? `<span class="meta">${esc(meta.join(" · "))}</span>` : ""}`;
+    // Progress bar for running chips (shown when progress_label is set or always for running)
+    if (running) {
+      const progWrap = document.createElement("div");
+      progWrap.className = "tool-chip-progress";
+      if (data.progress_label) {
+        const lbl = document.createElement("div");
+        lbl.className = "tool-chip-progress-label";
+        lbl.textContent = data.progress_label;
+        progWrap.appendChild(lbl);
+      }
+      const barWrap = document.createElement("div");
+      barWrap.className = "tool-chip-progress-bar-wrap";
+      const bar = document.createElement("div");
+      bar.className = "tool-chip-progress-bar";
+      if (data.percent != null) bar.setAttribute("data-pct", "1");
+      bar.style.width = (data.percent != null ? Math.min(100, data.percent) : 0) + "%";
+      barWrap.appendChild(bar);
+      progWrap.appendChild(barWrap);
+      chip.appendChild(progWrap);
+    }
     box.querySelector(".tool-count").textContent = String(list.children.length);
     down();
   }
@@ -718,6 +758,94 @@
   // muted "running" state — settle them so the UI doesn't imply ongoing work.
   function settleToolChips(body) {
     body.querySelectorAll(".tool-chip.running").forEach((c) => c.classList.remove("running"));
+  }
+
+  // Update an in-flight chip's progress bar from a tool_progress SSE event.
+  function updateToolProgress(body, data) {
+    const callId = String(data.id || "");
+    if (!callId) return;
+    const list = body.querySelector(".tool-run-list");
+    if (!list) return;
+    const chip = Array.prototype.find.call(list.children,
+      (el) => el.getAttribute("data-call-id") === callId) || null;
+    if (!chip) return;
+    const bar = chip.querySelector(".tool-chip-progress-bar");
+    if (bar && data.percent != null) {
+      bar.setAttribute("data-pct", "1");
+      bar.style.width = Math.min(100, data.percent) + "%";
+    }
+    const lbl = chip.querySelector(".tool-chip-progress-label");
+    if (lbl && data.note) lbl.textContent = data.note;
+    down();
+  }
+
+  // Render a confirm card for a side-effect tool and wire Bekræft/Afvis.
+  function renderConfirmCard(body, data) {
+    const card = document.createElement("div");
+    card.className = "confirm-card";
+    const action = data.action || "";
+    const summaryDa = data.summary_da || "";
+    const details = data.details || "";
+    const recipientCount = data.recipient_count != null ? data.recipient_count : null;
+    const price = data.price != null ? data.price : null;
+
+    const metaParts = [];
+    if (recipientCount != null) metaParts.push(recipientCount + " modtagere");
+    if (price != null) metaParts.push(Number(price).toLocaleString("da-DK") + " kr.");
+
+    card.innerHTML = `
+      <div class="confirm-card-head">
+        <i class="fa-solid fa-triangle-exclamation"></i>
+        <span>Bekræft handling</span>
+      </div>
+      <div class="confirm-card-body">${esc(summaryDa)}</div>
+      ${details ? `<div class="confirm-card-details">${esc(details)}</div>` : ""}
+      ${metaParts.length ? `<div class="confirm-card-meta">${esc(metaParts.join(" · "))}</div>` : ""}
+      <div class="confirm-card-actions">
+        <button class="confirm-card-ok" type="button">Bekræft</button>
+        <button class="confirm-card-cancel" type="button">Afvis</button>
+      </div>
+    `;
+
+    const okBtn = card.querySelector(".confirm-card-ok");
+    const cancelBtn = card.querySelector(".confirm-card-cancel");
+    const showResult = (cls, msg) => {
+      okBtn.disabled = true; cancelBtn.disabled = true;
+      const res = document.createElement("div");
+      res.className = "confirm-card-result " + cls;
+      res.textContent = msg;
+      card.appendChild(res);
+      down();
+    };
+
+    okBtn.addEventListener("click", async () => {
+      okBtn.disabled = true; cancelBtn.disabled = true;
+      okBtn.textContent = "Bekræfter…";
+      try {
+        const resp = await fetch("/app1/confirm_tool_action", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: data.token }),
+        });
+        const result = await resp.json();
+        if (result.status === "success" || result.status === "already_confirmed") {
+          showResult("ok", result.message_da || result.message || "Bekræftet");
+        } else if (result.status === "already_confirmed") {
+          showResult("ok", "Allerede bekræftet");
+        } else {
+          showResult("err", result.message_da || result.message || "Fejl");
+        }
+      } catch (e) {
+        showResult("err", "Netværksfejl — prøv igen");
+      }
+    });
+
+    cancelBtn.addEventListener("click", () => {
+      showResult("err", "Afvist");
+    });
+
+    body.appendChild(card);
+    down();
   }
 
   /* ---------------- memory transparency ---------------- */
@@ -883,6 +1011,12 @@
           } else if (data.type === "profiler_progress") {
             if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
             refreshWorkspaceStatus();
+          } else if (data.type === "tool_progress") {
+            // In-flight chip progress update from build_tool_progress_event (Phase 1/9)
+            updateToolProgress(body, data);
+          } else if (data.type === "confirm_card") {
+            // Side-effect tool preview: render Bekræft/Afvis card (Phase 8/9)
+            renderConfirmCard(body, data);
           }
         }
       }

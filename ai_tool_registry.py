@@ -194,6 +194,29 @@ _HR_META = {
     "hr_compare_cohorts": ToolMeta(
         "hr_compare_cohorts", "hr", company_required=True, cache_ttl=120, toolset_tags=("compare", "report"),
     ),
+    # AI Tooler 2 (Phase 5): safe platform-control tools.
+    "schedule_recurring_report": ToolMeta(
+        "schedule_recurring_report", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="schedule_recurring_report",
+        toolset_tags=("scheduler", "mutation"),
+    ),
+    "recheck_compliance": ToolMeta(
+        "recheck_compliance", "hr",
+        company_required=True, side_effect=True, parallel_safe=False,
+        confirm_required=True, manager_only=True, audit_action="recheck_compliance",
+        toolset_tags=("compliance", "mutation"),
+    ),
+    "generate_fresh_insights": ToolMeta(
+        "generate_fresh_insights", "hr",
+        company_required=True, parallel_safe=False,
+        progress_label="Analyserer samtaler…",
+        toolset_tags=("insights", "recompute"),
+    ),
+    "bulk_calendar_invites": ToolMeta(
+        "bulk_calendar_invites", "hr",
+        company_required=True, toolset_tags=("calendar", "export"),
+    ),
 }
 
 _VENDOR_META = {
@@ -282,6 +305,11 @@ _TOOL_LABELS = {
     "set_skill_target": "Sæt kompetencemål",
     "create_compliance_requirement": "Opret compliancekrav",
     "hr_compare_cohorts": "Sammenlign grupper",
+    # AI Tooler 2 (Phase 5): safe platform-control tools
+    "schedule_recurring_report": "Planlæg rapport",
+    "recheck_compliance": "Gentjek compliance",
+    "generate_fresh_insights": "Generér indsigter",
+    "bulk_calendar_invites": "Kalenderinvitation",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
@@ -856,6 +884,27 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "ledere vs", "afdelinger mod", "hvordan klarer", "klarer sig mod")):
         names.add("hr_compare_cohorts")
         forced_candidates.append("hr_compare_cohorts")
+    # --- AI Tooler 2 (Phase 5): safe platform-control tools, keyword-gated only. ---
+    if _has_any(query, (
+            "planlæg rapport", "planlaeg rapport", "tilbagevendende rapport",
+            "ugentlig rapport", "månedlig rapport", "maanedlig rapport", "daglig rapport",
+            "send mig rapport", "automatisk rapport", "schedule rapport", "planlæg en rapport")):
+        names.add("schedule_recurring_report")
+    if _has_any(query, (
+            "gentjek compliance", "kør compliance", "koer compliance", "compliance-tjek",
+            "compliance tjek nu", "er vi compliant", "tjek compliance igen", "recheck compliance",
+            "compliance gentjek")):
+        names.add("recheck_compliance")
+    if _has_any(query, (
+            "generér indsigt", "generer indsigt", "friske indsigter", "frisk indsigt",
+            "opdater indsigter", "opdater indsigterne", "genberegn indsigter",
+            "nyeste data viser", "kør indsigter")):
+        names.add("generate_fresh_insights")
+    if _has_any(query, (
+            "kalenderinvitation", "kalender invitation", "send invitationer", "ics",
+            "kalender til holdet", "kalender til kurset", "invitation til kurset",
+            "lav en invitation", "kalenderfil")):
+        names.add("bulk_calendar_invites")
 
     selected = []
     for name in sorted(names):

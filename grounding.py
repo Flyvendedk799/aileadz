@@ -157,6 +157,45 @@ def _normalize_number(token: str) -> str:
         return ""
 
 
+# A whole number token (with optional thousand/decimal separators). Used to
+# extract individual amounts from the evidence so a claimed price must match a
+# COMPLETE evidence number, not merely appear as a digit substring inside a
+# larger one — e.g. a hallucinated "5000" must NOT be "supported" by a real
+# "15000" the way the old concatenated-digit-blob check allowed.
+_NUMBER_TOKEN_RE = _re.compile(r"\d[\d.,]*\d|\d")
+
+
+def _canon_amount(token: str) -> str:
+    """Canonical whole-kroner digit string for a price token (cents stripped).
+
+    '5.000,00' / '5000.00' / 'kr 5.000' all canonicalise to '5000'; '12.500'
+    (Danish thousands, no cents) to '12500'. Leading zeros are dropped so
+    '0'/'0.00' (free) canonicalise to '0'. Returns '' when there is no digit.
+    """
+    try:
+        t = (token or "").strip()
+        t = _re.sub(r"[.,]\d{2}$", "", t)   # drop a trailing 2-digit cents group
+        d = _re.sub(r"\D", "", t)
+        if not d:
+            return ""
+        return d.lstrip("0") or "0"
+    except Exception:
+        return ""
+
+
+def _evidence_amounts(text: str) -> set:
+    """Set of canonical amounts found as whole number tokens in the evidence."""
+    out = set()
+    try:
+        for m in _NUMBER_TOKEN_RE.findall(text or ""):
+            c = _canon_amount(m)
+            if c:
+                out.add(c)
+    except Exception:
+        pass
+    return out
+
+
 # AI Tooler 2: common Danish base words that frequently appear as the tail of a
 # training-domain compound. Used by decompound_da to split a compound so its parts
 # can also match the catalog (e.g. "erhvervserfaring" -> "erhverv" + "erfaring"),
@@ -447,10 +486,12 @@ def claims_supported(answer, tool_results, known_titles_fn=None):
     result = {"supported": [], "unsupported": [], "ok": True, "checked": 0}
     try:
         claims = extract_factual_claims(answer, known_titles_fn=known_titles_fn)
-        hay = _normalize(_tool_results_to_text(tool_results))
+        raw_evidence = _tool_results_to_text(tool_results)
+        hay = _normalize(raw_evidence)
 
         # Prices/dates: compare on normalised digits / normalised text.
-        hay_digits = _normalize_number(hay)  # all digits concatenated — cheap superset check
+        hay_digits = _normalize_number(hay)  # all digits concatenated (dates only)
+        evidence_amounts = _evidence_amounts(raw_evidence)  # whole-token amounts (prices)
 
         def _record(ctype, value, supported):
             entry = {"type": ctype, "value": value}
@@ -465,9 +506,11 @@ def claims_supported(answer, tool_results, known_titles_fn=None):
             _record("title", title, _title_supported(title, hay))
 
         for price in claims.get("prices", []):
-            digits = _normalize_number(price)
-            # supported if the digit-run shows up in the concatenated tool digits
-            supported = bool(digits) and digits in hay_digits
+            # Token-boundary + cents-aware: the claimed amount must equal a WHOLE
+            # amount in the evidence, not merely be a digit substring of a larger
+            # one (the old concatenated-blob check let "5000" pass on a "15000").
+            amount = _canon_amount(price)
+            supported = bool(amount) and amount in evidence_amounts
             _record("price", price, supported)
 
         for date in claims.get("dates", []):

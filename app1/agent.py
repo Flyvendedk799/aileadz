@@ -264,6 +264,37 @@ Du er i profiler-mode. Målet er en komplet, handlingsbar profil — uden at det
 
 SYSTEM_PROMPT = SYSTEM_CORE
 
+# ── Cross-surface / mode configuration ──
+import os as _os_mod
+
+# Profiler→suggester handoff threshold: once the profile crosses this
+# depth-aware completeness %, the agent proactively surfaces profile-matched
+# courses + a CTA instead of only flipping a UI tag. Env-tunable.
+try:
+    _PROFILER_HANDOFF_PCT = int(_os_mod.environ.get("AI_PROFILER_HANDOFF_PCT", "70"))
+except ValueError:
+    _PROFILER_HANDOFF_PCT = 70
+
+
+class _SimpleToolCall:
+    """Minimal tool_call shim so the agent can invoke execute_tool() directly for
+    deterministic server-side calls (e.g. the profiler handoff). Mirrors the
+    OpenAI tool_call shape execute_tool expects (.function.name / .arguments)."""
+
+    def __init__(self, name, arguments="{}"):
+        self.id = ""
+        self.function = type("_Fn", (), {"name": name, "arguments": arguments})()
+
+
+# Per-mode policy. The two user-facing "AIs" are one engine differentiated by
+# these knobs; centralising them keeps the inline `if mode == ...` branches
+# honest and gives a future agent one place to add a third mode/persona.
+MODE_PROFILES = {
+    "default": {"playbook": None, "handoff_pct": None, "proactive": False, "label": "Kursusrådgiver"},
+    "profiler": {"playbook": SYSTEM_PLAYBOOK_PROFILER, "handoff_pct": _PROFILER_HANDOFF_PCT,
+                 "proactive": True, "label": "AI Profiler"},
+}
+
 
 def _build_playbook_messages(stage, intent):
     """Inject rare flow instructions only when stage/intent needs them."""
@@ -1177,6 +1208,29 @@ def _extract_inline_suggestions(response_text):
     return []
 
 
+def _fallback_suggestions(*, mode="default", had_cards=False, completeness=None, logged_in=False):
+    """Context-aware next-best-action chips for turns where the model omitted its
+    <suggestions> tag — so a turn never dead-ends. Deterministic (no API call),
+    chosen from what actually happened this turn. Max 3, Danish, action-oriented.
+    """
+    if mode == "profiler":
+        missing = (completeness or {}).get("missing") or []
+        chips = []
+        if missing:
+            chips.append(f"Udfyld {missing[0].lower()}")
+        if (completeness or {}).get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT:
+            chips.append("Find kurser til min profil")
+        chips.append("Hvad mangler i min profil?")
+        return chips[:3]
+    if had_cards:
+        chips = ["Sammenlign de to bedste", "Vis billigere alternativer"]
+        chips.append("Bestil til mit team" if logged_in else "Fortæl mig mere om det første")
+        return chips[:3]
+    base = ["Vis populære kurser", "Find kurser til en bestemt rolle"]
+    base.append("Lav en læringssti til mig" if logged_in else "Hjælp mig med at vælge")
+    return base[:3]
+
+
 def _strip_suggestions_tag(text):
     """Remove <suggestions>...</suggestions> from the visible response text."""
     return _re.sub(r'\s*<suggestions>.*?</suggestions>\s*', '', text, flags=_re.DOTALL).strip()
@@ -1710,6 +1764,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
             buffered_ui_html = []
             buffered_course_cards = []   # structured course data for the Futurematch chat
             buffered_profile_events = []
+            buffered_extra_events = []   # cross-surface: ui_action / comparison_card / learning_path_card
+            _did_handoff = False         # profiler→suggester handoff fired this turn (guard)
             _memories_injected = []   # memories surfaced into context this turn (for memory_used)
             _profiler_completeness = None  # profile completeness snapshot (profiler mode)
             _tools_used = []          # Phase 1.1: track tool names
@@ -1800,10 +1856,22 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         from app1.user_profile_db import profile_completeness
                         _profiler_completeness = profile_completeness(logged_in_user)
                         missing = ", ".join(_profiler_completeness["missing"]) or "ingenting — profilen er komplet"
+                        # Depth-aware targeting: point the model at the weakest
+                        # real section first, and prompt for a target role when
+                        # absent (it anchors every downstream recommendation).
+                        weak = _profiler_completeness.get("weakest")
+                        weak_label = next((s["label"] for s in _profiler_completeness.get("sections", [])
+                                           if s.get("key") == weak), "")
+                        focus_line = f"\nNÆSTE BEDSTE SPØRGSMÅL: spørg ind til '{weak_label}'." if weak_label else ""
+                        role_line = ("\nHar brugeren ingen ønsket rolle/karriereretning endnu, så spørg om den — "
+                                     "den styrer alle anbefalinger.") if not _profiler_completeness.get("target_role") else ""
                         ephemeral_messages.insert(insert_idx, {
                             "role": "system",
                             "content": SYSTEM_PLAYBOOK_PROFILER
-                                       + f"\n\nAKTUEL PROFIL: {_profiler_completeness['pct']}% udfyldt. Mangler stadig: {missing}."
+                                       + f"\n\nAKTUEL PROFIL: {_profiler_completeness['pct']}% udfyldt"
+                                         f" ({_profiler_completeness.get('weighted_pct', _profiler_completeness['pct'])}% dybde)."
+                                         f" Mangler stadig: {missing}."
+                                       + focus_line + role_line
                         })
                         insert_idx += 1
                     except Exception as e:
@@ -2174,18 +2242,33 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         pass
 
                 fn = tool_result.name
+                # NOTE: suggest_learning_path is intentionally NOT here — it
+                # returns `steps`, not `results`, so the product-card branch was
+                # always a no-op for it, AND being in this tuple shadowed the
+                # dedicated learning_path_card branch below (if/elif). It now
+                # falls through to that branch (its steps[].courses render in the
+                # path card).
                 _PRODUCT_CARD_TOOLS = (
                     "search_courses", "filter_courses", "recommend_for_profile",
                     "catalog_search", "catalog_get_category", "catalog_get_vendor",
-                    "catalog_compare_products", "suggest_learning_path",
+                    "catalog_compare_products",
                 )
                 if fn in _PRODUCT_CARD_TOOLS:
                     raw_products = resolve_products_for_ui(
                         compact_results=tool_result_dict.get("results"),
                     )
                     if raw_products:
+                        # Per-card "why": carry the verifiable match_reason the
+                        # search tools computed (lost when products are re-resolved
+                        # by handle) so the card can show why each course fits.
+                        _reasons = {}
+                        for _r in tool_result_dict.get("results", []) or []:
+                            if isinstance(_r, dict) and _r.get("handle"):
+                                _w = _r.get("match_reason") or _r.get("recommendation_reason")
+                                if _w:
+                                    _reasons[_r["handle"]] = _w
                         buffered_ui_html.append(render_multi_course_media(raw_products))
-                        buffered_course_cards.append(serialize_course_cards(raw_products))
+                        buffered_course_cards.append(serialize_course_cards(raw_products, reasons=_reasons))
                         _track_shown_products(sid, tool_result_dict.get("results", []))
 
                 elif fn in ("get_course_details", "catalog_get_product"):
@@ -2235,6 +2318,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             'type': 'memory_saved',
                             'label': tool_result_dict.get('label', ''),
                             'category': tool_result_dict.get('category', 'andet'),
+                            'id': tool_result_dict.get('memory_id'),
                             'message': tool_result_dict.get('message', 'Husket'),
                         }))
 
@@ -2250,6 +2334,48 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             'fields': tool_result_dict.get('fields', []),
                             'choices': tool_result_dict.get('choices', []),
                         }))
+
+                elif fn == "open_in_app":
+                    # Cross-surface navigation directive → ui_action event the
+                    # SPA acts on (open product/compare/profile/catalog/start order).
+                    if tool_result_dict.get("status") == "success":
+                        from app1.sse_events import UI_ACTION
+                        _payload = {k: v for k, v in tool_result_dict.items() if k != "status"}
+                        _payload["type"] = UI_ACTION
+                        buffered_extra_events.append(json.dumps(_payload, ensure_ascii=False, default=str))
+
+                elif fn == "compare_courses":
+                    # Analytical comparison → dedicated comparison card with
+                    # per-axis winners + verdict (decision support, not a dump).
+                    if tool_result_dict.get("status") == "success" and tool_result_dict.get("comparison"):
+                        from app1.sse_events import COMPARISON_CARD
+                        buffered_extra_events.append(json.dumps({
+                            "type": COMPARISON_CARD,
+                            "comparison": tool_result_dict.get("comparison"),
+                            "analysis": tool_result_dict.get("analysis") or {},
+                        }, ensure_ascii=False, default=str))
+
+                elif fn in ("suggest_learning_path", "save_learning_path", "get_learning_path"):
+                    # Sequenced, grounded learning path → learning_path_card.
+                    from app1.sse_events import LEARNING_PATH_CARD
+                    if fn == "get_learning_path" and tool_result_dict.get("paths"):
+                        for _p in tool_result_dict["paths"][:3]:
+                            buffered_extra_events.append(json.dumps({
+                                "type": LEARNING_PATH_CARD, "path": _p,
+                            }, ensure_ascii=False, default=str))
+                    elif tool_result_dict.get("status") == "success" and (
+                        tool_result_dict.get("steps") or tool_result_dict.get("path")
+                    ):
+                        _path = tool_result_dict.get("path") or {
+                            "title": tool_result_dict.get("path_title", "Din læringssti"),
+                            "steps": tool_result_dict.get("steps", []),
+                            "total_cost": tool_result_dict.get("total_cost"),
+                            "total_duration_days": tool_result_dict.get("total_duration_days"),
+                            "id": tool_result_dict.get("path_id"),
+                        }
+                        buffered_extra_events.append(json.dumps({
+                            "type": LEARNING_PATH_CARD, "path": _path,
+                        }, ensure_ascii=False, default=str))
 
                 elif tool_result_dict.get("needs_confirmation"):
                     # Generic confirm_card: any tool that returned needs_confirmation=True
@@ -2465,6 +2591,43 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 if html_chunk is not None:
                     yield f"data: {json.dumps({'type': 'product', 'html': html_chunk})}\n\n"
 
+            # ── Cross-surface events: ui_action / comparison_card / learning_path_card ──
+            for evt in buffered_extra_events:
+                yield f"data: {evt}\n\n"
+
+            # ── Deterministic profiler → course-suggester handoff ──
+            # Reaching a high completeness used to only flip a UI tag. Instead,
+            # when the profile crosses the handoff threshold (and we didn't
+            # already show courses this turn), proactively surface profile-matched
+            # course recommendations + a CTA, turning a finished profile into
+            # immediate value. Guarded + best-effort; never breaks the turn.
+            if (
+                mode == "profiler"
+                and logged_in_user
+                and _profiler_completeness is not None
+                and not buffered_ui_html
+                and not _did_handoff
+                and _profiler_completeness.get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT
+            ):
+                try:
+                    _did_handoff = True
+                    _rec_json = execute_tool(
+                        _SimpleToolCall("recommend_for_profile", "{}"),
+                        username=logged_in_user, session_id=sid,
+                    )
+                    _rec = json.loads(_rec_json or "{}")
+                    if _rec.get("status") == "success" and _rec.get("results"):
+                        _reasons = {r["handle"]: (r.get("match_reason") or r.get("recommendation_reason"))
+                                    for r in _rec["results"] if r.get("handle") and (r.get("match_reason") or r.get("recommendation_reason"))}
+                        _raw = resolve_products_for_ui(compact_results=_rec["results"])
+                        if _raw:
+                            _track_shown_products(sid, _rec["results"])
+                            yield f"data: {json.dumps({'type': 'notice', 'content': 'Din profil er godt på vej — her er kurser der matcher den.'})}\n\n"
+                            yield f"data: {json.dumps({'type': 'course_cards', 'items': serialize_course_cards(_raw, reasons=_reasons)}, ensure_ascii=False)}\n\n"
+                            yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_catalog', 'target': '/catalog', 'label': 'Find flere kurser til din profil'})}\n\n"
+                except Exception as _ho_err:
+                    print(f"[Profiler Handoff] {_ho_err}")
+
             # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)
             quality_ok = _check_response_quality(visible_text, had_tool_calls)
@@ -2594,6 +2757,18 @@ def handle_agentic_ask(user_query, session, mode="default"):
 
             # Extract suggestions from the AI response (inline via <suggestions> tag)
             suggestions = _extract_inline_suggestions(full_text)
+
+            # Guidance guarantee: a turn must never dead-end. When the model omits
+            # its <suggestions> tag, synthesise 2-3 context-aware next-best-action
+            # chips from what actually happened this turn (cards shown, profiler
+            # mode, completeness) so the user always has an obvious next step.
+            if not suggestions:
+                suggestions = _fallback_suggestions(
+                    mode=mode,
+                    had_cards=bool(buffered_ui_html),
+                    completeness=_profiler_completeness,
+                    logged_in=bool(logged_in_user),
+                )
 
             if suggestions:
                 yield f"data: {json.dumps({'type': 'suggestions', 'items': suggestions})}\n\n"

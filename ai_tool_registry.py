@@ -111,6 +111,19 @@ _EMPLOYEE_META = {
         toolset_tags=("profile", "recommendation"),
         cache_ttl=120,
     ),
+    # Cross-surface navigation directive — always on the menu (no auth, no
+    # mutation): the model can move the user to a product, the compare view,
+    # their profile, the catalog, the mind-map, or start an enrolment.
+    "open_in_app": ToolMeta(
+        "open_in_app", toolset_tags=("navigation", "ui"), cache_ttl=0,
+    ),
+    "save_learning_path": ToolMeta(
+        "save_learning_path", auth_required=True, parallel_safe=False,
+        toolset_tags=("profile", "path"),
+    ),
+    "get_learning_path": ToolMeta(
+        "get_learning_path", auth_required=True, toolset_tags=("profile", "path"), cache_ttl=20,
+    ),
     "set_learning_goal": ToolMeta(
         "set_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
     ),
@@ -302,6 +315,9 @@ _TOOL_LABELS = {
     "remember_about_user": "Gem hukommelse",
     "suggest_learning_path": "Læringssti",
     "recommend_for_profile": "Profilmatch",
+    "open_in_app": "Åbn i appen",
+    "save_learning_path": "Gem læringssti",
+    "get_learning_path": "Hent læringssti",
     "set_learning_goal": "Opret mål",
     "get_learning_goals": "Hent mål",
     "update_learning_goal": "Opdater mål",
@@ -374,6 +390,7 @@ _CATEGORY_META = {
     "hr": ("HR", "fa-users-gear"),
     "calendar": ("Kalender", "fa-calendar-plus"),
     "goals": ("Mål", "fa-bullseye"),
+    "navigation": ("Naviger", "fa-arrow-up-right-from-square"),
     "course": ("Kursus", "fa-graduation-cap"),
     "report": ("Rapport", "fa-file-lines"),
 }
@@ -390,6 +407,7 @@ _CATEGORY_PRIORITY = (
     "course",
     "calendar",
     "goals",
+    "navigation",
     "report",
     "analytics",
     "vendor",
@@ -637,6 +655,106 @@ _BUDGET_QUESTION_STARTS = (
 )
 
 
+# --- Reachability fallback (paraphrase / English / typo tolerance) -----------
+# The keyword branches above are exact-Danish-substring gates: an English,
+# paraphrased, or typo'd query that the model COULD serve with a specialised
+# tool simply never sees that tool — a hard capability gap, not a soft nudge.
+# _TOOL_TRIGGERS centralises a Danish+English trigger vocabulary per specialised
+# tool, and _semantic_tool_fallback adds the best-matching tool(s) by token
+# overlap. It is ADDITIVE (never excludes), BOUNDED (≤2 additions), and the
+# downstream auth/company meta-filter still gates eligibility.
+_TOOL_TRIGGERS = {
+    "get_my_course_status": (
+        "course status", "my course", "mit kursus", "kursusstatus", "deadline",
+        "frist", "forsinket", "behind schedule", "am i behind", "course progress",
+    ),
+    "get_negotiated_discount": (
+        "discount", "rabat", "aftalepris", "negotiated price", "company discount",
+        "firmarabat", "cheaper with agreement", "agreement price",
+    ),
+    "check_course_prerequisites": (
+        "prerequisites", "forudsætninger", "requirements", "krav", "sværhedsgrad",
+        "difficulty", "am i ready", "er jeg klar", "entry requirements",
+    ),
+    "get_course_sequel": (
+        "next course", "næste kursus", "follow up course", "what comes after",
+        "hvad efter", "build on this", "byg videre", "advanced version",
+    ),
+    "find_certification_path": (
+        "certification", "certificering", "become certified", "blive certificeret",
+        "certification path", "certificeringsvej", "how to get certified",
+    ),
+    "analyze_skill_gaps": (
+        "skill gap", "skills gap", "kompetencegab", "what should i learn",
+        "hvad skal jeg lære", "competency gap", "missing skills", "mangler kompetencer",
+    ),
+    "get_department_budget": (
+        "department budget", "afdelingsbudget", "remaining funds", "resterende midler",
+        "can we afford", "har vi råd", "training budget", "uddannelsesbudget",
+    ),
+    "set_course_reminder": (
+        "reminder", "påmindelse", "remind me", "mind mig om", "husk mig",
+    ),
+    "save_course_for_later": (
+        "save for later", "gem til senere", "wishlist", "ønskeliste", "bookmark this",
+    ),
+    "suggest_learning_path": (
+        "learning path", "læringssti", "study plan", "studieplan", "roadmap",
+        "what should i learn first", "in what order", "i hvilken rækkefølge", "next steps",
+    ),
+    "recommend_for_profile": (
+        "recommend for me", "anbefal til mig", "recommendations for my profile",
+        "what should i take", "personalised recommendation", "personlige anbefalinger",
+    ),
+    "compare_courses": (
+        "compare", "sammenlign", "difference between", "forskellen mellem",
+        "which is better", "hvilket er bedst", "versus", "side by side",
+    ),
+    "catalog_compare_products": (
+        "compare courses", "sammenlign kurser", "compare these", "compare them",
+    ),
+}
+
+# Token splitter shared with the fallback scorer.
+_WORD_RE = re.compile(r"[a-zæøå0-9]+")
+
+
+def _semantic_fallback_enabled() -> bool:
+    """AI_TOOL_SEMANTIC_FALLBACK (default on). Set =0 to restore exact-keyword-only gating."""
+    return os.environ.get("AI_TOOL_SEMANTIC_FALLBACK", "1").strip().lower() not in ("0", "false", "no")
+
+
+def _semantic_tool_fallback(query: str, *, already: Iterable[str], max_add: int = 2) -> List[str]:
+    """Return up to `max_add` specialised tools whose trigger phrases best match
+    the query by token overlap. Additive reachability only — never excludes."""
+    q = (query or "").lower().strip()
+    if not q:
+        return []
+    q_tokens = set(_WORD_RE.findall(q))
+    if not q_tokens:
+        return []
+    already = set(already)
+    scored = []
+    for tool, phrases in _TOOL_TRIGGERS.items():
+        if tool in already:
+            continue
+        best = 0.0
+        for phrase in phrases:
+            if phrase in q:           # full phrase present → strong hit
+                best = 1.0
+                break
+            p_tokens = set(_WORD_RE.findall(phrase))
+            if not p_tokens:
+                continue
+            overlap = len(p_tokens & q_tokens) / len(p_tokens)
+            if overlap > best:
+                best = overlap
+        if best >= 0.6:
+            scored.append((best, tool))
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [t for _, t in scored[:max_add]]
+
+
 def _starts_with_budget_question(text: str) -> bool:
     """Kun forespørgsler der STARTER som et budgetspørgsmål må tvinge budgetværktøjet.
 
@@ -687,6 +805,7 @@ def get_employee_tool_selection(
     # model offer to save it, because request_user_input/update_user_profile are
     # always available. Cost is tiny (a few small schemas) and worth the reliability.
     names.add("catalog_search")  # can always search the catalog
+    names.add("open_in_app")     # cross-surface navigation is always available (no mutation)
     if logged_in:
         names.update({"get_user_profile", "request_user_input", "update_user_profile", "remember_about_user"})
 
@@ -752,10 +871,14 @@ def get_employee_tool_selection(
     if logged_in:
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, ("profil", "cv", "kompetence", "erfaring", "uddannelse")):
             names.update({"get_user_profile", "update_user_profile", "request_user_input"})
-        if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt")):
+        if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt",
+                            "learning path", "min plan", "min sti", "min læringsplan", "min laeringsplan",
+                            "gem stien", "gem planen", "vis min sti", "vis min plan", "hvor langt er jeg")):
             # +catalog_search so a learning path is built from REAL courses on the topic
-            # (a path without surfaced courses isn't actionable).
-            names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path", "catalog_search"})
+            # (a path without surfaced courses isn't actionable). The persisted
+            # path tools let the model save/recall a sequence across sessions.
+            names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path",
+                          "save_learning_path", "get_learning_path", "catalog_search"})
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, (
                 "mål", "maal", "udviklingsplan", "udviklingsmål", "udviklingsmaal", "blive bedre til",
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",
@@ -814,6 +937,13 @@ def get_employee_tool_selection(
             names.add("request_manager_approval")
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
+
+    # Reachability fallback: surface specialised tools for paraphrased / English /
+    # typo'd queries the exact-keyword branches above missed. Additive + bounded;
+    # auth/company eligibility is still enforced by the meta-filter below.
+    if _semantic_fallback_enabled():
+        for _t in _semantic_tool_fallback(query, already=names):
+            names.add(_t)
 
     selected = []
     for name in sorted(names):

@@ -6,7 +6,7 @@
 {% block body_class %}chat-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=7" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=8" />
 <style>
   /* chat.css is a self-contained dark theme driven entirely by CSS variables.
      Remap those variables to the platform's light --fm-* tokens so the chat
@@ -122,5 +122,5 @@
 
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=13"></script>
 {% endblock %}

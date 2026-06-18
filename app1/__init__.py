@@ -632,12 +632,22 @@ def serialize_course_card(product):
     return card
 
 
-def serialize_course_cards(products):
-    """Serialize a list of product dicts, skipping any that fail."""
+def serialize_course_cards(products, reasons=None):
+    """Serialize a list of product dicts, skipping any that fail.
+
+    `reasons` is an optional {handle: why_text} map (the per-card "why" derived
+    by the search tools); when present it is attached to each card so the UI can
+    show a verifiable reason the course fits.
+    """
+    reasons = reasons or {}
     out = []
     for prod in products or []:
         try:
-            out.append(serialize_course_card(prod))
+            card = serialize_course_card(prod)
+            why = reasons.get(card.get("handle"))
+            if why:
+                card["why"] = why
+            out.append(card)
         except Exception as exc:
             print(f"[serialize_course_card] {exc}")
     return out

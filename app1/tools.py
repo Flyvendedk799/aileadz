@@ -94,6 +94,95 @@ def _date_data_stale(product, max_age_days=90):
     return (now - dt).days > max_age_days
 
 
+def _variant_prices(variants):
+    """Parseable numeric prices across a product's variants (0.0 = free is kept).
+
+    Unparseable variants ('Pris på forespørgsel', None, '') are skipped so an
+    unknown price never spuriously gates a course in or out of a budget filter.
+    """
+    out = []
+    for v in (variants or []):
+        if not isinstance(v, dict):
+            continue
+        raw = v.get("price")
+        if raw in (None, "", "None", "N/A"):
+            continue
+        try:
+            out.append(float(raw))
+        except (ValueError, TypeError):
+            continue
+    return out
+
+
+def _min_variant_price(variants):
+    """Cheapest bookable variant price, or None when no variant has a price.
+
+    Replaces the long-standing `variants[0].price` budget bug: a course whose
+    first listed variant is expensive but has a cheaper bookable date was
+    wrongly excluded from a price ceiling. The cheapest bookable option is what
+    a buyer actually pays.
+    """
+    prices = _variant_prices(variants)
+    return min(prices) if prices else None
+
+
+def _price_in_budget(variants, price_min, price_max):
+    """True when the course has at least one bookable variant inside the budget
+    window [price_min, price_max]. An unknown price (no parseable variant) is
+    never excluded — we don't know it, so we don't hide it."""
+    prices = _variant_prices(variants)
+    if not prices:
+        return True
+    lo = float(price_min) if price_min is not None else 0.0
+    hi = float(price_max) if price_max is not None else float("inf")
+    return any(lo <= p <= hi for p in prices)
+
+
+# Language facet: structured_metadata.language is one of dansk|engelsk|begge.
+_LANGUAGE_ALIASES = {
+    "danish": "dansk", "da": "dansk", "dk": "dansk", "dansk": "dansk",
+    "english": "engelsk", "en": "engelsk", "eng": "engelsk", "engelsk": "engelsk",
+}
+# Difficulty facet: structured_metadata.difficulty is beginner|intermediate|advanced.
+_DIFFICULTY_ALIASES = {
+    "begynder": "beginner", "grundlæggende": "beginner", "grundlaeggende": "beginner",
+    "nybegynder": "beginner", "basis": "beginner", "beginner": "beginner",
+    "mellem": "intermediate", "mellemniveau": "intermediate", "intermediate": "intermediate",
+    "øvet": "intermediate", "oevet": "intermediate",
+    "avanceret": "advanced", "ekspert": "advanced", "advanced": "advanced", "expert": "advanced",
+}
+
+
+def _product_meta(product):
+    raw = product.get("structured_metadata")
+    return raw if isinstance(raw, dict) else {}
+
+
+def _matches_language(product, language):
+    """True if the product matches the requested language. Unknown (no language
+    metadata) is NOT excluded. A 'begge' product matches any requested language."""
+    if not language:
+        return True
+    want = _LANGUAGE_ALIASES.get(language.strip().lower(), language.strip().lower())
+    have = str(_product_meta(product).get("language") or "").strip().lower()
+    if not have:
+        return True  # unknown → don't hide
+    if have in ("begge", "both"):
+        return True
+    return want in have or have in want
+
+
+def _matches_difficulty(product, difficulty):
+    """True if the product matches the requested difficulty. Unknown is NOT excluded."""
+    if not difficulty:
+        return True
+    want = _DIFFICULTY_ALIASES.get(difficulty.strip().lower(), difficulty.strip().lower())
+    have = str(_product_meta(product).get("difficulty") or "").strip().lower()
+    if not have:
+        return True
+    return want == have
+
+
 # Tags to exclude from compact results (too generic or region-based)
 _EXCLUDED_TAG_PREFIXES = {"region:", "by:", "land:"}
 _EXCLUDED_TAGS = {"kursus", "kurser", "uddannelse", "training", "course", "denmark", "danmark"}
@@ -278,6 +367,8 @@ def _extract_compact_fields(product):
             result["duration_days"] = meta["duration_days"]
         if meta.get("difficulty"):
             result["difficulty"] = meta["difficulty"]
+        if meta.get("language"):
+            result["language"] = meta["language"]
         if meta.get("certification"):
             result["certification"] = meta["certification"]
         if meta.get("includes"):
@@ -286,6 +377,73 @@ def _extract_compact_fields(product):
             result["target_audience"] = meta["target_audience"][:2]
 
     return result
+
+
+# Danish difficulty labels for the per-card "why" line.
+_DIFFICULTY_LABELS_DA = {
+    "beginner": "begynderniveau", "intermediate": "mellemniveau", "advanced": "avanceret niveau",
+}
+# Generic terms that make a weak, non-informative match reason — skipped.
+_REASON_STOPWORDS = {
+    "kursus", "kurser", "uddannelse", "course", "training", "og", "i", "at", "er",
+    "en", "et", "den", "det", "de", "til", "på", "med", "for", "af", "som", "om",
+    "the", "and", "to", "of", "a", "in", "noget", "med",
+}
+
+
+def _course_match_reason(compact, query_terms=None, profile_terms=None):
+    """Build a short, VERIFIABLE Danish reason a course fits — derived only from
+    real fields (matched query/profile terms + concrete attributes), never an
+    LLM guess. Returns "" when there is nothing honest to say.
+
+    query_terms / profile_terms are lowercased token iterables. The reason is
+    capped to two clauses so it reads as a hint, not prose.
+    """
+    title = (compact.get("title") or "").lower()
+    tags_l = " ".join(str(t).lower() for t in (compact.get("tags") or []))
+    haystack = title + " " + tags_l
+    clauses = []
+
+    # 1) Matched the learner's own words / profile target terms (strongest signal).
+    matched = []
+    for term in list(profile_terms or []) + list(query_terms or []):
+        t = str(term).strip().lower()
+        if len(t) < 3 or t in _REASON_STOPWORDS or t in matched:
+            continue
+        if t in haystack:
+            matched.append(t)
+        if len(matched) >= 2:
+            break
+    if matched:
+        clauses.append("matcher " + " og ".join(matched))
+
+    # 2) A concrete, checkable attribute (level / certification / language).
+    if compact.get("certification"):
+        clauses.append("giver certificering")
+    elif compact.get("difficulty"):
+        lvl = _DIFFICULTY_LABELS_DA.get(str(compact["difficulty"]).lower())
+        if lvl:
+            clauses.append(lvl)
+    if len(clauses) < 2 and compact.get("language") in ("dansk", "engelsk"):
+        clauses.append("på " + compact["language"])
+
+    return " · ".join(clauses[:2])
+
+
+def _annotate_match_reasons(compact_results, query="", profile_boost=None):
+    """Attach a verifiable `match_reason` to each compact result, in place.
+
+    Pulls query terms from the search query and profile target terms from the
+    (already-built) profile_boost so logged-in learners get profile-anchored
+    reasons. No-op-safe: empty reasons are simply not set.
+    """
+    q_terms = _goal_keywords(query, limit=6)
+    p_terms = list((profile_boost or {}).get("target_terms") or [])
+    for cr in compact_results:
+        reason = _course_match_reason(cr, query_terms=q_terms, profile_terms=p_terms)
+        if reason:
+            cr["match_reason"] = reason
+    return compact_results
 
 
 # ── Tool Definitions ──
@@ -340,6 +498,15 @@ OPENAI_TOOLS = [
                     "tag": {
                         "type": "string",
                         "description": "Category tag filter (e.g. 'IT-professionel', 'Personlig udvikling', 'Projektledelse')."
+                    },
+                    "language": {
+                        "type": "string",
+                        "description": "Undervisningssprog: 'dansk' eller 'engelsk'. Brug når brugeren beder om kurser på et bestemt sprog (fx 'på dansk')."
+                    },
+                    "difficulty": {
+                        "type": "string",
+                        "enum": ["beginner", "intermediate", "advanced"],
+                        "description": "Sværhedsgrad. Brug når brugeren angiver niveau (begynder/mellem/avanceret)."
                     },
                     "start_after": {
                         "type": "string",
@@ -551,6 +718,8 @@ OPENAI_TOOLS.extend([
                     "location": {"type": "string", "description": "City/location filter."},
                     "price_min": {"type": "number", "description": "Minimum price in DKK."},
                     "price_max": {"type": "number", "description": "Maximum price in DKK."},
+                    "language": {"type": "string", "description": "Teaching language: 'dansk' or 'engelsk'. Use when the user asks for a specific language."},
+                    "difficulty": {"type": "string", "enum": ["beginner", "intermediate", "advanced"], "description": "Difficulty level when the user specifies one."},
                     "limit": {"type": "integer", "description": "Max products to return. Default 4."}
                 },
                 "required": []
@@ -913,6 +1082,45 @@ OPENAI_TOOLS.extend([
 ])
 
 
+# Cross-surface action tool: lets the assistant MOVE the user through the SPA
+# (open a product, the compare view, a profile section, the catalog, the
+# mind-map, or start an enrolment) instead of only describing links. It returns
+# a structured directive the frontend acts on via a `ui_action` SSE event — it
+# performs NO mutation itself (start_order only opens the enrolment flow).
+OPENAI_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "open_in_app",
+        "description": (
+            "Åbn noget i appen for brugeren (navigation/handling i UI'et). Brug dette når du vil "
+            "FØRE brugeren et sted hen i stedet for kun at beskrive et link: vis et konkret kursus, "
+            "åbn sammenligningsvisning, åbn profil/CV, åbn kataloget (evt. filtreret), åbn mind-map, "
+            "skift til AI Profiler, eller start en tilmelding. Det opretter IKKE en ordre — start_order "
+            "åbner kun tilmeldingsflowet. Foretræk dette frem for at skrive rå URL'er i teksten."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "action": {
+                    "type": "string",
+                    "enum": ["view_product", "open_compare", "open_profile", "open_mind_map",
+                             "open_learning_path", "open_catalog", "start_order", "open_profiler"],
+                    "description": "Hvilken handling/navigation der skal udføres i UI'et."
+                },
+                "handle": {"type": "string", "description": "Kursets handle (view_product / start_order)."},
+                "handles": {"type": "array", "items": {"type": "string"},
+                            "description": "2-4 handles til open_compare."},
+                "section": {"type": "string",
+                            "description": "Profilsektion til open_profile (fx 'skills','experience','goals','certifications','languages')."},
+                "query": {"type": "string", "description": "Søge-/kategoritekst til open_catalog."},
+                "label": {"type": "string", "description": "Kort dansk knaptekst, fx 'Åbn kurset' eller 'Sammenlign'."}
+            },
+            "required": ["action"]
+        }
+    }
+})
+
+
 # ── Tool Execution ──
 
 # Module-level state for contextual search (set by agent before tool execution)
@@ -1178,11 +1386,13 @@ def _mark_previously_shown(compact):
     return compact
 
 
-def _product_passes_hard_filters(product, *, price_min=None, price_max=None, location="", fmt=""):
+def _product_passes_hard_filters(product, *, price_min=None, price_max=None, location="", fmt="",
+                                 language="", difficulty=""):
     """TL-03: the same hard-filter predicates _execute_filter_courses uses
-    (variant price, _location_matches, format/product_type substring), applied
-    to a single raw/augmented product. Used to carry catalog_search's hard
-    constraints into the RAG fallback, som ellers ignorerer dem."""
+    (bookable-variant price, _location_matches, format substring, language /
+    difficulty metadata), applied to a single raw/augmented product. Used to
+    carry catalog_search's hard constraints into the RAG fallback, som ellers
+    ignorerer dem."""
     variants = product.get("variants", []) or []
 
     if location:
@@ -1190,25 +1400,25 @@ def _product_passes_hard_filters(product, *, price_min=None, price_max=None, loc
         if not any(_location_matches(location, vloc) for vloc in variant_locs):
             return False
 
-    if price_min is not None or price_max is not None:
-        try:
-            price_val = float(variants[0].get("price", 0)) if variants else 0
-        except (ValueError, TypeError):
-            price_val = 0
-        if price_min is not None and price_val < float(price_min):
-            return False
-        if price_max is not None and price_val > float(price_max):
-            return False
+    if (price_min is not None or price_max is not None) and not _price_in_budget(variants, price_min, price_max):
+        return False
 
     if fmt:
         pt = (product.get("product_type") or product.get("format") or "").lower()
         if fmt.lower().strip() not in pt:
             return False
 
+    if language and not _matches_language(product, language):
+        return False
+
+    if difficulty and not _matches_difficulty(product, difficulty):
+        return False
+
     return True
 
 
-def _apply_hard_filters(products, *, price_min=None, price_max=None, location="", fmt=""):
+def _apply_hard_filters(products, *, price_min=None, price_max=None, location="", fmt="",
+                        language="", difficulty=""):
     """TL-03: post-filter a RAG result set with catalog_search's hard constraints.
 
     Returns (filtered_products, active_filters) where active_filters names the
@@ -1224,11 +1434,17 @@ def _apply_hard_filters(products, *, price_min=None, price_max=None, location=""
         active.append("location")
     if fmt:
         active.append("format")
+    if language:
+        active.append("language")
+    if difficulty:
+        active.append("difficulty")
     if not active:
         return products, []
     filtered = [
         p for p in products
-        if _product_passes_hard_filters(p, price_min=price_min, price_max=price_max, location=location, fmt=fmt)
+        if _product_passes_hard_filters(p, price_min=price_min, price_max=price_max,
+                                        location=location, fmt=fmt,
+                                        language=language, difficulty=difficulty)
     ]
     return filtered, active
 
@@ -1352,6 +1568,11 @@ def _execute_catalog_search(args, username=None):
     }
     limit = int(args.get("limit") or 4)
     query = (args.get("query") or "").strip()
+    # Metadata-backed facets (honoured on the augmented/RAG products that carry
+    # structured_metadata; a no-op for catalog rows that lack it, so they are
+    # never wrongly excluded).
+    language = (args.get("language") or "").strip()
+    difficulty = (args.get("difficulty") or args.get("level") or "").strip()
     products = []
     confidence = "medium"
     completed_titles, completed_handles = _completed_course_keys(username)
@@ -1402,6 +1623,8 @@ def _execute_catalog_search(args, username=None):
                     price_max=filters["price_max"],
                     location=filters["location"],
                     fmt=filters["format"],
+                    language=language,
+                    difficulty=difficulty,
                 )
                 if constrained:
                     rag_products = constrained
@@ -1423,6 +1646,7 @@ def _execute_catalog_search(args, username=None):
                 compact = [_extract_compact_fields(p) for p in rag_products[:limit]]
                 compact = _demote_completed_results(compact, completed_titles, completed_handles)
                 compact = _mark_previously_shown(compact)
+                _annotate_match_reasons(compact, query, profile_boost)
                 debug = detailed.get("debug") or {}
                 extra = {}
                 if filters_relaxed:
@@ -1446,6 +1670,7 @@ def _execute_catalog_search(args, username=None):
     # TL-03: re-included fallback results (shown-handle re-include above) are
     # marked previously_shown, matching the legacy search path.
     compact = _mark_previously_shown(compact)
+    _annotate_match_reasons(compact, query, profile_boost)
     return _model_tool_json(
         status="success" if compact else "no_results",
         count=len(compact),
@@ -1712,31 +1937,100 @@ def _supplier_agreements_for_company():
 
 
 def _execute_get_learning_context(args, username):
+    """Return the user's full learning context in one call.
+
+    The tool advertises "profile, shown products, company budget, supplier
+    preferences/agreements, open orders, and completed courses" — this now
+    actually returns ALL of those (budget + agreements + completed were
+    previously fetched-but-dropped or never fetched, so the model claimed to
+    have checked a budget it never saw). Every section is guarded so a missing
+    table or an anonymous caller degrades to empty rather than erroring.
+    """
     from flask import session as flask_session, has_app_context, has_request_context
+    import datetime as _dt
     profile = {}
     completed = []
+    profile_summary = {}
     if username and has_app_context():
         try:
             from app1.user_profile_db import get_full_profile, ensure_tables
             ensure_tables()
             profile = get_full_profile(username) or {}
-            completed = profile.get("completed_courses", [])[:10]
+            completed = [
+                {"title": c.get("title"), "handle": c.get("handle"), "vendor": c.get("vendor")}
+                for c in (profile.get("completed_courses", []) or [])[:10]
+            ]
+            profile_summary = {
+                "headline": profile.get("headline", ""),
+                "target_role": profile.get("target_role", ""),
+                "goals": profile.get("goals", ""),
+                "skills": [f"{s['name']} ({s['level']})" for s in (profile.get("skills") or [])[:12]],
+                "preferred_location": profile.get("preferred_location", ""),
+                "preferred_format": profile.get("preferred_format", ""),
+            }
         except Exception:
             profile = {}
+
     employee = _company_employee_contact(username)
-    shown = [
-        p for p in _current_shown_handles
-    ][:10]
+    department = (flask_session.get("company_department") if has_request_context() else "") or employee.get("department") or ""
+
+    # Company budget for the user's department (the contract item that was
+    # missing — the model previously asserted budget checks it never made).
+    budget = None
+    company_id = flask_session.get("company_id") if has_request_context() else None
+    if company_id and department:
+        try:
+            import MySQLdb.cursors
+            from flask import current_app as _ca
+            cur = _ca.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute(
+                "SELECT annual_budget, spent, fiscal_year FROM department_budgets "
+                "WHERE company_id = %s AND department = %s AND fiscal_year = %s",
+                (company_id, department, _dt.datetime.now().year),
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row:
+                annual = float(row["annual_budget"] or 0)
+                spent = float(row["spent"] or 0)
+                budget = {
+                    "annual_budget": f"{annual:,.0f} kr",
+                    "spent": f"{spent:,.0f} kr",
+                    "remaining": f"{annual - spent:,.0f} kr",
+                    "remaining_num": round(annual - spent, 2),
+                    "fiscal_year": row.get("fiscal_year"),
+                }
+        except Exception:
+            budget = None
+
+    # Active supplier agreements (negotiated discounts) — already a helper.
+    agreements = []
+    try:
+        for a in _supplier_agreements_for_company():
+            agreements.append({
+                "vendor": a.get("vendor_name"),
+                "discount_type": a.get("discount_type"),
+                "discount_value": a.get("discount_value"),
+                "agreement_name": a.get("agreement_name") or "",
+            })
+    except Exception:
+        agreements = []
+
+    shown = list(_current_shown_handles)[:10]
     return _model_tool_json(
         status="success",
         username=username or "",
-        department=(flask_session.get("company_department") if has_request_context() else "") or employee.get("department") or "",
+        department=department,
         employee={
             "name": employee.get("full_name", ""),
             "email": employee.get("email", ""),
             "phone": employee.get("phone", ""),
             "job_title": employee.get("job_title", ""),
         },
+        profile=profile_summary,
+        completed_courses=completed,
+        company_budget=budget,
+        supplier_agreements=agreements,
         shown_product_handles=shown,
         open_orders=_open_orders_for_user(username),
     )
@@ -1834,6 +2128,14 @@ def _execute_search_courses(args):
 
     compact_results = [_extract_compact_fields(r) for r in results]
 
+    # Per-card "why": a verifiable reason derived from the matched query terms +
+    # concrete attributes (threaded to the UI card by the agent).
+    q_terms = _goal_keywords(query, limit=6)
+    for cr in compact_results:
+        reason = _course_match_reason(cr, query_terms=q_terms)
+        if reason:
+            cr["match_reason"] = reason
+
     # Mark re-shown products so the AI can address it
     for cr in compact_results:
         if cr.get("handle") in _current_shown_handles:
@@ -1848,10 +2150,15 @@ def _execute_search_courses(args):
 
 
 def _filter_products_by_constraints(products, *, location="", price_min=None, price_max=None,
-                                    product_type="", tag="", start_after=None, start_before=None):
+                                    product_type="", tag="", start_after=None, start_before=None,
+                                    language="", difficulty=""):
     """filter_courses' hard-filter predicates as a reusable pass (TL-03), so
     progressive relaxation can re-run the same predicates with loosened
-    constraints. Behaviour is byte-identical to the previous inline loop."""
+    constraints.
+
+    Budget now checks whether ANY bookable variant falls inside the window
+    (via _price_in_budget) instead of only variants[0], and the language /
+    difficulty facets honour structured_metadata when present."""
     filtered = []
     for p in products:
         variants = p.get("variants", [])
@@ -1861,15 +2168,14 @@ def _filter_products_by_constraints(products, *, location="", price_min=None, pr
             if not any(_location_matches(location, vloc) for vloc in variant_locs):
                 continue
 
-        if price_min is not None or price_max is not None:
-            try:
-                price_val = float(variants[0].get("price", 0)) if variants else 0
-            except (ValueError, TypeError):
-                price_val = 0
-            if price_min is not None and price_val < float(price_min):
-                continue
-            if price_max is not None and price_val > float(price_max):
-                continue
+        if (price_min is not None or price_max is not None) and not _price_in_budget(variants, price_min, price_max):
+            continue
+
+        if language and not _matches_language(p, language):
+            continue
+
+        if difficulty and not _matches_difficulty(p, difficulty):
+            continue
 
         if product_type:
             pt = p.get("product_type", "").lower()
@@ -1913,6 +2219,8 @@ def _execute_filter_courses(args):
     price_max = args.get("price_max")
     product_type = args.get("product_type", "").lower().strip()
     tag = args.get("tag", "").lower().strip()
+    language = (args.get("language") or "").strip()
+    difficulty = (args.get("difficulty") or args.get("level") or "").strip()
     start_after_str = args.get("start_after", "").strip()
     start_before_str = args.get("start_before", "").strip()
     query = args.get("query", "").strip()
@@ -1932,6 +2240,15 @@ def _execute_filter_courses(args):
     products = _filter_blocked_vendors(load_augmented_products())
     if not products:
         return json.dumps({"status": "error", "message": "Produktindekset er ikke indlæst."})
+
+    # Language + difficulty are hard, metadata-backed facets that are NOT part of
+    # the progressive-relaxation ladder (we never silently switch a learner from
+    # a Danish to an English course, or beginner to advanced). Apply them up
+    # front so every relaxation re-run below operates on the constrained set.
+    if language:
+        products = [p for p in products if _matches_language(p, language)]
+    if difficulty:
+        products = [p for p in products if _matches_difficulty(p, difficulty)]
 
     filtered = _filter_products_by_constraints(
         products, location=location, price_min=price_min, price_max=price_max,
@@ -1983,10 +2300,8 @@ def _execute_filter_courses(args):
         filtered = hybrid_rank_products(filtered, query, products, limit=limit)
     else:
         def sort_price(p):
-            try:
-                return float(p.get("variants", [{}])[0].get("price", 999999))
-            except (ValueError, TypeError, IndexError):
-                return 999999
+            mp = _min_variant_price(p.get("variants"))
+            return mp if mp is not None else 999999
         filtered.sort(key=sort_price)
         filtered = filtered[:limit]
 
@@ -2000,6 +2315,13 @@ def _execute_filter_courses(args):
         filtered = new_results + reshown
 
     compact_results = [_extract_compact_fields(r) for r in filtered]
+
+    # Per-card "why" derived from the query/tag terms + concrete attributes.
+    f_terms = _goal_keywords(" ".join([query, tag]).strip(), limit=6)
+    for cr in compact_results:
+        reason = _course_match_reason(cr, query_terms=f_terms)
+        if reason:
+            cr["match_reason"] = reason
 
     # Mark re-shown products
     _mark_previously_shown(compact_results)
@@ -2081,6 +2403,7 @@ def _execute_compare_courses(args):
 
         # Same negotiated price here as in search/details (shared helper: price_view).
         pv = price_view(variants[0].get("price") if variants else None, p.get("vendor", ""))
+        meta = (p.get("structured_metadata") or {})
         comp = {
             "title": p.get("title"),
             "handle": p.get("handle"),
@@ -2091,28 +2414,91 @@ def _execute_compare_courses(args):
             "upcoming_dates": dates,
             "summary": _truncate_summary(p.get("ai_summary", "")),
             "variant_count": len(variants),
+            # Numeric/structured axes used for the winners analysis (kept on the
+            # payload so the comparison card can render them too).
+            "price_num": _min_variant_price(variants),
+            "duration_days": meta.get("duration_days"),
+            "certification": meta.get("certification") or "",
+            "difficulty": meta.get("difficulty") or "",
+            "soonest_date": dates[0] if dates else "",
         }
         if pv["discount"]:
             comp["discount"] = pv["discount"]
         if no_upcoming_dates:
             comp["no_upcoming_dates"] = True
-        meta = (p.get("structured_metadata") or {})
-        if meta.get("duration_days"):
-            comp["duration_days"] = meta["duration_days"]
         comparisons.append(comp)
 
     if len(comparisons) < 2:
         return json.dumps({"status": "error", "message": "Kunne ikke finde nok kurser til sammenligning."})
 
+    # Analytical decision support: per-axis winners + a short, grounded verdict.
+    analysis = _comparison_analysis(comparisons)
+
     # Guardrails: cap-truncation note + single-vendor (no diversity) notice.
     guards = _comparison_guardrails(requested_count, [c["vendor"] for c in comparisons])
-    payload = {"status": "success", "comparison": comparisons}
+    payload = {"status": "success", "comparison": comparisons, "analysis": analysis}
     if guards["_truncation_note"]:
         payload["truncated"] = True
         payload["truncation_note"] = guards["_truncation_note"]
     if guards["single_vendor_notice"]:
         payload["single_vendor_notice"] = guards["single_vendor_notice"]
     return _model_tool_json(**payload)
+
+
+def _comparison_analysis(comparisons):
+    """Compute per-axis winners + a short Danish verdict from a comparison set.
+
+    Every claim is derived from real fields (cheapest = min bookable price,
+    shortest = min duration_days, certificering = has certification, soonest =
+    first upcoming date), so the verdict is grounded, not an LLM guess. Returns
+    {"winners": {axis: {handle, title, value}}, "verdict": str}.
+    """
+    winners = {}
+
+    priced = [c for c in comparisons if isinstance(c.get("price_num"), (int, float))]
+    if priced:
+        cheapest = min(priced, key=lambda c: c["price_num"])
+        winners["cheapest"] = {
+            "handle": cheapest["handle"], "title": cheapest["title"],
+            "value": _normalize_price(cheapest["price_num"]),
+        }
+
+    timed = [c for c in comparisons if isinstance(c.get("duration_days"), (int, float))]
+    if timed:
+        shortest = min(timed, key=lambda c: c["duration_days"])
+        winners["shortest"] = {
+            "handle": shortest["handle"], "title": shortest["title"],
+            "value": f"{shortest['duration_days']} dag(e)",
+        }
+
+    certified = [c for c in comparisons if c.get("certification")]
+    if certified:
+        winners["certification"] = {
+            "handle": certified[0]["handle"], "title": certified[0]["title"],
+            "value": certified[0]["certification"],
+            "all": [{"handle": c["handle"], "title": c["title"], "value": c["certification"]} for c in certified],
+        }
+
+    dated = [c for c in comparisons if c.get("soonest_date")]
+    if dated:
+        # _upcoming_dates already drops past dates, so the listed dates are
+        # ordered as the catalog provides; first non-empty is the soonest shown.
+        winners["soonest"] = {
+            "handle": dated[0]["handle"], "title": dated[0]["title"],
+            "value": dated[0]["soonest_date"],
+        }
+
+    # Verdict: a single, honest recommendation framed by the strongest axis.
+    verdict_bits = []
+    if "cheapest" in winners:
+        verdict_bits.append(f"Billigst: {winners['cheapest']['title']} ({winners['cheapest']['value']})")
+    if "certification" in winners:
+        verdict_bits.append(f"Giver certificering: {winners['certification']['title']}")
+    if "shortest" in winners:
+        verdict_bits.append(f"Hurtigst overstået: {winners['shortest']['title']} ({winners['shortest']['value']})")
+    verdict = " · ".join(verdict_bits[:3])
+
+    return {"winners": winners, "verdict": verdict}
 
 
 # ── Profile Management Tools (connected to MySQL user system) ──
@@ -2296,16 +2682,20 @@ def _execute_remember_about_user(args, username):
                 db.update_memory(username, sup_id,
                                  label=label, category=category, detail=detail)
                 return json.dumps({"status": "memory_saved", "label": label[:200],
-                                   "category": category,
+                                   "category": category, "memory_id": sup_id,
                                    "message": f"Opdateret hukommelse: {label[:200]}"})
         except Exception as dedup_err:
             # Dedup is best-effort — fall through to normal add_memory on failure.
             print(f"[MemoryDedup] {dedup_err}")
         # add_memory is the authoritative truncation point (label->200, detail->5000).
-        db.add_memory(username, label, category=category, detail=detail,
-                      source="ai", confidence=0.9)
+        new_id = db.add_memory(username, label, category=category, detail=detail,
+                               source="ai", confidence=0.9)
+        # Only surface a real integer id (the inline-delete affordance needs one);
+        # never a non-serialisable value.
+        mem_id = new_id if isinstance(new_id, int) else None
         return json.dumps({"status": "memory_saved", "label": label[:200],
-                           "category": category, "message": f"Husket: {label[:200]}"})
+                           "category": category, "memory_id": mem_id,
+                           "message": f"Husket: {label[:200]}"})
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Kunne ikke gemme hukommelse: {e}"})
 
@@ -2747,11 +3137,18 @@ def _execute_recommend_for_profile(args, username):
         ensure_tables()
         profile = get_full_profile(username)
 
-        # Build search query from goals + low-level skills
+        # Build search query from target role + goals + low-level skills.
         query_parts = []
         focus = args.get("focus", "").strip()
         if focus:
             query_parts.append(focus)
+
+        # Target role is the strongest career-direction signal — it anchors the
+        # gap reasoning toward where the learner wants to go, not just where
+        # they are.
+        target_role = (profile.get("target_role") or "").strip()
+        if target_role:
+            query_parts.append(target_role)
 
         goals = profile.get("goals", "")
         if goals:
@@ -2807,17 +3204,27 @@ def _execute_recommend_for_profile(args, username):
 
         compact_results = [_extract_compact_fields(r) for r in filtered[:4]]
 
-        # Annotate with reason
+        # Per-gap, verifiable reasons. recommendation_reason stays for backwards
+        # compatibility; match_reason is the unified per-card "why" the UI shows.
         all_skills = {s["name"].lower(): s["level"] for s in profile.get("skills", [])}
+        profile_boost = _profile_boost_from_profile(profile)
+        profile_terms = list((profile_boost or {}).get("target_terms") or [])
+        goal_terms = _goal_keywords(" ".join([target_role, goals]).strip(), limit=6)
         for cr in compact_results:
             reason_parts = []
             title_lower = cr.get("title", "").lower()
             for skill_name, skill_level in all_skills.items():
                 if skill_name in title_lower and skill_level in ("begynder", "mellem"):
                     reason_parts.append(f"bygger videre på din {skill_name}-kompetence")
-            if goals and any(w in title_lower for w in goals.lower().split()[:3]):
+            if target_role and any(w in title_lower for w in _goal_keywords(target_role, limit=4)):
+                reason_parts.append(f"bringer dig mod {target_role}")
+            elif goals and any(w in title_lower for w in goals.lower().split()[:3]):
                 reason_parts.append("matcher dine mål")
             cr["recommendation_reason"] = "; ".join(reason_parts) if reason_parts else "relevant for din profil"
+            # match_reason: the concise UI "why", derived from profile/goal terms
+            # + concrete attributes (falls back to recommendation_reason).
+            mr = _course_match_reason(cr, query_terms=goal_terms, profile_terms=profile_terms)
+            cr["match_reason"] = mr or cr["recommendation_reason"]
 
         return _model_tool_json(status="success", count=len(compact_results), results=compact_results)
     except Exception as e:
@@ -2920,6 +3327,53 @@ PROFILE_TOOLS.append({
     }
 })
 
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "save_learning_path",
+        "description": (
+            "Gem en læringssti permanent på brugerens profil, så den overlever samtalen og kan ses/"
+            "følges på profilsiden. Brug dette når brugeren beder dig 'gem læringsstien', 'gem planen', "
+            "eller efter du har bygget en sti med suggest_learning_path og brugeren vil beholde den. "
+            "suggest_learning_path gemmer allerede automatisk — brug kun dette til en sti du selv har "
+            "sammensat fra konkrete kurser."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "title": {"type": "string", "description": "Kort titel på læringsstien."},
+                "goal": {"type": "string", "description": "Det overordnede mål stien fører mod (valgfrit)."},
+                "steps": {
+                    "type": "array",
+                    "description": "Trin i rækkefølge. Hvert trin: {order, level, topic, reason, courses:[{handle,title}]}.",
+                    "items": {"type": "object"}
+                }
+            },
+            "required": ["title", "steps"]
+        },
+        "strict": False
+    }
+})
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "get_learning_path",
+        "description": (
+            "Hent brugerens gemte læringsstier (eller én bestemt via path_id). Brug dette når brugeren "
+            "spørger 'vis min læringssti', 'hvad var min plan', 'hvor langt er jeg i min sti', eller vil "
+            "fortsætte en tidligere sti."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path_id": {"type": "integer", "description": "ID på en bestemt sti (valgfrit — udelad for alle)."}
+            },
+            "required": []
+        }
+    }
+})
 
 PROFILE_TOOLS.append({
     "type": "function",
@@ -3120,17 +3574,50 @@ Regler:
             raw = re.sub(r'\s*```$', '', raw)
         path_plan = json.loads(raw)
 
-        # Search for courses matching each step
+        # Ground each step in REAL catalog courses, de-duplicating across steps
+        # (a course surfaced in step 1 must not reappear in step 2) and skipping
+        # courses the learner has already completed — so the path is actionable,
+        # not a list of repeats or things they've done.
+        completed_titles, completed_handles = _completed_course_keys(username)
+        seen_handles = set()
         steps_with_courses = []
+        total_cost = 0
+        any_priced = False
+        total_days = 0
+        any_dated = False
         for step in path_plan.get("steps", [])[:3]:
             topic = step.get("topic", "")
             if not topic:
                 continue
-            results = semantic_search_courses(topic, limit=2,
+            results = semantic_search_courses(topic, limit=4,
                                                shown_handles=_current_shown_handles)
             courses = []
             if isinstance(results, list):
-                courses = [_extract_compact_fields(r) for r in results[:2]]
+                for r in results:
+                    h = (r.get("handle") or "").lower()
+                    t = (r.get("title") or "").lower()
+                    if h in seen_handles:
+                        continue
+                    if t in completed_titles or h in completed_handles:
+                        continue
+                    cf = _extract_compact_fields(r)
+                    courses.append(cf)
+                    seen_handles.add(h)
+                    if len(courses) >= 2:
+                        break
+
+            # Cost/duration rollup uses the cheapest bookable course per step.
+            if courses:
+                step_prices = [_min_variant_price(r.get("variants")) for r in results
+                               if (r.get("handle") or "").lower() in {(c.get("handle") or "").lower() for c in courses}]
+                step_prices = [p for p in step_prices if isinstance(p, (int, float))]
+                if step_prices:
+                    total_cost += min(step_prices)
+                    any_priced = True
+                step_days = [c.get("duration_days") for c in courses if isinstance(c.get("duration_days"), (int, float))]
+                if step_days:
+                    total_days += min(step_days)
+                    any_dated = True
 
             steps_with_courses.append({
                 "order": step.get("order", len(steps_with_courses) + 1),
@@ -3140,10 +3627,43 @@ Regler:
                 "courses": courses,
             })
 
+        # A path with no grounded courses is not actionable — say so honestly.
+        if not any(s["courses"] for s in steps_with_courses):
+            return json.dumps({
+                "status": "no_results",
+                "message": "Jeg kunne ikke finde konkrete kurser til en sammenhængende læringssti lige nu. Prøv at præcisere målet.",
+            }, ensure_ascii=False)
+
+        path_title = path_plan.get("path_title", "Din læringssti")
+        total_cost_out = round(total_cost) if any_priced else None
+        total_days_out = round(total_days) if any_dated else None
+
+        # Persist so a finished profile turns into durable, trackable value
+        # (the path shows up on the profile page + can be re-opened from chat).
+        path_id = None
+        try:
+            from app1.user_profile_db import save_learning_path
+            path_id = save_learning_path(
+                username, path_title, steps_with_courses,
+                goal=(goal or focus_area or "")[:500], source="ai",
+                total_cost=total_cost_out, total_duration_days=total_days_out,
+            )
+        except Exception as save_err:
+            print(f"[suggest_learning_path] persist skipped: {save_err}")
+            try:
+                from flask import current_app as _app
+                _app.mysql.connection.rollback()
+            except Exception:
+                pass
+
         return _model_tool_json(
             status="success",
-            path_title=path_plan.get("path_title", "Din læringssti"),
+            path_id=path_id,
+            path_title=path_title,
             steps=steps_with_courses,
+            total_cost=total_cost_out,
+            total_duration_days=total_days_out,
+            persisted=bool(path_id),
         )
 
     except Exception as e:
@@ -4483,6 +5003,117 @@ def _execute_request_manager_approval(args, username):
     }, default=str)
 
 
+def _execute_open_in_app(args, username=None):
+    """Resolve a cross-surface navigation directive for the SPA.
+
+    Returns a structured payload the agent forwards as a `ui_action` SSE event.
+    Performs NO mutation — `start_order` only opens the enrolment flow; the
+    actual order still goes through the confirm-gated order tools. Every target
+    is validated and a concrete internal URL is produced server-side so the
+    client never has to guess a route.
+    """
+    action = (args.get("action") or "").strip()
+    valid = {"view_product", "open_compare", "open_profile", "open_mind_map",
+             "open_learning_path", "open_catalog", "start_order", "open_profiler"}
+    if action not in valid:
+        return json.dumps({"status": "error", "message": f"Ukendt handling: {action}"}, ensure_ascii=False)
+
+    label = (args.get("label") or "").strip()
+    out = {"status": "success", "action": action}
+
+    if action in ("view_product", "start_order"):
+        handle = (args.get("handle") or "").strip()
+        if not handle:
+            return json.dumps({"status": "error", "message": "handle mangler."}, ensure_ascii=False)
+        product = catalog.get_product(handle)
+        if not product:
+            return json.dumps({"status": "not_found", "message": f"Kurset '{handle}' blev ikke fundet."}, ensure_ascii=False)
+        out["handle"] = handle
+        out["target"] = f"/products/{handle}"
+        out["title"] = product.get("title") or handle
+        out["label"] = label or ("Start tilmelding" if action == "start_order" else "Åbn kurset")
+        if action == "start_order":
+            out["intent"] = "order"
+            out["new_tab"] = False
+        else:
+            out["new_tab"] = True
+
+    elif action == "open_compare":
+        handles = [h for h in (args.get("handles") or []) if h]
+        if len(handles) < 2:
+            return json.dumps({"status": "error", "message": "Mindst 2 handles kræves for sammenligning."}, ensure_ascii=False)
+        out["handles"] = handles[:4]
+        out["target"] = "/catalog?compare=" + ",".join(handles[:4])
+        out["label"] = label or "Sammenlign kurser"
+
+    elif action == "open_profile":
+        section = (args.get("section") or "").strip()
+        out["section"] = section
+        out["target"] = "/profile" + (f"#{section}" if section else "")
+        out["label"] = label or "Åbn profil"
+
+    elif action == "open_mind_map":
+        out["target"] = "/mind-map"
+        out["label"] = label or "Åbn mind-map"
+
+    elif action == "open_learning_path":
+        out["target"] = "/profile#learning-paths"
+        out["label"] = label or "Se min læringssti"
+
+    elif action == "open_profiler":
+        out["target"] = "/ai-profiler"
+        out["label"] = label or "Gør profilen færdig"
+
+    elif action == "open_catalog":
+        q = (args.get("query") or "").strip()
+        out["query"] = q
+        out["target"] = "/catalog" + (f"?q={q}" if q else "")
+        out["label"] = label or "Åbn kataloget"
+
+    return _model_tool_json(**out)
+
+
+def _execute_save_learning_path(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    title = (args.get("title") or "").strip()
+    steps = args.get("steps") or []
+    if not title or not isinstance(steps, list) or not steps:
+        return json.dumps({"status": "error", "message": "title og mindst ét trin (steps) kræves."})
+    try:
+        from app1.user_profile_db import save_learning_path, ensure_tables
+        ensure_tables()
+        path_id = save_learning_path(username, title, steps, goal=(args.get("goal") or "")[:500], source="ai")
+        return json.dumps({"status": "success", "section": "learning_path", "path_id": path_id,
+                           "message": f"Læringssti gemt: {title}"}, ensure_ascii=False)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Kunne ikke gemme læringssti: {e}"})
+
+
+def _execute_get_learning_path(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1.user_profile_db import get_learning_path, get_learning_paths, ensure_tables
+        ensure_tables()
+        pid = args.get("path_id")
+        if pid:
+            try:
+                path = get_learning_path(username, int(pid))
+            except (TypeError, ValueError):
+                path = None
+            if not path:
+                return json.dumps({"status": "not_found", "message": "Læringsstien blev ikke fundet."})
+            return _model_tool_json(status="success", section="learning_path", path=path)
+        paths = get_learning_paths(username, limit=10)
+        return _model_tool_json(
+            status="success", section="learning_path", count=len(paths), paths=paths,
+            message=("Ingen gemte læringsstier endnu." if not paths else f"{len(paths)} gemt(e) læringssti(er)."),
+        )
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Fejl ved hentning af læringssti: {e}"})
+
+
 def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
     function_name = tool_call.function.name
@@ -4530,6 +5161,12 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_recommend_for_profile(args, username)
         elif function_name == "suggest_learning_path":
             return _execute_suggest_learning_path(args, username)
+        elif function_name == "save_learning_path":
+            return _execute_save_learning_path(args, username)
+        elif function_name == "get_learning_path":
+            return _execute_get_learning_path(args, username)
+        elif function_name == "open_in_app":
+            return _execute_open_in_app(args, username)
         elif function_name == "request_user_input":
             return _execute_request_user_input(args, username)
         elif function_name == "create_course_order":

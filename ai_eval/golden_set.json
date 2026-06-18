@@ -569,14 +569,15 @@
         "grounded": true
       }
     },
-
     {
       "_comment": "AI Tooler 2 — Phase 12 golden cases",
       "id": "t2_schedule_recurring_report",
       "query": "Planlæg en månedlig rapport over vores kursusbudget",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["schedule_recurring_report"],
+        "tool_any_of": [
+          "schedule_recurring_report"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -585,7 +586,9 @@
       "query": "Tjek compliance-status for vores virksomhed igen",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["recheck_compliance"],
+        "tool_any_of": [
+          "recheck_compliance"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -594,7 +597,9 @@
       "query": "Analyser vores samtaler og giv mig nye indsigter",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["generate_fresh_insights"]
+        "tool_any_of": [
+          "generate_fresh_insights"
+        ]
       }
     },
     {
@@ -602,7 +607,9 @@
       "query": "Send kalenderinvitationer til alle deltagere i Python-kurset",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["bulk_calendar_invites"]
+        "tool_any_of": [
+          "bulk_calendar_invites"
+        ]
       }
     },
     {
@@ -610,7 +617,9 @@
       "query": "Send en mail til alle medarbejdere om det nye GDPR-kursus",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["send_company_email"],
+        "tool_any_of": [
+          "send_company_email"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -619,7 +628,9 @@
       "query": "Send påmindelser til alle der har en deadline inden for 14 dage",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["send_deadline_reminders"],
+        "tool_any_of": [
+          "send_deadline_reminders"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -628,7 +639,9 @@
       "query": "Bestil lederkurset til medarbejder Eva Nielsen på vegne af virksomheden",
       "intent": "hr_action",
       "expect": {
-        "tool_any_of": ["create_order_for_employee"],
+        "tool_any_of": [
+          "create_order_for_employee"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -637,7 +650,9 @@
       "query": "Gem Python Basis-kurset til mig til senere",
       "intent": "employee_action",
       "expect": {
-        "tool_any_of": ["save_course_for_later"]
+        "tool_any_of": [
+          "save_course_for_later"
+        ]
       }
     },
     {
@@ -645,7 +660,9 @@
       "query": "Sæt en påmindelse til mig om GDPR-kurset på mandag",
       "intent": "employee_action",
       "expect": {
-        "tool_any_of": ["set_course_reminder"]
+        "tool_any_of": [
+          "set_course_reminder"
+        ]
       }
     },
     {
@@ -653,7 +670,9 @@
       "query": "Annullér min bestilling af Python Basis",
       "intent": "employee_action",
       "expect": {
-        "tool_any_of": ["manage_my_order"],
+        "tool_any_of": [
+          "manage_my_order"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -662,7 +681,9 @@
       "query": "Bed min leder om at godkende min bestilling af lederkurset",
       "intent": "employee_action",
       "expect": {
-        "tool_any_of": ["request_manager_approval"],
+        "tool_any_of": [
+          "request_manager_approval"
+        ],
         "expect_confirmation_before_mutation": true
       }
     },
@@ -673,6 +694,82 @@
       "_note": "In employee scope, manager-only HR write tools must not fire",
       "expect": {
         "expect_no_manager_tools": true
+      }
+    },
+    {
+      "id": "search_paa_dansk",
+      "query": "Find et kursus om projektledelse på dansk",
+      "intent": "course_search",
+      "expect": {
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
+        "retrieval_should_relate_to": "projektledelse",
+        "grounded": true
+      }
+    },
+    {
+      "id": "search_begynder_niveau",
+      "query": "Jeg er helt ny — har I et begynderkursus i ledelse?",
+      "intent": "course_search",
+      "expect": {
+        "tool_any_of": [
+          "search_courses",
+          "filter_courses",
+          "catalog_search"
+        ],
+        "retrieval_should_relate_to": "ledelse",
+        "grounded": true
+      }
+    },
+    {
+      "id": "compare_best_two",
+      "intent": "compare",
+      "turns": [
+        {
+          "query": "Vis mig to projektledelseskurser"
+        },
+        {
+          "query": "Hvilket af de to er bedst? Sammenlign dem"
+        }
+      ],
+      "expect": {
+        "tool_any_of": [
+          "compare_courses",
+          "catalog_compare_products",
+          "catalog_get_product",
+          "catalog_search"
+        ],
+        "grounded": true
+      }
+    },
+    {
+      "id": "english_prerequisites_reachability",
+      "query": "What are the prerequisites for a PRINCE2 course?",
+      "intent": "course_search",
+      "expect": {
+        "tool_any_of": [
+          "check_course_prerequisites",
+          "catalog_get_product",
+          "catalog_search",
+          "search_courses"
+        ],
+        "grounded": true
+      }
+    },
+    {
+      "id": "learning_path_in_order",
+      "query": "Lav en læringssti til mig, så jeg lærer det i den rigtige rækkefølge",
+      "intent": "learning_path",
+      "expect": {
+        "tool_any_of": [
+          "suggest_learning_path",
+          "recommend_for_profile",
+          "catalog_search"
+        ],
+        "grounded": true
       }
     }
   ]

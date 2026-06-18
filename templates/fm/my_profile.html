@@ -174,6 +174,20 @@
   @media (max-width: 1080px){ .cv-hero { grid-template-columns: 1fr; } .cv-stats { grid-template-columns: repeat(3,1fr); } }
   @media (max-width: 720px){ .ord-kpis { grid-template-columns: repeat(2,1fr); } }
   @media (max-width: 560px){ .cv-stats { grid-template-columns: repeat(2,1fr); } .cv-id { flex-direction: column; text-align: center; } }
+  /* Learning paths (AI-built, persisted) */
+  .path-card { border: 1px solid var(--fm-line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--fm-surface-2); }
+  .path-card:last-child { margin-bottom: 0; }
+  .path-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--fm-ink); margin-bottom: 8px; }
+  .path-head i { color: var(--fm-primary); }
+  .path-totals { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--fm-ink-2); }
+  .path-step { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--fm-line); }
+  .path-step:first-of-type { border-top: none; }
+  .path-no { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .path-topic { font-weight: 650; font-size: 13px; color: var(--fm-ink); }
+  .path-reason { font-size: 12px; color: var(--fm-ink-2); margin-top: 2px; }
+  .path-courses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+  .path-course { font-size: 11.5px; font-weight: 600; color: var(--fm-primary); background: var(--fm-surface); border: 1px solid var(--fm-line); border-radius: 7px; padding: 3px 8px; text-decoration: none; }
+  .path-course:hover { border-color: var(--fm-primary); }
 </style>
 {% endblock %}
 {% block content %}
@@ -188,6 +202,12 @@
             <div>
               <h1>{{ _u }}</h1>
               <div class="cv-headline" id="cvHeadline">Indlæser profil…</div>
+              <div class="cv-target" id="cvTarget" style="margin-top:6px;display:flex;align-items:center;gap:7px;font-size:13.5px;color:var(--fm-ink-2)">
+                <i class="fa-solid fa-bullseye" style="color:var(--fm-primary)"></i>
+                <span id="cvTargetText">Ingen ønsket rolle sat</span>
+                <button class="cv-target-edit" onclick="editTargetRole()" title="Sæt ønsket rolle"
+                        style="border:none;background:none;color:var(--fm-primary);font-weight:650;font-size:12px;cursor:pointer;padding:2px 4px">Rediger</button>
+              </div>
               <div class="cv-meta" id="cvMeta">
                 <span class="fm-badge teal dot">Aktiv</span>
               </div>
@@ -227,6 +247,13 @@
             <div class="ord-kpis" id="ordKpis"></div>
             <div class="ord-list" id="ordList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
           </div>
+        </div>
+
+        <!-- Learning paths (AI-built, persisted) -->
+        <div class="fm-card" data-reveal id="pathsCard" style="margin-top:18px">
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Mine læringsstier</h3>
+            <a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal" style="margin-left:auto">Byg en sti med AI</a></div>
+          <div class="fm-card-body"><div id="pathsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
         </div>
 
         <!-- Proficiency matrix -->
@@ -541,28 +568,78 @@
       chips += '<span class="fm-badge teal dot">Aktiv</span>';
       meta.innerHTML = chips;
       document.getElementById('cvGoals').textContent = p.goals ? p.goals : 'Intet karrieremål sat endnu.';
+      const tt = document.getElementById('cvTargetText');
+      if (tt) tt.textContent = p.target_role ? ('Ønsket rolle: ' + p.target_role) : 'Ingen ønsket rolle sat';
     }
 
-    function renderCompleteness(p) {
-      const sections = [
-        { key: 'Profil', done: !!(p.headline || p.bio) },
-        { key: 'Kompetencer', done: (p.skills || []).length > 0 },
-        { key: 'Erfaring', done: (p.experience || []).length > 0 },
-        { key: 'Uddannelse', done: (p.education || []).length > 0 },
-        { key: 'Certificeringer', done: (p.certifications || []).length > 0 },
-        { key: 'Mål', done: !!p.goals }
-      ];
-      const doneCount = sections.filter(s => s.done).length;
-      const pct = Math.round((doneCount / sections.length) * 100);
-      const ring = document.getElementById('ringBig');
-      ring.style.setProperty('--p', pct);
-      document.getElementById('ringPct').textContent = pct + '%';
-      document.getElementById('cvBreakdown').innerHTML = sections.map(s =>
-        '<div class="bd-row ' + (s.done ? 'ok' : '') + '">' +
-        '<i class="fa-' + (s.done ? 'solid fa-circle-check' : 'regular fa-circle') + '"' + (s.done ? '' : ' style="color:var(--fm-ink-3)"') + '></i>' +
-        '<div class="bd-bar"><span style="width:' + (s.done ? 100 : 25) + '%"></span></div>' +
-        '<span class="bd-v">' + esc(s.key) + '</span></div>'
-      ).join('');
+    // Target role drives the AI's skill-gap + learning-path reasoning; a single
+    // inline editor that writes to the canonical profile summary.
+    window.editTargetRole = function () {
+      const cur = (_profile && _profile.target_role) || '';
+      const next = window.prompt('Hvilken rolle eller karriereretning arbejder du hen imod?\n(fx "IT-projektleder", "Data Analyst")', cur);
+      if (next === null) return;
+      api('/api/profile/summary', { method: 'POST', body: JSON.stringify({ target_role: next.trim() }) })
+        .then(d => {
+          if (d && d.success !== false) {
+            if (_profile) _profile.target_role = next.trim();
+            const tt = document.getElementById('cvTargetText');
+            if (tt) tt.textContent = next.trim() ? ('Ønsket rolle: ' + next.trim()) : 'Ingen ønsket rolle sat';
+            toast('Ønsket rolle opdateret.');
+            renderCompleteness();
+          } else { toast((d && d.error) || 'Kunne ikke gemme.', false); }
+        })
+        .catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    // Completeness is now sourced from the canonical /api/profile/completeness
+    // endpoint (depth-aware) so the ring matches every other surface exactly.
+    function renderCompleteness() {
+      api('/api/profile/completeness').then(d => {
+        const c = (d && d.completeness) || {};
+        const sections = c.sections || [];
+        const pct = c.pct != null ? c.pct : 0;
+        const ring = document.getElementById('ringBig');
+        if (ring) ring.style.setProperty('--p', pct);
+        const rp = document.getElementById('ringPct'); if (rp) rp.textContent = pct + '%';
+        const bd = document.getElementById('cvBreakdown');
+        if (bd) bd.innerHTML = sections.map(s => {
+          const w = s.done ? 100 : Math.max(8, Math.round((s.strength || 0) * 100));
+          return '<div class="bd-row ' + (s.done ? 'ok' : '') + '">' +
+            '<i class="fa-' + (s.done ? 'solid fa-circle-check' : 'regular fa-circle') + '"' + (s.done ? '' : ' style="color:var(--fm-ink-3)"') + '></i>' +
+            '<div class="bd-bar"><span style="width:' + w + '%"></span></div>' +
+            '<span class="bd-v">' + esc(s.label || s.key || '') + '</span></div>';
+        }).join('');
+      }).catch(() => { });
+    }
+
+    function renderLearningPaths(paths) {
+      const box = document.getElementById('pathsList');
+      if (!box) return;
+      if (!paths || !paths.length) {
+        box.innerHTML = '<div class="muted" style="font-size:13px">Ingen gemte læringsstier endnu. Bed AI-assistenten om at bygge en sti til din profil.</div>';
+        return;
+      }
+      box.innerHTML = paths.map(p => {
+        const steps = (p.steps || []);
+        const totals = [];
+        if (p.total_duration_days) totals.push('<i class="fa-solid fa-clock"></i> ' + esc(p.total_duration_days) + ' dage');
+        if (p.total_cost != null) totals.push('<i class="fa-solid fa-tag"></i> ca. ' + Number(p.total_cost).toLocaleString('da-DK') + ' kr');
+        const stepHtml = steps.map((s, i) => {
+          const courses = (s.courses || []).map(c =>
+            '<a class="path-course" href="/products/' + encodeURIComponent(c.handle || '') + '" target="_blank">' + esc(c.title || '') + '</a>').join('');
+          return '<div class="path-step"><span class="path-no">' + (i + 1) + '</span><div><div class="path-topic">' + esc(s.topic || '') + '</div>' +
+            (s.reason ? '<div class="path-reason">' + esc(s.reason) + '</div>' : '') +
+            (courses ? '<div class="path-courses">' + courses + '</div>' : '') + '</div></div>';
+        }).join('');
+        return '<div class="path-card"><div class="path-head"><i class="fa-solid fa-route"></i> ' + esc(p.title || 'Læringssti') +
+          (totals.length ? '<span class="path-totals">' + totals.join(' · ') + '</span>' : '') + '</div>' + stepHtml + '</div>';
+      }).join('');
+    }
+
+    function loadLearningPaths() {
+      api('/api/profile/learning-paths')
+        .then(d => renderLearningPaths((d && d.learning_paths) || []))
+        .catch(() => { const b = document.getElementById('pathsList'); if (b) b.innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke indlæse læringsstier.</div>'; });
     }
 
     function paint(p) {
@@ -575,7 +652,7 @@
       renderLanguages(p.languages || []);
       renderPortfolio(p.portfolio_links || []);
       renderCourses(p.completed_courses || []);
-      renderCompleteness(p);
+      renderCompleteness();
     }
 
     function load() {
@@ -692,6 +769,7 @@
 
     load();
     loadOrders();
+    loadLearningPaths();
   })();
 </script>
 {% endblock %}

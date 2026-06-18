@@ -72,11 +72,30 @@ _TABLES_SQL = [
         headline VARCHAR(500) DEFAULT '',
         bio TEXT DEFAULT NULL,
         goals TEXT DEFAULT NULL,
+        target_role VARCHAR(255) DEFAULT '',
         preferred_location VARCHAR(255) DEFAULT '',
         preferred_format VARCHAR(100) DEFAULT '',
         budget_range VARCHAR(100) DEFAULT '',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
     )""",
+    # Persisted, AI-built learning paths (suggest_learning_path / save_learning_path).
+    # `steps` is a JSON array of {order, level, topic, reason, courses:[{handle,
+    # title, ...}], cost, duration_days}. Survives the chat session so a finished
+    # profile turns into durable, trackable value (shown on the profile page).
+    """CREATE TABLE IF NOT EXISTS user_learning_paths (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        title VARCHAR(255) NOT NULL,
+        goal VARCHAR(500) DEFAULT '',
+        steps LONGTEXT,
+        total_cost INT DEFAULT NULL,
+        total_duration_days INT DEFAULT NULL,
+        source VARCHAR(40) DEFAULT 'ai',
+        status ENUM('aktiv','fuldfoert','arkiveret') DEFAULT 'aktiv',
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        INDEX idx_username (username, updated_at DESC)
+    ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
     _USER_CONVERSATIONS_SQL,
     """CREATE TABLE IF NOT EXISTS conversation_history (
         id INT AUTO_INCREMENT PRIMARY KEY,
@@ -214,6 +233,23 @@ def ensure_tables():
                 print("[UserProfileDB] Recreated user_conversations table with correct schema")
             except Exception as e2:
                 print(f"[UserProfileDB] Migration error for user_conversations: {e2}")
+
+        # Idempotent migration: add the target_role column to an existing
+        # user_profile_summary table (career direction that drives skill-gap and
+        # learning-path reasoning). Safe to run every boot.
+        try:
+            cur.execute("SELECT target_role FROM user_profile_summary LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("ALTER TABLE user_profile_summary ADD COLUMN target_role VARCHAR(255) DEFAULT ''")
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] target_role column migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
 
         # Idempotent migration: add the cert-expiry reminder marker to an existing
         # user_certifications table (so the daily cert-expiry job can dedupe). Safe
@@ -765,31 +801,97 @@ _COMPLETENESS_SECTIONS = [
 ]
 
 
-def profile_completeness(username, profile=None):
-    """Return {'pct', 'done', 'total', 'sections':[{key,label,done}], 'missing':[label]}.
+def _section_strength(key, p):
+    """Depth score 0.0–1.0 for one completeness section.
 
-    Drives the AI Profiler's "complete me to 100%" loop. Accepts a pre-fetched
-    full-profile dict (to avoid a second DB round-trip) or fetches it.
+    Binary `done` only knows "has the user touched this section". `strength`
+    is depth-aware (how MANY items, whether levels/dates are filled, whether a
+    target role anchors the goals) so the profiler can target the *weakest*
+    real section instead of treating one shallow item as a full section, and
+    so the ring/recommendation signal means something. Always returns 0.0 when
+    the section is empty (so strength==0 ⇔ not done).
+    """
+    try:
+        if key == "headline":
+            h = (p.get("headline") or "").strip()
+            return 0.0 if not h else (1.0 if len(h) >= 12 else 0.6)
+        if key == "preferred_format":
+            fmt = bool((p.get("preferred_format") or "").strip())
+            loc = bool((p.get("preferred_location") or "").strip())
+            return 1.0 if (fmt and loc) else (0.6 if (fmt or loc) else 0.0)
+        if key == "goals":
+            goal_txt = bool((p.get("goals") or "").strip())
+            lg = len(p.get("learning_goals") or []) > 0
+            role = bool((p.get("target_role") or "").strip())
+            signals = sum((goal_txt, lg, role))
+            return min(1.0, signals / 2.0)  # 2+ signals = full strength
+        if key == "skills":
+            items = p.get("skills") or []
+            n = len(items)
+            leveled = sum(1 for s in items if (s.get("level") or s.get("skill_level")))
+            base = min(1.0, n / 4.0)
+            # reward graded skills (a profile of 4 unlabelled skills is weaker
+            # than 4 with levels)
+            return round(min(1.0, base * (0.75 + 0.25 * (leveled / n if n else 0))), 3)
+        # count-based sections (experience/education/certifications/languages)
+        items = p.get(key) or []
+        n = len(items)
+        if n <= 0:
+            return 0.0
+        return 1.0 if n >= 3 else (0.8 if n == 2 else 0.5)
+    except Exception:
+        return 0.0
+
+
+def profile_completeness(username, profile=None):
+    """Return a completeness report driving the AI Profiler's "complete me to
+    100%" loop.
+
+    Keys:
+      pct          — binary done/total percentage (UNCHANGED contract: 8
+                     sections, one shallow item counts the whole section).
+      done, total  — binary counts (8 sections).
+      sections     — [{key, label, done, strength}] where strength is the
+                     depth-aware 0..1 score.
+      missing      — labels of not-done sections.
+      weighted_pct — depth-aware percentage (mean strength × 100) used by the
+                     ring/handoff so a barely-touched profile doesn't read as
+                     "done".
+      weakest      — key of the lowest-strength section (the profiler's next
+                     best question target); None when fully complete.
+      target_role  — the user's stated career direction (drives gap reasoning).
+
+    Accepts a pre-fetched full-profile dict (to avoid a second DB round-trip).
     """
     try:
         p = profile if profile is not None else get_full_profile(username)
     except Exception:
         p = {}
+    p = p or {}
     sections = []
     for key, label, pred in _COMPLETENESS_SECTIONS:
         try:
             done = bool(pred(p))
         except Exception:
             done = False
-        sections.append({"key": key, "label": label, "done": done})
+        strength = round(_section_strength(key, p), 3)
+        sections.append({"key": key, "label": label, "done": done, "strength": strength})
     done_count = sum(1 for s in sections if s["done"])
     total = len(sections)
+    weighted = round(sum(s["strength"] for s in sections) / total * 100) if total else 0
+    # Weakest real target: prefer the lowest-strength section; ties broken by
+    # the canonical section order (experience/skills before niceties).
+    incomplete = [s for s in sections if s["strength"] < 1.0]
+    weakest = min(incomplete, key=lambda s: s["strength"])["key"] if incomplete else None
     return {
         "pct": round(done_count / total * 100) if total else 0,
         "done": done_count,
         "total": total,
         "sections": sections,
         "missing": [s["label"] for s in sections if not s["done"]],
+        "weighted_pct": weighted,
+        "weakest": weakest,
+        "target_role": (p.get("target_role") or "").strip(),
     }
 
 
@@ -804,7 +906,7 @@ def get_profile_summary(username):
 
 
 def update_profile_summary(username, **fields):
-    allowed = {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range"}
+    allowed = {"headline", "bio", "goals", "target_role", "preferred_location", "preferred_format", "budget_range"}
     updates = {k: v for k, v in fields.items() if k in allowed and v is not None}
     if not updates:
         return False
@@ -882,6 +984,102 @@ def delete_learning_goal(username, goal_id):
     return affected > 0
 
 
+# ── Learning Paths CRUD (persisted, AI-built sequences) ──
+
+import json as _json_lp
+
+
+def save_learning_path(username, title, steps, *, goal="", source="ai",
+                       total_cost=None, total_duration_days=None):
+    """Persist (or replace the newest same-title) learning path for a user.
+
+    `steps` is a list of step dicts; stored as JSON. Returns the path id.
+    Replacing-by-title keeps a re-generated path from piling up duplicates
+    while a genuinely new goal gets its own row.
+    """
+    title = (title or "Din læringssti").strip()[:255]
+    steps_json = _json_lp.dumps(steps or [], ensure_ascii=False, default=str)
+    cur = current_app.mysql.connection.cursor()
+    # Supersede the most recent active path with the same title (idempotent re-save).
+    cur.execute(
+        "SELECT id FROM user_learning_paths WHERE username = %s AND title = %s "
+        "AND status = 'aktiv' ORDER BY updated_at DESC LIMIT 1",
+        (username, title),
+    )
+    row = cur.fetchone()
+    existing_id = (row[0] if not isinstance(row, dict) else row.get("id")) if row else None
+    if existing_id:
+        cur.execute(
+            "UPDATE user_learning_paths SET goal = %s, steps = %s, total_cost = %s, "
+            "total_duration_days = %s, source = %s WHERE username = %s AND id = %s",
+            ((goal or "")[:500], steps_json, total_cost, total_duration_days,
+             source, username, existing_id),
+        )
+        path_id = existing_id
+    else:
+        cur.execute(
+            "INSERT INTO user_learning_paths (username, title, goal, steps, total_cost, "
+            "total_duration_days, source, status) VALUES (%s, %s, %s, %s, %s, %s, %s, 'aktiv')",
+            (username, title, (goal or "")[:500], steps_json, total_cost,
+             total_duration_days, source),
+        )
+        path_id = cur.lastrowid
+    current_app.mysql.connection.commit()
+    cur.close()
+    return path_id
+
+
+def _row_to_path(row):
+    d = dict(row)
+    try:
+        d["steps"] = _json_lp.loads(d.get("steps") or "[]")
+    except Exception:
+        d["steps"] = []
+    return d
+
+
+def get_learning_paths(username, limit=10, include_archived=False):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    status_clause = "" if include_archived else "AND status <> 'arkiveret' "
+    cur.execute(
+        "SELECT id, title, goal, steps, total_cost, total_duration_days, source, "
+        "status, created_at, updated_at FROM user_learning_paths "
+        "WHERE username = %s " + status_clause +
+        "ORDER BY (status = 'aktiv') DESC, updated_at DESC LIMIT %s",
+        (username, int(limit)),
+    )
+    rows = cur.fetchall()
+    cur.close()
+    return [_row_to_path(r) for r in rows]
+
+
+def get_learning_path(username, path_id):
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    cur.execute(
+        "SELECT id, title, goal, steps, total_cost, total_duration_days, source, "
+        "status, created_at, updated_at FROM user_learning_paths "
+        "WHERE username = %s AND id = %s",
+        (username, path_id),
+    )
+    row = cur.fetchone()
+    cur.close()
+    return _row_to_path(row) if row else None
+
+
+def update_learning_path_status(username, path_id, status):
+    if status not in ("aktiv", "fuldfoert", "arkiveret"):
+        return False
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "UPDATE user_learning_paths SET status = %s WHERE username = %s AND id = %s",
+        (status, username, path_id),
+    )
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
+
+
 def format_goals_for_ai(goals):
     """Compact text of active goals for the AI system context."""
     active = [g for g in (goals or []) if g.get("status") == "aktiv"]
@@ -932,6 +1130,7 @@ def get_full_profile(username):
         "headline": profile.get("headline", ""),
         "bio": profile.get("bio", ""),
         "goals": profile.get("goals", ""),
+        "target_role": profile.get("target_role", ""),
         "preferred_location": profile.get("preferred_location", ""),
         "preferred_format": profile.get("preferred_format", ""),
         "budget_range": profile.get("budget_range", ""),
@@ -980,6 +1179,8 @@ def format_profile_for_ai(profile_data):
         parts.append(f"Overskrift: {profile_data['headline']}")
     if profile_data.get("bio"):
         parts.append(f"Bio: {profile_data['bio'][:200]}")
+    if profile_data.get("target_role"):
+        parts.append(f"Ønsket rolle/karriereretning: {profile_data['target_role'][:120]}")
     if profile_data.get("goals"):
         parts.append(f"Mål: {profile_data['goals'][:200]}")
     active_goals = [g for g in profile_data.get("learning_goals", []) if g.get("status") == "aktiv"]

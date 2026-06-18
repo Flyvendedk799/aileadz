@@ -212,9 +212,24 @@
   function thinking(body) {
     const t = document.createElement("div");
     t.className = "think";
-    t.innerHTML = `<span class="d"></span><span class="d"></span><span class="d"></span>`;
+    // Accessible, labeled live region: screen readers announce the phase, and
+    // the silent first-content window is no longer unexplained dead air. The
+    // label updates as work progresses (see thinkStatus / tool_call below).
+    t.setAttribute("role", "status");
+    t.setAttribute("aria-live", "polite");
+    t.innerHTML = `<span class="d" aria-hidden="true"></span><span class="d" aria-hidden="true"></span><span class="d" aria-hidden="true"></span>`;
     body.appendChild(t); down();
+    thinkStatus(body, isProfiler ? "Gennemgår din profil…" : "Arbejder…");
     return t;
+  }
+  // Map a tool category/name to a human phase label for the status placeholder.
+  function phaseLabelFor(data) {
+    const cat = (data && data.category_key) || "";
+    if (cat === "catalog" || data.name === "catalog_search" || data.name === "search_courses") return "Søger i kataloget…";
+    if (cat === "profile") return "Opdaterer din profil…";
+    if (data && data.name === "suggest_learning_path") return "Bygger din læringssti…";
+    if (data && data.name === "recommend_for_profile") return "Finder kurser til din profil…";
+    return "Bruger værktøjer…";
   }
   // Backend 'thinking' events carry a status line ("Søger og analyserer…").
   // Show it next to the dots instead of dropping it on the floor.
@@ -255,6 +270,7 @@
           ${featured ? '<div class="course-featured-tag"><i class="fa-solid fa-wand-magic-sparkles"></i> Bedste match</div>' : ""}
           <div class="course-kick">${esc(c.vendor)}</div>
           <div class="course-title">${esc(c.title)}</div>
+          ${c.why ? `<div class="course-why"><i class="fa-solid fa-circle-check"></i><span>${esc(c.why)}</span></div>` : ""}
         </div>
         <div class="course-price">${c.old ? `<span class="old">${esc(c.old)}</span>` : ""}<span class="p">${esc(c.price)}</span>${c.agree ? '<span class="agree">Aftalepris</span>' : ""}</div>
         <div class="course-chev">${chevDown}</div>
@@ -587,10 +603,12 @@
   /* ============================================================
      REAL AI — talks to app1's streaming /ask endpoint (SSE)
      POST /app1/ask  {query}  →  data: {json}\n\n ... data: [DONE]
-     event types: meta | chunk | product | suggestions | notice |
-                  thinking | ping | tool_call | profile_confirm_request |
-                  profile_update | ui_card | memory_used |
-                  memory_saved | profiler_progress
+     event types: meta | chunk | product | course_cards | suggestions | notice |
+                  thinking | ping | tool_call | tool_progress | confirm_card |
+                  profile_confirm_request | profile_update | ui_card |
+                  memory_used | memory_saved | profiler_progress |
+                  ui_action | comparison_card | learning_path_card
+     (canonical list: app1/sse_events.py)
      ============================================================ */
   const ASK_URL = "/app1/ask";
 
@@ -660,6 +678,9 @@
     remember_about_user: "Gem hukommelse",
     recommend_for_profile: "Profilmatch",
     suggest_learning_path: "Læringssti",
+    save_learning_path: "Gem læringssti",
+    get_learning_path: "Hent læringssti",
+    open_in_app: "Åbn i appen",
     set_learning_goal: "Opret mål",
     get_learning_goals: "Hent mål",
     update_learning_goal: "Opdater mål",
@@ -931,10 +952,144 @@
   }
 
   function renderMemorySaved(body, data) {
+    // Inline "saved a memory" confirmation with a one-click correction: the AI
+    // writes inferred facts, so the user must be able to delete a wrong one
+    // right where it appears (not only on the Mind-Map).
     const wrap = document.createElement("div");
-    wrap.style.cssText = "display:inline-flex;align-items:center;gap:7px;margin:8px 0 2px;font-size:12px;font-weight:600;color:var(--fm-primary);background:color-mix(in srgb,var(--fm-primary) 9%,transparent);border:1px solid color-mix(in srgb,var(--fm-primary) 22%,transparent);border-radius:10px;padding:6px 11px;";
-    wrap.innerHTML = "🧠 <span>" + esc(data.message || ("Husket: " + (data.label || ""))) + "</span>";
+    wrap.className = "mem-chip mem-saved";
+    const label = document.createElement("span");
+    label.innerHTML = "🧠 <span>" + esc(data.message || ("Husket: " + (data.label || ""))) + "</span>";
+    wrap.appendChild(label);
+    if (data.id) {
+      const del = document.createElement("button");
+      del.type = "button";
+      del.className = "mem-chip-del";
+      del.title = "Forkert? Slet";
+      del.innerHTML = '<i class="fa-solid fa-xmark"></i> Forkert';
+      del.addEventListener("click", async () => {
+        del.disabled = true;
+        try {
+          const r = await fetch("/app1/memory/" + data.id, { method: "DELETE" });
+          const res = await r.json();
+          if (res.status === "ok") {
+            wrap.classList.add("removed");
+            label.innerHTML = "🧠 <span style='text-decoration:line-through;opacity:.6'>Slettet</span>";
+            del.remove();
+            refreshWorkspaceStatus();
+          } else { del.disabled = false; }
+        } catch (_) { del.disabled = false; }
+      });
+      wrap.appendChild(del);
+    }
     body.appendChild(wrap); down();
+  }
+
+  /* ---------------- cross-surface action card ---------------- */
+  // The agent can MOVE the user through the app via a ui_action directive. We
+  // render an explicit action button (never an auto-redirect) so navigation is
+  // always user-initiated; "view" actions open in a new tab, in-app flows
+  // (start order / open profiler) navigate the current tab on click.
+  const ACTION_ICONS = {
+    view_product: "fa-up-right-from-square", open_compare: "fa-scale-balanced",
+    open_profile: "fa-user-pen", open_mind_map: "fa-brain",
+    open_learning_path: "fa-route", open_catalog: "fa-magnifying-glass",
+    start_order: "fa-cart-plus", open_profiler: "fa-user-check",
+  };
+  function renderActionCard(body, data) {
+    const target = data.target || "";
+    if (!target) return;
+    const action = data.action || "";
+    const label = data.label || "Åbn";
+    const newTab = data.new_tab !== false && action !== "start_order" && action !== "open_profiler";
+    const card = document.createElement("div");
+    card.className = "ai-action-card";
+    const ico = ACTION_ICONS[action] || "fa-arrow-right";
+    card.innerHTML = `
+      <div class="ai-action-ic"><i class="fa-solid ${icon(ico)}"></i></div>
+      <div class="ai-action-body">
+        <div class="ai-action-title">${esc(data.title || label)}</div>
+        <div class="ai-action-sub">${esc(newTab ? "Åbner i ny fane" : "Åbner her")}</div>
+      </div>
+      <button class="ai-action-go" type="button">${esc(label)}</button>`;
+    card.querySelector(".ai-action-go").addEventListener("click", () => {
+      if (action === "start_order" && data.handle && !isLoggedIn()) {
+        toast("Log ind for at tilmelde dig", "courses"); return;
+      }
+      if (newTab) window.open(target, "_blank");
+      else window.location.href = target;
+    });
+    body.appendChild(card); down();
+  }
+
+  /* ---------------- analytical comparison card ---------------- */
+  function renderComparisonCard(body, data) {
+    const rows = Array.isArray(data.comparison) ? data.comparison : [];
+    if (rows.length < 2) return;
+    const analysis = data.analysis || {};
+    const winners = analysis.winners || {};
+    const card = document.createElement("div");
+    card.className = "compare-card";
+    const badge = (handle, txt) => `<span class="compare-badge">${esc(txt)}</span>`;
+    // Map handle -> array of "winner" labels for that course.
+    const wins = {};
+    const axisLabel = { cheapest: "Billigst", shortest: "Hurtigst", certification: "Certificering", soonest: "Tidligst" };
+    Object.keys(winners).forEach((axis) => {
+      const w = winners[axis];
+      if (w && w.handle) { (wins[w.handle] = wins[w.handle] || []).push(axisLabel[axis] || axis); }
+    });
+    const cols = rows.map((c) => {
+      const myWins = (wins[c.handle] || []).map((t) => badge(c.handle, t)).join("");
+      const facts = [];
+      if (c.price) facts.push(`<div class="cc-fact"><span>Pris</span><b>${esc(c.price)}</b></div>`);
+      if (c.duration_days) facts.push(`<div class="cc-fact"><span>Varighed</span><b>${esc(c.duration_days)} dag(e)</b></div>`);
+      if (c.certification) facts.push(`<div class="cc-fact"><span>Certificering</span><b>${esc(c.certification)}</b></div>`);
+      if (c.soonest_date) facts.push(`<div class="cc-fact"><span>Næste hold</span><b>${esc(c.soonest_date)}</b></div>`);
+      if (c.locations && c.locations.length) facts.push(`<div class="cc-fact"><span>Sted</span><b>${esc(c.locations.join(", "))}</b></div>`);
+      return `<div class="compare-col">
+        <div class="compare-col-h"><div class="cc-vendor">${esc(c.vendor || "")}</div><div class="cc-title">${esc(c.title || "")}</div>${myWins ? `<div class="compare-badges">${myWins}</div>` : ""}</div>
+        <div class="cc-facts">${facts.join("")}</div>
+        ${c.handle ? `<button class="cc-open" data-h="${esc(c.handle)}">Åbn kurset</button>` : ""}
+      </div>`;
+    }).join("");
+    card.innerHTML = `
+      <div class="compare-head"><i class="fa-solid fa-scale-balanced"></i><span>Sammenligning</span></div>
+      <div class="compare-grid">${cols}</div>
+      ${analysis.verdict ? `<div class="compare-verdict"><i class="fa-solid fa-lightbulb"></i><span>${esc(analysis.verdict)}</span></div>` : ""}`;
+    card.querySelectorAll(".cc-open").forEach((b) =>
+      b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(b.getAttribute("data-h")), "_blank")));
+    body.appendChild(card); down();
+  }
+
+  /* ---------------- learning-path card ---------------- */
+  function renderLearningPathCard(body, data) {
+    const path = data.path || {};
+    const steps = Array.isArray(path.steps) ? path.steps : [];
+    if (!steps.length) return;
+    const card = document.createElement("div");
+    card.className = "lpath-card";
+    const totals = [];
+    if (path.total_duration_days) totals.push(`<span><i class="fa-solid fa-clock"></i> ${esc(path.total_duration_days)} dage</span>`);
+    if (path.total_cost != null) totals.push(`<span><i class="fa-solid fa-tag"></i> ca. ${Number(path.total_cost).toLocaleString("da-DK")} kr</span>`);
+    const stepsHtml = steps.map((s, i) => {
+      const courses = (s.courses || []).map((c) =>
+        `<button class="lp-course" data-h="${esc(c.handle || "")}"><i class="fa-solid fa-graduation-cap"></i> ${esc(c.title || "")}</button>`).join("");
+      return `<div class="lp-step">
+        <div class="lp-step-no">${i + 1}</div>
+        <div class="lp-step-body">
+          <div class="lp-step-top">${s.level ? `<span class="lp-level">${esc(s.level)}</span>` : ""}<span class="lp-topic">${esc(s.topic || "")}</span></div>
+          ${s.reason ? `<div class="lp-reason">${esc(s.reason)}</div>` : ""}
+          ${courses ? `<div class="lp-courses">${courses}</div>` : ""}
+        </div></div>`;
+    }).join("");
+    card.innerHTML = `
+      <div class="lpath-head"><i class="fa-solid fa-route"></i><span>${esc(path.title || "Din læringssti")}</span></div>
+      ${totals.length ? `<div class="lpath-totals">${totals.join("")}</div>` : ""}
+      <div class="lpath-steps">${stepsHtml}</div>`;
+    card.querySelectorAll(".lp-course").forEach((b) => {
+      const h = b.getAttribute("data-h");
+      if (h) b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(h), "_blank"));
+    });
+    body.appendChild(card); down();
   }
 
   async function streamFromBackend(body, actualQuery) {
@@ -1075,6 +1230,15 @@
           } else if (data.type === "confirm_card") {
             // Side-effect tool preview: render Bekræft/Afvis card (Phase 8/9)
             renderConfirmCard(body, data);
+          } else if (data.type === "ui_action") {
+            // Cross-surface navigation directive → explicit action button.
+            renderActionCard(body, data);
+          } else if (data.type === "comparison_card") {
+            // Analytical comparison with per-axis winners + verdict.
+            renderComparisonCard(body, data);
+          } else if (data.type === "learning_path_card") {
+            // Sequenced, grounded learning path.
+            renderLearningPathCard(body, data);
           }
         }
       }
@@ -1093,7 +1257,16 @@
       if (currentAbort === controller) currentAbort = null;
     }
     renderFinal();
-    // Render suggestion chips last, like the source UI.
+    // Render suggestion chips last, like the source UI. The server now
+    // guarantees a set, but keep a client-side net so a turn never dead-ends
+    // even if the suggestions event is dropped.
+    if (!suggestions || !suggestions.length) {
+      suggestions = cardsSeen > 0
+        ? ["Sammenlign de to bedste", "Vis billigere alternativer", "Fortæl mig mere"]
+        : (isProfiler
+            ? ["Hvad mangler i min profil?", "Find kurser til min profil"]
+            : ["Vis populære kurser", "Hjælp mig med at vælge"]);
+    }
     if (suggestions && suggestions.length) addChips(body, suggestions);
     return { fullText: fullText, messageIndex: messageIndex, eventsReceived: eventsReceived };
   }

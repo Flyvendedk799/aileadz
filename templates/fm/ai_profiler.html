@@ -6,7 +6,7 @@
 {% block body_class %}chat-page profiler-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=7" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=8" />
 <style>
   /* Reuse the chat shell's variable remap (chat.css is a self-contained dark
      theme driven by variables). Identical to fm/chat.html. */
@@ -123,7 +123,7 @@
 {% block extra_scripts %}
 <script>window.CHAT_MODE = 'profiler';</script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=12"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=13"></script>
 <script>
   (function () {
     function setProfilerStats(d) {
@@ -155,22 +155,40 @@
         miss.innerHTML = '<span class="prof-tag done">Profilen er komplet 🎉</span>';
       }
     };
-    // Seed the ring from the current profile before the first message.
-    fetch('/api/profile/mindmap', { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) { setProfilerStats(d); if (d && d.completeness) window.onProfilerProgress(d.completeness); })
-      .catch(function () { });
-    // "Start" → ask the profiler to drive the conversation.
-    var startBtn = document.getElementById('profStart');
-    if (startBtn) startBtn.addEventListener('click', function () {
+    function startProfiler(seedSection) {
       var input = document.getElementById('input');
       var send = document.getElementById('send');
-      if (input && send) {
-        input.value = 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
-        input.dispatchEvent(new Event('input', { bubbles: true }));
-        send.click();
-      }
-    });
+      if (!input || !send) return;
+      input.value = seedSection
+        ? ('Hjælp mig med at gøre min profil komplet. Start med min ' + seedSection + ', og stil mig ét spørgsmål ad gangen.')
+        : 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      send.click();
+    }
+    // Seed the ring from the current profile, then PROACTIVELY open the
+    // interview: if the profile is incomplete and the thread is empty, auto-ask
+    // the first targeted question (once per browser session, so a navigation
+    // back doesn't re-fire it). This replaces the old "looks idle until you
+    // click Start" cold-start dead end.
+    fetch('/api/profile/mindmap', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) {
+        setProfilerStats(d);
+        var c = d && d.completeness;
+        if (c) window.onProfilerProgress(c);
+        var thread = document.getElementById('thread');
+        var empty = !thread || !thread.querySelector('.msg');
+        var alreadyStarted = sessionStorage.getItem('fmProfilerAutoStarted') === '1';
+        if (c && (c.pct || 0) < 100 && empty && !alreadyStarted) {
+          sessionStorage.setItem('fmProfilerAutoStarted', '1');
+          var weak = (c.missing && c.missing.length) ? c.missing[0].toLowerCase() : '';
+          setTimeout(function () { startProfiler(weak); }, 500);
+        }
+      })
+      .catch(function () { });
+    // "Start" → ask the profiler to drive the conversation (manual fallback).
+    var startBtn = document.getElementById('profStart');
+    if (startBtn) startBtn.addEventListener('click', function () { startProfiler(''); });
   })();
 </script>
 {% endblock %}

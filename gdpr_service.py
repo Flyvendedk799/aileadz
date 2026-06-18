@@ -155,6 +155,7 @@ _EXPORT_QUERIES = [
     ("user_conversations", "SELECT * FROM user_conversations WHERE username=%s"),
     ("conversation_history", "SELECT * FROM conversation_history WHERE username=%s"),
     ("user_learning_goals", "SELECT * FROM user_learning_goals WHERE username=%s"),
+    ("user_learning_paths", "SELECT * FROM user_learning_paths WHERE username=%s"),
     # 2026-06 profile tables (certificeringer, sprog, portfolio-links).
     ("user_certifications", "SELECT * FROM user_certifications WHERE username=%s"),
     ("user_languages", "SELECT * FROM user_languages WHERE username=%s"),
@@ -319,6 +320,7 @@ _DELETE_TABLES = [
     ("user_conversations", "username"),
     ("conversation_history", "username"),
     ("user_learning_goals", "username"),
+    ("user_learning_paths", "username"),
     # 2026-06 profile tables (certificeringer, sprog, portfolio-links).
     ("user_certifications", "username"),
     ("user_languages", "username"),

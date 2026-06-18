@@ -58,21 +58,30 @@ _HOME_ACTIVE_STATUSES = frozenset({'approved', 'processing', 'confirmed'})
 def _home_skill_completeness(profile):
     """Profile-completeness ring data from a get_full_profile() snapshot.
 
-    Mirrors the 5-section model used by my_profile.html so the ring number is
-    consistent across the two learner surfaces. Returns (pct, sections, has_skills).
+    Consumes the canonical profile_completeness() (user_profile_db) so the ring
+    number is identical across the employee home, profile page, profiler ring
+    and mind-map — one source of truth, no per-surface drift. Returns
+    (pct, sections, has_skills) for backwards compatibility with the template.
     """
     profile = profile or {}
-    skills = profile.get('skills') or []
-    sections = [
-        {'key': 'Profil', 'done': bool(profile.get('headline') or profile.get('bio'))},
-        {'key': 'Kompetencer', 'done': len(skills) > 0},
-        {'key': 'Erfaring', 'done': len(profile.get('experience') or []) > 0},
-        {'key': 'Uddannelse', 'done': len(profile.get('education') or []) > 0},
-        {'key': 'Mål', 'done': bool(profile.get('goals'))},
-    ]
-    done = sum(1 for s in sections if s['done'])
-    pct = round(done / len(sections) * 100) if sections else 0
-    return pct, sections, bool(skills)
+    try:
+        from app1.user_profile_db import profile_completeness
+        c = profile_completeness(None, profile=profile)
+        sections = [{'key': s.get('label'), 'done': s.get('done')} for s in c.get('sections', [])]
+        return c.get('pct', 0), sections, len(profile.get('skills') or []) > 0
+    except Exception:
+        # Defensive fallback: never break the home page on a completeness hiccup.
+        skills = profile.get('skills') or []
+        sections = [
+            {'key': 'Profil', 'done': bool(profile.get('headline') or profile.get('bio'))},
+            {'key': 'Kompetencer', 'done': len(skills) > 0},
+            {'key': 'Erfaring', 'done': len(profile.get('experience') or []) > 0},
+            {'key': 'Uddannelse', 'done': len(profile.get('education') or []) > 0},
+            {'key': 'Mål', 'done': bool(profile.get('goals'))},
+        ]
+        done = sum(1 for s in sections if s['done'])
+        pct = round(done / len(sections) * 100) if sections else 0
+        return pct, sections, bool(skills)
 
 
 def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):

@@ -281,6 +281,36 @@ def manage_profile_summary_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+@api_bp.route('/api/profile/completeness', methods=['GET'])
+@login_required
+def get_profile_completeness_api():
+    """Unified, depth-aware profile completeness — the single source of truth
+    consumed by the profile page, employee home, profiler ring and mind-map so
+    the same profile never shows a different % on different surfaces."""
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import profile_completeness, ensure_tables
+        ensure_tables()
+        return jsonify({'success': True, 'completeness': profile_completeness(username)})
+    except Exception as e:
+        current_app.logger.error("Profile completeness API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/learning-paths', methods=['GET'])
+@login_required
+def get_profile_learning_paths_api():
+    """The user's saved, AI-built learning paths (shown on the profile page)."""
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import get_learning_paths, ensure_tables
+        ensure_tables()
+        return jsonify({'success': True, 'learning_paths': get_learning_paths(username, limit=10)})
+    except Exception as e:
+        current_app.logger.error("Profile learning-paths API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
 @api_bp.route('/api/profile/certifications', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @login_required
 def manage_certifications_api():

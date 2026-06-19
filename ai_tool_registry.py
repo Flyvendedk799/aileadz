@@ -117,6 +117,14 @@ _EMPLOYEE_META = {
     "open_in_app": ToolMeta(
         "open_in_app", toolset_tags=("navigation", "ui"), cache_ttl=0,
     ),
+    # Read-only profile snapshots rendered as inline chat cards (no mutation).
+    # The card itself links the user on to the 3D CV portal / mind-map.
+    "show_cv_summary": ToolMeta(
+        "show_cv_summary", auth_required=True, toolset_tags=("profile", "ui"), cache_ttl=20,
+    ),
+    "show_mindmap_preview": ToolMeta(
+        "show_mindmap_preview", auth_required=True, toolset_tags=("profile", "ui"), cache_ttl=20,
+    ),
     "save_learning_path": ToolMeta(
         "save_learning_path", auth_required=True, parallel_safe=False,
         toolset_tags=("profile", "path"),
@@ -316,6 +324,8 @@ _TOOL_LABELS = {
     "suggest_learning_path": "Læringssti",
     "recommend_for_profile": "Profilmatch",
     "open_in_app": "Åbn i appen",
+    "show_cv_summary": "CV-oversigt",
+    "show_mindmap_preview": "Mind-Map",
     "save_learning_path": "Gem læringssti",
     "get_learning_path": "Hent læringssti",
     "set_learning_goal": "Opret mål",
@@ -713,6 +723,18 @@ _TOOL_TRIGGERS = {
     "catalog_compare_products": (
         "compare courses", "sammenlign kurser", "compare these", "compare them",
     ),
+    "show_cv_summary": (
+        "my cv", "mit cv", "min profil", "my profile", "show my cv", "vis mit cv",
+        "vis min profil", "cv oversigt", "cv-oversigt", "profile summary",
+        "what is on my cv", "hvad står der på mit cv", "mine kompetencer",
+        "what skills do i have", "min baggrund", "opsummer min profil",
+    ),
+    "show_mindmap_preview": (
+        "mind map", "mind-map", "mindmap", "what do you remember", "hvad husker du",
+        "hvad ved du om mig", "what do you know about me", "min profiloversigt",
+        "vis min mind-map", "show my mind map", "min hukommelse", "my memories",
+        "hvor langt er jeg med min profil", "profile completeness",
+    ),
 }
 
 # Token splitter shared with the fallback scorer.
@@ -871,6 +893,16 @@ def get_employee_tool_selection(
     if logged_in:
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, ("profil", "cv", "kompetence", "erfaring", "uddannelse")):
             names.update({"get_user_profile", "update_user_profile", "request_user_input"})
+            # Inline read-only CV snapshot card (links on to the 3D CV portal). The
+            # model decides between summarising in chat vs sending the user to upload.
+            names.add("show_cv_summary")
+        # Mind-map / "what do you remember about me" → inline preview card with a
+        # link to the 3D globe. Read-only; the model chooses to show it or not.
+        if _has_any(query, (
+                "mind-map", "mind map", "mindmap", "hvad husker du", "hvad ved du om mig",
+                "what do you remember", "what do you know about me", "min hukommelse",
+                "mine hukommelser", "profiloversigt", "hvor langt er jeg")):
+            names.update({"show_mindmap_preview", "get_user_profile"})
         if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt",
                             "learning path", "min plan", "min sti", "min læringsplan", "min laeringsplan",
                             "gem stien", "gem planen", "vis min sti", "vis min plan", "hvor langt er jeg")):

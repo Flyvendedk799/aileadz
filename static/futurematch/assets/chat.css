@@ -1317,3 +1317,77 @@ body.chat-page.light-mode .md blockquote {
 }
 .lp-course:hover { color: var(--teal); border-color: var(--teal-3); transform: translateY(-1px); }
 .lp-course i { color: var(--teal); font-size: 10px; }
+
+/* ── CV summary card ──────────────────────────────────────────────────────── */
+.cv-summary-card {
+  margin: 12px 0; border-radius: 15px; overflow: hidden;
+  border: 1px solid var(--line-2); background: var(--card);
+}
+.cv-summary-head {
+  display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+  font-size: 13px; font-weight: 700; color: var(--ink);
+  background: var(--card-2); border-bottom: 1px solid var(--line);
+}
+.cv-summary-head i { color: var(--teal); }
+.csv-total { margin-left: auto; font-size: 10.5px; font-weight: 600; color: var(--ink-3); }
+.csv-pills { display: flex; flex-wrap: wrap; gap: 7px; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+.csv-pill {
+  display: flex; align-items: center; gap: 5px; padding: 5px 9px; border-radius: 10px;
+  font-size: 11.5px; background: var(--card-2); border: 1px solid var(--line-2);
+  color: var(--ink-3);
+}
+.csv-pill.has { color: var(--ink-2); border-color: var(--teal-3); }
+.csv-pill i { color: var(--teal); font-size: 10px; }
+.csv-pill b { font-weight: 800; color: var(--teal); }
+.csv-preview { display: flex; flex-wrap: wrap; gap: 5px; padding: 9px 14px; border-bottom: 1px solid var(--line); }
+.csv-tag {
+  font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px;
+  background: var(--teal-glow); border: 1px solid var(--teal-glow-2); color: var(--teal);
+}
+.csv-tag.exp { background: var(--clay-glow, rgba(201,96,58,.08)); border-color: rgba(201,96,58,.2); color: var(--clay, #c9603a); }
+.csv-empty { padding: 12px 14px; font-size: 12.5px; color: var(--ink-3); font-style: italic; border-bottom: 1px solid var(--line); }
+.csv-footer { display: flex; gap: 8px; padding: 11px 14px; }
+.csv-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  height: 33px; padding: 0 14px; border-radius: 9px; cursor: pointer;
+  font-size: 12px; font-weight: 700; transition: .16s;
+  border: 1px solid var(--line-2); background: var(--card-2); color: var(--ink-2);
+}
+.csv-btn i { font-size: 11px; }
+.csv-btn:hover { color: var(--teal); border-color: var(--teal-3); transform: translateY(-1px); }
+.csv-btn.primary { background: var(--teal); border-color: transparent; color: #1a120c; }
+.csv-btn.primary:hover { background: var(--teal-2, var(--teal)); color: #fff; }
+
+/* ── Mind-map preview card ────────────────────────────────────────────────── */
+.mindmap-prev-card {
+  margin: 12px 0; border-radius: 15px; overflow: hidden;
+  border: 1px solid var(--line-2); background: var(--card);
+}
+.mmp-head {
+  display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+  font-size: 13px; font-weight: 700; color: var(--ink);
+  background: var(--card-2); border-bottom: 1px solid var(--line);
+}
+.mmp-head i { color: var(--teal); }
+.mmp-pct { margin-left: auto; font-size: 15px; font-weight: 800; color: var(--teal); }
+.mmp-bar-wrap { height: 3px; background: var(--line); }
+.mmp-bar { height: 100%; background: var(--teal); transition: width .8s ease; }
+.mmp-cats { display: flex; flex-wrap: wrap; gap: 1px; background: var(--line); border-bottom: 1px solid var(--line); }
+.mmp-cat {
+  flex: 1; min-width: 80px; display: flex; justify-content: space-between;
+  align-items: center; padding: 7px 12px; background: var(--card); font-size: 11px;
+}
+.mmp-cat span { color: var(--ink-3); }
+.mmp-cat b { color: var(--ink); font-weight: 700; }
+.mmp-mems-head {
+  padding: 8px 14px 4px; font-size: 10.5px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--ink-3);
+  border-top: 1px solid var(--line);
+}
+.mmp-mems { padding: 0 14px 6px; }
+.mmp-mem {
+  display: flex; align-items: center; gap: 7px; padding: 5px 0;
+  font-size: 12px; color: var(--ink-2); border-bottom: 1px solid var(--line);
+}
+.mmp-mem:last-child { border-bottom: none; }
+.mmp-mem i { color: var(--teal); font-size: 10px; flex: 0 0 auto; }

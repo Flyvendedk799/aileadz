@@ -1870,13 +1870,28 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         focus_line = f"\nNÆSTE BEDSTE SPØRGSMÅL: spørg ind til '{weak_label}'." if weak_label else ""
                         role_line = ("\nHar brugeren ingen ønsket rolle/karriereretning endnu, så spørg om den — "
                                      "den styrer alle anbefalinger.") if not _profiler_completeness.get("target_role") else ""
+                        # Gap-aware targeting: once a target role exists, surface the
+                        # biggest computed gaps so the profiler asks purposeful
+                        # questions ("du vil være X — hvor stærk er din SQL?") and can
+                        # close the loop with a gap-grounded recommendation.
+                        gap_line = ""
+                        try:
+                            if _profiler_completeness.get("target_role"):
+                                from competency import compute_skill_gaps
+                                _pgaps = compute_skill_gaps(logged_in_user)
+                                if _pgaps:
+                                    _top = ", ".join(g["skill"] for g in _pgaps[:3])
+                                    gap_line = (f"\nSTØRSTE KOMPETENCEGAB mod '{_profiler_completeness['target_role']}': {_top}."
+                                                " Afdæk brugerens niveau i disse, og tilbyd til sidst kurser der lukker dem.")
+                        except Exception:
+                            gap_line = ""
                         ephemeral_messages.insert(insert_idx, {
                             "role": "system",
                             "content": SYSTEM_PLAYBOOK_PROFILER
                                        + f"\n\nAKTUEL PROFIL: {_profiler_completeness['pct']}% udfyldt"
                                          f" ({_profiler_completeness.get('weighted_pct', _profiler_completeness['pct'])}% dybde)."
                                          f" Mangler stadig: {missing}."
-                                       + focus_line + role_line
+                                       + focus_line + role_line + gap_line
                         })
                         insert_idx += 1
                     except Exception as e:
@@ -2403,6 +2418,18 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             "categories": tool_result_dict.get("categories", {}),
                             "counts": tool_result_dict.get("counts", {}),
                             "recent_memories": tool_result_dict.get("recent_memories", []),
+                        }, ensure_ascii=False, default=str))
+
+                elif fn == "show_skill_gaps":
+                    if tool_result_dict.get("status") == "skill_gaps":
+                        from app1.sse_events import SKILL_GAPS_CARD
+                        buffered_extra_events.append(json.dumps({
+                            "type": SKILL_GAPS_CARD,
+                            "gaps": tool_result_dict.get("gaps", []),
+                            "count": tool_result_dict.get("count", 0),
+                            "target_role": tool_result_dict.get("target_role", ""),
+                            "has_gaps": tool_result_dict.get("has_gaps", False),
+                            "reason": tool_result_dict.get("reason", ""),
                         }, ensure_ascii=False, default=str))
 
                 elif tool_result_dict.get("needs_confirmation"):

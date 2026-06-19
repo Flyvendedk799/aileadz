@@ -79,6 +79,7 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 | `confirm_card` | agent (needs_confirmation tools) | `renderConfirmCard` | opaque `token`, summary, price |
 | **`cv_summary_card`** | agent (`show_cv_summary`) | `renderCvSummaryCard` | `sections{skills[],experience[],…}`, `counts{}`, `total`, `has_cv`, `focus` |
 | **`mindmap_card`** | agent (`show_mindmap_preview`) | `renderMindmapCard` | `completeness{}`, `categories{}`, `counts{}`, `recent_memories[]` |
+| **`skill_gaps_card`** | agent (`show_skill_gaps`) | `renderSkillGapsCard` | `gaps[]` (each `{skill,category,current_level,current_label,target_level,target_label,gap,source,priority}`), `target_role`, `has_gaps`, `reason` |
 | `[DONE]` | terminal | end-of-turn | — |
 
 **Guidance guarantee (new):** a turn never dead-ends — if the model omits
@@ -155,6 +156,19 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   a progress bar + "Åbn 3D Mind-Map" link → `/mind-map`. Reaches the menu on
   mind-map / "hvad husker du om mig" keywords + semantic fallback; guarded by
   `test_mindmap_preview_reachable_on_memory_query`.
+- **`show_skill_gaps`** (new, profile-gated) — the grounded bridge to
+  recommendations. Calls `competency.compute_skill_gaps(username)` (current vs
+  target on the canonical 1-5 scale, from `company_skill_targets` + `target_role`
+  + learning goals) and emits a `skill_gaps_card` (current→target bars) whose
+  CTA asks for gap-closing courses. The result JSON IS the data the model reasons
+  over, so it can chain `show_skill_gaps → recommend_for_profile`. Reaches the
+  menu on "hvad mangler jeg / hvilke kompetencer / what should I learn" keywords
+  + semantic fallback; guarded by `test_skill_gaps_reachable_on_gap_query`.
+- **Gap-grounded recommendations (new):** `recommend_for_profile` and
+  `suggest_learning_path` now seed their query/plan from `compute_skill_gaps`
+  (not "skills rated low"); a recommendation's `match_reason` is the verifiable
+  gap it closes ("lukker dit gap i X (mellem→avanceret)") when the course
+  actually mentions the gap skill — never an LLM guess.
 - **Discoverability of the 3D surfaces** (non-chat): both `/profil-upload` and
   `/mind-map` are in the employee sidebar (`fm_base.html`, `page_id` drives the
   active state) and linked from the profile hero (`my_profile.html`); CV upload
@@ -171,6 +185,18 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   certifications, languages, portfolio_links, memories, learning_goals, and the
   new **`user_learning_paths`**). `ensure_tables()` runs idempotent
   CREATE/ALTER migrations every boot.
+- **Competency layer — `competency.py` (the "B" in A→C):** the single home for
+  turning free-text skills into a clean signal. `canonical_skill()` (alias map +
+  acronyms; "js"→JavaScript, "python3"→Python) + `skill_category()` run on every
+  skill write (`add_skill`, `/api/cv/apply`, chat `update_user_profile`), so
+  storage is deduped + categorized (`user_skills.category` column). The canonical
+  **1-5 scale is REUSED from `hr_tools.SKILL_LEVEL_MAP`** (begynder=1…ekspert=5),
+  never forked — so employee self-reports and HR targets share one scale.
+  `compute_skill_gaps(username)` diffs current skills against required ones
+  (`company_skill_targets` + `target_role` via `ROLE_SKILL_HINTS` + goals) and is
+  the grounding source for `show_skill_gaps` / `recommend_for_profile` /
+  `suggest_learning_path`. Fully guarded + offline-safe. REST:
+  `GET /api/profile/skill-gaps`.
 - **Completeness — one source of truth:** `profile_completeness(username,
   profile=None)` (`user_profile_db.py:846`). The 8-section binary
   `pct`/`total`/`missing` contract is unchanged (tests depend on it); it now
@@ -199,16 +225,21 @@ profile hero, and (CV) `employee_home`.
 - **CV portal** (`/profil-upload` → `templates/fm/cv_upload.html`, Three.js +
   tween.js via ESM importmap). Has its **own SSE pipeline, separate from the
   chat vocabulary in §3** — built in `api.py`:
-  - `POST /api/cv/parse` (`api.py:491`, multipart) — extracts text
-    (`cv_ingest.extract_text`, PDF/text/**image-OCR**) and runs the LLM parse in
-    a **background thread**, storing the result in the module-level dict
-    `_cv_parse_results[session_id] = {proposal, hint}` (or `{error}`).
-  - `GET /api/cv/parse-stream` (`api.py:518`, SSE) — emits `stage` progress
-    events on a timed schedule while **polling `_cv_parse_results`**, then emits
-    one terminal `result` (`{proposal, hint}`) or `error`. Event names here are
-    `stage` / `chunk` / `result` / `error` — NOT the chat `type` strings.
-    (Flask can't push to a connection before it exists, hence the
-    parse-writes-dict / stream-polls-dict split.)
+  - `POST /api/cv/parse` (multipart) — validates type/size (≤8 MB, whitelisted
+    exts), extracts text (`cv_ingest.extract_text`, PDF/text/**image-OCR**, now
+    with OCR timeouts + a `delimit_untrusted` prompt-injection fence) and runs
+    the LLM parse in a **background thread that pushes its own `app_context`**
+    (a raw daemon thread has no `current_app`), storing the result via
+    **`cv_parse_store`**.
+  - **`cv_parse_store.py` (durable, cross-worker)** replaces the old
+    process-local `_cv_parse_results` dict, which was broken under multiple
+    gunicorn workers (parse thread on worker B, SSE poller on worker A → never
+    saw the result) and leaked. Mirrors `confirm_store`: MySQL `ai_cv_parse_jobs`
+    + in-process fallback + TTL sweep. `start`/`finish`/`read`/`discard`.
+  - `GET /api/cv/parse-stream` (SSE) — stage labels advance on a gentle schedule
+    but **completion is driven off the real `cv_parse_store.read`** result, then
+    emits one terminal `result` (`{proposal, hint}`) or `error`. Event names here
+    are `stage` / `result` / `error` — NOT the chat `type` strings.
   - `POST /api/cv/apply` (`api.py:598`, JSON `{session_id, accepted:[…]}`) —
     writes approved items via `add_skill/experience/education/certification/
     language`. **Level vocab must be normalised** through `_SKILL_LEVEL_MAP` /
@@ -304,9 +335,12 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
   --set-baseline`.
 - The co-pilot upgrade's offline coverage is in
   `tests/test_ai_copilot_upgrade.py` (incl. tool-reachability guards for
-  `show_cv_summary` / `show_mindmap_preview`).
+  `show_cv_summary` / `show_mindmap_preview` / **`show_skill_gaps`**).
 - CV ingestion + apply coverage (level-vocab round-trip, image-OCR routing) is
   in `tests/test_cv_ingest_apply.py`.
+- **Competency layer** (canon/categories/scale/gap engine) in
+  `tests/test_competency.py`; the **durable CV parse store** + CV-apply
+  level-validity contract in `tests/test_cv_parse_store.py`.
 
 ---
 
@@ -319,7 +353,9 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | Per-turn tool selection + metadata + reachability fallback | `ai_tool_registry.py` |
 | Shared model loop, tool-call events, model routing | `ai_runtime.py` |
 | RAG retrieval / ranking | `app1/rag.py` |
-| Profile store, completeness, learning paths | `app1/user_profile_db.py` |
+| Profile store, completeness, learning paths | `app1/user_profile_db.py` (skills now canonicalized + categorized + level-validated on write) |
+| **Competency layer (canon, categories, 1-5 scale bridge, gap engine)** | `competency.py` (reuses `hr_tools.SKILL_LEVEL_MAP`; `compute_skill_gaps`) |
+| **CV parse-job store (durable, cross-worker)** | `cv_parse_store.py` (`ai_cv_parse_jobs` + in-proc fallback) |
 | Grounding / chain-of-custody | `grounding.py` |
 | Confirm-token store | `app1/confirm_store.py` |
 | SSE event vocabulary (canonical) | `app1/sse_events.py` |

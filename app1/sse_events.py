@@ -52,6 +52,7 @@ CONFIRM_CARD = "confirm_card"
 # CV + Mind-map inline cards
 CV_SUMMARY_CARD = "cv_summary_card"    # structured CV snapshot + portal CTA
 MINDMAP_CARD = "mindmap_card"          # mind-map stats + 3D globe link
+SKILL_GAPS_CARD = "skill_gaps_card"    # per-learner current→target gaps (1-5 scale)
 
 # The full set the frontend is expected to handle (used by the drift test so a
 # new producer event without a consumer branch fails loudly in CI).
@@ -63,7 +64,7 @@ KNOWN_EVENT_TYPES = frozenset({
     PROFILE_UPDATE, PROFILE_CONFIRM_REQUEST, UI_CARD,
     MEMORY_USED, MEMORY_SAVED, PROFILER_PROGRESS,
     CONFIRM_CARD,
-    CV_SUMMARY_CARD, MINDMAP_CARD,
+    CV_SUMMARY_CARD, MINDMAP_CARD, SKILL_GAPS_CARD,
 })
 
 # Cross-surface action verbs accepted by the open_in_app tool and the chat.js

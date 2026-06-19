@@ -28,6 +28,7 @@ _TABLES_SQL = [
         username VARCHAR(255) NOT NULL,
         skill_name VARCHAR(255) NOT NULL,
         skill_level ENUM('begynder','mellem','avanceret','ekspert') DEFAULT 'mellem',
+        category VARCHAR(60) DEFAULT NULL,
         source VARCHAR(50) DEFAULT 'manual',
         added_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY unique_skill (username, skill_name),
@@ -251,6 +252,23 @@ def ensure_tables():
                 except Exception:
                     pass
 
+        # Idempotent migration: add the canonical `category` column to an existing
+        # user_skills table (competency.skill_category buckets skills for the UI +
+        # gap cards). Safe to run every boot.
+        try:
+            cur.execute("SELECT category FROM user_skills LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("ALTER TABLE user_skills ADD COLUMN category VARCHAR(60) DEFAULT NULL")
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] user_skills.category migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
+
         # Idempotent migration: add the cert-expiry reminder marker to an existing
         # user_certifications table (so the daily cert-expiry job can dedupe). Safe
         # to run every boot — a duplicate-column error just rolls back and is ignored.
@@ -276,29 +294,73 @@ def ensure_tables():
 
 # ── Skills CRUD ──
 
+# Canonical employee-facing skill-level enum. add_skill/update_skill_level
+# validate against this (parity with languages, which already coerced) so an
+# invalid level can never silently fail the ENUM insert.
+SKILL_LEVELS = ("begynder", "mellem", "avanceret", "ekspert")
+
+
+def is_valid_skill_level(level):
+    return (level or "").strip().lower() in SKILL_LEVELS
+
+
+def _coerce_skill_level(level):
+    t = (level or "").strip().lower()
+    return t if t in SKILL_LEVELS else "mellem"
+
+
 def get_skills(username):
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute("SELECT id, skill_name, skill_level, source FROM user_skills WHERE username = %s ORDER BY skill_name", (username,))
+    cur.execute("SELECT id, skill_name, skill_level, category, source FROM user_skills WHERE username = %s ORDER BY category, skill_name", (username,))
     rows = cur.fetchall()
     cur.close()
     return list(rows)
 
 
 def add_skill(username, skill_name, skill_level="mellem", source="chatbot"):
-    cur = current_app.mysql.connection.cursor()
+    """Add/upsert a skill, canonicalized + deduped + categorized.
+
+    The competency layer canonicalizes the name (so "python"/"Python3"/"JS"
+    collapse) and assigns a category. A case-insensitive match against any
+    existing row is treated as the SAME skill (source-merge): the level is
+    upgraded but never downgraded — a CV import must not knock a manually-set
+    'ekspert' down to 'mellem'. The level is validated (coerced into the enum)
+    so the insert can never silently fail.
+    """
+    from competency import canonical_skill, skill_category, level_to_score
+    name = canonical_skill(skill_name)
+    if not name:
+        return False
+    level = _coerce_skill_level(skill_level)
+    category = skill_category(name)
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
     cur.execute(
-        "INSERT INTO user_skills (username, skill_name, skill_level, source) VALUES (%s, %s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE skill_level = VALUES(skill_level), source = VALUES(source)",
-        (username, skill_name.strip(), skill_level, source)
+        "SELECT id, skill_name, skill_level FROM user_skills "
+        "WHERE username = %s AND LOWER(skill_name) = LOWER(%s) LIMIT 1",
+        (username, name),
     )
+    existing = cur.fetchone()
+    if existing:
+        best = level if level_to_score(level) >= level_to_score(existing["skill_level"]) else existing["skill_level"]
+        cur.execute(
+            "UPDATE user_skills SET skill_name = %s, skill_level = %s, category = %s, source = %s WHERE id = %s",
+            (name, best, category, source, existing["id"]),
+        )
+    else:
+        cur.execute(
+            "INSERT INTO user_skills (username, skill_name, skill_level, category, source) VALUES (%s, %s, %s, %s, %s) "
+            "ON DUPLICATE KEY UPDATE skill_level = VALUES(skill_level), category = VALUES(category), source = VALUES(source)",
+            (username, name, level, category, source),
+        )
     current_app.mysql.connection.commit()
     cur.close()
     return True
 
 
 def remove_skill(username, skill_name):
+    # Case-insensitive so the delete matches both legacy and canonical rows.
     cur = current_app.mysql.connection.cursor()
-    cur.execute("DELETE FROM user_skills WHERE username = %s AND skill_name = %s", (username, skill_name.strip()))
+    cur.execute("DELETE FROM user_skills WHERE username = %s AND LOWER(skill_name) = LOWER(%s)", (username, (skill_name or "").strip()))
     affected = cur.rowcount
     current_app.mysql.connection.commit()
     cur.close()
@@ -306,9 +368,14 @@ def remove_skill(username, skill_name):
 
 
 def update_skill_level(username, skill_name, new_level):
+    # Validate the level (coerce into the enum) + match case-insensitively, and
+    # refresh the category in case the row predates canonicalization.
+    from competency import skill_category
+    level = _coerce_skill_level(new_level)
+    name = (skill_name or "").strip()
     cur = current_app.mysql.connection.cursor()
-    cur.execute("UPDATE user_skills SET skill_level = %s WHERE username = %s AND skill_name = %s",
-                (new_level, username, skill_name.strip()))
+    cur.execute("UPDATE user_skills SET skill_level = %s, category = %s WHERE username = %s AND LOWER(skill_name) = LOWER(%s)",
+                (level, skill_category(name), username, name))
     affected = cur.rowcount
     current_app.mysql.connection.commit()
     cur.close()
@@ -325,12 +392,27 @@ def get_experience(username):
     return list(rows)
 
 
+def _coerce_year(v):
+    try:
+        return int(v) if v not in (None, "") else None
+    except (TypeError, ValueError):
+        return None
+
+
 def add_experience(username, title, company="", start_year=None, end_year=None, is_current=False, description=""):
+    # Date sanity: a current role has no end year; transposed years (start > end)
+    # are swapped so the timeline never renders a negative duration.
+    is_current = bool(is_current)
+    sy, ey = _coerce_year(start_year), _coerce_year(end_year)
+    if is_current:
+        ey = None
+    if sy and ey and sy > ey:
+        sy, ey = ey, sy
     cur = current_app.mysql.connection.cursor()
     cur.execute(
         "INSERT INTO user_experience (username, title, company, start_year, end_year, is_current, description) "
         "VALUES (%s, %s, %s, %s, %s, %s, %s)",
-        (username, title.strip(), company.strip(), start_year, end_year, int(is_current), description.strip() if description else None)
+        (username, title.strip(), company.strip(), sy, ey, int(is_current), description.strip() if description else None)
     )
     current_app.mysql.connection.commit()
     new_id = cur.lastrowid
@@ -599,6 +681,35 @@ def add_portfolio_link(username, label, url, kind=None, source="manual"):
     new_id = cur.lastrowid
     cur.close()
     return new_id
+
+
+def update_portfolio_link(username, link_id, label=None, url=None, kind=None):
+    """Edit a portfolio link (label/url/kind). Re-infers kind from a changed URL
+    when no explicit kind is given. Returns True if a row was updated."""
+    sets, params = [], []
+    if url is not None:
+        u = (url or "").strip()
+        if not u:
+            return False
+        sets.append("url = %s")
+        params.append(u[:500])
+        if kind not in _PORTFOLIO_KINDS:
+            kind = _infer_link_kind(u)
+    if label is not None:
+        sets.append("label = %s")
+        params.append((label or "").strip()[:150] or (url or "").strip()[:150])
+    if kind in _PORTFOLIO_KINDS:
+        sets.append("kind = %s")
+        params.append(kind)
+    if not sets:
+        return False
+    params.extend([link_id, username])
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(f"UPDATE user_portfolio_links SET {', '.join(sets)} WHERE id = %s AND username = %s", tuple(params))
+    affected = cur.rowcount
+    current_app.mysql.connection.commit()
+    cur.close()
+    return affected > 0
 
 
 def remove_portfolio_link(username, link_id):
@@ -1134,7 +1245,7 @@ def get_full_profile(username):
         "preferred_location": profile.get("preferred_location", ""),
         "preferred_format": profile.get("preferred_format", ""),
         "budget_range": profile.get("budget_range", ""),
-        "skills": [{"name": s["skill_name"], "level": s["skill_level"]} for s in skills],
+        "skills": [{"name": s["skill_name"], "level": s["skill_level"], "category": s.get("category") or ""} for s in skills],
         "experience": [
             {"id": e["id"], "title": e["title"], "company": e["company"],
              "start_year": e["start_year"], "end_year": e["end_year"],

@@ -297,6 +297,25 @@ class RegistryReachabilityTests(unittest.TestCase):
             user_query="vis mit cv", shown_count=0)
         self.assertNotIn("show_cv_summary", meta["tool_names"])
 
+    def test_skill_gaps_reachable_on_gap_query(self):
+        # The gap card is the grounded bridge to recommendations — it must reach
+        # the menu on "what am I missing" type queries (the 3-step reachability
+        # rule: schema + executor + menu).
+        _, meta = get_employee_tool_selection(
+            logged_in=True, company_id=True, intent="profile_update",
+            user_query="hvad mangler jeg for at blive data analyst?", shown_count=0)
+        self.assertIn("show_skill_gaps", meta["tool_names"])
+
+    def test_skill_gaps_english_paraphrase(self):
+        self.assertIn("show_skill_gaps",
+                      _semantic_tool_fallback("what skills do i need", already=set()))
+
+    def test_skill_gaps_requires_login(self):
+        _, meta = get_employee_tool_selection(
+            logged_in=False, company_id=None, intent="profile_update",
+            user_query="hvad mangler jeg", shown_count=0)
+        self.assertNotIn("show_skill_gaps", meta["tool_names"])
+
     def test_mindmap_preview_reachable_on_memory_query(self):
         _, meta = get_employee_tool_selection(
             logged_in=True, company_id=None, intent="discovery",

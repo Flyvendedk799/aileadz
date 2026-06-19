@@ -124,20 +124,126 @@
     <div style="padding:16px 18px;flex:1;display:flex;flex-direction:column;gap:15px;">
 
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
-        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);">{{ pSrc }}</span>
-        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);">{{ pTypeLabel }}</span>
+        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);">{{ pTypeLabel }}</span>
+        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);">{{ pSrc }}</span>
+        <sc-if value="{{ hasSkCategory }}" hint-placeholder-val="{{ false }}">
+          <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:{{ pColor }}1f;border:1px solid {{ pColor }};color:{{ pColor }};">{{ skCategory }}</span>
+        </sc-if>
       </div>
 
-      <div>
-        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
-          <span style="font-size:10px;opacity:.4;text-transform:uppercase;letter-spacing:.6px;">Konfidens</span>
-          <span style="font-size:13px;font-weight:700;color:{{ pColor }};">{{ pConf }}%</span>
+      <!-- SKILL: level on the canonical 1-5 scale + gap toward target -->
+      <sc-if value="{{ isSkill }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:10px;opacity:.4;text-transform:uppercase;letter-spacing:.6px;">Niveau</span>
+            <span style="font-size:13px;font-weight:700;color:{{ pColor }};">{{ skLevelLabel }}</span>
+          </div>
+          <div style="height:6px;background:rgba(255,255,255,.07);border-radius:3px;overflow:hidden;">
+            <div style="height:100%;width:{{ skPct }}%;background:{{ pColor }};border-radius:3px;transition:width .5s ease;"></div>
+          </div>
         </div>
-        <div style="height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;">
-          <div style="height:100%;width:{{ pConf }}%;background:{{ pColor }};border-radius:2px;transition:width .5s ease;"></div>
-        </div>
-      </div>
+        <sc-if value="{{ hasGap }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:12px 14px;background:rgba(251,191,36,.07);border-radius:10px;border:1px solid rgba(251,191,36,.22);">
+            <div style="display:flex;align-items:center;gap:7px;margin-bottom:6px;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#fbbf24" stroke-width="2.4"><path d="M12 2 2 7l10 5 10-5-10-5z"></path><path d="m2 17 10 5 10-5M2 12l10 5 10-5"></path></svg>
+              <span style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#fbbf24;">Kompetencegab · {{ gapPriority }}</span>
+            </div>
+            <div style="font-size:13px;font-weight:600;margin-bottom:10px;">{{ gapText }}</div>
+            <button onClick="{{ onFindCourses }}" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.1);color:#fde68a;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;">Find kurser der lukker gabet →</button>
+          </div>
+        </sc-if>
+      </sc-if>
 
+      <!-- EXPERIENCE: period, duration, employer -->
+      <sc-if value="{{ isExp }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Periode</span>
+            <span style="font-size:13px;font-weight:600;">{{ expPeriod }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Varighed</span>
+            <span style="font-size:13px;font-weight:600;">{{ expDuration }}</span>
+          </div>
+          <sc-if value="{{ hasExpCompany }}" hint-placeholder-val="{{ false }}">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;">
+              <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Virksomhed</span>
+              <span style="font-size:13px;font-weight:600;">{{ expCompany }}</span>
+            </div>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- EDUCATION -->
+      <sc-if value="{{ isEdu }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Institution</span>
+            <span style="font-size:13px;font-weight:600;text-align:right;">{{ eduInstitution }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Afsluttet</span>
+            <span style="font-size:13px;font-weight:600;">{{ eduYear }}</span>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- CERTIFICATION: validity-aware -->
+      <sc-if value="{{ isCert }}" hint-placeholder-val="{{ false }}">
+        <div style="display:inline-flex;align-self:flex-start;align-items:center;gap:7px;padding:5px 11px;border-radius:20px;background:{{ certValidityColor }}1f;border:1px solid {{ certValidityColor }};">
+          <div style="width:7px;height:7px;border-radius:50%;background:{{ certValidityColor }};"></div>
+          <span style="font-size:12px;font-weight:700;color:{{ certValidityColor }};">{{ certValidityLabel }}</span>
+        </div>
+        <div style="display:flex;flex-direction:column;">
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Udsteder</span>
+            <span style="font-size:13px;font-weight:600;text-align:right;">{{ certIssuer }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Udstedt</span>
+            <span style="font-size:13px;font-weight:600;">{{ certIssued }}</span>
+          </div>
+          <div style="display:flex;justify-content:space-between;align-items:center;padding:7px 0;">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Udløber</span>
+            <span style="font-size:13px;font-weight:600;">{{ certExpiry }}</span>
+          </div>
+        </div>
+        <sc-if value="{{ hasCertUrl }}" hint-placeholder-val="{{ false }}">
+          <a href="{{ certUrl }}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:9px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:12.5px;font-weight:600;text-decoration:none;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6M10 14 21 3"></path></svg>
+            Verificér bevis
+          </a>
+        </sc-if>
+      </sc-if>
+
+      <!-- LANGUAGE: proficiency meter -->
+      <sc-if value="{{ isLang }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:7px;">
+            <span style="font-size:11px;opacity:.45;text-transform:uppercase;letter-spacing:.5px;">Niveau</span>
+            <span style="font-size:13px;font-weight:700;color:{{ pColor }};">{{ langLabel }}</span>
+          </div>
+          <div style="display:flex;gap:5px;">
+            <sc-for list="{{ langBars }}" as="bar" hint-placeholder-count="4">
+              <div style="flex:1;height:6px;border-radius:3px;background:{{ bar.c }};"></div>
+            </sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <!-- GOAL: status + target -->
+      <sc-if value="{{ isGoal }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;background:{{ goalStatusColor }}1f;border:1px solid {{ goalStatusColor }};font-size:12px;font-weight:700;color:{{ goalStatusColor }};">
+            <div style="width:6px;height:6px;border-radius:50%;background:{{ goalStatusColor }};"></div>{{ goalStatusLabel }}
+          </span>
+          <sc-if value="{{ hasGoalTarget }}" hint-placeholder-val="{{ false }}">
+            <span style="font-size:12.5px;opacity:.6;">Mål: {{ goalTarget }}</span>
+          </sc-if>
+        </div>
+      </sc-if>
+
+      <!-- DETAIL / description (experience, education, goal, memory, info) -->
       <sc-if value="{{ hasPDetail }}" hint-placeholder-val="{{ false }}">
         <div style="padding:12px 14px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.06);">
           <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;">Detalje</div>
@@ -145,10 +251,57 @@
         </div>
       </sc-if>
 
+      <!-- BRANCH: category-specific aggregate -->
       <sc-if value="{{ isPBranch }}" hint-placeholder-val="{{ false }}">
-        <div style="padding:12px 14px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:13px;">
-          <div style="font-size:28px;font-weight:800;color:{{ pColor }};line-height:1;">{{ pChildCount }}</div>
-          <div style="font-size:13px;opacity:.58;line-height:1.4;">noder i<br>denne kategori</div>
+        <div style="display:flex;flex-direction:column;border:1px solid rgba(255,255,255,.06);border-radius:10px;overflow:hidden;">
+          <sc-for list="{{ branchStats }}" as="stat" hint-placeholder-count="4">
+            <div style="display:flex;justify-content:space-between;align-items:center;padding:11px 14px;background:rgba(255,255,255,.02);border-bottom:1px solid rgba(255,255,255,.05);">
+              <span style="font-size:11px;opacity:.5;text-transform:uppercase;letter-spacing:.5px;">{{ stat.label }}</span>
+              <span style="font-size:17px;font-weight:800;color:{{ stat.accent }};line-height:1;">{{ stat.value }}</span>
+            </div>
+          </sc-for>
+        </div>
+      </sc-if>
+
+      <!-- ROOT: profile overview + next-step actions -->
+      <sc-if value="{{ isPRoot }}" hint-placeholder-val="{{ false }}">
+        <sc-if value="{{ hasRootTarget }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:12px 14px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.06);">
+            <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.6px;margin-bottom:4px;">Ønsket rolle</div>
+            <div style="font-size:14px;font-weight:700;">{{ rootTargetRole }}</div>
+          </div>
+        </sc-if>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;">
+          <sc-for list="{{ rootStats }}" as="stat" hint-placeholder-count="4">
+            <div style="padding:11px 13px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.06);">
+              <div style="font-size:20px;font-weight:800;color:{{ stat.accent }};line-height:1;margin-bottom:3px;">{{ stat.value }}</div>
+              <div style="font-size:10px;opacity:.4;text-transform:uppercase;letter-spacing:.5px;">{{ stat.label }}</div>
+            </div>
+          </sc-for>
+        </div>
+        <sc-if value="{{ hasRootWeakest }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12px;opacity:.55;line-height:1.5;">Næste skridt: udbyg <b style="opacity:.9;">{{ rootWeakest }}</b>.</div>
+        </sc-if>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button onClick="{{ onOpenProfiler }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.08);color:#93c5fd;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Fortsæt med AI-profiler</button>
+          <button onClick="{{ onOpenCv }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Upload CV</button>
+          <button onClick="{{ onAddMem }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.28);background:rgba(236,72,153,.07);color:#ec4899;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Tilføj hukommelse
+          </button>
+        </div>
+      </sc-if>
+
+      <!-- MEMORY: confidence + AI usage + delete -->
+      <sc-if value="{{ hasConf }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+            <span style="font-size:10px;opacity:.4;text-transform:uppercase;letter-spacing:.6px;">Konfidens</span>
+            <span style="font-size:13px;font-weight:700;color:{{ pColor }};">{{ pConf }}%</span>
+          </div>
+          <div style="height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;">
+            <div style="height:100%;width:{{ pConf }}%;background:{{ pColor }};border-radius:2px;transition:width .5s ease;"></div>
+          </div>
         </div>
       </sc-if>
 
@@ -176,13 +329,6 @@
         </div>
       </sc-if>
 
-      <sc-if value="{{ isPRoot }}" hint-placeholder-val="{{ false }}">
-        <button onClick="{{ onAddMem }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.28);background:rgba(236,72,153,.07);color:#ec4899;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-          Tilføj hukommelse
-        </button>
-      </sc-if>
-
     </div>
   </div>
 
@@ -208,6 +354,7 @@ class Component extends DCLogic {
     searchQuery: '',
     hiddenCats: new Set(),
     completeness: 0,
+    completenessFull: {},
     counts: { leaves: 0, memories: 0, used_memories: 0 },
   };
 
@@ -409,7 +556,8 @@ class Component extends DCLogic {
     }catch{this._data=this._MOCK;}
     if(!this._scene)return;
     this._buildGraph(this._data);
-    this.setState({loading:false,completeness:this._data.completeness.pct,counts:this._data.counts});
+    const comp=this._data.completeness||{};
+    this.setState({loading:false,completeness:comp.pct||0,completenessFull:comp,counts:this._data.counts});
   }
 
   // ── FIBONACCI SPHERE ───────────────────────────────────────
@@ -743,6 +891,81 @@ class Component extends DCLogic {
     if(!s)return'';
     try{return new Date(s).toLocaleDateString('da-DK',{day:'numeric',month:'long'});}catch{return s;}
   }
+  _go(url){try{window.location.href=url;}catch{}}
+  _leavesOf(branchId){
+    if(!this._data)return[];
+    const ids=this._data.edges.filter(e=>e.source===branchId).map(e=>e.target);
+    const byId=Object.fromEntries(this._data.nodes.map(n=>[n.id,n]));
+    return ids.map(id=>byId[id]).filter(Boolean);
+  }
+  // Server-authoritative-ish cert validity (mirrors my_profile.certValidity).
+  _certValidity(expiry){
+    if(!expiry)return{s:'permanent',label:'Ingen udløb',color:'#94a3b8'};
+    const parts=String(expiry).split('-'),y=parseInt(parts[0],10);
+    if(!y||y<1900)return{s:'permanent',label:'Ingen udløb',color:'#94a3b8'};
+    const m=parts[1]?parseInt(parts[1],10):12,d=parts[2]?parseInt(parts[2],10):28;
+    const exp=new Date(y,(m||12)-1,d||28),days=Math.round((exp-new Date())/86400000);
+    if(days<0)return{s:'expired',label:'Udløbet',color:'#f87171'};
+    if(days<=90)return{s:'soon',label:'Udløber snart',color:'#fbbf24'};
+    return{s:'valid',label:'Gyldig',color:'#34d399'};
+  }
+  _expPeriod(m){
+    const s=m.start_year||null,e=m.is_current?'nu':(m.end_year||null);
+    if(!s&&!e)return'';
+    return (s||'?')+' – '+(e||'?');
+  }
+  _expDuration(m){
+    const s=m.start_year,e=m.is_current?new Date().getFullYear():m.end_year;
+    return (s&&e&&e>=s)?((e-s)||'<1')+' år':'';
+  }
+  // Category-specific aggregate rows for a branch node.
+  _branchStats(cat,leaves){
+    const A=(label,value,accent)=>({label,value:String(value),accent:accent||'#e8eef9'});
+    if(cat==='kompetencer'){
+      const leveled=leaves.filter(l=>l.meta&&l.meta.level).length;
+      const gaps=leaves.filter(l=>l.meta&&l.meta.gap).length;
+      return[A('Kompetencer',leaves.length),A('Med niveau',leveled),A('Kompetencegab',gaps,gaps>0?'#fbbf24':'')];
+    }
+    if(cat==='erfaring'){
+      let yrs=0,cur='—';
+      leaves.forEach(l=>{const m=l.meta||{},s=m.start_year,e=m.is_current?new Date().getFullYear():m.end_year;if(s&&e&&e>=s)yrs+=(e-s);if(m.is_current)cur=m.title||l.label;});
+      return[A('Stillinger',leaves.length),A('Erfaring',yrs?yrs+' år':'—'),A('Nuværende',cur)];
+    }
+    if(cat==='uddannelse'){
+      let latest=0;leaves.forEach(l=>{const y=l.meta&&l.meta.year;if(y&&y>latest)latest=y;});
+      return[A('Uddannelser',leaves.length),A('Nyeste',latest||'—')];
+    }
+    if(cat==='certificeringer'){
+      let v=0,s=0,x=0;leaves.forEach(l=>{const st=this._certValidity(l.meta&&l.meta.expiry_date).s;if(st==='expired')x++;else if(st==='soon')s++;else v++;});
+      return[A('Certifikater',leaves.length),A('Gyldige',v,'#34d399'),A('Udløber snart',s,s?'#fbbf24':''),A('Udløbet',x,x?'#f87171':'')];
+    }
+    if(cat==='sprog')return[A('Sprog',leaves.length)];
+    if(cat==='maal'){
+      const done=leaves.filter(l=>(l.meta&&l.meta.status)==='fuldfoert').length;
+      const act=leaves.length-done;
+      return[A('Mål',leaves.length),A('Aktive',act),A('Fuldført',done,done?'#34d399':'')];
+    }
+    if(cat==='hukommelse'){
+      const used=leaves.filter(l=>(l.meta&&l.meta.used_count||0)>0).length;
+      return[A('Minder',leaves.length),A('Brugt af AI',used,'#ec4899')];
+    }
+    return[A('Noder',leaves.length)];
+  }
+  _rootStats(){
+    const c=this.state.completenessFull||{},k=this.state.counts||{};
+    return[
+      {label:'Komplethed',value:(c.pct!=null?c.pct:this.state.completeness)+'%',accent:'#60a5fa'},
+      {label:'Dybde',value:(c.weighted_pct!=null?c.weighted_pct:c.pct||0)+'%',accent:'#e8eef9'},
+      {label:'Fakta',value:String(k.leaves||0),accent:'#e8eef9'},
+      {label:'Minder',value:String(k.memories||0),accent:'#ec4899'},
+    ];
+  }
+  _weakestLabel(){
+    const c=this.state.completenessFull||{};
+    if(!c.weakest||!Array.isArray(c.sections))return'';
+    const s=c.sections.find(x=>x.key===c.weakest);
+    return s?s.label:'';
+  }
 
   // ── RENDER VALS ────────────────────────────────────────────
   renderVals(){
@@ -760,6 +983,27 @@ class Component extends DCLogic {
         tc:active?col:'rgba(255,255,255,.28)',
       };
     });
+
+    // ── Type-aware inspector data ──
+    const meta=sn&&sn.meta||{};
+    const isLeaf=!!(sn&&sn.type==='leaf');
+    const lc=isLeaf?sn.category:'';
+    const isSkill=lc==='kompetencer',isExp=lc==='erfaring',isEdu=lc==='uddannelse';
+    const isCert=lc==='certificeringer',isLang=lc==='sprog',isGoal=lc==='maal';
+    const isMem=lc==='hukommelse';
+    const skLab={begynder:'Begynder',mellem:'Mellem',avanceret:'Avanceret',ekspert:'Ekspert'};
+    const skScore=meta.level_score||0,gap=meta.gap||null;
+    const langMap={begynder:1,mellem:2,flydende:3,modersmaal:4};
+    const langLab={begynder:'Begynder',mellem:'Mellem',flydende:'Flydende',modersmaal:'Modersmål'};
+    const langScore=isLang?(langMap[meta.proficiency]||2):0;
+    const pcol=sn?(this._C[sn.category]||'#fff'):'#fff';
+    const gStat={aktiv:{l:'Aktiv',c:'#3b82f6'},fuldfoert:{l:'Fuldført',c:'#34d399'},paa_pause:{l:'På pause',c:'#94a3b8'}};
+    const gs=gStat[meta.status]||{l:meta.status||'Aktiv',c:'#3b82f6'};
+    const cv=isCert?this._certValidity(meta.expiry_date):null;
+    const branchStats=(sn&&sn.type==='branch')?this._branchStats(sn.category,this._leavesOf(sn.id)):[];
+    const rootSel=!!(sn&&sn.type==='root');
+    const cFull=this.state.completenessFull||{};
+
     return{
       loading,
       searchQuery,
@@ -776,21 +1020,74 @@ class Component extends DCLogic {
       pCat:sn?this._L[sn.category]||sn.category:'',
       pColor:sn?this._C[sn.category]||'#fff':'#fff',
       pSrc:sn&&sn.meta?this._S[sn.meta.source]||sn.meta.source||'—':'—',
-      pTypeLabel:sn?(sn.type==='root'?'Rodknude':sn.type==='branch'?'Kategori':'Faktum'):'',
-      pConf:sn&&sn.meta&&sn.meta.confidence?Math.round(sn.meta.confidence*100):0,
+      pTypeLabel:sn?(sn.type==='root'?'Rodknude':sn.type==='branch'?'Kategori':(meta.kind||'Faktum')):'',
       hasPDetail:!!(sn&&sn.meta&&sn.meta.detail),
       pDetail:sn&&sn.meta?sn.meta.detail||'':'',
       isPBranch:!!(sn&&sn.type==='branch'),
-      isPRoot:!!(sn&&sn.type==='root'),
-      pChildCount:sn?this._childCount(sn.id):0,
-      isHukMem:!!(sn&&sn.type==='leaf'&&sn.category==='hukommelse'),
+      isPRoot:rootSel,
+      isHukMem:isMem,
+      // confidence only where it varies (memories); profile facts are always 1.
+      hasConf:isMem&&!!(sn&&sn.meta&&sn.meta.confidence!=null),
+      pConf:sn&&sn.meta&&sn.meta.confidence?Math.round(sn.meta.confidence*100):0,
       pUsed:used,
       pLastUsedLabel:sn&&sn.meta&&sn.meta.last_used_at?'Sidst: '+this._fmtDate(sn.meta.last_used_at):'Aldrig brugt',
       usageDots:Array.from({length:12},(_,i)=>({c:i<used?'#ec4899':'rgba(255,255,255,.1)'})),
+      // skill
+      isSkill,
+      skLevelLabel:skLab[meta.level]||meta.level||'Ikke angivet',
+      skScore,skPct:(skScore/5)*100,
+      skCategory:meta.skill_category||'',
+      hasSkCategory:!!meta.skill_category,
+      hasGap:!!gap,
+      gapText:gap?((skLab[meta.level]||meta.level||'ingen')+' → '+gap.target_label):'',
+      gapPriority:gap?(gap.priority==='critical'||gap.priority==='high'?'Høj prioritet':gap.priority==='low'?'Lav prioritet':'Mellem prioritet'):'',
+      // experience
+      isExp,
+      expPeriod:isExp?this._expPeriod(meta):'',
+      expDuration:isExp?this._expDuration(meta):'',
+      expCompany:meta.company||'',
+      hasExpCompany:isExp&&!!meta.company,
+      expCurrent:!!meta.is_current,
+      // education
+      isEdu,
+      eduInstitution:meta.institution||'—',
+      eduYear:meta.year?String(meta.year):'—',
+      // certifications
+      isCert,
+      certValidityLabel:cv?cv.label:'',
+      certValidityColor:cv?cv.color:'#94a3b8',
+      certIssuer:meta.issuer||'—',
+      certIssued:meta.issue_date||'—',
+      certExpiry:meta.expiry_date||'Ingen udløb',
+      hasCertUrl:!!meta.credential_url,
+      certUrl:meta.credential_url||'',
+      hasCertId:!!meta.credential_id,
+      certId:meta.credential_id||'',
+      // language
+      isLang,
+      langLabel:langLab[meta.proficiency]||meta.proficiency||'—',
+      langBars:Array.from({length:4},(_,i)=>({c:i<langScore?pcol:'rgba(255,255,255,.08)'})),
+      // goal
+      isGoal,
+      goalStatusLabel:gs.l,goalStatusColor:gs.c,
+      hasGoalTarget:isGoal&&!!meta.target_date,
+      goalTarget:meta.target_date||'',
+      // branch
+      branchStats,
+      // root overview
+      rootStats:rootSel?this._rootStats():[],
+      hasRootTarget:rootSel&&!!cFull.target_role,
+      rootTargetRole:cFull.target_role||'',
+      hasRootWeakest:rootSel&&!!this._weakestLabel(),
+      rootWeakest:rootSel?this._weakestLabel():'',
       rootRef:this._rootRef,
       onClose:this._deselect,
       onDelete:this.onDelete,
       onAddMem:this._onAddMem,
+      onFindCourses:()=>this._go('/chat'),
+      onOpenProfiler:()=>this._go('/ai-profiler'),
+      onOpenCv:()=>this._go('/profil-upload'),
+      onOpenProfile:()=>this._go('/profile'),
     };
   }
 }

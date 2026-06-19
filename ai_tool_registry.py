@@ -125,6 +125,12 @@ _EMPLOYEE_META = {
     "show_mindmap_preview": ToolMeta(
         "show_mindmap_preview", auth_required=True, toolset_tags=("profile", "ui"), cache_ttl=20,
     ),
+    # Per-learner skill-gap card: current vs target level (company targets +
+    # target role + goals) on the canonical 1-5 scale. Read-only; the card links
+    # on to a gap-closing learning path.
+    "show_skill_gaps": ToolMeta(
+        "show_skill_gaps", auth_required=True, toolset_tags=("profile", "ui"), cache_ttl=20,
+    ),
     "save_learning_path": ToolMeta(
         "save_learning_path", auth_required=True, parallel_safe=False,
         toolset_tags=("profile", "path"),
@@ -326,6 +332,7 @@ _TOOL_LABELS = {
     "open_in_app": "Åbn i appen",
     "show_cv_summary": "CV-oversigt",
     "show_mindmap_preview": "Mind-Map",
+    "show_skill_gaps": "Kompetencegab",
     "save_learning_path": "Gem læringssti",
     "get_learning_path": "Hent læringssti",
     "set_learning_goal": "Opret mål",
@@ -735,6 +742,13 @@ _TOOL_TRIGGERS = {
         "vis min mind-map", "show my mind map", "min hukommelse", "my memories",
         "hvor langt er jeg med min profil", "profile completeness",
     ),
+    "show_skill_gaps": (
+        "kompetencegab", "kompetence gab", "skill gap", "skill gaps", "mine gap",
+        "hvad mangler jeg", "what am i missing", "hvilke kompetencer mangler",
+        "hvad skal jeg udvikle", "what skills do i need", "udviklingsplan",
+        "hvad skal jeg lære", "what should i learn", "gap til min rolle",
+        "manglende kompetencer", "vis mine gap",
+    ),
 }
 
 # Token splitter shared with the fallback scorer.
@@ -896,6 +910,9 @@ def get_employee_tool_selection(
             # Inline read-only CV snapshot card (links on to the 3D CV portal). The
             # model decides between summarising in chat vs sending the user to upload.
             names.add("show_cv_summary")
+            # Skill-gap card: current vs target on the 1-5 scale — the grounded
+            # bridge from "my profile" to a gap-closing recommendation.
+            names.add("show_skill_gaps")
         # Mind-map / "what do you remember about me" → inline preview card with a
         # link to the 3D globe. Read-only; the model chooses to show it or not.
         if _has_any(query, (
@@ -910,12 +927,20 @@ def get_employee_tool_selection(
             # (a path without surfaced courses isn't actionable). The persisted
             # path tools let the model save/recall a sequence across sessions.
             names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path",
-                          "save_learning_path", "get_learning_path", "catalog_search"})
+                          "save_learning_path", "get_learning_path", "catalog_search", "show_skill_gaps"})
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, (
                 "mål", "maal", "udviklingsplan", "udviklingsmål", "udviklingsmaal", "blive bedre til",
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",
                 "lære at", "laere at", "sæt et mål", "saet et maal", "mit mål", "mine mål")):
-            names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile", "catalog_search"})
+            names.update({"set_learning_goal", "get_learning_goals", "update_learning_goal", "recommend_for_profile", "catalog_search", "show_skill_gaps"})
+        # Dedicated gap gate: "hvad mangler jeg / hvilke kompetencer skal jeg
+        # udvikle / what should I learn" → the gap card + a gap-closing rec.
+        if _has_any(query, (
+                "kompetencegab", "skill gap", "hvad mangler jeg", "what am i missing",
+                "hvilke kompetencer", "hvad skal jeg udvikle", "hvad skal jeg lære",
+                "hvad skal jeg laere", "what should i learn", "what skills do i need",
+                "manglende kompetencer", "gap til")):
+            names.update({"show_skill_gaps", "recommend_for_profile", "get_user_profile"})
         # --- Specialised employee tools: keyword-gated only, NOT in the core seed.
         # Each stays off the menu until a matching Danish keyword activates it.
         if _has_any(query, (

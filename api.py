@@ -1,10 +1,17 @@
 from flask import Blueprint, jsonify, session, current_app, request, Response, stream_with_context
 from auth_decorators import login_required
+import io as _cv_io
 import json
 import threading as _cv_thread
 import time as _cv_time
 
-_cv_parse_results = {}  # session_id -> {'proposal': dict, 'hint': str} | {'error': str}
+# CV upload hardening: bound the upload + whitelist the types the extractor
+# actually handles, so a 10 GB or wrong-type file can't hang a worker.
+_MAX_CV_BYTES = 8 * 1024 * 1024  # 8 MB
+_ALLOWED_CV_EXTS = {
+    '.pdf', '.txt', '.md', '.markdown', '.text', '.csv', '.rtf',
+    '.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.tiff', '.heic', '.heif',
+}
 
 api_bp = Blueprint('api', __name__)
 
@@ -109,29 +116,43 @@ def get_full_profile_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@api_bp.route('/api/profile/skills', methods=['GET', 'POST', 'DELETE'])
+@api_bp.route('/api/profile/skills', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @login_required
 def manage_skills_api():
     username = session.get('user')
     try:
-        from app1.user_profile_db import get_skills, add_skill, remove_skill, update_skill_level, ensure_tables
+        from app1.user_profile_db import (get_skills, add_skill, remove_skill,
+                                          update_skill_level, ensure_tables,
+                                          is_valid_skill_level)
+        from competency import canonical_skill
         ensure_tables()
 
         if request.method == 'GET':
             return jsonify({'success': True, 'skills': get_skills(username)})
 
         data = request.get_json() or {}
-        if request.method == 'POST':
-            name = data.get('skill_name', '').strip()
+        if request.method in ('POST', 'PUT'):
+            name = (data.get('skill_name') or '').strip()
             level = data.get('skill_level', 'mellem')
             source = data.get('source', 'manual')
             if not name:
                 return jsonify({'success': False, 'error': 'skill_name required'}), 400
+            # Validate the level up front so the caller gets a real error instead
+            # of a silently-rejected ENUM insert that still returned success.
+            if not is_valid_skill_level(level):
+                return jsonify({'success': False,
+                                'error': f'skill_level skal være en af: {", ".join(("begynder","mellem","avanceret","ekspert"))}'}), 400
+            canon = canonical_skill(name)
+            if request.method == 'PUT':
+                # Exact set (the edit affordance) — bypasses add_skill's keep-higher
+                # merge so a deliberate downgrade sticks.
+                update_skill_level(username, name, level)
+                return jsonify({'success': True, 'skill_name': canon, 'message': f'Kompetence "{canon}" opdateret'})
             add_skill(username, name, level, source)
-            return jsonify({'success': True, 'message': f'Skill "{name}" added'})
+            return jsonify({'success': True, 'skill_name': canon, 'message': f'Kompetence "{canon}" tilføjet'})
 
         if request.method == 'DELETE':
-            name = data.get('skill_name', '').strip()
+            name = (data.get('skill_name') or '').strip()
             if not name:
                 return jsonify({'success': False, 'error': 'skill_name required'}), 400
             removed = remove_skill(username, name)
@@ -139,6 +160,23 @@ def manage_skills_api():
     except Exception as e:
         current_app.logger.error("Skills API error: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/skill-gaps')
+@login_required
+def api_skill_gaps():
+    """Per-learner skill gaps (current vs target on the canonical 1-5 scale),
+    derived from company targets + target role + goals. Powers the profile-page
+    gap section + the AI. Degrades to [] so the UI never hard-fails."""
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import ensure_tables
+        from competency import compute_skill_gaps
+        ensure_tables()
+        return jsonify({'success': True, 'gaps': compute_skill_gaps(username)})
+    except Exception as e:
+        current_app.logger.error("Skill-gaps API error: %s", e)
+        return jsonify({'success': True, 'gaps': []})
 
 
 @api_bp.route('/api/profile/experience', methods=['GET', 'POST', 'PUT', 'DELETE'])
@@ -406,13 +444,14 @@ def manage_languages_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
-@api_bp.route('/api/profile/links', methods=['GET', 'POST', 'DELETE'])
+@api_bp.route('/api/profile/links', methods=['GET', 'POST', 'PUT', 'DELETE'])
 @login_required
 def manage_portfolio_links_api():
     username = session.get('user')
     try:
         from app1.user_profile_db import (
-            get_portfolio_links, add_portfolio_link, remove_portfolio_link, ensure_tables
+            get_portfolio_links, add_portfolio_link, update_portfolio_link,
+            remove_portfolio_link, ensure_tables
         )
         ensure_tables()
 
@@ -426,6 +465,14 @@ def manage_portfolio_links_api():
                 return jsonify({'success': False, 'error': 'url required'}), 400
             new_id = add_portfolio_link(username, data.get('label', ''), url, kind=data.get('kind'))
             return jsonify({'success': True, 'id': new_id})
+
+        if request.method == 'PUT':
+            link_id = data.get('id')
+            if not link_id:
+                return jsonify({'success': False, 'error': 'id required'}), 400
+            updated = update_portfolio_link(username, link_id, label=data.get('label'),
+                                            url=data.get('url'), kind=data.get('kind'))
+            return jsonify({'success': True, 'updated': updated})
 
         if request.method == 'DELETE':
             link_id = data.get('id')
@@ -486,28 +533,69 @@ def manage_memories_api():
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
+class _CvFileShim:
+    """Decouples the parse thread from the (dying) request: holds the raw bytes
+    so cv_ingest.extract_text — which reads `.stream`/`.read()` + `.filename` —
+    works inside a daemon thread after the request context is gone."""
+    def __init__(self, data, name):
+        self.filename = name
+        self.stream = _cv_io.BytesIO(data)
+
+    def read(self):
+        return self.stream.read()
+
+
 @api_bp.route('/api/cv/parse', methods=['POST'])
 @login_required
 def api_cv_parse():
-    """Receive a CV file/text, parse it asynchronously, store result keyed by session_id."""
-    from cv_ingest import extract_text, parse_profile_from_text
+    """Receive a CV file/text, parse it asynchronously, store the result in the
+    durable cross-worker store keyed by session_id."""
+    import cv_parse_store
 
     session_id = request.form.get('session_id', '')
+    if not session_id:
+        return jsonify({'success': False, 'error': 'session_id required'}), 400
     file = request.files.get('cv')
     text_input = request.form.get('cv_text', '') or ''
-    _cv_parse_results.pop(session_id, None)
+
+    raw, filename = b'', ''
+    if file and getattr(file, 'filename', ''):
+        filename = file.filename
+        ext = ('.' + filename.rsplit('.', 1)[-1].lower()) if '.' in filename else ''
+        if ext and ext not in _ALLOWED_CV_EXTS:
+            return jsonify({'success': False,
+                            'error': 'Filtypen understøttes ikke. Brug PDF, billede (JPG/PNG) eller tekst.'}), 400
+        try:
+            file.stream.seek(0)
+        except Exception:
+            pass
+        raw = file.read() or b''
+        if len(raw) > _MAX_CV_BYTES:
+            return jsonify({'success': False, 'error': 'Filen er for stor (maks 8 MB).'}), 413
+    elif not text_input.strip():
+        return jsonify({'success': False, 'error': 'Ingen fil eller tekst modtaget.'}), 400
+
+    cv_parse_store.start(session_id)
+    app = current_app._get_current_object()
 
     def _run():
-        try:
-            if file and getattr(file, 'filename', ''):
-                text, hint = extract_text(file)
-            else:
-                text, hint = text_input, ''
-            proposal = parse_profile_from_text(text) if text.strip() else {}
-            _cv_parse_results[session_id] = {'proposal': proposal, 'hint': hint}
-        except Exception as exc:
-            current_app.logger.error('cv parse error: %s', exc)
-            _cv_parse_results[session_id] = {'error': str(exc), 'proposal': {}}
+        # A raw daemon thread has no Flask context — push one so the DB-backed
+        # store (and any current_app use) works on this worker.
+        with app.app_context():
+            try:
+                from cv_ingest import extract_text, parse_profile_from_text
+                if raw:
+                    text, hint = extract_text(_CvFileShim(raw, filename))
+                else:
+                    text, hint = text_input, ''
+                proposal = parse_profile_from_text(text) if (text or '').strip() else {}
+                cv_parse_store.finish(session_id, {'proposal': proposal, 'hint': hint})
+            except Exception as exc:
+                try:
+                    app.logger.error('cv parse error: %s', exc)
+                except Exception:
+                    pass
+                cv_parse_store.finish(session_id, {'error': str(exc), 'proposal': {}})
 
     _cv_thread.Thread(target=_run, daemon=True).start()
     return jsonify({'success': True})
@@ -516,32 +604,37 @@ def api_cv_parse():
 @api_bp.route('/api/cv/parse-stream')
 @login_required
 def api_cv_parse_stream():
-    """SSE stream of CV parse progress stages, then the final proposal JSON."""
+    """SSE stream of CV parse progress, then the final proposal JSON.
+
+    Stage labels advance on a gentle schedule for UX, but COMPLETION is driven
+    off the real job result in the durable store (so it works even when the
+    parse thread ran on a different gunicorn worker — the bug this fixes)."""
+    import cv_parse_store
     session_id = request.args.get('session_id', '')
     _STAGES = ['Udtrækker tekst', 'Analyserer', 'Foreslår profil']
-    _SCHEDULE = [(6.0, _STAGES[1]), (13.0, _STAGES[2])]
+    schedule = [(4.0, _STAGES[1]), (10.0, _STAGES[2])]
 
     def generate():
         yield f"event: stage\ndata: {_STAGES[0]}\n\n"
         t0 = _cv_time.time()
         emitted = 0
-
-        while _cv_time.time() - t0 < 60:
+        while _cv_time.time() - t0 < 90:
             elapsed = _cv_time.time() - t0
-            while emitted < len(_SCHEDULE) and elapsed >= _SCHEDULE[emitted][0]:
-                yield f"event: stage\ndata: {_SCHEDULE[emitted][1]}\n\n"
+            while emitted < len(schedule) and elapsed >= schedule[emitted][0]:
+                yield f"event: stage\ndata: {schedule[emitted][1]}\n\n"
                 emitted += 1
 
-            result = _cv_parse_results.pop(session_id, None)
+            result = cv_parse_store.read(session_id)
             if result is not None:
-                while emitted < len(_SCHEDULE):
-                    yield f"event: stage\ndata: {_SCHEDULE[emitted][1]}\n\n"
+                while emitted < len(schedule):
+                    yield f"event: stage\ndata: {schedule[emitted][1]}\n\n"
                     emitted += 1
                 if result.get('error'):
                     yield f"event: error\ndata: {result['error']}\n\n"
                 else:
                     payload = {'proposal': result.get('proposal') or {}, 'hint': result.get('hint') or ''}
                     yield f"event: result\ndata: {json.dumps(payload)}\n\n"
+                cv_parse_store.discard(session_id)
                 return
 
             _cv_time.sleep(0.5)

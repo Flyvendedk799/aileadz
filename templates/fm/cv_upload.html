@@ -1007,12 +1007,22 @@ function saveProfile(){
     if (obj.material.opacity!==undefined) tween(obj.material).to({opacity:0},800).delay(delay+200).start();
   });
   const payload = { session_id: sessionId, accepted: [...accepted].map(o=>({ type:o.userData.kind, ...o.userData.data })) };
-  fetch('/api/cv/apply', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
+  // Drive the toast off the REAL server result — never claim "gemt" before the
+  // apply actually succeeds (the old fire-and-forget could silently drop data).
+  fetch('/api/cv/apply', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
+    .then(r => r.ok ? r.json() : Promise.reject(r.status))
+    .then(res => {
+      if (!res || !res.success) throw new Error('apply failed');
+      const n = res.saved ? Object.values(res.saved).reduce((a,b)=>a+(b||0),0) : total;
+      showToast('Profil opdateret ✓', `${n} oplysninger tilføjet til din profil.`);
+    })
+    .catch(() => showToast('Kunne ikke gemme', 'Noget gik galt — dine valg blev ikke gemt. Prøv igen.'));
 }
 function finishSave(){
   $('#reviewBar').classList.add('invisible');
   moveCamera(new THREE.Vector3(0,1,20), new THREE.Vector3(0,0,0), 1400);
-  showToast('Profil gemt ✓', 'Dine valgte oplysninger er tilføjet til din profil.');
+  // The success/failure toast is fired by the apply response in saveProfile,
+  // so the user is never told "gemt" before it actually persisted.
 }
 function showToast(title, sub){
   const t = $('#toast'); t.innerHTML = title + (sub? `<div class="sub">${sub}</div>`:''); t.classList.add('show');

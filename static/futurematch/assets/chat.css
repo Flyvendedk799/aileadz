@@ -1391,3 +1391,34 @@ body.chat-page.light-mode .md blockquote {
 }
 .mmp-mem:last-child { border-bottom: none; }
 .mmp-mem i { color: var(--teal); font-size: 10px; flex: 0 0 auto; }
+
+/* ---------------- Skill-gap card (current → target on the 1-5 scale) ------- */
+.skill-gaps-card {
+  margin: 12px 0; border-radius: 15px; overflow: hidden;
+  border: 1px solid var(--line-2); background: var(--card);
+}
+.sgc-head {
+  display: flex; align-items: center; gap: 8px; padding: 11px 14px;
+  font-size: 13px; font-weight: 700; color: var(--ink);
+  background: var(--card-2); border-bottom: 1px solid var(--line);
+}
+.sgc-head i { color: var(--teal); }
+.sgc-role { margin-left: auto; font-size: 11px; font-weight: 600; color: var(--ink-3); }
+.sgc-empty { padding: 14px; font-size: 12.5px; color: var(--ink-2); }
+.sgc-rows { padding: 6px 14px 2px; }
+.sgc-row { padding: 8px 0; border-bottom: 1px solid var(--line); }
+.sgc-row:last-child { border-bottom: none; }
+.sgc-row-top { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
+.sgc-skill { font-size: 12.5px; font-weight: 700; color: var(--ink); }
+.sgc-cat { font-size: 10px; color: var(--ink-3); background: var(--card-2); padding: 1px 7px; border-radius: 999px; }
+.sgc-gap { margin-left: auto; font-size: 11px; font-weight: 800; padding: 1px 8px; border-radius: 999px; color: #1a120c; background: var(--teal); }
+.sgc-gap.crit { background: var(--red, #d9534f); color: #fff; }
+.sgc-gap.high { background: var(--clay, #cda86a); }
+.sgc-gap.low { background: var(--line-2); color: var(--ink-2); }
+.sgc-track {
+  position: relative; height: 6px; border-radius: 999px;
+  background: var(--line); overflow: hidden;
+}
+.sgc-target { position: absolute; inset: 0 auto 0 0; height: 100%; background: var(--teal-3, rgba(217,140,93,.28)); }
+.sgc-current { position: absolute; inset: 0 auto 0 0; height: 100%; background: var(--teal); transition: width .7s ease; }
+.sgc-levels { display: flex; justify-content: space-between; margin-top: 3px; font-size: 10px; color: var(--ink-3); }

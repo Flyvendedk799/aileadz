@@ -1150,6 +1150,54 @@
     body.appendChild(card); down();
   }
 
+  /* ---------------- Skill-gap card (current → target on the 1-5 scale) ------- */
+  function renderSkillGapsCard(body, data) {
+    const gaps = data.gaps || [];
+    const card = document.createElement("div");
+    card.className = "skill-gaps-card";
+    if (!data.has_gaps || !gaps.length) {
+      const msg = data.reason === "covered"
+        ? "Du dækker dine nuværende kompetencemål — flot! 🎉"
+        : "Sæt en <b>målrolle</b> på din profil, så beregner jeg dine kompetencegab og foreslår kurser.";
+      card.innerHTML = `
+        <div class="sgc-head"><i class="fa-solid ${icon("fa-bullseye")}"></i><span>Kompetencegab</span></div>
+        <div class="sgc-empty">${msg}</div>
+        <div class="csv-footer"><button class="csv-btn primary" data-url="/profile"><i class="fa-solid ${icon("fa-user")}"></i> Åbn profil</button></div>`;
+      card.querySelectorAll("[data-url]").forEach((b) =>
+        b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
+      body.appendChild(card); down(); return;
+    }
+    const PRIO = { critical: "crit", high: "high", medium: "med", low: "low" };
+    const rowsHtml = gaps.map((g) => {
+      const cur = Math.max(0, Math.min(5, g.current_level || 0));
+      const tgt = Math.max(0, Math.min(5, g.target_level || 0));
+      const curPct = (cur / 5) * 100, tgtPct = (tgt / 5) * 100;
+      return `
+        <div class="sgc-row">
+          <div class="sgc-row-top">
+            <span class="sgc-skill">${esc(g.skill)}</span>
+            ${g.category ? `<span class="sgc-cat">${esc(g.category)}</span>` : ""}
+            <span class="sgc-gap ${PRIO[g.priority] || "med"}">+${esc(String(g.gap))}</span>
+          </div>
+          <div class="sgc-track" title="${esc(g.current_label || "")} → ${esc(g.target_label || "")}">
+            <div class="sgc-target" style="width:${tgtPct}%"></div>
+            <div class="sgc-current" style="width:${curPct}%"></div>
+          </div>
+          <div class="sgc-levels"><span>${esc(g.current_label || "")}</span><span>mål: ${esc(g.target_label || "")}</span></div>
+        </div>`;
+    }).join("");
+    const role = data.target_role ? `<span class="sgc-role">mod ${esc(data.target_role)}</span>` : "";
+    card.innerHTML = `
+      <div class="sgc-head"><i class="fa-solid ${icon("fa-bullseye")}"></i><span>Dine kompetencegab</span>${role}</div>
+      <div class="sgc-rows">${rowsHtml}</div>
+      <div class="csv-footer">
+        <button class="csv-btn primary" data-ask="Anbefal kurser der lukker mine største kompetencegab"><i class="fa-solid ${icon("fa-wand-magic-sparkles")}"></i> Find kurser der lukker gabet</button>
+      </div>`;
+    card.querySelectorAll("[data-ask]").forEach((b) =>
+      b.addEventListener("click", () => { try { if (typeof ask === "function") ask(b.getAttribute("data-ask")); } catch (e) {} }));
+    body.appendChild(card); down();
+  }
+
   async function streamFromBackend(body, actualQuery) {
     // Abort plumbing: the Stop button aborts via currentAbort; a no-event
     // watchdog aborts a silently dead connection (backend emits an initial
@@ -1303,6 +1351,9 @@
           } else if (data.type === "mindmap_card") {
             // Mind-map stats + link to 3D globe.
             renderMindmapCard(body, data);
+          } else if (data.type === "skill_gaps_card") {
+            // Per-learner current→target skill gaps (1-5), CTA to gap-closing courses.
+            renderSkillGapsCard(body, data);
           }
         }
       }

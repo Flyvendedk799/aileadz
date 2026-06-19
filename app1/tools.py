@@ -1119,6 +1119,26 @@ OPENAI_TOOLS.extend([
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_skill_gaps",
+            "description": (
+                "Vis brugerens KOMPETENCEGAB i chatten: forskellen mellem deres nuværende niveau og "
+                "målniveauet — udledt af virksomhedens kompetencemål, deres ønskede rolle (target_role) "
+                "og læringsmål — på en kanonisk 1-5 skala, sorteret efter vigtighed. Returnerer også "
+                "selve gap-dataen, så du KAN OG BØR følge op med en kursusanbefaling (recommend_for_profile) "
+                "der lukker de største gap. Brug dette når brugeren spørger 'hvad mangler jeg', 'hvilke "
+                "kompetencer skal jeg udvikle', vil have en udviklingsplan, eller når du vil begrunde en "
+                "anbefaling i et konkret, verificerbart gap frem for et gæt."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ])
 
 
@@ -3177,7 +3197,17 @@ def _execute_recommend_for_profile(args, username):
         ensure_tables()
         profile = get_full_profile(username)
 
-        # Build search query from target role + goals + low-level skills.
+        # Compute the learner's REAL skill gaps (company targets + target role +
+        # goals, on the canonical 1-5 scale) so the recommendation is grounded in
+        # "the gap to where you want to go", not just "skills you rated low".
+        try:
+            from competency import compute_skill_gaps
+            gaps = compute_skill_gaps(username, profile=profile)
+        except Exception:
+            gaps = []
+        gap_skill_names = [g["skill"] for g in gaps]
+
+        # Build search query from focus + target role + concrete gap skills.
         query_parts = []
         focus = args.get("focus", "").strip()
         if focus:
@@ -3191,13 +3221,17 @@ def _execute_recommend_for_profile(args, username):
             query_parts.append(target_role)
 
         goals = profile.get("goals", "")
-        if goals:
-            query_parts.append(goals[:100])
 
-        # Target skills at begynder/mellem level for upskilling
-        low_skills = [s["name"] for s in profile.get("skills", []) if s.get("level") in ("begynder", "mellem")]
-        if low_skills:
-            query_parts.extend(low_skills[:3])
+        if gap_skill_names:
+            # The gap skills ARE the upskilling target — most authoritative signal.
+            query_parts.extend(gap_skill_names[:4])
+        else:
+            # Fallback (no computed gaps): legacy goals + low-level skills.
+            if goals:
+                query_parts.append(goals[:100])
+            low_skills = [s["name"] for s in profile.get("skills", []) if s.get("level") in ("begynder", "mellem")]
+            if low_skills:
+                query_parts.extend(low_skills[:3])
 
         if not query_parts:
             query_parts.append("populære kurser")
@@ -3250,23 +3284,39 @@ def _execute_recommend_for_profile(args, username):
         profile_boost = _profile_boost_from_profile(profile)
         profile_terms = list((profile_boost or {}).get("target_terms") or [])
         goal_terms = _goal_keywords(" ".join([target_role, goals]).strip(), limit=6)
+        # Gap lookup by canonical key (len>=3 to avoid 2-char false positives).
+        gap_by_key = {g["skill"].lower(): g for g in gaps if len(g["skill"]) >= 3}
         for cr in compact_results:
             reason_parts = []
             title_lower = cr.get("title", "").lower()
-            for skill_name, skill_level in all_skills.items():
-                if skill_name in title_lower and skill_level in ("begynder", "mellem"):
-                    reason_parts.append(f"bygger videre på din {skill_name}-kompetence")
-            if target_role and any(w in title_lower for w in _goal_keywords(target_role, limit=4)):
-                reason_parts.append(f"bringer dig mod {target_role}")
-            elif goals and any(w in title_lower for w in goals.lower().split()[:3]):
-                reason_parts.append("matcher dine mål")
+            tags_lower = " ".join(str(t).lower() for t in (cr.get("tags") or []))
+            haystack = title_lower + " " + tags_lower
+            # 1) Gap-grounded reason (strongest, verifiable): the course mentions a
+            # skill the learner has a REAL computed gap in.
+            matched_gap = next((g for key, g in gap_by_key.items() if key in haystack), None)
+            if matched_gap:
+                reason_parts.append(
+                    f"lukker dit gap i {matched_gap['skill']} "
+                    f"({matched_gap['current_label']}→{matched_gap['target_label']})"
+                )
+            else:
+                for skill_name, skill_level in all_skills.items():
+                    if skill_name in title_lower and skill_level in ("begynder", "mellem"):
+                        reason_parts.append(f"bygger videre på din {skill_name}-kompetence")
+                if target_role and any(w in title_lower for w in _goal_keywords(target_role, limit=4)):
+                    reason_parts.append(f"bringer dig mod {target_role}")
+                elif goals and any(w in title_lower for w in goals.lower().split()[:3]):
+                    reason_parts.append("matcher dine mål")
             cr["recommendation_reason"] = "; ".join(reason_parts) if reason_parts else "relevant for din profil"
-            # match_reason: the concise UI "why", derived from profile/goal terms
-            # + concrete attributes (falls back to recommendation_reason).
-            mr = _course_match_reason(cr, query_terms=goal_terms, profile_terms=profile_terms)
-            cr["match_reason"] = mr or cr["recommendation_reason"]
+            # match_reason: the concise UI "why". A grounded gap reason wins; else
+            # derive from profile/goal terms + concrete attributes.
+            if matched_gap:
+                cr["match_reason"] = reason_parts[0]
+            else:
+                mr = _course_match_reason(cr, query_terms=goal_terms, profile_terms=profile_terms)
+                cr["match_reason"] = mr or cr["recommendation_reason"]
 
-        return _model_tool_json(status="success", count=len(compact_results), results=compact_results)
+        return _model_tool_json(status="success", count=len(compact_results), results=compact_results, gaps=gaps[:6])
     except Exception as e:
         return json.dumps({"status": "error", "message": f"Fejl: {e}"})
 
@@ -3575,6 +3625,21 @@ def _execute_suggest_learning_path(args, username):
         exp = profile.get("experience", [])
         if exp:
             context_parts.append(f"Erfaring: {exp[0].get('title', '')} @ {exp[0].get('company', '')}")
+
+        # Inject the computed skill gaps (company targets + target role + goals,
+        # on the canonical 1-5 scale) so the path is sequenced to close REAL gaps,
+        # not just the user's free-text goal.
+        try:
+            from competency import compute_skill_gaps
+            _gaps = compute_skill_gaps(username, profile=profile)
+        except Exception:
+            _gaps = []
+        if _gaps:
+            gap_strs = [f"{g['skill']} ({g['current_label']}→{g['target_label']})" for g in _gaps[:6]]
+            context_parts.append("Vigtigste kompetencegab (prioritér disse): " + ", ".join(gap_strs))
+        _target_role = (profile.get("target_role") or "").strip()
+        if _target_role:
+            context_parts.append(f"Ønsket rolle: {_target_role}")
 
         if not context_parts:
             context_parts.append("Ingen profildata — foreslå en generel læringssti")
@@ -5193,6 +5258,40 @@ def _execute_show_mindmap_preview(args, username):
         return json.dumps({"status": "error", "message": str(e)})
 
 
+def _execute_show_skill_gaps(args, username):
+    """Per-learner skill-gap card + data (the grounded bridge to recommendations).
+
+    Returns the computed gaps (current vs target on the 1-5 scale, from company
+    targets + target role + goals) so the model can both render the card AND
+    follow up with a gap-closing recommend_for_profile."""
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        from competency import compute_skill_gaps
+        ensure_tables()
+        profile = get_full_profile(username)
+        gaps = compute_skill_gaps(username, profile=profile)
+        target_role = (profile.get("target_role") or "").strip()
+        # Honest empty-states: distinguish "no target set" from "no gaps".
+        if not gaps:
+            reason = "no_target" if not target_role else "covered"
+            return json.dumps({
+                "status": "skill_gaps", "gaps": [], "count": 0,
+                "target_role": target_role, "has_gaps": False, "reason": reason,
+            }, ensure_ascii=False, default=str)
+        return json.dumps({
+            "status": "skill_gaps",
+            "gaps": gaps[:8],
+            "count": len(gaps),
+            "target_role": target_role,
+            "has_gaps": True,
+            "next_action": "recommend_for_profile",
+        }, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
 def _execute_save_learning_path(args, username):
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
@@ -5332,6 +5431,8 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_show_cv_summary(args, username)
         elif function_name == "show_mindmap_preview":
             return _execute_show_mindmap_preview(args, username)
+        elif function_name == "show_skill_gaps":
+            return _execute_show_skill_gaps(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

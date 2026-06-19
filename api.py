@@ -540,7 +540,8 @@ def api_cv_parse_stream():
                 if result.get('error'):
                     yield f"event: error\ndata: {result['error']}\n\n"
                 else:
-                    yield f"event: result\ndata: {json.dumps(result.get('proposal', {}))}\n\n"
+                    payload = {'proposal': result.get('proposal') or {}, 'hint': result.get('hint') or ''}
+                    yield f"event: result\ndata: {json.dumps(payload)}\n\n"
                 return
 
             _cv_time.sleep(0.5)

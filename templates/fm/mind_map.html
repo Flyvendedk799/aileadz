@@ -2,70 +2,40 @@
 {% block page_id %}mindmap{% endblock %}
 {% block title %}Mind-Map · Futurematch{% endblock %}
 {% block topbar_title %}Mind-Map{% endblock %}
-{% block topbar_sub %}Alt hvad AI’en husker om dig — og hvornår den bruger det{% endblock %}
+{% block topbar_sub %}Alt hvad AI'en husker om dig — og hvornår den bruger det{% endblock %}
 {% block body_class %}mindmap-page{% endblock %}
 
 {% block extra_head %}
-<script src="https://cdn.jsdelivr.net/npm/cytoscape@3.29.0/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/react@17/umd/react.production.min.js"></script>
+<script src="https://unpkg.com/react-dom@17/umd/react-dom.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="" />
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+<script src="{{ url_for('static', filename='futurematch/assets/mind-map-support.js') }}"></script>
 <style>
   html, body.mindmap-page { height: 100%; }
   body.mindmap-page { overflow: hidden; }
   body.mindmap-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.mindmap-page .fm-foot { display: none; }
-
   .mm-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
   .ai-modebar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); overflow-x: auto; }
   .ai-modebar a { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); color: var(--fm-ink-2); font-size: 12.5px; font-weight: 650; white-space: nowrap; text-decoration: none; }
   .ai-modebar a:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
   .ai-modebar a.active { border-color: var(--fm-primary); background: var(--fm-primary-tint); color: var(--fm-primary); }
   .ai-modebar i { font-size: 13px; }
-  .mm-bar { display: flex; align-items: center; gap: 14px; padding: 12px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); flex-wrap: wrap; }
-  .mm-stats { display: flex; gap: 18px; flex-wrap: wrap; }
-  .mm-stat { display: flex; flex-direction: column; }
-  .mm-stat .v { font-family: var(--ff-display); font-weight: 700; font-size: 18px; line-height: 1; }
-  .mm-stat .v.accent { color: var(--fm-primary); }
-  .mm-stat .l { font-size: 11px; color: var(--fm-ink-3); margin-top: 3px; }
-  .mm-actions { margin-left: auto; display: flex; gap: 8px; align-items: center; }
-  .mm-search { display: flex; align-items: center; gap: 7px; min-width: 220px; height: 36px; padding: 0 11px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); color: var(--fm-ink-2); }
-  .mm-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--fm-ink); font: inherit; font-size: 13px; }
-  .mm-filter { height: 36px; border: 1px solid var(--fm-line); border-radius: 10px; background: var(--fm-surface-2); color: var(--fm-ink); font: inherit; font-size: 12.5px; font-weight: 600; padding: 0 9px; }
-  .mm-btn { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 12.5px; cursor: pointer; text-decoration: none; }
-  .mm-btn:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
-  .mm-btn.primary { background: var(--fm-primary); color: #fff; border-color: var(--fm-primary); }
-  [data-theme="dark"] .mm-btn.primary { color: #06201d; }
-
-  .mm-add { display: none; gap: 10px; align-items: flex-end; padding: 12px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface-2); flex-wrap: wrap; }
-  .mm-add.show { display: flex; }
-  .mm-add .fm-field { margin: 0; }
-
-  .mm-stage { flex: 1; display: flex; min-height: 0; position: relative; }
-  #cy { flex: 1; min-width: 0; height: 100%; background:
-        radial-gradient(circle at 1px 1px, var(--fm-line) 1px, transparent 0) 0 0 / 26px 26px,
-        var(--fm-bg); }
-  .mm-panel { width: 300px; flex: 0 0 300px; border-left: 1px solid var(--fm-line); background: var(--fm-surface); padding: 18px; overflow-y: auto; }
-  .mm-panel .ph { color: var(--fm-ink-3); font-size: 13px; text-align: center; margin-top: 40px; }
-  .mm-pk { display: inline-flex; align-items: center; gap: 6px; font-family: var(--ff-mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: .06em; color: var(--fm-ink-3); }
-  .mm-pdot { width: 9px; height: 9px; border-radius: 999px; }
-  .mm-ptitle { font-family: var(--ff-display); font-weight: 700; font-size: 17px; margin: 8px 0 4px; line-height: 1.25; }
-  .mm-pdetail { font-size: 13px; color: var(--fm-ink-2); line-height: 1.55; }
-  .mm-prow { display: flex; justify-content: space-between; gap: 10px; font-size: 12px; padding: 7px 0; border-top: 1px solid var(--fm-line); }
-  .mm-prow .k { color: var(--fm-ink-3); }
-  .mm-prow .val { color: var(--fm-ink); font-weight: 600; text-align: right; }
-  .mm-pdel { margin-top: 16px; width: 100%; padding: 9px; border-radius: 10px; border: 1px solid color-mix(in srgb,var(--fm-danger) 30%,transparent); background: transparent; color: var(--fm-danger); font-weight: 650; font-size: 12.5px; cursor: pointer; }
-  .mm-pdel:hover { background: color-mix(in srgb,var(--fm-danger) 10%,transparent); }
-  .mm-used { margin-top: 12px; padding: 10px 12px; border-radius: 10px; background: color-mix(in srgb,var(--fm-primary) 8%,transparent); border: 1px solid color-mix(in srgb,var(--fm-primary) 20%,transparent); font-size: 12px; color: var(--fm-ink-2); }
-
-  .mm-legend { display: flex; flex-wrap: wrap; gap: 12px; padding: 10px 20px; border-top: 1px solid var(--fm-line); background: var(--fm-surface); font-size: 11.5px; }
-  .mm-leg { display: inline-flex; align-items: center; gap: 6px; color: var(--fm-ink-2); }
-  .mm-leg i { width: 11px; height: 11px; border-radius: 999px; }
-  .mm-empty { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; color: var(--fm-ink-3); pointer-events: none; }
-  .mm-empty .inner { pointer-events: auto; }
-
-  @media (max-width: 980px) {
-    .mm-actions { width: 100%; margin-left: 0; }
-    .mm-search { flex: 1; min-width: 180px; }
+  .mm3d-stage { flex: 1; position: relative; min-height: 0; overflow: hidden; }
+  /* support.js mounts React inside <x-dc> — ensure it fills stage */
+  .mm3d-stage x-dc { display: block; height: 100%; }
+  /* fallback: if support.js wraps in a div sibling */
+  .mm3d-stage > div { height: 100%; }
+  @keyframes mm-spin { to { transform: rotate(360deg); } }
+  @keyframes mm-fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mm-pulse {
+    0%, 100% { box-shadow: 0 0 0 0 rgba(236,72,153,0); }
+    50% { box-shadow: 0 0 0 6px rgba(236,72,153,0.15); }
   }
-  @media (max-width: 760px) { .mm-panel { display: none; } }
 </style>
 {% endblock %}
 
@@ -76,63 +46,752 @@
     <a href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> AI Profiler</a>
     <a class="active" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i> Mind-Map</a>
   </nav>
-  <div class="mm-bar">
-    <div class="mm-stats" id="mmStats">
-      <div class="mm-stat"><span class="v accent" id="mmPct">—</span><span class="l">Profil komplet</span></div>
-      <div class="mm-stat"><span class="v" id="mmNodes">—</span><span class="l">Datapunkter</span></div>
-      <div class="mm-stat"><span class="v" id="mmMem">—</span><span class="l">Hukommelser</span></div>
-      <div class="mm-stat"><span class="v" id="mmUsed">—</span><span class="l">Brugt af AI</span></div>
-    </div>
-    <div class="mm-actions">
-      <label class="mm-search" aria-label="Søg i mind-map"><i class="fa-solid fa-magnifying-glass"></i><input id="mmSearch" placeholder="Søg i profil og hukommelse"></label>
-      <select class="mm-filter" id="mmFilter" aria-label="Filtrer mind-map">
-        <option value="all">Alle data</option>
-        <option value="profile">Profilfelter</option>
-        <option value="hukommelse">Hukommelse</option>
-        <option value="used">Brugt af AI</option>
-        <option value="kompetencer">Kompetencer</option>
-        <option value="erfaring">Erfaring</option>
-        <option value="maal">Mål</option>
-      </select>
-      <button class="mm-btn" id="mmFitBtn" title="Tilpas visning"><i class="fa-solid fa-expand"></i></button>
-      <button class="mm-btn" id="mmReloadBtn" title="Genindlæs"><i class="fa-solid fa-rotate-right"></i></button>
-      <button class="mm-btn" id="mmAddBtn"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg> Tilføj hukommelse</button>
-      <a class="mm-btn primary" href="{{ url_for('futurematch.ai_profiler') }}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> AI Profiler</a>
+  <div class="mm3d-stage">
+{% raw %}
+<x-dc>
+
+<div ref="{{ rootRef }}" style="position:relative;width:100%;height:100%;background:#00080f;overflow:hidden;font-family:'Space Grotesk',system-ui,sans-serif;color:#d4e0f4;user-select:none;-webkit-user-select:none;">
+
+  <!-- Canvas mount -->
+  <div data-mm-canvas="1" style="position:absolute;inset:0;z-index:0;"></div>
+
+  <!-- TOP BAR -->
+  <div style="position:absolute;top:0;left:0;right:0;z-index:10;padding:14px 20px 16px;background:linear-gradient(180deg,rgba(0,8,15,.9) 0%,transparent 100%);">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:9px;">
+      <div style="position:relative;display:flex;align-items:center;">
+        <svg style="position:absolute;left:12px;pointer-events:none;opacity:.35;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+        <input type="text" placeholder="Søg i vidensbase…" value="{{ searchQuery }}" onChange="{{ onSearch }}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:8px 18px 8px 36px;color:inherit;font-family:inherit;font-size:13px;width:270px;outline:none;backdrop-filter:blur(12px);" />
+      </div>
+      <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:680px;">
+        <sc-for list="{{ categories }}" as="cat" hint-placeholder-count="9">
+          <button onClick="{{ cat.fn }}" style="padding:4px 12px;border-radius:20px;border:1px solid {{ cat.bc }};background:{{ cat.bg }};color:{{ cat.tc }};font-size:11px;font-family:inherit;cursor:pointer;font-weight:600;letter-spacing:.4px;white-space:nowrap;">{{ cat.label }}</button>
+        </sc-for>
+      </div>
     </div>
   </div>
 
-  <div class="mm-add" id="mmAdd">
-    <div class="fm-field" style="flex:2;min-width:200px"><label>Hvad skal AI’en huske?</label><input class="fm-input" id="mmLabel" placeholder="F.eks. Foretrækker aftenundervisning" /></div>
-    <div class="fm-field" style="flex:2;min-width:220px"><label>Detalje</label><input class="fm-input" id="mmDetail" placeholder="Valgfrit: hvornår, hvorfor eller kontekst" /></div>
-    <div class="fm-field" style="flex:1;min-width:150px"><label>Kategori</label>
-      <select class="fm-select" id="mmCat">
-        <option value="praeference">Præference</option>
-        <option value="maal">Mål</option>
-        <option value="kontekst">Kontekst</option>
-        <option value="personlighed">Personlighed</option>
-        <option value="interesse">Interesse</option>
-        <option value="andet" selected>Andet</option>
-      </select>
+  <!-- BOTTOM STATS -->
+  <div style="position:absolute;bottom:0;left:0;right:0;z-index:10;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(0deg,rgba(0,8,15,.9) 0%,transparent 100%);">
+    <div style="display:flex;align-items:center;gap:13px;">
+      <div style="position:relative;width:50px;height:50px;flex-shrink:0;">
+        <svg width="50" height="50" viewBox="0 0 50 50" style="transform:rotate(-90deg);">
+          <circle cx="25" cy="25" r="19" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="4"></circle>
+          <circle cx="25" cy="25" r="19" fill="none" stroke="var(--fm-primary,#3b82f6)" stroke-width="4" stroke-dasharray="{{ cArc }} {{ cCirc }}" stroke-linecap="round"></circle>
+        </svg>
+        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">{{ completeness }}%</div>
+      </div>
+      <div>
+        <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.8px;margin-bottom:1px;">Vidensbase</div>
+        <div style="font-size:13px;font-weight:600;">{{ completeness }}% komplet</div>
+      </div>
     </div>
-    <button class="mm-btn primary" id="mmSave">Gem</button>
-    <button class="mm-btn" id="mmCancel">Annullér</button>
+    <div style="display:flex;align-items:center;gap:18px;">
+      <div style="text-align:right;">
+        <div style="font-size:20px;font-weight:700;line-height:1.15;">{{ leafCount }}</div>
+        <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.5px;">Fakta</div>
+      </div>
+      <div style="width:1px;height:24px;background:rgba(255,255,255,.08);"></div>
+      <div style="text-align:right;">
+        <div style="font-size:20px;font-weight:700;line-height:1.15;color:#ec4899;">{{ memCount }}</div>
+        <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.5px;">Minder</div>
+      </div>
+      <div style="width:1px;height:24px;background:rgba(255,255,255,.08);"></div>
+      <div style="text-align:right;">
+        <div style="font-size:20px;font-weight:700;line-height:1.15;color:#f97316;">{{ usedCount }}</div>
+        <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.5px;">AI brugt</div>
+      </div>
+    </div>
   </div>
 
-  <div class="mm-stage">
-    <div id="cy"></div>
-    <div class="mm-empty" id="mmEmpty" hidden><div class="inner">
-      <i class="fa-solid fa-brain" style="font-size:28px;margin-bottom:8px;color:var(--fm-primary)"></i>
-      <div style="font-weight:700;color:var(--fm-ink-2)">Din mind-map er tom endnu</div>
-      <p style="font-size:13px;margin:6px 0 14px">Udfyld din profil, så dukker dine data op her som et hukommelseskort.</p>
-      <a class="mm-btn primary" href="{{ url_for('futurematch.ai_profiler') }}">Start AI Profiler</a>
-    </div></div>
-    <aside class="mm-panel" id="mmPanel"><div class="ph">Klik på en node for at se hvad der er gemt — og hvornår AI’en sidst brugte det.</div></aside>
+  <!-- SIDE PANEL -->
+  <div style="position:absolute;top:0;right:0;bottom:0;width:330px;z-index:20;transform:{{ panelX }};transition:transform .32s cubic-bezier(.4,0,.2,1);background:rgba(6,12,28,.96);border-left:1px solid rgba(255,255,255,.07);backdrop-filter:blur(24px);overflow-y:auto;display:flex;flex-direction:column;">
+
+    <div style="padding:20px 18px 15px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;position:sticky;top:0;background:rgba(6,12,28,.97);backdrop-filter:blur(24px);z-index:1;">
+      <div style="flex:1;min-width:0;">
+        <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
+          <div style="width:7px;height:7px;border-radius:50%;background:{{ pColor }};flex-shrink:0;box-shadow:0 0 8px {{ pColor }};"></div>
+          <span style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:{{ pColor }};">{{ pCat }}</span>
+        </div>
+        <div style="font-size:16px;font-weight:700;line-height:1.35;word-break:break-word;">{{ pTitle }}</div>
+      </div>
+      <button onClick="{{ onClose }}" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);cursor:pointer;color:rgba(255,255,255,.5);font-size:16px;display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit;line-height:1;">×</button>
+    </div>
+
+    <div style="padding:16px 18px;flex:1;display:flex;flex-direction:column;gap:15px;">
+
+      <div style="display:flex;gap:6px;flex-wrap:wrap;">
+        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);">{{ pSrc }}</span>
+        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);">{{ pTypeLabel }}</span>
+      </div>
+
+      <div>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px;">
+          <span style="font-size:10px;opacity:.4;text-transform:uppercase;letter-spacing:.6px;">Konfidens</span>
+          <span style="font-size:13px;font-weight:700;color:{{ pColor }};">{{ pConf }}%</span>
+        </div>
+        <div style="height:3px;background:rgba(255,255,255,.07);border-radius:2px;overflow:hidden;">
+          <div style="height:100%;width:{{ pConf }}%;background:{{ pColor }};border-radius:2px;transition:width .5s ease;"></div>
+        </div>
+      </div>
+
+      <sc-if value="{{ hasPDetail }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:12px 14px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.06);">
+          <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.6px;margin-bottom:5px;">Detalje</div>
+          <div style="font-size:13px;line-height:1.68;opacity:.8;">{{ pDetail }}</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPBranch }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:12px 14px;background:rgba(255,255,255,.03);border-radius:10px;border:1px solid rgba(255,255,255,.06);display:flex;align-items:center;gap:13px;">
+          <div style="font-size:28px;font-weight:800;color:{{ pColor }};line-height:1;">{{ pChildCount }}</div>
+          <div style="font-size:13px;opacity:.58;line-height:1.4;">noder i<br>denne kategori</div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isHukMem }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:0;">
+          <div>
+            <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px;">AI Brug</div>
+            <div style="display:flex;align-items:center;gap:13px;margin-bottom:11px;">
+              <div style="font-size:36px;font-weight:800;color:#ec4899;line-height:1;animation:mm-pulse 2s infinite;">{{ pUsed }}</div>
+              <div>
+                <div style="font-size:13px;opacity:.68;margin-bottom:2px;">gange brugt af AI</div>
+                <div style="font-size:11px;opacity:.36;">{{ pLastUsedLabel }}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:5px;flex-wrap:wrap;">
+              <sc-for list="{{ usageDots }}" as="dot" hint-placeholder-count="12">
+                <div style="width:9px;height:9px;border-radius:50%;background:{{ dot.c }};"></div>
+              </sc-for>
+            </div>
+          </div>
+          <button onClick="{{ onDelete }}" style="margin-top:14px;width:100%;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07);color:#f87171;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
+            Slet hukommelse
+          </button>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ isPRoot }}" hint-placeholder-val="{{ false }}">
+        <button onClick="{{ onAddMem }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.28);background:rgba(236,72,153,.07);color:#ec4899;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          Tilføj hukommelse
+        </button>
+      </sc-if>
+
+    </div>
   </div>
 
-  <div class="mm-legend" id="mmLegend"></div>
+  <!-- TOOLTIP -->
+  <div data-mm-tip="1" style="position:absolute;z-index:40;pointer-events:none;padding:5px 12px;background:rgba(2,8,20,.93);border:1px solid rgba(255,255,255,.11);border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;backdrop-filter:blur(12px);opacity:0;transform:translate(-50%,-140%);transition:opacity .12s;letter-spacing:.2px;top:0;left:0;"></div>
+
+  <!-- LOADING -->
+  <sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}">
+    <div style="position:absolute;inset:0;z-index:50;background:#00080f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:mm-fadein .3s ease;">
+      <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,.07);border-top-color:var(--fm-primary,#3b82f6);border-radius:50%;animation:mm-spin .85s linear infinite;"></div>
+      <div style="font-size:11px;opacity:.35;letter-spacing:1.4px;text-transform:uppercase;font-weight:600;">Indlæser vidensbase…</div>
+    </div>
+  </sc-if>
+
 </div>
-{% endblock %}
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  // ── STATE ──────────────────────────────────────────────────
+  state = {
+    loading: true,
+    selectedNode: null,
+    searchQuery: '',
+    hiddenCats: new Set(),
+    completeness: 0,
+    counts: { leaves: 0, memories: 0, used_memories: 0 },
+  };
 
-{% block extra_scripts %}
-<script src="{{ url_for('static', filename='futurematch/assets/mind-map.js') }}?v=2"></script>
+  // ── CONSTANTS ──────────────────────────────────────────────
+  _C = {
+    root:'#e2eaf8', kompetencer:'#3b82f6', erfaring:'#f59e0b',
+    uddannelse:'#10b981', certificeringer:'#a855f7', sprog:'#06b6d4',
+    maal:'#f97316', hukommelse:'#ec4899', samtale:'#6366f1', om:'#94a3b8',
+  };
+  _L = {
+    kompetencer:'Kompetencer', erfaring:'Erfaring', uddannelse:'Uddannelse',
+    certificeringer:'Certifikater', sprog:'Sprog', maal:'Mål',
+    hukommelse:'Hukommelse', samtale:'Samtale', om:'Om mig',
+  };
+  _S = { ai:'AI', profiler:'Profil', user:'Bruger', cv:'CV' };
+  _CAT_ORDER = ['kompetencer','erfaring','uddannelse','certificeringer','sprog','maal','hukommelse','samtale','om'];
+
+  // ── MOCK (fallback when API unavailable) ───────────────────
+  _MOCK = {
+    nodes:[
+      {id:'root',type:'root',label:'Profil',category:'om',meta:{source:'profiler',confidence:1,detail:'Din personlige vidensbase'}},
+      {id:'b_komp',type:'branch',label:'Kompetencer',category:'kompetencer',meta:{source:'ai',confidence:.95}},
+      {id:'b_erf',type:'branch',label:'Erfaring',category:'erfaring',meta:{source:'cv',confidence:.9}},
+      {id:'b_udd',type:'branch',label:'Uddannelse',category:'uddannelse',meta:{source:'cv',confidence:.95}},
+      {id:'b_cert',type:'branch',label:'Certifikater',category:'certificeringer',meta:{source:'user',confidence:1}},
+      {id:'b_spr',type:'branch',label:'Sprog',category:'sprog',meta:{source:'cv',confidence:.9}},
+      {id:'b_maal',type:'branch',label:'Mål',category:'maal',meta:{source:'user',confidence:.85}},
+      {id:'b_huk',type:'branch',label:'Hukommelse',category:'hukommelse',meta:{source:'ai',confidence:.9}},
+      {id:'l_react',type:'leaf',label:'React',category:'kompetencer',meta:{source:'cv',confidence:.95,detail:'Frontend framework',used_count:0}},
+      {id:'l_py',type:'leaf',label:'Python',category:'kompetencer',meta:{source:'cv',confidence:.9,detail:'Backend + data science',used_count:0}},
+      {id:'l_ml',type:'leaf',label:'Machine Learning',category:'kompetencer',meta:{source:'ai',confidence:.8,detail:'ML-modeller og dataanalyse',used_count:0}},
+      {id:'l_job1',type:'leaf',label:'Senior Developer',category:'erfaring',meta:{source:'cv',confidence:1,detail:'2021–2024',used_count:0}},
+      {id:'l_job2',type:'leaf',label:'Tech Lead',category:'erfaring',meta:{source:'cv',confidence:1,detail:'2018–2021',used_count:0}},
+      {id:'l_dtu',type:'leaf',label:'MSc Computer Science',category:'uddannelse',meta:{source:'cv',confidence:1,detail:'DTU 2018',used_count:0}},
+      {id:'l_aws',type:'leaf',label:'AWS Solutions Architect',category:'certificeringer',meta:{source:'user',confidence:1,detail:'AWS SAA-C03 · 2023',used_count:0}},
+      {id:'l_da',type:'leaf',label:'Dansk',category:'sprog',meta:{source:'cv',confidence:1,detail:'Modersmål',used_count:0}},
+      {id:'l_en',type:'leaf',label:'Engelsk',category:'sprog',meta:{source:'cv',confidence:1,detail:'Flydende',used_count:0}},
+      {id:'l_cto',type:'leaf',label:'CTO inden 3 år',category:'maal',meta:{source:'user',confidence:.9,detail:'Langsigtet karrieremål',used_count:0}},
+      {id:'m1',type:'leaf',label:'Foretrækker agile teams',category:'hukommelse',meta:{source:'ai',confidence:.85,detail:'Teams på 4–8 pers.',used_count:8,last_used_at:'2026-06-15',memory_id:1}},
+      {id:'m2',type:'leaf',label:'Ønsker remote/hybrid',category:'hukommelse',meta:{source:'ai',confidence:.9,detail:'Min. 3 dage hjemmefra',used_count:5,last_used_at:'2026-06-10',memory_id:2}},
+      {id:'m3',type:'leaf',label:'Motiveret af impact',category:'hukommelse',meta:{source:'user',confidence:1,detail:'Vil se konkret forskel',used_count:3,last_used_at:'2026-06-01',memory_id:3}},
+    ],
+    edges:[
+      {source:'root',target:'b_komp'},{source:'root',target:'b_erf'},
+      {source:'root',target:'b_udd'},{source:'root',target:'b_cert'},
+      {source:'root',target:'b_spr'},{source:'root',target:'b_maal'},
+      {source:'root',target:'b_huk'},
+      {source:'b_komp',target:'l_react'},{source:'b_komp',target:'l_py'},{source:'b_komp',target:'l_ml'},
+      {source:'b_erf',target:'l_job1'},{source:'b_erf',target:'l_job2'},
+      {source:'b_udd',target:'l_dtu'},
+      {source:'b_cert',target:'l_aws'},
+      {source:'b_spr',target:'l_da'},{source:'b_spr',target:'l_en'},
+      {source:'b_maal',target:'l_cto'},
+      {source:'b_huk',target:'m1'},{source:'b_huk',target:'m2'},{source:'b_huk',target:'m3'},
+    ],
+    completeness:{pct:72},counts:{leaves:16,memories:3,used_memories:2},
+  };
+
+  // ── THREE.JS REFS ──────────────────────────────────────────
+  _rootRef=React.createRef();
+  _scene=null;_cam=null;_renderer=null;_ctrl=null;_clock=null;
+  _ray=null;_mouse=null;_tipEl=null;_data=null;
+  _nMap={};_rings=[];_ePts=null;_eData=[];
+  _animId=null;_hov=null;_sel=null;_tid=0;
+  _glowTex=null;_inited=false;
+
+  // ── LIFECYCLE ──────────────────────────────────────────────
+  componentDidMount(){
+    if(this._inited)return;this._inited=true;
+    try{
+      const root=this._rootRef.current;
+      this._tipEl=root ? root.querySelector('[data-mm-tip]') : null;
+      this._init3D();
+      this._loadData();
+      window.addEventListener('resize',this._onResize);
+    }catch(e){
+      console.error('MM mount error:',e&&(e.message||String(e)),e&&e.stack);
+    }
+  }
+  componentWillUnmount(){
+    if(this._animId)cancelAnimationFrame(this._animId);
+    window.removeEventListener('resize',this._onResize);
+    if(this._renderer){
+      this._renderer.domElement.removeEventListener('mousemove',this._onMM);
+      this._renderer.domElement.removeEventListener('click',this._onCl);
+      this._renderer.dispose();
+    }
+  }
+
+  // ── THREE INIT ─────────────────────────────────────────────
+  _init3D(){
+    if(typeof THREE==='undefined'){console.error('Three.js not loaded');return;}
+    const root=this._rootRef.current;
+    if(!root){console.error('MM: root ref not ready');return;}
+    const cont=root.querySelector('[data-mm-canvas]');
+    const W=cont.clientWidth,H=cont.clientHeight;
+    this._renderer=new THREE.WebGLRenderer({antialias:true});
+    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    this._renderer.setSize(W,H);
+    this._renderer.setClearColor(0x00080f,1);
+    cont.appendChild(this._renderer.domElement);
+    this._scene=new THREE.Scene();
+    this._scene.fog=new THREE.FogExp2(0x00080f,.0013);
+    this._cam=new THREE.PerspectiveCamera(55,W/H,1,2500);
+    this._cam.position.set(0,55,410);
+    this._scene.add(new THREE.AmbientLight(0xffffff,.45));
+    const pl1=new THREE.PointLight(0x4499ff,2.8,650);
+    pl1.position.set(0,200,0);this._scene.add(pl1);
+    const pl2=new THREE.PointLight(0xff44aa,1.5,500);
+    pl2.position.set(-180,-80,160);this._scene.add(pl2);
+    if(THREE.OrbitControls){
+      this._ctrl=new THREE.OrbitControls(this._cam,this._renderer.domElement);
+      this._ctrl.enableDamping=true;this._ctrl.dampingFactor=.06;
+      this._ctrl.autoRotate=true;this._ctrl.autoRotateSpeed=.42;
+      this._ctrl.minDistance=60;this._ctrl.maxDistance=900;
+    }
+    this._ray=new THREE.Raycaster();
+    this._mouse=new THREE.Vector2(-9999,-9999);
+    this._clock=new THREE.Clock();
+    this._mkStars();
+    this._renderer.domElement.addEventListener('mousemove',this._onMM);
+    this._renderer.domElement.addEventListener('click',this._onCl);
+    this._renderer.domElement.addEventListener('dblclick',e=>{e.preventDefault();this._deselect();});
+    this._renderer.domElement.style.display='block';
+    this._loop();
+  }
+
+  // ── STARS ──────────────────────────────────────────────────
+  _mkStars(){
+    const N=2000,p=new Float32Array(N*3);
+    for(let i=0;i<N;i++){
+      const ph=Math.acos(2*Math.random()-1),th=Math.random()*6.2832,r=850+Math.random()*700;
+      p[i*3]=r*Math.sin(ph)*Math.cos(th);p[i*3+1]=r*Math.sin(ph)*Math.sin(th);p[i*3+2]=r*Math.cos(ph);
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+    this._scene.add(new THREE.Points(geo,new THREE.PointsMaterial({size:1.3,color:0x7aaee8,transparent:true,opacity:.5,sizeAttenuation:true})));
+  }
+
+  // ── LABEL SPRITE ───────────────────────────────────────────
+  _mkLabelSprite(text,hexColor,nodeType){
+    const isRoot=nodeType==='root',isBranch=nodeType==='branch';
+    const px=isRoot?22:isBranch?16:12;
+    const pad=isRoot?20:isBranch?16:12;
+    const cv=document.createElement('canvas');
+    const ctx=cv.getContext('2d');
+    ctx.font=`${isBranch||isRoot?'700':'500'} ${px}px 'Space Grotesk',system-ui,sans-serif`;
+    const tw=ctx.measureText(text).width;
+    cv.width=Math.ceil(tw+pad*2+2);
+    cv.height=Math.ceil(px*1.5+pad);
+    ctx.clearRect(0,0,cv.width,cv.height);
+    const bg=isRoot?'rgba(0,0,0,.72)':isBranch?'rgba(0,0,0,.62)':'rgba(0,0,0,.52)';
+    const r=cv.height*.45;
+    ctx.beginPath();
+    ctx.moveTo(r,0);ctx.lineTo(cv.width-r,0);
+    ctx.arcTo(cv.width,0,cv.width,r,r);
+    ctx.lineTo(cv.width,cv.height-r);
+    ctx.arcTo(cv.width,cv.height,cv.width-r,cv.height,r);
+    ctx.lineTo(r,cv.height);
+    ctx.arcTo(0,cv.height,0,cv.height-r,r);
+    ctx.lineTo(0,r);
+    ctx.arcTo(0,0,r,0,r);
+    ctx.closePath();
+    ctx.fillStyle=bg;ctx.fill();
+    ctx.fillStyle=hexColor;
+    ctx.fillRect(0,0,3,cv.height);
+    ctx.font=`${isBranch||isRoot?'700':'500'} ${px}px 'Space Grotesk',system-ui,sans-serif`;
+    ctx.fillStyle=isRoot?'#ffffff':isBranch?hexColor:'rgba(255,255,255,.85)';
+    ctx.textBaseline='middle';
+    ctx.fillText(text,pad,cv.height/2);
+    const tex=new THREE.CanvasTexture(cv);
+    const aspect=cv.width/cv.height;
+    const h=isRoot?18:isBranch?13:9;
+    const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,sizeAttenuation:true});
+    const sprite=new THREE.Sprite(mat);
+    sprite.scale.set(h*aspect,h,1);
+    return sprite;
+  }
+
+  // ── GLOW TEX ───────────────────────────────────────────────
+  _mkGlowTex(){
+    if(this._glowTex)return this._glowTex;
+    const cv=document.createElement('canvas');cv.width=cv.height=128;
+    const ctx=cv.getContext('2d');
+    const g=ctx.createRadialGradient(64,64,0,64,64,64);
+    g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.3,'rgba(255,255,255,.7)');
+    g.addColorStop(.65,'rgba(255,255,255,.18)');g.addColorStop(1,'rgba(255,255,255,0)');
+    ctx.fillStyle=g;ctx.fillRect(0,0,128,128);
+    this._glowTex=new THREE.CanvasTexture(cv);
+    return this._glowTex;
+  }
+
+  // ── LOAD DATA ──────────────────────────────────────────────
+  async _loadData(){
+    try{
+      const r=await fetch('/api/profile/mindmap',{credentials:'same-origin'});
+      if(!r.ok)throw 0;
+      this._data=await r.json();
+    }catch{this._data=this._MOCK;}
+    if(!this._scene)return;
+    this._buildGraph(this._data);
+    this.setState({loading:false,completeness:this._data.completeness.pct,counts:this._data.counts});
+  }
+
+  // ── FIBONACCI SPHERE ───────────────────────────────────────
+  _fibSphere(n,r){
+    if(n<1)return [];if(n===1)return[new THREE.Vector3(r,0,0)];
+    const pts=[],phi=Math.PI*(3-Math.sqrt(5));
+    for(let i=0;i<n;i++){
+      const y=1-(i/(n-1))*2,rr=Math.sqrt(Math.max(0,1-y*y)),th=phi*i;
+      pts.push(new THREE.Vector3(Math.cos(th)*rr*r,y*r,Math.sin(th)*rr*r));
+    }
+    return pts;
+  }
+
+  // ── BUILD GRAPH ────────────────────────────────────────────
+  _buildGraph(data){
+    const{nodes,edges}=data;
+    const byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
+    const childrenOf={};
+    edges.forEach(e=>{if(!childrenOf[e.source])childrenOf[e.source]=[];childrenOf[e.source].push(e.target);});
+    const pos={};
+    const root=nodes.find(n=>n.type==='root');
+    if(root)pos[root.id]=new THREE.Vector3(0,0,0);
+    const branches=nodes.filter(n=>n.type==='branch');
+    const bPts=this._fibSphere(branches.length,195);
+    branches.forEach((b,i)=>{pos[b.id]=bPts[i];});
+    branches.forEach(b=>{
+      const kids=(childrenOf[b.id]||[]).map(id=>byId[id]).filter(Boolean);
+      if(!kids.length)return;
+      const lPts=this._fibSphere(kids.length,74);
+      kids.forEach((leaf,j)=>{
+        const bp=pos[b.id];
+        pos[leaf.id]=new THREE.Vector3(bp.x+lPts[j].x,bp.y+lPts[j].y,bp.z+lPts[j].z);
+      });
+    });
+    nodes.forEach(n=>{
+      if(!pos[n.id]){
+        const phi=Math.acos(2*Math.random()-1),th=Math.random()*6.2832,r=200;
+        pos[n.id]=new THREE.Vector3(r*Math.sin(phi)*Math.cos(th),r*Math.sin(phi)*Math.sin(th),r*Math.cos(phi));
+      }
+    });
+    const tex=this._mkGlowTex();
+    nodes.forEach(node=>{
+      const p=pos[node.id];if(!p)return;
+      const col=this._C[node.category]||'#fff';
+      const c3=new THREE.Color(col);
+      const isRoot=node.type==='root',isBranch=node.type==='branch';
+      const isMem=node.type==='leaf'&&node.category==='hukommelse';
+      const used=node.meta&&node.meta.used_count||0;
+      const rad=isRoot?16:isBranch?8:isMem?5+Math.min(used,8)*.4:4.2;
+      const geo=new THREE.SphereGeometry(rad,isRoot?32:isBranch?20:12,isRoot?32:isBranch?16:10);
+      const emC=c3.clone().multiplyScalar(.2);
+      const mat=new THREE.MeshPhongMaterial({color:c3,emissive:emC,shininess:80,transparent:true,opacity:isRoot?1:isBranch?.9:.8});
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.position.copy(p);
+      mesh.userData={nodeId:node.id,phase:Math.random()*Math.PI*2,basePos:p.clone(),origOpacity:mat.opacity};
+      this._scene.add(mesh);
+      const gs=isRoot?88:isBranch?44:isMem?28+used*2.5:20;
+      const go=isRoot?.72:isBranch?.44:isMem?.48+Math.min(used,.08)*.2:.22;
+      const gMat=new THREE.SpriteMaterial({map:tex,color:c3,transparent:true,opacity:go,blending:THREE.AdditiveBlending,depthWrite:false});
+      const glow=new THREE.Sprite(gMat);
+      glow.scale.set(gs,gs,1);glow.position.copy(p);
+      glow.userData={baseOp:go};
+      this._scene.add(glow);
+      const rings=[];
+      if(isMem&&used>0){
+        const rc=Math.min(Math.ceil(used/3),4);
+        for(let ri=0;ri<rc;ri++){
+          const rgeo=new THREE.TorusGeometry(rad+6+ri*5,.7,8,48);
+          const rmat=new THREE.MeshBasicMaterial({color:c3,transparent:true,opacity:.52-ri*.1,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+          const ring=new THREE.Mesh(rgeo,rmat);
+          ring.position.copy(p);ring.rotation.x=Math.PI/2+ri*.35;ring.rotation.y=ri*.9;
+          ring.userData={speed:.55+ri*.22,phase:ri*1.1,basePos:p.clone()};
+          this._scene.add(ring);rings.push(ring);this._rings.push(ring);
+        }
+      }
+      const label=this._mkLabelSprite(node.label,col,node.type);
+      const lOff=isRoot?24:isBranch?14:9;
+      label.position.set(p.x,p.y+lOff,p.z);
+      this._scene.add(label);
+      this._nMap[node.id]={mesh,glow,label,lOff,node,rings,origMeshOp:mat.opacity,origGlowOp:go};
+    });
+    this._buildEdges(edges,pos);
+    this._buildEParticles(edges,pos);
+  }
+
+  _buildEdges(edges,pos){
+    const pts=[];
+    edges.forEach(e=>{const s=pos[e.source],t=pos[e.target];if(s&&t){pts.push(s.clone(),t.clone());}});
+    if(!pts.length)return;
+    const geo=new THREE.BufferGeometry().setFromPoints(pts);
+    const mat=new THREE.LineBasicMaterial({color:0x1a3055,transparent:true,opacity:.4,blending:THREE.AdditiveBlending,depthWrite:false});
+    this._scene.add(new THREE.LineSegments(geo,mat));
+  }
+
+  _buildEParticles(edges,pos){
+    const PER=3;this._eData=[];
+    edges.forEach(e=>{
+      const s=pos[e.source],t=pos[e.target];if(!s||!t)return;
+      for(let i=0;i<PER;i++)this._eData.push({src:s.clone(),tgt:t.clone(),t:Math.random(),spd:.11+Math.random()*.08});
+    });
+    if(!this._eData.length)return;
+    const arr=new Float32Array(this._eData.length*3);
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(arr,3));
+    const mat=new THREE.PointsMaterial({size:2.4,color:0x3388ff,transparent:true,opacity:.65,blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true});
+    this._ePts=new THREE.Points(geo,mat);
+    this._scene.add(this._ePts);
+  }
+
+  // ── ANIMATION LOOP ─────────────────────────────────────────
+  _loop=()=>{
+    this._animId=requestAnimationFrame(this._loop);
+    const dt=this._clock.getDelta(),t=this._clock.elapsedTime;
+    if(this._ctrl)this._ctrl.update();
+    this._animNodes(t);
+    this._animRings(t);
+    this._animParticles(dt);
+    this._renderer.render(this._scene,this._cam);
+  };
+
+  _animNodes(t){
+    Object.values(this._nMap).forEach(({mesh,glow,label,lOff,node})=>{
+      const ph=mesh.userData.phase,bp=mesh.userData.basePos;
+      const isMem=node.type==='leaf'&&node.category==='hukommelse';
+      const used=node.meta&&node.meta.used_count||0;
+      const amp=isMem?.12+used*.008:node.type==='root'?.04:.06;
+      const freq=isMem?2+used*.05:.72;
+      mesh.scale.setScalar(1+amp*Math.sin(t*freq+ph));
+      const d=node.type==='leaf'?2.6:node.type==='branch'?1.5:.8;
+      mesh.position.set(
+        bp.x+d*Math.sin(t*.28+ph),
+        bp.y+d*Math.cos(t*.22+ph*1.3),
+        bp.z+d*Math.sin(t*.32+ph*.7)
+      );
+      glow.position.copy(mesh.position);
+      if(label){
+        label.position.set(mesh.position.x,mesh.position.y+(lOff||12),mesh.position.z);
+      }
+      if(isMem){
+        const pulse=.35+(.22+used*.015)*Math.abs(Math.sin(t*(2+used*.05)+ph));
+        glow.material.opacity=Math.min(pulse,.95);
+      }
+    });
+  }
+
+  _animRings(t){
+    this._rings.forEach(r=>{
+      r.rotation.z=t*r.userData.speed+r.userData.phase;
+      r.rotation.x=Math.PI/2+Math.sin(t*.3+r.userData.phase)*.28;
+    });
+    Object.values(this._nMap).forEach(({mesh,rings})=>{
+      rings.forEach(r=>r.position.copy(mesh.position));
+    });
+  }
+
+  _animParticles(dt){
+    if(!this._ePts||!this._eData.length)return;
+    const attr=this._ePts.geometry.getAttribute('position');
+    this._eData.forEach((p,i)=>{
+      p.t=(p.t+p.spd*dt)%1;
+      const pos=p.src.clone().lerp(p.tgt,p.t);
+      attr.setXYZ(i,pos.x,pos.y,pos.z);
+    });
+    attr.needsUpdate=true;
+  }
+
+  // ── INTERACTION ────────────────────────────────────────────
+  _ndc(e){
+    const r=this._renderer.domElement.getBoundingClientRect();
+    return{x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1};
+  }
+  _raycast(x,y){
+    this._mouse.set(x,y);
+    this._ray.setFromCamera(this._mouse,this._cam);
+    const meshes=Object.values(this._nMap).map(n=>n.mesh);
+    const hits=this._ray.intersectObjects(meshes);
+    return hits.length?hits[0].object.userData.nodeId:null;
+  }
+
+  _onMM=(e)=>{
+    const{x,y}=this._ndc(e);
+    const nodeId=this._raycast(x,y);
+    if(nodeId!==this._hov){
+      this._hov=nodeId;
+      this._renderer.domElement.style.cursor=nodeId?'pointer':'default';
+    }
+    if(this._tipEl){
+      if(nodeId){
+        const nd=this._nMap[nodeId];
+        this._tipEl.textContent=nd?nd.node.label:'';
+        this._tipEl.style.opacity='1';
+        this._tipEl.style.left=e.offsetX+'px';
+        this._tipEl.style.top=e.offsetY+'px';
+      }else{
+        this._tipEl.style.opacity='0';
+      }
+    }
+  };
+
+  _onCl=(e)=>{
+    const{x,y}=this._ndc(e);
+    const nodeId=this._raycast(x,y);
+    if(!nodeId){this._deselect();return;}
+    this._sel=nodeId;
+    if(this._tipEl)this._tipEl.style.opacity='0';
+    this.setState({selectedNode:this._nMap[nodeId]?.node||null});
+    this._flyTo(nodeId);
+  };
+
+  _deselect=()=>{
+    this._sel=null;
+    this.setState({selectedNode:null});
+    this._resetCam();
+  };
+
+  // ── CAMERA ─────────────────────────────────────────────────
+  _flyTo(nodeId){
+    const{mesh}=this._nMap[nodeId]||{};if(!mesh)return;
+    const target=mesh.position.clone();
+    const dir=new THREE.Vector3().subVectors(this._cam.position,this._ctrl?this._ctrl.target:new THREE.Vector3()).normalize();
+    const newCam=target.clone().add(dir.multiplyScalar(85));
+    if(this._ctrl)this._ctrl.autoRotate=false;
+    const tid=++this._tid;
+    const sc=this._cam.position.clone(),st=this._ctrl?this._ctrl.target.clone():new THREE.Vector3();
+    const dur=880,t0=performance.now();
+    const go=()=>{
+      if(this._tid!==tid)return;
+      const p=Math.min((performance.now()-t0)/dur,1);
+      const e=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+      this._cam.position.lerpVectors(sc,newCam,e);
+      if(this._ctrl)this._ctrl.target.lerpVectors(st,target,e);
+      if(p<1)requestAnimationFrame(go);
+    };
+    requestAnimationFrame(go);
+  }
+
+  _resetCam(){
+    const tid=++this._tid;
+    const sc=this._cam.position.clone(),st=this._ctrl?this._ctrl.target.clone():new THREE.Vector3();
+    const ec=new THREE.Vector3(0,55,410),et=new THREE.Vector3(0,0,0);
+    const dur=1050,t0=performance.now();
+    const go=()=>{
+      if(this._tid!==tid)return;
+      const p=Math.min((performance.now()-t0)/dur,1);
+      const e=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+      this._cam.position.lerpVectors(sc,ec,e);
+      if(this._ctrl)this._ctrl.target.lerpVectors(st,et,e);
+      if(p<1)requestAnimationFrame(go);
+      else if(this._ctrl)this._ctrl.autoRotate=true;
+    };
+    requestAnimationFrame(go);
+  }
+
+  // ── FILTER ─────────────────────────────────────────────────
+  _toggleCat=(id)=>{
+    const h=new Set(this.state.hiddenCats);
+    h.has(id)?h.delete(id):h.add(id);
+    this.setState({hiddenCats:h});
+    this._applyFilter(this.state.searchQuery,h);
+  };
+  _onSearch=(e)=>{
+    const q=e.target.value;
+    this.setState({searchQuery:q});
+    this._applyFilter(q,this.state.hiddenCats);
+  };
+  _applyFilter(searchQuery,hiddenCats){
+    searchQuery=searchQuery!=null?searchQuery:this.state.searchQuery;
+    hiddenCats=hiddenCats!=null?hiddenCats:this.state.hiddenCats;
+    const q=searchQuery.toLowerCase().trim();
+    Object.values(this._nMap).forEach(({mesh,glow,label,node,rings,origMeshOp,origGlowOp})=>{
+      const mQ=!q||node.label.toLowerCase().includes(q);
+      const mC=node.type==='root'||!hiddenCats.has(node.category);
+      const vis=mQ&&mC;
+      mesh.material.opacity=vis?origMeshOp:.04;
+      glow.material.opacity=vis?origGlowOp:0;
+      if(label)label.material.opacity=vis?1:0;
+      rings.forEach(r=>{r.material.opacity=vis?.45:0;});
+    });
+  }
+
+  // ── API — fixed to match existing endpoints ────────────────
+  onDelete=async()=>{
+    const sn=this.state.selectedNode;
+    if(!sn||!sn.meta||!sn.meta.memory_id)return;
+    try{
+      await fetch('/api/profile/memories',{
+        method:'DELETE',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body:JSON.stringify({id:sn.meta.memory_id}),
+      });
+    }catch{}
+    const e=this._nMap[sn.id];
+    if(e){
+      this._scene.remove(e.mesh);this._scene.remove(e.glow);
+      if(e.label)this._scene.remove(e.label);
+      e.rings.forEach(r=>this._scene.remove(r));
+      delete this._nMap[sn.id];
+    }
+    this._deselect();
+  };
+  _onAddMem=()=>{
+    const txt=window.prompt('Skriv en ny hukommelse:');
+    if(!txt||!txt.trim())return;
+    fetch('/api/profile/memories',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      credentials:'same-origin',
+      body:JSON.stringify({label:txt.trim(),detail:'',category:'andet',source:'user'}),
+    }).then(()=>this._loadData()).catch(()=>{});
+  };
+
+  // ── RESIZE ─────────────────────────────────────────────────
+  _onResize=()=>{
+    if(!this._cam||!this._renderer)return;
+    const root=this._rootRef.current;
+    if(!root)return;
+    const el=root.querySelector('[data-mm-canvas]');
+    if(!el)return;
+    const W=el.clientWidth,H=el.clientHeight;
+    this._cam.aspect=W/H;this._cam.updateProjectionMatrix();
+    this._renderer.setSize(W,H);
+  };
+
+  // ── HELPERS ────────────────────────────────────────────────
+  _childCount(id){
+    if(!this._data)return 0;
+    return this._data.edges.filter(e=>e.source===id).length;
+  }
+  _fmtDate(s){
+    if(!s)return'';
+    try{return new Date(s).toLocaleDateString('da-DK',{day:'numeric',month:'long'});}catch{return s;}
+  }
+
+  // ── RENDER VALS ────────────────────────────────────────────
+  renderVals(){
+    const{loading,selectedNode:sn,searchQuery,hiddenCats,completeness,counts}=this.state;
+    const circ=2*Math.PI*19;
+    const used=sn&&sn.meta&&sn.meta.used_count||0;
+    const categories=this._CAT_ORDER.map(id=>{
+      const active=!hiddenCats.has(id);
+      const col=this._C[id]||'#fff';
+      return{
+        id,label:this._L[id]||id,
+        fn:()=>this._toggleCat(id),
+        bc:active?col:'rgba(255,255,255,.1)',
+        bg:active?col+'1f':'rgba(255,255,255,.04)',
+        tc:active?col:'rgba(255,255,255,.28)',
+      };
+    });
+    return{
+      loading,
+      searchQuery,
+      onSearch:this._onSearch,
+      categories,
+      completeness,
+      cArc:(completeness/100)*circ,
+      cCirc:circ,
+      leafCount:counts.leaves||0,
+      memCount:counts.memories||0,
+      usedCount:counts.used_memories||0,
+      panelX:sn?'translateX(0)':'translateX(330px)',
+      pTitle:sn?sn.label:'',
+      pCat:sn?this._L[sn.category]||sn.category:'',
+      pColor:sn?this._C[sn.category]||'#fff':'#fff',
+      pSrc:sn&&sn.meta?this._S[sn.meta.source]||sn.meta.source||'—':'—',
+      pTypeLabel:sn?(sn.type==='root'?'Rodknude':sn.type==='branch'?'Kategori':'Faktum'):'',
+      pConf:sn&&sn.meta&&sn.meta.confidence?Math.round(sn.meta.confidence*100):0,
+      hasPDetail:!!(sn&&sn.meta&&sn.meta.detail),
+      pDetail:sn&&sn.meta?sn.meta.detail||'':'',
+      isPBranch:!!(sn&&sn.type==='branch'),
+      isPRoot:!!(sn&&sn.type==='root'),
+      pChildCount:sn?this._childCount(sn.id):0,
+      isHukMem:!!(sn&&sn.type==='leaf'&&sn.category==='hukommelse'),
+      pUsed:used,
+      pLastUsedLabel:sn&&sn.meta&&sn.meta.last_used_at?'Sidst: '+this._fmtDate(sn.meta.last_used_at):'Aldrig brugt',
+      usageDots:Array.from({length:12},(_,i)=>({c:i<used?'#ec4899':'rgba(255,255,255,.1)'})),
+      rootRef:this._rootRef,
+      onClose:this._deselect,
+      onDelete:this.onDelete,
+      onAddMem:this._onAddMem,
+    };
+  }
+}
+</script>
+{% endraw %}
+  </div>
+</div>
 {% endblock %}

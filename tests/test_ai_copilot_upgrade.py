@@ -283,6 +283,30 @@ class RegistryReachabilityTests(unittest.TestCase):
         self.assertIn("suggest_learning_path", meta["tool_names"])
         self.assertIn("save_learning_path", meta["tool_names"])
 
+    def test_cv_summary_reachable_on_profile_query(self):
+        # Guards the regression where show_cv_summary was defined + dispatched
+        # but never added to the per-turn menu (so the model could never call it).
+        _, meta = get_employee_tool_selection(
+            logged_in=True, company_id=None, intent="profile_update",
+            user_query="hvad har jeg på mit cv?", shown_count=0)
+        self.assertIn("show_cv_summary", meta["tool_names"])
+
+    def test_cv_summary_requires_login(self):
+        _, meta = get_employee_tool_selection(
+            logged_in=False, company_id=None, intent="profile_update",
+            user_query="vis mit cv", shown_count=0)
+        self.assertNotIn("show_cv_summary", meta["tool_names"])
+
+    def test_mindmap_preview_reachable_on_memory_query(self):
+        _, meta = get_employee_tool_selection(
+            logged_in=True, company_id=None, intent="discovery",
+            user_query="hvad husker du om mig?", shown_count=0)
+        self.assertIn("show_mindmap_preview", meta["tool_names"])
+
+    def test_mindmap_preview_english_paraphrase(self):
+        self.assertIn("show_mindmap_preview",
+                      _semantic_tool_fallback("what do you know about me", already=set()))
+
     def test_fallback_can_be_disabled(self):
         with mock.patch.dict(os.environ, {"AI_TOOL_SEMANTIC_FALLBACK": "0"}):
             _, meta = get_employee_tool_selection(

@@ -137,10 +137,20 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 - **`show_cv_summary`** (new, profile-gated) — reads the user's saved profile
   sections and emits a `cv_summary_card` in chat showing skills/experience/
   education/certifications/languages counts + preview chips + "Upload CV" CTA
-  → `/profil-upload`.
+  → `/profil-upload`. Reaches the menu on profile/CV keywords (gate in
+  `get_employee_tool_selection`) + the semantic fallback (`_TOOL_TRIGGERS`);
+  these tools are inert unless the gate surfaces them, so the gate is the
+  contract — guarded by `test_cv_summary_reachable_on_profile_query`.
 - **`show_mindmap_preview`** (new, profile-gated) — reads profile completeness,
   per-category node counts, and 3 recent memories; emits a `mindmap_card` with
-  a progress bar + "Åbn 3D Mind-Map" link → `/mind-map`.
+  a progress bar + "Åbn 3D Mind-Map" link → `/mind-map`. Reaches the menu on
+  mind-map / "hvad husker du om mig" keywords + semantic fallback; guarded by
+  `test_mindmap_preview_reachable_on_memory_query`.
+- **Discoverability of the 3D surfaces** (non-chat): both `/profil-upload` and
+  `/mind-map` are in the employee sidebar (`fm_base.html`, `page_id` drives the
+  active state) and linked from the profile hero (`my_profile.html`); CV upload
+  is also on `employee_home.html`. The AI reaches them via the inline cards
+  above and `open_in_app(open_cv_upload|open_mind_map)`.
 - **`save_learning_path` / `get_learning_path`** persist & recall paths.
 
 ---
@@ -264,7 +274,8 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | SSE event vocabulary (canonical) | `app1/sse_events.py` |
 | Routes (`/app1/ask`, confirm, profile) | `app1/__init__.py` |
 | Page shells (`/chat`, `/ai-profiler`, `/mind-map`, `/profile`, `/profil-upload`) | `futurematch_ui.py` |
-| Profile REST API + CV parse/stream/apply | `api.py` |
+| Profile REST API + CV parse/stream/apply | `api.py` (level vocab → canonical via `_SKILL_LEVEL_MAP`/`_LANG_PROF_MAP`, case-insensitive, accepts both 3D-portal display labels and parser output) |
+| CV text/image extraction + LLM profile parse | `cv_ingest.py` (PDF via pypdf/pdfplumber; images via GPT-4o vision OCR; never raises — degrades to a Danish hint) |
 | Chat frontend (SSE dispatch, renderers) | `static/futurematch/assets/chat.js` |
 | Chat styles | `static/futurematch/assets/chat.css` |
 | Profile / profiler templates | `templates/fm/my_profile.html`, `ai_profiler.html`, `chat.html` |

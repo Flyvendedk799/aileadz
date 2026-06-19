@@ -556,13 +556,31 @@ def api_cv_parse_stream():
     )
 
 
+# Map every skill-level vocabulary onto the canonical set user_profile_db
+# understands ({begynder, mellem, avanceret, ekspert}). Keyed lowercase and
+# looked up case-insensitively, so it accepts BOTH the 3D portal's display
+# labels (Begynder/Øvet/Erfaren/Ekspert/Specialist) AND the cv_ingest parser's
+# canonical lowercase output (begynder/mellem/avanceret/ekspert) — the parser
+# path previously missed every key and silently defaulted to 'avanceret'.
 _SKILL_LEVEL_MAP = {
-    'Begynder': 'begynder', 'Øvet': 'begynder',
-    'Erfaren': 'avanceret', 'Ekspert': 'ekspert', 'Specialist': 'ekspert',
+    # 3D-portal display labels
+    'begynder': 'begynder', 'øvet': 'mellem', 'erfaren': 'avanceret',
+    'ekspert': 'ekspert', 'specialist': 'ekspert',
+    # parser canonical (pass-through)
+    'mellem': 'mellem', 'avanceret': 'avanceret',
+    # English fallbacks
+    'beginner': 'begynder', 'intermediate': 'mellem',
+    'advanced': 'avanceret', 'expert': 'ekspert',
 }
+# Same idea for language proficiency → {begynder, mellem, flydende, modersmaal}.
 _LANG_PROF_MAP = {
-    'Grundlæggende': 'begynder', 'Professionelt': 'flydende',
-    'Flydende': 'flydende', 'Modersmål': 'modersmaal',
+    # 3D-portal display labels
+    'grundlæggende': 'begynder', 'professionelt': 'flydende',
+    'flydende': 'flydende', 'modersmål': 'modersmaal',
+    # parser canonical (pass-through)
+    'begynder': 'begynder', 'mellem': 'mellem', 'modersmaal': 'modersmaal',
+    # English fallbacks
+    'basic': 'begynder', 'fluent': 'flydende', 'native': 'modersmaal',
 }
 
 
@@ -600,7 +618,7 @@ def api_cv_apply():
                     name = (item.get('name') or '').strip()
                     if not name:
                         continue
-                    level = _SKILL_LEVEL_MAP.get(item.get('level', ''), 'avanceret')
+                    level = _SKILL_LEVEL_MAP.get((item.get('level') or '').strip().lower(), 'mellem')
                     add_skill(username, name, level, source='cv_upload')
                     counts['skills'] += 1
                 elif kind == 'experience':
@@ -632,7 +650,7 @@ def api_cv_apply():
                     language = (item.get('language') or '').strip()
                     if not language:
                         continue
-                    proficiency = _LANG_PROF_MAP.get(item.get('proficiency', ''), 'flydende')
+                    proficiency = _LANG_PROF_MAP.get((item.get('proficiency') or '').strip().lower(), 'mellem')
                     add_language(username, language, proficiency=proficiency, source='cv_upload')
                     counts['languages'] += 1
             except Exception as exc:

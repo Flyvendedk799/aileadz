@@ -76,6 +76,7 @@
         <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>Upload CV</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
       </ul>
       {% else %}

@@ -992,6 +992,7 @@
   const ACTION_ICONS = {
     view_product: "fa-up-right-from-square", open_compare: "fa-scale-balanced",
     open_profile: "fa-user-pen", open_mind_map: "fa-brain",
+    open_cv_upload: "fa-file-arrow-up",
     open_learning_path: "fa-route", open_catalog: "fa-magnifying-glass",
     start_order: "fa-cart-plus", open_profiler: "fa-user-check",
   };
@@ -1089,6 +1090,63 @@
       const h = b.getAttribute("data-h");
       if (h) b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(h), "_blank"));
     });
+    body.appendChild(card); down();
+  }
+
+  /* ---------------- CV summary card ---------------- */
+  function renderCvSummaryCard(body, data) {
+    const counts = data.counts || {};
+    const sections = data.sections || {};
+    const total = data.total || 0;
+    const card = document.createElement("div");
+    card.className = "cv-summary-card";
+    const LABELS = { skills: "Kompetencer", experience: "Erfaring", education: "Uddannelse", certifications: "Certificeringer", languages: "Sprog" };
+    const ICONS = { skills: "fa-bolt", experience: "fa-briefcase", education: "fa-graduation-cap", certifications: "fa-certificate", languages: "fa-language" };
+    const pillsHtml = Object.keys(LABELS).map((k) => {
+      const n = counts[k] || 0;
+      return `<div class="csv-pill ${n > 0 ? "has" : ""}"><i class="fa-solid ${icon(ICONS[k])}"></i><span>${esc(LABELS[k])}</span><b>${n}</b></div>`;
+    }).join("");
+    const previewItems = [];
+    (sections.skills || []).slice(0, 3).forEach((s) => previewItems.push(`<span class="csv-tag">${esc(s.name)}</span>`));
+    (sections.experience || []).slice(0, 2).forEach((e) => previewItems.push(`<span class="csv-tag exp">${esc(e.title || e.company)}</span>`));
+    const previewHtml = previewItems.length ? `<div class="csv-preview">${previewItems.join("")}</div>` : "";
+    const emptyNote = !total ? `<div class="csv-empty">Ingen CV-data endnu — upload dit CV for at komme i gang.</div>` : "";
+    card.innerHTML = `
+      <div class="cv-summary-head"><i class="fa-solid ${icon("fa-id-card")}"></i><span>CV-oversigt</span>${total > 0 ? `<span class="csv-total">${total} elementer</span>` : ""}</div>
+      <div class="csv-pills">${pillsHtml}</div>
+      ${previewHtml}${emptyNote}
+      <div class="csv-footer">
+        <button class="csv-btn primary" data-url="/profil-upload"><i class="fa-solid ${icon("fa-file-arrow-up")}"></i> ${total > 0 ? "Opdater CV" : "Upload CV"}</button>
+        ${total > 0 ? `<button class="csv-btn" data-url="/profile"><i class="fa-solid ${icon("fa-user")}"></i> Se profil</button>` : ""}
+      </div>`;
+    card.querySelectorAll("[data-url]").forEach((b) =>
+      b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
+    body.appendChild(card); down();
+  }
+
+  /* ---------------- Mind-map preview card ---------------- */
+  function renderMindmapCard(body, data) {
+    const cats = data.categories || {};
+    const comp = data.completeness || {};
+    const pct = comp.pct != null ? comp.pct : "—";
+    const memories = data.recent_memories || [];
+    const CLABELS = { kompetencer: "Kompetencer", erfaring: "Erfaring", uddannelse: "Uddannelse", certificeringer: "Cert.", sprog: "Sprog", hukommelse: "Hukommelse" };
+    const card = document.createElement("div");
+    card.className = "mindmap-prev-card";
+    const catsHtml = Object.entries(cats).filter(([, n]) => n > 0).map(([k, n]) =>
+      `<div class="mmp-cat"><span>${esc(CLABELS[k] || k)}</span><b>${n}</b></div>`).join("");
+    const memHtml = memories.length ? memories.map((m) =>
+      `<div class="mmp-mem"><i class="fa-solid ${icon("fa-brain")}"></i>${esc(m.label)}</div>`).join("") : "";
+    const pctNum = typeof pct === "number" ? pct : 0;
+    card.innerHTML = `
+      <div class="mmp-head"><i class="fa-solid ${icon("fa-brain")}"></i><span>AI Mind-Map</span><span class="mmp-pct">${esc(String(pct))}%</span></div>
+      <div class="mmp-bar-wrap"><div class="mmp-bar" style="width:${Math.min(100, pctNum)}%"></div></div>
+      <div class="mmp-cats">${catsHtml}</div>
+      ${memHtml ? `<div class="mmp-mems-head">Seneste hukommelser</div><div class="mmp-mems">${memHtml}</div>` : ""}
+      <div class="csv-footer">
+        <button class="csv-btn primary" data-url="/mind-map"><i class="fa-solid ${icon("fa-brain")}"></i> Åbn 3D Mind-Map</button>
+      </div>`;
+    card.querySelector("[data-url]").addEventListener("click", () => window.open("/mind-map", "_blank"));
     body.appendChild(card); down();
   }
 
@@ -1239,6 +1297,12 @@
           } else if (data.type === "learning_path_card") {
             // Sequenced, grounded learning path.
             renderLearningPathCard(body, data);
+          } else if (data.type === "cv_summary_card") {
+            // CV snapshot + link to 3D portal.
+            renderCvSummaryCard(body, data);
+          } else if (data.type === "mindmap_card") {
+            // Mind-map stats + link to 3D globe.
+            renderMindmapCard(body, data);
           }
         }
       }

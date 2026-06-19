@@ -77,6 +77,8 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 | `memory_saved` | agent (remember_about_user) | `renderMemorySaved` (inline delete via **`id`**) | `label,category,id` |
 | `profiler_progress` | agent (profiler mode) | `window.onProfilerProgress` (ring) | `completeness{}` |
 | `confirm_card` | agent (needs_confirmation tools) | `renderConfirmCard` | opaque `token`, summary, price |
+| **`cv_summary_card`** | agent (`show_cv_summary`) | `renderCvSummaryCard` | `sections{skills[],experience[],…}`, `counts{}`, `total`, `has_cv`, `focus` |
+| **`mindmap_card`** | agent (`show_mindmap_preview`) | `renderMindmapCard` | `completeness{}`, `categories{}`, `counts{}`, `recent_memories[]` |
 | `[DONE]` | terminal | end-of-turn | — |
 
 **Guidance guarantee (new):** a turn never dead-ends — if the model omits
@@ -127,11 +129,19 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   `save_learning_path`. Emitted as `learning_path_card`.
 - **`get_learning_context`** now actually returns profile + company budget +
   supplier agreements + completed courses (it previously dropped them).
-- **`open_in_app`** (new, always-on, no mutation) → `ui_action` SSE directive
-  the SPA acts on (view_product / open_compare / open_profile / open_catalog /
-  open_mind_map / open_learning_path / start_order / open_profiler). The
-  enumerated actions live in `sse_events.UI_ACTIONS`.
-- **`save_learning_path` / `get_learning_path`** (new) persist & recall paths.
+- **`open_in_app`** (always-on, no mutation) → `ui_action` SSE directive the
+  SPA acts on. Actions: `view_product` / `open_compare` / `open_profile` /
+  `open_catalog` / `open_mind_map` / `open_learning_path` / `start_order` /
+  `open_profiler` / **`open_cv_upload`** (new — navigates to `/profil-upload`,
+  the 3D drag-drop CV portal). Enumerated set lives in `sse_events.UI_ACTIONS`.
+- **`show_cv_summary`** (new, profile-gated) — reads the user's saved profile
+  sections and emits a `cv_summary_card` in chat showing skills/experience/
+  education/certifications/languages counts + preview chips + "Upload CV" CTA
+  → `/profil-upload`.
+- **`show_mindmap_preview`** (new, profile-gated) — reads profile completeness,
+  per-category node counts, and 3 recent memories; emits a `mindmap_card` with
+  a progress bar + "Åbn 3D Mind-Map" link → `/mind-map`.
+- **`save_learning_path` / `get_learning_path`** persist & recall paths.
 
 ---
 
@@ -253,8 +263,8 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | Confirm-token store | `app1/confirm_store.py` |
 | SSE event vocabulary (canonical) | `app1/sse_events.py` |
 | Routes (`/app1/ask`, confirm, profile) | `app1/__init__.py` |
-| Page shells (`/chat`, `/ai-profiler`, `/mind-map`, `/profile`) | `futurematch_ui.py` |
-| Profile REST API | `api.py` |
+| Page shells (`/chat`, `/ai-profiler`, `/mind-map`, `/profile`, `/profil-upload`) | `futurematch_ui.py` |
+| Profile REST API + CV parse/stream/apply | `api.py` |
 | Chat frontend (SSE dispatch, renderers) | `static/futurematch/assets/chat.js` |
 | Chat styles | `static/futurematch/assets/chat.css` |
 | Profile / profiler templates | `templates/fm/my_profile.html`, `ai_profiler.html`, `chat.html` |

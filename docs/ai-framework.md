@@ -256,9 +256,22 @@ profile hero, and (CV) `employee_home`.
   runtime (`static/futurematch/assets/mind-map-support.js`) + Three.js globe,
   fed by `GET /api/profile/mindmap` (`api.py:665`, root→category→leaf graph from
   structured profile + `user_memories` + conversation summary). DC template
-  bindings use `{{ }}`, so the block is wrapped in `{% raw %}`. Memory CRUD from
-  the page: DELETE `/api/profile/memories` `{id}`, POST `{label,detail,category,
-  source}`.
+  bindings use `{{ }}`, so the block is wrapped in `{% raw %}`. **Gotcha:** never
+  write a bracketed `x-dc` open tag before the real element (even in a CSS
+  comment) — `parseDcText` regex-matches the FIRST one in the raw source.
+  - **Type-aware inspector panel (new):** clicking a node opens a side panel that
+    renders **per category/type** rather than generically — skills show the 1-5
+    level bar + skill category + a **gap callout** (current→target, from
+    `compute_skill_gaps`, with a "find courses" CTA); experience shows
+    period/duration/employer; certs a validity badge (Gyldig/Udløber snart/
+    Udløbet) + verify link; languages a proficiency meter; goals a status badge;
+    branches a category-specific **aggregate** (skills-by-level + gap count,
+    cert validity counts, total years, …); the root a profile overview
+    (completeness/depth/target-role/weakest + profiler/CV/add-memory actions).
+    Each leaf's `meta` is enriched server-side in `get_mindmap_api`
+    (`level_score`, `gap`, exp dates, cert dates, goal target/status, …).
+  - Memory CRUD from the page: DELETE `/api/profile/memories` `{id}`, POST
+    `{label,detail,category,source}`.
 
 ---
 

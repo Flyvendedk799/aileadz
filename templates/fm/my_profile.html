@@ -140,6 +140,8 @@
   .lnk .x { width: 22px; height: 22px; border: none; background: transparent; color: var(--fm-ink-3); border-radius: 6px; display: grid; place-items: center; opacity: 0; transition: var(--t); cursor: pointer; }
   .lnk:hover .x { opacity: 1; }
   .lnk .x:hover { background: color-mix(in srgb,var(--fm-danger) 12%,transparent); color: var(--fm-danger); }
+  /* Edit (pencil) variant of the row/chip action buttons — primary, not danger. */
+  .sk .x.edit:hover, .lang .x.edit:hover, .lnk .x.edit:hover, .row-x.edit:hover { background: color-mix(in srgb,var(--fm-primary) 14%,transparent); color: var(--fm-primary); }
 
   /* my orders card */
   .ord-kpis { display: grid; grid-template-columns: repeat(4,1fr); gap: 10px; margin-bottom: 14px; }
@@ -256,6 +258,13 @@
           <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Mine læringsstier</h3>
             <a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal" style="margin-left:auto">Byg en sti med AI</a></div>
           <div class="fm-card-body"><div id="pathsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
+        </div>
+
+        <!-- Skill gaps (current → target on the canonical 1-5 scale) -->
+        <div class="fm-card" data-reveal id="gapsCard" style="margin-top:18px">
+          <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Kompetencegab</h3>
+            <a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal" style="margin-left:auto">Luk gabet med AI</a></div>
+          <div class="fm-card-body"><div id="gapsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
         </div>
 
         <!-- Proficiency matrix -->
@@ -377,6 +386,36 @@
 
     let _profile = null;
 
+    // ── Edit-everywhere state ──
+    // Which item each section is currently editing (id for id-keyed sections,
+    // name for skill/language). null = add mode. The add* handlers branch on this
+    // to PUT (edit) vs POST (add); toggleForm resets it so opening a form fresh is
+    // always "add", while edit*() shows the form directly to bypass that reset.
+    const _edit = { skill: null, exp: null, edu: null, cert: null, lang: null, link: null };
+    const FORM_SECTION = { addSkill: 'skill', addExp: 'exp', addEdu: 'edu', addCert: 'cert', addLang: 'lang', addLink: 'link' };
+    const FORM_ADD_LABEL = { addSkill: 'Tilføj', addExp: 'Gem', addEdu: 'Gem', addCert: 'Gem', addLang: 'Gem', addLink: 'Gem' };
+    const FORM_NAME_INPUT = { addSkill: 'skName', addLang: 'langName' };  // the key field, locked while editing
+
+    function aq(v) { return JSON.stringify(v == null ? '' : v).replace(/"/g, '&quot;'); }
+    function setFormMode(formId, editing) {
+      const f = document.getElementById(formId);
+      const b = f && f.querySelector('.btn-primary');
+      if (b) b.textContent = editing ? 'Gem ændringer' : (FORM_ADD_LABEL[formId] || 'Gem');
+    }
+    function setKeyReadonly(formId, ro) {
+      const nameId = FORM_NAME_INPUT[formId];
+      if (!nameId) return;
+      const i = document.getElementById(nameId);
+      if (i) { i.readOnly = ro; i.style.opacity = ro ? '0.7' : ''; }
+    }
+    function _resetFormMode(formId) {
+      const sec = FORM_SECTION[formId];
+      if (sec) _edit[sec] = null;
+      setFormMode(formId, false);
+      setKeyReadonly(formId, false);
+    }
+    function showForm(formId) { const b = document.getElementById(formId); if (b) b.classList.add('show'); }
+
     function api(url, opts) {
       return fetch(url, Object.assign({ headers: { 'Content-Type': 'application/json' }, credentials: 'same-origin' }, opts || {})).then(r => r.json());
     }
@@ -401,7 +440,8 @@
           '<span class="lv-name">' + esc(LEVEL_LABELS[lvl] || lvl) + '</span><span class="lv-line"></span><span class="lv-count">' + group.length + '</span></div><div class="sk-wrap">';
         group.forEach(s => {
           html += '<span class="sk"><span class="d" style="background:' + LEVEL_VARS[lvl] + '"></span>' + esc(s.name) +
-            '<button class="x" title="Fjern" onclick="removeSkill(' + JSON.stringify(s.name).replace(/"/g, '&quot;') + ')"><i class="fa-solid fa-xmark"></i></button></span>';
+            '<button class="x edit" title="Rediger" onclick="editSkill(' + aq(s.name) + ',' + aq(s.level) + ')"><i class="fa-solid fa-pen"></i></button>' +
+            '<button class="x" title="Fjern" onclick="removeSkill(' + aq(s.name) + ')"><i class="fa-solid fa-xmark"></i></button></span>';
         });
         html += '</div></div>';
       });
@@ -425,6 +465,7 @@
         return '<div class="tlx ' + (e.is_current ? 'current' : '') + '"><div class="tlx-card"><div class="tlx-top">' +
           '<div><div class="tlx-title">' + esc(e.title) + '</div><div class="tlx-sub">' + esc(e.company || '') + '</div></div>' +
           '<div style="display:flex;align-items:center;gap:6px"><span class="tlx-period">' + esc(period) + '</span>' +
+          '<button class="row-x edit" title="Rediger" onclick="editExperience(' + Number(e.id) + ')"><i class="fa-solid fa-pen"></i></button>' +
           '<button class="row-x" title="Fjern" onclick="removeExperience(' + Number(e.id) + ')"><i class="fa-solid fa-xmark"></i></button></div></div>' +
           (dur != null ? '<span class="tlx-dur">' + dur + ' år</span>' : '') +
           (e.description ? '<div class="tlx-desc">' + esc(e.description) + '</div>' : '') +
@@ -441,6 +482,7 @@
         '<div class="edu-card"><span class="edu-ic"><i class="fa-solid fa-user-graduate"></i></span>' +
         '<div style="flex:1;min-width:0"><div style="font-weight:700;font-size:14px">' + esc(e.degree) + '</div>' +
         '<div style="font-size:12.5px;color:var(--fm-ink-2)">' + esc(e.institution || '') + (e.year_completed ? ' · ' + esc(e.year_completed) : '') + '</div></div>' +
+        '<button class="row-x edit" title="Rediger" onclick="editEducation(' + Number(e.id) + ')"><i class="fa-solid fa-pen"></i></button>' +
         '<button class="row-x" title="Fjern" onclick="removeEducation(' + Number(e.id) + ')"><i class="fa-solid fa-xmark"></i></button></div>'
       ).join('');
     }
@@ -475,6 +517,7 @@
         return '<div class="crt" data-s="' + v.s + '"><div class="crt-top">' +
           '<span class="crt-ic"><i class="fa-solid fa-shield-halved"></i></span>' +
           '<div style="display:flex;align-items:center;gap:6px"><span class="val-badge" data-s="' + v.s + '">' + esc(v.label) + '</span>' +
+          '<button class="row-x edit" style="opacity:.6" title="Rediger" onclick="editCertification(' + Number(c.id) + ')"><i class="fa-solid fa-pen"></i></button>' +
           '<button class="row-x" style="opacity:.6" title="Fjern" onclick="removeCertification(' + Number(c.id) + ')"><i class="fa-solid fa-xmark"></i></button></div></div>' +
           '<div><div class="crt-name">' + esc(c.name) + '</div>' + (c.issuer ? '<div class="crt-issuer">' + esc(c.issuer) + '</div>' : '') + '</div>' +
           '<div class="crt-dates">' + dates.join('<span>·</span>') + '</div>' +
@@ -494,7 +537,8 @@
         for (let i = 1; i <= 4; i++) bars += '<i class="' + (i <= lvl ? 'on' : '') + '" style="height:' + (4 + i * 2) + 'px"></i>';
         return '<span class="lang" title="' + esc(LANG_LABELS[l.proficiency] || l.proficiency) + '"><span class="bars">' + bars + '</span>' +
           esc(l.language) +
-          '<button class="x" title="Fjern" onclick="removeLanguage(' + JSON.stringify(l.language).replace(/"/g, '&quot;') + ')"><i class="fa-solid fa-xmark"></i></button></span>';
+          '<button class="x edit" title="Rediger" onclick="editLanguage(' + aq(l.language) + ',' + aq(l.proficiency) + ')"><i class="fa-solid fa-pen"></i></button>' +
+          '<button class="x" title="Fjern" onclick="removeLanguage(' + aq(l.language) + ')"><i class="fa-solid fa-xmark"></i></button></span>';
       }).join('');
     }
 
@@ -510,6 +554,7 @@
         return '<div class="lnk"><span class="lnk-ic"><i class="' + ic + '"></i></span>' +
           '<a class="lnk-main" href="' + esc(l.url) + '" target="_blank" rel="noopener">' +
           '<div class="lnk-label">' + esc(l.label) + '</div><div class="lnk-url">' + esc(host) + '</div></a>' +
+          '<button class="x edit" title="Rediger" onclick="editLink(' + Number(l.id) + ')"><i class="fa-solid fa-pen"></i></button>' +
           '<button class="x" title="Fjern" onclick="removeLink(' + Number(l.id) + ')"><i class="fa-solid fa-xmark"></i></button></div>';
       }).join('');
     }
@@ -574,23 +619,45 @@
       if (tt) tt.textContent = p.target_role ? ('Ønsket rolle: ' + p.target_role) : 'Ingen ønsket rolle sat';
     }
 
-    // Target role drives the AI's skill-gap + learning-path reasoning; a single
-    // inline editor that writes to the canonical profile summary.
+    // Target role drives the AI's skill-gap + learning-path reasoning. A proper
+    // inline editor (no window.prompt) that writes to the canonical profile
+    // summary and refreshes the gap card, since changing the role changes gaps.
     window.editTargetRole = function () {
+      const box = document.getElementById('cvTarget');
+      if (!box || box.dataset.editing === '1') return;
+      box.dataset.editing = '1';
       const cur = (_profile && _profile.target_role) || '';
-      const next = window.prompt('Hvilken rolle eller karriereretning arbejder du hen imod?\n(fx "IT-projektleder", "Data Analyst")', cur);
-      if (next === null) return;
-      api('/api/profile/summary', { method: 'POST', body: JSON.stringify({ target_role: next.trim() }) })
+      box.innerHTML =
+        '<i class="fa-solid fa-bullseye" style="color:var(--fm-primary)"></i>' +
+        '<input id="cvTargetInput" class="fm-input" style="flex:1;min-width:120px;height:30px;font-size:13px" placeholder="fx Data Analyst, IT-projektleder" value="' + esc(cur) + '" />' +
+        '<button class="fm-badge teal" style="border:none;cursor:pointer" onclick="saveTargetRole()">Gem</button>' +
+        '<button class="fm-badge" style="border:none;cursor:pointer;background:var(--fm-surface-2)" onclick="renderTargetRole()">Annullér</button>';
+      const inp = document.getElementById('cvTargetInput');
+      if (inp) { inp.focus(); inp.addEventListener('keydown', e => { if (e.key === 'Enter') saveTargetRole(); else if (e.key === 'Escape') renderTargetRole(); }); }
+    };
+    window.saveTargetRole = function () {
+      const inp = document.getElementById('cvTargetInput');
+      const next = inp ? inp.value.trim() : '';
+      api('/api/profile/summary', { method: 'POST', body: JSON.stringify({ target_role: next }) })
         .then(d => {
           if (d && d.success !== false) {
-            if (_profile) _profile.target_role = next.trim();
-            const tt = document.getElementById('cvTargetText');
-            if (tt) tt.textContent = next.trim() ? ('Ønsket rolle: ' + next.trim()) : 'Ingen ønsket rolle sat';
+            if (_profile) _profile.target_role = next;
             toast('Ønsket rolle opdateret.');
-            renderCompleteness();
+            renderTargetRole(); renderCompleteness(); loadSkillGaps();
           } else { toast((d && d.error) || 'Kunne ikke gemme.', false); }
         })
         .catch(() => toast('Der opstod en fejl.', false));
+    };
+    // Restore the static target-role display (also the cancel action).
+    window.renderTargetRole = function () {
+      const box = document.getElementById('cvTarget');
+      if (!box) return;
+      box.dataset.editing = '';
+      const role = (_profile && _profile.target_role) || '';
+      box.innerHTML =
+        '<i class="fa-solid fa-bullseye" style="color:var(--fm-primary)"></i>' +
+        '<span id="cvTargetText">' + (role ? ('Ønsket rolle: ' + esc(role)) : 'Ingen ønsket rolle sat') + '</span>' +
+        '<button class="cv-target-edit" onclick="editTargetRole()" title="Sæt ønsket rolle" style="border:none;background:none;color:var(--fm-primary);font-weight:650;font-size:12px;cursor:pointer;padding:2px 4px">Rediger</button>';
     };
 
     // Completeness is now sourced from the canonical /api/profile/completeness
@@ -644,6 +711,39 @@
         .catch(() => { const b = document.getElementById('pathsList'); if (b) b.innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke indlæse læringsstier.</div>'; });
     }
 
+    function renderSkillGaps(gaps) {
+      const box = document.getElementById('gapsList');
+      if (!box) return;
+      if (!gaps || !gaps.length) {
+        box.innerHTML = '<div class="muted" style="font-size:13px">Sæt en <b>målrolle</b> på din profil — så viser vi gabet mellem dit niveau og dine mål (på en 1-5 skala) og foreslår kurser der lukker det.</div>';
+        return;
+      }
+      const PRIO = { critical: 'var(--fm-danger)', high: 'var(--fm-gold)', medium: 'var(--fm-primary)', low: 'var(--fm-ink-3)' };
+      box.innerHTML = gaps.map(g => {
+        const cur = Math.max(0, Math.min(5, g.current_level || 0));
+        const tgt = Math.max(0, Math.min(5, g.target_level || 0));
+        const curPct = (cur / 5) * 100, tgtPct = (tgt / 5) * 100;
+        return '<div style="padding:8px 0;border-bottom:1px solid var(--fm-line)">' +
+          '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">' +
+            '<span style="font-weight:700;font-size:13px">' + esc(g.skill) + '</span>' +
+            (g.category ? '<span style="font-size:10px;color:var(--fm-ink-3);background:var(--fm-surface-2);padding:1px 7px;border-radius:999px">' + esc(g.category) + '</span>' : '') +
+            '<span style="margin-left:auto;font-weight:800;font-size:11px;padding:1px 8px;border-radius:999px;color:#fff;background:' + (PRIO[g.priority] || PRIO.medium) + '">+' + esc(String(g.gap)) + '</span>' +
+          '</div>' +
+          '<div style="position:relative;height:6px;border-radius:999px;background:var(--fm-line);overflow:hidden">' +
+            '<div style="position:absolute;left:0;top:0;height:100%;width:' + tgtPct + '%;background:var(--fm-primary-tint)"></div>' +
+            '<div style="position:absolute;left:0;top:0;height:100%;width:' + curPct + '%;background:var(--fm-primary)"></div>' +
+          '</div>' +
+          '<div style="display:flex;justify-content:space-between;margin-top:3px;font-size:10px;color:var(--fm-ink-3)"><span>' + esc(g.current_label || '') + '</span><span>mål: ' + esc(g.target_label || '') + '</span></div>' +
+        '</div>';
+      }).join('');
+    }
+
+    function loadSkillGaps() {
+      api('/api/profile/skill-gaps')
+        .then(d => renderSkillGaps((d && d.gaps) || []))
+        .catch(() => { const b = document.getElementById('gapsList'); if (b) b.innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke indlæse kompetencegab.</div>'; });
+    }
+
     function paint(p) {
       _profile = p;
       renderHeader(p);
@@ -679,11 +779,63 @@
     window.toggleForm = function (id, show) {
       const box = document.getElementById(id);
       if (!box) return;
-      if (show === false) { box.classList.remove('show'); return; }
+      // Closing OR (re)opening via a header button always returns the form to ADD
+      // mode — edit*() shows the form via showForm() to bypass this reset.
+      if (show === false) { box.classList.remove('show'); _resetFormMode(id); return; }
       box.classList.toggle('show');
-      if (box.classList.contains('show')) { const i = box.querySelector('input'); if (i) i.focus(); }
+      if (box.classList.contains('show')) {
+        _resetFormMode(id);
+        const i = box.querySelector('input'); if (i) i.focus();
+      }
     };
     window.openAdd = function (show) { window.toggleForm('addSkill', show); };
+
+    // ── Edit-everywhere: prefill the section form, lock it to update mode ──
+    function _byId(arr, id) { return (arr || []).find(x => Number(x.id) === Number(id)); }
+    window.editSkill = function (name, level) {
+      document.getElementById('skName').value = name || '';
+      document.getElementById('skLevel').value = level || 'mellem';
+      _edit.skill = name; setFormMode('addSkill', true); setKeyReadonly('addSkill', true);
+      showForm('addSkill'); document.getElementById('skLevel').focus();
+    };
+    window.editLanguage = function (language, proficiency) {
+      document.getElementById('langName').value = language || '';
+      document.getElementById('langLevel').value = proficiency || 'mellem';
+      _edit.lang = language; setFormMode('addLang', true); setKeyReadonly('addLang', true);
+      showForm('addLang'); document.getElementById('langLevel').focus();
+    };
+    window.editExperience = function (id) {
+      const e = _byId(_profile && _profile.experience, id); if (!e) return;
+      document.getElementById('expTitle').value = e.title || '';
+      document.getElementById('expCompany').value = e.company || '';
+      document.getElementById('expStart').value = e.start_year || '';
+      document.getElementById('expEnd').value = e.end_year || '';
+      document.getElementById('expCurrent').checked = !!e.is_current;
+      _edit.exp = id; setFormMode('addExp', true); showForm('addExp'); document.getElementById('expTitle').focus();
+    };
+    window.editEducation = function (id) {
+      const e = _byId(_profile && _profile.education, id); if (!e) return;
+      document.getElementById('eduDegree').value = e.degree || '';
+      document.getElementById('eduInst').value = e.institution || '';
+      document.getElementById('eduYear').value = e.year_completed || '';
+      _edit.edu = id; setFormMode('addEdu', true); showForm('addEdu'); document.getElementById('eduDegree').focus();
+    };
+    window.editCertification = function (id) {
+      const c = _byId(_profile && _profile.certifications, id); if (!c) return;
+      document.getElementById('crtName').value = c.name || '';
+      document.getElementById('crtIssuer').value = c.issuer || '';
+      document.getElementById('crtIssued').value = c.issue_date || '';
+      document.getElementById('crtExpiry').value = c.expiry_date || '';
+      document.getElementById('crtCredId').value = c.credential_id || '';
+      document.getElementById('crtCredUrl').value = c.credential_url || '';
+      _edit.cert = id; setFormMode('addCert', true); showForm('addCert'); document.getElementById('crtName').focus();
+    };
+    window.editLink = function (id) {
+      const l = _byId(_profile && _profile.portfolio_links, id); if (!l) return;
+      document.getElementById('lnkLabel').value = l.label || '';
+      document.getElementById('lnkUrl').value = l.url || '';
+      _edit.link = id; setFormMode('addLink', true); showForm('addLink'); document.getElementById('lnkLabel').focus();
+    };
 
     // ── mutations ──
     function val(id) { const e = document.getElementById(id); return e ? (e.value || '').trim() : ''; }
@@ -691,8 +843,10 @@
     window.addSkill = function () {
       const name = val('skName'), level = document.getElementById('skLevel').value;
       if (!name) { toast('Angiv en kompetence.', false); return; }
-      api('/api/profile/skills', { method: 'POST', body: JSON.stringify({ skill_name: name, skill_level: level }) })
-        .then(d => { if (d && d.success !== false) { document.getElementById('skName').value = ''; toggleForm('addSkill', false); toast('Kompetence tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+      const editing = !!_edit.skill;
+      const body = { skill_name: editing ? _edit.skill : name, skill_level: level };
+      api('/api/profile/skills', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { document.getElementById('skName').value = ''; toggleForm('addSkill', false); toast(editing ? 'Kompetence opdateret.' : 'Kompetence tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke gemme.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
     window.removeSkill = function (name) {
@@ -704,9 +858,11 @@
     window.addExperience = function () {
       const title = val('expTitle');
       if (!title) { toast('Angiv en stilling/titel.', false); return; }
+      const editing = _edit.exp != null;
       const body = { title, company: val('expCompany'), start_year: val('expStart') || null, end_year: val('expEnd') || null, is_current: document.getElementById('expCurrent').checked };
-      api('/api/profile/experience', { method: 'POST', body: JSON.stringify(body) })
-        .then(d => { if (d && d.success !== false) { ['expTitle', 'expCompany', 'expStart', 'expEnd'].forEach(i => document.getElementById(i).value = ''); document.getElementById('expCurrent').checked = false; toggleForm('addExp', false); toast('Erfaring tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+      if (editing) body.id = _edit.exp;
+      api('/api/profile/experience', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { ['expTitle', 'expCompany', 'expStart', 'expEnd'].forEach(i => document.getElementById(i).value = ''); document.getElementById('expCurrent').checked = false; toggleForm('addExp', false); toast(editing ? 'Erfaring opdateret.' : 'Erfaring tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke gemme.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
     window.removeExperience = function (id) {
@@ -718,9 +874,11 @@
     window.addEducation = function () {
       const degree = val('eduDegree');
       if (!degree) { toast('Angiv en uddannelse.', false); return; }
+      const editing = _edit.edu != null;
       const body = { degree, institution: val('eduInst'), year_completed: val('eduYear') || null };
-      api('/api/profile/education', { method: 'POST', body: JSON.stringify(body) })
-        .then(d => { if (d && d.success !== false) { ['eduDegree', 'eduInst', 'eduYear'].forEach(i => document.getElementById(i).value = ''); toggleForm('addEdu', false); toast('Uddannelse tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+      if (editing) body.id = _edit.edu;
+      api('/api/profile/education', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { ['eduDegree', 'eduInst', 'eduYear'].forEach(i => document.getElementById(i).value = ''); toggleForm('addEdu', false); toast(editing ? 'Uddannelse opdateret.' : 'Uddannelse tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke gemme.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
     window.removeEducation = function (id) {
@@ -732,9 +890,11 @@
     window.addCertification = function () {
       const name = val('crtName');
       if (!name) { toast('Angiv certificeringens navn.', false); return; }
+      const editing = _edit.cert != null;
       const body = { name, issuer: val('crtIssuer'), issue_date: val('crtIssued') || null, expiry_date: val('crtExpiry') || null, credential_id: val('crtCredId') || null, credential_url: val('crtCredUrl') || null };
-      api('/api/profile/certifications', { method: 'POST', body: JSON.stringify(body) })
-        .then(d => { if (d && d.success !== false) { ['crtName', 'crtIssuer', 'crtIssued', 'crtExpiry', 'crtCredId', 'crtCredUrl'].forEach(i => document.getElementById(i).value = ''); toggleForm('addCert', false); toast('Certificering tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+      if (editing) body.id = _edit.cert;
+      api('/api/profile/certifications', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { ['crtName', 'crtIssuer', 'crtIssued', 'crtExpiry', 'crtCredId', 'crtCredUrl'].forEach(i => document.getElementById(i).value = ''); toggleForm('addCert', false); toast(editing ? 'Certificering opdateret.' : 'Certificering tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke gemme.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
     window.removeCertification = function (id) {
@@ -746,8 +906,10 @@
     window.addLanguage = function () {
       const language = val('langName'), proficiency = document.getElementById('langLevel').value;
       if (!language) { toast('Angiv et sprog.', false); return; }
-      api('/api/profile/languages', { method: 'POST', body: JSON.stringify({ language, proficiency }) })
-        .then(d => { if (d && d.success !== false) { document.getElementById('langName').value = ''; toggleForm('addLang', false); toast('Sprog tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+      const editing = !!_edit.lang;
+      const body = { language: editing ? _edit.lang : language, proficiency };
+      api('/api/profile/languages', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { document.getElementById('langName').value = ''; toggleForm('addLang', false); toast(editing ? 'Sprog opdateret.' : 'Sprog tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke gemme.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
     window.removeLanguage = function (language) {
@@ -759,8 +921,10 @@
     window.addLink = function () {
       const url = val('lnkUrl'), label = val('lnkLabel');
       if (!url) { toast('Angiv en URL.', false); return; }
-      api('/api/profile/links', { method: 'POST', body: JSON.stringify({ url, label }) })
-        .then(d => { if (d && d.success !== false) { document.getElementById('lnkUrl').value = ''; document.getElementById('lnkLabel').value = ''; toggleForm('addLink', false); toast('Link tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke tilføje.', false); } })
+      const editing = _edit.link != null;
+      const body = editing ? { id: _edit.link, url, label } : { url, label };
+      api('/api/profile/links', { method: editing ? 'PUT' : 'POST', body: JSON.stringify(body) })
+        .then(d => { if (d && d.success !== false) { document.getElementById('lnkUrl').value = ''; document.getElementById('lnkLabel').value = ''; toggleForm('addLink', false); toast(editing ? 'Link opdateret.' : 'Link tilføjet.'); load(); } else { toast((d && d.error) || 'Kunne ikke gemme.', false); } })
         .catch(() => toast('Der opstod en fejl.', false));
     };
     window.removeLink = function (id) {
@@ -772,6 +936,7 @@
     load();
     loadOrders();
     loadLearningPaths();
+    loadSkillGaps();
   })();
 </script>
 {% endblock %}

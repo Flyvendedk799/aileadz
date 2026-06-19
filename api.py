@@ -1,6 +1,10 @@
-from flask import Blueprint, jsonify, session, current_app, request
+from flask import Blueprint, jsonify, session, current_app, request, Response, stream_with_context
 from auth_decorators import login_required
 import json
+import threading as _cv_thread
+import time as _cv_time
+
+_cv_parse_results = {}  # session_id -> {'proposal': dict, 'hint': str} | {'error': str}
 
 api_bp = Blueprint('api', __name__)
 
@@ -480,6 +484,163 @@ def manage_memories_api():
     except Exception as e:
         current_app.logger.error("Memories API error: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/cv/parse', methods=['POST'])
+@login_required
+def api_cv_parse():
+    """Receive a CV file/text, parse it asynchronously, store result keyed by session_id."""
+    from cv_ingest import extract_text, parse_profile_from_text
+
+    session_id = request.form.get('session_id', '')
+    file = request.files.get('cv')
+    text_input = request.form.get('cv_text', '') or ''
+    _cv_parse_results.pop(session_id, None)
+
+    def _run():
+        try:
+            if file and getattr(file, 'filename', ''):
+                text, hint = extract_text(file)
+            else:
+                text, hint = text_input, ''
+            proposal = parse_profile_from_text(text) if text.strip() else {}
+            _cv_parse_results[session_id] = {'proposal': proposal, 'hint': hint}
+        except Exception as exc:
+            current_app.logger.error('cv parse error: %s', exc)
+            _cv_parse_results[session_id] = {'error': str(exc), 'proposal': {}}
+
+    _cv_thread.Thread(target=_run, daemon=True).start()
+    return jsonify({'success': True})
+
+
+@api_bp.route('/api/cv/parse-stream')
+@login_required
+def api_cv_parse_stream():
+    """SSE stream of CV parse progress stages, then the final proposal JSON."""
+    session_id = request.args.get('session_id', '')
+    _STAGES = ['Udtrækker tekst', 'Analyserer', 'Foreslår profil']
+    _SCHEDULE = [(6.0, _STAGES[1]), (13.0, _STAGES[2])]
+
+    def generate():
+        yield f"event: stage\ndata: {_STAGES[0]}\n\n"
+        t0 = _cv_time.time()
+        emitted = 0
+
+        while _cv_time.time() - t0 < 60:
+            elapsed = _cv_time.time() - t0
+            while emitted < len(_SCHEDULE) and elapsed >= _SCHEDULE[emitted][0]:
+                yield f"event: stage\ndata: {_SCHEDULE[emitted][1]}\n\n"
+                emitted += 1
+
+            result = _cv_parse_results.pop(session_id, None)
+            if result is not None:
+                while emitted < len(_SCHEDULE):
+                    yield f"event: stage\ndata: {_SCHEDULE[emitted][1]}\n\n"
+                    emitted += 1
+                if result.get('error'):
+                    yield f"event: error\ndata: {result['error']}\n\n"
+                else:
+                    yield f"event: result\ndata: {json.dumps(result.get('proposal', {}))}\n\n"
+                return
+
+            _cv_time.sleep(0.5)
+            yield ': ping\n\n'
+
+        yield "event: error\ndata: timeout\n\n"
+
+    return Response(
+        stream_with_context(generate()),
+        mimetype='text/event-stream',
+        headers={'Cache-Control': 'no-cache', 'X-Accel-Buffering': 'no'},
+    )
+
+
+_SKILL_LEVEL_MAP = {
+    'Begynder': 'begynder', 'Øvet': 'begynder',
+    'Erfaren': 'avanceret', 'Ekspert': 'ekspert', 'Specialist': 'ekspert',
+}
+_LANG_PROF_MAP = {
+    'Grundlæggende': 'begynder', 'Professionelt': 'flydende',
+    'Flydende': 'flydende', 'Modersmål': 'modersmaal',
+}
+
+
+def _parse_year(val):
+    if not val:
+        return None
+    s = str(val).strip()
+    for part in s.replace('–', '-').split('-'):
+        part = part.strip()
+        if part.isdigit() and len(part) == 4:
+            return int(part)
+    return None
+
+
+@api_bp.route('/api/cv/apply', methods=['POST'])
+@login_required
+def api_cv_apply():
+    """Apply accepted CV items from the 3D portal to the user's profile."""
+    username = session.get('user')
+    data = request.get_json() or {}
+    accepted = data.get('accepted', [])
+
+    try:
+        from app1.user_profile_db import (
+            add_skill, add_experience, add_education,
+            add_certification, add_language, ensure_tables,
+        )
+        ensure_tables()
+        counts = {k: 0 for k in ('skills', 'experience', 'education', 'certifications', 'languages')}
+
+        for item in accepted:
+            kind = item.get('type', '')
+            try:
+                if kind == 'skill':
+                    name = (item.get('name') or '').strip()
+                    if not name:
+                        continue
+                    level = _SKILL_LEVEL_MAP.get(item.get('level', ''), 'avanceret')
+                    add_skill(username, name, level, source='cv_upload')
+                    counts['skills'] += 1
+                elif kind == 'experience':
+                    title = (item.get('title') or '').strip()
+                    company = (item.get('company') or '').strip()
+                    if not title and not company:
+                        continue
+                    add_experience(username, title or company, company=company,
+                                   start_year=_parse_year(item.get('years')))
+                    counts['experience'] += 1
+                elif kind == 'education':
+                    degree = (item.get('degree') or '').strip()
+                    institution = (item.get('institution') or '').strip()
+                    if not degree and not institution:
+                        continue
+                    add_education(username, degree or institution, institution=institution,
+                                  year_completed=_parse_year(item.get('year')))
+                    counts['education'] += 1
+                elif kind == 'certifications':
+                    name = (item.get('name') or '').strip()
+                    if not name:
+                        continue
+                    add_certification(username, name, issuer=item.get('issuer', ''),
+                                      issue_date=item.get('issue_date') or None,
+                                      expiry_date=item.get('expiry_date') or None,
+                                      source='cv_upload')
+                    counts['certifications'] += 1
+                elif kind == 'languages':
+                    language = (item.get('language') or '').strip()
+                    if not language:
+                        continue
+                    proficiency = _LANG_PROF_MAP.get(item.get('proficiency', ''), 'flydende')
+                    add_language(username, language, proficiency=proficiency, source='cv_upload')
+                    counts['languages'] += 1
+            except Exception as exc:
+                current_app.logger.warning('cv apply item %s: %s', kind, exc)
+
+        return jsonify({'success': True, 'saved': counts})
+    except Exception as exc:
+        current_app.logger.error('cv apply: %s', exc)
+        return jsonify({'success': False, 'error': str(exc)}), 500
 
 
 @api_bp.route('/api/profile/mindmap')

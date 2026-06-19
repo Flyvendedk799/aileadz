@@ -36,3 +36,12 @@ plotly>=5.18,<7
 redis>=5,<7
 # ldap3: LDAP / Active Directory SSO bind (enterprise_sso).
 ldap3>=2.9,<3
+
+# --- CV ingestion deps (imported guarded by cv_ingest.py) ---
+# PDF text extraction for the interactive CV portal. cv_ingest prefers
+# pdfplumber (better layout) and falls back to pypdf; with NEITHER installed it
+# returns "Vi kunne ikke læse PDF-filen automatisk på serveren" and the upload
+# fails. These were ambiently present on PythonAnywhere but absent from the
+# clean ServerHoster venv — pin them so PDF resumes parse on every deploy.
+pypdf>=4,<6
+pdfplumber>=0.11,<0.13

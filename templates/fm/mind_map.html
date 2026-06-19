@@ -26,7 +26,11 @@
   .ai-modebar a.active { border-color: var(--fm-primary); background: var(--fm-primary-tint); color: var(--fm-primary); }
   .ai-modebar i { font-size: 13px; }
   .mm3d-stage { flex: 1; position: relative; min-height: 0; overflow: hidden; }
-  /* support.js mounts React inside <x-dc> — ensure it fills stage */
+  /* support.js mounts React inside the x-dc element — ensure it fills stage.
+     NB: never write the literal x-dc open tag with angle brackets anywhere
+     before the real element below. support.js parseDcText() regex-matches the
+     FIRST such tag in the raw page source, so a bracketed mention here (even in
+     a comment) hijacks the template and dumps this CSS as on-page text. */
   .mm3d-stage x-dc { display: block; height: 100%; }
   /* fallback: if support.js wraps in a div sibling */
   .mm3d-stage > div { height: 100%; }

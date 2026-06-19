@@ -33,6 +33,13 @@ _ALLOWED_LANG_LEVELS = {"begynder", "mellem", "flydende", "modersmaal"}
 # Extensions we can read as plain text without any optional dependency.
 _TEXT_EXTS = {".txt", ".md", ".markdown", ".text", ".csv", ".rtf"}
 _PDF_EXTS = {".pdf"}
+_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".gif", ".webp", ".bmp", ".tiff", ".tif", ".heic", ".heif"}
+_IMAGE_MIME = {
+    ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".png": "image/png",
+    ".gif": "image/gif", ".webp": "image/webp", ".bmp": "image/bmp",
+    ".tiff": "image/tiff", ".tif": "image/tiff",
+    ".heic": "image/heic", ".heif": "image/heif",
+}
 
 # Danish hint shown when PDF parsing libraries are unavailable.
 _PDF_DEP_HINT = (
@@ -68,6 +75,47 @@ def _decode_bytes(raw: bytes) -> str:
         return raw.decode("utf-8", errors="replace")
     except Exception:
         return ""
+
+
+def _extract_image_text(raw: bytes, mime: str = "image/jpeg") -> tuple[str, str]:
+    """Use GPT-4o vision to OCR a CV image. Guarded — never raises."""
+    try:
+        import base64
+        client = _get_openai_client()
+        if client is None:
+            return "", (
+                "Kunne ikke læse billedet (ingen AI-forbindelse). "
+                "Brug en PDF eller indsæt teksten direkte."
+            )
+        b64 = base64.b64encode(raw).decode("ascii")
+        resp = client.chat.completions.create(
+            model="gpt-4o",
+            messages=[{
+                "role": "user",
+                "content": [
+                    {
+                        "type": "text",
+                        "text": (
+                            "Dette er et billede af et CV. "
+                            "Udtruk AL tekst fra billedet og returner det som ren tekst. "
+                            "Bevar den originale struktur (sektioner, rækkefølge, punktlister). "
+                            "Ingen forklaring — kun den ekstraherede tekst."
+                        ),
+                    },
+                    {
+                        "type": "image_url",
+                        "image_url": {"url": f"data:{mime};base64,{b64}", "detail": "high"},
+                    },
+                ],
+            }],
+            max_tokens=2000,
+        )
+        text = (resp.choices[0].message.content or "").strip()
+        if text:
+            return text[: _MAX_INPUT_CHARS * 4], ""
+        return "", "Ingen tekst fundet i billedet. Prøv en PDF eller indsæt teksten direkte."
+    except Exception as exc:
+        return "", f"Billedlæsning fejlede ({exc}). Prøv en PDF eller indsæt teksten direkte."
 
 
 def _extract_pdf_text(raw: bytes) -> tuple[str, str]:
@@ -157,6 +205,10 @@ def extract_text(file_storage) -> tuple[str, str]:
         if ext in _PDF_EXTS:
             text, hint = _extract_pdf_text(raw)
             return (text or "")[: _MAX_INPUT_CHARS * 4], hint
+
+        if ext in _IMAGE_EXTS:
+            mime = _IMAGE_MIME.get(ext, "image/jpeg")
+            return _extract_image_text(raw, mime)
 
         if ext in _TEXT_EXTS or ext == "":
             # Unknown/extension-less uploads: try to decode as text. If the

@@ -15,29 +15,29 @@ Anthropic) exposed as **two modes** selected by a client-supplied `mode` string:
 
 | Mode | "AI" | Shell route | Difference |
 |------|------|-------------|------------|
-| `default` | **Course suggester** | `/chat` (`futurematch_ui.py:24`) | the advisor/recommender |
-| `profiler` | **AI Profiler** | `/ai-profiler` (`futurematch_ui.py:30`, login-gated) | appends `SYSTEM_PLAYBOOK_PROFILER`, injects a live completeness snapshot, emits `profiler_progress`, and (new) deterministically hands off to course recommendations at high completeness |
+| `default` | **Course suggester** | `/chat` (`futurematch_ui.py:25`) | the advisor/recommender |
+| `profiler` | **AI Profiler** | `/ai-profiler` (`futurematch_ui.py:31`, login-gated) | appends `SYSTEM_PLAYBOOK_PROFILER`, injects a live completeness snapshot, emits `profiler_progress`, and (new) deterministically hands off to course recommendations at high completeness |
 
-There is **one endpoint** (`POST /app1/ask`, `app1/__init__.py:921`), **one
-frontend** (`static/futurematch/assets/chat.js`), and **one toolset**. The mode
-is the only switch. Per-mode policy is centralised in `MODE_PROFILES`
-(`app1/agent.py`, near the system prompts).
+There is **one endpoint** (`POST /app1/ask`, `ask()` at `app1/__init__.py:932`),
+**one frontend** (`static/futurematch/assets/chat.js`), and **one toolset**. The
+mode is the only switch. Per-mode policy is centralised in `MODE_PROFILES`
+(`app1/agent.py:297`, near the system prompts).
 
 ---
 
 ## 2. Request → tool → SSE lifecycle
 
 ```
-chat.js run() ─POST {query,mode}─▶ /app1/ask (app1/__init__.py:921)
-   └▶ handle_agentic_ask (app1/agent.py:1239)
+chat.js run() ─POST {query,mode}─▶ /app1/ask (ask() at app1/__init__.py:932)
+   └▶ handle_agentic_ask (app1/agent.py:1298)
         ├─ resolve session, lazy-load memory, build fenced system context
-        ├─ _classify_intent_local (agent.py:558)  [+ gpt-4o-mini router only on 'discovery']
-        ├─ _detect_conversation_stage (agent.py:305) → reconcile with intent
-        ├─ get_employee_tool_selection (ai_tool_registry.py:663) → per-turn tool menu
-        └─ stream_generator() (agent.py:1705)
+        ├─ _classify_intent_local (agent.py:594)  [+ gpt-4o-mini router only on 'discovery']
+        ├─ _detect_conversation_stage (agent.py:341) → reconcile with intent
+        ├─ get_employee_tool_selection (ai_tool_registry.py:803) → per-turn tool menu
+        └─ stream_generator() (agent.py:1764)
              ├─ run_agent_with_fallback (ai_runtime.py) → model loop, tool_choice=auto
-             │     └─ execute_tool (app1/tools.py:execute_tool) — flat if/elif dispatch
-             ├─ map each tool result → SSE events (the big loop, agent.py ~2108–2350)
+             │     └─ execute_tool (app1/tools.py:5237) — flat if/elif dispatch
+             ├─ map each tool result → SSE events (the big loop, agent.py ~2181–2400)
              ├─ stream final answer tokens (<suggestions> parsed out)
              ├─ grounding circuit-breaker (post-stream disclaimer)
              └─ emit cards / profile events / cross-surface events / suggestions
@@ -52,7 +52,7 @@ vendors, supplier agreements before the model loop.
 ## 3. SSE event vocabulary — **single source of truth: `app1/sse_events.py`**
 
 Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
-1030) MUST agree on these `type` strings. `KNOWN_EVENT_TYPES` in
+1219) MUST agree on these `type` strings. `KNOWN_EVENT_TYPES` in
 `app1/sse_events.py` is the canonical set; the drift test guards it.
 
 | Event | Producer | chat.js handler | Payload |
@@ -90,12 +90,22 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 ## 4. Tools & the registry
 
 - **Definitions:** `OPENAI_TOOLS` (`tools.py:451`+, anonymous-safe) and
-  `PROFILE_TOOLS` (`tools.py:2120`+, login-only). **Dispatch:** flat if/elif in
-  `execute_tool` (`tools.py:execute_tool`).
-- **Per-turn menu:** `get_employee_tool_selection` (`ai_tool_registry.py:663`).
+  `PROFILE_TOOLS` (`tools.py:2546`+, login-only). **Dispatch:** flat if/elif in
+  `execute_tool` (`tools.py:5237`).
+- **Per-turn menu:** `get_employee_tool_selection` (`ai_tool_registry.py:803`).
   `catalog_search` + (logged-in) profile tools + **`open_in_app`** are an
   always-on, model-driven core; specialised/mutating tools are added by Danish
   keyword gates; at most one is force-chosen (`_resolve_forced_tool`).
+- **⚠️ Adding a tool is THREE steps, not one.** A tool is only callable if its
+  name is added to the `names` set inside `get_employee_tool_selection` (via the
+  core seed, a keyword gate, or a `_TOOL_TRIGGERS` semantic-fallback entry). The
+  menu is built **only** from `names` — so a tool that is defined in
+  `OPENAI_TOOLS`/`PROFILE_TOOLS` **and** dispatched in `execute_tool` but never
+  added to `names` is **dead**: the model can never select it (no error, just
+  silence). Checklist for a new tool: (1) schema in `OPENAI_TOOLS`/`PROFILE_TOOLS`,
+  (2) executor + `execute_tool` branch, (3) reach the menu in
+  `get_employee_tool_selection` + register `_EMPLOYEE_META`/`_TOOL_LABELS`. Add a
+  reachability test (see `test_cv_summary_reachable_on_profile_query`).
 - **Reachability fallback (new):** `_semantic_tool_fallback`
   (`ai_tool_registry.py`) token-overlaps the query against `_TOOL_TRIGGERS`
   (Danish + English synonyms) and additively surfaces the best specialised tool
@@ -137,10 +147,19 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 - **`show_cv_summary`** (new, profile-gated) — reads the user's saved profile
   sections and emits a `cv_summary_card` in chat showing skills/experience/
   education/certifications/languages counts + preview chips + "Upload CV" CTA
-  → `/profil-upload`.
+  → `/profil-upload`. Reaches the menu on profile/CV keywords + the semantic
+  fallback (`_TOOL_TRIGGERS`); guarded by
+  `test_cv_summary_reachable_on_profile_query`.
 - **`show_mindmap_preview`** (new, profile-gated) — reads profile completeness,
   per-category node counts, and 3 recent memories; emits a `mindmap_card` with
-  a progress bar + "Åbn 3D Mind-Map" link → `/mind-map`.
+  a progress bar + "Åbn 3D Mind-Map" link → `/mind-map`. Reaches the menu on
+  mind-map / "hvad husker du om mig" keywords + semantic fallback; guarded by
+  `test_mindmap_preview_reachable_on_memory_query`.
+- **Discoverability of the 3D surfaces** (non-chat): both `/profil-upload` and
+  `/mind-map` are in the employee sidebar (`fm_base.html`, `page_id` drives the
+  active state) and linked from the profile hero (`my_profile.html`); CV upload
+  is also on `employee_home.html`. The AI reaches them via the inline cards
+  above and `open_in_app(open_cv_upload|open_mind_map)`.
 - **`save_learning_path` / `get_learning_path`** persist & recall paths.
 
 ---
@@ -153,7 +172,7 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   new **`user_learning_paths`**). `ensure_tables()` runs idempotent
   CREATE/ALTER migrations every boot.
 - **Completeness — one source of truth:** `profile_completeness(username,
-  profile=None)` (`user_profile_db.py:768`). The 8-section binary
+  profile=None)` (`user_profile_db.py:846`). The 8-section binary
   `pct`/`total`/`missing` contract is unchanged (tests depend on it); it now
   ALSO returns depth-aware `weighted_pct`, per-section `strength`, `weakest`
   (the profiler's next-best-question target), and `target_role`. Consumed by:
@@ -170,6 +189,45 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 - **Proactive profiler (new):** `ai_profiler.html` auto-asks the first targeted
   question once per browser session (guarded by `sessionStorage` + empty
   thread) instead of waiting for a Start click.
+
+### 3D surfaces — CV portal & Mind-Map
+
+Two Three.js pages render the profile data as interactive 3D experiences. They
+are reached from the AI (cards + `open_in_app`), the employee sidebar, the
+profile hero, and (CV) `employee_home`.
+
+- **CV portal** (`/profil-upload` → `templates/fm/cv_upload.html`, Three.js +
+  tween.js via ESM importmap). Has its **own SSE pipeline, separate from the
+  chat vocabulary in §3** — built in `api.py`:
+  - `POST /api/cv/parse` (`api.py:491`, multipart) — extracts text
+    (`cv_ingest.extract_text`, PDF/text/**image-OCR**) and runs the LLM parse in
+    a **background thread**, storing the result in the module-level dict
+    `_cv_parse_results[session_id] = {proposal, hint}` (or `{error}`).
+  - `GET /api/cv/parse-stream` (`api.py:518`, SSE) — emits `stage` progress
+    events on a timed schedule while **polling `_cv_parse_results`**, then emits
+    one terminal `result` (`{proposal, hint}`) or `error`. Event names here are
+    `stage` / `chunk` / `result` / `error` — NOT the chat `type` strings.
+    (Flask can't push to a connection before it exists, hence the
+    parse-writes-dict / stream-polls-dict split.)
+  - `POST /api/cv/apply` (`api.py:598`, JSON `{session_id, accepted:[…]}`) —
+    writes approved items via `add_skill/experience/education/certification/
+    language`. **Level vocab must be normalised** through `_SKILL_LEVEL_MAP` /
+    `_LANG_PROF_MAP` (lowercase-keyed, case-insensitive) — they accept BOTH the
+    portal's display labels (Begynder/Øvet/…) and the parser's canonical
+    lowercase output (begynder/mellem/…); the old capitalized-only map silently
+    inflated every parsed skill to `avanceret`.
+  - Empty proposal → the portal resets to upload state and shows the `hint`
+    toast rather than entering a blank 0-card review.
+  - **No-JS fallback:** the `<form>` posts to `/profil-upload` +
+    `/profil-upload/apply` (`futurematch_ui.py`), a self-contained server-render
+    path (its own whitelist level validation, defaults to `mellem`).
+- **Mind-Map** (`/mind-map` → `templates/fm/mind_map.html`): a DCLogic React
+  runtime (`static/futurematch/assets/mind-map-support.js`) + Three.js globe,
+  fed by `GET /api/profile/mindmap` (`api.py:665`, root→category→leaf graph from
+  structured profile + `user_memories` + conversation summary). DC template
+  bindings use `{{ }}`, so the block is wrapped in `{% raw %}`. Memory CRUD from
+  the page: DELETE `/api/profile/memories` `{id}`, POST `{label,detail,category,
+  source}`.
 
 ---
 
@@ -245,7 +303,10 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
   intentional quality shift, re-baseline once: `python3 ai_eval/run_eval.py
   --set-baseline`.
 - The co-pilot upgrade's offline coverage is in
-  `tests/test_ai_copilot_upgrade.py`.
+  `tests/test_ai_copilot_upgrade.py` (incl. tool-reachability guards for
+  `show_cv_summary` / `show_mindmap_preview`).
+- CV ingestion + apply coverage (level-vocab round-trip, image-OCR routing) is
+  in `tests/test_cv_ingest_apply.py`.
 
 ---
 
@@ -264,8 +325,11 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | SSE event vocabulary (canonical) | `app1/sse_events.py` |
 | Routes (`/app1/ask`, confirm, profile) | `app1/__init__.py` |
 | Page shells (`/chat`, `/ai-profiler`, `/mind-map`, `/profile`, `/profil-upload`) | `futurematch_ui.py` |
-| Profile REST API + CV parse/stream/apply | `api.py` |
+| Profile REST API + CV parse/stream/apply | `api.py` (level vocab → canonical via `_SKILL_LEVEL_MAP`/`_LANG_PROF_MAP`, case-insensitive, accepts both 3D-portal display labels and parser output) |
+| CV text/image extraction + LLM profile parse | `cv_ingest.py` (PDF via pypdf/pdfplumber; images via GPT-4o vision OCR; never raises — degrades to a Danish hint) |
 | Chat frontend (SSE dispatch, renderers) | `static/futurematch/assets/chat.js` |
 | Chat styles | `static/futurematch/assets/chat.css` |
 | Profile / profiler templates | `templates/fm/my_profile.html`, `ai_profiler.html`, `chat.html` |
+| 3D surfaces (Three.js) | `templates/fm/cv_upload.html` (CV portal), `templates/fm/mind_map.html` + `static/futurematch/assets/mind-map-support.js` (DCLogic runtime) |
+| Nav shell (sidebar links, `page_id` active state) | `templates/fm_base.html` |
 | GDPR export/erase coverage | `gdpr_service.py` |

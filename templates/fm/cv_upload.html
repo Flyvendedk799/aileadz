@@ -229,7 +229,7 @@
       <h1>Upload dit CV</h1>
       <p>Din browser understøtter ikke den interaktive oplevelse. Brug formularen herunder.</p>
       <form action="{{ url_for('futurematch.cv_upload_parse') }}" method="post" enctype="multipart/form-data">
-        <input type="file" name="cv_file" accept=".pdf,.doc,.docx,.txt,.rtf" />
+        <input type="file" name="cv_file" accept=".pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tiff,.heic" />
         <textarea name="cv_text" placeholder="…eller indsæt CV-tekst her" rows="5"></textarea>
         <button type="submit">Analysér mit CV</button>
       </form>
@@ -297,7 +297,7 @@
       <div id="hintTip" class="hidden">Klik på et kort for at redigere · Acceptér eller kassér</div>
     </div><!-- /#ui -->
 
-    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.rtf" style="display:none" />
+    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.rtf,.jpg,.jpeg,.png,.gif,.webp,.bmp,.tiff,.heic" style="display:none" />
 
   </div><!-- /.cv3d-stage -->
 </div><!-- /.cv-wrap -->
@@ -710,7 +710,7 @@ function connectStream(){
     es = new EventSource(`/api/cv/parse-stream?session_id=${encodeURIComponent(sessionId)}`);
     es.addEventListener('stage', e => { gotMessage = true; handleStage(e.data); });
     es.addEventListener('chunk', e => { gotMessage = true; handleChunk(e.data); });
-    es.addEventListener('result', e => { gotMessage = true; try { handleResult(JSON.parse(e.data)); } catch(_){} closeStream(); });
+    es.addEventListener('result', e => { gotMessage = true; try { const d = JSON.parse(e.data); handleResult(d.proposal !== undefined ? d.proposal : d, d.hint || ''); } catch(_){} closeStream(); });
     es.addEventListener('error', () => { if(!gotMessage){ closeStream(); runMock(); } });
     postPayload();
     mockTimer = setTimeout(()=>{ if(!gotMessage){ closeStream(); runMock(); } }, 1800);
@@ -778,7 +778,7 @@ function runMock(){
     [2700, ()=>{ lightNode('certifications'); revealNode('certifications'); handleChunk(); }],
     [3100, ()=>{ lightNode('languages'); revealNode('languages'); handleChunk(); }],
     [3500, ()=>handleStage('Foreslår profil')],
-    [4200, ()=>handleResult(SAMPLE)],
+    [4200, ()=>handleResult(SAMPLE, '')],
   ];
   seq.forEach(([t, fn])=> setTimeout(fn, t));
 }
@@ -786,8 +786,20 @@ function runMock(){
 // ============================================================
 //  RESULT → REVIEW
 // ============================================================
-function handleResult(p){
-  proposal = p;
+function handleResult(p, hint){
+  proposal = p || {};
+  const total = (p.skills||[]).length + (p.experience||[]).length +
+                (p.education||[]).length + (p.certifications||[]).length +
+                (p.languages||[]).length;
+  if (!total) {
+    $('#arcWrap').style.opacity = 0;
+    setStageLabel('');
+    $('#intro').classList.remove('invisible');
+    state = 'upload';
+    const msg = hint || 'Ingen CV-data fundet. Prøv en PDF-fil eller indsæt teksten direkte.';
+    showToast('Ikke fundet', msg);
+    return;
+  }
   setArc(1); setStageLabel('<b>Foreslår profil</b> &nbsp;·&nbsp; klar');
   CATS.forEach((c,i)=>{ revealNode(c.key, i*60); lightNode(c.key); });
   setTimeout(enterReview, 700);

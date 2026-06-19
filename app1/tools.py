@@ -1079,6 +1079,46 @@ OPENAI_TOOLS.extend([
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_cv_summary",
+            "description": (
+                "Vis et øjebliksbillede af brugerens CV-data direkte i chatten: kompetencer, erfaring, "
+                "uddannelse, certificeringer og sprog — med et 'Opdater CV'-link til den 3D-interaktive "
+                "CV-portal. Brug dette når brugeren spørger om sin profil/CV, vil uploade nyt CV, eller "
+                "du vil opsummere hvad systemet ved om dem fagligt."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "focus": {
+                        "type": "string",
+                        "enum": ["overview", "skills", "experience", "education", "certifications", "languages"],
+                        "description": "Hvilken sektion der skal fremhæves. Standard: overview.",
+                    }
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "show_mindmap_preview",
+            "description": (
+                "Vis et kompakt preview af brugerens 3D mind-map i chatten: profilkomplethed i procent, "
+                "antal noder pr. kategori og de seneste AI-hukommelser. Inkluderer et link til den "
+                "interaktive 3D-kuglevisning. Brug dette når brugeren spørger hvad AI'en husker om dem, "
+                "vil se mind-mappet, eller du vil vise profilstatus."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {},
+                "required": [],
+            },
+        },
+    },
 ])
 
 
@@ -1104,7 +1144,7 @@ OPENAI_TOOLS.append({
                 "action": {
                     "type": "string",
                     "enum": ["view_product", "open_compare", "open_profile", "open_mind_map",
-                             "open_learning_path", "open_catalog", "start_order", "open_profiler"],
+                             "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler"],
                     "description": "Hvilken handling/navigation der skal udføres i UI'et."
                 },
                 "handle": {"type": "string", "description": "Kursets handle (view_product / start_order)."},
@@ -5014,7 +5054,7 @@ def _execute_open_in_app(args, username=None):
     """
     action = (args.get("action") or "").strip()
     valid = {"view_product", "open_compare", "open_profile", "open_mind_map",
-             "open_learning_path", "open_catalog", "start_order", "open_profiler"}
+             "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler"}
     if action not in valid:
         return json.dumps({"status": "error", "message": f"Ukendt handling: {action}"}, ensure_ascii=False)
 
@@ -5054,7 +5094,11 @@ def _execute_open_in_app(args, username=None):
 
     elif action == "open_mind_map":
         out["target"] = "/mind-map"
-        out["label"] = label or "Åbn mind-map"
+        out["label"] = label or "Åbn 3D Mind-Map"
+
+    elif action == "open_cv_upload":
+        out["target"] = "/profil-upload"
+        out["label"] = label or "Upload / opdater CV"
 
     elif action == "open_learning_path":
         out["target"] = "/profile#learning-paths"
@@ -5071,6 +5115,82 @@ def _execute_open_in_app(args, username=None):
         out["label"] = label or "Åbn kataloget"
 
     return _model_tool_json(**out)
+
+
+def _execute_show_cv_summary(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    focus = (args.get("focus") or "overview").strip()
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        ensure_tables()
+        profile = get_full_profile(username)
+        skills = profile.get("skills") or []
+        experience = profile.get("experience") or []
+        education = profile.get("education") or []
+        certifications = profile.get("certifications") or []
+        languages = profile.get("languages") or []
+        sections = {
+            "skills": [{"name": s.get("skill_name", ""), "level": s.get("skill_level", "")} for s in skills[:6]],
+            "experience": [{"title": e.get("title", ""), "company": e.get("company", ""), "years": str(e.get("start_year", "") or "")} for e in experience[:4]],
+            "education": [{"degree": e.get("degree", ""), "institution": e.get("institution", ""), "year": str(e.get("year_completed", "") or "")} for e in education[:3]],
+            "certifications": [{"name": c.get("name", ""), "issuer": c.get("issuer", "")} for c in certifications[:4]],
+            "languages": [{"language": l.get("language", ""), "proficiency": l.get("proficiency", "")} for l in languages],
+        }
+        counts = {k: len(v_list) for k, v_list in [
+            ("skills", skills), ("experience", experience), ("education", education),
+            ("certifications", certifications), ("languages", languages),
+        ]}
+        total = sum(counts.values())
+        return json.dumps({
+            "status": "cv_summary",
+            "sections": sections,
+            "counts": counts,
+            "total": total,
+            "has_cv": total > 0,
+            "focus": focus,
+        }, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
+
+
+def _execute_show_mindmap_preview(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    try:
+        from app1.user_profile_db import (
+            get_full_profile, get_memories, profile_completeness, ensure_tables,
+        )
+        ensure_tables()
+        profile = get_full_profile(username)
+        memories = get_memories(username) or []
+        completeness = profile_completeness(username, profile=profile)
+        skills = profile.get("skills") or []
+        experience = profile.get("experience") or []
+        education = profile.get("education") or []
+        certifications = profile.get("certifications") or []
+        languages = profile.get("languages") or []
+        categories = {
+            "kompetencer": len(skills),
+            "erfaring": len(experience),
+            "uddannelse": len(education),
+            "certificeringer": len(certifications),
+            "sprog": len(languages),
+            "hukommelse": len(memories),
+        }
+        recent = []
+        for m in sorted(memories, key=lambda x: x.get("created_at") or "", reverse=True)[:3]:
+            recent.append({"label": m.get("label", ""), "category": m.get("category", "andet")})
+        leaf_count = sum(categories.values())
+        return json.dumps({
+            "status": "mindmap_preview",
+            "completeness": completeness,
+            "categories": categories,
+            "counts": {"leaves": leaf_count, "memories": len(memories)},
+            "recent_memories": recent,
+        }, ensure_ascii=False, default=str)
+    except Exception as e:
+        return json.dumps({"status": "error", "message": str(e)})
 
 
 def _execute_save_learning_path(args, username):
@@ -5208,6 +5328,10 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_manage_my_order(args, username)
         elif function_name == "request_manager_approval":
             return _execute_request_manager_approval(args, username)
+        elif function_name == "show_cv_summary":
+            return _execute_show_cv_summary(args, username)
+        elif function_name == "show_mindmap_preview":
+            return _execute_show_mindmap_preview(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

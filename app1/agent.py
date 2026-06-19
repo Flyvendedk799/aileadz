@@ -232,9 +232,14 @@ HVORNÅR BRUGE HVAD:
 - request_user_input: Når info mangler detaljer (årstal, institution).
 - update_user_profile: Simple opdateringer + certificeringer + sprog. Hent profil med get_user_profile for id'er.
 - Skel mellem kursus og certificering: en certificering har en udsteder eller en udløbsdato → brug add_certification, ikke add_course.
+- show_cv_summary: Vis et profilkort i chatten (kompetencer, erfaring, uddannelse osv.) med et 'Opdater CV'-link til 3D CV-portalen. Brug når brugeren spørger om sin profil/CV eller du vil opsummere det faglige.
+- open_in_app(open_cv_upload): Send brugeren til den interaktive 3D CV-uploadportal (drag-drop, AI-parsing, interaktiv review). Brug når brugeren vil uploade et CV-dokument eller paste CV-tekst.
+- show_mindmap_preview: Vis mind-map-statistik, seneste hukommelser og link til 3D-kuglevisning i chatten. Brug når brugeren spørger hvad AI'en husker om dem.
+- open_in_app(open_mind_map): Åbn den 3D-interaktive mind-map-globus direkte i en ny fane.
 
 CV-ONBOARDING (når brugeren beder om CV/profil):
-Guid naturligt: erfaring → uddannelse → skills → kurser → mål. Spring udfyldte trin over."""
+Guid naturligt: erfaring → uddannelse → skills → kurser → mål. Spring udfyldte trin over.
+Tilbyd open_in_app(open_cv_upload) når brugeren vil uploade et CV-dokument eller paste CV-tekst."""
 
 SYSTEM_PLAYBOOK_SEARCH = """SØGE-INTELLIGENS:
 - Søg på BEHOV, ikke jobtitel.
@@ -2375,6 +2380,29 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         }
                         buffered_extra_events.append(json.dumps({
                             "type": LEARNING_PATH_CARD, "path": _path,
+                        }, ensure_ascii=False, default=str))
+
+                elif fn == "show_cv_summary":
+                    if tool_result_dict.get("status") == "cv_summary":
+                        from app1.sse_events import CV_SUMMARY_CARD
+                        buffered_extra_events.append(json.dumps({
+                            "type": CV_SUMMARY_CARD,
+                            "sections": tool_result_dict.get("sections", {}),
+                            "counts": tool_result_dict.get("counts", {}),
+                            "total": tool_result_dict.get("total", 0),
+                            "has_cv": tool_result_dict.get("has_cv", False),
+                            "focus": tool_result_dict.get("focus", "overview"),
+                        }, ensure_ascii=False, default=str))
+
+                elif fn == "show_mindmap_preview":
+                    if tool_result_dict.get("status") == "mindmap_preview":
+                        from app1.sse_events import MINDMAP_CARD
+                        buffered_extra_events.append(json.dumps({
+                            "type": MINDMAP_CARD,
+                            "completeness": tool_result_dict.get("completeness", {}),
+                            "categories": tool_result_dict.get("categories", {}),
+                            "counts": tool_result_dict.get("counts", {}),
+                            "recent_memories": tool_result_dict.get("recent_memories", []),
                         }, ensure_ascii=False, default=str))
 
                 elif tool_result_dict.get("needs_confirmation"):

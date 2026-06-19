@@ -775,10 +775,18 @@ def get_mindmap_api():
             get_full_profile, get_memories, profile_completeness,
             load_conversation_summary, _MEMORY_CATEGORY_LABELS, ensure_tables
         )
+        from competency import (compute_skill_gaps, level_to_score,
+                                 skill_category as _skill_cat, canonical_skill)
         ensure_tables()
         profile = get_full_profile(username)
         memories = get_memories(username)
         completeness = profile_completeness(username, profile=profile)
+        # Per-skill gap lookup (company targets + target role + goals, 1-5 scale)
+        # so the inspector can flag which skills sit below their target.
+        try:
+            _gap_by_key = {g['skill'].lower(): g for g in compute_skill_gaps(username, profile=profile)}
+        except Exception:
+            _gap_by_key = {}
         try:
             summary = load_conversation_summary(username)
         except Exception:
@@ -812,8 +820,17 @@ def get_mindmap_api():
         if skills:
             add_branch('kompetencer', 'Kompetencer', 'layer-group')
             for i, s in enumerate(skills):
-                add_leaf('kompetencer', f'skill:{i}', s.get('name', ''),
-                         {'source': 'profil', 'kind': 'Kompetence', 'level': s.get('level')})
+                name = s.get('name', '')
+                lvl = s.get('level')
+                meta = {'source': 'profil', 'kind': 'Kompetence', 'level': lvl,
+                        'level_score': level_to_score(lvl),
+                        'skill_category': s.get('category') or _skill_cat(name)}
+                g = _gap_by_key.get(canonical_skill(name).lower())
+                if g:
+                    meta['gap'] = {'target_label': g['target_label'],
+                                   'target_score': g['target_level'],
+                                   'priority': g['priority'], 'source': g['source']}
+                add_leaf('kompetencer', f'skill:{i}', name, meta)
 
         exp = profile.get('experience') or []
         if exp:
@@ -822,22 +839,34 @@ def get_mindmap_api():
                 lbl = e.get('title') or ''
                 if e.get('company'):
                     lbl += f" @ {e['company']}"
-                add_leaf('erfaring', f"exp:{e.get('id')}", lbl, {'source': 'profil', 'kind': 'Erfaring'})
+                add_leaf('erfaring', f"exp:{e.get('id')}", lbl, {
+                    'source': 'profil', 'kind': 'Erfaring',
+                    'title': e.get('title'), 'company': e.get('company'),
+                    'start_year': e.get('start_year'), 'end_year': e.get('end_year'),
+                    'is_current': bool(e.get('is_current')),
+                    'detail': e.get('description') or ''})
 
         edu = profile.get('education') or []
         if edu:
             add_branch('uddannelse', 'Uddannelse', 'graduation-cap')
             for e in edu:
-                add_leaf('uddannelse', f"edu:{e.get('id')}", e.get('degree', ''),
-                         {'source': 'profil', 'kind': 'Uddannelse', 'detail': e.get('institution')})
+                add_leaf('uddannelse', f"edu:{e.get('id')}", e.get('degree', ''), {
+                    'source': 'profil', 'kind': 'Uddannelse',
+                    'institution': e.get('institution'),
+                    'year': e.get('year_completed'),
+                    'detail': e.get('description') or ''})
 
         certs = profile.get('certifications') or []
         if certs:
             add_branch('certificeringer', 'Certificeringer', 'shield-halved')
             for c in certs:
-                add_leaf('certificeringer', f"cert:{c.get('id')}", c.get('name', ''),
-                         {'source': 'profil', 'kind': 'Certificering', 'detail': c.get('issuer'),
-                          'expiry': c.get('expiry_date')})
+                add_leaf('certificeringer', f"cert:{c.get('id')}", c.get('name', ''), {
+                    'source': 'profil', 'kind': 'Certificering',
+                    'issuer': c.get('issuer'),
+                    'issue_date': c.get('issue_date'),
+                    'expiry_date': c.get('expiry_date'),
+                    'credential_id': c.get('credential_id'),
+                    'credential_url': c.get('credential_url')})
 
         langs = profile.get('languages') or []
         if langs:
@@ -853,8 +882,10 @@ def get_mindmap_api():
             if gtext:
                 add_leaf('maal', 'goal:summary', gtext[:80], {'source': 'profil', 'kind': 'Karrieremål', 'detail': gtext})
             for g in goals:
-                add_leaf('maal', f"goal:{g.get('id')}", g.get('title', ''),
-                         {'source': 'profil', 'kind': 'Mål', 'status': g.get('status')})
+                add_leaf('maal', f"goal:{g.get('id')}", g.get('title', ''), {
+                    'source': 'profil', 'kind': 'Mål', 'status': g.get('status'),
+                    'target_date': g.get('target_date'),
+                    'detail': g.get('description') or ''})
 
         # Atomic memories branch, sub-labelled by their own category.
         if memories:

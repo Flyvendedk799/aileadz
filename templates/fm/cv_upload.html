@@ -1,345 +1,1069 @@
 {% extends "fm_base.html" %}
 {% block page_id %}cvupload{% endblock %}
-{% block title %}Upload CV{% endblock %}
-{% block topbar_title %}Byg din profil fra CV{% endblock %}
-{% block topbar_sub %}Upload dit CV eller indsæt teksten — så foreslår vi en profil, du kan godkende.{% endblock %}
+{% block title %}CV-portal · Futurematch{% endblock %}
+{% block topbar_title %}CV-portal{% endblock %}
+{% block topbar_sub %}Upload dit CV — vi genskaber det som en interaktiv 3D-profil{% endblock %}
+{% block body_class %}cvupload-page{% endblock %}
 
 {% block extra_head %}
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "tween": "https://unpkg.com/@tweenjs/tween.js@23.1.3/dist/tween.esm.js"
+  }
+}
+</script>
 <style>
-  .cvu-intro { display: flex; gap: 14px; align-items: flex-start; padding: 16px 18px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-xs); margin-bottom: 18px; }
-  .cvu-intro .ic { flex: 0 0 auto; width: 38px; height: 38px; border-radius: 11px; display: grid; place-items: center; background: var(--fm-primary-50, rgba(0,0,0,.04)); color: var(--fm-primary); font-size: 16px; }
-  .cvu-intro p { margin: 2px 0 0; font-size: 13.5px; color: var(--fm-ink-2); line-height: 1.55; }
-  .cvu-intro .t { font-family: var(--ff-display); font-weight: 700; font-size: 15px; }
+  /* --- Layout: full-height canvas within fm_base --- */
+  body.cvupload-page { overflow: hidden; }
+  body.cvupload-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
+  body.cvupload-page .fm-foot { display: none; }
+  .cv-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .cv3d-stage {
+    flex: 1; position: relative; min-height: 0; overflow: hidden;
+    /* Dark cinematic background for the stage only */
+    --fm-bg: #0a0a14;
+    --fm-surface: rgba(20,20,32,0.96);
+    --fm-ink: #f2f2f7;
+    --fm-line: rgba(255,255,255,0.10);
+    background: #0a0a14;
+    color: #f2f2f7;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
 
-  .cvu-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; align-items: stretch; }
-  @media (max-width: 820px) { .cvu-grid { grid-template-columns: 1fr; } }
+  /* --- Fallback form: behind everything, surfaces if JS/WebGL is off --- */
+  .cv3d-stage .fallback {
+    position: absolute; inset: 0; z-index: 0;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 18px; padding: 32px; text-align: center;
+  }
+  .cv3d-stage .fallback h1 { font-weight: 600; font-size: 22px; margin: 0; color: #f2f2f7; }
+  .cv3d-stage .fallback p { opacity: .7; max-width: 420px; margin: 0; font-size: 14px; line-height: 1.5; color: #f2f2f7; }
+  .cv3d-stage .fallback form {
+    display: flex; flex-direction: column; gap: 12px; align-items: center;
+    background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.10);
+    border-radius: 16px; padding: 24px; margin-top: 8px;
+  }
+  .cv3d-stage .fallback input[type=file], .cv3d-stage .fallback textarea {
+    color: #f2f2f7; background: rgba(0,0,0,.25);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 10px; padding: 10px 12px; font-size: 14px;
+  }
+  .cv3d-stage .fallback button {
+    background: var(--fm-primary); color: #fff; border: 0; border-radius: 10px;
+    padding: 11px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
 
-  .cvu-drop { display: flex; flex-direction: column; gap: 10px; }
-  .cvu-file { position: relative; border: 1.5px dashed var(--fm-line); border-radius: var(--r-card); padding: 26px 18px; text-align: center; transition: var(--t); cursor: pointer; background: var(--fm-surface); }
-  .cvu-file:hover { border-color: var(--fm-primary-300, var(--fm-primary)); }
-  .cvu-file input[type=file] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
-  .cvu-file .di { font-size: 26px; color: var(--fm-primary); margin-bottom: 8px; }
-  .cvu-file .dt { font-weight: 700; font-size: 14px; font-family: var(--ff-display); }
-  .cvu-file .ds { font-size: 12.5px; color: var(--fm-ink-3); margin-top: 4px; }
-  .cvu-file .fname { margin-top: 10px; font-family: var(--ff-mono); font-size: 12px; color: var(--fm-primary); word-break: break-all; }
+  /* --- 3D canvas --- */
+  #scene {
+    position: absolute; inset: 0; z-index: 1; display: block;
+    width: 100%; height: 100%; touch-action: none;
+  }
 
-  .cvu-textarea { width: 100%; min-height: 160px; resize: vertical; padding: 12px 14px; border-radius: var(--r-ctrl); border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-family: inherit; font-size: 13.5px; line-height: 1.55; }
-  .cvu-textarea:focus { outline: none; border-color: var(--fm-primary); }
+  /* --- DOM overlay UI (above canvas) --- */
+  #ui { position: absolute; inset: 0; z-index: 2; pointer-events: none; }
+  #ui > * { pointer-events: auto; }
 
-  .cvu-or { display: flex; align-items: center; gap: 12px; margin: 6px 0; color: var(--fm-ink-3); font-family: var(--ff-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; }
-  .cvu-or::before, .cvu-or::after { content: ""; flex: 1; height: 1px; background: var(--fm-line); }
+  .hidden { display: none !important; }
+  .fade { transition: opacity .6s ease, transform .6s ease; }
+  .invisible { opacity: 0 !important; pointer-events: none !important; }
 
-  .cvu-actions { margin-top: 18px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-  .cvu-note { font-size: 12px; color: var(--fm-ink-3); }
+  /* Top brand + stage label */
+  #topbar {
+    position: absolute; top: 0; left: 0; right: 0;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 22px 28px; pointer-events: none;
+  }
+  #brand {
+    display: flex; align-items: center; gap: 10px; font-size: 14px; letter-spacing: .04em;
+    opacity: .85; text-transform: uppercase; font-weight: 600; color: #f2f2f7;
+  }
+  #brand .dot {
+    width: 9px; height: 9px; border-radius: 50%;
+    background: var(--fm-primary); box-shadow: 0 0 14px 2px var(--fm-primary);
+  }
+  #stageLabel {
+    font-size: 13px; letter-spacing: .12em; text-transform: uppercase;
+    opacity: 0; transition: opacity .5s ease; color: #f2f2f7;
+    font-variant-numeric: tabular-nums;
+  }
+  #stageLabel b { color: var(--fm-primary); font-weight: 700; }
 
-  .rev-section { margin-top: 18px; }
-  .rev-head { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
-  .rev-head .fm-eyebrow { margin: 0; }
-  .rev-count { font-family: var(--ff-mono); font-size: 11.5px; color: var(--fm-ink-3); margin-left: auto; }
-  .rev-list { display: flex; flex-direction: column; gap: 10px; }
-  .rev-item { display: grid; grid-template-columns: auto 1fr; gap: 12px; align-items: start; padding: 14px 16px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-xs); transition: var(--t); }
-  .rev-item:has(input.rev-chk:checked) { border-color: var(--fm-primary); box-shadow: var(--sh-sm); }
-  .rev-item .rev-chk { width: 18px; height: 18px; margin-top: 3px; accent-color: var(--fm-primary); cursor: pointer; }
-  .rev-fields { display: grid; gap: 8px; }
-  .rev-fields.cols-3 { grid-template-columns: 1.3fr 1fr .7fr; }
-  .rev-fields.cols-skill { grid-template-columns: 1.6fr .9fr; }
-  .rev-fields.cols-cert { grid-template-columns: 1.4fr 1fr .7fr .7fr; }
-  @media (max-width: 620px) { .rev-fields.cols-3, .rev-fields.cols-skill, .rev-fields.cols-cert { grid-template-columns: 1fr; } }
-  .rev-fields label { display: block; font-family: var(--ff-mono); font-size: 10px; letter-spacing: .07em; text-transform: uppercase; color: var(--fm-ink-3); margin-bottom: 3px; }
-  .rev-fields .fm-input, .rev-fields .fm-select { width: 100%; }
+  /* Center hint / headline (upload scene) */
+  #intro {
+    position: absolute; left: 0; right: 0; bottom: 12%;
+    text-align: center; pointer-events: none;
+  }
+  #intro h1 {
+    font-size: clamp(26px, 4.4vw, 46px); font-weight: 600; margin: 0 0 10px;
+    letter-spacing: -.01em; text-shadow: 0 4px 40px rgba(0,0,0,.5); color: #f2f2f7;
+  }
+  #intro h1 .accent { color: var(--fm-primary); }
+  #intro p { margin: 0; font-size: 15px; opacity: .62; color: #f2f2f7; }
+  #actions {
+    margin-top: 26px; display: flex; gap: 14px; align-items: center; justify-content: center;
+    pointer-events: auto;
+  }
+  .cv-btn {
+    appearance: none; border: 1px solid rgba(255,255,255,.10); background: rgba(255,255,255,.04);
+    color: #f2f2f7; font-size: 14px; font-weight: 600; letter-spacing: .01em;
+    padding: 13px 22px; border-radius: 999px; cursor: pointer; backdrop-filter: blur(8px);
+    transition: transform .18s ease, background .18s ease, border-color .18s ease, box-shadow .18s ease;
+  }
+  .cv-btn:hover { transform: translateY(-1px); background: rgba(255,255,255,.08); }
+  .cv-btn.primary {
+    background: var(--fm-primary); border-color: transparent; color: #fff;
+    box-shadow: 0 8px 30px -8px var(--fm-primary);
+  }
+  .cv-btn.primary:hover { box-shadow: 0 12px 40px -8px var(--fm-primary); }
+  .cv-btn.ghost { background: transparent; }
+  .cv-btn:disabled { opacity: .4; cursor: default; transform: none; }
 
-  .cvu-summary { padding: 14px 16px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-xs); margin-bottom: 16px; }
-  .cvu-summary .l { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .08em; text-transform: uppercase; color: var(--fm-ink-3); }
-  .cvu-summary p { margin: 4px 0 0; font-size: 13.5px; color: var(--fm-ink-2); line-height: 1.55; }
+  /* Drop affordance ring text */
+  #dropHint {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    font-size: 15px; font-weight: 600; letter-spacing: .06em; text-transform: uppercase;
+    opacity: 0; transition: opacity .25s ease; pointer-events: none; color: var(--fm-primary);
+    text-shadow: 0 0 24px var(--fm-primary);
+  }
+  .cv3d-stage.dragging #dropHint { opacity: 1; }
+  .cv3d-stage.dragging #intro { opacity: .25; }
 
-  .cvu-empty { text-align: center; padding: 40px 20px; color: var(--fm-ink-3); }
-  .cvu-empty .ei { font-size: 30px; color: var(--fm-ink-3); margin-bottom: 10px; }
+  /* Progress arc (SVG overlay, centered) */
+  #arcWrap {
+    position: absolute; left: 50%; top: 50%; width: 360px; height: 360px;
+    transform: translate(-50%,-50%); opacity: 0; transition: opacity .6s ease; pointer-events: none;
+  }
+  #arcWrap svg { width: 100%; height: 100%; transform: rotate(-90deg); }
+  #arcTrack { fill: none; stroke: rgba(255,255,255,.10); stroke-width: 2; }
+  #arcFill {
+    fill: none; stroke: var(--fm-primary); stroke-width: 3; stroke-linecap: round;
+    filter: drop-shadow(0 0 6px var(--fm-primary));
+    transition: stroke-dashoffset .8s cubic-bezier(.4,0,.2,1);
+  }
 
-  .rev-bar { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; margin-top: 20px; }
-  .rev-toolbtn { background: none; border: 1px solid var(--fm-line); border-radius: var(--r-ctrl); padding: 6px 11px; font-size: 12.5px; font-weight: 600; color: var(--fm-ink-2); cursor: pointer; transition: var(--t); }
-  .rev-toolbtn:hover { border-color: var(--fm-primary-300, var(--fm-primary)); color: var(--fm-primary); }
+  /* Paste overlay */
+  #pastePanel {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%);
+    width: min(560px, 88vw); background: rgba(20,20,32,0.96);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 18px; padding: 22px;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,.7); backdrop-filter: blur(20px);
+  }
+  #pastePanel h3 { margin: 0 0 12px; font-size: 16px; font-weight: 600; color: #f2f2f7; }
+  #pasteArea {
+    width: 100%; min-height: 160px; resize: vertical; background: rgba(0,0,0,.3);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 12px; padding: 14px; color: #f2f2f7;
+    font-size: 14px; line-height: 1.5; font-family: inherit;
+  }
+  #pastePanel .row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 14px; }
+
+  /* Card editor (review scene) */
+  #editor {
+    position: absolute; left: 50%; bottom: 7%; transform: translate(-50%, 0);
+    width: min(440px, 90vw); background: rgba(20,20,32,0.96);
+    border: 1px solid rgba(255,255,255,.10); border-radius: 20px; padding: 22px 22px 18px;
+    box-shadow: 0 30px 90px -20px rgba(0,0,0,.75); backdrop-filter: blur(22px);
+    opacity: 0; transform: translate(-50%, 24px); pointer-events: none; transition: opacity .3s ease, transform .3s ease;
+  }
+  #editor.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; }
+  #editor .etag {
+    font-size: 11px; letter-spacing: .14em; text-transform: uppercase; color: var(--fm-primary);
+    font-weight: 700; margin-bottom: 12px;
+  }
+  #editor label { display: block; font-size: 12px; opacity: .6; margin: 12px 0 5px; color: #f2f2f7; }
+  #editor input, #editor select {
+    width: 100%; background: rgba(0,0,0,.3); border: 1px solid rgba(255,255,255,.10);
+    border-radius: 10px; padding: 11px 12px; color: #f2f2f7; font-size: 14px; font-family: inherit;
+  }
+  #editor .erow { display: flex; gap: 18px; margin-top: 20px; align-items: center; justify-content: space-between; }
+  #editor .erow .left { display: flex; gap: 10px; }
+  .cv-btn.accept { background: #1f9d63; border-color: transparent; color: #fff; box-shadow: 0 8px 28px -10px #1f9d63; }
+  .cv-btn.discard { background: transparent; border-color: rgba(255,90,90,.5); color: #ff8a8a; }
+
+  /* Review footer: profile save */
+  #reviewBar {
+    position: absolute; top: 0; right: 0; display: flex; align-items: center; gap: 16px;
+    padding: 20px 26px; opacity: 0; transition: opacity .6s ease; pointer-events: none;
+  }
+  #reviewBar.show { opacity: 1; pointer-events: auto; }
+  #counter { font-size: 13px; opacity: .7; color: #f2f2f7; }
+  #counter b { color: var(--fm-primary); }
+
+  /* Profile icon target */
+  #profileIcon {
+    position: absolute; top: 16px; right: 26px; width: 46px; height: 46px; border-radius: 50%;
+    display: grid; place-items: center; border: 1.5px solid var(--fm-primary);
+    background: rgba(12,107,98,.12); color: var(--fm-primary);
+    opacity: 0; transition: opacity .5s ease, transform .3s ease; pointer-events: none; z-index: 3;
+  }
+  #profileIcon.show { opacity: 1; }
+  #profileIcon.pulse { animation: cvpp .6s ease; }
+  @keyframes cvpp { 0%{transform:scale(1)} 40%{transform:scale(1.35); box-shadow:0 0 30px 6px var(--fm-primary)} 100%{transform:scale(1)} }
+
+  /* Toast */
+  #toast {
+    position: absolute; left: 50%; top: 50%; transform: translate(-50%,-50%) scale(.9);
+    background: rgba(20,20,32,0.96); border: 1px solid rgba(255,255,255,.10); color: #f2f2f7;
+    padding: 26px 34px; border-radius: 18px; font-size: 17px; font-weight: 600; text-align: center;
+    opacity: 0; pointer-events: none; transition: opacity .4s ease, transform .4s ease;
+    box-shadow: 0 30px 80px -20px rgba(0,0,0,.7);
+  }
+  #toast.show { opacity: 1; transform: translate(-50%,-50%) scale(1); }
+  #toast .sub { font-size: 13px; font-weight: 400; opacity: .65; margin-top: 6px; }
+
+  #hintTip {
+    position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+    font-size: 12px; opacity: 0; transition: opacity .5s ease; pointer-events: none;
+    letter-spacing: .03em; color: #f2f2f7;
+  }
+  #hintTip.show { opacity: .5; }
 </style>
 {% endblock %}
 
 {% block content %}
-<div class="fm-wrap">
+<div class="cv-wrap">
+  <div class="cv3d-stage">
 
-  {% if step == 'review' %}
-  {# ─────────────── STEP 2: review the proposed profile ─────────────── #}
-
-  <div class="cvu-intro">
-    <span class="ic"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
-    <div>
-      <div class="t">Forslag til din profil</div>
-      <p>Vi har læst dit CV og foreslår nedenstående. <strong>Intet er gemt endnu.</strong>
-         Fjern fluebenet ved det, du ikke vil have med, ret evt. teksten, og tryk
-         <em>Tilføj til min profil</em>.</p>
-    </div>
-  </div>
-
-  {% if summary %}
-  <div class="cvu-summary">
-    <div class="l">Opsummering fra CV</div>
-    <p>{{ summary }}</p>
-  </div>
-  {% endif %}
-
-  {% if not (skills or experience or education or certifications or languages) %}
-  <section class="fm-card">
-    <div class="cvu-empty">
-      <div class="ei"><i class="fa-regular fa-circle-question"></i></div>
-      <div style="font-weight:700;color:var(--fm-ink-2)">Vi kunne ikke udlede konkrete elementer</div>
-      <p style="margin:6px 0 16px">Prøv at indsætte mere tekst fra dit CV.</p>
-      <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-rotate-left"></i> Prøv igen</a>
-    </div>
-  </section>
-  {% else %}
-
-  <form method="POST" action="{{ url_for('futurematch.cv_upload_apply') }}" id="revForm">
-
-    <div class="rev-bar">
-      <button type="button" class="rev-toolbtn" data-select-all="1"><i class="fa-solid fa-check-double"></i> Vælg alle</button>
-      <button type="button" class="rev-toolbtn" data-select-all="0"><i class="fa-regular fa-square"></i> Fravælg alle</button>
+    <!-- Fallback for no-JS / no-WebGL browsers -->
+    <div class="fallback">
+      <h1>Upload dit CV</h1>
+      <p>Din browser understøtter ikke den interaktive oplevelse. Brug formularen herunder.</p>
+      <form action="{{ url_for('futurematch.cv_upload_parse') }}" method="post" enctype="multipart/form-data">
+        <input type="file" name="cv_file" accept=".pdf,.doc,.docx,.txt,.rtf" />
+        <textarea name="cv_text" placeholder="…eller indsæt CV-tekst her" rows="5"></textarea>
+        <button type="submit">Analysér mit CV</button>
+      </form>
     </div>
 
-    {% if skills %}
-    <section class="rev-section">
-      <div class="rev-head">
-        <span class="fm-eyebrow"><i class="fa-solid fa-bolt"></i> Kompetencer</span>
-        <span class="rev-count">{{ skills|length }} forslag</span>
-      </div>
-      <div class="rev-list">
-        {% for s in skills %}
-        <label class="rev-item">
-          <input type="checkbox" class="rev-chk" name="accept_skill" value="{{ s.idx }}" checked>
-          <div class="rev-fields cols-skill">
-            <div>
-              <label>Kompetence</label>
-              <input class="fm-input" name="skill_name_{{ s.idx }}" value="{{ s.name }}" maxlength="255">
-            </div>
-            <div>
-              <label>Niveau</label>
-              <select class="fm-select" name="skill_level_{{ s.idx }}">
-                <option value="begynder" {{ 'selected' if s.level == 'begynder' }}>Begynder</option>
-                <option value="mellem" {{ 'selected' if s.level == 'mellem' }}>Mellem</option>
-                <option value="avanceret" {{ 'selected' if s.level == 'avanceret' }}>Avanceret</option>
-                <option value="ekspert" {{ 'selected' if s.level == 'ekspert' }}>Ekspert</option>
-              </select>
-            </div>
-          </div>
-        </label>
-        {% endfor %}
-      </div>
-    </section>
-    {% endif %}
+    <!-- 3D canvas -->
+    <canvas id="scene"></canvas>
 
-    {% if experience %}
-    <section class="rev-section">
-      <div class="rev-head">
-        <span class="fm-eyebrow clay"><i class="fa-solid fa-briefcase"></i> Erfaring</span>
-        <span class="rev-count">{{ experience|length }} forslag</span>
+    <!-- Overlay UI -->
+    <div id="ui">
+      <div id="topbar">
+        <div id="brand"><span class="dot"></span> CV-portal</div>
+        <div id="stageLabel"></div>
       </div>
-      <div class="rev-list">
-        {% for e in experience %}
-        <label class="rev-item">
-          <input type="checkbox" class="rev-chk" name="accept_experience" value="{{ e.idx }}" checked>
-          <div class="rev-fields cols-3">
-            <div>
-              <label>Stilling</label>
-              <input class="fm-input" name="exp_title_{{ e.idx }}" value="{{ e.title }}" maxlength="255">
-            </div>
-            <div>
-              <label>Virksomhed</label>
-              <input class="fm-input" name="exp_company_{{ e.idx }}" value="{{ e.company }}" maxlength="255">
-            </div>
-            <div>
-              <label>År / periode</label>
-              <input class="fm-input" name="exp_years_{{ e.idx }}" value="{{ e.years }}" maxlength="60" placeholder="F.eks. 2019-2023">
-            </div>
-          </div>
-        </label>
-        {% endfor %}
+
+      <div id="profileIcon" title="Din profil">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4 4-6 8-6s8 2 8 6"/></svg>
       </div>
-    </section>
-    {% endif %}
 
-    {% if education %}
-    <section class="rev-section">
-      <div class="rev-head">
-        <span class="fm-eyebrow"><i class="fa-solid fa-graduation-cap"></i> Uddannelse</span>
-        <span class="rev-count">{{ education|length }} forslag</span>
-      </div>
-      <div class="rev-list">
-        {% for ed in education %}
-        <label class="rev-item">
-          <input type="checkbox" class="rev-chk" name="accept_education" value="{{ ed.idx }}" checked>
-          <div class="rev-fields cols-3">
-            <div>
-              <label>Uddannelse</label>
-              <input class="fm-input" name="edu_degree_{{ ed.idx }}" value="{{ ed.degree }}" maxlength="255">
-            </div>
-            <div>
-              <label>Institution</label>
-              <input class="fm-input" name="edu_institution_{{ ed.idx }}" value="{{ ed.institution }}" maxlength="255">
-            </div>
-            <div>
-              <label>År</label>
-              <input class="fm-input" name="edu_year_{{ ed.idx }}" value="{{ ed.year }}" maxlength="20" placeholder="F.eks. 2018">
-            </div>
-          </div>
-        </label>
-        {% endfor %}
-      </div>
-    </section>
-    {% endif %}
+      <div id="dropHint">Slip dit CV her</div>
 
-    {% if certifications %}
-    <section class="rev-section">
-      <div class="rev-head">
-        <span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Certificeringer</span>
-        <span class="rev-count">{{ certifications|length }} forslag</span>
-      </div>
-      <div class="rev-list">
-        {% for c in certifications %}
-        <label class="rev-item">
-          <input type="checkbox" class="rev-chk" name="accept_certification" value="{{ c.idx }}" checked>
-          <div class="rev-fields cols-cert">
-            <div>
-              <label>Certificering</label>
-              <input class="fm-input" name="crt_name_{{ c.idx }}" value="{{ c.name }}" maxlength="255">
-            </div>
-            <div>
-              <label>Udsteder</label>
-              <input class="fm-input" name="crt_issuer_{{ c.idx }}" value="{{ c.issuer }}" maxlength="255">
-            </div>
-            <div>
-              <label>Udstedt</label>
-              <input class="fm-input" name="crt_issued_{{ c.idx }}" value="{{ c.issue_date }}" maxlength="20" placeholder="2022">
-            </div>
-            <div>
-              <label>Udløber</label>
-              <input class="fm-input" name="crt_expiry_{{ c.idx }}" value="{{ c.expiry_date }}" maxlength="20" placeholder="tom = aldrig">
-            </div>
-          </div>
-        </label>
-        {% endfor %}
-      </div>
-    </section>
-    {% endif %}
-
-    {% if languages %}
-    <section class="rev-section">
-      <div class="rev-head">
-        <span class="fm-eyebrow"><i class="fa-solid fa-language"></i> Sprog</span>
-        <span class="rev-count">{{ languages|length }} forslag</span>
-      </div>
-      <div class="rev-list">
-        {% for lg in languages %}
-        <label class="rev-item">
-          <input type="checkbox" class="rev-chk" name="accept_language" value="{{ lg.idx }}" checked>
-          <div class="rev-fields cols-skill">
-            <div>
-              <label>Sprog</label>
-              <input class="fm-input" name="lang_name_{{ lg.idx }}" value="{{ lg.language }}" maxlength="80">
-            </div>
-            <div>
-              <label>Niveau</label>
-              <select class="fm-select" name="lang_level_{{ lg.idx }}">
-                <option value="begynder" {{ 'selected' if lg.proficiency == 'begynder' }}>Begynder</option>
-                <option value="mellem" {{ 'selected' if lg.proficiency == 'mellem' }}>Mellem</option>
-                <option value="flydende" {{ 'selected' if lg.proficiency == 'flydende' }}>Flydende</option>
-                <option value="modersmaal" {{ 'selected' if lg.proficiency == 'modersmaal' }}>Modersmål</option>
-              </select>
-            </div>
-          </div>
-        </label>
-        {% endfor %}
-      </div>
-    </section>
-    {% endif %}
-
-    <div class="cvu-actions">
-      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-circle-check"></i> Tilføj til min profil</button>
-      <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-ghost"><i class="fa-solid fa-xmark"></i> Annullér</a>
-      <span class="cvu-note">Kun de markerede elementer gemmes.</span>
-    </div>
-  </form>
-  {% endif %}
-
-  <script>
-    (function () {
-      var form = document.getElementById('revForm');
-      if (!form) return;
-      document.querySelectorAll('[data-select-all]').forEach(function (btn) {
-        btn.addEventListener('click', function () {
-          var on = btn.getAttribute('data-select-all') === '1';
-          form.querySelectorAll('input.rev-chk').forEach(function (c) { c.checked = on; });
-        });
-      });
-    })();
-  </script>
-
-  {% else %}
-  {# ─────────────── STEP 1: upload / paste ─────────────── #}
-
-  <div class="cvu-intro">
-    <span class="ic"><i class="fa-solid fa-file-arrow-up"></i></span>
-    <div>
-      <div class="t">Kom hurtigt i gang</div>
-      <p>Har du en tom profil? Upload dit CV (PDF, TXT eller MD) eller indsæt teksten,
-         så bygger vi et forslag til kompetencer, erfaring og uddannelse, som du selv godkender.</p>
-    </div>
-  </div>
-
-  <section class="fm-card" style="padding:18px 20px">
-    <form method="POST" action="{{ url_for('futurematch.cv_upload_parse') }}" enctype="multipart/form-data">
-      <div class="cvu-grid">
-
-        <div class="cvu-drop">
-          <div class="fm-field" style="margin:0">
-            <label>Upload CV-fil</label>
-          </div>
-          <div class="cvu-file" id="cvDrop">
-            <input type="file" name="cv_file" id="cvFile" accept=".pdf,.txt,.md,.markdown,.text">
-            <div class="di"><i class="fa-solid fa-cloud-arrow-up"></i></div>
-            <div class="dt">Klik for at vælge en fil</div>
-            <div class="ds">PDF, TXT eller MD</div>
-            <div class="fname" id="cvFileName" hidden></div>
-          </div>
+      <div id="intro" class="fade">
+        <h1>Træd ind i din <span class="accent">professionelle</span> profil</h1>
+        <p>Træk dit CV ind i portalen — så genskaber vi det i levende, 3D form.</p>
+        <div id="actions">
+          <button class="cv-btn primary" id="chooseBtn">Vælg CV-fil</button>
+          <button class="cv-btn ghost" id="pasteBtn">Indsæt tekst</button>
         </div>
+      </div>
 
-        <div>
-          <div class="fm-field" style="margin:0">
-            <label>… eller indsæt teksten fra dit CV</label>
-            <textarea class="cvu-textarea" name="cv_text" placeholder="Indsæt din CV-tekst her — fx erfaring, kompetencer og uddannelse.">{{ raw_text or '' }}</textarea>
-          </div>
+      <div id="arcWrap">
+        <svg viewBox="0 0 360 360">
+          <circle id="arcTrack" cx="180" cy="180" r="150"></circle>
+          <circle id="arcFill" cx="180" cy="180" r="150"></circle>
+        </svg>
+      </div>
+
+      <div id="pastePanel" class="hidden">
+        <h3>Indsæt din CV-tekst</h3>
+        <textarea id="pasteArea" placeholder="Indsæt indholdet af dit CV her…"></textarea>
+        <div class="row">
+          <button class="cv-btn ghost" id="pasteCancel">Annullér</button>
+          <button class="cv-btn primary" id="pasteGo">Analysér</button>
         </div>
-
       </div>
 
-      <div class="cvu-actions">
-        <button type="submit" class="btn btn-primary"><i class="fa-solid fa-wand-magic-sparkles"></i> Analysér og foreslå profil</button>
-        <span class="cvu-note">Forslaget vises til gennemsyn — intet gemmes, før du godkender.</span>
+      <div id="editor">
+        <div class="etag" id="editorTag">Kompetence</div>
+        <div id="editorFields"></div>
+        <div class="erow">
+          <div class="left">
+            <button class="cv-btn accept" id="acceptBtn">Acceptér</button>
+            <button class="cv-btn discard" id="discardBtn">Kassér</button>
+          </div>
+          <button class="cv-btn ghost" id="closeEditor">Luk</button>
+        </div>
       </div>
-    </form>
-  </section>
 
-  <script>
-    (function () {
-      var input = document.getElementById('cvFile');
-      var name = document.getElementById('cvFileName');
-      if (!input || !name) return;
-      input.addEventListener('change', function () {
-        if (input.files && input.files.length) {
-          name.textContent = input.files[0].name;
-          name.hidden = false;
-        } else {
-          name.hidden = true;
-        }
-      });
-    })();
-  </script>
+      <div id="reviewBar">
+        <span id="counter"><b>0</b> accepteret</span>
+        <button class="cv-btn primary" id="saveBtn">Gem til min profil</button>
+      </div>
 
-  {% endif %}
-</div>
+      <div id="toast"></div>
+      <div id="hintTip" class="hidden">Klik på et kort for at redigere · Acceptér eller kassér</div>
+    </div><!-- /#ui -->
+
+    <input type="file" id="fileInput" accept=".pdf,.doc,.docx,.txt,.rtf" style="display:none" />
+
+  </div><!-- /.cv3d-stage -->
+</div><!-- /.cv-wrap -->
+{% endblock %}
+
+{% block extra_scripts %}
+<script type="module">
+import * as THREE from 'three';
+import * as TWEEN from 'tween';
+
+// ============================================================
+//  CONTAINER — all positioning is relative to this element
+// ============================================================
+const container = document.querySelector('.cv3d-stage');
+
+// ============================================================
+//  TOKENS / HELPERS
+// ============================================================
+const css = (name, fb) => {
+  const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  return v || fb;
+};
+const PRIMARY_HEX = css('--fm-primary', '#0c6b62');
+const BG_HEX = '#0a0a14'; // cinematic dark — always
+let PRIMARY = new THREE.Color(PRIMARY_HEX);
+const BG = new THREE.Color(BG_HEX);
+const ACCENT = PRIMARY.clone().offsetHSL(0.10, 0.05, 0.06);
+const ACCENT2 = PRIMARY.clone().offsetHSL(-0.12, 0.0, 0.10);
+
+const tg = new TWEEN.Group();
+const tween = (obj) => new TWEEN.Tween(obj, tg);
+const EZ = TWEEN.Easing;
+
+const $ = (s) => document.querySelector(s);
+const sessionId = (crypto.randomUUID ? crypto.randomUUID() : 'sess-' + Math.random().toString(36).slice(2));
+
+// ============================================================
+//  RENDERER / SCENE / CAMERA
+// ============================================================
+const canvas = $('#scene');
+const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: false });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(container.clientWidth, container.clientHeight);
+renderer.setClearColor(BG, 1);
+
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(BG.getHex(), 0.022);
+
+const camera = new THREE.PerspectiveCamera(55, container.clientWidth/container.clientHeight, 0.1, 200);
+camera.position.set(0, 1.5, 22);
+camera.lookAt(0, 0, 0);
+const camTarget = new THREE.Vector3(0, 0, 0);
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.5));
+const key = new THREE.PointLight(PRIMARY.getHex(), 2.2, 120); key.position.set(6, 8, 14); scene.add(key);
+const rim = new THREE.PointLight(ACCENT.getHex(), 1.4, 120); rim.position.set(-10, -4, 8); scene.add(rim);
+
+// ---- canvas texture helpers ----
+function radialTex(inner = '#ffffff') {
+  const c = document.createElement('canvas'); c.width = c.height = 128;
+  const x = c.getContext('2d');
+  const g = x.createRadialGradient(64,64,0, 64,64,64);
+  g.addColorStop(0, inner); g.addColorStop(0.25, inner); g.addColorStop(1, 'rgba(0,0,0,0)');
+  x.fillStyle = g; x.fillRect(0,0,128,128);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; return t;
+}
+const dotTex = radialTex('rgba(255,255,255,1)');
+const glowTex = radialTex('rgba(255,255,255,0.9)');
+
+function glowSprite(colorHex, size) {
+  const m = new THREE.SpriteMaterial({ map: glowTex, color: colorHex, blending: THREE.AdditiveBlending, depthWrite: false, transparent: true });
+  const s = new THREE.Sprite(m); s.scale.set(size, size, 1); return s;
+}
+
+function textSprite(text, opts = {}) {
+  const { fg = '#ffffff', bg = null, border = null, font = 600, fontSize = 52, pad = 28, accent = false } = opts;
+  const scale = 2;
+  const probe = document.createElement('canvas').getContext('2d');
+  probe.font = `${font} ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+  const tw = probe.measureText(text).width;
+  const W = Math.ceil(tw + pad*2), H = Math.ceil(fontSize + pad*1.3);
+  const c = document.createElement('canvas'); c.width = W*scale; c.height = H*scale;
+  const x = c.getContext('2d'); x.scale(scale, scale);
+  if (bg) { roundRect(x, 0, 0, W, H, H/2); x.fillStyle = bg; x.fill(); }
+  if (border) { roundRect(x, 1, 1, W-2, H-2, H/2); x.lineWidth = 2; x.strokeStyle = border; x.stroke(); }
+  x.font = `${font} ${fontSize}px ui-sans-serif, system-ui, sans-serif`;
+  x.fillStyle = fg; x.textBaseline = 'middle'; x.textAlign = 'center';
+  x.fillText(text, W/2, H/2 + 1);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4;
+  const mat = new THREE.SpriteMaterial({ map: t, transparent: true, depthWrite: false });
+  const sp = new THREE.Sprite(mat);
+  const h = 0.62; sp.scale.set(h * (W/H), h, 1);
+  sp.userData.aspect = W/H;
+  return sp;
+}
+
+function roundRect(x, X, Y, W, H, r) {
+  r = Math.min(r, W/2, H/2);
+  x.beginPath();
+  x.moveTo(X+r, Y); x.arcTo(X+W, Y, X+W, Y+H, r); x.arcTo(X+W, Y+H, X, Y+H, r);
+  x.arcTo(X, Y+H, X, Y, r); x.arcTo(X, Y, X+W, Y, r); x.closePath();
+}
+
+function cardTex(title, sub, meta, tint) {
+  const W = 512, H = 320;
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const x = c.getContext('2d');
+  roundRect(x, 6, 6, W-12, H-12, 26);
+  const g = x.createLinearGradient(0, 0, 0, H);
+  g.addColorStop(0, 'rgba(30,30,46,0.96)'); g.addColorStop(1, 'rgba(16,16,28,0.96)');
+  x.fillStyle = g; x.fill();
+  x.lineWidth = 3; x.strokeStyle = tint; x.globalAlpha = 0.5; x.stroke(); x.globalAlpha = 1;
+  x.fillStyle = tint; roundRect(x, 30, 34, 70, 8, 4); x.fill();
+  x.fillStyle = '#f2f2f7'; x.textAlign = 'left';
+  x.font = '600 38px ui-sans-serif, system-ui, sans-serif';
+  wrap(x, title||'', 34, 96, W-68, 42, 2);
+  x.fillStyle = 'rgba(242,242,247,0.72)'; x.font = '400 27px ui-sans-serif, system-ui, sans-serif';
+  x.fillText(clip(x, sub||'', W-68), 34, 196);
+  if (meta) { x.fillStyle = tint; x.font = '600 25px ui-sans-serif, system-ui, sans-serif'; x.fillText(meta, 34, 250); }
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 4; return t;
+}
+function wrap(x, text, X, Y, maxW, lh, maxLines) {
+  const words = (text||'').split(' '); let line = '', n = 0;
+  for (const w of words) {
+    const test = line ? line + ' ' + w : w;
+    if (x.measureText(test).width > maxW && line) {
+      x.fillText(line, X, Y); line = w; Y += lh; n++;
+      if (n >= maxLines - 1) { x.fillText(clip(x, words.slice(words.indexOf(w)).join(' '), maxW), X, Y); return; }
+    } else line = test;
+  }
+  if (line) x.fillText(line, X, Y);
+}
+function clip(x, text, maxW) {
+  text = text || '';
+  if (x.measureText(text).width <= maxW) return text;
+  while (text.length && x.measureText(text + '…').width > maxW) text = text.slice(0, -1);
+  return text + '…';
+}
+
+// ============================================================
+//  BACKDROP — starfield
+// ============================================================
+(function starfield(){
+  const N = 700, pos = new Float32Array(N*3);
+  for (let i=0;i<N;i++){
+    const r = 50 + Math.random()*70, a = Math.random()*Math.PI*2, b = Math.acos(2*Math.random()-1);
+    pos[i*3] = r*Math.sin(b)*Math.cos(a);
+    pos[i*3+1] = r*Math.cos(b)*0.6;
+    pos[i*3+2] = r*Math.sin(b)*Math.sin(a) - 20;
+  }
+  const g = new THREE.BufferGeometry(); g.setAttribute('position', new THREE.BufferAttribute(pos,3));
+  const m = new THREE.PointsMaterial({ size: 0.5, map: dotTex, color: 0x8a86c8, transparent:true, opacity:.5, depthWrite:false, blending:THREE.AdditiveBlending });
+  scene.add(new THREE.Points(g, m));
+})();
+
+// ============================================================
+//  DOCUMENT OBJECT (Scene 1 centerpiece)
+// ============================================================
+const docGroup = new THREE.Group(); scene.add(docGroup);
+const docTex = (function(){
+  const W=360,H=460,c=document.createElement('canvas'); c.width=W;c.height=H;
+  const x=c.getContext('2d');
+  roundRect(x,8,8,W-16,H-16,22); x.fillStyle='#f7f7fb'; x.fill();
+  x.fillStyle='#d8d8e6'; roundRect(x,40,52,150,16,8); x.fill();
+  x.fillStyle='#ececf4';
+  for(let i=0;i<9;i++){ roundRect(x,40,110+i*34, (i%3===2? W-160 : W-80),12,6); x.fill(); }
+  x.fillStyle = PRIMARY_HEX; roundRect(x,40,400,120,18,9); x.fill();
+  const t=new THREE.CanvasTexture(c); t.colorSpace=THREE.SRGBColorSpace; t.anisotropy=4; return t;
+})();
+const docMesh = new THREE.Mesh(
+  new THREE.PlaneGeometry(3.4, 4.4, 1, 1),
+  new THREE.MeshBasicMaterial({ map: docTex, transparent: true })
+);
+docGroup.add(docMesh);
+const docGlow = glowSprite(PRIMARY.getHex(), 11); docGlow.material.opacity = 0.55; docGroup.add(docGlow);
+const docRing = new THREE.Mesh(
+  new THREE.RingGeometry(3.0, 3.12, 64),
+  new THREE.MeshBasicMaterial({ color: PRIMARY.getHex(), transparent:true, opacity:0.35, side:THREE.DoubleSide })
+);
+docRing.rotation.x = Math.PI/2.2; docGroup.add(docRing);
+
+// ============================================================
+//  PARTICLE SYSTEM
+// ============================================================
+const PN = 1800;
+const pPos = new Float32Array(PN*3);
+const pCol = new Float32Array(PN*3);
+for (let i=0;i<PN;i++) edgePos(i, pPos);
+function edgePos(i, arr){
+  const side = Math.floor(Math.random()*6);
+  const s = 34;
+  let p = [ (Math.random()-.5)*s, (Math.random()-.5)*s, (Math.random()-.5)*s ];
+  p[side%3] = (side<3? -1:1) * s * 0.7;
+  arr[i*3]=p[0]; arr[i*3+1]=p[1]; arr[i*3+2]=p[2];
+}
+for (let i=0;i<PN;i++){ const c = Math.random()<0.5?PRIMARY:(Math.random()<0.5?ACCENT:ACCENT2); pCol[i*3]=c.r;pCol[i*3+1]=c.g;pCol[i*3+2]=c.b; }
+const pGeo = new THREE.BufferGeometry();
+pGeo.setAttribute('position', new THREE.BufferAttribute(pPos,3));
+pGeo.setAttribute('color', new THREE.BufferAttribute(pCol,3));
+const pMat = new THREE.PointsMaterial({ size:0.18, map:dotTex, vertexColors:true, transparent:true, opacity:0.0, depthWrite:false, blending:THREE.AdditiveBlending });
+const particles = new THREE.Points(pGeo, pMat); scene.add(particles);
+
+let pSrc = pPos.slice();
+function setParticleTargets(dst, dur=1400, ez=EZ.Cubic.InOut, delay=0){
+  pSrc = pGeo.attributes.position.array.slice();
+  const o = { t: 0 };
+  return tween(o).to({ t: 1 }, dur).delay(delay).easing(ez).onUpdate(()=>{
+    const a = pGeo.attributes.position.array;
+    for (let i=0;i<PN*3;i++) a[i] = pSrc[i] + (dst[i]-pSrc[i])*o.t;
+    pGeo.attributes.position.needsUpdate = true;
+  }).start();
+}
+function ringTargets(radius){
+  const dst = new Float32Array(PN*3);
+  for (let i=0;i<PN;i++){
+    const a = Math.random()*Math.PI*2, rr = radius*(0.6+Math.random()*0.6);
+    dst[i*3]=Math.cos(a)*rr; dst[i*3+1]=(Math.random()-.5)*5; dst[i*3+2]=Math.sin(a)*rr*0.5;
+  }
+  return dst;
+}
+
+// ============================================================
+//  NEURAL GRAPH (Scene 2/3)
+// ============================================================
+const CATS = [
+  { key:'skills',         label:'Kompetencer' },
+  { key:'experience',     label:'Erfaring' },
+  { key:'education',      label:'Uddannelse' },
+  { key:'certifications', label:'Certificeringer' },
+  { key:'languages',      label:'Sprog' },
+];
+const graph = new THREE.Group(); scene.add(graph);
+const centerNode = new THREE.Group();
+const centerCore = new THREE.Mesh(new THREE.IcosahedronGeometry(0.95, 2),
+  new THREE.MeshStandardMaterial({ color: PRIMARY.getHex(), emissive: PRIMARY.getHex(), emissiveIntensity: 0.9, roughness:.3, metalness:.2 }));
+centerNode.add(centerCore);
+centerNode.add(glowSprite(PRIMARY.getHex(), 7));
+const youLabel = textSprite('Dig', { fontSize:46, font:700 }); youLabel.position.set(0,-1.7,0); centerNode.add(youLabel);
+graph.add(centerNode);
+centerNode.visible = false;
+
+const R = 7.5;
+const nodes = {};
+CATS.forEach((cat, i) => {
+  const ang = (i/CATS.length) * Math.PI*2 - Math.PI/2;
+  const pos = new THREE.Vector3(Math.cos(ang)*R, Math.sin(ang)*R*0.42 + (i%2?0.8:-0.8), Math.sin(ang)*R*0.55);
+  const grp = new THREE.Group(); grp.position.copy(pos);
+  const core = new THREE.Mesh(new THREE.IcosahedronGeometry(0.55, 1),
+    new THREE.MeshStandardMaterial({ color:0x33334a, emissive: PRIMARY.getHex(), emissiveIntensity:0.0, roughness:.4, metalness:.3 }));
+  const gl = glowSprite(PRIMARY.getHex(), 3.2); gl.material.opacity = 0;
+  const lbl = textSprite(cat.label, { fontSize:40, font:600 }); lbl.position.set(0,-1.05,0); lbl.material.opacity = 0;
+  grp.add(core, gl, lbl);
+  grp.scale.setScalar(0.001);
+  const line = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,0,0), pos.clone()]),
+    new THREE.LineBasicMaterial({ color: PRIMARY.getHex(), transparent:true, opacity:0 })
+  );
+  graph.add(grp, line);
+  nodes[cat.key] = { grp, core, gl, lbl, line, pos, ang, lit:false, items: new THREE.Group() };
+  graph.add(nodes[cat.key].items);
+});
+graph.visible = false;
+
+function graphTargets(){
+  const dst = new Float32Array(PN*3);
+  const keys = Object.keys(nodes);
+  for (let i=0;i<PN;i++){
+    const pick = Math.random();
+    let base;
+    if (pick < 0.30) base = new THREE.Vector3(0,0,0);
+    else base = nodes[keys[i%keys.length]].pos;
+    dst[i*3]   = base.x + (Math.random()-.5)*2.2;
+    dst[i*3+1] = base.y + (Math.random()-.5)*2.2;
+    dst[i*3+2] = base.z + (Math.random()-.5)*2.2;
+  }
+  return dst;
+}
+
+function lightNode(key){
+  const n = nodes[key]; if (!n || n.lit) return; n.lit = true;
+  tween(n.core.material).to({ emissiveIntensity: 1.1 }, 700).easing(EZ.Cubic.Out).start();
+  tween(n.gl.material).to({ opacity: 0.85 }, 700).start();
+  tween(n.lbl.material).to({ opacity: 1 }, 700).start();
+  tween(n.line.material).to({ opacity: 0.4 }, 700).start();
+}
+function revealNode(key, delay=0){
+  const n = nodes[key];
+  tween(n.grp.scale).to({ x:1, y:1, z:1 }, 800).delay(delay).easing(EZ.Back.Out).start();
+}
+
+// ============================================================
+//  STATE
+// ============================================================
+let state = 'upload';
+let staged = null;
+const pickables = [];
+let proposal = null;
+let selected = null;
+let accepted = new Set();
+let clock = new THREE.Clock();
+
+// ============================================================
+//  SCENE 1 — UPLOAD interactions
+// ============================================================
+pMat.opacity = 0;
+tween(pMat).to({ opacity: 0.0 }, 10).start();
+
+docGroup.scale.setScalar(0.001);
+tween(docGroup.scale).to({ x:1, y:1, z:1 }, 1100).delay(250).easing(EZ.Back.Out).start();
+tween(pMat).to({ opacity: 0.6 }, 1400).delay(400).start();
+setParticleTargets(ringTargets(9), 2000, EZ.Cubic.Out, 400);
+
+let dragDepth = 0;
+function onDragEnter(e){ e.preventDefault(); dragDepth++; if(state!=='upload') return; container.classList.add('dragging');
+  setParticleTargets(ringTargets(4.2), 900, EZ.Cubic.Out);
+  tween(docGroup.rotation).to({ y: docGroup.rotation.y + 0.5 }, 900).easing(EZ.Cubic.Out).start();
+  tween(docGlow.material).to({ opacity: 0.95 }, 700).start();
+}
+function onDragOver(e){ e.preventDefault(); }
+function onDragLeave(e){ e.preventDefault(); dragDepth=Math.max(0,dragDepth-1); if(dragDepth===0) resetDrag(); }
+function resetDrag(){ if(state!=='upload') return; container.classList.remove('dragging');
+  setParticleTargets(ringTargets(9), 1100, EZ.Cubic.Out);
+  tween(docGlow.material).to({ opacity: 0.55 }, 700).start();
+}
+function onDrop(e){ e.preventDefault(); dragDepth=0; container.classList.remove('dragging'); if(state!=='upload') return;
+  const f = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+  if (f) stageFile(f); else { const t = e.dataTransfer && e.dataTransfer.getData('text'); if(t) stageText(t); }
+}
+container.addEventListener('dragenter', onDragEnter);
+container.addEventListener('dragover', onDragOver);
+container.addEventListener('dragleave', onDragLeave);
+container.addEventListener('drop', onDrop);
+
+$('#chooseBtn').addEventListener('click', ()=> $('#fileInput').click());
+$('#fileInput').addEventListener('change', e=>{ if(e.target.files[0]) stageFile(e.target.files[0]); });
+
+$('#pasteBtn').addEventListener('click', ()=>{ $('#pastePanel').classList.remove('hidden'); $('#pasteArea').focus(); });
+$('#pasteCancel').addEventListener('click', ()=> $('#pastePanel').classList.add('hidden'));
+$('#pasteGo').addEventListener('click', ()=>{ const t = $('#pasteArea').value.trim(); if(t){ $('#pastePanel').classList.add('hidden'); stageText(t);} });
+window.addEventListener('paste', e=>{ if(state!=='upload') return; if(!$('#pastePanel').classList.contains('hidden')) return;
+  const t = (e.clipboardData||window.clipboardData).getData('text'); if(t && t.length>30){ stageText(t); }});
+
+function stageFile(file){
+  staged = { type:'file', file, name:file.name };
+  flashDocAccept();
+  startAnalysis();
+}
+function stageText(text){
+  staged = { type:'text', text, name:'Indsat tekst' };
+  pasteGlyphEffect();
+  setTimeout(startAnalysis, 700);
+}
+function flashDocAccept(){
+  tween(docGlow.material).to({ opacity: 1 }, 250).yoyo(true).repeat(1).start();
+}
+function pasteGlyphEffect(){
+  setParticleTargets(ringTargets(3.5), 700, EZ.Cubic.Out);
+}
+
+// ============================================================
+//  SCENE 2 — ANALYSIS
+// ============================================================
+const arcFill = $('#arcFill');
+const ARC_LEN = 2 * Math.PI * 150;
+arcFill.style.strokeDasharray = ARC_LEN;
+arcFill.style.strokeDashoffset = ARC_LEN;
+function setArc(p){ arcFill.style.strokeDashoffset = ARC_LEN * (1 - p); }
+const STAGES = ['Udtrækker tekst', 'Analyserer', 'Foreslår profil'];
+
+function setStageLabel(txt){ const el=$('#stageLabel'); el.innerHTML = txt; el.style.opacity = txt? 1:0; }
+
+function startAnalysis(){
+  if (state !== 'upload') return;
+  state = 'analyzing';
+  $('#intro').classList.add('invisible');
+  $('#pastePanel').classList.add('hidden');
+
+  tween(docMesh.material).to({ opacity: 0 }, 500).easing(EZ.Cubic.In).start();
+  tween(docGlow.material).to({ opacity: 0 }, 500).start();
+  tween(docRing.material).to({ opacity: 0 }, 400).start();
+  tween(docGroup.scale).to({ x: 1.6, y: 1.6, z: 1.6 }, 500).easing(EZ.Cubic.In)
+    .onComplete(()=> docGroup.visible = false).start();
+
+  const burst = new Float32Array(PN*3);
+  for (let i=0;i<PN;i++){ const a=Math.random()*Math.PI*2,b=Math.acos(2*Math.random()-1),r=10+Math.random()*8;
+    burst[i*3]=r*Math.sin(b)*Math.cos(a); burst[i*3+1]=r*Math.cos(b); burst[i*3+2]=r*Math.sin(b)*Math.sin(a); }
+  setParticleTargets(burst, 600, EZ.Cubic.Out).onComplete(()=>{
+    graph.visible = true; centerNode.visible = true; centerNode.scale.setScalar(0.001);
+    tween(centerNode.scale).to({x:1,y:1,z:1}, 900).easing(EZ.Back.Out).start();
+    setParticleTargets(graphTargets(), 1600, EZ.Cubic.InOut);
+  });
+
+  moveCamera(new THREE.Vector3(0, 2, 17), new THREE.Vector3(0,0,0), 1800);
+
+  $('#arcWrap').style.opacity = 1;
+  setArc(0);
+
+  connectStream();
+}
+
+function moveCamera(pos, target, dur){
+  tween(camera.position).to({x:pos.x,y:pos.y,z:pos.z}, dur).easing(EZ.Cubic.InOut).start();
+  tween(camTarget).to({x:target.x,y:target.y,z:target.z}, dur).easing(EZ.Cubic.InOut).start();
+}
+
+// ---- SSE handling ----
+let es = null, gotMessage = false, mockTimer = null;
+function connectStream(){
+  try {
+    es = new EventSource(`/api/cv/parse-stream?session_id=${encodeURIComponent(sessionId)}`);
+    es.addEventListener('stage', e => { gotMessage = true; handleStage(e.data); });
+    es.addEventListener('chunk', e => { gotMessage = true; handleChunk(e.data); });
+    es.addEventListener('result', e => { gotMessage = true; try { handleResult(JSON.parse(e.data)); } catch(_){} closeStream(); });
+    es.addEventListener('error', () => { if(!gotMessage){ closeStream(); runMock(); } });
+    postPayload();
+    mockTimer = setTimeout(()=>{ if(!gotMessage){ closeStream(); runMock(); } }, 1800);
+  } catch(_) { runMock(); }
+}
+function closeStream(){ if(es){ es.close(); es=null; } if(mockTimer){ clearTimeout(mockTimer); mockTimer=null; } }
+function postPayload(){
+  try {
+    const fd = new FormData();
+    fd.append('session_id', sessionId);
+    if (staged?.type==='file') fd.append('cv', staged.file);
+    else fd.append('cv_text', staged?.text || '');
+    fetch('/api/cv/parse', { method:'POST', credentials:'same-origin', body: fd }).catch(()=>{});
+  } catch(_){}
+}
+
+let arcProgress = 0;
+function handleStage(stageTxt){
+  const idx = Math.max(0, STAGES.indexOf(stageTxt));
+  setStageLabel(`<b>${stageTxt}</b> &nbsp;·&nbsp; ${idx+1}/${STAGES.length}`);
+  arcProgress = (idx+1)/STAGES.length * 0.9;
+  setArc(arcProgress);
+}
+function handleChunk(){
+  arcProgress = Math.min(0.92, arcProgress + 0.015);
+  setArc(arcProgress);
+  tween(centerCore.material).to({ emissiveIntensity: 1.4 }, 120).yoyo(true).repeat(1).start();
+}
+
+// ---- MOCK stream (fallback when no backend parse available) ----
+const SAMPLE = {
+  summary: 'Erfaren produktdesigner med 8+ års erfaring inden for digitale tjenester og tværfagligt samarbejde.',
+  skills: [
+    { name:'UX-design', level:'Ekspert' }, { name:'Figma', level:'Ekspert' },
+    { name:'Prototyping', level:'Erfaren' }, { name:'Brugertest', level:'Erfaren' },
+    { name:'Designsystemer', level:'Ekspert' }, { name:'HTML & CSS', level:'Øvet' },
+    { name:'Workshops', level:'Erfaren' }, { name:'Tilgængelighed', level:'Øvet' },
+  ],
+  experience: [
+    { title:'Lead Product Designer', company:'Nordisk Digital A/S', years:'2021–2026' },
+    { title:'Senior UX-designer', company:'Bolig & Co', years:'2018–2021' },
+    { title:'UX-designer', company:'Studio Kobenhavn', years:'2016–2018' },
+  ],
+  education: [
+    { degree:'Cand.it. i Interaktionsdesign', institution:'Aarhus Universitet', year:'2016' },
+    { degree:'BA i Multimediedesign', institution:'KEA', year:'2013' },
+  ],
+  certifications: [
+    { name:'Certified Scrum Product Owner', issuer:'Scrum Alliance', issue_date:'2022', expiry_date:'2024' },
+    { name:'Google UX Design', issuer:'Google', issue_date:'2021', expiry_date:null },
+  ],
+  languages: [
+    { language:'Dansk', proficiency:'Modersmål' }, { language:'Engelsk', proficiency:'Flydende' },
+    { language:'Tysk', proficiency:'Professionelt' },
+  ],
+};
+function runMock(){
+  const seq = [
+    [200,  ()=>handleStage('Udtrækker tekst')],
+    [500,  ()=>handleChunk()], [800,()=>handleChunk()], [1100,()=>handleChunk()],
+    [1400, ()=>handleStage('Analyserer')],
+    [1500, ()=>{ lightNode('skills'); revealNode('skills'); }],
+    [1900, ()=>{ lightNode('experience'); revealNode('experience'); handleChunk(); }],
+    [2300, ()=>{ lightNode('education'); revealNode('education'); handleChunk(); }],
+    [2700, ()=>{ lightNode('certifications'); revealNode('certifications'); handleChunk(); }],
+    [3100, ()=>{ lightNode('languages'); revealNode('languages'); handleChunk(); }],
+    [3500, ()=>handleStage('Foreslår profil')],
+    [4200, ()=>handleResult(SAMPLE)],
+  ];
+  seq.forEach(([t, fn])=> setTimeout(fn, t));
+}
+
+// ============================================================
+//  RESULT → REVIEW
+// ============================================================
+function handleResult(p){
+  proposal = p;
+  setArc(1); setStageLabel('<b>Foreslår profil</b> &nbsp;·&nbsp; klar');
+  CATS.forEach((c,i)=>{ revealNode(c.key, i*60); lightNode(c.key); });
+  setTimeout(enterReview, 700);
+}
+
+function enterReview(){
+  state = 'review';
+  $('#arcWrap').style.opacity = 0;
+  setStageLabel('');
+  setParticleTargets(ringTargets(16), 1600, EZ.Cubic.Out);
+  tween(pMat).to({ opacity: 0.25 }, 1200).start();
+
+  buildReviewObjects();
+
+  moveCamera(new THREE.Vector3(0, 1.0, 16.5), new THREE.Vector3(0, 0.3, 0), 1700);
+  $('#profileIcon').classList.add('show');
+  $('#reviewBar').classList.add('show');
+  $('#hintTip').classList.remove('hidden'); $('#hintTip').classList.add('show');
+  setTimeout(()=> $('#hintTip').classList.remove('show'), 6000);
+  updateCounter();
+}
+
+function makeCardMesh(w, h, tex, tint){
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, side: THREE.DoubleSide }));
+  const halo = glowSprite(tint, Math.max(w,h)*1.5); halo.material.opacity = 0.0; m.add(halo);
+  m.userData.halo = halo;
+  return m;
+}
+
+function buildReviewObjects(){
+  const sk = nodes.skills;
+  (proposal.skills||[]).forEach((s, i)=>{
+    const chip = textSprite(s.name, { fontSize:36, font:600, bg:'rgba(20,20,32,0.9)', border:PRIMARY_HEX, fg:'#fff' });
+    chip.userData = { kind:'skill', data:{...s}, idx:i, accepted:false, baseScale: chip.scale.clone() };
+    chip.userData.orbit = { r: 2.4 + (i%2)*0.7, a: (i/(proposal.skills.length||1))*Math.PI*2, y: (Math.random()-.5)*1.6, speed: 0.18 + Math.random()*0.1 };
+    sk.items.add(chip); pickables.push(chip);
+    chip.material.opacity = 0; tween(chip.material).to({opacity:1}, 600).delay(i*60).start();
+  });
+  const ex = nodes.experience;
+  (proposal.experience||[]).forEach((e, i)=>{
+    const tex = cardTex(e.title, e.company, e.years, '#'+ACCENT.getHexString());
+    const card = makeCardMesh(3.0, 1.9, tex, ACCENT.getHex());
+    const off = (i - ((proposal.experience.length-1)/2));
+    card.position.set(off*0.45, -off*0.55, -i*1.4 + 1.6);
+    card.rotation.y = -0.25; card.rotation.x = 0.04;
+    card.userData = { kind:'experience', data:{...e}, idx:i, accepted:false, home: card.position.clone(), homeRot: card.rotation.clone() };
+    ex.items.add(card); pickables.push(card);
+    card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
+  });
+  const ed = nodes.education;
+  (proposal.education||[]).forEach((e, i)=>{
+    const tex = cardTex(e.degree, e.institution, e.year, '#'+ACCENT2.getHexString());
+    const card = makeCardMesh(2.8, 1.7, tex, ACCENT2.getHex());
+    card.position.set(i*0.35, -i*0.42, i*0.4);
+    card.rotation.z = (i%2?1:-1)*0.04; card.rotation.x = 0.05;
+    card.userData = { kind:'education', data:{...e}, idx:i, accepted:false, home: card.position.clone(), homeRot: card.rotation.clone() };
+    ed.items.add(card); pickables.push(card);
+    card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
+  });
+  const ce = nodes.certifications;
+  (proposal.certifications||[]).forEach((c, i)=>{
+    const meta = c.expiry_date ? `${c.issue_date} → ${c.expiry_date}` : `Udstedt ${c.issue_date}`;
+    const tex = cardTex(c.name, c.issuer, meta, PRIMARY.getHex());
+    const card = makeCardMesh(2.7, 1.7, tex, PRIMARY.getHex());
+    card.position.set(-i*0.34, i*0.4, i*0.4);
+    card.rotation.x = 0.05;
+    card.userData = { kind:'certifications', data:{...c}, idx:i, accepted:false, home: card.position.clone(), homeRot: card.rotation.clone() };
+    ce.items.add(card); pickables.push(card);
+    card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
+  });
+  const lg = nodes.languages;
+  (proposal.languages||[]).forEach((l, i)=>{
+    const chip = textSprite(`${l.language} · ${l.proficiency}`, { fontSize:32, font:600, bg:'rgba(20,20,32,0.9)', border:'#'+ACCENT.getHexString(), fg:'#fff' });
+    chip.userData = { kind:'languages', data:{...l}, idx:i, accepted:false };
+    chip.userData.orbit = { r: 1.9 + (i%2)*0.5, a: (i/(proposal.languages.length||1))*Math.PI*2, y:(Math.random()-.5)*1.2, speed: 0.2 };
+    lg.items.add(chip); pickables.push(chip);
+    chip.material.opacity = 0; tween(chip.material).to({opacity:1},600).delay(i*60).start();
+  });
+}
+
+// ============================================================
+//  RAYCAST / CARD INTERACTION
+// ============================================================
+const ray = new THREE.Raycaster();
+const pointer = new THREE.Vector2();
+canvas.addEventListener('pointerdown', e=>{
+  if (state !== 'review') return;
+  const rect = container.getBoundingClientRect();
+  pointer.x = ((e.clientX - rect.left) / container.clientWidth) * 2 - 1;
+  pointer.y = -((e.clientY - rect.top) / container.clientHeight) * 2 + 1;
+  ray.setFromCamera(pointer, camera);
+  const hits = ray.intersectObjects(pickables, true);
+  if (hits.length){
+    let obj = hits[0].object;
+    while (obj && !obj.userData.kind) obj = obj.parent;
+    if (obj) selectCard(obj);
+  }
+});
+
+function selectCard(obj){
+  if (selected === obj) return;
+  selected = obj;
+  if (!obj.userData.home) { obj.userData.home = obj.position.clone(); obj.userData.fromOrbit = true; }
+  const front = new THREE.Vector3(0, 0.4, 9.5);
+  const worldFront = front.clone();
+  obj.userData.flying = true;
+  scene.attach(obj);
+  tween(obj.position).to({ x: worldFront.x, y: worldFront.y, z: worldFront.z }, 700).easing(EZ.Cubic.Out).start();
+  tween(obj.rotation).to({ x:0, y:0, z:0 }, 700).easing(EZ.Cubic.Out).start();
+  const targetScale = obj.userData.kind==='skill'||obj.userData.kind==='languages' ? 2.4 : 1.5;
+  tween(obj.scale).to({ x:targetScale, y:targetScale, z:targetScale }, 700).easing(EZ.Cubic.Out).start();
+  if (obj.userData.halo) tween(obj.userData.halo.material).to({opacity:0.5},500).start();
+  openEditor(obj);
+}
+
+function deselect(restore=true){
+  if (!selected) return;
+  const obj = selected; selected = null;
+  $('#editor').classList.remove('show');
+  if (restore && obj.parent){
+    const node = nodes[obj.userData.kind==='skill'?'skills':obj.userData.kind];
+    const grp = obj.userData.kind==='skill' ? nodes.skills.items : node.items;
+    grp.attach(obj);
+    if (obj.userData.fromOrbit) { /* orbit resumes in loop */ }
+    else {
+      tween(obj.position).to({x:obj.userData.home.x,y:obj.userData.home.y,z:obj.userData.home.z},600).easing(EZ.Cubic.Out).start();
+      tween(obj.rotation).to({x:obj.userData.homeRot.x,y:obj.userData.homeRot.y,z:obj.userData.homeRot.z},600).start();
+      tween(obj.scale).to({x:1,y:1,z:1},600).easing(EZ.Cubic.Out).start();
+    }
+    if (obj.userData.halo) tween(obj.userData.halo.material).to({opacity:0},500).start();
+  }
+  obj.userData.flying = false;
+}
+
+// ---- Editor panel ----
+const LEVELS = ['Begynder','Øvet','Erfaren','Ekspert','Specialist'];
+const PROF = ['Grundlæggende','Professionelt','Flydende','Modersmål'];
+function openEditor(obj){
+  const d = obj.userData.data, k = obj.userData.kind;
+  const tag = { skill:'Kompetence', experience:'Erfaring', education:'Uddannelse', certifications:'Certificering', languages:'Sprog' }[k];
+  $('#editorTag').textContent = tag;
+  const F = $('#editorFields'); F.innerHTML = '';
+  const field = (label, key, value) => {
+    const lab = document.createElement('label'); lab.textContent = label;
+    const inp = document.createElement('input'); inp.type='text'; inp.value = value ?? ''; inp.dataset.key = key;
+    F.appendChild(lab); F.appendChild(inp); return inp;
+  };
+  const select = (label, key, value, opts) => {
+    const lab = document.createElement('label'); lab.textContent = label;
+    const sel = document.createElement('select'); sel.dataset.key = key;
+    opts.forEach(o=>{ const op=document.createElement('option'); op.value=o; op.textContent=o; if(o===value) op.selected=true; sel.appendChild(op); });
+    F.appendChild(lab); F.appendChild(sel); return sel;
+  };
+  if (k==='skill'){ field('Kompetence','name',d.name); select('Niveau','level',d.level,LEVELS); }
+  else if (k==='experience'){ field('Titel','title',d.title); field('Virksomhed','company',d.company); field('Periode','years',d.years); }
+  else if (k==='education'){ field('Uddannelse','degree',d.degree); field('Institution','institution',d.institution); field('År','year',d.year); }
+  else if (k==='certifications'){ field('Certificering','name',d.name); field('Udsteder','issuer',d.issuer); field('Udstedt','issue_date',d.issue_date); field('Udløber','expiry_date',d.expiry_date); }
+  else if (k==='languages'){ field('Sprog','language',d.language); select('Niveau','proficiency',d.proficiency,PROF); }
+  $('#acceptBtn').textContent = obj.userData.accepted ? 'Accepteret ✓' : 'Acceptér';
+  $('#editor').classList.add('show');
+}
+function readEditor(){
+  if (!selected) return;
+  $('#editorFields').querySelectorAll('input,select').forEach(el=>{ selected.userData.data[el.dataset.key] = el.value; });
+}
+$('#closeEditor').addEventListener('click', ()=>{ readEditor(); deselect(true); });
+$('#acceptBtn').addEventListener('click', ()=>{
+  if (!selected) return; readEditor();
+  selected.userData.accepted = true; accepted.add(selected);
+  if (selected.userData.halo){ selected.userData.halo.material.color.set(0x2fd07a); tween(selected.userData.halo.material).to({opacity:0.7},400).start(); }
+  tween(selected.scale).to({x:selected.scale.x*1.12,y:selected.scale.y*1.12,z:1},180).yoyo(true).repeat(1).start();
+  updateCounter();
+  setTimeout(()=> deselect(true), 350);
+});
+$('#discardBtn').addEventListener('click', ()=>{
+  if (!selected) return;
+  const obj = selected; accepted.delete(obj);
+  const idx = pickables.indexOf(obj); if(idx>=0) pickables.splice(idx,1);
+  $('#editor').classList.remove('show'); selected = null;
+  tween(obj.scale).to({x:obj.scale.x*1.4,y:obj.scale.y*1.4,z:1},400).easing(EZ.Cubic.Out).start();
+  const fadeMat = obj.material;
+  tween(fadeMat).to({opacity:0},450).easing(EZ.Cubic.In).onComplete(()=>{ obj.parent && obj.parent.remove(obj); }).start();
+  if (obj.userData.halo) tween(obj.userData.halo.material).to({opacity:0},300).start();
+  updateCounter();
+});
+
+function updateCounter(){ $('#counter').innerHTML = `<b>${accepted.size}</b> accepteret`; }
+
+// ---- Save to profile ----
+$('#saveBtn').addEventListener('click', saveProfile);
+function saveProfile(){
+  if (accepted.size === 0){ showToast('Acceptér mindst ét kort først', ''); return; }
+  deselect(true);
+  const iconRect = $('#profileIcon').getBoundingClientRect();
+  const target = screenToWorld(iconRect.left + iconRect.width/2, iconRect.top + iconRect.height/2, 8);
+  let done = 0; const total = accepted.size;
+  [...accepted].forEach((obj, i)=>{
+    scene.attach(obj);
+    const delay = i*90;
+    tween(obj.position).to({x:target.x,y:target.y,z:target.z}, 800).delay(delay).easing(EZ.Cubic.In).start();
+    tween(obj.scale).to({x:0.001,y:0.001,z:0.001},800).delay(delay).easing(EZ.Cubic.In)
+      .onComplete(()=>{ obj.parent && obj.parent.remove(obj); $('#profileIcon').classList.remove('pulse'); void $('#profileIcon').offsetWidth; $('#profileIcon').classList.add('pulse');
+        if(++done>=total) finishSave(); }).start();
+    if (obj.material.opacity!==undefined) tween(obj.material).to({opacity:0},800).delay(delay+200).start();
+  });
+  const payload = { session_id: sessionId, accepted: [...accepted].map(o=>({ type:o.userData.kind, ...o.userData.data })) };
+  fetch('/api/cv/apply', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) }).catch(()=>{});
+}
+function finishSave(){
+  $('#reviewBar').classList.add('invisible');
+  moveCamera(new THREE.Vector3(0,1,20), new THREE.Vector3(0,0,0), 1400);
+  showToast('Profil gemt ✓', 'Dine valgte oplysninger er tilføjet til din profil.');
+}
+function showToast(title, sub){
+  const t = $('#toast'); t.innerHTML = title + (sub? `<div class="sub">${sub}</div>`:''); t.classList.add('show');
+  setTimeout(()=> t.classList.remove('show'), sub? 4200 : 2200);
+}
+
+function screenToWorld(sx, sy, dist){
+  const rect = container.getBoundingClientRect();
+  const v = new THREE.Vector3(
+    ((sx - rect.left)/container.clientWidth)*2-1,
+    -((sy - rect.top)/container.clientHeight)*2+1,
+    0.5
+  );
+  v.unproject(camera);
+  const dir = v.sub(camera.position).normalize();
+  return camera.position.clone().add(dir.multiplyScalar(dist));
+}
+
+// ============================================================
+//  ANIMATION LOOP
+// ============================================================
+function animate(){
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+  tg.update(performance.now());
+
+  if (state === 'upload' && docGroup.visible){
+    const b = 1 + Math.sin(t*1.4)*0.04;
+    docMesh.scale.set(b, b, 1);
+    docGlow.material.opacity = 0.5 + Math.sin(t*1.6)*0.08;
+    docGroup.rotation.y += 0.0015;
+    docGroup.position.y = Math.sin(t*0.9)*0.15;
+  }
+
+  if (graph.visible){
+    graph.rotation.y = Math.sin(t*0.12)*0.18;
+    centerCore.rotation.y += 0.004; centerCore.rotation.x += 0.002;
+    const cb = 1 + Math.sin(t*1.8)*0.05; centerCore.scale.setScalar(cb);
+    for (const k in nodes){ const n = nodes[k]; n.core.rotation.y += 0.01; }
+  }
+
+  if (state === 'review'){
+    for (const obj of pickables){
+      if (obj.userData.flying) continue;
+      const o = obj.userData.orbit;
+      if (o){
+        o.a += o.speed * 0.01;
+        obj.position.set(Math.cos(o.a)*o.r, o.y + Math.sin(t*0.8+o.a)*0.2, Math.sin(o.a)*o.r);
+      }
+    }
+  }
+
+  particles.rotation.y += 0.0004;
+
+  camera.lookAt(camTarget);
+  renderer.render(scene, camera);
+}
+animate();
+
+window.addEventListener('resize', ()=>{
+  camera.aspect = container.clientWidth/container.clientHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(container.clientWidth, container.clientHeight);
+});
+</script>
 {% endblock %}

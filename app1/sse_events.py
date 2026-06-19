@@ -49,6 +49,10 @@ PROFILER_PROGRESS = "profiler_progress"
 # Side-effect confirmation
 CONFIRM_CARD = "confirm_card"
 
+# CV + Mind-map inline cards
+CV_SUMMARY_CARD = "cv_summary_card"    # structured CV snapshot + portal CTA
+MINDMAP_CARD = "mindmap_card"          # mind-map stats + 3D globe link
+
 # The full set the frontend is expected to handle (used by the drift test so a
 # new producer event without a consumer branch fails loudly in CI).
 KNOWN_EVENT_TYPES = frozenset({
@@ -59,6 +63,7 @@ KNOWN_EVENT_TYPES = frozenset({
     PROFILE_UPDATE, PROFILE_CONFIRM_REQUEST, UI_CARD,
     MEMORY_USED, MEMORY_SAVED, PROFILER_PROGRESS,
     CONFIRM_CARD,
+    CV_SUMMARY_CARD, MINDMAP_CARD,
 })
 
 # Cross-surface action verbs accepted by the open_in_app tool and the chat.js
@@ -68,7 +73,8 @@ UI_ACTIONS = frozenset({
     "view_product",     # open a catalog product page
     "open_compare",     # open the compare view for 2-4 handles
     "open_profile",     # open the user's profile (optionally a section)
-    "open_mind_map",    # open the AI memory mind-map
+    "open_mind_map",    # open the AI memory mind-map (3D globe)
+    "open_cv_upload",   # open the interactive 3D CV upload portal
     "open_learning_path",  # open the saved learning-path view
     "open_catalog",     # open the catalog, optionally pre-filtered
     "start_order",      # begin enrolment for a product (does NOT place an order)

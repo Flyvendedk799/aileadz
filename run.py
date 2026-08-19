@@ -123,6 +123,33 @@ def _mark_enterprise_sync_done():
     except OSError:
         pass
 
+
+def _mysql_settings_from_database_url(url):
+    """Split a mysql://user:pass@host[:port]/db URL into MYSQL_* pieces.
+
+    ServerHoster (and most PaaS hosts) hand the app a single DATABASE_URL for
+    the linked managed database; this app has always been configured with
+    separate MYSQL_* keys. Returns {} for an empty / non-mysql URL so the caller
+    can fall through to the other sources. Never raises.
+    """
+    if not url:
+        return {}
+    try:
+        from urllib.parse import unquote, urlsplit
+        parts = urlsplit(url)
+        if not parts.scheme.startswith('mysql'):
+            return {}
+        return {
+            'host': parts.hostname,
+            'port': parts.port,
+            'user': unquote(parts.username) if parts.username else None,
+            'password': unquote(parts.password) if parts.password else None,
+            'db': unquote(parts.path.lstrip('/')) or None,
+        }
+    except Exception:  # pragma: no cover - defensive, a bad URL must not break boot
+        return {}
+
+
 def create_app():
     app = Flask(__name__, template_folder='templates')
     # Secret key is env-overridable. The hardcoded value is kept as a fallback so
@@ -158,14 +185,16 @@ def create_app():
     except (TypeError, ValueError):
         app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 365
 
-    # DB config is env-overridable (for the local sandbox / CI). When the env
-    # vars are unset it falls back to the production PythonAnywhere database, so
-    # production behaviour is unchanged.
+    # DB config is env-overridable (for the local sandbox / CI). Precedence:
+    # explicit MYSQL_* env vars > a DATABASE_URL (mysql://user:pass@host:port/db,
+    # which is what ServerHoster injects for its linked managed MySQL) > the
+    # legacy PythonAnywhere defaults (kept only so old local setups still boot).
+    db_url = _mysql_settings_from_database_url(os.environ.get('DATABASE_URL'))
     app.config.update({
-        'MYSQL_HOST': os.environ.get('MYSQL_HOST', 'TobiasMastek.mysql.pythonanywhere-services.com'),
-        'MYSQL_USER': os.environ.get('MYSQL_USER', 'TobiasMastek'),
-        'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD', 'Jht89ryu1!'),
-        'MYSQL_DB': os.environ.get('MYSQL_DB', 'TobiasMastek$AiLead'),
+        'MYSQL_HOST': os.environ.get('MYSQL_HOST') or db_url.get('host') or 'TobiasMastek.mysql.pythonanywhere-services.com',
+        'MYSQL_USER': os.environ.get('MYSQL_USER') or db_url.get('user') or 'TobiasMastek',
+        'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD') or db_url.get('password') or 'Jht89ryu1!',
+        'MYSQL_DB': os.environ.get('MYSQL_DB') or db_url.get('db') or 'TobiasMastek$AiLead',
         'MYSQL_CURSORCLASS': 'DictCursor',
         # utf8mb4 so 4-byte chars (emoji etc.) don't 1366 on insert. flask_mysqldb
         # otherwise defaults the connection charset to 3-byte utf8.
@@ -173,6 +202,8 @@ def create_app():
     })
     if os.environ.get('MYSQL_PORT'):
         app.config['MYSQL_PORT'] = int(os.environ['MYSQL_PORT'])
+    elif db_url.get('port'):
+        app.config['MYSQL_PORT'] = int(db_url['port'])
 
     mysql = MySQL(app)
     app.mysql = mysql

@@ -1,5 +1,7 @@
 # Core web framework + DB / infra
 Flask>=3.1,<4
+# Production WSGI server (ServerHoster runs `gunicorn wsgi:application`).
+gunicorn>=21,<24
 PyMySQL>=1.1,<2
 sshtunnel>=0.4,<0.5
 openai>=2,<3

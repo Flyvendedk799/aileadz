@@ -69,9 +69,11 @@ def get_database_url() -> str:
     if explicit:
         return explicit
 
-    host = os.environ.get("MYSQL_HOST", "TobiasMastek.mysql.pythonanywhere-services.com")
+    # No production host is hardcoded: the PythonAnywhere database is gone and
+    # production (ServerHoster) hands us DATABASE_URL, handled above.
+    host = os.environ.get("MYSQL_HOST", "localhost")
     port = os.environ.get("MYSQL_PORT", "3306")
-    user = os.environ.get("MYSQL_USER", "TobiasMastek")
+    user = os.environ.get("MYSQL_USER", "root")
     password = os.environ.get("MYSQL_PASSWORD")
     if not password:
         raise RuntimeError(
@@ -79,7 +81,7 @@ def get_database_url() -> str:
             "the DB password is never hardcoded in this tool. See "
             "docs/runbooks/SECRET_ROTATION.md."
         )
-    database = os.environ.get("MYSQL_DB", "TobiasMastek$AiLead")
+    database = os.environ.get("MYSQL_DB", "aileadz")
     charset = os.environ.get("MYSQL_CHARSET", "utf8mb4")
 
     return (

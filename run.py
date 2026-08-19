@@ -185,16 +185,23 @@ def create_app():
     except (TypeError, ValueError):
         app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 60 * 60 * 24 * 365
 
-    # DB config is env-overridable (for the local sandbox / CI). Precedence:
-    # explicit MYSQL_* env vars > a DATABASE_URL (mysql://user:pass@host:port/db,
-    # which is what ServerHoster injects for its linked managed MySQL) > the
-    # legacy PythonAnywhere defaults (kept only so old local setups still boot).
+    # DB config comes from the environment. Precedence: explicit MYSQL_* env vars
+    # > a DATABASE_URL (mysql://user:pass@host:port/db, which is what ServerHoster
+    # injects for its linked managed MySQL). There is deliberately NO production
+    # fallback any more: the old PythonAnywhere database is gone, so a missing
+    # config must fail loudly (localhost/empty password) rather than silently
+    # point at a dead host.
     db_url = _mysql_settings_from_database_url(os.environ.get('DATABASE_URL'))
+    if not (os.environ.get('MYSQL_HOST') or db_url.get('host')):
+        logging.warning(
+            "No MYSQL_HOST or DATABASE_URL set; falling back to localhost. "
+            "Set DATABASE_URL (or MYSQL_*) — see docs/runbooks/DEPLOY.md."
+        )
     app.config.update({
-        'MYSQL_HOST': os.environ.get('MYSQL_HOST') or db_url.get('host') or 'TobiasMastek.mysql.pythonanywhere-services.com',
-        'MYSQL_USER': os.environ.get('MYSQL_USER') or db_url.get('user') or 'TobiasMastek',
-        'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD') or db_url.get('password') or 'Jht89ryu1!',
-        'MYSQL_DB': os.environ.get('MYSQL_DB') or db_url.get('db') or 'TobiasMastek$AiLead',
+        'MYSQL_HOST': os.environ.get('MYSQL_HOST') or db_url.get('host') or 'localhost',
+        'MYSQL_USER': os.environ.get('MYSQL_USER') or db_url.get('user') or 'root',
+        'MYSQL_PASSWORD': os.environ.get('MYSQL_PASSWORD') or db_url.get('password') or '',
+        'MYSQL_DB': os.environ.get('MYSQL_DB') or db_url.get('db') or 'aileadz',
         'MYSQL_CURSORCLASS': 'DictCursor',
         # utf8mb4 so 4-byte chars (emoji etc.) don't 1366 on insert. flask_mysqldb
         # otherwise defaults the connection charset to 3-byte utf8.
@@ -404,17 +411,32 @@ def create_app():
     return app
 
 def main():
+    """Local dev entrypoint: reach the production MySQL over an SSH tunnel.
+
+    Production now runs on ServerHoster (the VPS); the tunnel target and
+    credentials come from env — SSH_HOST, SSH_USER, SSH_PASSWORD (or SSH_PKEY),
+    REMOTE_MYSQL_HOST/REMOTE_MYSQL_PORT — nothing is hardcoded here any more.
+    """
     if sshtunnel is None:
         logging.error("sshtunnel is not installed. It is required for local development.")
+        return
+    ssh_host = os.environ.get('SSH_HOST')
+    ssh_user = os.environ.get('SSH_USER')
+    if not ssh_host or not ssh_user or not (os.environ.get('SSH_PASSWORD') or os.environ.get('SSH_PKEY')):
+        logging.error("Set SSH_HOST, SSH_USER and SSH_PASSWORD (or SSH_PKEY) to open the dev tunnel.")
         return
 
     tunnel = None
     try:
         tunnel = sshtunnel.SSHTunnelForwarder(
-            ('ssh.pythonanywhere.com', 22),
-            ssh_username='TobiasMastek',
-            ssh_password='Jht89ryu1!',
-            remote_bind_address=('TobiasMastek.mysql.pythonanywhere-services.com', 3306)
+            (ssh_host, int(os.environ.get('SSH_PORT', '22'))),
+            ssh_username=ssh_user,
+            ssh_password=os.environ.get('SSH_PASSWORD'),
+            ssh_pkey=os.environ.get('SSH_PKEY'),
+            remote_bind_address=(
+                os.environ.get('REMOTE_MYSQL_HOST', '127.0.0.1'),
+                int(os.environ.get('REMOTE_MYSQL_PORT', '3306')),
+            ),
         )
         tunnel.start()
         logging.info("SSH tunnel established on local port: %s", tunnel.local_bind_port)

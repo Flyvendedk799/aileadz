@@ -6,10 +6,12 @@ cachen udløber (60 s) bruger den nye udbyder.
 
 ## Hurtig start
 
-1. Sæt `ANTHROPIC_API_KEY` i servermiljøet (aldrig i databasen).
-2. Installér afhængigheden: `pip install -r requirements.txt` (`anthropic>=1,<2`).
-3. Gå til **Admin → AI-udbyder**, vælg `Anthropic (Claude)`, gem.
-4. Verificér på `/readyz` → `ai.ready: true`, eller i tabellen "Kørsler seneste
+1. Installér afhængigheden: `pip install -r requirements.txt` (`anthropic>=1,<2`).
+2. Gå til **Admin → AI-udbyder**, indsæt `ANTHROPIC_API_KEY` under *API-nøgler*
+   og gem. (Alternativt: sæt den som miljøvariabel — se nedenfor.)
+3. Klik **Test anthropic** for at bekræfte at nøglen virker.
+4. Vælg `Anthropic (Claude)` som udbyder og gem.
+5. Verificér på `/readyz` → `ai.ready: true`, eller i tabellen "Kørsler seneste
    24 timer" på samme side.
 
 Tilbagerulning: vælg `OpenAI (GPT)` igen. Ét felt, ingen deploy.
@@ -96,6 +98,61 @@ Dommeren bliver på OpenAI, så begge udbydere scores af den samme neutrale mode
 
 Værdier gemmes i tabellen `ai_settings` (nøgle/værdi, oprettes automatisk) og
 falder tilbage til miljøvariabler og derefter indbyggede standarder. Kun nøgler i
-`ai_provider.MANAGED_KEYS` kan skrives fra admin-siden — API-nøgler er ikke
-blandt dem og bliver i miljøet. Hver ændring skrives til `audit_log` med
-`action_type = ai.settings.update`.
+`ai_provider.MANAGED_KEYS` kan skrives fra admin-siden. Hver ændring skrives til
+`audit_log` med `action_type = ai.settings.update`.
+
+## API-nøgler
+
+`OPENAI_API_KEY` og `ANTHROPIC_API_KEY` kan sættes fra **Admin → AI-udbyder**.
+De gemmes i en separat tabel, `ai_secrets`, adskilt fra almindelige indstillinger
+netop så en nøgle aldrig kan havne i det snapshot admin-siden renderer.
+
+**Opløsningsrækkefølge: database → miljøvariabel.** En nøgle sat i UI'en har
+forrang; en nøgle sat i miljøet virker uændret, hvis der ingen række er i
+databasen.
+
+### Kryptering
+
+Nøgler krypteres med Fernet, samme mønster som SSO-klienthemmeligheder i
+`enterprise_sso`. Krypteringsnøglen findes sådan her:
+
+1. `AI_SECRET_KEY` (miljø eller app-config) — **anbefalet**. Generér med
+   `python3 -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"`
+2. Ellers afledt af `SECRET_KEY` (svagere adskillelse — og roterer du
+   `SECRET_KEY`, kan gemte nøgler ikke længere dekrypteres).
+
+Er ingen af delene til stede, **afviser UI'en at gemme** i stedet for at skrive
+nøglen ukrypteret. Det er den eneste forskel fra SSO-mønsteret, som stadig
+tillader plaintext-fallback.
+
+Kan en gemt række ikke dekrypteres (typisk fordi krypteringsnøglen er skiftet),
+bruges den ikke — der falder opløsningen tilbage til miljøvariablen, og
+admin-siden markerer rækken som ulæselig.
+
+### Hvad siden aldrig viser
+
+En gemt nøgle kan ikke læses tilbage. Siden viser kun om nøglen er sat, hvorfra
+den kommer, de sidste fire tegn, og hvem der satte den hvornår. `audit_log`
+registrerer nøglens navn og handlingen (`set` / `cleared`) — aldrig værdien. Et
+tomt felt ved gem betyder "behold nuværende"; fjernelse kræver et eksplicit klik.
+
+### Sikkerhedsmodel — vær opmærksom på
+
+* **Kryptering beskytter database-dumps, replikaer og backups.** Den beskytter
+  ikke mod en angriber der har både databasen og krypteringsnøglen (dvs.
+  applikationsserveren).
+* **Det er en reel rettighedsændring.** Før krævede det serveradgang at sætte en
+  provider-nøgle; nu kan enhver konto med admin-rollen gøre det. Gennemgå hvem
+  der har den rolle.
+* Formularen beskyttes af `SESSION_COOKIE_SAMESITE='Lax'` (sat i `run.py`), som
+  forhindrer cross-site POST i at medbringe sessionscookien. Appen har ikke
+  CSRF-tokens nogen steder, så der er ikke tilføjet et her.
+* Nøgler eksporteres til `os.environ` ved cache-opdatering, så ældre kaldesteder
+  der læser `OPENAI_API_KEY` direkte (`app1`, `catalog_service`,
+  `insights_engine`, `ai_eval`) også ser en UI-sat nøgle. Fjerner du en nøgle,
+  slår det først helt igennem efter en genstart af processen.
+
+### Test af forbindelsen
+
+**Test openai** / **Test anthropic** kalder udbyderens model-liste-endpoint. Det
+autentificerer uden at bruge tokens, gemmer intet og viser aldrig nøglen.

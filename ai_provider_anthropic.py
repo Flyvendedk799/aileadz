@@ -88,7 +88,9 @@ def client():
         raise RuntimeError(
             "anthropic-pakken er ikke installeret (pip install anthropic)"
         ) from exc
-    api_key = os.getenv("ANTHROPIC_API_KEY")
+    import ai_secrets
+
+    api_key = ai_secrets.get_secret("ANTHROPIC_API_KEY")
     if not api_key:
         raise RuntimeError("ANTHROPIC_API_KEY er ikke sat")
     try:

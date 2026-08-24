@@ -31,8 +31,25 @@ _CATALOG_FILES = (
 # OpenAI configuration is a static boolean for the lifetime of the process: it
 # reflects whether OPENAI_API_KEY is set in the environment. We cache it at import
 # so the readiness probe never has to re-read the environment (and never calls the
-# OpenAI API).
+# OpenAI API). OPENAI_API_KEY is required in EVERY provider configuration because
+# embeddings / RAG retrieval have no Anthropic equivalent.
 _OPENAI_CONFIGURED = bool(os.environ.get('OPENAI_API_KEY'))
+
+
+def _provider_block():
+    """Active AI provider + its readiness, or None when unobservable.
+
+    Unlike _OPENAI_CONFIGURED this is NOT cached at import: the provider is an
+    admin-editable setting that can change at runtime, so the probe reads it per
+    request. Never raises — a failure just omits the block.
+    """
+    try:
+        import ai_provider
+
+        return ai_provider.provider_readiness()
+    except Exception as exc:  # pragma: no cover - never let a probe break /readyz
+        logging.warning("Provider readiness check failed, omitting 'ai': %s", exc)
+        return None
 
 # Optional: degraded-subsystem observability. Imported guarded so that a missing
 # or broken feature_status module simply omits the 'features' block from /readyz
@@ -96,7 +113,7 @@ def healthz():
 
 @health_bp.route('/readyz')
 def readyz():
-    """Readiness probe — reports DB / catalog / OpenAI status."""
+    """Readiness probe — reports DB / catalog / OpenAI / active-provider status."""
     try:
         db_ok = _check_db()
         catalog_ok = _check_catalog()
@@ -108,6 +125,12 @@ def readyz():
             'openai': openai_ok,
             'status': status,
         }
+        # Additive: which provider serves the agent, and whether its credentials
+        # are present. Reported for visibility only — a misconfigured provider
+        # does NOT flip the 200/503 verdict, which stays DB-driven as before.
+        provider = _provider_block()
+        if provider is not None:
+            body['ai'] = provider
         # Additive: surface optional-subsystem availability when observable.
         # This never changes the db/catalog/openai checks or the 200/503 logic.
         features = _features_block()

@@ -590,6 +590,45 @@ def to_responses_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def to_anthropic_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
+    """Convert an internal (chat-shaped) tool to the Anthropic Messages shape.
+
+    Anthropic uses a flat ``{name, description, input_schema}`` object instead of
+    OpenAI's nested ``{type: "function", function: {...}}``. ``strict`` is only
+    forwarded when the schema really is closed (``additionalProperties: false``),
+    which is what _normalize_chat_tool()/_strict_schema() produce for strict
+    tools; forwarding it on an open schema is rejected by the API.
+    """
+    fn = chat_tool.get("function") or chat_tool
+    schema = deepcopy(fn.get("parameters") or {"type": "object", "properties": {}, "required": []})
+    tool: Dict[str, Any] = {
+        "name": fn["name"],
+        "description": _maybe_trim(fn.get("description", "")),
+        "input_schema": schema,
+    }
+    if bool(fn.get("strict", False)) and schema.get("additionalProperties") is False:
+        tool["strict"] = True
+    return tool
+
+
+def anthropic_tool_choice(choice: Any) -> Dict[str, Any]:
+    """Map our tool_choice vocabulary onto Anthropic's object form.
+
+    "auto"/None -> {"type": "auto"}; "required" -> {"type": "any"};
+    {"name": X}/"X" -> {"type": "tool", "name": X}.
+    """
+    if isinstance(choice, dict) and choice.get("name"):
+        return {"type": "tool", "name": choice["name"]}
+    if isinstance(choice, dict) and choice.get("type"):
+        return choice
+    text = (choice or "auto") if isinstance(choice, str) else "auto"
+    if text == "required":
+        return {"type": "any"}
+    if text in ("auto", "none"):
+        return {"type": text}
+    return {"type": "tool", "name": text}
+
+
 def tool_name(tool: Dict[str, Any]) -> str:
     fn = tool.get("function") or tool
     return fn.get("name", "")

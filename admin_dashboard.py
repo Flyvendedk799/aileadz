@@ -1147,3 +1147,153 @@ def impersonate_exit():
     if acting:
         return redirect(url_for('companies.admin_company_detail', company_id=acting))
     return redirect(url_for('companies.admin_companies_list'))
+
+
+# ── AI provider settings (OpenAI ↔ Claude) ──────────────────────────────────
+# Runtime-editable AI configuration. Values are written to the ``ai_settings``
+# key/value table and read back through ai_provider, which caches them for 60s
+# and falls back to the environment. No restart is needed — the next request
+# after the cache expires picks up the change.
+#
+# SECURITY: only keys in ai_provider.MANAGED_KEYS are writable, and that set
+# deliberately contains no secrets. API keys stay in the host environment and
+# are never read, written or rendered here — the page shows only whether each
+# key is present.
+
+def _ai_settings_audit(changes):
+    """Best-effort audit_log row for a provider settings change. Never raises."""
+    try:
+        mysql = getattr(current_app, 'mysql', None)
+        if mysql is None or not changes:
+            return
+        try:
+            from db_compat import refresh_flask_mysql_connection
+            refresh_flask_mysql_connection(mysql)
+        except Exception:
+            pass
+        conn = mysql.connection
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                """
+                INSERT INTO audit_log
+                    (company_id, user_id, action, action_type, resource_type,
+                     resource_id, description, ip_address)
+                VALUES (%s, %s, %s, %s, 'ai_settings', %s, %s, %s)
+                """,
+                (
+                    session.get('company_id'),
+                    session.get('user_id'),
+                    'ai.settings.update',
+                    'ai.settings.update',
+                    'ai_settings',
+                    json.dumps(changes, ensure_ascii=False)[:4000],
+                    (request.remote_addr or '')[:50],
+                ),
+            )
+            conn.commit()
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+    except Exception as e:  # pragma: no cover - audit must never break the save
+        logging.debug("ai settings audit skipped: %s", e)
+
+
+@admin_dashboard_bp.route('/ai-settings', methods=['GET', 'POST'])
+@require_role('admin')
+def ai_settings():
+    import ai_provider
+
+    if request.method == 'POST':
+        changed = {}
+        rejected = []
+        for key, (_label, _default, choices) in ai_provider.MANAGED_KEYS.items():
+            if key not in request.form:
+                continue
+            value = (request.form.get(key) or '').strip()
+            if choices and value not in choices:
+                rejected.append(key)
+                continue
+            if key == 'AI_SHADOW_SAMPLE_RATE':
+                try:
+                    rate = float(value)
+                except (TypeError, ValueError):
+                    rejected.append(key)
+                    continue
+                if not (0.0 <= rate <= 1.0):
+                    rejected.append(key)
+                    continue
+                value = str(rate)
+            if ai_provider.set_setting(
+                current_app.mysql, key, value, updated_by=session.get('user', '')
+            ):
+                changed[key] = value
+            else:
+                rejected.append(key)
+
+        _ai_settings_audit(changed)
+        if changed:
+            flash("AI-indstillinger gemt: " + ", ".join(sorted(changed)), "success")
+        if rejected:
+            flash("Kunne ikke gemme: " + ", ".join(sorted(rejected)), "danger")
+        if not changed and not rejected:
+            flash("Ingen ændringer.", "info")
+        return redirect(url_for('admin_dashboard.ai_settings'))
+
+    readiness = ai_provider.provider_readiness()
+    return render_template(
+        'fm/admin_ai_settings.html',
+        settings=ai_provider.effective_settings(),
+        readiness=readiness,
+        provider_labels=ai_provider.PROVIDER_LABELS,
+        # Recent Claude/shadow activity so an operator can confirm the switch
+        # actually took effect without leaving the page.
+        recent_runs=_ai_provider_recent_runs(),
+    )
+
+
+def _ai_provider_recent_runs():
+    """Per-runtime run counts for the last 24h. Read-only, degrades to []."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute(
+                """SELECT runtime, model, COUNT(*) AS runs,
+                          AVG(latency_ms) AS avg_latency,
+                          SUM(input_tokens) AS input_tokens,
+                          SUM(output_tokens) AS output_tokens
+                   FROM ai_agent_runs
+                   WHERE created_at >= DATE_SUB(NOW(), INTERVAL 1 DAY)
+                   GROUP BY runtime, model
+                   ORDER BY runs DESC LIMIT 20"""
+            )
+            rows = cur.fetchall() or []
+        finally:
+            cur.close()
+    except Exception as e:
+        logging.debug("ai provider recent-runs query skipped: %s", e)
+        return []
+
+    out = []
+    for row in rows:
+        model = row.get('model') or '—'
+        cost_dkk = None
+        try:
+            import ai_cost_model
+            if ai_cost_model.cost_model_enabled():
+                est = ai_cost_model.estimate_cost(
+                    model, row.get('input_tokens'), row.get('output_tokens'), 0
+                )
+                cost_dkk = round(est.get('dkk') or 0.0, 2) if est.get('known') else None
+        except Exception:
+            cost_dkk = None
+        out.append({
+            'runtime': row.get('runtime') or '—',
+            'model': model,
+            'runs': int(row.get('runs') or 0),
+            'avg_latency': int(row.get('avg_latency') or 0),
+            'cost_dkk': cost_dkk,
+        })
+    return out

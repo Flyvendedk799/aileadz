@@ -13,6 +13,7 @@ from typing import Any, Callable, Dict, Iterable, Iterator, List, Optional, Tupl
 
 from openai import OpenAI
 
+import ai_provider
 from db_compat import refresh_flask_mysql_connection
 from ai_tool_registry import (
     chat_tool_choice,
@@ -301,11 +302,22 @@ def _emit_tool_event(callback: Optional[ToolEventCallback], event: Dict[str, Any
 
 
 def main_model() -> str:
-    return os.getenv("AI_MAIN_MODEL", "gpt-4o")
+    """Main-tier model for the ACTIVE provider (OpenAI or Claude).
+
+    Delegates to ai_provider so one admin setting moves every caller. With no
+    override configured this returns the historical AI_MAIN_MODEL/gpt-4o.
+    """
+    return ai_provider.main_model()
 
 
 def fast_model() -> str:
-    return os.getenv("AI_FAST_MODEL", "gpt-4o-mini")
+    """Cheap-tier model for the ACTIVE provider (OpenAI or Claude).
+
+    NOTE for callers that talk to the OpenAI SDK directly (RAG rerank, CV
+    extraction): use ai_provider.openai_fast_model() instead, which stays pinned
+    to OpenAI regardless of the toggle.
+    """
+    return ai_provider.fast_model()
 
 
 def runtime_mode() -> str:
@@ -325,7 +337,7 @@ _VALID_ROUTING_MODES = ("quality", "balanced", "cost")
 
 
 def model_routing_mode() -> str:
-    raw = (os.getenv("AI_MODEL_ROUTING", "balanced") or "balanced").lower().strip()
+    raw = (ai_provider.get_setting("AI_MODEL_ROUTING", "balanced") or "balanced").lower().strip()
     return raw if raw in _VALID_ROUTING_MODES else "balanced"
 
 
@@ -1016,12 +1028,23 @@ def iter_completion_stream(
     max_tokens: Optional[int] = None,
 ):
     """Stream final assistant text tokens (no tools)."""
+    if ai_provider.uses_anthropic():
+        import ai_provider_anthropic
+
+        yield from ai_provider_anthropic.iter_stream(
+            messages, model=model, max_tokens=max_tokens
+        )
+        return
     client = _openai_client()
     prepared = prepare_messages_for_turn(messages, aggressive=in_rate_limit_cooldown())
-    chosen = model or (fast_model() if in_rate_limit_cooldown() else main_model())
+    # Past the dispatch above this is an OpenAI-only path, so pin the model
+    # accessors to OpenAI: fast_model()/main_model() are provider-aware and would
+    # hand back Claude ids while an OpenAI client is holding the request.
+    chosen = model or (ai_provider.openai_fast_model() if in_rate_limit_cooldown()
+                       else ai_provider.openai_main_model())
     limit = max_tokens or max_output_tokens()
     models_to_try = []
-    for candidate in (chosen, fast_model(), main_model()):
+    for candidate in (chosen, ai_provider.openai_fast_model(), ai_provider.openai_main_model()):
         if candidate and candidate not in models_to_try:
             models_to_try.append(candidate)
     for model_name in models_to_try:
@@ -1093,9 +1116,16 @@ def run_direct_completion(
     max_tokens: Optional[int] = None,
 ) -> str:
     """One-shot chat completion without tools."""
+    if ai_provider.uses_anthropic():
+        import ai_provider_anthropic
+
+        return ai_provider_anthropic.run_direct(
+            messages, model=model, max_tokens=max_tokens
+        )
     client = _openai_client()
     prepared = prepare_messages_for_turn(messages, aggressive=in_rate_limit_cooldown())
-    model = model or (fast_model() if in_rate_limit_cooldown() else main_model())
+    model = model or (ai_provider.openai_fast_model() if in_rate_limit_cooldown()
+                      else ai_provider.openai_main_model())
     limit = max_tokens or max_output_tokens()
     try:
         resp = client.chat.completions.create(
@@ -1110,7 +1140,7 @@ def run_direct_completion(
         if _is_rate_limit_error(exc):
             _note_rate_limit_hit()
             resp = client.chat.completions.create(
-                model=fast_model(),
+                model=ai_provider.openai_fast_model(),
                 messages=prepare_messages_for_turn(messages, aggressive=True),
                 stream=False,
                 max_tokens=limit,
@@ -1201,11 +1231,12 @@ def _parse_router_label(raw: Any, fallback: str) -> str:
 
 
 def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
-    """Single cheap gpt-4o-mini classification of an ambiguous turn.
+    """Single cheap fast-tier classification of an ambiguous turn.
 
     Returns one label from ROUTER_INTENT_ENUM, or `fallback` (the regex result)
     on any error/timeout/garbage. Cached per query text within the process.
-    Reuses the shared OpenAI client + fast_model() (no new client config).
+    Reuses the active provider's shared client + fast_model() (no new client
+    config); on Claude this runs on the Haiku tier.
     """
     if not llm_router_enabled():
         return fallback
@@ -1220,27 +1251,37 @@ def classify_intent_llm(user_query: str, *, fallback: str = "discovery") -> str:
         return cached
 
     label = fallback
-    try:
-        client = _openai_client()
-        # Short, per-request timeout so an ambiguous turn never stalls the SSE turn.
-        # with_options is the SDK's per-request override; guard for resilience.
-        with_options = getattr(client, "with_options", None)
-        scoped = with_options(timeout=_router_timeout_seconds()) if callable(with_options) else client
-        resp = scoped.chat.completions.create(
-            model=fast_model(),
-            messages=[
-                {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
-                {"role": "user", "content": query[:2000]},
-            ],
-            stream=False,
-            max_tokens=4,
-            temperature=0.0,
+    if ai_provider.uses_anthropic():
+        # The Claude adapter owns its own timeout + error swallowing and always
+        # returns a valid label, so it needs no try/except here. Falls through to
+        # the shared bounded-cache write below.
+        import ai_provider_anthropic
+
+        label = ai_provider_anthropic.classify_intent(
+            query, _ROUTER_SYSTEM_PROMPT, fallback=fallback
         )
-        raw = resp.choices[0].message.content if resp.choices else ""
-        label = _parse_router_label(raw, fallback)
-    except Exception:
-        # Any error/timeout/unparseable response -> silently keep the regex result.
-        label = fallback
+    else:
+        try:
+            client = _openai_client()
+            # Short, per-request timeout so an ambiguous turn never stalls the SSE turn.
+            # with_options is the SDK's per-request override; guard for resilience.
+            with_options = getattr(client, "with_options", None)
+            scoped = with_options(timeout=_router_timeout_seconds()) if callable(with_options) else client
+            resp = scoped.chat.completions.create(
+                model=ai_provider.openai_fast_model(),
+                messages=[
+                    {"role": "system", "content": _ROUTER_SYSTEM_PROMPT},
+                    {"role": "user", "content": query[:2000]},
+                ],
+                stream=False,
+                max_tokens=4,
+                temperature=0.0,
+            )
+            raw = resp.choices[0].message.content if resp.choices else ""
+            label = _parse_router_label(raw, fallback)
+        except Exception:
+            # Any error/timeout/unparseable response -> silently keep the regex result.
+            label = fallback
 
     # Bounded cache: drop oldest-ish entry when full (simple, no LRU needed).
     with _ROUTER_CACHE_LOCK:
@@ -1459,10 +1500,13 @@ def _chat_completion_with_resilience(
     tool_choice: Any,
     output_cap: Optional[int] = None,
 ) -> Tuple[Any, str, List[Dict[str, Any]]]:
+    # This wrapper only ever drives an OpenAI client, so its downgrade target
+    # must be the OpenAI fast model even when the toggle points at Claude (the
+    # Claude->OpenAI fallback in run_agent_with_fallback lands here).
     attempts = [
         (model, False),
         (model, True),
-        (fast_model(), True),
+        (ai_provider.openai_fast_model(), True),
     ]
     last_exc: Optional[Exception] = None
     for attempt_index, (attempt_model, aggressive) in enumerate(attempts):
@@ -1526,13 +1570,13 @@ def _responses_create_with_resilience(
         attempts = [
             (model, input_items, previous_response_id, 6000),
             (model, _truncate_responses_tool_outputs(input_items or [], max_chars=3500), previous_response_id, 3500),
-            (fast_model(), _truncate_responses_tool_outputs(input_items or [], max_chars=2500), previous_response_id, 2500),
+            (ai_provider.openai_fast_model(), _truncate_responses_tool_outputs(input_items or [], max_chars=2500), previous_response_id, 2500),
         ]
     else:
         attempts = [
             (model, None, None, 6000),
             (model, None, None, 3500),
-            (fast_model(), None, None, 2500),
+            (ai_provider.openai_fast_model(), None, None, 2500),
         ]
 
     last_exc: Optional[Exception] = None
@@ -1541,7 +1585,7 @@ def _responses_create_with_resilience(
             payload = payload_items or []
             working = source_messages
         else:
-            aggressive = attempt_model == fast_model() or _max_chars <= 3500
+            aggressive = attempt_model == ai_provider.openai_fast_model() or _max_chars <= 3500
             working = prepare_messages_for_turn(source_messages, aggressive=aggressive)
             payload = _messages_to_responses_input(working)
         kwargs: Dict[str, Any] = {
@@ -2209,7 +2253,9 @@ def run_chat_agent(
     on_tool_event: Optional[ToolEventCallback] = None,
     company_scope: Optional[str] = None,
 ) -> AgentRunResult:
-    model = model or main_model()
+    # OpenAI runtime: pin the default to the OpenAI model so a Claude->OpenAI
+    # fallback never sends a Claude model id to the OpenAI client.
+    model = model or ai_provider.openai_main_model()
     start = time.time()
     client = _openai_client()
     source_messages = list(messages)
@@ -2378,7 +2424,7 @@ def run_responses_agent(
     on_tool_event: Optional[ToolEventCallback] = None,
     company_scope: Optional[str] = None,
 ) -> AgentRunResult:
-    model = model or main_model()
+    model = model or ai_provider.openai_main_model()
     start = time.time()
     client = _openai_client()
     source_messages = list(messages)
@@ -2568,6 +2614,41 @@ def run_responses_agent(
     )
 
 
+def _maybe_fire_anthropic_shadow(
+    messages: List[Dict[str, Any]],
+    *,
+    session_id: Optional[str],
+    username: Optional[str],
+    agent_scope: str,
+) -> None:
+    """Kick off a sampled Claude comparison run (provider=anthropic_shadow).
+
+    The Flask app object is resolved HERE, in the request thread, because the
+    background worker has no app context and needs one to write telemetry.
+    Never raises and never delays the request.
+    """
+    try:
+        import ai_provider_anthropic
+
+        app = None
+        try:
+            from flask import current_app, has_app_context
+
+            if has_app_context():
+                app = current_app._get_current_object()
+        except Exception:
+            app = None
+        ai_provider_anthropic.maybe_run_shadow(
+            messages,
+            session_id=session_id,
+            username=username,
+            agent_scope=agent_scope,
+            app=app,
+        )
+    except Exception as exc:  # noqa: BLE001 - shadow mode is observability only
+        print(f"[anthropic-shadow dispatch skipped] {exc}")
+
+
 def run_agent_with_fallback(
     *,
     messages: List[Dict[str, Any]],
@@ -2584,6 +2665,54 @@ def run_agent_with_fallback(
     on_tool_event: Optional[ToolEventCallback] = None,
     company_scope: Optional[str] = None,
 ) -> AgentRunResult:
+    active_provider = ai_provider.provider()
+
+    if active_provider == ai_provider.PROVIDER_ANTHROPIC:
+        import ai_provider_anthropic
+
+        try:
+            return ai_provider_anthropic.run_anthropic_agent(
+                messages=messages,
+                tools=tools,
+                tool_executor=tool_executor,
+                username=username,
+                session_id=session_id,
+                model=model,
+                tool_choice=tool_choice,
+                max_iterations=max_iterations,
+                defer_final_stream=defer_final_stream,
+                agent_scope=agent_scope,
+                on_tool_event=on_tool_event,
+                company_scope=company_scope,
+            )
+        except Exception as exc:
+            # Claude unavailable (missing key/SDK, outage, 5xx): serve the turn on
+            # OpenAI instead of failing the request. `model` is passed explicitly
+            # because the caller's choose_turn_model() handed us a Claude id.
+            print(f"[Anthropic runtime error, falling back to OpenAI] {exc}")
+            fallback = run_chat_agent(
+                messages=messages,
+                tools=tools,
+                tool_executor=tool_executor,
+                username=username,
+                session_id=session_id,
+                model=ai_provider.openai_main_model(),
+                tool_choice=tool_choice,
+                max_iterations=max_iterations,
+                defer_final_stream=defer_final_stream,
+                agent_scope=agent_scope,
+                on_tool_event=on_tool_event,
+                company_scope=company_scope,
+            )
+            fallback.fallback_reason = str(exc)[:1000]
+            fallback.runtime_path = "anthropic-openai-fallback"
+            return fallback
+
+    if active_provider == ai_provider.PROVIDER_ANTHROPIC_SHADOW:
+        _maybe_fire_anthropic_shadow(
+            messages, session_id=session_id, username=username, agent_scope=agent_scope
+        )
+
     if runtime_mode() == "chat":
         return run_chat_agent(
             messages=messages,

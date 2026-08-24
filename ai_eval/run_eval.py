@@ -14,6 +14,15 @@ Standalone usage::
     SANDBOX=1 OPENAI_API_KEY=...  python3 ai_eval/run_eval.py --gate
     SANDBOX=1 OPENAI_API_KEY=...  python3 ai_eval/run_eval.py --set-baseline
 
+Provider comparison (OpenAI baseline vs Claude)::
+
+    SANDBOX=1 AI_PROVIDER=openai    python3 ai_eval/run_eval.py --set-baseline
+    SANDBOX=1 AI_PROVIDER=anthropic python3 ai_eval/run_eval.py --gate
+
+OPENAI_API_KEY is required either way (embeddings + the judge); ANTHROPIC_API_KEY
+is additionally required for the Claude run. Each run prints which provider and
+models it scored.
+
 Flags:
     --judge          also run the gpt-4o-mini holistic judge (extra OpenAI cost)
     --gate           fail (exit 1) if any aggregate metric drops > threshold vs baseline
@@ -69,6 +78,9 @@ def boot_app():
     os.environ.setdefault("SANDBOX", "1")
     os.chdir(ROOT)
 
+    # Required in EVERY provider configuration: embeddings / RAG retrieval have
+    # no Anthropic equivalent, and the LLM judge deliberately stays on OpenAI so
+    # a Claude-vs-OpenAI comparison is scored by a neutral third model.
     if not os.environ.get("OPENAI_API_KEY"):
         print("ERROR: OPENAI_API_KEY not set (export it or add it to sandbox/.env.sandbox).", file=sys.stderr)
         sys.exit(2)
@@ -76,7 +88,27 @@ def boot_app():
     import run  # noqa: E402  (must come after env is loaded)
     app = run.create_app()
     app.config.update(TESTING=True)
+    _print_provider_banner(app)
     return app, run
+
+
+def _print_provider_banner(app) -> None:
+    """State which provider/model this run scored, so results are attributable.
+
+    Set AI_PROVIDER=anthropic (or write it from /admin/ai-settings) and re-run to
+    compare Claude against the OpenAI baseline on the same eval set.
+    """
+    try:
+        import ai_provider
+
+        with app.app_context():
+            readiness = ai_provider.provider_readiness()
+        print(f"  provider: {readiness['provider']} "
+              f"(main={readiness['main_model']}, fast={readiness['fast_model']})")
+        for problem in readiness.get("problems") or []:
+            print(f"  WARNING: {problem}", file=sys.stderr)
+    except Exception as e:
+        print(f"  (provider banner skipped: {e})")
 
 
 def warm(app) -> None:

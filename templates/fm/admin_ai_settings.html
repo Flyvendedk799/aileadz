@@ -1,0 +1,142 @@
+{% extends "fm_base.html" %}
+{% block page_id %}admin{% endblock %}
+{% block title %}AI-indstillinger{% endblock %}
+{% block topbar_title %}AI-udbyder{% endblock %}
+{% block topbar_sub %}Skift mellem OpenAI og Claude uden genstart.{% endblock %}
+{% block extra_head %}
+<style>
+  .ai-split { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+  .ai-field { margin-top: 14px; }
+  .ai-src { font-size: 12px; color: var(--fm-ink-2); margin-top: 4px; }
+  .ai-pill { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px; font-size:12px; font-weight:600; }
+  .ai-pill.ok { background: rgba(34,197,94,.15); color:#16a34a; }
+  .ai-pill.bad { background: rgba(239,68,68,.15); color:#dc2626; }
+  .ai-note { color: var(--fm-ink-2); font-size: 13.5px; line-height: 1.6; }
+  .ai-kv { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid var(--fm-line, rgba(255,255,255,.06)); }
+  .ai-kv:last-child { border-bottom:0; }
+  .ai-kv span:last-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
+  @media (max-width: 900px) { .ai-split { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+    <a class="pg-tab" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
+  </div>
+
+  <div class="ai-split">
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sliders"></i></span><h3>Konfiguration</h3></div>
+      <div class="fm-card-body">
+        <form action="{{ url_for('admin_dashboard.ai_settings') }}" method="POST">
+          {% for row in settings %}
+          <div class="fm-field ai-field">
+            <label for="{{ row.key }}">{{ row.label }}</label>
+            {% if row.choices %}
+            <select class="fm-input" id="{{ row.key }}" name="{{ row.key }}">
+              {% for choice in row.choices %}
+              <option value="{{ choice }}" {% if choice == row.value %}selected{% endif %}>
+                {{ provider_labels.get(choice, choice) }}
+              </option>
+              {% endfor %}
+            </select>
+            {% else %}
+            <input type="text" class="fm-input" id="{{ row.key }}" name="{{ row.key }}"
+                   value="{{ row.value }}" placeholder="{{ row.default }}">
+            {% endif %}
+            <div class="ai-src">
+              <code>{{ row.key }}</code> — kilde: {{ row.source }}{% if not row.overridden %} (standard: <code>{{ row.default }}</code>){% endif %}
+            </div>
+          </div>
+          {% endfor %}
+          <div style="display:flex;justify-content:flex-end;margin-top:18px">
+            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem indstillinger</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <div>
+      <div class="fm-card">
+        <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-heart-pulse"></i></span><h3>Status</h3></div>
+        <div class="fm-card-body">
+          <div style="margin-bottom:10px">
+            {% if readiness.ready %}
+            <span class="ai-pill ok"><i class="fa-solid fa-circle-check"></i> Klar</span>
+            {% else %}
+            <span class="ai-pill bad"><i class="fa-solid fa-triangle-exclamation"></i> Ikke klar</span>
+            {% endif %}
+          </div>
+          <div class="ai-kv"><span>Aktiv udbyder</span><span>{{ readiness.provider_label }}</span></div>
+          <div class="ai-kv"><span>Hovedmodel</span><span>{{ readiness.main_model }}</span></div>
+          <div class="ai-kv"><span>Hurtig model</span><span>{{ readiness.fast_model }}</span></div>
+          <div class="ai-kv"><span>OPENAI_API_KEY</span><span>{{ 'sat' if readiness.openai_configured else 'mangler' }}</span></div>
+          <div class="ai-kv"><span>ANTHROPIC_API_KEY</span><span>{{ 'sat' if readiness.anthropic_configured else 'mangler' }}</span></div>
+          {% if readiness.problems %}
+          <ul style="margin:12px 0 0 18px;color:#dc2626;font-size:13px;line-height:1.7">
+            {% for problem in readiness.problems %}<li>{{ problem }}</li>{% endfor %}
+          </ul>
+          {% endif %}
+        </div>
+      </div>
+
+      <div class="fm-card ai-field">
+        <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-info"></i></span><h3>Sådan virker skiftet</h3></div>
+        <div class="fm-card-body">
+          <p class="ai-note">
+            Skiftet gælder <strong>samtale-agenten</strong>: værktøjsløkken, streaming af
+            svar og intent-routeren. API-nøgler gemmes aldrig i databasen — de bliver
+            i servermiljøet.
+          </p>
+          <p class="ai-note" style="margin-top:10px">
+            <strong>OPENAI_API_KEY kræves altid.</strong> Embeddings og RAG-søgning har
+            ingen tilsvarende Claude-funktion, så katalogsøgning, CV-udtræk og
+            kategorisering kører videre på OpenAI uanset valget her.
+          </p>
+          <p class="ai-note" style="margin-top:10px">
+            <strong>Skyggekørsel</strong> serverer stadig OpenAI til brugeren, men kører
+            en stikprøve af svar gennem Claude i baggrunden, så du kan sammenligne
+            latens og pris i tabellen nedenfor. Skyggekørsler bruger ikke værktøjer.
+          </p>
+          <p class="ai-note" style="margin-top:10px">
+            Ændringer slår igennem inden for ca. 60 sekunder — ingen genstart nødvendig.
+            Hvis Claude fejler, falder en forespørgsel automatisk tilbage til OpenAI.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fm-card ai-field">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-line"></i></span><h3>Kørsler seneste 24 timer</h3></div>
+    <div class="fm-card-body" style="padding-top:6px">
+      {% if recent_runs %}
+      <div class="fm-table-wrap" style="border:0;box-shadow:none">
+        <table class="fm-table">
+          <thead><tr><th>Runtime</th><th>Model</th><th class="tnum">Kørsler</th><th class="tnum">Gns. latens</th><th class="tnum">Est. pris</th></tr></thead>
+          <tbody>
+            {% for run in recent_runs %}
+            <tr>
+              <td>{{ run.runtime }}</td>
+              <td><code>{{ run.model }}</code></td>
+              <td class="tnum">{{ run.runs }}</td>
+              <td class="tnum">{{ run.avg_latency }} ms</td>
+              <td class="tnum">{% if run.cost_dkk is not none %}{{ run.cost_dkk }} kr.{% else %}—{% endif %}</td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+      <p class="ai-note">Ingen registrerede kørsler i perioden.</p>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

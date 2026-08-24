@@ -257,10 +257,15 @@ def _get_openai_client():
 
 
 def _model_name() -> str:
-    """Pick a model, reusing ai_runtime's helpers when importable."""
+    """Pick a model, reusing the shared helpers when importable.
+
+    Pinned to OpenAI: _get_openai_client() returns an OpenAI client and this
+    module relies on response_format={"type": "json_object"}, so CV extraction
+    must not follow the conversational provider toggle.
+    """
     try:
-        from ai_runtime import fast_model  # type: ignore
-        m = fast_model()
+        from ai_provider import openai_fast_model  # type: ignore
+        m = openai_fast_model()
         if m:
             return m
     except Exception:

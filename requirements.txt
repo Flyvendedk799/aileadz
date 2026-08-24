@@ -5,6 +5,12 @@ gunicorn>=21,<24
 PyMySQL>=1.1,<2
 sshtunnel>=0.4,<0.5
 openai>=2,<3
+# Anthropic SDK — powers the Claude runtime selected by the AI_PROVIDER toggle
+# (ai_provider_anthropic.py). The import is guarded, so a missing package only
+# degrades the toggle to "OpenAI only"; pinned here so a deploy that flips the
+# switch actually has it. NOTE: anthropic 1.x is built on httpx2, which installs
+# alongside (not instead of) any httpx already present.
+anthropic>=1,<2
 requests>=2.32,<3
 python-dotenv>=1,<2
 

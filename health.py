@@ -28,12 +28,20 @@ _CATALOG_FILES = (
     os.path.join(_HERE, 'app1', 'shopify_products_all_pages.json'),
 )
 
-# OpenAI configuration is a static boolean for the lifetime of the process: it
-# reflects whether OPENAI_API_KEY is set in the environment. We cache it at import
-# so the readiness probe never has to re-read the environment (and never calls the
-# OpenAI API). OPENAI_API_KEY is required in EVERY provider configuration because
-# embeddings / RAG retrieval have no Anthropic equivalent.
-_OPENAI_CONFIGURED = bool(os.environ.get('OPENAI_API_KEY'))
+# OpenAI configuration is NO LONGER a static boolean: an admin can set the key at
+# runtime from /admin/ai-settings, so it is resolved per request (database ->
+# environment) rather than cached at import. Still never calls the OpenAI API.
+# OPENAI_API_KEY is required in EVERY provider configuration because embeddings /
+# RAG retrieval have no Anthropic equivalent.
+def _openai_configured():
+    """True when an OpenAI key is resolvable. Never raises."""
+    try:
+        import ai_secrets
+
+        return ai_secrets.has_secret('OPENAI_API_KEY')
+    except Exception as exc:  # pragma: no cover - probe must never raise
+        logging.warning("OpenAI key check fell back to env: %s", exc)
+        return bool(os.environ.get('OPENAI_API_KEY'))
 
 
 def _provider_block():
@@ -117,7 +125,7 @@ def readyz():
     try:
         db_ok = _check_db()
         catalog_ok = _check_catalog()
-        openai_ok = _OPENAI_CONFIGURED
+        openai_ok = _openai_configured()
         status = 'ready' if db_ok else 'degraded'
         body = {
             'db': db_ok,
@@ -143,6 +151,6 @@ def readyz():
         return jsonify({
             'db': False,
             'catalog': False,
-            'openai': _OPENAI_CONFIGURED,
+            'openai': _openai_configured(),
             'status': 'degraded',
         }), 503

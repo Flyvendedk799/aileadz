@@ -15,7 +15,11 @@
   .ai-kv { display:flex; justify-content:space-between; gap:12px; padding:7px 0; border-bottom:1px solid var(--fm-line, rgba(255,255,255,.06)); }
   .ai-kv:last-child { border-bottom:0; }
   .ai-kv span:last-child { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12.5px; }
-  @media (max-width: 900px) { .ai-split { grid-template-columns: 1fr; } }
+  .ai-key-row { display:grid; grid-template-columns: minmax(0,1fr) auto; gap:12px; align-items:end; padding:14px 0; border-bottom:1px solid var(--fm-line, rgba(255,255,255,.06)); }
+  .ai-key-row:last-of-type { border-bottom:0; }
+  .ai-key-actions { display:flex; gap:8px; align-items:center; }
+  .ai-warn { background: rgba(239,68,68,.10); border:1px solid rgba(239,68,68,.35); border-radius:8px; padding:12px 14px; margin-bottom:14px; }
+  @media (max-width: 900px) { .ai-split { grid-template-columns: 1fr; } .ai-key-row { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
 {% block content %}
@@ -91,8 +95,9 @@
         <div class="fm-card-body">
           <p class="ai-note">
             Skiftet gælder <strong>samtale-agenten</strong>: værktøjsløkken, streaming af
-            svar og intent-routeren. API-nøgler gemmes aldrig i databasen — de bliver
-            i servermiljøet.
+            svar og intent-routeren. API-nøgler kan sættes herfra og gemmes
+            <strong>krypteret</strong> i databasen — de kan aldrig læses tilbage,
+            hverken på denne side eller i loggen.
           </p>
           <p class="ai-note" style="margin-top:10px">
             <strong>OPENAI_API_KEY kræves altid.</strong> Embeddings og RAG-søgning har
@@ -109,6 +114,80 @@
             Hvis Claude fejler, falder en forespørgsel automatisk tilbage til OpenAI.
           </p>
         </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="fm-card ai-field">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-key"></i></span><h3>API-nøgler</h3></div>
+    <div class="fm-card-body">
+      {% if not encryption_available %}
+      <div class="ai-warn">
+        <strong>Nøgler kan ikke gemmes.</strong>
+        <div class="ai-note" style="margin-top:6px">
+          Kryptering er utilgængelig ({{ encryption_detail }}). Sæt
+          <code>AI_SECRET_KEY</code> (eller <code>SECRET_KEY</code>) i servermiljøet og
+          genindlæs. Nøgler gemmes aldrig ukrypteret.
+        </div>
+      </div>
+      {% else %}
+      <p class="ai-note" style="margin-bottom:12px">
+        Nøgler krypteres med Fernet ({{ encryption_detail }}) og kan ikke læses tilbage.
+        Lad et felt stå <strong>tomt</strong> for at beholde den nuværende nøgle.
+        En nøgle gemt her har forrang over miljøvariablen.
+      </p>
+      {% endif %}
+
+      <form action="{{ url_for('admin_dashboard.ai_settings') }}" method="POST" autocomplete="off">
+        {% for secret in secrets %}
+        <div class="ai-key-row">
+          <div class="fm-field" style="margin:0">
+            <label for="secret_{{ secret.name }}">{{ secret.label }}</label>
+            <input type="password" class="fm-input" id="secret_{{ secret.name }}"
+                   name="secret_{{ secret.name }}" autocomplete="new-password"
+                   placeholder="{% if secret.configured %}uændret{% else %}ikke sat{% endif %}"
+                   {% if not encryption_available %}disabled{% endif %}>
+            <div class="ai-src">
+              <code>{{ secret.name }}</code> — kilde: {{ secret.source }}{% if secret.hint and secret.in_database %} (••••{{ secret.hint }}){% endif %}
+              {%- if secret.updated_by %} · sat af {{ secret.updated_by }}{% if secret.updated_at %} {{ secret.updated_at }}{% endif %}{% endif %}
+              {%- if secret.unreadable %} — <span style="color:#dc2626">kan ikke dekrypteres (krypteringsnøgle skiftet?)</span>{% endif %}
+            </div>
+          </div>
+          <div class="ai-key-actions">
+            {% if secret.configured %}
+            <span class="ai-pill ok"><i class="fa-solid fa-circle-check"></i> sat</span>
+            {% else %}
+            <span class="ai-pill bad"><i class="fa-solid fa-circle-xmark"></i> mangler</span>
+            {% endif %}
+          </div>
+        </div>
+        {% endfor %}
+        <div style="display:flex;justify-content:flex-end;margin-top:16px">
+          <button type="submit" class="btn btn-primary" {% if not encryption_available %}disabled{% endif %}>
+            <i class="fa-solid fa-lock"></i> Gem nøgler
+          </button>
+        </div>
+      </form>
+
+      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:14px;padding-top:14px;border-top:1px solid var(--fm-line, rgba(255,255,255,.06))">
+        {% for provider_key, provider_name in [('OPENAI_API_KEY', 'openai'), ('ANTHROPIC_API_KEY', 'anthropic')] %}
+        <form action="{{ url_for('admin_dashboard.ai_settings_test', provider_name=provider_name) }}" method="POST" style="display:inline">
+          <button type="submit" class="btn btn-ghost btn-sm">
+            <i class="fa-solid fa-plug-circle-check"></i> Test {{ provider_name }}
+          </button>
+        </form>
+        {% endfor %}
+        {% for secret in secrets %}
+        {% if secret.in_database %}
+        <form action="{{ url_for('admin_dashboard.ai_settings') }}" method="POST" style="display:inline"
+              onsubmit="return confirm('Fjern {{ secret.name }} fra databasen?');">
+          <input type="hidden" name="clear_secret" value="{{ secret.name }}">
+          <button type="submit" class="btn btn-ghost btn-sm">
+            <i class="fa-solid fa-trash"></i> Fjern {{ secret.name }}
+          </button>
+        </form>
+        {% endif %}
+        {% endfor %}
       </div>
     </div>
   </div>

@@ -1160,12 +1160,40 @@ def impersonate_exit():
 # are never read, written or rendered here — the page shows only whether each
 # key is present.
 
+# Field names whose VALUES must never reach a log, an audit row or a template.
+_AI_SECRET_FIELD_MARKERS = ('_API_KEY', 'SECRET', 'TOKEN', 'PASSWORD')
+
+
+def _scrub_secret_values(details):
+    """Replace any secret-looking value with a marker before it is persisted.
+
+    Belt-and-braces: callers already pass only key NAMES for secrets, but this
+    guarantees a future caller cannot leak an API key into audit_log.
+    """
+    if not isinstance(details, dict):
+        return details
+    out = {}
+    for key, value in details.items():
+        if isinstance(value, dict):
+            out[key] = _scrub_secret_values(value)
+        elif any(marker in str(key).upper() for marker in _AI_SECRET_FIELD_MARKERS):
+            out[key] = '<redacted>'
+        else:
+            out[key] = value
+    return out
+
+
 def _ai_settings_audit(changes):
-    """Best-effort audit_log row for a provider settings change. Never raises."""
+    """Best-effort audit_log row for a provider settings change. Never raises.
+
+    ``changes`` must describe WHAT changed, not the new values of secrets — see
+    _scrub_secret_values, which enforces that on the way out.
+    """
     try:
         mysql = getattr(current_app, 'mysql', None)
         if mysql is None or not changes:
             return
+        changes = _scrub_secret_values(changes)
         try:
             from db_compat import refresh_flask_mysql_connection
             refresh_flask_mysql_connection(mysql)
@@ -1205,10 +1233,43 @@ def _ai_settings_audit(changes):
 @require_role('admin')
 def ai_settings():
     import ai_provider
+    import ai_secrets
 
     if request.method == 'POST':
         changed = {}
         rejected = []
+        secret_actions = []
+
+        # --- API keys -------------------------------------------------------
+        # Submitted as `secret_<NAME>`; an EMPTY field means "leave unchanged"
+        # so the form can be saved without re-typing a key. Removal is an
+        # explicit `clear_secret` action, never an empty save.
+        clear_target = (request.form.get('clear_secret') or '').strip()
+        if clear_target:
+            ok, err = ai_secrets.clear_secret(
+                current_app.mysql, clear_target, updated_by=session.get('user', '')
+            )
+            if ok:
+                secret_actions.append({'key': clear_target, 'action': 'cleared'})
+                flash(f"{clear_target} fjernet fra databasen. "
+                      f"Genstart processen for at falde tilbage til miljøvariablen.", "success")
+            else:
+                flash(f"Kunne ikke fjerne {clear_target}: {err}", "danger")
+
+        for secret_name in ai_secrets.SECRET_KEYS:
+            submitted = (request.form.get('secret_' + secret_name) or '').strip()
+            if not submitted:
+                continue
+            ok, err = ai_secrets.set_secret(
+                current_app.mysql, secret_name, submitted,
+                updated_by=session.get('user', ''),
+            )
+            if ok:
+                secret_actions.append({'key': secret_name, 'action': 'set'})
+                flash(f"{secret_name} gemt (krypteret).", "success")
+            else:
+                flash(f"Kunne ikke gemme {secret_name}: {err}", "danger")
+
         for key, (_label, _default, choices) in ai_provider.MANAGED_KEYS.items():
             if key not in request.form:
                 continue
@@ -1233,12 +1294,13 @@ def ai_settings():
             else:
                 rejected.append(key)
 
-        _ai_settings_audit(changed)
+        # Only NAMES and actions for secrets — never the submitted value.
+        _ai_settings_audit({'settings': changed, 'secrets': secret_actions})
         if changed:
             flash("AI-indstillinger gemt: " + ", ".join(sorted(changed)), "success")
         if rejected:
             flash("Kunne ikke gemme: " + ", ".join(sorted(rejected)), "danger")
-        if not changed and not rejected:
+        if not changed and not rejected and not secret_actions:
             flash("Ingen ændringer.", "info")
         return redirect(url_for('admin_dashboard.ai_settings'))
 
@@ -1248,10 +1310,32 @@ def ai_settings():
         settings=ai_provider.effective_settings(),
         readiness=readiness,
         provider_labels=ai_provider.PROVIDER_LABELS,
+        # Presence-only: secret_status() never returns a key value.
+        secrets=ai_secrets.secret_status(),
+        encryption_available=ai_secrets.encryption_available(),
+        encryption_detail=ai_secrets.encryption_detail(),
         # Recent Claude/shadow activity so an operator can confirm the switch
         # actually took effect without leaving the page.
         recent_runs=_ai_provider_recent_runs(),
     )
+
+
+@admin_dashboard_bp.route('/ai-settings/test/<provider_name>', methods=['POST'])
+@require_role('admin')
+def ai_settings_test(provider_name):
+    """Validate the resolved key for one provider with a cheap authenticated call.
+
+    Uses the SDK's model listing, which authenticates without spending tokens.
+    Nothing is stored and the key is never echoed back.
+    """
+    import ai_secrets
+
+    if provider_name not in ('openai', 'anthropic'):
+        flash("Ukendt udbyder.", "danger")
+        return redirect(url_for('admin_dashboard.ai_settings'))
+    ok, message = ai_secrets.test_provider_key(provider_name)
+    flash(f"{provider_name}: {message}", "success" if ok else "danger")
+    return redirect(url_for('admin_dashboard.ai_settings'))
 
 
 def _ai_provider_recent_runs():

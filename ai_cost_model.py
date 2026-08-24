@@ -13,12 +13,13 @@ Design notes
   the headline number. The existing soft cost ceiling in ``ai_runtime`` uses
   per-1K rates (0.0025 / 0.01 for gpt-4o) — the same numbers, just *1000 here,
   so the two stay consistent.
-* Cached input tokens are billed at a discount. OpenAI bills cached prompt
-  tokens at ~50% of the normal input rate, so a token counted in
-  ``cached_tokens`` is charged at ``input_rate * CACHED_INPUT_DISCOUNT`` instead
-  of the full input rate. ``cached_tokens`` is treated as a SUBSET of
-  ``input_tokens`` (it is in the OpenAI usage payload), so we bill the
-  non-cached remainder at full rate and the cached part at the discount.
+* Cached input tokens are billed at a discount — ~50% of the input rate on
+  OpenAI, ~10% on Anthropic — so a token counted in ``cached_tokens`` is charged
+  at ``input_rate * cached_input_discount(model)`` instead of the full input
+  rate. ``cached_tokens`` is treated as a SUBSET of ``input_tokens``: that is
+  true of the OpenAI usage payload, and ``ai_provider_anthropic.normalize_usage``
+  folds Anthropic's separately-reported cache tokens back into ``input_tokens``
+  so both providers mean the same thing here.
 * DKK conversion is via the env ``AI_USD_DKK`` (default 7.0). Everything is
   reversible: set ``AI_COST_MODEL_ENABLED=0`` and the admin dashboard skips the
   cost block entirely (see ``cost_model_enabled``).
@@ -47,11 +48,27 @@ PRICE_TABLE_USD_PER_1M: Dict[str, Dict[str, float]] = {
     "gpt-4o": {"input": 2.50, "output": 10.00},
     "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "text-embedding-3-small": {"input": 0.02, "output": 0.0},
+    # --- Anthropic (Claude) — used when AI_PROVIDER=anthropic. -------------
+    #   >>> UPDATE ME when Anthropic changes prices. <<<
+    #   Source: https://claude.com/pricing#api  Last reviewed: 2026-06.
+    #   Note the fast tier: claude-haiku-4-5 is ~7x the price of gpt-4o-mini,
+    #   which matters because AI_MODEL_ROUTING=balanced routes most turns there.
+    #   Prompt caching (see ai_provider_anthropic.split_system) is what brings
+    #   the input side back down.
+    "claude-opus-5": {"input": 5.00, "output": 25.00},
+    "claude-sonnet-5": {"input": 3.00, "output": 15.00},
+    "claude-haiku-4-5": {"input": 1.00, "output": 5.00},
 }
 
 # Fraction of the normal input rate charged for cached prompt tokens (~50%).
 # Override with AI_CACHED_INPUT_DISCOUNT if OpenAI changes the cached tier.
 DEFAULT_CACHED_INPUT_DISCOUNT = 0.50
+
+# Anthropic prices cache READS at ~10% of the input rate. Cache WRITES cost
+# ~1.25x input and are not modelled separately — they are billed here at the
+# plain input rate, a bounded ~20% under-estimate of the write portion only
+# (a write happens once per cache lifetime, reads dominate). Claude models only.
+ANTHROPIC_CACHED_INPUT_DISCOUNT = 0.10
 
 # Default USD->DKK rate; overridable via env AI_USD_DKK.
 DEFAULT_USD_DKK = 7.0
@@ -80,16 +97,31 @@ def usd_to_dkk_rate() -> float:
         return DEFAULT_USD_DKK
 
 
-def cached_input_discount() -> float:
-    """Cached-input billing fraction from env AI_CACHED_INPUT_DISCOUNT.
-
-    Clamped to [0, 1]; default 0.50 (cached tokens billed at half the input
-    rate).
-    """
+def _is_anthropic_model(model: Optional[str]) -> bool:
     try:
-        d = float(os.getenv("AI_CACHED_INPUT_DISCOUNT", str(DEFAULT_CACHED_INPUT_DISCOUNT)))
+        return str(model or "").strip().lower().startswith("claude")
+    except Exception:
+        return False
+
+
+def cached_input_discount(model: Optional[str] = None) -> float:
+    """Cached-input billing fraction for ``model``.
+
+    An explicit AI_CACHED_INPUT_DISCOUNT always wins (single knob for operators).
+    Otherwise the default depends on the provider: OpenAI bills cached prompt
+    tokens at ~50% of the input rate, Anthropic bills cache reads at ~10%.
+    Clamped to [0, 1]. Called with no argument it keeps the historical OpenAI
+    default, so existing callers are unaffected.
+    """
+    default = (ANTHROPIC_CACHED_INPUT_DISCOUNT if _is_anthropic_model(model)
+               else DEFAULT_CACHED_INPUT_DISCOUNT)
+    raw = os.getenv("AI_CACHED_INPUT_DISCOUNT")
+    if raw is None or str(raw).strip() == "":
+        return default
+    try:
+        d = float(raw)
     except (TypeError, ValueError):
-        return DEFAULT_CACHED_INPUT_DISCOUNT
+        return default
     if d < 0.0:
         return 0.0
     if d > 1.0:
@@ -168,7 +200,7 @@ def estimate_cost(
     try:
         in_rate = float(rates.get("input", 0.0))
         out_rate = float(rates.get("output", 0.0))
-        discount = cached_input_discount()
+        discount = cached_input_discount(model)
 
         non_cached_in = max(0, in_tok - cached)
         input_usd = (non_cached_in / _TOKENS_PER_UNIT) * in_rate

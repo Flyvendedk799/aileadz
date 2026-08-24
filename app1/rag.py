@@ -794,8 +794,11 @@ def _crossencoder_rerank(query, candidates, products, limit=5):
         return candidates
 
     try:
-        from ai_runtime import fast_model
-        ce_model = fast_model()
+        # Pinned to OpenAI: this call uses the openai SDK directly, and the
+        # RAG index it reranks is built with OpenAI embeddings, so it must not
+        # follow the conversational provider toggle.
+        from ai_provider import openai_fast_model
+        ce_model = openai_fast_model()
         response = openai.chat.completions.create(
             model=ce_model,
             messages=[

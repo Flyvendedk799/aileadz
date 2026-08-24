@@ -223,9 +223,25 @@ def _probe_html_sanitize():
         return {'available': False, 'detail': 'probe error: {}'.format(exc)}
 
 
+def _probe_anthropic():
+    """Claude runtime: the anthropic SDK plus an API key.
+
+    Reports capability, not the active choice — which provider is actually
+    serving traffic is an admin setting that can change at runtime, so it is
+    reported by the uncached 'ai' block in /readyz instead (see health.py).
+    """
+    ok, reason = _try_import('anthropic')
+    if not ok:
+        return {'available': False, 'detail': 'anthropic SDK mangler ({})'.format(reason)}
+    if not os.environ.get('ANTHROPIC_API_KEY'):
+        return {'available': False, 'detail': 'anthropic SDK installeret, ANTHROPIC_API_KEY mangler'}
+    return {'available': True, 'detail': 'anthropic SDK + ANTHROPIC_API_KEY til stede'}
+
+
 # Registry of subsystem name -> probe callable. Ordering is preserved in output.
 _PROBES = (
     ('vector_search', _probe_vector_search),
+    ('anthropic', _probe_anthropic),
     ('sso', _probe_sso),
     ('analytics_ml', _probe_analytics_ml),
     ('rate_limit', _probe_rate_limit),

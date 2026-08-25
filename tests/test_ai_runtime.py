@@ -1,6 +1,8 @@
 import json
 import os
 import unittest
+
+import ai_runtime
 from unittest.mock import patch
 
 from ai_runtime import (
@@ -857,6 +859,70 @@ class AIRuntimeTests(unittest.TestCase):
             ai_runtime._TOOL_CACHE.clear()
         self.assertTrue(any("tenant-77" in key for key in keys), keys)
 
+
+
+class ParallelToolContextTests(unittest.TestCase):
+    """Parallel tool workers must see the Flask request context.
+
+    Regression: with AI_PROVIDER=anthropic, Claude batches tool calls, so the
+    >1-parallel-safe branch of _execute_tool_calls_parallel runs for real. Its
+    ThreadPoolExecutor workers inherit no Flask context, and 44 of the 61
+    parallel-safe tools read flask.session / current_app — the user saw
+    "Working outside of application context" on the Profilmatch card.
+    """
+
+    def setUp(self):
+        try:
+            import flask  # noqa: F401
+        except ImportError:
+            self.skipTest("flask not installed")
+
+    def test_pool_workers_can_reach_session_and_current_app(self):
+        from flask import Flask, session, current_app, has_request_context
+
+        app = Flask(__name__)
+        app.secret_key = "t"
+        seen = {}
+
+        def executor(tool_call, username=None, session_id=None, **kw):
+            # Exactly what an auth_required tool does.
+            name = tool_call.function.name
+            seen[name] = (has_request_context(), session.get("username"),
+                          current_app.name)
+            return json.dumps({"status": "success", "tool": name})
+
+        calls = [
+            {"id": "c1", "name": "get_user_profile", "arguments": {}},
+            {"id": "c2", "name": "catalog_search", "arguments": {"query": "x"}},
+        ]
+        with app.test_request_context("/chat"):
+            session["username"] = "tobias"
+            results = ai_runtime._execute_tool_calls_parallel(
+                calls=calls, tools=[], tool_executor=executor,
+                username="tobias", session_id="s1",
+            )
+
+        self.assertEqual(len(results), 2)
+        for result in results:
+            self.assertEqual(result.status, "ok", result.error)
+        # Both ran in a worker and still saw the request context.
+        self.assertEqual(len(seen), 2)
+        for name, (had_ctx, user, app_name) in seen.items():
+            self.assertTrue(had_ctx, "%s lost the request context" % name)
+            self.assertEqual(user, "tobias")
+            self.assertEqual(app_name, app.name)
+
+    def test_no_request_context_still_works(self):
+        """Batch/offline callers have no request context — must not break."""
+        def executor(tool_call, username=None, session_id=None, **kw):
+            return json.dumps({"status": "success"})
+
+        results = ai_runtime._execute_tool_calls_parallel(
+            calls=[{"id": "c1", "name": "catalog_search", "arguments": {}},
+                   {"id": "c2", "name": "catalog_get_product", "arguments": {}}],
+            tools=[], tool_executor=executor, username=None, session_id=None,
+        )
+        self.assertEqual([r.status for r in results], ["ok", "ok"])
 
 if __name__ == "__main__":
     unittest.main()

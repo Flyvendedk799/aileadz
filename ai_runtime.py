@@ -2051,6 +2051,38 @@ def _execute_one_tool(
     return result
 
 
+def _in_request_context(fn: Callable[..., Any]) -> Callable[..., Any]:
+    """Wrap ``fn`` so it runs inside a COPY of the current request context.
+
+    ThreadPoolExecutor workers inherit no Flask context, so any tool that reads
+    ``flask.session`` or ``current_app`` raises "Working outside of application
+    context" and the turn shows the user a broken tool card. 44 of the 61
+    parallel-safe tools are auth- or company-scoped, so serialising them all
+    instead would cost most of the parallelism.
+
+    Claude batches tool calls far more aggressively than the OpenAI path did, so
+    the ``len(parallel_calls) > 1`` branch below is now hit routinely and this
+    stopped being theoretical the moment the provider was switched.
+
+    Call this ONCE PER SUBMITTED TASK, never once for the whole pool: Flask
+    copies the context at decoration time, so a shared wrapper would enter one
+    context from several threads at once — and with it one ``g``, and one
+    MySQL connection. A per-task copy gives each worker its own ``g`` (and so
+    its own connection), which is what makes this safe.
+
+    Falls back to the bare function when there is no request context (batch
+    jobs, tests), preserving the previous behaviour.
+    """
+    try:
+        from flask import copy_current_request_context, has_request_context
+
+        if has_request_context():
+            return copy_current_request_context(fn)
+    except Exception:  # noqa: BLE001 - Flask absent or context unavailable
+        pass
+    return fn
+
+
 def _execute_tool_calls_parallel(
     *,
     calls: List[Any],
@@ -2107,7 +2139,8 @@ def _execute_tool_calls_parallel(
                     agent_scope=agent_scope,
                 ))
                 futures[pool.submit(
-                    _execute_one_tool,
+                    # Per-task context copy — see _in_request_context.
+                    _in_request_context(_execute_one_tool),
                     executor=tool_executor,
                     name=call["name"],
                     call_id=call["id"],

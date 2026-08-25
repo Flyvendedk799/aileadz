@@ -590,17 +590,80 @@ def to_responses_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+def _denullify_prop(prop: Any) -> Tuple[Any, bool]:
+    """Strip one property's OpenAI nullable marker. Returns (prop, was_optional)."""
+    if not isinstance(prop, dict):
+        return prop, False
+    prop = deepcopy(prop)
+    optional = False
+    typ = prop.get("type")
+    if isinstance(typ, list) and "null" in typ:
+        rest = [t for t in typ if t != "null"]
+        if rest:  # a bare ["null"] carries no type to restore
+            optional = True
+            prop["type"] = rest[0] if len(rest) == 1 else rest
+    enum = prop.get("enum")
+    if isinstance(enum, list) and None in enum:
+        cleaned = [e for e in enum if e is not None]
+        if cleaned:
+            optional = True
+            prop["enum"] = cleaned
+    return _denullify_schema(prop), optional
+
+
+def _denullify_schema(schema: Any) -> Any:
+    """Undo the OpenAI strict-mode nullable transform for Anthropic.
+
+    OpenAI strict mode requires EVERY property to appear in ``required``, so
+    ``_strict_schema``/``_nullable_copy`` express "optional" as ``type: [T,
+    "null"]`` plus a ``None`` enum member. Anthropic validates enum members
+    against the declared type and rejects that combination outright::
+
+        tools.0.custom: Invalid schema: Enum value 'beginner' does not
+        match declared type '['string', 'null']'
+
+    Anthropic has no everything-required rule, so the faithful translation is
+    the plain one: drop the ``null`` arm, drop the ``None`` enum member, and
+    move the property back out of ``required`` — which is what the nullable
+    marker meant in the first place. ``additionalProperties: false`` is kept, so
+    the schema stays closed and ``strict`` stays forwardable.
+    """
+    if not isinstance(schema, dict):
+        return schema
+    props = schema.get("properties")
+    if isinstance(props, dict):
+        new_props: Dict[str, Any] = {}
+        made_optional = set()
+        for name, prop in props.items():
+            new_prop, optional = _denullify_prop(prop)
+            new_props[name] = new_prop
+            if optional:
+                made_optional.add(name)
+        schema = dict(schema, properties=new_props)
+        required = schema.get("required")
+        if isinstance(required, list) and made_optional:
+            schema["required"] = [n for n in required if n not in made_optional]
+    items = schema.get("items")
+    if isinstance(items, dict):
+        schema = dict(schema, items=_denullify_schema(items))
+    return schema
+
+
 def to_anthropic_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
     """Convert an internal (chat-shaped) tool to the Anthropic Messages shape.
 
     Anthropic uses a flat ``{name, description, input_schema}`` object instead of
-    OpenAI's nested ``{type: "function", function: {...}}``. ``strict`` is only
+    OpenAI's nested ``{type: "function", function: {...}}``, and the OpenAI
+    strict-mode nullable encoding is undone first (see :func:`_denullify_schema`
+    — Anthropic 400s on ``enum`` + ``type: [T, "null"]``). ``strict`` is only
     forwarded when the schema really is closed (``additionalProperties: false``),
     which is what _normalize_chat_tool()/_strict_schema() produce for strict
     tools; forwarding it on an open schema is rejected by the API.
     """
     fn = chat_tool.get("function") or chat_tool
-    schema = deepcopy(fn.get("parameters") or {"type": "object", "properties": {}, "required": []})
+    schema = _denullify_schema(
+        deepcopy(fn.get("parameters") or {"type": "object", "properties": {}, "required": []})
+    )
     tool: Dict[str, Any] = {
         "name": fn["name"],
         "description": _maybe_trim(fn.get("description", "")),

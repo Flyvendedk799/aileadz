@@ -4,6 +4,7 @@ from __future__ import annotations
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 import json
+import logging
 import os
 import queue
 import threading
@@ -26,6 +27,8 @@ from ai_tool_registry import (
     tool_name,
 )
 
+
+logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "futurematch-ai-v3"
 _TOOL_CACHE: Dict[str, Tuple[float, str]] = {}
@@ -1102,7 +1105,40 @@ def choose_turn_model(
     return fast_model() if tier == "fast" else main_model()
 
 
+def _is_spend_limit_error(exc: Exception) -> bool:
+    """Provider spend cap / billing ceiling rather than a transient rate limit.
+
+    Anthropic returns this as a 429 with the same ``rate_limit_error`` type, so
+    the plain 429 heuristic below cannot tell them apart — but the remedy is
+    completely different (raise the cap or wait for the month to roll over,
+    never "ask a shorter question").
+    """
+    try:
+        import ai_provider_anthropic
+
+        if ai_provider_anthropic.is_spend_limit(exc):
+            return True
+    except Exception:
+        pass
+    text = str(exc).lower()
+    if "enforced_spend_limit_reached" in text:
+        return True
+    # OpenAI returns a dead/unpaid account as a 429 too ("billing_not_active"),
+    # which the plain 429 heuristic below would report as a transient limit.
+    if "billing_not_active" in text or "insufficient_quota" in text:
+        return True
+    if "account is not active" in text or ("billing" in text and "hard limit" in text):
+        return True
+    return "usage limits" in text and ("threshold" in text or "regain access" in text)
+
+
 def user_facing_error_message(exc: Exception) -> str:
+    if _is_spend_limit_error(exc):
+        # Retrying cannot help, so do not tell the user to try again.
+        return (
+            "Beklager — AI-tjenesten er midlertidigt utilgængelig, fordi kontoens "
+            "forbrugsgrænse er nået. Kontakt en administrator."
+        )
     text = str(exc).lower()
     if "429" in text or "rate_limit" in text or "tokens per min" in text or "tpm" in text:
         return (
@@ -1456,6 +1492,15 @@ def _sanitize_tool_sequence(messages: List[Dict[str, Any]]) -> List[Dict[str, An
 
 
 def _is_rate_limit_error(exc: Exception) -> bool:
+    """Transient throttling that is worth retrying.
+
+    A dead/unpaid account is ALSO an HTTP 429 (OpenAI ``billing_not_active``,
+    Anthropic ``enforced_spend_limit_reached``) but no amount of backoff fixes
+    it — retrying just spends the request budget and the user's patience. One
+    "halløjsa" burned ~10 API calls over two minutes before this check existed.
+    """
+    if _is_spend_limit_error(exc):
+        return False
     name = exc.__class__.__name__.lower()
     text = str(exc).lower()
     return "rate_limit" in name or "429" in text or "tokens per min" in text or "tpm" in text
@@ -2694,7 +2739,31 @@ def run_agent_with_fallback(
             # Claude unavailable (missing key/SDK, outage, 5xx): serve the turn on
             # OpenAI instead of failing the request. `model` is passed explicitly
             # because the caller's choose_turn_model() handed us a Claude id.
-            print(f"[Anthropic runtime error, falling back to OpenAI] {exc}")
+            #
+            # Always run_chat_agent, never run_responses_agent, regardless of
+            # AI_RUNTIME: the Responses path chains on `previous_response_id`,
+            # and a conversation served by Claude has no OpenAI response id to
+            # chain from. Chat Completions is the only stateless entry point.
+            #
+            # A PERMANENT 4xx is a different animal: the request is malformed and
+            # will never succeed, so falling back silently turns our own bug into
+            # invisible OpenAI traffic — the toggle says Anthropic while every
+            # tool-carrying turn is billed to OpenAI. Still fall back (the user
+            # gets an answer), but make it impossible to miss.
+            permanent = False
+            try:
+                permanent = ai_provider_anthropic.is_permanent_request_error(exc)
+            except Exception:
+                pass
+            if permanent:
+                logger.error(
+                    "ANTHROPIC REQUEST REJECTED — this is a bug in our request, not "
+                    "an outage; every affected turn is silently served by OpenAI. "
+                    "request_id=%s: %s",
+                    ai_provider_anthropic.request_id(exc) or "?", exc,
+                )
+            else:
+                logger.warning("Anthropic runtime error, falling back to OpenAI: %s", exc)
             fallback = run_chat_agent(
                 messages=messages,
                 tools=tools,
@@ -2710,7 +2779,12 @@ def run_agent_with_fallback(
                 company_scope=company_scope,
             )
             fallback.fallback_reason = str(exc)[:1000]
-            fallback.runtime_path = "anthropic-openai-fallback"
+            # Distinct path so a malformed request is greppable in ai_agent_runs
+            # instead of blending into ordinary availability fallbacks.
+            fallback.runtime_path = (
+                "anthropic-invalid-request-fallback" if permanent
+                else "anthropic-openai-fallback"
+            )
             return fallback
 
     if active_provider == ai_provider.PROVIDER_ANTHROPIC_SHADOW:

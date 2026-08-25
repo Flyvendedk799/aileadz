@@ -2949,6 +2949,16 @@ def handle_agentic_ask(user_query, session, mode="default"):
             except Exception as e:
                 print(f"[Chatbot Interaction Log Error] {e}")
 
+        except TimeoutError as timeout_err:
+            # TimeoutError SUBCLASSES OSError, so it must be caught before the
+            # disconnect branch below. Otherwise a slow or failing provider is
+            # misread as "the client hung up", nothing is yielded, and the user
+            # stares at a blank reply for the full AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS.
+            print(f"[Agent Timeout] {timeout_err}")
+            try:
+                yield f"data: {json.dumps({'type': 'chunk', 'content': user_facing_error_message(timeout_err)})}\n\n"
+            except (OSError, BrokenPipeError, ConnectionResetError):
+                pass  # Client really is gone
         except (OSError, BrokenPipeError, ConnectionResetError) as pipe_err:
             # Client disconnected (SIGPIPE / broken pipe) — log but don't try to send
             print(f"[Agent] Client disconnected: {pipe_err}")

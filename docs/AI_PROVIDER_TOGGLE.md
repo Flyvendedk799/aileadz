@@ -61,10 +61,20 @@ Priserne står i `ai_cost_model.PRICE_TABLE_USD_PER_1M` og skal opdateres der.
 1. **Ingen `temperature` / `top_p` / `top_k`** — fjernet på nuværende
    Claude-modeller (returnerer 400). Intentionen udtrykkes med
    `output_config.effort` (`low` på værktøjsture, `high` på hovedsvar).
-2. **`max_tokens` har et gulv** (`ANTHROPIC_MIN_MAX_TOKENS`, standard 4096).
-   Thinking-tokens tælles med i `max_tokens`, og adaptiv thinking er slået til
-   som standard, så OpenAI-loftet på 320 ville blive brugt op før modellen nåede
-   at udsende en `tool_use`-blok.
+2. **`max_tokens` har et gulv — ét per turtype.** Thinking-tokens tælles med i
+   `max_tokens`, og adaptiv thinking er slået til som standard, så alle
+   OpenAI-lofter er for lave her.
+   - *Værktøjsture* → `ANTHROPIC_MIN_MAX_TOKENS` (standard 4096). OpenAI-loftet
+     på 320 ville blive brugt op før modellen nåede at udsende en
+     `tool_use`-blok.
+   - *Svarture* → `ANTHROPIC_ANSWER_MAX_TOKENS` (standard 16000). Ræsonnement
+     over langt værktøjsoutput (kursussøgning, profilanalyse) bruger rutinemæssigt
+     tusindvis af thinking-tokens før det første synlige token, så
+     `AI_MAX_OUTPUT_TOKENS` afkorter svaret midt i en sætning.
+
+   Et loft er ikke en udgift: kun genererede tokens faktureres, og svarlængden
+   styres af prompten. Ture der alligevel rammer `max_tokens`, logges som
+   `WARNING` og bliver genereret om — de serveres aldrig halve.
 3. **Systemprompten flyttes til `system`-parameteren** med et
    `cache_control`-brudpunkt på den statiske blok. `consolidate_system_layers()`
    garanterer allerede at `messages[0]` er byte-stabil, så cache-præfikset

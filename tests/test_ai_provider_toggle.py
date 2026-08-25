@@ -24,6 +24,43 @@ from ai_tool_registry import anthropic_tool_choice, to_anthropic_tool
 
 # --- fakes ---------------------------------------------------------------------
 
+class _FakeHeaders(dict):
+    pass
+
+
+class _FakeStatusError(Exception):
+    """Shaped like anthropic.APIStatusError: .body + .response.headers."""
+
+    def __init__(self, message, body, headers=None):
+        super().__init__(message)
+        self.status_code = 429
+        self.body = body
+        self.response = type("R", (), {"headers": _FakeHeaders(headers or {})})()
+
+
+def _spend_cap_error():
+    return _FakeStatusError(
+        "Error code: 429 - you have reached your API usage limits",
+        {"type": "error", "error": {
+            "type": "rate_limit_error",
+            "message": ("You have reached your API usage limits: your organization "
+                        "has crossed its monthly API usage threshold."),
+            "details": {"error_code": "enforced_spend_limit_reached"},
+        }},
+    )
+
+
+def _rate_limit_error():
+    return _FakeStatusError(
+        "Error code: 429 - rate limit",
+        {"type": "error", "error": {
+            "type": "rate_limit_error",
+            "message": "This request would exceed your organization's output tokens per minute rate limit.",
+        }},
+        headers={"retry-after": "27"},
+    )
+
+
 class _Block:
     def __init__(self, **kw):
         self.__dict__.update(kw)
@@ -306,6 +343,70 @@ class RequestContractTests(_ProviderTestCase):
         params.update(over)
         return apa._build_kwargs(**params)
 
+    def test_openai_nullable_encoding_is_undone_for_anthropic(self):
+        """Regression: Anthropic 400s on `enum` + `type: [T, "null"]`.
+
+            tools.0.custom: Invalid schema: Enum value 'beginner' does not
+            match declared type '['string', 'null']'
+
+        OpenAI strict mode needs every property in `required`, so an optional
+        enum is encoded as a nullable union. Anthropic has no such rule, so the
+        union must be unwound and the property moved back out of `required` —
+        otherwise every tool-carrying turn fails and falls back to OpenAI.
+        """
+        from ai_tool_registry import _normalize_chat_tool
+
+        raw = {"type": "function", "function": {
+            "name": "catalog_search",
+            "description": "Search the catalog.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {"type": "string"},
+                    "difficulty": {"type": "string",
+                                   "enum": ["beginner", "intermediate", "advanced"]},
+                },
+                "required": [],
+            },
+        }}
+        normalized = _normalize_chat_tool(raw)
+        # The OpenAI path keeps the nullable encoding it needs...
+        openai_prop = normalized["function"]["parameters"]["properties"]["difficulty"]
+        self.assertEqual(openai_prop["type"], ["string", "null"])
+        self.assertIn(None, openai_prop["enum"])
+
+        # ...and the Anthropic conversion undoes exactly that.
+        schema = to_anthropic_tool(normalized)["input_schema"]
+        prop = schema["properties"]["difficulty"]
+        self.assertEqual(prop["type"], "string")
+        self.assertNotIn(None, prop["enum"])
+        self.assertEqual(prop["enum"], ["beginner", "intermediate", "advanced"])
+        self.assertNotIn("difficulty", schema["required"])
+        # Still a closed schema, so `strict` stays forwardable.
+        self.assertIs(schema["additionalProperties"], False)
+
+    def test_nested_nullable_enums_are_unwound_too(self):
+        from ai_tool_registry import _normalize_chat_tool
+
+        raw = {"type": "function", "function": {
+            "name": "bulk", "description": "d",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "items": {"type": "array", "items": {
+                        "type": "object",
+                        "properties": {"kind": {"type": "string", "enum": ["a", "b"]}},
+                        "required": [],
+                    }},
+                },
+                "required": [],
+            },
+        }}
+        schema = to_anthropic_tool(_normalize_chat_tool(raw))["input_schema"]
+        kind = schema["properties"]["items"]["items"]["properties"]["kind"]
+        self.assertEqual(kind["type"], "string")
+        self.assertNotIn(None, kind["enum"])
+
     def test_sampling_params_are_never_sent(self):
         """temperature/top_p/top_k are removed on current Claude models (400)."""
         kwargs = self._kwargs(tools=[_tool()])
@@ -323,6 +424,19 @@ class RequestContractTests(_ProviderTestCase):
         self.assertLess(tight, apa._min_max_tokens())
         self.assertGreaterEqual(self._kwargs(tools=[_tool()])["max_tokens"],
                                 apa._min_max_tokens())
+
+    def test_answer_turn_gets_a_higher_floor_than_the_tool_turn(self):
+        """Thinking over long tool output must not eat the whole answer budget:
+        the tool-turn floor truncates a grounded answer mid-sentence."""
+        self.assertGreater(apa._answer_max_tokens(), apa._min_max_tokens())
+        # A tool-less request can only be an answer turn.
+        self.assertGreaterEqual(self._kwargs()["max_tokens"], apa._answer_max_tokens())
+        # ...and so is a tool-carrying turn the agent loop marks as one (RT-02).
+        self.assertGreaterEqual(
+            self._kwargs(tools=[_tool()], max_tokens=ai_runtime.max_output_tokens(),
+                         answer_turn=True)["max_tokens"],
+            apa._answer_max_tokens(),
+        )
 
     def test_tool_blocks_are_flattened_when_no_tools_are_declared(self):
         """Anthropic 400s on tool blocks without a `tools` definition, and the
@@ -445,6 +559,58 @@ class AnthropicAgentLoopTests(_ProviderTestCase):
         )
         self.assertTrue(result.needs_final_stream)
         self.assertEqual(result.text, "")
+
+    def test_truncated_answer_is_regenerated_not_served_half(self):
+        """Without deferral there is no caller to re-stream, so the loop must
+        regenerate through the forced-final path instead of serving the
+        sentence the model stopped inside."""
+        result, _ = self._run([
+            _response([_text_block("halvt sva")], stop_reason="max_tokens"),
+            _response([_text_block("helt svar")]),
+        ])
+        self.assertEqual(result.runtime_path, "anthropic-forced-final")
+        self.assertEqual(result.text, "helt svar")
+
+    def test_malformed_request_is_classified_as_our_bug_not_an_outage(self):
+        """A 400 invalid_request_error must not look like "Claude is down".
+
+        It is the schema bug that silently rerouted every tool-carrying turn to
+        OpenAI: the toggle said Anthropic, the bill said OpenAI, and nothing in
+        the logs or telemetry distinguished the two.
+        """
+        bad = _FakeStatusError(
+            "Error code: 400 - invalid schema",
+            {"type": "error", "error": {
+                "type": "invalid_request_error",
+                "message": ("tools.0.custom: Invalid schema: Enum value 'beginner' "
+                            "does not match declared type '['string', 'null']'"),
+            }, "request_id": "req_011CePkNh56g4weMGvS92Crs"},
+        )
+        bad.status_code = 400
+        self.assertTrue(apa.is_permanent_request_error(bad))
+        self.assertEqual(apa.request_id(bad), "req_011CePkNh56g4weMGvS92Crs")
+
+    def test_transient_failures_are_not_flagged_as_our_bug(self):
+        for exc in (_rate_limit_error(), _spend_cap_error(), RuntimeError("connection reset")):
+            self.assertFalse(apa.is_permanent_request_error(exc), repr(exc))
+        overloaded = _FakeStatusError("Error code: 529", {"type": "error", "error": {"type": "overloaded_error"}})
+        overloaded.status_code = 529
+        self.assertFalse(apa.is_permanent_request_error(overloaded))
+
+    def test_spend_cap_is_not_retried_as_a_rate_limit(self):
+        """The monthly spend cap is a 429 with the same rate_limit_error type,
+        but it is not transient: retrying burns RPM and the user is told to
+        shorten a question that was never the problem."""
+        capped = _spend_cap_error()
+        self.assertTrue(apa.is_spend_limit(capped))
+        self.assertFalse(apa._is_rate_limit(capped))
+        self.assertIn("forbrugsgrænse", ai_runtime.user_facing_error_message(capped))
+
+    def test_a_real_rate_limit_is_still_retried(self):
+        plain = _rate_limit_error()
+        self.assertFalse(apa.is_spend_limit(plain))
+        self.assertTrue(apa._is_rate_limit(plain))
+        self.assertEqual(apa.retry_after_seconds(plain), 27.0)
 
     def test_rate_limit_retries_on_the_fast_model(self):
         # Backoff is patched out: this asserts the downgrade path, not sleeping.

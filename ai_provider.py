@@ -346,13 +346,23 @@ def anthropic_sdk_available() -> bool:
         return False
 
 
+def _secret_present(name: str) -> bool:
+    """Key presence via ai_secrets (database -> environment). Never raises."""
+    try:
+        import ai_secrets
+
+        return ai_secrets.has_secret(name)
+    except Exception:
+        return bool(os.getenv(name))
+
+
 def anthropic_configured() -> bool:
     """Both an API key and the SDK are present."""
-    return bool(os.getenv("ANTHROPIC_API_KEY")) and anthropic_sdk_available()
+    return _secret_present("ANTHROPIC_API_KEY") and anthropic_sdk_available()
 
 
 def openai_configured() -> bool:
-    return bool(os.getenv("OPENAI_API_KEY"))
+    return _secret_present("OPENAI_API_KEY")
 
 
 def provider_readiness() -> Dict[str, Any]:
@@ -366,7 +376,7 @@ def provider_readiness() -> Dict[str, Any]:
     problems: List[str] = []
     if not openai_configured():
         problems.append("OPENAI_API_KEY mangler (kræves altid — embeddings/RAG)")
-    if needs_anthropic and not os.getenv("ANTHROPIC_API_KEY"):
+    if needs_anthropic and not _secret_present("ANTHROPIC_API_KEY"):
         problems.append("ANTHROPIC_API_KEY mangler")
     if needs_anthropic and not anthropic_sdk_available():
         problems.append("anthropic-pakken er ikke installeret")

@@ -224,18 +224,17 @@ def _probe_html_sanitize():
 
 
 def _probe_anthropic():
-    """Claude runtime: the anthropic SDK plus an API key.
+    """Claude runtime: is the anthropic SDK importable?
 
-    Reports capability, not the active choice — which provider is actually
-    serving traffic is an admin setting that can change at runtime, so it is
-    reported by the uncached 'ai' block in /readyz instead (see health.py).
+    Deliberately does NOT check for an API key. This registry is cached for the
+    life of the process (see the module docstring), and both the key and the
+    active provider are now admin-editable at runtime — those belong in the
+    uncached 'ai' block of /readyz instead (see health.py).
     """
     ok, reason = _try_import('anthropic')
     if not ok:
         return {'available': False, 'detail': 'anthropic SDK mangler ({})'.format(reason)}
-    if not os.environ.get('ANTHROPIC_API_KEY'):
-        return {'available': False, 'detail': 'anthropic SDK installeret, ANTHROPIC_API_KEY mangler'}
-    return {'available': True, 'detail': 'anthropic SDK + ANTHROPIC_API_KEY til stede'}
+    return {'available': True, 'detail': 'anthropic SDK installeret'}
 
 
 # Registry of subsystem name -> probe callable. Ordering is preserved in output.

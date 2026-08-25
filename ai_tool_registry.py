@@ -1143,6 +1143,9 @@ def get_employee_tool_selection(
     if not selected:
         selected = [tool_map[name] for name in ("catalog_search", "catalog_get_product") if name in tool_map]
 
+    keep = set(drop_superseded_tools([tool_name(t) for t in selected]))
+    selected = [t for t in selected if tool_name(t) in keep]
+
     selected_names = [tool_name(t) for t in selected]
     return selected, {
         "version": TOOLSET_VERSION,
@@ -1312,6 +1315,31 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
         "tool_names": selected_names,
         "forced_tool": _resolve_forced_tool(forced_candidates, selected_names),
     }
+
+
+# A legacy tool and its catalog_* successor answer the same question. Shipping
+# both in one request asks the model to choose between near-identical options,
+# which it does inconsistently — and sometimes by calling both, which is what
+# made tool use feel clunky on comparison turns (the selector seeded
+# catalog_compare_products while "sammenlign" also matched compare_courses).
+# Keep the catalog tool: it carries the internal URLs and renders the cards.
+_SUPERSEDED_BY = {
+    "search_courses": "catalog_search",
+    "filter_courses": "catalog_search",
+    "get_course_details": "catalog_get_product",
+    "compare_courses": "catalog_compare_products",
+    "get_vendor_info": "catalog_get_vendor",
+}
+
+
+def drop_superseded_tools(names: Iterable[str]) -> List[str]:
+    """Drop a legacy tool when its catalog_* successor is in the same selection.
+
+    Order-preserving, and a no-op when the successor is absent — a turn that
+    legitimately only has the legacy tool keeps it.
+    """
+    present = set(names)
+    return [n for n in names if _SUPERSEDED_BY.get(n) not in present]
 
 
 def is_parallel_safe(name: str) -> bool:

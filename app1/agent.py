@@ -170,16 +170,10 @@ Afslut ALTID med: <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggesti
 Maks 6 ord per forslag, dansk, handlingsorienteret, SPECIFIKT til situationen.
 
 VÆRKTØJER:
-- catalog_search: PRIMÆR katalogsøgning (inkl. semantisk fallback internt).
-- catalog_get_product: Konkret kursus, startdato, pris, lokation eller link.
-- catalog_get_category / catalog_get_vendor: Kategori- og leverandørspørgsmål.
-- catalog_compare_products: Sammenlign 2-4 produkter fra kataloget.
-- check_course_readiness / prepare_course_order / create_course_order: Bestillingsflow.
-- get_user_profile / update_user_profile / request_user_input: Profil og CV-opdateringer.
-- remember_about_user: Gem holdbare præferencer, kontekst, interesser og bløde mål som hukommelse, når brugeren deler noget der bør bruges på tværs af samtaler. Brug ikke til strukturerede profilfelter.
-- set_learning_goal / get_learning_goals / update_learning_goal: Opret, vis og opdatér brugerens udviklingsmål (markér som fuldført, sæt på pause, slet). Bekræft altid kort når et mål er oprettet/opdateret, og foreslå relevante kurser til målet.
-- recommend_for_profile / suggest_learning_path: Personaliserede anbefalinger (login).
-- analyze_skill_gaps / get_department_budget / check_order_approval_status: Virksomhedskontekst.
+Du får kun de værktøjer med, der er relevante for turen, og hvert værktøj beskriver selv
+hvad det gør, hvornår det er det rigtige valg, og hvad det ikke svarer på. Læs beskrivelsen
+og vælg derefter — der er ingen fast rækkefølge du skal igennem. Kan et spørgsmål besvares
+med et filter frem for et opfølgende spørgsmål, så brug filteret.
 
 KARRIERE & OPKVALIFICERING:
 - Spørgsmål om at blive til noget ("hvad skal jeg lære for at blive X", "lav en læringssti
@@ -414,7 +408,7 @@ _STAGE_HINTS = {
     "correcting": "Dit forrige svar ramte ved siden af. Find ud af hvad der ikke passede, før du leder igen.",
     "team_buying": "Det handler om flere personer: antal, fælles datoer, grupperabat, in-house.",
     "profile_update": "Brugeren fortæller noget om sig selv. request_user_input viser et UI-kort der samler oplysningerne, så de bliver gemt frem for at forsvinde i samtalen.",
-    "profile_and_search": "Brugeren fortæller både om sin baggrund og om et læringsbehov. Begge dele kan bruges i samme tur — baggrunden gemt med request_user_input, behovet omsat til en søgning.",
+    "profile_and_search": "Brugeren fortæller både om sin baggrund og om et læringsbehov. Begge dele kan bruges i samme tur — baggrunden gemt med request_user_input, behovet omsat til en catalog_search.",
 }
 
 
@@ -1229,13 +1223,27 @@ def _fallback_suggestions(*, mode="default", had_cards=False, completeness=None,
     chosen from what actually happened this turn. Max 3, Danish, action-oriented.
     """
     if mode == "profiler":
-        missing = (completeness or {}).get("missing") or []
+        # Need-driven, not field-driven. The old chips ("Udfyld Erfaring",
+        # "Hvad mangler i min profil?") were the form-filler framing showing
+        # through on the one surface the user actually clicks — they described
+        # an empty box instead of what the user would get out of filling it.
+        info = completeness or {}
+        missing = info.get("missing") or []
+        target_role = (info.get("target_role") or "").strip()
         chips = []
+        if target_role:
+            chips.append("Kurser mod mit mål")
+        else:
+            chips.append("Hvor vil jeg gerne hen?")
         if missing:
-            chips.append(f"Udfyld {missing[0].lower()}")
-        if (completeness or {}).get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT:
-            chips.append("Find kurser til min profil")
-        chips.append("Hvad mangler i min profil?")
+            chips.append(f"Fortæl om min {missing[0].lower()}")
+        # Offer the courses as soon as there is a direction to aim at. Gating
+        # this purely on a completeness threshold is what made the profiler feel
+        # like a form you had to finish before it would help you.
+        if target_role or info.get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT:
+            chips.append("Find kurser til mig")
+        else:
+            chips.append("Hvad ved du om mig?")
         return chips[:3]
     if had_cards:
         chips = ["Sammenlign de to bedste", "Vis billigere alternativer"]
@@ -2674,7 +2682,16 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 and _profiler_completeness is not None
                 and not buffered_ui_html
                 and not _did_handoff
-                and _profiler_completeness.get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT
+                # A stated direction is enough to be useful. Waiting for a
+                # completeness percentage is what made this feel like a form you
+                # had to finish before the product would do anything for you:
+                # the payoff arrived only after the work, so the work felt
+                # pointless. With a target role we can already show what aiming
+                # at it looks like, and that is usually what unsticks someone.
+                and (
+                    _profiler_completeness.get("target_role")
+                    or _profiler_completeness.get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT
+                )
             ):
                 try:
                     _did_handoff = True
@@ -2689,7 +2706,13 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         _raw = resolve_products_for_ui(compact_results=_rec["results"])
                         if _raw:
                             _track_shown_products(sid, _rec["results"])
-                            yield f"data: {json.dumps({'type': 'notice', 'content': 'Din profil er godt på vej — her er kurser der matcher den.'})}\n\n"
+                            _ho_role = (_profiler_completeness.get("target_role") or "").strip()
+                            _ho_notice = (
+                                f"Med {_ho_role} som mål er det her kurserne der peger den vej."
+                                if _ho_role else
+                                "Ud fra det du har fortalt indtil nu — her er kurser der passer."
+                            )
+                            yield f"data: {json.dumps({'type': 'notice', 'content': _ho_notice}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'course_cards', 'items': serialize_course_cards(_raw, reasons=_reasons)}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_catalog', 'target': '/catalog', 'label': 'Find flere kurser til din profil'})}\n\n"
                 except Exception as _ho_err:

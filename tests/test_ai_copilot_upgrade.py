@@ -435,6 +435,17 @@ class FallbackSuggestionsTests(unittest.TestCase):
     def test_profiler_targets_missing(self):
         s = agent._fallback_suggestions(mode="profiler", completeness={"missing": ["Erfaring"], "weighted_pct": 30})
         self.assertTrue(any("erfaring" in x.lower() for x in s))
+        # Need-driven wording: the chip invites them to tell you something,
+        # it does not name an empty field to fill in.
+        self.assertFalse(any("udfyld" in x.lower() or "mangler" in x.lower() for x in s), s)
+
+    def test_profiler_offers_courses_once_a_direction_exists(self):
+        """A stated goal is enough to be useful — no completeness threshold."""
+        s = agent._fallback_suggestions(
+            mode="profiler",
+            completeness={"missing": ["Erfaring"], "weighted_pct": 20, "target_role": "Salgschef"},
+        )
+        self.assertTrue(any("find kurser" in x.lower() for x in s), s)
 
     def test_cards_shown_offers_compare(self):
         s = agent._fallback_suggestions(mode="default", had_cards=True, logged_in=True)

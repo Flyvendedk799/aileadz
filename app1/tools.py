@@ -453,7 +453,7 @@ OPENAI_TOOLS = [
         "type": "function",
         "function": {
             "name": "search_courses",
-            "description": "Perform a semantic + keyword hybrid search to find courses matching the user's criteria. Use this whenever a user is looking for course recommendations or asking general discovery questions.",
+            "description": "Hybrid semantic + keyword search over the course catalogue. catalog_search is the primary discovery tool and renders course cards; reach for this one only when you need the raw ranked matches without the card URLs — for example when reasoning about coverage before you answer. Takes the user's criteria as free text. Returns ranked courses only: no internal links, no card rendering, no availability.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -534,7 +534,7 @@ OPENAI_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_course_details",
-            "description": "Get the exact details (price, dates, locations, description) for a specific course by its exact handle.",
+            "description": "Get price, dates, locations and description for one course, looked up by its exact handle. catalog_get_product does the same lookup, also accepts a title, and returns the internal URL so the course renders as a card — prefer it in chat. Use this when you already hold an exact handle and want the details as plain data. It does not report seat availability or whether the user can order.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -551,7 +551,7 @@ OPENAI_TOOLS = [
         "type": "function",
         "function": {
             "name": "compare_courses",
-            "description": "Compare 2-4 courses side by side. Use when the user asks to compare courses, wants to know differences, or asks 'which is better?'. Returns a structured comparison.",
+            "description": "Return a structured side-by-side comparison of 2-4 courses. catalog_compare_products covers the same ground and renders comparable cards, so prefer that when the courses have already been shown in the conversation; use this one when you need the comparison as data rather than as UI. Returns the structured comparison only — the recommendation is yours to make.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -572,7 +572,7 @@ OPENAI_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_vendor_info",
-            "description": "Get information about a course vendor/provider: their specializations, reputation, typical price range, locations, and what they're best for. Use when the user asks about a vendor ('Hvem er Teknologisk Institut?'), wants to know which vendor is best for a topic, or when comparing courses from different vendors.",
+            "description": "Get a provider's specialisations, reputation, typical price range, locations and what they are best suited for. catalog_get_vendor answers the same question and also returns the vendor page URL and representative course cards, so prefer that one in chat; use this when you want the profile as plain data. Returns the vendor profile only — not their full catalogue, and not availability.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -705,8 +705,15 @@ OPENAI_TOOLS.extend([
         "function": {
             "name": "catalog_search",
             "description": (
-                "Search the Futurematch catalog and return products with internal product, category, vendor, and ask-AI URLs. "
-                "Use this as the primary tool for course discovery, browsing, and product recommendations."
+                "Search the Futurematch catalog. This is the primary discovery tool: use it for finding, "
+                "browsing, filtering and recommending courses. Results render as interactive course cards "
+                "beside your reply and carry internal product/category/vendor URLs, so the user already sees "
+                "name, price, location and description. Every filter is optional and they combine: put the "
+                "topic in `query` and any stated constraint into category/vendor/format/location/price_min/"
+                "price_max/language/difficulty, rather than asking a follow-up question you could answer by "
+                "filtering. Returns at most `limit` products (default 4). It does not return seat "
+                "availability, prerequisites or order status. Prefer it over search_courses and "
+                "filter_courses, which cover the same catalog but return no card URLs."
             ),
             "parameters": {
                 "type": "object",
@@ -730,7 +737,7 @@ OPENAI_TOOLS.extend([
         "type": "function",
         "function": {
             "name": "catalog_get_product",
-            "description": "Get canonical Futurematch catalog details and internal URL for one product by handle or title.",
+            "description": "Look up one specific course in the catalog and return its canonical details plus the internal product URL, so it renders as a card. Pass `handle` when you have it from an earlier result; pass `title` (full or partial) when the user names a course you have not looked up yet. Use it when the conversation narrows to a single course — price, dates, location, what is included, or a link to share. It does not check whether the user can order (check_course_readiness) or place an order. get_course_details covers the same lookup by exact handle only and returns no card URL, so prefer this one.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -745,7 +752,7 @@ OPENAI_TOOLS.extend([
         "type": "function",
         "function": {
             "name": "catalog_get_category",
-            "description": "Get a Futurematch category page, category summary, and representative products.",
+            "description": "Look up a whole category — its page, a summary of what it covers, and a handful of representative courses. Use it when the user asks about a subject area rather than a specific course ('hvad har I inden for projektledelse?'), or when you want to orient someone who does not yet know what they are looking for. Pass `slug` if you know it, otherwise `name` (partial names work). Returns `limit` representative products (default 4), not the full category — reach for catalog_search when the user has real criteria to filter on.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -761,7 +768,7 @@ OPENAI_TOOLS.extend([
         "type": "function",
         "function": {
             "name": "catalog_get_vendor",
-            "description": "Get a Futurematch vendor page, vendor profile, and representative products.",
+            "description": "Look up a course provider — their page, profile and a sample of their courses. Use it when the user asks who a vendor is, whether a vendor is any good for a topic (pass `topic` to have their fit assessed), or when comparing courses that come from different providers. Pass `slug` if known, otherwise `name`. Returns `limit` representative products (default 4) rather than the vendor's whole catalogue. get_vendor_info answers the same question without the internal URLs or cards, so prefer this one.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -778,7 +785,7 @@ OPENAI_TOOLS.extend([
         "type": "function",
         "function": {
             "name": "catalog_compare_products",
-            "description": "Compare 2-4 Futurematch catalog products and return internal links and raw products for cards.",
+            "description": "Compare 2-4 courses the user is weighing against each other, returning them with internal links and the raw product data so they render as comparable cards. Pass the `handles` from courses already shown in the conversation. Use it when the user asks which is better, what the difference is, or refers to several shown courses at once. It returns the data for the comparison, not the judgement — the point of the turn is your recommendation about which one fits this particular person, and why. compare_courses produces a structured comparison without the cards; prefer this one when courses have been shown.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -799,8 +806,12 @@ OPENAI_TOOLS.extend([
         "function": {
             "name": "get_learning_context",
             "description": (
-                "Get the user's Futurematch learning context in one call: profile, shown products, company budget, "
-                "supplier preferences/agreements, open orders, and completed courses."
+                "Fetch the user's whole learning context in one call: profile, shown products, company "
+                "budget, supplier preferences and agreements, open orders and completed courses. Use it "
+                "when you need several of those at once — it is one round-trip instead of four, and it is "
+                "why you rarely need get_user_profile, get_department_budget and get_my_course_status "
+                "separately. Prefer the specific tool when you only need one thing, since this returns a "
+                "much larger payload. It reflects state at call time; it reserves nothing and changes nothing."
             ),
             "parameters": {"type": "object", "properties": {}, "required": []}
         }
@@ -810,8 +821,13 @@ OPENAI_TOOLS.extend([
         "function": {
             "name": "check_course_readiness",
             "description": (
-                "Check whether a user is ready to request/enroll in a course: product exists, supplier is active, "
-                "contact fields, variant, budget, and approval status."
+                "Check whether this user can actually order a specific course right now: the product "
+                "exists, the supplier is active, required contact fields are filled, the chosen variant is "
+                "valid, and budget plus approval status allow it. Use it before prepare_course_order so you "
+                "can tell the user what is missing instead of failing at the order step. Pass variant_date "
+                "and variant_location when they have picked one, so the check runs against the right "
+                "variant. This is about ORDERING eligibility — check_course_prerequisites answers the "
+                "different question of whether they have the skills for the course. It reserves nothing."
             ),
             "parameters": {
                 "type": "object",
@@ -2568,7 +2584,7 @@ PROFILE_TOOLS = [
         "type": "function",
         "function": {
             "name": "get_user_profile",
-            "description": "Hent brugerens fulde profil: kompetencer, erfaring, uddannelse, gennemførte kurser og præferencer. Brug dette til at give personlige anbefalinger baseret på brugerens baggrund.",
+            "description": "Hent brugerens fulde profil som data: kompetencer, erfaring, uddannelse, certificeringer, sprog, gennemførte kurser og præferencer. Brug det når du selv skal bruge baggrunden for at ræsonnere — fx målrette en anbefaling eller vurdere om et kursus ligger på det rigtige niveau. Det viser ikke noget til brugeren: skal de SE deres profil, er show_cv_summary det rigtige, og skal du bruge profil, budget og ordrer på én gang, er get_learning_context ét kald i stedet for flere. Returnerer kun det der er gemt — ikke noget brugeren har nævnt i denne samtale uden at det blev gemt.",
             "parameters": {
                 "type": "object",
                 "properties": {},

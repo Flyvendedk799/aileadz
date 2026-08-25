@@ -19,14 +19,23 @@ Design rules
    OpenAI path expressed with ``temperature=0.2`` on tool-deciding turns is
    expressed here with ``output_config.effort`` instead (see :func:`_effort_for`).
 
-3. **``max_tokens`` gets a floor.** On Claude, thinking tokens are charged
-   against ``max_tokens``, and adaptive thinking is ON by default on Opus 5. The
-   OpenAI tool-turn cap (320 tokens, see ``max_output_tokens_for_turn``) would
-   be consumed by thinking alone and the turn would stop at ``max_tokens`` with
-   no ``tool_use`` block — breaking the agent loop. :func:`_resolve_max_tokens`
-   raises the ceiling to ``ANTHROPIC_MIN_MAX_TOKENS`` (default 4096). A ceiling
-   is not a charge: only tokens actually generated are billed, and ``effort:
-   low`` keeps tool turns short.
+3. **``max_tokens`` gets a floor — a different one per turn kind.** On Claude,
+   thinking tokens are charged against ``max_tokens``, and adaptive thinking is
+   ON by default on Opus 5, so every OpenAI-era output cap is too tight here.
+   :func:`_resolve_max_tokens` raises the ceiling to one of two floors:
+
+   * *tool-deciding* turns → ``ANTHROPIC_MIN_MAX_TOKENS`` (default 4096). The
+     OpenAI cap (320 tokens, see ``max_output_tokens_for_turn``) would be spent
+     on thinking alone and the turn would stop at ``max_tokens`` with no
+     ``tool_use`` block — breaking the agent loop.
+   * *answer* turns → ``ANTHROPIC_ANSWER_MAX_TOKENS`` (default 16000). Reasoning
+     over long tool output (course search, profile analysis) routinely spends
+     several thousand thinking tokens BEFORE the first visible token, so the
+     tool-turn floor truncates the answer mid-sentence — or leaves it empty.
+
+   A ceiling is not a charge: only tokens actually generated are billed, answer
+   length is governed by the prompt, and ``effort: low`` keeps tool turns short.
+   Turns that do stop at ``max_tokens`` anyway are logged, never silently served.
 
 4. **System prompt moves to the top-level ``system`` parameter** as a list of
    text blocks, with a ``cache_control`` breakpoint on the first (static) block.
@@ -114,8 +123,94 @@ def client():
         return _CLIENT
 
 
+def _error_body(exc: Exception) -> Dict[str, Any]:
+    """The parsed ``error`` object from an Anthropic APIStatusError, if any."""
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        error = body.get("error")
+        if isinstance(error, dict):
+            return error
+    return {}
+
+
+def _error_code(exc: Exception) -> str:
+    details = _error_body(exc).get("details")
+    if isinstance(details, dict):
+        return str(details.get("error_code") or "")
+    return ""
+
+
+def is_spend_limit(exc: Exception) -> bool:
+    """Distinguish the monthly spend cap from a real rate limit.
+
+    Both arrive as HTTP 429 with ``type: "rate_limit_error"``, but the spend cap
+    carries ``details.error_code == "enforced_spend_limit_reached"`` and NO
+    ``retry-after`` header: access does not come back until the next month (or a
+    higher tier), so every retry is wasted RPM and "try a shorter question" is
+    the wrong thing to tell the user.
+    """
+    if _error_code(exc) == "enforced_spend_limit_reached":
+        return True
+    message = str(_error_body(exc).get("message") or str(exc)).lower()
+    return "usage limits" in message and "threshold" in message
+
+
+def retry_after_seconds(exc: Exception) -> Optional[float]:
+    """The server's ``retry-after``, in seconds. Retrying earlier always fails."""
+    response = getattr(exc, "response", None)
+    headers = getattr(response, "headers", None)
+    if headers is None:
+        return None
+    try:
+        raw = headers.get("retry-after")
+    except Exception:
+        return None
+    if raw in (None, ""):
+        return None
+    try:
+        return max(0.0, float(str(raw).strip()))
+    except (TypeError, ValueError):
+        return None
+
+
+def is_permanent_request_error(exc: Exception) -> bool:
+    """A 4xx the request will NEVER pass on retry — i.e. our bug, not an outage.
+
+    The canonical case is a tool JSON-Schema Anthropic refuses (HTTP 400
+    ``invalid_request_error``). It looks like "Claude is down" to a bare
+    ``except Exception`` fallback, so every tool-carrying turn silently reroutes
+    to OpenAI and the defect never surfaces: the admin UI still says Anthropic,
+    the bill says OpenAI. These must be logged loudly and labelled distinctly in
+    telemetry, even though we still serve the turn on the other provider.
+    """
+    status = getattr(exc, "status_code", None)
+    if status is None or not (400 <= int(status) < 500):
+        return False
+    if int(status) in (408, 409, 429):  # transient by definition
+        return False
+    error_type = str(_error_body(exc).get("type") or "")
+    if error_type in ("invalid_request_error", "not_found_error"):
+        return True
+    # authentication/permission failures are config problems, not outages, but
+    # falling back on them IS the intended behaviour — treat them as transient.
+    return False
+
+
+def request_id(exc: Exception) -> str:
+    body = getattr(exc, "body", None)
+    if isinstance(body, dict):
+        return str(body.get("request_id") or "")
+    return str(getattr(exc, "request_id", "") or "")
+
+
 def _is_rate_limit(exc: Exception) -> bool:
-    """Typed check first, then ai_runtime's string heuristic."""
+    """Typed check first, then ai_runtime's string heuristic.
+
+    The spend cap is deliberately NOT a rate limit here: it is not transient, so
+    the retry ladder must not spend two more requests discovering that.
+    """
+    if is_spend_limit(exc):
+        return False
     try:
         import anthropic
 
@@ -157,16 +252,47 @@ def _effort_for(model: str, has_tools: bool) -> Optional[str]:
 
 
 def _min_max_tokens() -> int:
+    """Floor for a tool-DECIDING turn: room for thinking plus a tool_use block."""
     try:
         return max(1024, int(os.getenv("ANTHROPIC_MIN_MAX_TOKENS", "4096")))
     except ValueError:
         return 4096
 
 
-def _resolve_max_tokens(requested: Optional[int], has_tools: bool) -> int:
-    """Apply the thinking-aware floor. See design rule 3 in the module docstring."""
+def _answer_max_tokens() -> int:
+    """Floor for an ANSWER turn: room for thinking plus the whole answer.
+
+    Never below the tool-turn floor. See design rule 3 in the module docstring
+    for why the two differ.
+    """
+    try:
+        value = int(os.getenv("ANTHROPIC_ANSWER_MAX_TOKENS", "16000"))
+    except ValueError:
+        value = 16000
+    return max(_min_max_tokens(), value)
+
+
+def _resolve_max_tokens(
+    requested: Optional[int],
+    has_tools: bool,
+    *,
+    answer_turn: Optional[bool] = None,
+) -> int:
+    """Apply the thinking-aware floor. See design rule 3 in the module docstring.
+
+    ``answer_turn`` defaults to "no tools declared" — a tool-less request can
+    only be an answer turn — and is passed explicitly by the agent loop, where a
+    turn that carries tools may still produce the final answer (RT-02).
+    """
     base = int(requested) if requested else ai_runtime.max_output_tokens_for_turn(has_tools)
-    return max(base, _min_max_tokens())
+    if answer_turn is None:
+        answer_turn = not has_tools
+    return max(base, _answer_max_tokens() if answer_turn else _min_max_tokens())
+
+
+def _is_truncated(resp: Any) -> bool:
+    """The turn hit ``max_tokens``: thinking and/or text was cut off."""
+    return getattr(resp, "stop_reason", None) == "max_tokens"
 
 
 # --- Message conversion -------------------------------------------------------
@@ -458,6 +584,7 @@ def _build_kwargs(
     tools: Optional[List[Dict[str, Any]]],
     tool_choice: Any,
     max_tokens: Optional[int],
+    answer_turn: Optional[bool] = None,
 ) -> Dict[str, Any]:
     system_blocks, rest = split_system(prepared)
     messages = to_anthropic_messages(rest)
@@ -466,7 +593,9 @@ def _build_kwargs(
     kwargs: Dict[str, Any] = {
         "model": model,
         "messages": messages,
-        "max_tokens": _resolve_max_tokens(max_tokens, bool(tools)),
+        "max_tokens": _resolve_max_tokens(
+            max_tokens, bool(tools), answer_turn=answer_turn
+        ),
     }
     if system_blocks:
         kwargs["system"] = system_blocks
@@ -487,8 +616,13 @@ def messages_create_with_resilience(
     tools: Optional[List[Dict[str, Any]]],
     tool_choice: Any,
     output_cap: Optional[int] = None,
+    answer_turn: Optional[bool] = None,
 ) -> Tuple[Any, str, List[Dict[str, Any]]]:
-    """Mirror of ``_chat_completion_with_resilience`` for the Messages API."""
+    """Mirror of ``_chat_completion_with_resilience`` for the Messages API.
+
+    ``answer_turn`` picks the ``max_tokens`` floor (design rule 3); leave it
+    ``None`` to infer it from whether tools were declared.
+    """
     fast = ai_provider.anthropic_fast_model()
     attempts = [(model, False), (model, True), (fast, True)]
     last_exc: Optional[Exception] = None
@@ -500,6 +634,7 @@ def messages_create_with_resilience(
             tools=tools,
             tool_choice=tool_choice,
             max_tokens=output_cap,
+            answer_turn=answer_turn,
         )
         if not kwargs["messages"]:
             raise RuntimeError("ingen brugerbesked at sende til Claude")
@@ -508,9 +643,28 @@ def messages_create_with_resilience(
         except Exception as exc:
             last_exc = exc
             if not _is_rate_limit(exc):
+                if is_spend_limit(exc):
+                    logger.error(
+                        "Anthropic SPEND CAP reached (not a rate limit, not "
+                        "retryable): %s", _error_body(exc).get("message") or exc,
+                    )
                 raise
             ai_runtime._note_rate_limit_hit()
-            wait = ai_runtime._backoff_wait_seconds(attempt_index)
+            # The 429 body names the limit that was hit (ITPM / OTPM / RPM) and
+            # is the only way to tell them apart from the outside — without this
+            # the turn surfaces a generic Danish apology and nothing else.
+            server_wait = retry_after_seconds(exc)
+            logger.warning(
+                "Anthropic 429 (model=%s, attempt=%d/%d, retry_after=%s): %s",
+                attempt_model, attempt_index + 1, len(attempts),
+                "%ss" % server_wait if server_wait is not None else "absent",
+                _error_body(exc).get("message") or exc,
+            )
+            backoff = ai_runtime._backoff_wait_seconds(attempt_index)
+            # "Earlier retries will fail" — a blind backoff shorter than the
+            # server's retry-after just burns another request against RPM.
+            wait = max(backoff, server_wait or 0.0)
+            wait = min(wait, ai_runtime.rate_limit_backoff_cap_seconds())
             if wait > 0:
                 time.sleep(wait)
     if last_exc:
@@ -535,9 +689,16 @@ def run_direct(
         tools=None,
         tool_choice="auto",
         output_cap=max_tokens or ai_runtime.max_output_tokens(),
+        answer_turn=True,
     )
     if getattr(resp, "stop_reason", None) == "refusal":
         return _REFUSAL_DA
+    if _is_truncated(resp):
+        logger.warning(
+            "Anthropic run_direct stopped at max_tokens (model=%s, max_tokens=%d)",
+            _model, _resolve_max_tokens(max_tokens or ai_runtime.max_output_tokens(),
+                                        False, answer_turn=True),
+        )
     return response_text(resp).strip()
 
 
@@ -568,12 +729,24 @@ def iter_stream(
             tools=None,
             tool_choice="auto",
             max_tokens=max_tokens or ai_runtime.max_output_tokens(),
+            answer_turn=True,
         )
         try:
             with client().messages.stream(**kwargs) as stream:
                 for chunk in stream.text_stream:
                     if chunk:
                         yield chunk
+                # Tokens are already on the wire, so this cannot be retried —
+                # but a cut-off answer must not be invisible in the logs.
+                try:
+                    if _is_truncated(stream.get_final_message()):
+                        logger.warning(
+                            "Anthropic final stream stopped at max_tokens "
+                            "(model=%s, max_tokens=%s) - answer is cut off",
+                            model_name, kwargs["max_tokens"],
+                        )
+                except Exception:
+                    pass
             return
         except Exception as exc:
             if _is_rate_limit(exc):
@@ -664,6 +837,9 @@ def run_anthropic_agent(
             # captured final answer is never truncated.
             output_cap=(ai_runtime.max_output_tokens()
                         if (tool_results and ai_runtime.capture_final_enabled()) else None),
+            # ...and give that turn the answer-sized thinking headroom too: the
+            # cap above is an OpenAI-era budget that the Claude floor overrides.
+            answer_turn=bool(tool_results and ai_runtime.capture_final_enabled()),
         )
         iter_usage = normalize_usage(getattr(resp, "usage", None))
         usage = iter_usage or usage
@@ -686,7 +862,17 @@ def run_anthropic_agent(
         calls = response_tool_calls(resp)
         if not calls:
             captured = response_text(resp) if ai_runtime.capture_final_enabled() else ""
-            truncated = stop_reason == "max_tokens"
+            truncated = _is_truncated(resp)
+            if truncated:
+                # Visible in the logs instead of silently serving half an answer:
+                # raise ANTHROPIC_ANSWER_MAX_TOKENS if this shows up regularly.
+                logger.warning(
+                    "Anthropic turn stopped at max_tokens (model=%s, tools_run=%d, "
+                    "max_tokens=%d, output_tokens=%s) - answer regenerated",
+                    model, len(tool_results),
+                    _resolve_max_tokens(None, bool(tools), answer_turn=True),
+                    (iter_usage or {}).get("output_tokens"),
+                )
             if defer_final_stream:
                 if captured.strip() and not truncated:
                     return AgentRunResult(
@@ -715,6 +901,11 @@ def run_anthropic_agent(
                     compaction_level=compaction_level,
                     runtime_path="anthropic",
                 )
+            if truncated:
+                # Regenerate through the forced-final path (tool-less, answer
+                # ceiling) rather than serving the sentence it stopped inside.
+                forced_final = True
+                break
             final_text = response_text(resp)
             break
 
@@ -833,6 +1024,7 @@ def maybe_run_shadow(
                 tools=None,
                 tool_choice="auto",
                 output_cap=ai_runtime.max_output_tokens(),
+                answer_turn=True,
             )
             latency_ms = int((time.time() - started) * 1000)
             usage = normalize_usage(getattr(resp, "usage", None))

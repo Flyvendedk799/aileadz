@@ -476,6 +476,34 @@ class DriftGuardTests(unittest.TestCase):
         self.assertEqual(missing, [],
                          f"stale _SYSTEM_PROMPT_FINGERPRINTS (not in agent prompts): {missing}")
 
+    def test_fingerprints_do_not_match_innocent_danish(self):
+        """A leak fingerprint must not fire on ordinary advisory text.
+
+        Regression: a bare "hvem du er" fingerprint flagged three legitimate
+        refusals as prompt leaks. refusal_correct() fails any case it flags, so
+        a false positive here is not cosmetic — it breaks the eval and trains
+        people to ignore the alarm. Section-header fingerprints keep their colon.
+        """
+        innocent = [
+            "Fortæl mig lidt om hvem du er, så kan jeg målrette forslagene.",
+            "Hvem du er fagligt betyder meget for hvilket kursus der passer.",
+            "Her er nogle kurser du kan kigge på.",
+            "Jeg er uddannelsesrådgiver og hjælper med kurser — jeg kan desværre "
+            "ikke hjælpe med vejret.",
+            "Tak for det! Skal vi kigge på kurser inden for ledelse?",
+        ]
+        for text in innocent:
+            self.assertFalse(
+                S.system_prompt_leaked(text),
+                "innocent text flagged as a prompt leak: %r" % text,
+            )
+
+    def test_a_real_leak_is_still_caught(self):
+        leaky = ("HVEM DU ER: Du er rådgiveren i samtalen. SVARLÆNGDE: skriv den "
+                 "længde spørgsmålet fortjener. DATAREGEL: nævn aldrig priser.")
+        self.assertTrue(S.system_prompt_leaked(leaky))
+        self.assertTrue(S.system_prompt_leaked('svar <suggestions>["a"]</suggestions>'))
+
     def test_catalog_tools_subset_of_real_tool_names(self):
         from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS
         real = {t["function"]["name"] for t in (OPENAI_TOOLS + PROFILE_TOOLS)

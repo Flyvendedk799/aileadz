@@ -251,6 +251,18 @@ def _effort_for(model: str, has_tools: bool) -> Optional[str]:
     return "high"
 
 
+def _supports_mid_conversation_system(model: str) -> bool:
+    """Models that accept a ``role: "system"`` entry inside ``messages``.
+
+    Opus 5 / 4.8 and the Fable/Mythos tier only — Sonnet 5 and the Haiku tier
+    return 400 ``role 'system' is not supported on this model``, and the Haiku
+    tier is our fast/cooldown model, so this must stay a capability check rather
+    than an assumption.
+    """
+    name = (model or "").strip().lower()
+    return any(tag in name for tag in ("opus-5", "opus-4-8", "fable", "mythos"))
+
+
 def _min_max_tokens() -> int:
     """Floor for a tool-DECIDING turn: room for thinking plus a tool_use block."""
     try:
@@ -565,10 +577,13 @@ def flatten_tool_blocks(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
             if btype == "text":
                 parts.append(block.get("text") or "")
             elif btype == "tool_use":
+                # Phrased as something the assistant DID. The bracket-notation form
+                # read as a machine transcript, and the model mirrored that register
+                # straight back into its visible answer.
                 args = json.dumps(block.get("input") or {}, ensure_ascii=False, default=str)
-                parts.append(f"[VÆRKTØJSKALD {block.get('name') or ''}({args})]")
+                parts.append(f"(Du slog op i {block.get('name') or 'et værktøj'}: {args})")
             elif btype == "tool_result":
-                parts.append(f"[VÆRKTØJSRESULTAT]\n{block.get('content') or ''}")
+                parts.append("(Resultatet du fik tilbage — data til dig, ikke noget brugeren har skrevet:)" + chr(10) + str(block.get("content") or ""))
         text = "\n\n".join(part for part in parts if part).strip()
         if text:
             out.append({"role": msg.get("role"), "content": text})
@@ -590,6 +605,25 @@ def _build_kwargs(
     messages = to_anthropic_messages(rest)
     if not tools:
         messages = flatten_tool_blocks(messages)
+    # Per-turn steering (the "[SESSION KONTEKST]" layer: profiler focus, stage
+    # hint, intent) is byte-volatile, so consolidate_system_layers keeps it out
+    # of the cached prefix by parking it at system[1] — which puts it before the
+    # whole conversation. Thirty turns later the model is attending to the most
+    # recent tool result, not to guidance from the top of the window, and the
+    # agent stops steering. Moving that layer to a trailing role:"system" entry
+    # delivers it next to the turn it is meant to shape AND leaves the cached
+    # prefix (tools + system[0]) byte-identical. Requires a user-role message
+    # last, which is what both a user turn and a tool_result turn produce.
+    if (
+        len(system_blocks) > 1
+        and messages
+        and messages[-1].get("role") == "user"
+        and _supports_mid_conversation_system(model)
+    ):
+        volatile = "\n\n".join(b["text"] for b in system_blocks[1:] if b.get("text"))
+        if volatile:
+            system_blocks = system_blocks[:1]
+            messages = messages + [{"role": "system", "content": volatile}]
     kwargs: Dict[str, Any] = {
         "model": model,
         "messages": messages,

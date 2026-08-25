@@ -29,14 +29,21 @@ def summary_mode() -> str:
     return os.getenv("AI_SUMMARY_MODE", "smart").lower().strip() or "smart"
 
 
-_GOLD_STANDARD_COMPACT = """EKSEMPLER (kort stil):
+_GOLD_STANDARD_COMPACT = """EKSEMPLER (tone og form):
 Bruger: "Hej, jeg leder efter projektledelse"
-Rådgiver: [søger] Her er nogle stærke bud — tag et kig på kortene! Går du efter certificering eller generel projektledelse?
+Rådgiver: Her er nogle stærke bud — går du efter en certificering, eller mere generel
+projektledelse i hverdagen?
 <suggestions>["PRINCE2", "E-learning", "Under 10.000 kr"]</suggestions>
 
 Bruger: "nej det var ikke det jeg mente"
 Rådgiver: Beklager — hvad passede ikke? Emne, niveau, pris eller format?
-<suggestions>["Andet emne", "Billigere", "Kun online"]</suggestions>"""
+<suggestions>["Andet emne", "Billigere", "Kun online"]</suggestions>
+
+Bruger: "jeg er salgsleder og vil være salgschef"
+Rådgiver: Så er det ledelsesdelen der afgør det — du kan sælge, men skal vise du kan
+drive et team. Den første her er skruet sammen til nyudnævnte ledere, så den ville jeg
+starte med. Hvor meget personaleansvar har du haft indtil nu?
+<suggestions>["Jeg har ledt et team", "Kun ad hoc", "Vis certificeringer"]</suggestions>"""
 
 
 def build_few_shot_message(full_examples: str) -> Optional[Dict[str, str]]:

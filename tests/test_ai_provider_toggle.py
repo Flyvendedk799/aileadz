@@ -466,6 +466,61 @@ class RequestContractTests(_ProviderTestCase):
         for banned in ("temperature", "top_p", "top_k"):
             self.assertNotIn(banned, kwargs)
 
+    def test_volatile_layer_moves_next_to_the_answer_turn(self):
+        """Per-turn steering must reach the model where it is attending.
+
+        consolidate_system_layers parks the volatile "[SESSION KONTEKST]" layer
+        at system[1] to protect the cached prefix, which also puts it before the
+        entire conversation. On a model that supports mid-conversation system
+        messages it is delivered as a trailing role:"system" entry instead —
+        next to the turn it shapes, cached prefix still byte-identical.
+        """
+        kwargs = apa._build_kwargs(
+            model="claude-opus-5",
+            prepared=[
+                {"role": "system", "content": "STATIC"},
+                {"role": "system", "content": "[SESSION KONTEKST]\nspoerg om erfaring"},
+                {"role": "user", "content": "hej"},
+            ],
+            tools=None, tool_choice="auto", max_tokens=None,
+        )
+        # Cached prefix keeps ONLY the static block.
+        self.assertEqual([b["text"] for b in kwargs["system"]], ["STATIC"])
+        self.assertEqual(kwargs["system"][0]["cache_control"], {"type": "ephemeral"})
+        # Volatile layer is the last thing before the model answers.
+        self.assertEqual(kwargs["messages"][-1]["role"], "system")
+        self.assertIn("spoerg om erfaring", kwargs["messages"][-1]["content"])
+
+    def test_volatile_layer_stays_in_system_on_models_without_support(self):
+        """Sonnet 5 and the Haiku fast tier 400 on role:"system" in messages."""
+        for model in ("claude-haiku-4-5", "claude-sonnet-5"):
+            kwargs = apa._build_kwargs(
+                model=model,
+                prepared=[
+                    {"role": "system", "content": "STATIC"},
+                    {"role": "system", "content": "VOLATILE"},
+                    {"role": "user", "content": "hej"},
+                ],
+                tools=None, tool_choice="auto", max_tokens=None,
+            )
+            self.assertEqual([b["text"] for b in kwargs["system"]], ["STATIC", "VOLATILE"], model)
+            self.assertFalse([m for m in kwargs["messages"] if m["role"] == "system"], model)
+
+    def test_no_trailing_system_message_after_an_assistant_turn(self):
+        """A mid-conversation system message must follow a user-role turn."""
+        kwargs = apa._build_kwargs(
+            model="claude-opus-5",
+            prepared=[
+                {"role": "system", "content": "STATIC"},
+                {"role": "system", "content": "VOLATILE"},
+                {"role": "user", "content": "hej"},
+                {"role": "assistant", "content": "hej selv"},
+            ],
+            tools=None, tool_choice="auto", max_tokens=None,
+        )
+        self.assertEqual(kwargs["messages"][-1]["role"], "assistant")
+        self.assertEqual(len(kwargs["system"]), 2)
+
     def test_system_is_top_level_not_a_message(self):
         kwargs = self._kwargs()
         self.assertEqual(kwargs["system"][0]["text"], "S")

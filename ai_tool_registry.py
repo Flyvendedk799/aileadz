@@ -590,7 +590,26 @@ def to_responses_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
-def _denullify_prop(prop: Any) -> Tuple[Any, bool]:
+# Anthropic is NOT sent ``strict``. Its strict tool validator enforces a
+# restricted JSON-Schema subset, and this toolset violates it five different
+# ways — every one verified against the live API on 2026-08-25, and every one a
+# hard 400 on EVERY tool-carrying turn:
+#
+#   1. `enum` combined with `type: [T, "null"]`   (the OpenAI nullable encoding)
+#   2. `minItems` other than 0 or 1
+#   3. `maxItems` / `uniqueItems` / `minimum` / `maximum` / `multipleOf`
+#   4. more than 20 tools marked strict in one request (this set sends 33)
+#   5. more than 24 optional parameters across all schemas (this set has 50)
+#
+# (4) and (5) cannot be satisfied without deleting tools or their parameters.
+# With `strict` omitted the same 33 tools are accepted and answer in ~3s. What
+# strict buys — a guarantee that tool_use.input validates — is already
+# backstopped by sanitize_args_for_tool(), while the cost of getting it wrong is
+# a 400 that run_agent_with_fallback silently converts into OpenAI traffic.
+# The OpenAI path is unaffected and keeps strict mode.
+
+
+def _unwrap_optional(prop: Any) -> Tuple[Any, bool]:
     """Strip one property's OpenAI nullable marker. Returns (prop, was_optional)."""
     if not isinstance(prop, dict):
         return prop, False
@@ -608,10 +627,10 @@ def _denullify_prop(prop: Any) -> Tuple[Any, bool]:
         if cleaned:
             optional = True
             prop["enum"] = cleaned
-    return _denullify_schema(prop), optional
+    return _anthropic_safe_schema(prop), optional
 
 
-def _denullify_schema(schema: Any) -> Any:
+def _anthropic_safe_schema(schema: Any) -> Any:
     """Undo the OpenAI strict-mode nullable transform for Anthropic.
 
     OpenAI strict mode requires EVERY property to appear in ``required``, so
@@ -635,7 +654,7 @@ def _denullify_schema(schema: Any) -> Any:
         new_props: Dict[str, Any] = {}
         made_optional = set()
         for name, prop in props.items():
-            new_prop, optional = _denullify_prop(prop)
+            new_prop, optional = _unwrap_optional(prop)
             new_props[name] = new_prop
             if optional:
                 made_optional.add(name)
@@ -645,7 +664,7 @@ def _denullify_schema(schema: Any) -> Any:
             schema["required"] = [n for n in required if n not in made_optional]
     items = schema.get("items")
     if isinstance(items, dict):
-        schema = dict(schema, items=_denullify_schema(items))
+        schema = dict(schema, items=_anthropic_safe_schema(items))
     return schema
 
 
@@ -654,14 +673,14 @@ def to_anthropic_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
 
     Anthropic uses a flat ``{name, description, input_schema}`` object instead of
     OpenAI's nested ``{type: "function", function: {...}}``, and the OpenAI
-    strict-mode nullable encoding is undone first (see :func:`_denullify_schema`
-    — Anthropic 400s on ``enum`` + ``type: [T, "null"]``). ``strict`` is only
-    forwarded when the schema really is closed (``additionalProperties: false``),
-    which is what _normalize_chat_tool()/_strict_schema() produce for strict
-    tools; forwarding it on an open schema is rejected by the API.
+    strict-mode nullable encoding is undone first (see
+    :func:`_anthropic_safe_schema`), which also restores a truthful ``required``
+    list — OpenAI strict mode marks every property required, which would
+    otherwise tell Claude that optional filters are mandatory. ``strict`` is
+    never forwarded; see the comment above :func:`_unwrap_optional`.
     """
     fn = chat_tool.get("function") or chat_tool
-    schema = _denullify_schema(
+    schema = _anthropic_safe_schema(
         deepcopy(fn.get("parameters") or {"type": "object", "properties": {}, "required": []})
     )
     tool: Dict[str, Any] = {
@@ -669,8 +688,6 @@ def to_anthropic_tool(chat_tool: Dict[str, Any]) -> Dict[str, Any]:
         "description": _maybe_trim(fn.get("description", "")),
         "input_schema": schema,
     }
-    if bool(fn.get("strict", False)) and schema.get("additionalProperties") is False:
-        tool["strict"] = True
     return tool
 
 

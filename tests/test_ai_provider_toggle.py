@@ -211,7 +211,9 @@ class ToolConversionTests(unittest.TestCase):
         self.assertIn("input_schema", converted)
         self.assertNotIn("parameters", converted)
         self.assertNotIn("function", converted)
-        self.assertTrue(converted["strict"])
+        # `strict` is never forwarded to Anthropic — see
+        # test_strict_is_never_forwarded_to_anthropic for the five reasons.
+        self.assertNotIn("strict", converted)
 
     def test_strict_is_dropped_on_an_open_schema(self):
         converted = to_anthropic_tool(_tool(strict=True, closed=False))
@@ -384,6 +386,57 @@ class RequestContractTests(_ProviderTestCase):
         self.assertNotIn("difficulty", schema["required"])
         # Still a closed schema, so `strict` stays forwardable.
         self.assertIs(schema["additionalProperties"], False)
+
+    def test_strict_is_never_forwarded_to_anthropic(self):
+        """Anthropic's strict validator enforces a JSON-Schema subset this
+        toolset violates five ways, two of them unsatisfiable:
+
+            Too many strict tools (31). The maximum ... is 20.
+            Schemas contains too many optional parameters (50) ... limit: 24.
+
+        Each is a 400 on EVERY tool-carrying turn, which the provider fallback
+        then hides as OpenAI traffic. The OpenAI path keeps strict; Anthropic
+        does not get it.
+        """
+        from ai_tool_registry import _normalize_chat_tool
+
+        raw = {"type": "function", "function": {
+            "name": "compare_courses", "description": "Compare 2-4 courses.",
+            "parameters": {"type": "object", "properties": {
+                "handles": {"type": "array", "items": {"type": "string"},
+                            "description": "List of 2-4 product handles.",
+                            "minItems": 2, "maxItems": 4}},
+                "required": ["handles"]},
+        }}
+        normalized = _normalize_chat_tool(raw)
+        self.assertIs(normalized["function"]["strict"], True)   # OpenAI keeps it
+
+        tool = to_anthropic_tool(normalized)
+        self.assertNotIn("strict", tool)
+        # The schema itself is untouched — constraints still steer the model.
+        handles = tool["input_schema"]["properties"]["handles"]
+        self.assertEqual(handles["minItems"], 2)
+        self.assertEqual(handles["maxItems"], 4)
+        self.assertIn("handles", tool["input_schema"]["required"])
+
+    def test_required_is_truthful_for_anthropic(self):
+        """OpenAI strict mode marks EVERY property required. Forwarding that to
+        Claude would advertise optional filters as mandatory."""
+        from ai_tool_registry import _normalize_chat_tool
+
+        raw = {"type": "function", "function": {
+            "name": "catalog_search", "description": "Search.",
+            "parameters": {"type": "object", "properties": {
+                "query": {"type": "string"},
+                "difficulty": {"type": "string", "enum": ["beginner", "advanced"]},
+                "limit": {"type": "integer"}},
+                "required": ["query"]},
+        }}
+        normalized = _normalize_chat_tool(raw)
+        self.assertEqual(sorted(normalized["function"]["parameters"]["required"]),
+                         ["difficulty", "limit", "query"])
+        self.assertEqual(to_anthropic_tool(normalized)["input_schema"]["required"],
+                         ["query"])
 
     def test_nested_nullable_enums_are_unwound_too(self):
         from ai_tool_registry import _normalize_chat_tool

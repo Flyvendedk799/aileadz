@@ -445,7 +445,12 @@ def _openai_client() -> OpenAI:
         timeout = float(os.getenv("AI_OPENAI_TIMEOUT_SECONDS", "45"))
     except ValueError:
         timeout = 45.0
-    api_key = os.getenv("OPENAI_API_KEY")
+    # Resolved through ai_secrets so a key set from the admin UI is honoured;
+    # falls back to OPENAI_API_KEY in the environment. api_key is part of the
+    # cache key below, so rotating it rebuilds the client on the next call.
+    import ai_secrets
+
+    api_key = ai_secrets.get_secret("OPENAI_API_KEY")
     cache_key = (id(OpenAI), id(getattr(OpenAI, "responses", None)), api_key, timeout)
     if _OPENAI_CLIENT is None or _OPENAI_CLIENT_KEY != cache_key:
         _OPENAI_CLIENT = OpenAI(api_key=api_key, timeout=timeout)

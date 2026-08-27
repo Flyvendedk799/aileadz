@@ -34,11 +34,43 @@
   .mm3d-stage x-dc { display: block; height: 100%; }
   /* fallback: if support.js wraps in a div sibling */
   .mm3d-stage > div { height: 100%; }
+
+  /* ── v2 chrome ──────────────────────────────────────────────────────────
+     Everything inside the DC template is inline-styled (the runtime compiles
+     style="" into a React style object), so anything that needs a selector —
+     :hover, :focus-visible, media queries, scrollbars — lives here. */
+  .mm-root:focus { outline: none; }
+  .mm-root:focus-visible { outline: 2px solid rgba(96,165,250,.55); outline-offset: -3px; }
+  .mm-btn { transition: background .14s ease, border-color .14s ease, color .14s ease, transform .14s ease; }
+  .mm-btn:hover { background: rgba(255,255,255,.13) !important; border-color: rgba(255,255,255,.25) !important; color: #fff !important; }
+  .mm-btn:active { transform: scale(.94); }
+  .mm-btn:focus-visible { outline: 2px solid rgba(96,165,250,.75); outline-offset: 2px; }
+  .mm-chip { transition: filter .14s ease, border-color .14s ease; }
+  .mm-chip:hover { filter: brightness(1.3); }
+  .mm-chip:focus-visible { outline: 2px solid rgba(96,165,250,.75); outline-offset: 2px; }
+  .mm-row { transition: background .14s ease; }
+  .mm-row:hover { background: rgba(255,255,255,.07) !important; }
+  .mm-scroll { scrollbar-width: thin; scrollbar-color: rgba(255,255,255,.18) transparent; }
+  .mm-scroll::-webkit-scrollbar { width: 7px; height: 7px; }
+  .mm-scroll::-webkit-scrollbar-thumb { background: rgba(255,255,255,.16); border-radius: 4px; }
+  .mm-scroll::-webkit-scrollbar-track { background: transparent; }
+  .mm-mini { cursor: crosshair; }
+  .mm-panel { width: 340px; }
   @keyframes mm-spin { to { transform: rotate(360deg); } }
   @keyframes mm-fadein { from { opacity: 0; } to { opacity: 1; } }
+  @keyframes mm-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
   @keyframes mm-pulse {
     0%, 100% { box-shadow: 0 0 0 0 rgba(236,72,153,0); }
     50% { box-shadow: 0 0 0 6px rgba(236,72,153,0.15); }
+  }
+  @media (max-width: 820px) {
+    .mm-panel { width: 100% !important; }
+    .mm-mini { display: none !important; }
+    .mm-tools { top: auto !important; bottom: 108px !important; transform: none !important; }
+    .mm-search { width: 190px !important; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .mm-anim, .mm-panel { animation: none !important; transition: none !important; }
   }
 </style>
 {% endblock %}
@@ -54,42 +86,104 @@
 {% raw %}
 <x-dc>
 
-<div ref="{{ rootRef }}" style="position:relative;width:100%;height:100%;background:#00080f;overflow:hidden;font-family:'Space Grotesk',system-ui,sans-serif;color:#d4e0f4;user-select:none;-webkit-user-select:none;">
+<div ref="{{ rootRef }}" class="mm-root" tabIndex="0" onKeyDown="{{ onKey }}" role="application" aria-label="Mind-Map — 3D vidensbase. Piletaster navigerer, Enter fokuserer, Escape lukker." style="position:relative;width:100%;height:100%;background:#00080f;overflow:hidden;font-family:'Space Grotesk',system-ui,sans-serif;color:#d4e0f4;user-select:none;-webkit-user-select:none;">
 
   <!-- Canvas mount -->
   <div data-mm-canvas="1" style="position:absolute;inset:0;z-index:0;"></div>
 
-  <!-- TOP BAR -->
-  <div style="position:absolute;top:0;left:0;right:0;z-index:10;padding:14px 20px 16px;background:linear-gradient(180deg,rgba(0,8,15,.9) 0%,transparent 100%);">
-    <div style="display:flex;flex-direction:column;align-items:center;gap:9px;">
-      <div style="position:relative;display:flex;align-items:center;">
-        <svg style="position:absolute;left:12px;pointer-events:none;opacity:.35;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
-        <input type="text" placeholder="Søg i vidensbase…" value="{{ searchQuery }}" onChange="{{ onSearch }}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:8px 18px 8px 36px;color:inherit;font-family:inherit;font-size:13px;width:270px;outline:none;backdrop-filter:blur(12px);" />
+  <!-- Vignette: pure CSS depth cue, keeps the eye in the middle of the sphere -->
+  <div style="position:absolute;inset:0;z-index:1;pointer-events:none;background:radial-gradient(ellipse at 50% 48%,rgba(0,0,0,0) 42%,rgba(0,4,10,.55) 100%);"></div>
+
+  <!-- Screen-reader mirror of the current selection -->
+  <div data-mm-live="1" aria-live="polite" style="position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;"></div>
+
+  <!-- ── TOP BAR: search + result stepper + category chips ── -->
+  <div style="position:absolute;top:0;left:0;right:0;z-index:10;padding:14px 20px 16px;background:linear-gradient(180deg,rgba(0,8,15,.9) 0%,transparent 100%);pointer-events:none;">
+    <div style="display:flex;flex-direction:column;align-items:center;gap:9px;pointer-events:none;">
+      <div style="display:flex;align-items:center;gap:8px;pointer-events:auto;">
+        <div style="position:relative;display:flex;align-items:center;">
+          <svg style="position:absolute;left:12px;pointer-events:none;opacity:.35;" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"></circle><path d="m21 21-4.35-4.35"></path></svg>
+          <input data-mm-search="1" class="mm-search" type="text" placeholder="Søg — Enter hopper til træffer" aria-label="Søg i vidensbasen" value="{{ searchQuery }}" onChange="{{ onSearch }}" onKeyDown="{{ onSearchKey }}" style="background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);border-radius:24px;padding:8px 34px 8px 36px;color:inherit;font-family:inherit;font-size:13px;width:290px;outline:none;backdrop-filter:blur(12px);" />
+          <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+            <button class="mm-btn" onClick="{{ onClearSearch }}" title="Ryd søgning (Esc)" aria-label="Ryd søgning" style="position:absolute;right:8px;width:20px;height:20px;border-radius:50%;border:0;background:rgba(255,255,255,.1);color:rgba(255,255,255,.6);font-size:13px;line-height:1;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">×</button>
+          </sc-if>
+        </div>
+        <sc-if value="{{ hasQuery }}" hint-placeholder-val="{{ false }}">
+          <div style="display:flex;align-items:center;gap:4px;padding:4px 6px 4px 11px;border-radius:20px;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);backdrop-filter:blur(12px);">
+            <span style="font-size:11.5px;font-weight:650;letter-spacing:.3px;color:{{ matchColor }};white-space:nowrap;">{{ matchLabel }}</span>
+            <button class="mm-btn" onClick="{{ onPrevMatch }}" title="Forrige træffer (Shift+Enter)" aria-label="Forrige træffer" style="width:22px;height:22px;border-radius:50%;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m18 15-6-6-6 6"></path></svg>
+            </button>
+            <button class="mm-btn" onClick="{{ onNextMatch }}" title="Næste træffer (Enter)" aria-label="Næste træffer" style="width:22px;height:22px;border-radius:50%;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.05);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"></path></svg>
+            </button>
+          </div>
+        </sc-if>
       </div>
-      <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:680px;">
+      <div style="display:flex;gap:5px;flex-wrap:wrap;justify-content:center;max-width:720px;pointer-events:auto;">
         <sc-for list="{{ categories }}" as="cat" hint-placeholder-count="9">
-          <button onClick="{{ cat.fn }}" style="padding:4px 12px;border-radius:20px;border:1px solid {{ cat.bc }};background:{{ cat.bg }};color:{{ cat.tc }};font-size:11px;font-family:inherit;cursor:pointer;font-weight:600;letter-spacing:.4px;white-space:nowrap;">{{ cat.label }}</button>
+          <button class="mm-chip" onClick="{{ cat.fn }}" aria-pressed="{{ cat.on }}" title="{{ cat.title }}" style="padding:4px 11px;border-radius:20px;border:1px solid {{ cat.bc }};background:{{ cat.bg }};color:{{ cat.tc }};font-size:11px;font-family:inherit;cursor:pointer;font-weight:600;letter-spacing:.4px;white-space:nowrap;display:inline-flex;align-items:center;gap:6px;">{{ cat.label }}<span style="opacity:.55;font-weight:700;font-size:10px;">{{ cat.count }}</span></button>
         </sc-for>
+        <sc-if value="{{ hasHidden }}" hint-placeholder-val="{{ false }}">
+          <button class="mm-chip" onClick="{{ onShowAll }}" style="padding:4px 11px;border-radius:20px;border:1px dashed rgba(255,255,255,.3);background:transparent;color:rgba(255,255,255,.6);font-size:11px;font-family:inherit;cursor:pointer;font-weight:600;letter-spacing:.4px;white-space:nowrap;">Vis alle</button>
+        </sc-if>
       </div>
     </div>
   </div>
 
-  <!-- BOTTOM STATS -->
-  <div style="position:absolute;bottom:0;left:0;right:0;z-index:10;padding:16px 22px;display:flex;align-items:center;justify-content:space-between;background:linear-gradient(0deg,rgba(0,8,15,.9) 0%,transparent 100%);">
-    <div style="display:flex;align-items:center;gap:13px;">
-      <div style="position:relative;width:50px;height:50px;flex-shrink:0;">
-        <svg width="50" height="50" viewBox="0 0 50 50" style="transform:rotate(-90deg);">
-          <circle cx="25" cy="25" r="19" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="4"></circle>
-          <circle cx="25" cy="25" r="19" fill="none" stroke="var(--fm-primary,#3b82f6)" stroke-width="4" stroke-dasharray="{{ cArc }} {{ cCirc }}" stroke-linecap="round"></circle>
-        </svg>
-        <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">{{ completeness }}%</div>
+  <!-- ── TOP-LEFT: mode badges ── -->
+  <div style="position:absolute;top:14px;left:20px;z-index:12;display:flex;flex-direction:column;gap:7px;align-items:flex-start;">
+    <sc-if value="{{ inFocus }}" hint-placeholder-val="{{ false }}">
+      <button class="mm-btn" onClick="{{ onExitFocus }}" style="display:inline-flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;border:1px solid {{ focusColor }};background:{{ focusTint }};color:{{ focusColor }};font-size:11.5px;font-weight:700;letter-spacing:.5px;cursor:pointer;font-family:inherit;backdrop-filter:blur(12px);animation:mm-rise .25s ease;">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="3"></circle><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2"></path></svg>
+        Fokus: {{ focusLabel }} <span style="opacity:.6;">· Esc</span>
+      </button>
+    </sc-if>
+    <sc-if value="{{ demo }}" hint-placeholder-val="{{ false }}">
+      <span style="display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border-radius:20px;border:1px solid rgba(251,191,36,.35);background:rgba(251,191,36,.1);color:#fbbf24;font-size:11px;font-weight:700;letter-spacing:.5px;backdrop-filter:blur(12px);">Demo-data</span>
+    </sc-if>
+  </div>
+
+  <!-- ── LEFT TOOLBAR ── -->
+  <div class="mm-tools" style="position:absolute;left:16px;top:50%;transform:translateY(-50%);z-index:12;display:flex;flex-direction:column;gap:6px;padding:7px;border-radius:16px;background:rgba(4,10,22,.62);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(16px);">
+    <button class="mm-btn" onClick="{{ onZoomIn }}" title="Zoom ind (+)" aria-label="Zoom ind" style="width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"></path></svg>
+    </button>
+    <button class="mm-btn" onClick="{{ onZoomOut }}" title="Zoom ud (−)" aria-label="Zoom ud" style="width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M5 12h14"></path></svg>
+    </button>
+    <button class="mm-btn" onClick="{{ onFit }}" title="Vis hele kortet (F)" aria-label="Vis hele kortet" style="width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M15 3h6v6M9 21H3v-6M21 3l-7 7M3 21l7-7"></path></svg>
+    </button>
+    <div style="height:1px;background:rgba(255,255,255,.08);margin:1px 4px;"></div>
+    <button class="mm-btn" onClick="{{ onToggleRotate }}" title="{{ rotTitle }}" aria-label="{{ rotTitle }}" aria-pressed="{{ autoRotate }}" style="width:32px;height:32px;border-radius:10px;border:1px solid {{ rotBorder }};background:{{ rotBg }};color:{{ rotColor }};cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3"><path d="M21 12a9 9 0 1 1-3.5-7.1"></path><path d="M21 3v6h-6"></path></svg>
+    </button>
+    <button class="mm-btn" onClick="{{ onToggleHelp }}" title="Tastaturgenveje (?)" aria-label="Tastaturgenveje" style="width:32px;height:32px;border-radius:10px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;font-size:14px;font-weight:700;">?</button>
+  </div>
+
+  <!-- ── BOTTOM BAR: minimap + completeness + counts ── -->
+  <div style="position:absolute;bottom:0;left:0;right:0;z-index:10;padding:16px 22px;padding-right:{{ botPad }};display:flex;align-items:flex-end;justify-content:space-between;gap:16px;background:linear-gradient(0deg,rgba(0,8,15,.9) 0%,transparent 100%);transition:padding-right .32s cubic-bezier(.4,0,.2,1);pointer-events:none;">
+    <div style="display:flex;align-items:flex-end;gap:14px;pointer-events:auto;">
+      <div class="mm-mini" style="position:relative;width:120px;height:120px;flex-shrink:0;">
+        <canvas data-mm-mini="1" width="240" height="240" title="Radar — klik for at hoppe til nærmeste node" aria-hidden="true" style="width:120px;height:120px;display:block;border-radius:14px;background:rgba(4,10,22,.55);border:1px solid rgba(255,255,255,.08);backdrop-filter:blur(12px);"></canvas>
+        <div style="position:absolute;bottom:5px;left:0;right:0;text-align:center;font-size:8.5px;letter-spacing:1.1px;text-transform:uppercase;opacity:.3;pointer-events:none;">Radar</div>
       </div>
-      <div>
-        <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.8px;margin-bottom:1px;">Vidensbase</div>
-        <div style="font-size:13px;font-weight:600;">{{ completeness }}% komplet</div>
+      <div style="display:flex;align-items:center;gap:13px;">
+        <div style="position:relative;width:50px;height:50px;flex-shrink:0;">
+          <svg width="50" height="50" viewBox="0 0 50 50" style="transform:rotate(-90deg);">
+            <circle cx="25" cy="25" r="19" fill="none" stroke="rgba(255,255,255,.07)" stroke-width="4"></circle>
+            <circle cx="25" cy="25" r="19" fill="none" stroke="var(--fm-primary,#3b82f6)" stroke-width="4" stroke-dasharray="{{ cArc }} {{ cCirc }}" stroke-linecap="round"></circle>
+          </svg>
+          <div style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;">{{ completeness }}%</div>
+        </div>
+        <div>
+          <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.8px;margin-bottom:1px;">Vidensbase</div>
+          <div style="font-size:13px;font-weight:600;">{{ completeness }}% komplet</div>
+        </div>
       </div>
     </div>
-    <div style="display:flex;align-items:center;gap:18px;">
+    <div style="display:flex;align-items:center;gap:18px;pointer-events:auto;">
       <div style="text-align:right;">
         <div style="font-size:20px;font-weight:700;line-height:1.15;">{{ leafCount }}</div>
         <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.5px;">Fakta</div>
@@ -107,25 +201,52 @@
     </div>
   </div>
 
-  <!-- SIDE PANEL -->
-  <div style="position:absolute;top:0;right:0;bottom:0;width:330px;z-index:20;transform:{{ panelX }};transition:transform .32s cubic-bezier(.4,0,.2,1);background:rgba(6,12,28,.96);border-left:1px solid rgba(255,255,255,.07);backdrop-filter:blur(24px);overflow-y:auto;display:flex;flex-direction:column;">
+  <!-- ── SIDE PANEL ── -->
+  <div class="mm-panel mm-scroll" role="complementary" aria-label="Node-detaljer" style="position:absolute;top:0;right:0;bottom:0;z-index:20;transform:{{ panelX }};transition:transform .32s cubic-bezier(.4,0,.2,1);background:rgba(6,12,28,.96);border-left:1px solid rgba(255,255,255,.07);backdrop-filter:blur(24px);overflow-y:auto;display:flex;flex-direction:column;">
 
-    <div style="padding:20px 18px 15px;border-bottom:1px solid rgba(255,255,255,.06);display:flex;align-items:flex-start;justify-content:space-between;gap:10px;position:sticky;top:0;background:rgba(6,12,28,.97);backdrop-filter:blur(24px);z-index:1;">
-      <div style="flex:1;min-width:0;">
-        <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
-          <div style="width:7px;height:7px;border-radius:50%;background:{{ pColor }};flex-shrink:0;box-shadow:0 0 8px {{ pColor }};"></div>
-          <span style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:{{ pColor }};">{{ pCat }}</span>
-        </div>
-        <div style="font-size:16px;font-weight:700;line-height:1.35;word-break:break-word;">{{ pTitle }}</div>
+    <!-- header: breadcrumb + title + sibling stepper -->
+    <div style="padding:14px 18px 13px;border-bottom:1px solid rgba(255,255,255,.06);position:sticky;top:0;background:rgba(6,12,28,.97);backdrop-filter:blur(24px);z-index:1;">
+      <div style="display:flex;align-items:center;gap:3px;flex-wrap:wrap;margin-bottom:8px;min-height:16px;">
+        <sc-for list="{{ crumbs }}" as="cr" hint-placeholder-count="3">
+          <span style="opacity:.25;font-size:11px;">{{ cr.sep }}</span>
+          <button class="mm-btn" onClick="{{ cr.fn }}" style="border:0;background:transparent;padding:1px 4px;border-radius:6px;color:{{ cr.color }};opacity:{{ cr.op }};font-family:inherit;font-size:11px;font-weight:{{ cr.w }};letter-spacing:.3px;cursor:pointer;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ cr.label }}</button>
+        </sc-for>
       </div>
-      <button onClick="{{ onClose }}" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);cursor:pointer;color:rgba(255,255,255,.5);font-size:16px;display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit;line-height:1;">×</button>
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:10px;">
+        <div style="flex:1;min-width:0;">
+          <div style="display:flex;align-items:center;gap:7px;margin-bottom:5px;">
+            <div style="width:7px;height:7px;border-radius:50%;background:{{ pColor }};flex-shrink:0;box-shadow:0 0 8px {{ pColor }};"></div>
+            <span style="font-size:10px;font-weight:700;letter-spacing:1.1px;text-transform:uppercase;color:{{ pColor }};">{{ pCat }}</span>
+          </div>
+          <div style="font-size:16px;font-weight:700;line-height:1.35;word-break:break-word;">{{ pTitle }}</div>
+        </div>
+        <button class="mm-btn" onClick="{{ onClose }}" title="Luk (Esc)" aria-label="Luk panel" style="flex-shrink:0;width:28px;height:28px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);cursor:pointer;color:rgba(255,255,255,.5);font-size:16px;display:flex;align-items:center;justify-content:center;padding:0;font-family:inherit;line-height:1;">×</button>
+      </div>
+      <sc-if value="{{ hasNav }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;align-items:center;gap:6px;margin-top:11px;">
+          <sc-if value="{{ hasSibs }}" hint-placeholder-val="{{ false }}">
+            <button class="mm-btn" onClick="{{ onPrevSib }}" title="Forrige søskende (↑)" aria-label="Forrige søskende" style="width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m18 15-6-6-6 6"></path></svg>
+            </button>
+            <button class="mm-btn" onClick="{{ onNextSib }}" title="Næste søskende (↓)" aria-label="Næste søskende" style="width:26px;height:26px;border-radius:8px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;cursor:pointer;padding:0;display:flex;align-items:center;justify-content:center;font-family:inherit;">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="m6 9 6 6 6-6"></path></svg>
+            </button>
+            <span style="font-size:10.5px;opacity:.38;letter-spacing:.4px;">{{ sibLabel }}</span>
+          </sc-if>
+          <sc-if value="{{ showFocusBtn }}" hint-placeholder-val="{{ false }}">
+            <button class="mm-btn" onClick="{{ onToggleFocus }}" title="Isolér denne gren (Enter)" style="margin-left:auto;padding:5px 10px;border-radius:8px;border:1px solid {{ focusBtnBorder }};background:{{ focusBtnBg }};color:{{ focusBtnColor }};font-size:11px;font-weight:700;letter-spacing:.4px;cursor:pointer;font-family:inherit;">{{ focusBtnLabel }}</button>
+          </sc-if>
+        </div>
+      </sc-if>
     </div>
 
     <div style="padding:16px 18px;flex:1;display:flex;flex-direction:column;gap:15px;">
 
       <div style="display:flex;gap:6px;flex-wrap:wrap;">
         <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.1);">{{ pTypeLabel }}</span>
-        <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);">{{ pSrc }}</span>
+        <sc-if value="{{ hasPSrc }}" hint-placeholder-val="{{ false }}">
+          <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:rgba(255,255,255,.04);border:1px solid rgba(255,255,255,.07);">{{ pSrc }}</span>
+        </sc-if>
         <sc-if value="{{ hasSkCategory }}" hint-placeholder-val="{{ false }}">
           <span style="padding:3px 9px;border-radius:10px;font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;background:{{ pColor }}1f;border:1px solid {{ pColor }};color:{{ pColor }};">{{ skCategory }}</span>
         </sc-if>
@@ -149,7 +270,7 @@
               <span style="font-size:10px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;color:#fbbf24;">Kompetencegab · {{ gapPriority }}</span>
             </div>
             <div style="font-size:13px;font-weight:600;margin-bottom:10px;">{{ gapText }}</div>
-            <button onClick="{{ onFindCourses }}" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.1);color:#fde68a;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;">Find kurser der lukker gabet →</button>
+            <button class="mm-btn" onClick="{{ onFindCourses }}" style="width:100%;padding:8px;border-radius:8px;border:1px solid rgba(251,191,36,.3);background:rgba(251,191,36,.1);color:#fde68a;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;">Find kurser der lukker gabet →</button>
           </div>
         </sc-if>
       </sc-if>
@@ -209,7 +330,7 @@
           </div>
         </div>
         <sc-if value="{{ hasCertUrl }}" hint-placeholder-val="{{ false }}">
-          <a href="{{ certUrl }}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:9px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:12.5px;font-weight:600;text-decoration:none;">
+          <a href="{{ certUrl }}" target="_blank" rel="noopener" class="mm-btn" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%;padding:9px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:12.5px;font-weight:600;text-decoration:none;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><path d="M15 3h6v6M10 14 21 3"></path></svg>
             Verificér bevis
           </a>
@@ -282,13 +403,27 @@
         <sc-if value="{{ hasRootWeakest }}" hint-placeholder-val="{{ false }}">
           <div style="font-size:12px;opacity:.55;line-height:1.5;">Næste skridt: udbyg <b style="opacity:.9;">{{ rootWeakest }}</b>.</div>
         </sc-if>
-        <div style="display:flex;flex-direction:column;gap:8px;">
-          <button onClick="{{ onOpenProfiler }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.08);color:#93c5fd;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Fortsæt med AI-profiler</button>
-          <button onClick="{{ onOpenCv }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Upload CV</button>
-          <button onClick="{{ onAddMem }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.28);background:rgba(236,72,153,.07);color:#ec4899;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
-            Tilføj hukommelse
-          </button>
+      </sc-if>
+
+      <!-- CHILDREN: the panel doubles as a navigator for root + branches -->
+      <sc-if value="{{ hasChildren }}" hint-placeholder-val="{{ false }}">
+        <div>
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:7px;">
+            <span style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.6px;">{{ childrenTitle }}</span>
+            <span style="font-size:10px;opacity:.3;letter-spacing:.4px;">→ hopper</span>
+          </div>
+          <div class="mm-scroll" style="display:flex;flex-direction:column;gap:2px;max-height:260px;overflow-y:auto;border:1px solid rgba(255,255,255,.06);border-radius:10px;padding:4px;">
+            <sc-for list="{{ children }}" as="ch" hint-placeholder-count="6">
+              <button class="mm-row" onClick="{{ ch.fn }}" style="display:flex;align-items:center;gap:9px;width:100%;padding:7px 9px;border:0;border-radius:7px;background:{{ ch.bg }};color:#d4e0f4;font-family:inherit;font-size:12.5px;text-align:left;cursor:pointer;">
+                <span style="width:6px;height:6px;border-radius:50%;background:{{ ch.color }};flex-shrink:0;box-shadow:0 0 6px {{ ch.color }};"></span>
+                <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:{{ ch.w }};">{{ ch.label }}</span>
+                <span style="font-size:10px;opacity:.4;flex-shrink:0;">{{ ch.sub }}</span>
+              </button>
+            </sc-for>
+          </div>
+          <sc-if value="{{ hasMoreChildren }}" hint-placeholder-val="{{ false }}">
+            <div style="font-size:10.5px;opacity:.35;margin-top:6px;text-align:center;">{{ moreChildrenLabel }}</div>
+          </sc-if>
         </div>
       </sc-if>
 
@@ -310,7 +445,7 @@
           <div>
             <div style="font-size:10px;opacity:.35;text-transform:uppercase;letter-spacing:.6px;margin-bottom:9px;">AI Brug</div>
             <div style="display:flex;align-items:center;gap:13px;margin-bottom:11px;">
-              <div style="font-size:36px;font-weight:800;color:#ec4899;line-height:1;animation:mm-pulse 2s infinite;">{{ pUsed }}</div>
+              <div class="mm-anim" style="font-size:36px;font-weight:800;color:#ec4899;line-height:1;animation:mm-pulse 2s infinite;">{{ pUsed }}</div>
               <div>
                 <div style="font-size:13px;opacity:.68;margin-bottom:2px;">gange brugt af AI</div>
                 <div style="font-size:11px;opacity:.36;">{{ pLastUsedLabel }}</div>
@@ -322,9 +457,21 @@
               </sc-for>
             </div>
           </div>
-          <button onClick="{{ onDelete }}" style="margin-top:14px;width:100%;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07);color:#f87171;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+          <button class="mm-btn" onClick="{{ onDelete }}" style="margin-top:14px;width:100%;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07);color:#f87171;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
             Slet hukommelse
+          </button>
+        </div>
+      </sc-if>
+
+      <!-- ROOT actions live at the bottom so the navigator stays above the fold -->
+      <sc-if value="{{ isPRoot }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="mm-btn" onClick="{{ onOpenProfiler }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.08);color:#93c5fd;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Fortsæt med AI-profiler</button>
+          <button class="mm-btn" onClick="{{ onOpenCv }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Upload CV</button>
+          <button class="mm-btn" onClick="{{ onAddMem }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.28);background:rgba(236,72,153,.07);color:#ec4899;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+            Tilføj hukommelse
           </button>
         </div>
       </sc-if>
@@ -333,12 +480,85 @@
   </div>
 
   <!-- TOOLTIP -->
-  <div data-mm-tip="1" style="position:absolute;z-index:40;pointer-events:none;padding:5px 12px;background:rgba(2,8,20,.93);border:1px solid rgba(255,255,255,.11);border-radius:8px;font-size:12px;font-weight:600;white-space:nowrap;backdrop-filter:blur(12px);opacity:0;transform:translate(-50%,-140%);transition:opacity .12s;letter-spacing:.2px;top:0;left:0;"></div>
+  <div data-mm-tip="1" style="position:absolute;z-index:40;pointer-events:none;padding:6px 12px;background:rgba(2,8,20,.93);border:1px solid rgba(255,255,255,.11);border-radius:9px;font-size:12px;font-weight:600;white-space:nowrap;backdrop-filter:blur(12px);opacity:0;transform:translate(-50%,-140%);transition:opacity .12s;letter-spacing:.2px;top:0;left:0;display:flex;flex-direction:column;gap:2px;"></div>
+
+  <!-- ── KEYBOARD HELP ── -->
+  <sc-if value="{{ showHelp }}" hint-placeholder-val="{{ false }}">
+    <div onClick="{{ onToggleHelp }}" style="position:absolute;inset:0;z-index:60;background:rgba(0,4,10,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:mm-fadein .18s ease;">
+      <div onClick="{{ onStopClick }}" style="width:100%;max-width:460px;background:rgba(8,14,32,.98);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:22px 24px;box-shadow:0 24px 70px rgba(0,0,0,.55);">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div style="font-size:15px;font-weight:700;letter-spacing:.3px;">Tastaturgenveje</div>
+          <button class="mm-btn" onClick="{{ onToggleHelp }}" aria-label="Luk" style="width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);cursor:pointer;padding:0;font-size:15px;line-height:1;font-family:inherit;">×</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:1px;">
+          <sc-for list="{{ helpRows }}" as="row" hint-placeholder-count="10">
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:14px;padding:7px 0;border-bottom:1px solid rgba(255,255,255,.05);">
+              <span style="font-size:12.5px;opacity:.72;">{{ row.d }}</span>
+              <kbd style="flex-shrink:0;padding:3px 9px;border-radius:6px;background:rgba(255,255,255,.07);border:1px solid rgba(255,255,255,.12);font-family:ui-monospace,monospace;font-size:11px;font-weight:600;letter-spacing:.5px;">{{ row.k }}</kbd>
+            </div>
+          </sc-for>
+        </div>
+        <div style="margin-top:15px;font-size:11.5px;opacity:.4;line-height:1.6;">Træk for at rotere · rul for at zoome · dobbeltklik en gren for at isolere den.</div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ── ADD MEMORY ── -->
+  <sc-if value="{{ addOpen }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:60;background:rgba(0,4,10,.72);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:24px;animation:mm-fadein .18s ease;">
+      <div style="width:100%;max-width:420px;background:rgba(8,14,32,.98);border:1px solid rgba(255,255,255,.1);border-radius:18px;padding:22px 24px;box-shadow:0 24px 70px rgba(0,0,0,.55);display:flex;flex-direction:column;gap:13px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:15px;font-weight:700;letter-spacing:.3px;">Ny hukommelse</div>
+          <button class="mm-btn" onClick="{{ onAddCancel }}" aria-label="Luk" style="width:26px;height:26px;border-radius:50%;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:rgba(255,255,255,.5);cursor:pointer;padding:0;font-size:15px;line-height:1;font-family:inherit;">×</button>
+        </div>
+        <input data-mm-addlabel="1" type="text" placeholder="Hvad skal AI'en huske?" aria-label="Hukommelse" value="{{ addLabel }}" onChange="{{ onAddLabel }}" onKeyDown="{{ onAddKey }}" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;color:inherit;font-family:inherit;font-size:13.5px;outline:none;" />
+        <input type="text" placeholder="Detalje (valgfri)" aria-label="Detalje" value="{{ addDetail }}" onChange="{{ onAddDetail }}" onKeyDown="{{ onAddKey }}" style="width:100%;background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);border-radius:10px;padding:10px 12px;color:inherit;font-family:inherit;font-size:13.5px;outline:none;" />
+        <div style="display:flex;gap:5px;flex-wrap:wrap;">
+          <sc-for list="{{ addCats }}" as="ac" hint-placeholder-count="6">
+            <button class="mm-chip" onClick="{{ ac.fn }}" style="padding:5px 11px;border-radius:20px;border:1px solid {{ ac.bc }};background:{{ ac.bg }};color:{{ ac.tc }};font-size:11px;font-family:inherit;cursor:pointer;font-weight:600;letter-spacing:.4px;">{{ ac.label }}</button>
+          </sc-for>
+        </div>
+        <div style="display:flex;gap:8px;margin-top:2px;">
+          <button class="mm-btn" onClick="{{ onAddCancel }}" style="flex:1;padding:10px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Annullér</button>
+          <button class="mm-btn" onClick="{{ onAddSave }}" style="flex:1;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.35);background:rgba(236,72,153,.14);color:#f9a8d4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:700;">{{ addSaveLabel }}</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ── EMPTY STATE ── -->
+  <sc-if value="{{ isEmpty }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:30;display:flex;align-items:center;justify-content:center;padding:24px;pointer-events:none;">
+      <div style="max-width:380px;text-align:center;background:rgba(6,12,28,.9);border:1px solid rgba(255,255,255,.09);border-radius:18px;padding:26px 24px;backdrop-filter:blur(18px);pointer-events:auto;animation:mm-rise .35s ease;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:7px;">Din vidensbase er tom</div>
+        <div style="font-size:12.5px;opacity:.55;line-height:1.65;margin-bottom:17px;">Kortet fyldes ud, efterhånden som AI'en lærer dig at kende. Start med profileren eller upload dit CV.</div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <button class="mm-btn" onClick="{{ onOpenProfiler }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.08);color:#93c5fd;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Start AI-profileren</button>
+          <button class="mm-btn" onClick="{{ onOpenCv }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(255,255,255,.1);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Upload CV</button>
+          <button class="mm-btn" onClick="{{ onAddMem }}" style="width:100%;padding:10px;border-radius:9px;border:1px solid rgba(236,72,153,.28);background:rgba(236,72,153,.07);color:#ec4899;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Tilføj en hukommelse</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
+
+  <!-- ── ERROR STATE ── -->
+  <sc-if value="{{ hasError }}" hint-placeholder-val="{{ false }}">
+    <div style="position:absolute;inset:0;z-index:45;background:#00080f;display:flex;align-items:center;justify-content:center;padding:24px;">
+      <div style="max-width:380px;text-align:center;">
+        <div style="font-size:15px;font-weight:700;margin-bottom:7px;color:#f87171;">Kunne ikke hente vidensbasen</div>
+        <div style="font-size:12.5px;opacity:.5;line-height:1.65;margin-bottom:18px;">{{ errorText }}</div>
+        <div style="display:flex;gap:8px;justify-content:center;">
+          <button class="mm-btn" onClick="{{ onRetry }}" style="padding:10px 18px;border-radius:9px;border:1px solid rgba(59,130,246,.3);background:rgba(59,130,246,.1);color:#93c5fd;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Prøv igen</button>
+          <button class="mm-btn" onClick="{{ onUseDemo }}" style="padding:10px 18px;border-radius:9px;border:1px solid rgba(255,255,255,.12);background:rgba(255,255,255,.04);color:#d4e0f4;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Vis demo-data</button>
+        </div>
+      </div>
+    </div>
+  </sc-if>
 
   <!-- LOADING -->
   <sc-if value="{{ loading }}" hint-placeholder-val="{{ true }}">
     <div style="position:absolute;inset:0;z-index:50;background:#00080f;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;animation:mm-fadein .3s ease;">
-      <div style="width:40px;height:40px;border:3px solid rgba(255,255,255,.07);border-top-color:var(--fm-primary,#3b82f6);border-radius:50%;animation:mm-spin .85s linear infinite;"></div>
+      <div class="mm-anim" style="width:40px;height:40px;border:3px solid rgba(255,255,255,.07);border-top-color:var(--fm-primary,#3b82f6);border-radius:50%;animation:mm-spin .85s linear infinite;"></div>
       <div style="font-size:11px;opacity:.35;letter-spacing:1.4px;text-transform:uppercase;font-weight:600;">Indlæser vidensbase…</div>
     </div>
   </sc-if>
@@ -346,13 +566,29 @@
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script>
+/* Mind-Map v2 — navigation + immersion.
+   v1 was a pretty sphere you could click. v2 is something you can actually
+   move through: keyboard traversal of the real tree, search that jumps,
+   breadcrumbs + a child navigator in the panel, branch isolation, a radar,
+   deep-linkable selection — and a scene that answers back (hover/selection
+   states in 3D, the ancestor path lit end-to-end, distance-based label LOD,
+   an entrance that unfolds the graph, reduced-motion + hidden-tab respect). */
 class Component extends DCLogic {
   // ── STATE ──────────────────────────────────────────────────
   state = {
     loading: true,
-    selectedNode: null,
+    error: '',
+    demo: false,
+    selectedId: null,
     searchQuery: '',
+    matches: [],
+    matchIdx: -1,
     hiddenCats: new Set(),
+    focusId: null,
+    showHelp: false,
+    autoRotate: true,
+    reduced: false,
+    addOpen: false, addLabel: '', addDetail: '', addCat: 'praeference', addBusy: false,
     completeness: 0,
     completenessFull: {},
     counts: { leaves: 0, memories: 0, used_memories: 0 },
@@ -365,17 +601,38 @@ class Component extends DCLogic {
     maal:'#f97316', hukommelse:'#ec4899', samtale:'#6366f1', om:'#94a3b8',
   };
   _L = {
+    root:'Profil',
     kompetencer:'Kompetencer', erfaring:'Erfaring', uddannelse:'Uddannelse',
     certificeringer:'Certifikater', sprog:'Sprog', maal:'Mål',
     hukommelse:'Hukommelse', samtale:'Samtale', om:'Om mig',
   };
-  _S = { ai:'AI', profiler:'Profil', user:'Bruger', cv:'CV' };
+  _S = { ai:'AI', profiler:'AI Profiler', user:'Dig', cv:'CV', profil:'Profil', samtale:'Samtale' };
   _CAT_ORDER = ['kompetencer','erfaring','uddannelse','certificeringer','sprog','maal','hukommelse','samtale','om'];
+  _MEM_CATS = [
+    {id:'praeference',label:'Præference'},{id:'maal',label:'Mål'},
+    {id:'kontekst',label:'Kontekst'},{id:'personlighed',label:'Personlighed'},
+    {id:'interesse',label:'Interesse'},{id:'andet',label:'Andet'},
+  ];
+  _HELP = [
+    {k:'↑ ↓', d:'Forrige / næste node på samme niveau'},
+    {k:'← →', d:'Op til forælder / ned i første barn'},
+    {k:'Enter', d:'Isolér grenen (fokus-tilstand)'},
+    {k:'Esc', d:'Afslut fokus · luk panel · ryd søgning'},
+    {k:'/', d:'Hop til søgefeltet'},
+    {k:'Enter i søg', d:'Næste træffer (Shift+Enter: forrige)'},
+    {k:'N / P', d:'Næste / forrige træffer'},
+    {k:'F', d:'Vis hele kortet'},
+    {k:'Home', d:'Vælg rodknuden'},
+    {k:'+ / −', d:'Zoom ind / ud'},
+    {k:'Mellemrum', d:'Start/stop auto-rotation'},
+    {k:'?', d:'Vis denne oversigt'},
+  ];
+  _PANEL_W = 340;
 
-  // ── MOCK (fallback when API unavailable) ───────────────────
+  // ── MOCK (explicit opt-in when the API is unreachable) ─────
   _MOCK = {
     nodes:[
-      {id:'root',type:'root',label:'Profil',category:'om',meta:{source:'profiler',confidence:1,detail:'Din personlige vidensbase'}},
+      {id:'root',type:'root',label:'Profil',category:'root',meta:{source:'profiler',confidence:1,detail:'Din personlige vidensbase'}},
       {id:'b_komp',type:'branch',label:'Kompetencer',category:'kompetencer',meta:{source:'ai',confidence:.95}},
       {id:'b_erf',type:'branch',label:'Erfaring',category:'erfaring',meta:{source:'cv',confidence:.9}},
       {id:'b_udd',type:'branch',label:'Uddannelse',category:'uddannelse',meta:{source:'cv',confidence:.95}},
@@ -416,32 +673,69 @@ class Component extends DCLogic {
   // ── THREE.JS REFS ──────────────────────────────────────────
   _rootRef=React.createRef();
   _scene=null;_cam=null;_renderer=null;_ctrl=null;_clock=null;
-  _ray=null;_mouse=null;_tipEl=null;_data=null;
-  _nMap={};_rings=[];_ePts=null;_eData=[];
-  _animId=null;_hov=null;_sel=null;_tid=0;
-  _glowTex=null;_inited=false;
+  _ray=null;_mouse=null;_tipEl=null;_tipMain=null;_tipSub=null;
+  _miniEl=null;_liveEl=null;_data=null;
+  _e={};_list=[];_rings=[];_ePts=null;_eData=[];
+  _edges=[];_edgeGeo=null;_edgeMat=null;_edgeBoost=null;_edgeByPair={};
+  _byId={};_kids={};_parent={};_depth={};_rootId=null;
+  _halo=null;_hoverRing=null;_core=null;_starA=null;_starB=null;
+  _animId=null;_hov=null;_selId=null;_tid=0;_frame=0;
+  _glowTex=null;_inited=false;_disposables=[];_chrome=[];
+  _pathSet=null;_extent=260;_bR=200;_entryT=0;_entryMax=0;_skipEntry=false;
+  _reduced=false;_autoRotate=true;_tweening=false;_pickList=[];_pendingHash=null;
 
   // ── LIFECYCLE ──────────────────────────────────────────────
   componentDidMount(){
     if(this._inited)return;this._inited=true;
     try{
       const root=this._rootRef.current;
-      this._tipEl=root ? root.querySelector('[data-mm-tip]') : null;
+      this._tipEl=root?root.querySelector('[data-mm-tip]'):null;
+      if(this._tipEl){
+        this._tipMain=document.createElement('span');
+        this._tipSub=document.createElement('span');
+        this._tipSub.style.cssText='font-size:10px;font-weight:600;opacity:.45;letter-spacing:.6px;text-transform:uppercase;';
+        this._tipEl.appendChild(this._tipMain);this._tipEl.appendChild(this._tipSub);
+      }
+      this._miniEl=root?root.querySelector('[data-mm-mini]'):null;
+      this._liveEl=root?root.querySelector('[data-mm-live]'):null;
+      try{this._reduced=!!(window.matchMedia&&window.matchMedia('(prefers-reduced-motion: reduce)').matches);}catch(e){}
+      this._autoRotate=!this._reduced;
       this._init3D();
       this._loadData();
       window.addEventListener('resize',this._onResize);
+      window.addEventListener('hashchange',this._onHash);
+      document.addEventListener('visibilitychange',this._onVis);
+      if(window.ResizeObserver&&root){
+        this._ro=new ResizeObserver(this._onResize);
+        this._ro.observe(root);
+      }
+      this.setState({reduced:this._reduced,autoRotate:this._autoRotate});
+      if(root)try{root.focus({preventScroll:true});}catch(e){}
     }catch(e){
       console.error('MM mount error:',e&&(e.message||String(e)),e&&e.stack);
     }
   }
   componentWillUnmount(){
     if(this._animId)cancelAnimationFrame(this._animId);
+    this._animId=null;
     window.removeEventListener('resize',this._onResize);
+    window.removeEventListener('hashchange',this._onHash);
+    document.removeEventListener('visibilitychange',this._onVis);
+    if(this._ro){try{this._ro.disconnect();}catch(e){}this._ro=null;}
+    this._disposeGraph();
+    this._chrome.forEach(d=>{try{d.dispose&&d.dispose();}catch(e){}});
+    this._chrome=[];
+    if(this._ctrl){try{this._ctrl.dispose();}catch(e){}}
     if(this._renderer){
-      this._renderer.domElement.removeEventListener('mousemove',this._onMM);
-      this._renderer.domElement.removeEventListener('click',this._onCl);
+      const el=this._renderer.domElement;
+      el.removeEventListener('pointermove',this._onMM);
+      el.removeEventListener('pointerdown',this._onPD);
+      el.removeEventListener('pointerleave',this._onPL);
+      el.removeEventListener('click',this._onCl);
+      el.removeEventListener('dblclick',this._onDbl);
       this._renderer.dispose();
     }
+    if(this._miniEl)this._miniEl.removeEventListener('click',this._onMini);
   }
 
   // ── THREE INIT ─────────────────────────────────────────────
@@ -450,48 +744,88 @@ class Component extends DCLogic {
     const root=this._rootRef.current;
     if(!root){console.error('MM: root ref not ready');return;}
     const cont=root.querySelector('[data-mm-canvas]');
-    const W=cont.clientWidth,H=cont.clientHeight;
-    this._renderer=new THREE.WebGLRenderer({antialias:true});
-    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio,2));
+    const W=Math.max(cont.clientWidth,1),H=Math.max(cont.clientHeight,1);
+    this._renderer=new THREE.WebGLRenderer({antialias:true,powerPreference:'high-performance'});
+    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     this._renderer.setSize(W,H);
     this._renderer.setClearColor(0x00080f,1);
     cont.appendChild(this._renderer.domElement);
     this._scene=new THREE.Scene();
-    this._scene.fog=new THREE.FogExp2(0x00080f,.0013);
-    this._cam=new THREE.PerspectiveCamera(55,W/H,1,2500);
-    this._cam.position.set(0,55,410);
-    this._scene.add(new THREE.AmbientLight(0xffffff,.45));
-    const pl1=new THREE.PointLight(0x4499ff,2.8,650);
-    pl1.position.set(0,200,0);this._scene.add(pl1);
-    const pl2=new THREE.PointLight(0xff44aa,1.5,500);
-    pl2.position.set(-180,-80,160);this._scene.add(pl2);
+    this._scene.fog=new THREE.FogExp2(0x00080f,.0011);
+    this._cam=new THREE.PerspectiveCamera(55,W/H,1,3000);
+    this._cam.position.set(0,60,430);
+    this._scene.add(new THREE.AmbientLight(0xffffff,.5));
+    const pl1=new THREE.PointLight(0x4499ff,2.6,700);
+    pl1.position.set(0,220,0);this._scene.add(pl1);
+    const pl2=new THREE.PointLight(0xff44aa,1.4,520);
+    pl2.position.set(-190,-90,170);this._scene.add(pl2);
+    const rim=new THREE.DirectionalLight(0x9ec8ff,.35);
+    rim.position.set(-1,.5,1);this._scene.add(rim);
     if(THREE.OrbitControls){
       this._ctrl=new THREE.OrbitControls(this._cam,this._renderer.domElement);
-      this._ctrl.enableDamping=true;this._ctrl.dampingFactor=.06;
-      this._ctrl.autoRotate=true;this._ctrl.autoRotateSpeed=.42;
-      this._ctrl.minDistance=60;this._ctrl.maxDistance=900;
+      this._ctrl.enableDamping=true;this._ctrl.dampingFactor=.07;
+      this._ctrl.rotateSpeed=.55;this._ctrl.zoomSpeed=.85;
+      this._ctrl.autoRotate=this._autoRotate;this._ctrl.autoRotateSpeed=.4;
+      this._ctrl.minDistance=45;this._ctrl.maxDistance=1600;
+      // Any manual grab wins over an in-flight camera tween.
+      this._ctrl.addEventListener('start',()=>{this._tid++;this._tweening=false;});
     }
     this._ray=new THREE.Raycaster();
     this._mouse=new THREE.Vector2(-9999,-9999);
     this._clock=new THREE.Clock();
     this._mkStars();
-    this._renderer.domElement.addEventListener('mousemove',this._onMM);
-    this._renderer.domElement.addEventListener('click',this._onCl);
-    this._renderer.domElement.addEventListener('dblclick',e=>{e.preventDefault();this._deselect();});
-    this._renderer.domElement.style.display='block';
+    this._mkHalo();
+    const el=this._renderer.domElement;
+    el.addEventListener('pointermove',this._onMM);
+    el.addEventListener('pointerdown',this._onPD);
+    el.addEventListener('pointerleave',this._onPL);
+    el.addEventListener('click',this._onCl);
+    el.addEventListener('dblclick',this._onDbl);
+    el.style.display='block';
+    el.style.touchAction='none';
+    if(this._miniEl)this._miniEl.addEventListener('click',this._onMini);
     this._loop();
   }
 
-  // ── STARS ──────────────────────────────────────────────────
+  // ── STARS (two counter-drifting shells = cheap parallax) ───
   _mkStars(){
-    const N=2000,p=new Float32Array(N*3);
-    for(let i=0;i<N;i++){
-      const ph=Math.acos(2*Math.random()-1),th=Math.random()*6.2832,r=850+Math.random()*700;
-      p[i*3]=r*Math.sin(ph)*Math.cos(th);p[i*3+1]=r*Math.sin(ph)*Math.sin(th);p[i*3+2]=r*Math.cos(ph);
-    }
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position',new THREE.BufferAttribute(p,3));
-    this._scene.add(new THREE.Points(geo,new THREE.PointsMaterial({size:1.3,color:0x7aaee8,transparent:true,opacity:.5,sizeAttenuation:true})));
+    const shell=(n,rMin,rSpan,size,op,color)=>{
+      const p=new Float32Array(n*3);
+      for(let i=0;i<n;i++){
+        const ph=Math.acos(2*Math.random()-1),th=Math.random()*6.2832,r=rMin+Math.random()*rSpan;
+        p[i*3]=r*Math.sin(ph)*Math.cos(th);p[i*3+1]=r*Math.sin(ph)*Math.sin(th);p[i*3+2]=r*Math.cos(ph);
+      }
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+      const mat=new THREE.PointsMaterial({size,color,transparent:true,opacity:op,sizeAttenuation:true,depthWrite:false});
+      const pts=new THREE.Points(geo,mat);
+      this._scene.add(pts);this._chrome.push(geo,mat);
+      return pts;
+    };
+    this._starA=shell(1500,900,700,1.4,.5,0x7aaee8);
+    this._starB=shell(900,1500,900,2.1,.28,0xbcd6f5);
+  }
+
+  // ── SELECTION HALO + HOVER RING (one instance, re-targeted) ─
+  _mkHalo(){
+    const g=new THREE.Group();g.visible=false;
+    const mk=(rot)=>{
+      const geo=new THREE.TorusGeometry(1,.022,8,72);
+      const mat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.85,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+      const m=new THREE.Mesh(geo,mat);m.rotation.x=rot;
+      this._chrome.push(geo,mat);return m;
+    };
+    this._haloA=mk(Math.PI/2);this._haloB=mk(Math.PI/2.6);
+    this._haloB.rotation.y=Math.PI/3;
+    g.add(this._haloA);g.add(this._haloB);
+    this._halo=g;this._scene.add(g);
+
+    const hgeo=new THREE.TorusGeometry(1,.03,8,48);
+    const hmat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.6,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+    this._hoverRing=new THREE.Mesh(hgeo,hmat);
+    this._hoverRing.visible=false;
+    this._chrome.push(hgeo,hmat);
+    this._scene.add(this._hoverRing);
   }
 
   // ── LABEL SPRITE ───────────────────────────────────────────
@@ -501,8 +835,10 @@ class Component extends DCLogic {
     const pad=isRoot?20:isBranch?16:12;
     const cv=document.createElement('canvas');
     const ctx=cv.getContext('2d');
-    ctx.font=`${isBranch||isRoot?'700':'500'} ${px}px 'Space Grotesk',system-ui,sans-serif`;
-    const tw=ctx.measureText(text).width;
+    const font=`${isBranch||isRoot?'700':'500'} ${px}px 'Space Grotesk',system-ui,sans-serif`;
+    ctx.font=font;
+    const label=text.length>44?text.slice(0,42)+'…':text;
+    const tw=ctx.measureText(label).width;
     cv.width=Math.ceil(tw+pad*2+2);
     cv.height=Math.ceil(px*1.5+pad);
     ctx.clearRect(0,0,cv.width,cv.height);
@@ -521,16 +857,20 @@ class Component extends DCLogic {
     ctx.fillStyle=bg;ctx.fill();
     ctx.fillStyle=hexColor;
     ctx.fillRect(0,0,3,cv.height);
-    ctx.font=`${isBranch||isRoot?'700':'500'} ${px}px 'Space Grotesk',system-ui,sans-serif`;
+    ctx.font=font;
     ctx.fillStyle=isRoot?'#ffffff':isBranch?hexColor:'rgba(255,255,255,.85)';
     ctx.textBaseline='middle';
-    ctx.fillText(text,pad,cv.height/2);
+    ctx.fillText(label,pad,cv.height/2);
     const tex=new THREE.CanvasTexture(cv);
     const aspect=cv.width/cv.height;
     const h=isRoot?18:isBranch?13:9;
-    const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,sizeAttenuation:true});
+    const mat=new THREE.SpriteMaterial({map:tex,transparent:true,depthTest:false,depthWrite:false,sizeAttenuation:true,opacity:0});
     const sprite=new THREE.Sprite(mat);
     sprite.scale.set(h*aspect,h,1);
+    sprite.userData.aspect=aspect;
+    sprite.userData.hRatio=cv.height/px;   // sprite height per 1px of glyph
+    sprite.renderOrder=10;
+    this._disposables.push(tex,mat);
     return sprite;
   }
 
@@ -544,25 +884,83 @@ class Component extends DCLogic {
     g.addColorStop(.65,'rgba(255,255,255,.18)');g.addColorStop(1,'rgba(255,255,255,0)');
     ctx.fillStyle=g;ctx.fillRect(0,0,128,128);
     this._glowTex=new THREE.CanvasTexture(cv);
+    this._disposables.push(this._glowTex);
     return this._glowTex;
   }
 
   // ── LOAD DATA ──────────────────────────────────────────────
-  async _loadData(){
+  _loadData=async(opts)=>{
+    const o=opts||{};
+    if(!o.quiet)this.setState({loading:true,error:''});
+    let data=null,err='';
     try{
       const r=await fetch('/api/profile/mindmap',{credentials:'same-origin'});
-      if(!r.ok)throw 0;
-      this._data=await r.json();
-    }catch{this._data=this._MOCK;}
+      const j=await r.json().catch(()=>null);
+      if(!r.ok)err=(j&&j.error)||('HTTP '+r.status);
+      else if(j&&Array.isArray(j.nodes)&&j.nodes.length)data=j;
+      else err='Tomt svar fra serveren';
+    }catch(e){err=(e&&e.message)||'Netværksfejl';}
+    if(!data){
+      // A quiet background refresh that fails leaves the graph you're looking at
+      // alone — only a foreground load is allowed to swap in the error card.
+      if(o.quiet&&this._list.length){console.warn('mindmap refresh failed:',err);return;}
+      this.setState({loading:false,error:err||'Ukendt fejl'});
+      return;
+    }
+    this._install(data,{demo:false,keepSel:o.keepSel,select:o.select});
+  };
+
+  _useDemo=()=>{this._install(this._MOCK,{demo:true});};
+
+  _install(data,opts){
+    const o=opts||{};
+    this._data=data;
     if(!this._scene)return;
-    this._buildGraph(this._data);
-    const comp=this._data.completeness||{};
-    this.setState({loading:false,completeness:comp.pct||0,completenessFull:comp,counts:this._data.counts});
+    const prevSel=o.keepSel?this._selId:null;
+    this._skipEntry=!!o.keepSel;
+    this._disposeGraph();
+    this._index(data);
+    this._buildGraph(data);
+    const comp=data.completeness||{};
+    this.setState({loading:false,error:'',demo:!!o.demo,completeness:comp.pct||0,
+      completenessFull:comp,counts:data.counts||{leaves:0,memories:0,used_memories:0}});
+    this._applyFilter();
+    const want=o.select||prevSel||this._hashId();
+    if(want&&this._e[want])this._select(want,{fly:!!o.select||!o.keepSel});
+    else{this._select(null,{fly:false});this._fitAll(true);}
+  }
+
+  // ── INDEX (tree structure drives every navigation affordance) ─
+  _index(data){
+    this._byId={};this._kids={};this._parent={};this._depth={};
+    (data.nodes||[]).forEach(n=>{this._byId[n.id]=n;this._kids[n.id]=[];});
+    (data.edges||[]).forEach(e=>{
+      if(this._byId[e.source]&&this._byId[e.target]&&this._parent[e.target]==null){
+        this._kids[e.source].push(e.target);
+        this._parent[e.target]=e.source;
+      }
+    });
+    const rootN=(data.nodes||[]).find(n=>n.type==='root')||(data.nodes||[])[0];
+    this._rootId=rootN?rootN.id:null;
+    const q=this._rootId?[this._rootId]:[];
+    this._depth[this._rootId]=0;
+    while(q.length){
+      const id=q.shift();
+      (this._kids[id]||[]).forEach(c=>{
+        if(this._depth[c]==null){this._depth[c]=this._depth[id]+1;q.push(c);}
+      });
+    }
+    (data.nodes||[]).forEach(n=>{if(this._depth[n.id]==null)this._depth[n.id]=1;});
+  }
+  _ancestors(id){
+    const out=[];let cur=this._parent[id],guard=0;
+    while(cur!=null&&guard++<32){out.unshift(cur);cur=this._parent[cur];}
+    return out;
   }
 
   // ── FIBONACCI SPHERE ───────────────────────────────────────
   _fibSphere(n,r){
-    if(n<1)return [];if(n===1)return[new THREE.Vector3(r,0,0)];
+    if(n<1)return [];if(n===1)return[new THREE.Vector3(0,r,0)];
     const pts=[],phi=Math.PI*(3-Math.sqrt(5));
     for(let i=0;i<n;i++){
       const y=1-(i/(n-1))*2,rr=Math.sqrt(Math.max(0,1-y*y)),th=phi*i;
@@ -571,158 +969,515 @@ class Component extends DCLogic {
     return pts;
   }
 
-  // ── BUILD GRAPH ────────────────────────────────────────────
-  _buildGraph(data){
-    const{nodes,edges}=data;
-    const byId=Object.fromEntries(nodes.map(n=>[n.id,n]));
-    const childrenOf={};
-    edges.forEach(e=>{if(!childrenOf[e.source])childrenOf[e.source]=[];childrenOf[e.source].push(e.target);});
-    const pos={};
-    const root=nodes.find(n=>n.type==='root');
-    if(root)pos[root.id]=new THREE.Vector3(0,0,0);
+  // ── LAYOUT ─────────────────────────────────────────────────
+  /* v1 hard-coded 195/74. With a real profile the clusters interpenetrated and
+     the map read as noise. v2 sizes each cluster by its child count and then
+     sizes the branch shell so the largest two clusters still clear each other,
+     and tilts each cluster outward so leaves bloom away from the core. */
+  _layout(data){
+    const pos={},clusterR={};
+    const nodes=data.nodes||[];
+    const rootId=this._rootId;
+    if(rootId)pos[rootId]=new THREE.Vector3(0,0,0);
     const branches=nodes.filter(n=>n.type==='branch');
-    const bPts=this._fibSphere(branches.length,195);
-    branches.forEach((b,i)=>{pos[b.id]=bPts[i];});
+    const k=Math.max(branches.length,1);
+    const leafR={};
+    let maxLeafR=40;
     branches.forEach(b=>{
-      const kids=(childrenOf[b.id]||[]).map(id=>byId[id]).filter(Boolean);
+      const n=(this._kids[b.id]||[]).length;
+      const r=n?26+8.5*Math.sqrt(n):0;
+      leafR[b.id]=r;clusterR[b.id]=r+26;
+      if(r>maxLeafR)maxLeafR=r;
+    });
+    // Min separation on a Fibonacci shell of radius R ≈ 3.54R/√k; want ≥1.9·maxLeafR.
+    const bR=Math.max(175,.62*maxLeafR*Math.sqrt(k));
+    this._bR=bR;
+    const bPts=this._fibSphere(branches.length,bR);
+    branches.forEach((b,i)=>{pos[b.id]=bPts[i].clone();});
+    const up=new THREE.Vector3(0,1,0);
+    branches.forEach(b=>{
+      const kids=(this._kids[b.id]||[]).map(id=>this._byId[id]).filter(Boolean);
       if(!kids.length)return;
-      const lPts=this._fibSphere(kids.length,74);
+      const bp=pos[b.id];
+      const outward=bp.lengthSq()>1e-6?bp.clone().normalize():new THREE.Vector3(0,1,0);
+      const quat=new THREE.Quaternion().setFromUnitVectors(up,outward);
+      const r=leafR[b.id];
+      const lPts=this._fibSphere(kids.length,r);
+      const shift=outward.clone().multiplyScalar(r*.32);
       kids.forEach((leaf,j)=>{
-        const bp=pos[b.id];
-        pos[leaf.id]=new THREE.Vector3(bp.x+lPts[j].x,bp.y+lPts[j].y,bp.z+lPts[j].z);
+        pos[leaf.id]=lPts[j].clone().applyQuaternion(quat).add(bp).add(shift);
       });
     });
-    nodes.forEach(n=>{
+    // Orphans (an edge the tree walk never reached) still get a home.
+    nodes.forEach((n,i)=>{
       if(!pos[n.id]){
-        const phi=Math.acos(2*Math.random()-1),th=Math.random()*6.2832,r=200;
-        pos[n.id]=new THREE.Vector3(r*Math.sin(phi)*Math.cos(th),r*Math.sin(phi)*Math.sin(th),r*Math.cos(phi));
+        const ph=Math.acos(1-2*((i+.5)/nodes.length)),th=i*2.399;
+        pos[n.id]=new THREE.Vector3(bR*Math.sin(ph)*Math.cos(th),bR*Math.sin(ph)*Math.sin(th),bR*Math.cos(ph));
       }
     });
+    return {pos,clusterR};
+  }
+
+  // ── BUILD GRAPH ────────────────────────────────────────────
+  _buildGraph(data){
+    const nodes=data.nodes||[],edges=data.edges||[];
+    const {pos,clusterR}=this._layout(data);
     const tex=this._mkGlowTex();
-    nodes.forEach(node=>{
+    const geoRoot=new THREE.SphereGeometry(1,32,24);
+    const geoBranch=new THREE.SphereGeometry(1,20,14);
+    const geoLeaf=new THREE.SphereGeometry(1,14,10);
+    this._disposables.push(geoRoot,geoBranch,geoLeaf);
+    this._e={};this._list=[];this._rings=[];
+    let extent=120;
+
+    nodes.forEach((node,idx)=>{
       const p=pos[node.id];if(!p)return;
-      const col=this._C[node.category]||'#fff';
+      const col=this._C[node.category]||'#cbd5e1';
       const c3=new THREE.Color(col);
       const isRoot=node.type==='root',isBranch=node.type==='branch';
       const isMem=node.type==='leaf'&&node.category==='hukommelse';
-      const used=node.meta&&node.meta.used_count||0;
-      const rad=isRoot?16:isBranch?8:isMem?5+Math.min(used,8)*.4:4.2;
-      const geo=new THREE.SphereGeometry(rad,isRoot?32:isBranch?20:12,isRoot?32:isBranch?16:10);
-      const emC=c3.clone().multiplyScalar(.2);
-      const mat=new THREE.MeshPhongMaterial({color:c3,emissive:emC,shininess:80,transparent:true,opacity:isRoot?1:isBranch?.9:.8});
-      const mesh=new THREE.Mesh(geo,mat);
-      mesh.position.copy(p);
-      mesh.userData={nodeId:node.id,phase:Math.random()*Math.PI*2,basePos:p.clone(),origOpacity:mat.opacity};
+      const used=(node.meta&&node.meta.used_count)||0;
+      const radius=isRoot?16:isBranch?8:isMem?5+Math.min(used,8)*.4:4.2;
+      const mat=new THREE.MeshPhongMaterial({color:c3,emissive:c3.clone().multiplyScalar(.22),
+        shininess:80,transparent:true,opacity:isRoot?1:isBranch?.92:.82});
+      const mesh=new THREE.Mesh(isRoot?geoRoot:isBranch?geoBranch:geoLeaf,mat);
+      mesh.position.copy(p);mesh.scale.setScalar(radius);
+      mesh.userData={nodeId:node.id};
       this._scene.add(mesh);
-      const gs=isRoot?88:isBranch?44:isMem?28+used*2.5:20;
-      const go=isRoot?.72:isBranch?.44:isMem?.48+Math.min(used,.08)*.2:.22;
-      const gMat=new THREE.SpriteMaterial({map:tex,color:c3,transparent:true,opacity:go,blending:THREE.AdditiveBlending,depthWrite:false});
+      this._disposables.push(mat);
+
+      const glowSize=isRoot?88:isBranch?44:isMem?28+used*2.5:20;
+      const glowOp=isRoot?.72:isBranch?.44:isMem?.48:.22;
+      const gMat=new THREE.SpriteMaterial({map:tex,color:c3,transparent:true,opacity:glowOp,
+        blending:THREE.AdditiveBlending,depthWrite:false});
       const glow=new THREE.Sprite(gMat);
-      glow.scale.set(gs,gs,1);glow.position.copy(p);
-      glow.userData={baseOp:go};
-      this._scene.add(glow);
+      glow.scale.set(glowSize,glowSize,1);glow.position.copy(p);
+      this._scene.add(glow);this._disposables.push(gMat);
+
       const rings=[];
       if(isMem&&used>0){
         const rc=Math.min(Math.ceil(used/3),4);
         for(let ri=0;ri<rc;ri++){
-          const rgeo=new THREE.TorusGeometry(rad+6+ri*5,.7,8,48);
-          const rmat=new THREE.MeshBasicMaterial({color:c3,transparent:true,opacity:.52-ri*.1,blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+          const rgeo=new THREE.TorusGeometry(radius+6+ri*5,.7,8,48);
+          const rmat=new THREE.MeshBasicMaterial({color:c3,transparent:true,opacity:.52-ri*.1,
+            blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
           const ring=new THREE.Mesh(rgeo,rmat);
           ring.position.copy(p);ring.rotation.x=Math.PI/2+ri*.35;ring.rotation.y=ri*.9;
-          ring.userData={speed:.55+ri*.22,phase:ri*1.1,basePos:p.clone()};
+          ring.userData={speed:.55+ri*.22,phase:ri*1.1,baseOp:.52-ri*.1};
           this._scene.add(ring);rings.push(ring);this._rings.push(ring);
+          this._disposables.push(rgeo,rmat);
         }
       }
-      const label=this._mkLabelSprite(node.label,col,node.type);
+
+      const label=this._mkLabelSprite(node.label||'',col,node.type);
       const lOff=isRoot?24:isBranch?14:9;
       label.position.set(p.x,p.y+lOff,p.z);
       this._scene.add(label);
-      this._nMap[node.id]={mesh,glow,label,lOff,node,rings,origMeshOp:mat.opacity,origGlowOp:go};
+
+      const depth=this._depth[node.id]||0;
+      const entry={
+        node,mesh,glow,label,rings,lOff,radius,glowSize,
+        labelAspect:label.userData.aspect||3,
+        // target glyph height in CSS px, converted to sprite height
+        labelPx:(isRoot?20:isBranch?14:11.5)*(label.userData.hRatio||2.5),
+        base:p.clone(),phase:(idx*2.399)%(Math.PI*2),
+        drift:node.type==='leaf'?2.6:isBranch?1.5:.8,
+        amp:isMem?.12+used*.008:isRoot?.04:.06,
+        freq:isMem?2+used*.05:.72,
+        baseMeshOp:mat.opacity,baseGlowOp:glowOp,
+        mOp:mat.opacity,gOp:glowOp,lOp:0,
+        mOpT:mat.opacity,gOpT:glowOp,
+        clusterR:clusterR[node.id]||0,
+        used,isMem,depth,
+        delay:depth*.17+(idx%24)*.008,
+        vis:true,match:false,hover:false,sel:false,rel:false,place:false,boost:0,
+        text:this._searchText(node),
+      };
+      this._e[node.id]=entry;this._list.push(entry);
+      extent=Math.max(extent,Math.abs(p.x),Math.abs(p.z),Math.abs(p.y));
     });
+
+    this._extent=extent*1.06;
+    this._entryMax=this._list.reduce((m,e)=>Math.max(m,e.delay),0)+.72;
+    this._entryT=(this._reduced||this._skipEntry)?this._entryMax+1:0;
     this._buildEdges(edges,pos);
-    this._buildEParticles(edges,pos);
+    this._buildCore(pos);
   }
 
+  _buildCore(pos){
+    const rp=this._rootId?pos[this._rootId]:null;
+    if(!rp)return;
+    const geo=new THREE.IcosahedronGeometry(30,1);
+    const mat=new THREE.MeshBasicMaterial({color:0x2f6ea8,wireframe:true,transparent:true,
+      opacity:.16,blending:THREE.AdditiveBlending,depthWrite:false});
+    this._core=new THREE.Mesh(geo,mat);
+    this._core.position.copy(rp);
+    this._scene.add(this._core);
+    this._disposables.push(geo,mat);
+  }
+
+  // ── EDGES (vertex colours = per-edge highlight & dimming) ──
   _buildEdges(edges,pos){
-    const pts=[];
-    edges.forEach(e=>{const s=pos[e.source],t=pos[e.target];if(s&&t){pts.push(s.clone(),t.clone());}});
-    if(!pts.length)return;
-    const geo=new THREE.BufferGeometry().setFromPoints(pts);
-    const mat=new THREE.LineBasicMaterial({color:0x1a3055,transparent:true,opacity:.4,blending:THREE.AdditiveBlending,depthWrite:false});
-    this._scene.add(new THREE.LineSegments(geo,mat));
-  }
-
-  _buildEParticles(edges,pos){
-    const PER=3;this._eData=[];
+    this._edges=[];this._edgeByPair={};
     edges.forEach(e=>{
-      const s=pos[e.source],t=pos[e.target];if(!s||!t)return;
-      for(let i=0;i<PER;i++)this._eData.push({src:s.clone(),tgt:t.clone(),t:Math.random(),spd:.11+Math.random()*.08});
+      const s=pos[e.source],t=pos[e.target];
+      if(!s||!t)return;
+      this._edgeByPair[e.source+'>'+e.target]=this._edges.length;
+      this._edges.push({source:e.source,target:e.target,s:s.clone(),t:t.clone()});
+    });
+    const E=this._edges.length;
+    if(!E)return;
+    const p=new Float32Array(E*6),c=new Float32Array(E*6);
+    this._edges.forEach((ed,i)=>{
+      p[i*6]=ed.s.x;p[i*6+1]=ed.s.y;p[i*6+2]=ed.s.z;
+      p[i*6+3]=ed.t.x;p[i*6+4]=ed.t.y;p[i*6+5]=ed.t.z;
+    });
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute('position',new THREE.BufferAttribute(p,3));
+    geo.setAttribute('color',new THREE.BufferAttribute(c,3));
+    const mat=new THREE.LineBasicMaterial({vertexColors:true,transparent:true,opacity:1,
+      blending:THREE.AdditiveBlending,depthWrite:false});
+    this._edgeGeo=geo;this._edgeMat=mat;
+    this._scene.add(new THREE.LineSegments(geo,mat));
+    this._disposables.push(geo,mat);
+    this._edgeBoost=new Float32Array(E).fill(1);
+
+    // Flow particles: density backs off on big graphs so the frame budget holds.
+    const per=E>320?1:E>160?2:3;
+    this._eData=[];
+    this._edges.forEach((ed,i)=>{
+      for(let j=0;j<per;j++)this._eData.push({e:i,t:(j+Math.random())/per,spd:.11+Math.random()*.08});
     });
     if(!this._eData.length)return;
-    const arr=new Float32Array(this._eData.length*3);
-    const geo=new THREE.BufferGeometry();
-    geo.setAttribute('position',new THREE.BufferAttribute(arr,3));
-    const mat=new THREE.PointsMaterial({size:2.4,color:0x3388ff,transparent:true,opacity:.65,blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true});
-    this._ePts=new THREE.Points(geo,mat);
+    const pa=new Float32Array(this._eData.length*3),ca=new Float32Array(this._eData.length*3);
+    const pgeo=new THREE.BufferGeometry();
+    pgeo.setAttribute('position',new THREE.BufferAttribute(pa,3));
+    pgeo.setAttribute('color',new THREE.BufferAttribute(ca,3));
+    const pmat=new THREE.PointsMaterial({size:2.6,vertexColors:true,transparent:true,opacity:.9,
+      blending:THREE.AdditiveBlending,depthWrite:false,sizeAttenuation:true});
+    this._ePts=new THREE.Points(pgeo,pmat);
     this._scene.add(this._ePts);
+    this._disposables.push(pgeo,pmat);
+  }
+
+  _recolorEdges(){
+    if(!this._edgeGeo)return;
+    const col=this._edgeGeo.getAttribute('color');
+    const sel=this._selId,path=this._pathSet;
+    const quiet=!!(sel||this.state.focusId);
+    for(let i=0;i<this._edges.length;i++){
+      const ed=this._edges[i];
+      const a=this._e[ed.source],b=this._e[ed.target];
+      let r,g,bl,boost;
+      if(!a||!b||!a.vis||!b.vis){r=.012;g=.016;bl=.024;boost=0;}
+      else if(path&&path.has(i)){
+        const c=new THREE.Color(this._C[(b.node.category)]||'#cbd5e1');
+        r=c.r*.95;g=c.g*.95;bl=c.b*.95;boost=3.2;
+      }
+      else if(quiet){r=.035;g=.055;bl=.09;boost=.45;}
+      else {r=.1;g=.17;bl=.29;boost=1;}
+      col.setXYZ(i*2,r,g,bl);col.setXYZ(i*2+1,r,g,bl);
+      this._edgeBoost[i]=boost;
+    }
+    col.needsUpdate=true;
+    if(this._ePts){
+      const pc=this._ePts.geometry.getAttribute('color');
+      for(let i=0;i<this._eData.length;i++){
+        const ei=this._eData[i].e;
+        const r=col.getX(ei*2),g=col.getY(ei*2),b=col.getZ(ei*2);
+        const k=this._edgeBoost[ei]>2?1.15:2.2;
+        pc.setXYZ(i,Math.min(r*k,1),Math.min(g*k,1),Math.min(b*k,1));
+      }
+      pc.needsUpdate=true;
+    }
+  }
+
+  _disposeGraph(){
+    if(!this._scene)return;
+    this._list.forEach(e=>{
+      this._scene.remove(e.mesh);this._scene.remove(e.glow);
+      if(e.label)this._scene.remove(e.label);
+      e.rings.forEach(r=>this._scene.remove(r));
+    });
+    if(this._core){this._scene.remove(this._core);this._core=null;}
+    this._scene.children.slice().forEach(o=>{if(o.isLineSegments||(o.isPoints&&o!==this._starA&&o!==this._starB))this._scene.remove(o);});
+    this._disposables.forEach(d=>{try{d.dispose&&d.dispose();}catch(err){}});
+    this._disposables=[];
+    if(this._halo)this._halo.visible=false;
+    if(this._hoverRing)this._hoverRing.visible=false;
+    this._e={};this._list=[];this._rings=[];this._edges=[];this._eData=[];
+    this._ePts=null;this._edgeGeo=null;this._edgeMat=null;this._pickList=[];
+    this._hov=null;this._pathSet=null;this._glowTex=null;
   }
 
   // ── ANIMATION LOOP ─────────────────────────────────────────
   _loop=()=>{
     this._animId=requestAnimationFrame(this._loop);
-    const dt=this._clock.getDelta(),t=this._clock.elapsedTime;
-    if(this._ctrl)this._ctrl.update();
-    this._animNodes(t);
+    if(!this._renderer||!this._scene)return;
+    let dt=this._clock.getDelta();
+    if(dt>.1)dt=.1;
+    const t=this._clock.elapsedTime;
+    if(this._entryT<=this._entryMax)this._entryT+=dt;
+    if(this._ctrl){
+      this._ctrl.autoRotate=this._autoRotate&&!this._reduced&&!this._tweening;
+      this._ctrl.update();
+    }
+    this._animStars(dt);
+    this._animNodes(t,dt);
     this._animRings(t);
     this._animParticles(dt);
+    this._animHalo(t,dt);
     this._renderer.render(this._scene,this._cam);
+    this._frame=(this._frame+1)%6;
+    if(this._frame===0)this._drawMini();
+    if(this._frame===3)this._layoutLabels();
   };
 
-  _animNodes(t){
-    Object.values(this._nMap).forEach(({mesh,glow,label,lOff,node})=>{
-      const ph=mesh.userData.phase,bp=mesh.userData.basePos;
-      const isMem=node.type==='leaf'&&node.category==='hukommelse';
-      const used=node.meta&&node.meta.used_count||0;
-      const amp=isMem?.12+used*.008:node.type==='root'?.04:.06;
-      const freq=isMem?2+used*.05:.72;
-      mesh.scale.setScalar(1+amp*Math.sin(t*freq+ph));
-      const d=node.type==='leaf'?2.6:node.type==='branch'?1.5:.8;
-      mesh.position.set(
-        bp.x+d*Math.sin(t*.28+ph),
-        bp.y+d*Math.cos(t*.22+ph*1.3),
-        bp.z+d*Math.sin(t*.32+ph*.7)
-      );
-      glow.position.copy(mesh.position);
-      if(label){
-        label.position.set(mesh.position.x,mesh.position.y+(lOff||12),mesh.position.z);
+  _animStars(dt){
+    if(this._reduced)return;
+    if(this._starA)this._starA.rotation.y+=dt*.004;
+    if(this._starB){this._starB.rotation.y-=dt*.0026;this._starB.rotation.x+=dt*.0009;}
+    if(this._core){this._core.rotation.y+=dt*.06;this._core.rotation.x+=dt*.024;}
+  }
+
+  _animNodes(t,dt){
+    const k=Math.min(1,dt*7);
+    const camPos=this._cam.position;
+    const wppK=this._worldPerPxK();
+    const entering=this._entryT<=this._entryMax;
+    const rootBase=this._rootId&&this._e[this._rootId]?this._e[this._rootId].base:null;
+    for(let i=0;i<this._list.length;i++){
+      const e=this._list[i];
+      let p=1;
+      if(entering){
+        p=Math.min(1,Math.max(0,(this._entryT-e.delay)/.72));
+        p=1-Math.pow(1-p,3);
       }
-      if(isMem){
-        const pulse=.35+(.22+used*.015)*Math.abs(Math.sin(t*(2+used*.05)+ph));
-        glow.material.opacity=Math.min(pulse,.95);
+      const ph=e.phase,b=e.base;
+      let x=b.x,y=b.y,z=b.z;
+      if(!this._reduced){
+        const d=e.drift;
+        x+=d*Math.sin(t*.28+ph);
+        y+=d*Math.cos(t*.22+ph*1.3);
+        z+=d*Math.sin(t*.32+ph*.7);
       }
-    });
+      if(p<1&&rootBase){
+        x=rootBase.x+(x-rootBase.x)*p;
+        y=rootBase.y+(y-rootBase.y)*p;
+        z=rootBase.z+(z-rootBase.z)*p;
+      }
+      e.mesh.position.set(x,y,z);
+      e.glow.position.set(x,y,z);
+      if(e.rings.length)for(let r=0;r<e.rings.length;r++)e.rings[r].position.set(x,y,z);
+
+      const want=e.hover?.36:e.sel?.24:0;
+      e.boost+=(want-e.boost)*Math.min(1,dt*11);
+      let s=e.radius*(.28+.72*p)*(1+e.boost);
+      if(!this._reduced)s*=1+e.amp*Math.sin(t*e.freq+ph);
+      e.mesh.scale.setScalar(s);
+
+      e.mOp+=(e.mOpT*p-e.mOp)*k;
+      e.mesh.material.opacity=e.mOp;
+      e.mesh.visible=e.mOp>.015;
+
+      let gt=e.gOpT*p*(1+e.boost*1.6);
+      if(e.isMem&&e.vis&&!this._reduced){
+        gt*=.72+.5*Math.abs(Math.sin(t*(2+e.used*.05)+ph));
+      }
+      e.gOp+=(gt-e.gOp)*k;
+      e.glow.material.opacity=Math.min(e.gOp,1);
+      e.glow.scale.setScalar(e.glowSize*(1+e.boost*1.3)*(.4+.6*p));
+      e.glow.visible=e.gOp>.01;
+
+      // Label LOD. v1 drew every leaf label, always, at world scale and with
+      // depthTest off — the moment a real profile loaded it was a wall of
+      // overlapping text. v2 holds labels at a constant *pixel* height and
+      // only shows the ones that are earned: root + branches for orientation,
+      // the selection path, search hits, and the nearest few leaves.
+      const lt=(e.vis&&p>.85&&e.place)?1:0;
+      e.lOp+=(lt-e.lOp)*k;
+      if(e.label){
+        e.label.material.opacity=e.lOp;
+        e.label.visible=e.lOp>.02;
+        if(e.label.visible){
+          const d=Math.max(camPos.distanceTo(e.mesh.position),18);
+          const hw=e.labelPx*d*wppK;
+          e.label.scale.set(hw*e.labelAspect,hw,1);
+          e.label.position.set(x,y+e.radius*1.3+hw*.85,z);
+        }
+      }
+      if(e.rings.length){
+        const ro=e.vis?e.mOp/Math.max(e.baseMeshOp,.001):0;
+        for(let r=0;r<e.rings.length;r++)e.rings[r].material.opacity=e.rings[r].userData.baseOp*ro;
+      }
+    }
+  }
+
+  // World units per screen pixel, per unit of camera distance.
+  _worldPerPxK(){
+    const h=(this._renderer&&this._renderer.domElement.clientHeight)||800;
+    return 2*Math.tan(this._cam.fov*Math.PI/360)/h;
+  }
+  /* Screen-space label placement. Labels are ranked by how much they earn
+     their place (root, then the selection path and search hits, then branches
+     by size, then the nearest leaves) and laid out greedily with overlap
+     rejection — so a dense cluster shows the few labels that fit rather than a
+     stack of unreadable cards. Runs every 6th frame, plus on hover/selection. */
+  _layoutLabels(){
+    if(!this._renderer||!this._list.length)return;
+    const wppK=this._worldPerPxK(),cam=this._cam,camPos=cam.position;
+    const el=this._renderer.domElement;
+    const W=el.clientWidth||1,H=el.clientHeight||1;
+    const cands=[];
+    for(let i=0;i<this._list.length;i++){
+      const e=this._list[i];
+      e.place=false;
+      if(!e.vis)continue;
+      const d=Math.max(camPos.distanceTo(e.mesh.position),18);
+      const t=e.node.type;
+      let rank;
+      if(t==='root')rank=-3;
+      else if(e.sel||e.hover)rank=-2;
+      else if(e.match)rank=-1;
+      else if(e.rel)rank=0;
+      else if(t==='branch')rank=1-Math.min((this._kids[e.node.id]||[]).length,99)/1000;
+      else if(e.radius/(d*wppK)>=9)rank=2+d/10000;
+      else continue;
+      cands.push({e,d,rank});
+    }
+    cands.sort((a,b)=>a.rank-b.rank||a.d-b.d);
+    const boxes=[],v=new THREE.Vector3();
+    const cap=Math.min(cands.length,30);
+    for(let i=0,placed=0;i<cands.length&&placed<cap;i++){
+      const c=cands[i],e=c.e;
+      const hw=e.labelPx*c.d*wppK;
+      v.copy(e.mesh.position);v.y+=e.radius*1.3+hw*.85;
+      v.project(cam);
+      if(v.z>1)continue;                       // behind the camera
+      const px=(v.x*.5+.5)*W,py=(-v.y*.5+.5)*H;
+      const w=e.labelPx*e.labelAspect+8,h=e.labelPx+6;
+      if(px<-w||px>W+w||py<-h||py>H+h)continue;
+      let hit=false;
+      for(let b=0;b<boxes.length;b++){
+        const o=boxes[b];
+        if(Math.abs(px-o.x)*2<w+o.w&&Math.abs(py-o.y)*2<h+o.h){hit=true;break;}
+      }
+      if(hit)continue;
+      boxes.push({x:px,y:py,w,h});
+      e.place=true;placed++;
+    }
   }
 
   _animRings(t){
-    this._rings.forEach(r=>{
+    if(this._reduced)return;
+    for(let i=0;i<this._rings.length;i++){
+      const r=this._rings[i];
       r.rotation.z=t*r.userData.speed+r.userData.phase;
       r.rotation.x=Math.PI/2+Math.sin(t*.3+r.userData.phase)*.28;
-    });
-    Object.values(this._nMap).forEach(({mesh,rings})=>{
-      rings.forEach(r=>r.position.copy(mesh.position));
-    });
+    }
   }
 
   _animParticles(dt){
     if(!this._ePts||!this._eData.length)return;
     const attr=this._ePts.geometry.getAttribute('position');
-    this._eData.forEach((p,i)=>{
-      p.t=(p.t+p.spd*dt)%1;
-      const pos=p.src.clone().lerp(p.tgt,p.t);
-      attr.setXYZ(i,pos.x,pos.y,pos.z);
-    });
+    for(let i=0;i<this._eData.length;i++){
+      const p=this._eData[i],ed=this._edges[p.e];
+      const boost=this._edgeBoost?this._edgeBoost[p.e]:1;
+      if(boost<=0){attr.setXYZ(i,ed.s.x,ed.s.y,ed.s.z);continue;}
+      p.t=(p.t+p.spd*dt*boost)%1;
+      attr.setXYZ(i,
+        ed.s.x+(ed.t.x-ed.s.x)*p.t,
+        ed.s.y+(ed.t.y-ed.s.y)*p.t,
+        ed.s.z+(ed.t.z-ed.s.z)*p.t);
+    }
     attr.needsUpdate=true;
   }
+
+  _animHalo(t,dt){
+    const se=this._selId?this._e[this._selId]:null;
+    if(this._halo){
+      if(se){
+        this._halo.visible=true;
+        this._halo.position.copy(se.mesh.position);
+        const r=se.radius*(2.15+(this._reduced?0:.12*Math.sin(t*1.7)));
+        this._haloA.scale.setScalar(r);this._haloB.scale.setScalar(r*1.28);
+        if(!this._reduced){
+          this._haloA.rotation.z=t*.55;
+          this._haloB.rotation.z=-t*.36;
+          this._haloB.rotation.x=Math.PI/2.6+Math.sin(t*.4)*.3;
+        }
+        const c=this._C[se.node.category]||'#ffffff';
+        this._haloA.material.color.set(c);this._haloB.material.color.set(c);
+      }else this._halo.visible=false;
+    }
+    const he=this._hov&&this._hov!==this._selId?this._e[this._hov]:null;
+    if(this._hoverRing){
+      if(he&&he.vis){
+        this._hoverRing.visible=true;
+        this._hoverRing.position.copy(he.mesh.position);
+        this._hoverRing.scale.setScalar(he.radius*1.75);
+        this._hoverRing.quaternion.copy(this._cam.quaternion);
+        this._hoverRing.material.color.set(this._C[he.node.category]||'#ffffff');
+      }else this._hoverRing.visible=false;
+    }
+  }
+
+  // ── RADAR / MINIMAP ────────────────────────────────────────
+  _drawMini(){
+    const cv=this._miniEl;
+    if(!cv||!cv.getContext)return;
+    const ctx=cv.getContext('2d');
+    const S=cv.width,c=S/2;
+    ctx.clearRect(0,0,S,S);
+    const scale=(S*.43)/Math.max(this._extent,1);
+    ctx.strokeStyle='rgba(255,255,255,.07)';ctx.lineWidth=2;
+    ctx.beginPath();ctx.arc(c,c,S*.43,0,6.2832);ctx.stroke();
+    ctx.beginPath();ctx.arc(c,c,S*.22,0,6.2832);ctx.stroke();
+    // camera cone
+    if(this._ctrl){
+      const cp=this._cam.position,tg=this._ctrl.target;
+      const ang=Math.atan2(tg.z-cp.z,tg.x-cp.x);
+      const cx=c+cp.x*scale,cy=c+cp.z*scale;
+      ctx.fillStyle='rgba(96,165,250,.13)';
+      ctx.beginPath();ctx.moveTo(cx,cy);
+      ctx.arc(cx,cy,S*.5,ang-.5,ang+.5);
+      ctx.closePath();ctx.fill();
+      ctx.fillStyle='#60a5fa';
+      ctx.beginPath();ctx.arc(cx,cy,3.5,0,6.2832);ctx.fill();
+    }
+    for(let i=0;i<this._list.length;i++){
+      const e=this._list[i];
+      if(!e.vis&&!e.sel)continue;
+      const x=c+e.base.x*scale,y=c+e.base.z*scale;
+      const isRoot=e.node.type==='root',isBranch=e.node.type==='branch';
+      ctx.globalAlpha=e.vis?(isRoot?1:isBranch?.9:.6):.2;
+      ctx.fillStyle=this._C[e.node.category]||'#cbd5e1';
+      ctx.beginPath();ctx.arc(x,y,isRoot?5:isBranch?3.4:2,0,6.2832);ctx.fill();
+      if(e.match){ctx.globalAlpha=1;ctx.strokeStyle='#fff';ctx.lineWidth=1.4;ctx.beginPath();ctx.arc(x,y,4.5,0,6.2832);ctx.stroke();}
+    }
+    ctx.globalAlpha=1;
+    const se=this._selId?this._e[this._selId]:null;
+    if(se){
+      const x=c+se.base.x*scale,y=c+se.base.z*scale;
+      ctx.strokeStyle='#ffffff';ctx.lineWidth=2;
+      ctx.beginPath();ctx.arc(x,y,7,0,6.2832);ctx.stroke();
+    }
+  }
+  _onMini=(ev)=>{
+    const cv=this._miniEl;if(!cv||!this._list.length)return;
+    const r=cv.getBoundingClientRect();
+    const S=cv.width,c=S/2;
+    const scale=(S*.43)/Math.max(this._extent,1);
+    const px=((ev.clientX-r.left)/r.width)*S,py=((ev.clientY-r.top)/r.height)*S;
+    const wx=(px-c)/scale,wz=(py-c)/scale;
+    let best=null,bd=Infinity;
+    for(let i=0;i<this._list.length;i++){
+      const e=this._list[i];if(!e.vis)continue;
+      const dx=e.base.x-wx,dz=e.base.z-wz,d=dx*dx+dz*dz;
+      if(d<bd){bd=d;best=e;}
+    }
+    if(best)this._select(best.node.id,{fly:true});
+  };
 
   // ── INTERACTION ────────────────────────────────────────────
   _ndc(e){
@@ -730,173 +1485,508 @@ class Component extends DCLogic {
     return{x:((e.clientX-r.left)/r.width)*2-1,y:-((e.clientY-r.top)/r.height)*2+1};
   }
   _raycast(x,y){
+    if(!this._pickList.length)return null;
     this._mouse.set(x,y);
     this._ray.setFromCamera(this._mouse,this._cam);
-    const meshes=Object.values(this._nMap).map(n=>n.mesh);
-    const hits=this._ray.intersectObjects(meshes);
+    const hits=this._ray.intersectObjects(this._pickList,false);
     return hits.length?hits[0].object.userData.nodeId:null;
   }
+  _rebuildPickList(){
+    this._pickList=this._list.filter(e=>e.vis).map(e=>e.mesh);
+  }
 
-  _onMM=(e)=>{
-    const{x,y}=this._ndc(e);
-    const nodeId=this._raycast(x,y);
-    if(nodeId!==this._hov){
-      this._hov=nodeId;
-      this._renderer.domElement.style.cursor=nodeId?'pointer':'default';
-    }
-    if(this._tipEl){
-      if(nodeId){
-        const nd=this._nMap[nodeId];
-        this._tipEl.textContent=nd?nd.node.label:'';
-        this._tipEl.style.opacity='1';
-        this._tipEl.style.left=e.offsetX+'px';
-        this._tipEl.style.top=e.offsetY+'px';
-      }else{
-        this._tipEl.style.opacity='0';
-      }
-    }
+  _onPD=()=>{
+    const root=this._rootRef.current;
+    if(root)try{root.focus({preventScroll:true});}catch(e){}
+  };
+  _onPL=()=>{this._setHover(null);};
+
+  _onMM=(ev)=>{
+    if(ev.pointerType==='touch')return;
+    const{x,y}=this._ndc(ev);
+    const id=this._raycast(x,y);
+    this._setHover(id,ev);
   };
 
-  _onCl=(e)=>{
-    const{x,y}=this._ndc(e);
-    const nodeId=this._raycast(x,y);
-    if(!nodeId){this._deselect();return;}
-    this._sel=nodeId;
-    if(this._tipEl)this._tipEl.style.opacity='0';
-    this.setState({selectedNode:this._nMap[nodeId]?.node||null});
-    this._flyTo(nodeId);
+  _setHover(id,ev){
+    if(id!==this._hov){
+      if(this._hov&&this._e[this._hov])this._e[this._hov].hover=false;
+      this._hov=id;
+      if(id&&this._e[id])this._e[id].hover=true;
+      if(this._renderer)this._renderer.domElement.style.cursor=id?'pointer':'default';
+      this._layoutLabels();
+    }
+    if(!this._tipEl)return;
+    if(id&&this._e[id]){
+      const n=this._e[id].node,meta=n.meta||{};
+      this._tipMain.textContent=n.label||'';
+      const sub=n.type==='root'?'Rodknude':n.type==='branch'
+        ?((this._kids[id]||[]).length+' noder')
+        :(meta.kind||this._L[n.category]||'');
+      this._tipSub.textContent=sub;
+      this._tipEl.style.opacity='1';
+      if(ev){
+        this._tipEl.style.left=ev.offsetX+'px';
+        this._tipEl.style.top=ev.offsetY+'px';
+      }
+    }else this._tipEl.style.opacity='0';
+  }
+
+  _onCl=(ev)=>{
+    const{x,y}=this._ndc(ev);
+    const id=this._raycast(x,y);
+    if(!id){this._deselect();return;}
+    this._select(id,{fly:true});
+  };
+  _onDbl=(ev)=>{
+    ev.preventDefault();
+    const{x,y}=this._ndc(ev);
+    const id=this._raycast(x,y);
+    if(id&&this._byId[id]&&this._byId[id].type==='branch')this._toggleFocus(id);
+    else if(!id)this._deselect();
+  };
+
+  // ── SELECTION ──────────────────────────────────────────────
+  _select=(id,opts)=>{
+    const o=opts||{};
+    const node=id?this._byId[id]:null;
+    this._selId=node?id:null;
+    const anc=node?this._ancestors(id):[];
+    const ancSet=new Set(anc);
+    const kidSet=new Set(node?(this._kids[id]||[]):[]);
+    this._pathSet=new Set();
+    if(node){
+      const chain=anc.concat([id]);
+      for(let i=0;i<chain.length-1;i++){
+        const k=this._edgeByPair[chain[i]+'>'+chain[i+1]];
+        if(k!=null)this._pathSet.add(k);
+      }
+      kidSet.forEach(c=>{
+        const k=this._edgeByPair[id+'>'+c];
+        if(k!=null)this._pathSet.add(k);
+      });
+    }
+    for(let i=0;i<this._list.length;i++){
+      const e=this._list[i];
+      e.sel=e.node.id===this._selId;
+      e.rel=!!(node&&(ancSet.has(e.node.id)||kidSet.has(e.node.id)));
+    }
+    this._recolorEdges();
+    this._layoutLabels();
+    this._announce(node);
+    this._writeHash(this._selId);
+    this.setState({selectedId:this._selId});
+    if(node&&o.fly!==false)this._flyToNode(id);
   };
 
   _deselect=()=>{
-    this._sel=null;
-    this.setState({selectedNode:null});
-    this._resetCam();
+    const wasFocus=this.state.focusId;
+    this._select(null,{fly:false});
+    if(wasFocus&&this._e[wasFocus])this._frameNode(wasFocus);
+    else this._fitAll();
+  };
+
+  _announce(node){
+    if(!this._liveEl)return;
+    if(!node){this._liveEl.textContent='Intet valgt.';return;}
+    const sibs=this._visibleSiblings(node.id);
+    const at=sibs.indexOf(node.id);
+    const kids=(this._kids[node.id]||[]).length;
+    this._liveEl.textContent=[
+      node.label,
+      this._L[node.category]||node.category,
+      at>=0&&sibs.length>1?('nr. '+(at+1)+' af '+sibs.length):'',
+      kids?(kids+' underpunkter'):'',
+    ].filter(Boolean).join(' · ');
+  }
+
+  // ── HASH DEEP-LINK ─────────────────────────────────────────
+  _hashId(){
+    try{
+      const m=/(?:^|[#&])n=([^&]+)/.exec(location.hash||'');
+      return m?decodeURIComponent(m[1]):null;
+    }catch(e){return null;}
+  }
+  _writeHash(id){
+    try{
+      const next=id?('#n='+encodeURIComponent(id)):location.pathname+location.search;
+      history.replaceState(null,'',next);
+    }catch(e){}
+  }
+  _onHash=()=>{
+    const id=this._hashId();
+    if(id&&this._e[id]&&id!==this._selId)this._select(id,{fly:true});
   };
 
   // ── CAMERA ─────────────────────────────────────────────────
-  _flyTo(nodeId){
-    const{mesh}=this._nMap[nodeId]||{};if(!mesh)return;
-    const target=mesh.position.clone();
-    const dir=new THREE.Vector3().subVectors(this._cam.position,this._ctrl?this._ctrl.target:new THREE.Vector3()).normalize();
-    const newCam=target.clone().add(dir.multiplyScalar(85));
-    if(this._ctrl)this._ctrl.autoRotate=false;
+  _camDir(){
+    const t=this._ctrl?this._ctrl.target:new THREE.Vector3();
+    const d=new THREE.Vector3().subVectors(this._cam.position,t);
+    if(d.lengthSq()<1e-6)return new THREE.Vector3(0,.3,1).normalize();
+    return d.normalize();
+  }
+  /* The panel eats the right ~340px. Nudge the orbit target sideways by exactly
+     half of that in world units so the focused node lands in the middle of what
+     the user can actually see, instead of behind the inspector. */
+  _panelShift(dist){
+    if(!this._selId||!this._renderer)return 0;
+    const el=this._renderer.domElement;
+    const w=el.clientWidth,h=el.clientHeight;
+    if(w<820||!h)return 0;
+    const worldPerPx=2*dist*Math.tan(this._cam.fov*Math.PI/360)/h;
+    return (this._PANEL_W/2)*worldPerPx;
+  }
+  _frameSphere(center,radius,dur,dirOverride){
+    if(!this._cam)return;
+    const fov=this._cam.fov*Math.PI/180;
+    const dV=radius/Math.sin(fov/2);
+    const hFov=2*Math.atan(Math.tan(fov/2)*Math.max(this._cam.aspect,.2));
+    const dH=radius/Math.sin(hFov/2);
+    let dist=Math.max(dV,dH)*1.04;
+    const min=this._ctrl?this._ctrl.minDistance+8:55;
+    const max=this._ctrl?this._ctrl.maxDistance-40:1400;
+    dist=Math.min(Math.max(dist,min),max);
+    const dir=dirOverride||this._camDir();
+    const right=new THREE.Vector3().crossVectors(this._cam.up,dir);
+    if(right.lengthSq()<1e-5)right.set(1,0,0);else right.normalize();
+    const target=center.clone().add(right.multiplyScalar(this._panelShift(dist)));
+    this._tween(target.clone().add(dir.clone().multiplyScalar(dist)),target,dur||880);
+  }
+  _tween(camTo,tgtTo,dur){
+    if(this._reduced)dur=Math.min(dur,140);
     const tid=++this._tid;
-    const sc=this._cam.position.clone(),st=this._ctrl?this._ctrl.target.clone():new THREE.Vector3();
-    const dur=880,t0=performance.now();
-    const go=()=>{
+    this._tweening=true;
+    const sc=this._cam.position.clone();
+    const st=this._ctrl?this._ctrl.target.clone():new THREE.Vector3();
+    const t0=performance.now();
+    const step=()=>{
       if(this._tid!==tid)return;
       const p=Math.min((performance.now()-t0)/dur,1);
-      const e=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
-      this._cam.position.lerpVectors(sc,newCam,e);
-      if(this._ctrl)this._ctrl.target.lerpVectors(st,target,e);
-      if(p<1)requestAnimationFrame(go);
+      const k=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
+      this._cam.position.lerpVectors(sc,camTo,k);
+      if(this._ctrl)this._ctrl.target.lerpVectors(st,tgtTo,k);
+      if(p<1)requestAnimationFrame(step);
+      else this._tweening=false;
     };
-    requestAnimationFrame(go);
+    requestAnimationFrame(step);
+  }
+  _frameNode(id){
+    const e=this._e[id];if(!e)return;
+    const r=e.node.type==='branch'?Math.max(e.clusterR*1.35,64):Math.max(e.radius*9,52);
+    this._frameSphere(e.mesh.position.clone(),r,880);
+  }
+  _flyToNode(id){
+    const e=this._e[id];if(!e)return;
+    if(e.node.type==='root'){this._fitAll();return;}
+    this._frameNode(id);
+  }
+  _fitAll=(first)=>{
+    if(!this._list.length){
+      this._tween(new THREE.Vector3(0,60,430),new THREE.Vector3(0,0,0),first?0:900);
+      return;
+    }
+    const box=new THREE.Box3();
+    let any=false;
+    this._list.forEach(e=>{if(e.vis){box.expandByPoint(e.base);any=true;}});
+    if(!any)this._list.forEach(e=>box.expandByPoint(e.base));
+    const center=box.getCenter(new THREE.Vector3());
+    let radius=0;
+    this._list.forEach(e=>{if(e.vis||!any)radius=Math.max(radius,e.base.distanceTo(center));});
+    radius=Math.max(radius*1.18,90);   // headroom for the top/bottom HUD bars
+    const dir=first?new THREE.Vector3(0,.26,1).normalize():this._camDir();
+    this._frameSphere(center,radius,900,dir);
+  };
+  _zoomBy=(f)=>{
+    if(!this._ctrl)return;
+    const t=this._ctrl.target.clone();
+    const dir=this._camDir();
+    let d=this._cam.position.distanceTo(t)*f;
+    d=Math.min(Math.max(d,this._ctrl.minDistance+2),this._ctrl.maxDistance-2);
+    this._tween(t.clone().add(dir.multiplyScalar(d)),t,280);
+  };
+
+  // ── FILTER + SEARCH ────────────────────────────────────────
+  _searchText(n){
+    const m=n.meta||{};
+    return [n.label,this._L[n.category]||n.category,m.kind,m.detail,m.company,
+            m.institution,m.issuer,this._S[m.source]||m.source]
+      .filter(Boolean).join(' ').toLowerCase();
+  }
+  _applyFilter(){
+    const q=(this.state.searchQuery||'').trim().toLowerCase();
+    const hidden=this.state.hiddenCats;
+    const focusId=this.state.focusId;
+    let focusSet=null;
+    if(focusId&&this._byId[focusId]){
+      focusSet=new Set([focusId].concat(this._kids[focusId]||[]));
+      if(this._rootId)focusSet.add(this._rootId);
+      this._ancestors(focusId).forEach(a=>focusSet.add(a));
+    }
+    const matches=[];
+    const keep=new Set();
+    if(q){
+      this._list.forEach(e=>{
+        if(e.node.type==='root')return;
+        if(hidden.has(e.node.category))return;
+        if(focusSet&&!focusSet.has(e.node.id))return;
+        if(e.text.indexOf(q)!==-1){
+          matches.push(e.node.id);
+          keep.add(e.node.id);
+          this._ancestors(e.node.id).forEach(a=>keep.add(a));
+        }
+      });
+      matches.sort((a,b)=>(this._depth[a]-this._depth[b])||
+        String(this._byId[a].label).localeCompare(String(this._byId[b].label),'da'));
+    }
+    const matchSet=q?new Set(matches):null;
+    for(let i=0;i<this._list.length;i++){
+      const e=this._list[i],n=e.node;
+      let vis=true;
+      if(n.type!=='root'&&hidden.has(n.category))vis=false;
+      if(vis&&focusSet&&!focusSet.has(n.id))vis=false;
+      if(vis&&q&&!keep.has(n.id)&&n.type!=='root')vis=false;
+      e.vis=vis;
+      e.match=!!(matchSet&&matchSet.has(n.id));
+      e.mOpT=vis?e.baseMeshOp:.04;
+      e.gOpT=vis?e.baseGlowOp*(e.match?1.7:1):0;
+    }
+    this._rebuildPickList();
+    this._recolorEdges();
+    const prev=this.state.matches||[];
+    const same=prev.length===matches.length&&prev.every((x,i)=>x===matches[i]);
+    if(!same)this.setState({matches:matches,matchIdx:matches.length?0:-1});
+    if(this._hov&&this._e[this._hov]&&!this._e[this._hov].vis)this._setHover(null);
   }
 
-  _resetCam(){
-    const tid=++this._tid;
-    const sc=this._cam.position.clone(),st=this._ctrl?this._ctrl.target.clone():new THREE.Vector3();
-    const ec=new THREE.Vector3(0,55,410),et=new THREE.Vector3(0,0,0);
-    const dur=1050,t0=performance.now();
-    const go=()=>{
-      if(this._tid!==tid)return;
-      const p=Math.min((performance.now()-t0)/dur,1);
-      const e=p<.5?4*p*p*p:1-Math.pow(-2*p+2,3)/2;
-      this._cam.position.lerpVectors(sc,ec,e);
-      if(this._ctrl)this._ctrl.target.lerpVectors(st,et,e);
-      if(p<1)requestAnimationFrame(go);
-      else if(this._ctrl)this._ctrl.autoRotate=true;
-    };
-    requestAnimationFrame(go);
-  }
-
-  // ── FILTER ─────────────────────────────────────────────────
   _toggleCat=(id)=>{
     const h=new Set(this.state.hiddenCats);
     h.has(id)?h.delete(id):h.add(id);
     this.setState({hiddenCats:h});
-    this._applyFilter(this.state.searchQuery,h);
+    this._applyFilter();
+    if(this._selId&&this._e[this._selId]&&!this._e[this._selId].vis)this._select(null,{fly:false});
+  };
+  _showAll=()=>{
+    this.setState({hiddenCats:new Set()});
+    this._applyFilter();
   };
   _onSearch=(e)=>{
-    const q=e.target.value;
-    this.setState({searchQuery:q});
-    this._applyFilter(q,this.state.hiddenCats);
+    this.setState({searchQuery:e.target.value});
+    this._applyFilter();
   };
-  _applyFilter(searchQuery,hiddenCats){
-    searchQuery=searchQuery!=null?searchQuery:this.state.searchQuery;
-    hiddenCats=hiddenCats!=null?hiddenCats:this.state.hiddenCats;
-    const q=searchQuery.toLowerCase().trim();
-    Object.values(this._nMap).forEach(({mesh,glow,label,node,rings,origMeshOp,origGlowOp})=>{
-      const mQ=!q||node.label.toLowerCase().includes(q);
-      const mC=node.type==='root'||!hiddenCats.has(node.category);
-      const vis=mQ&&mC;
-      mesh.material.opacity=vis?origMeshOp:.04;
-      glow.material.opacity=vis?origGlowOp:0;
-      if(label)label.material.opacity=vis?1:0;
-      rings.forEach(r=>{r.material.opacity=vis?.45:0;});
-    });
-  }
+  _clearSearch=()=>{
+    this.setState({searchQuery:'',matches:[],matchIdx:-1});
+    this._applyFilter();
+  };
+  _onSearchKey=(e)=>{
+    if(e.key==='Enter'){e.preventDefault();this._gotoMatch(e.shiftKey?-1:1);}
+    else if(e.key==='Escape'){e.preventDefault();this._clearSearch();this._focusStage();}
+  };
+  _gotoMatch=(delta)=>{
+    const m=this.state.matches||[];
+    if(!m.length)return;
+    let i=this.state.matchIdx;
+    i=(i<0)?(delta>0?0:m.length-1):((i+delta)%m.length+m.length)%m.length;
+    this.setState({matchIdx:i});
+    this._select(m[i],{fly:true});
+  };
 
-  // ── API — fixed to match existing endpoints ────────────────
+  // ── FOCUS (branch isolation) ───────────────────────────────
+  _toggleFocus=(id)=>{
+    const next=this.state.focusId===id?null:id;
+    this.setState({focusId:next});
+    this._applyFilter();
+    if(next){this._select(next,{fly:false});this._frameNode(next);}
+    else this._fitAll();
+  };
+  _exitFocus=()=>{
+    if(!this.state.focusId)return;
+    this.setState({focusId:null});
+    this._applyFilter();
+    this._fitAll();
+  };
+
+  // ── KEYBOARD NAVIGATION ────────────────────────────────────
+  _focusStage(){
+    const root=this._rootRef.current;
+    if(root)try{root.focus({preventScroll:true});}catch(e){}
+  }
+  _visibleSiblings(id){
+    const p=this._parent[id];
+    if(p==null)return [id];
+    return (this._kids[p]||[]).filter(c=>this._e[c]&&this._e[c].vis);
+  }
+  _visibleChildren(id){
+    return (this._kids[id]||[]).filter(c=>this._e[c]&&this._e[c].vis);
+  }
+  _navSibling(dir){
+    const cur=this._selId;
+    if(!cur){
+      const first=this._visibleChildren(this._rootId)[0];
+      if(first)this._select(first,{fly:true});
+      else if(this._rootId)this._select(this._rootId,{fly:true});
+      return;
+    }
+    if(cur===this._rootId){
+      const kids=this._visibleChildren(cur);
+      if(kids.length)this._select(dir>0?kids[0]:kids[kids.length-1],{fly:true});
+      return;
+    }
+    const sibs=this._visibleSiblings(cur);
+    if(sibs.length<2)return;
+    const i=sibs.indexOf(cur);
+    const next=sibs[((i<0?0:i)+dir+sibs.length)%sibs.length];
+    this._select(next,{fly:true});
+  }
+  _navParent(){
+    const cur=this._selId;
+    if(!cur){this._deselect();return;}
+    const p=this._parent[cur];
+    if(p!=null&&this._e[p])this._select(p,{fly:true});
+    else this._deselect();
+  }
+  _navChild(){
+    const cur=this._selId||this._rootId;
+    if(!cur)return;
+    if(!this._selId){this._select(cur,{fly:true});return;}
+    const kids=this._visibleChildren(cur);
+    if(kids.length)this._select(kids[0],{fly:true});
+  }
+  _onKey=(e)=>{
+    const tag=((e.target&&e.target.tagName)||'').toLowerCase();
+    if(tag==='input'||tag==='textarea'||tag==='select')return;
+    // Space/Enter on a focused button or link activates it — don't also act on it.
+    if((tag==='button'||tag==='a')&&(e.key===' '||e.key==='Enter'))return;
+    if(this.state.addOpen){
+      if(e.key==='Escape'){e.preventDefault();this._addCancel();}
+      return;
+    }
+    if(this.state.showHelp&&e.key!=='?'){
+      if(e.key==='Escape'){e.preventDefault();this.setState({showHelp:false});}
+      return;
+    }
+    let done=true;
+    switch(e.key){
+      case 'ArrowUp': this._navSibling(-1);break;
+      case 'ArrowDown': this._navSibling(1);break;
+      case 'ArrowLeft': this._navParent();break;
+      case 'ArrowRight': this._navChild();break;
+      case 'Enter': {
+        const cur=this._selId;
+        if(cur&&this._byId[cur]&&this._byId[cur].type==='branch')this._toggleFocus(cur);
+        else if(cur)this._frameNode(cur);
+        break;
+      }
+      case 'Escape':
+        if(this.state.focusId)this._exitFocus();
+        else if(this._selId)this._deselect();
+        else if(this.state.searchQuery)this._clearSearch();
+        else done=false;
+        break;
+      case '/': this._focusSearch();break;
+      case 'f': case 'F': this._fitAll();break;
+      case 'n': case 'N': this._gotoMatch(1);break;
+      case 'p': case 'P': this._gotoMatch(-1);break;
+      case 'Home': if(this._rootId)this._select(this._rootId,{fly:true});break;
+      case ' ': this._toggleRotate();break;
+      case '+': case '=': this._zoomBy(.7);break;
+      case '-': case '_': this._zoomBy(1.42);break;
+      case '?': this.setState({showHelp:!this.state.showHelp});break;
+      default: done=false;
+    }
+    if(done){e.preventDefault();e.stopPropagation();}
+  };
+  _focusSearch=()=>{
+    const root=this._rootRef.current;
+    const el=root&&root.querySelector('[data-mm-search]');
+    if(el)try{el.focus();el.select();}catch(e){}
+  };
+  _toggleRotate=()=>{
+    this._autoRotate=!this._autoRotate;
+    this.setState({autoRotate:this._autoRotate});
+  };
+  _toggleHelp=()=>{this.setState({showHelp:!this.state.showHelp});};
+
+  // ── MEMORY CRUD ────────────────────────────────────────────
   onDelete=async()=>{
-    const sn=this.state.selectedNode;
-    if(!sn||!sn.meta||!sn.meta.memory_id)return;
+    const sn=this._selId?this._byId[this._selId]:null;
+    const mid=sn&&sn.meta&&sn.meta.memory_id;
+    if(!mid)return;
+    if(!window.confirm('Slet "'+(sn.label||'denne hukommelse')+'"?'))return;
     try{
       await fetch('/api/profile/memories',{
         method:'DELETE',
         headers:{'Content-Type':'application/json'},
         credentials:'same-origin',
-        body:JSON.stringify({id:sn.meta.memory_id}),
+        body:JSON.stringify({id:mid}),
       });
-    }catch{}
-    const e=this._nMap[sn.id];
-    if(e){
-      this._scene.remove(e.mesh);this._scene.remove(e.glow);
-      if(e.label)this._scene.remove(e.label);
-      e.rings.forEach(r=>this._scene.remove(r));
-      delete this._nMap[sn.id];
-    }
-    this._deselect();
+    }catch(e){}
+    const parent=this._parent[this._selId]||this._rootId;
+    this._selId=null;
+    await this._loadData({quiet:true,keepSel:true,select:parent});
   };
-  _onAddMem=()=>{
-    const txt=window.prompt('Skriv en ny hukommelse:');
-    if(!txt||!txt.trim())return;
-    fetch('/api/profile/memories',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      credentials:'same-origin',
-      body:JSON.stringify({label:txt.trim(),detail:'',category:'andet',source:'user'}),
-    }).then(()=>this._loadData()).catch(()=>{});
+  _openAdd=()=>{this.setState({addOpen:true,addLabel:'',addDetail:'',addCat:'praeference'});
+    setTimeout(()=>{
+      const root=this._rootRef.current;
+      const el=root&&root.querySelector('[data-mm-addlabel]');
+      if(el)try{el.focus();}catch(e){}
+    },40);
+  };
+  _addCancel=()=>{this.setState({addOpen:false});this._focusStage();};
+  _addKey=(e)=>{
+    if(e.key==='Enter'){e.preventDefault();this._addSave();}
+    else if(e.key==='Escape'){e.preventDefault();this._addCancel();}
+  };
+  _addSave=async()=>{
+    const label=(this.state.addLabel||'').trim();
+    if(!label||this.state.addBusy)return;
+    this.setState({addBusy:true});
+    let newId=null;
+    try{
+      const r=await fetch('/api/profile/memories',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body:JSON.stringify({label:label,detail:(this.state.addDetail||'').trim(),
+          category:this.state.addCat,source:'user'}),
+      });
+      const j=await r.json().catch(()=>null);
+      if(j&&j.id)newId='mem:'+j.id;
+    }catch(e){}
+    this.setState({addOpen:false,addBusy:false,addLabel:'',addDetail:''});
+    await this._loadData({quiet:true,keepSel:true,select:newId});
+    this._focusStage();
   };
 
-  // ── RESIZE ─────────────────────────────────────────────────
+  // ── RESIZE / VISIBILITY ────────────────────────────────────
   _onResize=()=>{
     if(!this._cam||!this._renderer)return;
     const root=this._rootRef.current;
     if(!root)return;
     const el=root.querySelector('[data-mm-canvas]');
     if(!el)return;
-    const W=el.clientWidth,H=el.clientHeight;
+    const W=Math.max(el.clientWidth,1),H=Math.max(el.clientHeight,1);
     this._cam.aspect=W/H;this._cam.updateProjectionMatrix();
+    this._renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,2));
     this._renderer.setSize(W,H);
+  };
+  // A hidden tab keeps burning GPU on rAF in some browsers — stop the loop.
+  _onVis=()=>{
+    if(document.hidden){
+      if(this._animId){cancelAnimationFrame(this._animId);this._animId=null;}
+    }else if(!this._animId&&this._renderer){
+      this._clock.getDelta();
+      this._loop();
+    }
   };
 
   // ── HELPERS ────────────────────────────────────────────────
-  _childCount(id){
-    if(!this._data)return 0;
-    return this._data.edges.filter(e=>e.source===id).length;
-  }
   _fmtDate(s){
     if(!s)return'';
-    try{return new Date(s).toLocaleDateString('da-DK',{day:'numeric',month:'long'});}catch{return s;}
+    try{return new Date(s).toLocaleDateString('da-DK',{day:'numeric',month:'long'});}catch(e){return s;}
   }
-  _go(url){try{window.location.href=url;}catch{}}
+  _go(url){try{window.location.href=url;}catch(e){}}
   _leavesOf(branchId){
-    if(!this._data)return[];
-    const ids=this._data.edges.filter(e=>e.source===branchId).map(e=>e.target);
-    const byId=Object.fromEntries(this._data.nodes.map(n=>[n.id,n]));
-    return ids.map(id=>byId[id]).filter(Boolean);
+    return (this._kids[branchId]||[]).map(id=>this._byId[id]).filter(Boolean);
   }
   // Server-authoritative-ish cert validity (mirrors my_profile.certValidity).
   _certValidity(expiry){
@@ -966,17 +2056,39 @@ class Component extends DCLogic {
     const s=c.sections.find(x=>x.key===c.weakest);
     return s?s.label:'';
   }
+  // Compact right-hand hint for a row in the child navigator.
+  _childSub(n){
+    const m=n.meta||{};
+    if(n.type==='branch')return String((this._kids[n.id]||[]).length);
+    if(n.category==='hukommelse')return (m.used_count||0)+'×';
+    if(n.category==='kompetencer')return m.level?String(m.level):'';
+    if(n.category==='erfaring')return m.is_current?'nu':(m.end_year?String(m.end_year):'');
+    if(n.category==='uddannelse')return m.year?String(m.year):'';
+    if(n.category==='certificeringer')return this._certValidity(m.expiry_date).s==='expired'?'udløbet':'';
+    if(n.category==='sprog')return m.level?String(m.level):'';
+    return '';
+  }
 
   // ── RENDER VALS ────────────────────────────────────────────
   renderVals(){
-    const{loading,selectedNode:sn,searchQuery,hiddenCats,completeness,counts}=this.state;
+    const st=this.state;
+    const sn=st.selectedId?this._byId[st.selectedId]:null;
     const circ=2*Math.PI*19;
-    const used=sn&&sn.meta&&sn.meta.used_count||0;
-    const categories=this._CAT_ORDER.map(id=>{
-      const active=!hiddenCats.has(id);
+    const meta=(sn&&sn.meta)||{};
+    const used=meta.used_count||0;
+
+    // category chips (with live counts)
+    const counted={};
+    this._list.forEach(e=>{
+      if(e.node.type==='leaf')counted[e.node.category]=(counted[e.node.category]||0)+1;
+    });
+    const categories=this._CAT_ORDER.filter(id=>counted[id]||this._byId[id]).map(id=>{
+      const active=!st.hiddenCats.has(id);
       const col=this._C[id]||'#fff';
       return{
-        id,label:this._L[id]||id,
+        id,label:this._L[id]||id,count:String(counted[id]||0),
+        on:active?'true':'false',
+        title:(active?'Skjul ':'Vis ')+(this._L[id]||id),
         fn:()=>this._toggleCat(id),
         bc:active?col:'rgba(255,255,255,.1)',
         bg:active?col+'1f':'rgba(255,255,255,.04)',
@@ -984,8 +2096,48 @@ class Component extends DCLogic {
       };
     });
 
-    // ── Type-aware inspector data ──
-    const meta=sn&&sn.meta||{};
+    // search stepper
+    const matches=st.matches||[];
+    const hasQuery=!!(st.searchQuery||'').trim();
+    const matchLabel=matches.length
+      ? ((st.matchIdx>=0?st.matchIdx+1:1)+' / '+matches.length)
+      : 'Ingen træffere';
+
+    // breadcrumb trail
+    const crumbs=[];
+    if(sn){
+      const chain=this._ancestors(sn.id).concat([sn.id]);
+      chain.forEach((id,i)=>{
+        const n=this._byId[id];if(!n)return;
+        const last=i===chain.length-1;
+        crumbs.push({
+          label:n.label||'',sep:i?'›':'',
+          color:this._C[n.category]||'#cbd5e1',
+          op:last?'1':'.55',w:last?'700':'600',
+          fn:()=>this._select(id,{fly:true}),
+        });
+      });
+    }
+
+    // sibling stepper
+    const sibs=sn?this._visibleSiblings(sn.id):[];
+    const sibAt=sn?sibs.indexOf(sn.id):-1;
+
+    // child navigator
+    const kidIds=sn?(this._kids[sn.id]||[]).filter(id=>this._e[id]&&this._e[id].vis):[];
+    const shown=kidIds.slice(0,40);
+    const children=shown.map(id=>{
+      const n=this._byId[id];
+      return{
+        label:n.label||'',color:this._C[n.category]||'#cbd5e1',
+        sub:this._childSub(n),
+        w:n.type==='branch'?'700':'500',
+        bg:this._e[id]&&this._e[id].match?'rgba(255,255,255,.06)':'transparent',
+        fn:()=>this._select(id,{fly:true}),
+      };
+    });
+
+    // type-aware inspector data
     const isLeaf=!!(sn&&sn.type==='leaf');
     const lc=isLeaf?sn.category:'';
     const isSkill=lc==='kompetencer',isExp=lc==='erfaring',isEdu=lc==='uddannelse';
@@ -995,43 +2147,117 @@ class Component extends DCLogic {
     const skScore=meta.level_score||0,gap=meta.gap||null;
     const langMap={begynder:1,mellem:2,flydende:3,modersmaal:4};
     const langLab={begynder:'Begynder',mellem:'Mellem',flydende:'Flydende',modersmaal:'Modersmål'};
-    const langScore=isLang?(langMap[meta.proficiency]||2):0;
+    const langScore=isLang?(langMap[meta.level||meta.proficiency]||2):0;
     const pcol=sn?(this._C[sn.category]||'#fff'):'#fff';
     const gStat={aktiv:{l:'Aktiv',c:'#3b82f6'},fuldfoert:{l:'Fuldført',c:'#34d399'},paa_pause:{l:'På pause',c:'#94a3b8'}};
     const gs=gStat[meta.status]||{l:meta.status||'Aktiv',c:'#3b82f6'};
     const cv=isCert?this._certValidity(meta.expiry_date):null;
     const branchStats=(sn&&sn.type==='branch')?this._branchStats(sn.category,this._leavesOf(sn.id)):[];
     const rootSel=!!(sn&&sn.type==='root');
-    const cFull=this.state.completenessFull||{};
+    const cFull=st.completenessFull||{};
+    const focusNode=st.focusId?this._byId[st.focusId]:null;
+    const focusCol=focusNode?(this._C[focusNode.category]||'#cbd5e1'):'#cbd5e1';
+    const isBranchSel=!!(sn&&sn.type==='branch');
+    const inFocusHere=!!(sn&&st.focusId===sn.id);
 
     return{
-      loading,
-      searchQuery,
+      // shell
+      loading:st.loading&&!st.error,
+      hasError:!!st.error,
+      errorText:st.error||'',
+      onRetry:()=>this._loadData(),
+      onUseDemo:this._useDemo,
+      demo:st.demo,
+      isEmpty:!st.loading&&!st.error&&!(st.counts&&st.counts.leaves)&&!st.demo,
+      rootRef:this._rootRef,
+      onKey:this._onKey,
+
+      // search
+      searchQuery:st.searchQuery,
+      hasQuery,
       onSearch:this._onSearch,
+      onSearchKey:this._onSearchKey,
+      onClearSearch:this._clearSearch,
+      matchLabel,
+      matchColor:matches.length?'#93c5fd':'rgba(255,255,255,.4)',
+      onNextMatch:()=>this._gotoMatch(1),
+      onPrevMatch:()=>this._gotoMatch(-1),
+
+      // chips
       categories,
-      completeness,
-      cArc:(completeness/100)*circ,
+      hasHidden:st.hiddenCats.size>0,
+      onShowAll:this._showAll,
+
+      // focus mode
+      inFocus:!!focusNode,
+      focusLabel:focusNode?(focusNode.label||''):'',
+      focusColor:focusCol,
+      focusTint:focusCol+'1f',
+      onExitFocus:this._exitFocus,
+
+      // toolbar
+      onZoomIn:()=>this._zoomBy(.7),
+      onZoomOut:()=>this._zoomBy(1.42),
+      onFit:()=>this._fitAll(),
+      onToggleRotate:this._toggleRotate,
+      autoRotate:st.autoRotate?'true':'false',
+      rotTitle:st.autoRotate?'Stop auto-rotation (mellemrum)':'Start auto-rotation (mellemrum)',
+      rotColor:st.autoRotate?'#93c5fd':'#d4e0f4',
+      rotBg:st.autoRotate?'rgba(59,130,246,.14)':'rgba(255,255,255,.04)',
+      rotBorder:st.autoRotate?'rgba(59,130,246,.4)':'rgba(255,255,255,.1)',
+      onToggleHelp:this._toggleHelp,
+      onStopClick:(e)=>{if(e&&e.stopPropagation)e.stopPropagation();},
+      showHelp:st.showHelp,
+      helpRows:this._HELP,
+
+      // stats bar
+      completeness:st.completeness,
+      cArc:(st.completeness/100)*circ,
       cCirc:circ,
-      leafCount:counts.leaves||0,
-      memCount:counts.memories||0,
-      usedCount:counts.used_memories||0,
-      panelX:sn?'translateX(0)':'translateX(330px)',
+      leafCount:(st.counts&&st.counts.leaves)||0,
+      memCount:(st.counts&&st.counts.memories)||0,
+      usedCount:(st.counts&&st.counts.used_memories)||0,
+      botPad:sn?(this._PANEL_W+22)+'px':'22px',
+
+      // panel shell
+      panelX:sn?'translateX(0)':'translateX(105%)',
+      crumbs,
+      hasNav:!!sn&&(sibs.length>1||isBranchSel),
+      hasSibs:sibs.length>1,
+      sibLabel:(sibAt>=0&&sibs.length>1)?((sibAt+1)+' af '+sibs.length):'',
+      onPrevSib:()=>this._navSibling(-1),
+      onNextSib:()=>this._navSibling(1),
+      showFocusBtn:isBranchSel,
+      focusBtnLabel:inFocusHere?'Afslut fokus':'Fokusér',
+      focusBtnColor:inFocusHere?'#fbbf24':'#93c5fd',
+      focusBtnBg:inFocusHere?'rgba(251,191,36,.12)':'rgba(59,130,246,.1)',
+      focusBtnBorder:inFocusHere?'rgba(251,191,36,.35)':'rgba(59,130,246,.3)',
+      onToggleFocus:()=>{if(sn)this._toggleFocus(sn.id);},
+
       pTitle:sn?sn.label:'',
-      pCat:sn?this._L[sn.category]||sn.category:'',
-      pColor:sn?this._C[sn.category]||'#fff':'#fff',
-      pSrc:sn&&sn.meta?this._S[sn.meta.source]||sn.meta.source||'—':'—',
+      pCat:sn?(this._L[sn.category]||sn.category):'',
+      pColor:pcol,
+      hasPSrc:!!meta.source,
+      pSrc:sn?(this._S[meta.source]||meta.source||'—'):'—',
       pTypeLabel:sn?(sn.type==='root'?'Rodknude':sn.type==='branch'?'Kategori':(meta.kind||'Faktum')):'',
-      hasPDetail:!!(sn&&sn.meta&&sn.meta.detail),
-      pDetail:sn&&sn.meta?sn.meta.detail||'':'',
-      isPBranch:!!(sn&&sn.type==='branch'),
+      hasPDetail:!!meta.detail,
+      pDetail:meta.detail||'',
+      isPBranch:isBranchSel,
       isPRoot:rootSel,
       isHukMem:isMem,
-      // confidence only where it varies (memories); profile facts are always 1.
-      hasConf:isMem&&!!(sn&&sn.meta&&sn.meta.confidence!=null),
-      pConf:sn&&sn.meta&&sn.meta.confidence?Math.round(sn.meta.confidence*100):0,
+      hasConf:isMem&&meta.confidence!=null,
+      pConf:meta.confidence?Math.round(meta.confidence*100):0,
       pUsed:used,
-      pLastUsedLabel:sn&&sn.meta&&sn.meta.last_used_at?'Sidst: '+this._fmtDate(sn.meta.last_used_at):'Aldrig brugt',
+      pLastUsedLabel:meta.last_used_at?('Sidst: '+this._fmtDate(meta.last_used_at)):'Aldrig brugt',
       usageDots:Array.from({length:12},(_,i)=>({c:i<used?'#ec4899':'rgba(255,255,255,.1)'})),
+
+      // child navigator
+      hasChildren:children.length>0,
+      children,
+      childrenTitle:rootSel?'Kategorier':'Indhold',
+      hasMoreChildren:kidIds.length>shown.length,
+      moreChildrenLabel:'+ '+(kidIds.length-shown.length)+' flere — brug søgning',
+
       // skill
       isSkill,
       skLevelLabel:skLab[meta.level]||meta.level||'Ikke angivet',
@@ -1047,7 +2273,6 @@ class Component extends DCLogic {
       expDuration:isExp?this._expDuration(meta):'',
       expCompany:meta.company||'',
       hasExpCompany:isExp&&!!meta.company,
-      expCurrent:!!meta.is_current,
       // education
       isEdu,
       eduInstitution:meta.institution||'—',
@@ -1061,33 +2286,48 @@ class Component extends DCLogic {
       certExpiry:meta.expiry_date||'Ingen udløb',
       hasCertUrl:!!meta.credential_url,
       certUrl:meta.credential_url||'',
-      hasCertId:!!meta.credential_id,
-      certId:meta.credential_id||'',
       // language
       isLang,
-      langLabel:langLab[meta.proficiency]||meta.proficiency||'—',
+      langLabel:langLab[meta.level||meta.proficiency]||meta.level||meta.proficiency||'—',
       langBars:Array.from({length:4},(_,i)=>({c:i<langScore?pcol:'rgba(255,255,255,.08)'})),
       // goal
       isGoal,
       goalStatusLabel:gs.l,goalStatusColor:gs.c,
       hasGoalTarget:isGoal&&!!meta.target_date,
       goalTarget:meta.target_date||'',
-      // branch
+      // branch + root
       branchStats,
-      // root overview
       rootStats:rootSel?this._rootStats():[],
       hasRootTarget:rootSel&&!!cFull.target_role,
       rootTargetRole:cFull.target_role||'',
       hasRootWeakest:rootSel&&!!this._weakestLabel(),
       rootWeakest:rootSel?this._weakestLabel():'',
-      rootRef:this._rootRef,
+
+      // add-memory composer
+      addOpen:st.addOpen,
+      addLabel:st.addLabel,
+      addDetail:st.addDetail,
+      addSaveLabel:st.addBusy?'Gemmer…':'Gem',
+      addCats:this._MEM_CATS.map(c=>{
+        const on=st.addCat===c.id;
+        return{label:c.label,fn:()=>this.setState({addCat:c.id}),
+          bc:on?'rgba(236,72,153,.5)':'rgba(255,255,255,.12)',
+          bg:on?'rgba(236,72,153,.16)':'rgba(255,255,255,.04)',
+          tc:on?'#f9a8d4':'rgba(255,255,255,.5)'};
+      }),
+      onAddLabel:(e)=>this.setState({addLabel:e.target.value}),
+      onAddDetail:(e)=>this.setState({addDetail:e.target.value}),
+      onAddKey:this._addKey,
+      onAddSave:this._addSave,
+      onAddCancel:this._addCancel,
+
+      // actions
       onClose:this._deselect,
       onDelete:this.onDelete,
-      onAddMem:this._onAddMem,
+      onAddMem:this._openAdd,
       onFindCourses:()=>this._go('/chat'),
       onOpenProfiler:()=>this._go('/ai-profiler'),
       onOpenCv:()=>this._go('/profil-upload'),
-      onOpenProfile:()=>this._go('/profile'),
     };
   }
 }

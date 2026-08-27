@@ -252,14 +252,25 @@ profile hero, and (CV) `employee_home`.
   - **No-JS fallback:** the `<form>` posts to `/profil-upload` +
     `/profil-upload/apply` (`futurematch_ui.py`), a self-contained server-render
     path (its own whitelist level validation, defaults to `mellem`).
-- **Mind-Map** (`/mind-map` → `templates/fm/mind_map.html`): a DCLogic React
-  runtime (`static/futurematch/assets/mind-map-support.js`) + Three.js globe,
-  fed by `GET /api/profile/mindmap` (`api.py:665`, root→category→leaf graph from
+- **Mind-Map v2** (`/mind-map` → `templates/fm/mind_map.html`, see
+  **[docs/MIND_MAP_V2.md](MIND_MAP_V2.md)**): a DCLogic React runtime
+  (`static/futurematch/assets/mind-map-support.js`) + Three.js globe,
+  fed by `GET /api/profile/mindmap` (`api.py:758`, root→category→leaf graph from
   structured profile + `user_memories` + conversation summary). DC template
   bindings use `{{ }}`, so the block is wrapped in `{% raw %}`. **Gotcha:** never
   write a bracketed `x-dc` open tag before the real element (even in a CSS
   comment) — `parseDcText` regex-matches the FIRST one in the raw source.
-  - **Type-aware inspector panel (new):** clicking a node opens a side panel that
+  - **v2 = navigation + immersion.** Full keyboard traversal of the real tree
+    (↑↓ siblings, ←→ parent/child, Home, Enter isolates a branch, Esc unwinds),
+    search that *jumps* (a `3 / 12` stepper, Enter/N/P fly to each hit),
+    a breadcrumb + sibling stepper + child navigator inside the inspector,
+    branch focus mode, deep-linkable selection (`#n=<id>`), a top-down radar,
+    and camera framing that keeps the focused node clear of the panel. The
+    scene answers back: hover/selection states in 3D, the ancestor path lit
+    end-to-end via per-edge vertex colours, screen-space label placement with
+    overlap rejection, and `prefers-reduced-motion` / hidden-tab respect.
+    Structural invariants are pinned by `tests/test_mind_map_v2.py`.
+  - **Type-aware inspector panel:** clicking a node opens a side panel that
     renders **per category/type** rather than generically — skills show the 1-5
     level bar + skill category + a **gap callout** (current→target, from
     `compute_skill_gaps`, with a "find courses" CTA); experience shows
@@ -270,8 +281,11 @@ profile hero, and (CV) `employee_home`.
     (completeness/depth/target-role/weakest + profiler/CV/add-memory actions).
     Each leaf's `meta` is enriched server-side in `get_mindmap_api`
     (`level_score`, `gap`, exp dates, cert dates, goal target/status, …).
-  - Memory CRUD from the page: DELETE `/api/profile/memories` `{id}`, POST
-    `{label,detail,category,source}`.
+  - Memory CRUD from the page: DELETE `/api/profile/memories` `{id}` (confirm
+    first), POST `{label,detail,category,source}` from an inline composer whose
+    category chips mirror `_MEMORY_CATEGORIES` — a test asserts they can't drift.
+    A non-2xx from the mindmap API shows a retry card (plus an explicit "show
+    demo data"), never a fake-empty profile.
 
 ---
 

@@ -131,6 +131,16 @@ _EMPLOYEE_META = {
     "show_skill_gaps": ToolMeta(
         "show_skill_gaps", auth_required=True, toolset_tags=("profile", "ui"), cache_ttl=20,
     ),
+    # Cross-silo learner reads (AI empowerment pass): one "what's on my plate"
+    # roll-up across deadlines/approvals/certifications/goals, and the learner's
+    # own mandatory-training status. Both read-only.
+    "get_my_agenda": ToolMeta(
+        "get_my_agenda", auth_required=True, toolset_tags=("agenda", "status", "ui"), cache_ttl=30,
+    ),
+    "get_my_compliance": ToolMeta(
+        "get_my_compliance", auth_required=True, company_required=True,
+        toolset_tags=("compliance", "ui"), cache_ttl=60,
+    ),
     "save_learning_path": ToolMeta(
         "save_learning_path", auth_required=True, parallel_safe=False,
         toolset_tags=("profile", "path"),
@@ -274,6 +284,12 @@ _HR_META = {
         confirm_required=True, manager_only=True, audit_action="send_deadline_reminders",
         toolset_tags=("reminders", "mutation"),
     ),
+    # AI empowerment pass: read-only cross-surface navigation for the HR panel.
+    # No company scope required — it navigates, it never reads tenant data.
+    "hr_open_in_app": ToolMeta(
+        "hr_open_in_app", "hr", company_required=False,
+        toolset_tags=("navigation", "ui"), cache_ttl=0,
+    ),
     "create_order_for_employee": ToolMeta(
         "create_order_for_employee", "hr",
         company_required=True, side_effect=True, parallel_safe=False,
@@ -299,6 +315,12 @@ _VENDOR_META = {
         "get_comparable_courses",
         "vendor",
         toolset_tags=("vendor", "catalog", "compare"),
+        cache_ttl=120,
+    ),
+    "vendor_catalog_health": ToolMeta(
+        "vendor_catalog_health",
+        "vendor",
+        toolset_tags=("vendor", "catalog", "quality"),
         cache_ttl=120,
     ),
 }
@@ -333,6 +355,8 @@ _TOOL_LABELS = {
     "show_cv_summary": "CV-oversigt",
     "show_mindmap_preview": "Mind-Map",
     "show_skill_gaps": "Kompetencegab",
+    "get_my_agenda": "Min agenda",
+    "get_my_compliance": "Mine krav",
     "save_learning_path": "Gem læringssti",
     "get_learning_path": "Hent læringssti",
     "set_learning_goal": "Opret mål",
@@ -387,10 +411,12 @@ _TOOL_LABELS = {
     "send_company_email": "Send virksomhedsmail",
     "send_deadline_reminders": "Send påmindelser",
     "create_order_for_employee": "Bestil for medarbejder",
+    "hr_open_in_app": "Åbn HR-side",
     # Vendor tools
     "vendor_performance_summary": "Salgsperformance",
     "get_demand_by_category": "Markedsefterspørgsel",
     "get_comparable_courses": "Sammenlign kurser",
+    "vendor_catalog_health": "Katalogkvalitet",
 }
 
 _CATEGORY_META = {
@@ -410,10 +436,13 @@ _CATEGORY_META = {
     "navigation": ("Naviger", "fa-arrow-up-right-from-square"),
     "course": ("Kursus", "fa-graduation-cap"),
     "report": ("Rapport", "fa-file-lines"),
+    "agenda": ("Min agenda", "fa-list-check"),
+    "quality": ("Katalogkvalitet", "fa-clipboard-check"),
 }
 
 _CATEGORY_PRIORITY = (
     "memory",
+    "agenda",
     "profile",
     "order",
     "approval",
@@ -427,6 +456,7 @@ _CATEGORY_PRIORITY = (
     "navigation",
     "report",
     "analytics",
+    "quality",
     "vendor",
     "hr",
 )
@@ -861,6 +891,18 @@ _TOOL_TRIGGERS = {
         "vis min mind-map", "show my mind map", "min hukommelse", "my memories",
         "hvor langt er jeg med min profil", "profile completeness",
     ),
+    "get_my_agenda": (
+        "hvad har jeg på tavlen", "hvad skal jeg nå", "hvad venter på mig",
+        "min agenda", "my agenda", "what is on my plate", "what do i need to do",
+        "hvad haster", "what is urgent", "mine frister", "my deadlines",
+        "hvad mangler jeg at gøre", "overblik over mine opgaver", "hvad ligger og venter",
+    ),
+    "get_my_compliance": (
+        "er jeg compliant", "am i compliant", "obligatoriske kurser", "mandatory training",
+        "lovpligtige kurser", "lovpligtigt", "skal jeg tage", "påkrævet kursus",
+        "required courses", "recertificering", "skal jeg forny", "mine krav",
+        "hvilke kurser er obligatoriske", "compliance for mig",
+    ),
     "show_skill_gaps": (
         "kompetencegab", "kompetence gab", "skill gap", "skill gaps", "mine gap",
         "hvad mangler jeg", "what am i missing", "hvilke kompetencer mangler",
@@ -1010,6 +1052,8 @@ def get_employee_tool_selection(
     if is_approval_query:
         names.add("check_order_approval_status")
         forced_candidates.append("check_order_approval_status")
+        if logged_in:
+            names.add("get_my_agenda")
     if _has_any(query, ("budget", "råd", "raad", "resterende midler")):
         names.add("get_department_budget")
         if company_id and _starts_with_budget_question(query):
@@ -1060,6 +1104,24 @@ def get_employee_tool_selection(
                 "hvad skal jeg laere", "what should i learn", "what skills do i need",
                 "manglende kompetencer", "gap til")):
             names.update({"show_skill_gaps", "recommend_for_profile", "get_user_profile"})
+        # Agenda roll-up: one call for everything waiting on the learner. Gated on
+        # "what's on my plate"-shaped questions AND on the individual silos it
+        # subsumes (frist/deadline/godkendelse/udløber), so a narrow question
+        # still gets the complete answer rather than a partial one.
+        if _has_any(query, (
+                "hvad har jeg på tavlen", "hvad har jeg paa tavlen", "min agenda", "hvad skal jeg nå",
+                "hvad skal jeg naa", "hvad venter på mig", "hvad venter paa mig", "hvad haster",
+                "mine frister", "mine deadlines", "hvad mangler jeg at gøre", "hvad mangler jeg at goere",
+                "hvad ligger og venter", "mine opgaver", "overblik over mine", "hvad skal jeg lige nu")):
+            names.add("get_my_agenda")
+        # Own mandatory training: the learner-side mirror of HR's compliance view.
+        if _has_any(query, (
+                "obligatorisk", "obligatoriske", "lovpligtig", "lovpligtige", "er jeg compliant",
+                "compliance for mig", "mine krav", "påkrævet", "paakraevet", "recertificering",
+                "skal jeg forny", "skal jeg tage igen", "gentage kurset", "arbejdsmiljøkursus",
+                "arbejdsmiljoekursus")):
+            names.add("get_my_compliance")
+            names.add("catalog_search")  # så et manglende krav kan lukkes med et rigtigt kursus
         # --- Specialised employee tools: keyword-gated only, NOT in the core seed.
         # Each stays off the menu until a matching Danish keyword activates it.
         if _has_any(query, (
@@ -1067,6 +1129,9 @@ def get_employee_tool_selection(
                 "frist", "deadline", "forfald", "mit kursus", "hvor er mit",
                 "er jeg forsinket", "hvad mangler")):
             names.add("get_my_course_status")
+            # The same question is often really "…and what else is waiting?" — offer
+            # the cross-silo roll-up alongside; the model picks the right grain.
+            names.add("get_my_agenda")
         if _has_any(query, (
                 "rabat", "aftalepris", "hvad koster det med", "firma-rabat",
                 "hvad koster det med rabat")):
@@ -1154,12 +1219,67 @@ def get_employee_tool_selection(
     }
 
 
-def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
+# Which HR tools a page's own subject matter makes relevant. The HR panel is
+# embedded on every HR page and posts the page id, so a vague question asked
+# while standing on a view ("hvem mangler her?") can reach that view's tools
+# without the user having to name the domain. Additive only — the keyword gates
+# below still apply, and the model still chooses.
+#
+# READS ONLY. Standing on a page is a weak signal — it says what the manager is
+# looking at, not what they intend — so it may surface what a tool can SHOW but
+# never a mutation. Writes stay behind their explicit keyword gate (and their
+# confirm card). `_hr_page_tool_names` enforces that rather than trusting the
+# table below to stay clean.
+_HR_PAGE_TOOLS = {
+    "dashboard": ("get_pending_actions", "hr_explain_insights"),
+    "team": ("get_team_training_status", "get_team_non_starters"),
+    "employees": ("get_employee_overview", "hr_inactive_employees"),
+    "departments": ("get_team_training_status", "get_budget_overview"),
+    "approvals": ("get_pending_actions", "get_training_report"),
+    "approval_policies": ("get_pending_actions",),
+    "budgets": ("get_budget_overview",),
+    "roi": ("hr_roi_summary", "get_training_report"),
+    "funnel": ("get_training_report", "get_team_non_starters"),
+    "retention": ("get_workforce_risk", "hr_inactive_employees"),
+    "learning_analytics": ("get_training_report", "get_chatbot_usage_stats"),
+    "benchmarking": ("hr_benchmark",),
+    "skill_gaps": ("get_company_skill_gaps", "hr_recommend_training_plan"),
+    "training_plan": ("hr_recommend_training_plan", "search_courses_for_team"),
+    "learning_paths": ("get_team_training_status", "get_team_non_starters"),
+    "internal_courses": ("search_courses_for_team",),
+    "compliance": ("get_compliance_status", "hr_team_compliance"),
+    "suppliers": ("hr_get_supplier_coverage", "hr_expiring_agreements"),
+    "procurement": ("hr_get_supplier_coverage", "get_budget_overview"),
+    "engagement": ("hr_inactive_employees", "get_team_non_starters"),
+    "ai_quality": ("get_chatbot_usage_stats", "hr_get_ai_usage_risks"),
+    "reports": ("get_training_report", "hr_roi_summary"),
+}
+
+
+def _hr_page_tool_names(page: Optional[str]) -> List[str]:
+    """Read-only tools hinted by the HR page the panel is embedded on.
+
+    A mutation is never surfaced by page context alone — see the note above.
+    """
+    return [
+        name for name in _HR_PAGE_TOOLS.get((page or "").strip(), ())
+        if not _HR_META.get(name, ToolMeta(name, "hr")).side_effect
+    ]
+
+
+def get_hr_tool_selection(
+    *, company_id: Optional[Any], user_query: str, page: Optional[str] = None,
+) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     from hr_tools import HR_TOOLS
 
     tool_map = _by_name(HR_TOOLS)
     query = user_query or ""
-    names = {"hr_get_company_learning_context", "get_pending_actions"}
+    # hr_open_in_app is an always-on core tool for the same reason open_in_app is
+    # on the employee side: navigation is never the wrong capability to have, it
+    # mutates nothing, and the alternative is an answer that ends in "det ligger
+    # på compliance-siden" with no way to get there.
+    names = {"hr_get_company_learning_context", "get_pending_actions", "hr_open_in_app"}
+    names.update(_hr_page_tool_names(page))
     # Tvang samles som kandidater og afgøres til sidst i _resolve_forced_tool:
     # kun præcis én matchende gren må tvinge (TR-01).
     forced_candidates: List[str] = []
@@ -1280,6 +1400,14 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
             "kalender til holdet", "kalender til kurset", "invitation til kurset",
             "lav en invitation", "kalenderfil")):
         names.add("bulk_calendar_invites")
+    # --- Navigation: an explicit "take me there" forces the (read-only) directive
+    # instead of an answer that only names the page. ---
+    if _has_any(query, (
+            "tag mig til", "åbn siden", "aabn siden", "åbn compliance", "aabn compliance",
+            "vis mig siden", "hvor finder jeg", "hvor ser jeg", "hvor kan jeg se",
+            "gå til", "gaa til", "naviger til", "luk mig ind på", "vis mig hvor")):
+        names.add("hr_open_in_app")
+        forced_candidates.append("hr_open_in_app")
     # --- AI Tooler 2 (Phase 6): high blast-radius HR writes, keyword-gated only. ---
     if _has_any(query, (
             "send mail", "send email", "send en mail", "udsend besked", "informer medarbejdere",
@@ -1308,7 +1436,8 @@ def get_hr_tool_selection(*, company_id: Optional[Any], user_query: str) -> Tupl
         selected.append(tool)
 
     if not selected:
-        selected = [tool for tool in tool_map.values() if tool_name(tool) in {"hr_get_company_learning_context", "get_pending_actions"}]
+        selected = [tool for tool in tool_map.values()
+                    if tool_name(tool) in {"hr_get_company_learning_context", "get_pending_actions", "hr_open_in_app"}]
     selected_names = [tool_name(t) for t in selected]
     return selected, {
         "version": TOOLSET_VERSION,

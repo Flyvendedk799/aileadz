@@ -752,6 +752,211 @@ def get_comparable_courses(args, vendor_name):
 # ---------------------------------------------------------------------------
 # Tool schemas (OpenAI function-calling) — offered on /vendor/ask only.
 # ---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+# Tool 4: vendor_catalog_health
+# ---------------------------------------------------------------------------
+def _parse_catalog_date(value):
+    """Parse a variant date string with the shared Danish date parser, or None."""
+    try:
+        from calendar_service import parse_danish_date
+        return parse_danish_date(str(value))
+    except Exception:
+        return None
+
+
+# What we check, why it matters to a buyer, and how hard it hits discovery.
+# Weight drives the fix ordering: a course a buyer cannot price or book at all
+# outranks a thin description.
+_HEALTH_CHECKS = (
+    ("missing_price", 5, "Ingen pris", "Køberen kan ikke se hvad kurset koster — og prisfiltre springer kurset over."),
+    ("no_upcoming_dates", 5, "Ingen kommende datoer", "Alle datoer er passeret, så kurset kan ikke bookes."),
+    ("missing_description", 3, "Tynd beskrivelse", "Under 200 tegn beskrivelse — søgning og AI-anbefaling har næsten intet at matche på."),
+    ("missing_category", 3, "Ingen kategori", "Kurset dukker ikke op i kategorinavigation eller kategorifiltre."),
+    ("missing_difficulty", 2, "Niveau fremgår ikke", "Niveauet udledes af din beskrivelse; når den ikke siger det, springer filtre på begynder/øvet/avanceret kurset over."),
+    ("missing_language", 2, "Sprog fremgår ikke", "Undervisningssproget udledes af din beskrivelse; uden det udelader filtre på dansk/engelsk kurset."),
+    ("missing_duration", 1, "Varighed fremgår ikke", "Varigheden udledes af din beskrivelse; uden den kan køberen ikke se tidsforbruget, og kurset står svagt i sammenligninger."),
+    ("missing_image", 1, "Intet billede", "Kortet i kataloget står uden billede."),
+)
+
+# The three checks above that read structured_metadata — an LLM enrichment pass
+# over the vendor's own description, NOT a field the vendor fills in directly.
+# When that pass has not run for a catalog, every course looks "incomplete" for
+# a reason the vendor cannot act on, so these checks are skipped rather than
+# blamed on them (see `enrichment_missing` in the result).
+_DERIVED_CHECKS = ("missing_difficulty", "missing_language", "missing_duration")
+_HEALTH_WEIGHTS = {key: weight for key, weight, _l, _w in _HEALTH_CHECKS}
+_HEALTH_LABELS = {key: (label, why) for key, _w, label, why in _HEALTH_CHECKS}
+
+
+def _course_health_issues(product, include_derived=True):
+    """The list of issue keys for ONE of the vendor's own catalog products.
+
+    ``include_derived`` turns off the structured_metadata checks — see
+    ``_DERIVED_CHECKS``.
+    """
+    issues = []
+    if _price_of(product) is None:
+        issues.append("missing_price")
+
+    dates = [d for d in (product.get("dates") or []) if str(d).strip()]
+    if dates:
+        parsed = [_parse_catalog_date(d) for d in dates]
+        import datetime as _dt
+        today = _dt.date.today()
+        # Unparseable dates are NOT counted as past — an unknown date is not an
+        # expired one (same rule the advisor's date filter uses).
+        if all(p is not None and p < today for p in parsed):
+            issues.append("no_upcoming_dates")
+
+    description = (product.get("description_text") or "").strip()
+    if len(description) < 200:
+        issues.append("missing_description")
+    if not _categories_of(product):
+        issues.append("missing_category")
+
+    md = product.get("metadata") or {}
+    if include_derived:
+        if not _difficulty_of(product):
+            issues.append("missing_difficulty")
+        if not (md.get("language") or "").strip():
+            issues.append("missing_language")
+        if _duration_of(product) is None:
+            issues.append("missing_duration")
+    if not (product.get("image_url") or "").strip():
+        issues.append("missing_image")
+    return issues
+
+
+def vendor_catalog_health(args, vendor_name):
+    """Actionable listing-quality audit of THIS vendor's own catalog.
+
+    Every finding is a concrete, fixable fact about the vendor's own products
+    (missing price, no bookable dates left, thin description, missing
+    difficulty/language/duration/category/image) — the attributes the platform's
+    own filters, search and AI recommendations rely on, so a gap here is lost
+    visibility, not cosmetics.
+
+    Reads ONLY the public catalog, and only rows whose vendor is the session
+    vendor. No order, buyer or competitor data is touched.
+    """
+    args = args or {}
+    if not vendor_name:
+        return _err("Ingen leverandør fundet i sessionen.")
+
+    try:
+        limit = int(args.get("limit") or 10)
+    except (TypeError, ValueError):
+        limit = 10
+    limit = max(1, min(25, limit))
+    only_issue = (args.get("issue") or "").strip()
+    if only_issue and only_issue not in _HEALTH_WEIGHTS:
+        return _err(f"Ukendt problemtype: {only_issue}")
+
+    products = _vendor_products(vendor_name)
+    if not products:
+        return {
+            "vendor": vendor_name,
+            "total_courses": 0,
+            "courses_with_issues": 0,
+            "health_score": 100,
+            "issue_counts": {},
+            "courses": [],
+            "summary_da": "Der er ingen kurser i kataloget under dit leverandørnavn endnu.",
+        }
+
+    # If NOT ONE of this vendor's courses carries enrichment metadata, the
+    # enrichment pass has not run here — reporting "niveau mangler" on all of
+    # them would be blaming the vendor for the platform's missing build.
+    enrichment_missing = not any((p.get("metadata") or {}) for p in products)
+    include_derived = not enrichment_missing
+    if only_issue in _DERIVED_CHECKS and enrichment_missing:
+        return {
+            "vendor": vendor_name,
+            "total_courses": len(products),
+            "courses_with_issues": 0,
+            "health_score": 100,
+            "issue_counts": {},
+            "courses": [],
+            "shown": 0,
+            "enrichment_missing": True,
+            "summary_da": (
+                "Platformens automatiske berigelse af kursusdata har ikke kørt for dine "
+                "kurser endnu, så niveau, sprog og varighed kan ikke vurderes her."
+            ),
+        }
+
+    issue_counts = {}
+    scored = []
+    audited = [(product, _course_health_issues(product, include_derived)) for product in products]
+    for product, issues in audited:
+        for key in issues:
+            issue_counts[key] = issue_counts.get(key, 0) + 1
+        if not issues:
+            continue
+        if only_issue and only_issue not in issues:
+            continue
+        severity = sum(_HEALTH_WEIGHTS.get(key, 1) for key in issues)
+        scored.append((severity, {
+            "handle": product.get("handle") or "",
+            "title": product.get("title") or "",
+            "url": f"/products/{product.get('handle')}" if product.get("handle") else "",
+            "severity": severity,
+            "issues": [
+                {"key": key, "label": _HEALTH_LABELS[key][0], "why": _HEALTH_LABELS[key][1]}
+                for key in issues
+            ],
+        }))
+
+    scored.sort(key=lambda row: (-row[0], row[1]["title"].lower()))
+    courses = [row[1] for row in scored[:limit]]
+
+    total = len(products)
+    with_issues = sum(1 for _p, issues in audited if issues)
+    # Health score: the share of (course x check) cells that pass. One badly
+    # broken course among many shouldn't read as a broken catalog.
+    checks_applied = len(_HEALTH_CHECKS) - (0 if include_derived else len(_DERIVED_CHECKS))
+    total_cells = total * checks_applied
+    failed_cells = sum(issue_counts.values())
+    health_score = int(round((total_cells - failed_cells) / total_cells * 100)) if total_cells else 100
+
+    ranked_issues = sorted(
+        issue_counts.items(),
+        key=lambda kv: (-kv[1] * _HEALTH_WEIGHTS.get(kv[0], 1), kv[0]),
+    )
+    top_fix = ranked_issues[0][0] if ranked_issues else ""
+
+    if not with_issues:
+        summary = f"Alle {total} kurser har komplette katalogdata. Flot."
+    else:
+        label = _HEALTH_LABELS.get(top_fix, (top_fix, ""))[0]
+        summary = (
+            f"{with_issues} af {total} kurser mangler data (score {health_score}/100). "
+            f"Størst effekt: {label.lower()} på {issue_counts.get(top_fix, 0)} kurser."
+        )
+    if enrichment_missing:
+        summary += (
+            " Bemærk: platformens automatiske berigelse (niveau, sprog, varighed udledt "
+            "af beskrivelsen) har ikke kørt for dine kurser, så de tre punkter indgår ikke."
+        )
+
+    return {
+        "vendor": vendor_name,
+        "total_courses": total,
+        "courses_with_issues": with_issues,
+        "health_score": health_score,
+        "issue_counts": {
+            key: {"count": count, "label": _HEALTH_LABELS[key][0], "why": _HEALTH_LABELS[key][1]}
+            for key, count in ranked_issues
+        },
+        "top_fix": top_fix,
+        "courses": courses,
+        "shown": len(courses),
+        "enrichment_missing": enrichment_missing,
+        "checks_applied": checks_applied,
+        "summary_da": summary,
+    }
+
+
 VENDOR_TOOLS = [
     {
         "type": "function",
@@ -823,6 +1028,42 @@ VENDOR_TOOLS = [
             },
         },
     },
+    {
+        "type": "function",
+        "function": {
+            "name": "vendor_catalog_health",
+            "description": (
+                "Tjek kvaliteten af leverandørens EGNE kursusopslag i kataloget og få en "
+                "prioriteret rettelisté: manglende pris, ingen kommende datoer (kan ikke bookes), "
+                "tynd beskrivelse, manglende kategori, niveau, sprog, varighed eller billede. "
+                "Det er præcis de felter platformens filtre, søgning og AI-anbefalinger bruger, "
+                "så et hul her koster synlighed. Niveau, sprog og varighed udledes af "
+                "beskrivelsen — er de tomme, er rettelsen at skrive dem ind i teksten. "
+                "Er 'enrichment_missing' true, har platformens berigelse ikke kørt for kurserne, "
+                "og de tre punkter er IKKE leverandørens skyld — sig det i stedet for at bede "
+                "dem rette noget de ikke kan. Læser kun det offentlige katalog — ingen ordre- "
+                "eller købsdata."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "limit": {
+                        "type": "integer",
+                        "description": "Maks antal kurser i retteliste (1-25). Standard 10.",
+                        "default": 10,
+                    },
+                    "issue": {
+                        "type": "string",
+                        "enum": ["missing_price", "no_upcoming_dates", "missing_description",
+                                 "missing_category", "missing_difficulty", "missing_language",
+                                 "missing_duration", "missing_image"],
+                        "description": "Vis kun kurser med denne ene type problem. Udelad for alle.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
 ]
 
 
@@ -843,6 +1084,12 @@ VENDOR_TOOL_TRIGGER_KEYWORDS = {
         "pris", "varighed", "sværhedsgrad", "difficulty", "format",
         "lignende kurser", "benchmark", "position",
     ],
+    "vendor_catalog_health": [
+        "katalog", "opslag", "kvalitet", "mangler", "manglende", "udfyldt",
+        "beskrivelse", "billede", "datoer", "ingen datoer", "synlighed",
+        "hvorfor vises", "forbedre", "optimer", "optimér", "sundhed", "health",
+        "hvad kan jeg gøre bedre", "retteliste",
+    ],
 }
 
 
@@ -853,6 +1100,7 @@ _VENDOR_TOOL_ROUTER = {
     "vendor_performance_summary": vendor_performance_summary,
     "get_demand_by_category": get_demand_by_category,
     "get_comparable_courses": get_comparable_courses,
+    "vendor_catalog_health": vendor_catalog_health,
 }
 
 

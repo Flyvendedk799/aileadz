@@ -2796,8 +2796,19 @@ def create_hr_dashboard_blueprint():
         # Ensure company context is in session for hr_tools
         session['company_name'] = company.get('company_name', '')
 
+        # The embedded panel posts the HR page it is rendered on (active_hr_page).
+        # Whitelisted against the canonical destination map so only a known page id
+        # can ever reach the prompt/selector.
+        page = (data.get('page') or '').strip()
+        try:
+            from app1.sse_events import HR_DESTINATIONS
+            if page not in HR_DESTINATIONS:
+                page = ''
+        except Exception:
+            page = ''
+
         from hr_agent import handle_hr_ask
-        return handle_hr_ask(user_query, session)
+        return handle_hr_ask(user_query, session, page=page)
 
     @hr_dashboard_bp.route('/chatbot/reset', methods=['POST'])
     def hr_chatbot_reset():

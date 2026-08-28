@@ -1158,6 +1158,55 @@ OPENAI_TOOLS.extend([
 ])
 
 
+# ── AI empowerment pass: cross-silo learner tools ─────────────────────────────
+# The advisor could already see the catalog and the profile, but the learner's
+# own commitments were split across four surfaces it could not read together
+# (orders, approvals, certifications, goals) and their company's mandatory
+# training was HR-only data. These two read-only tools close that gap: one
+# answers "hvad har jeg på tavlen?", the other "er jeg compliant?".
+OPENAI_TOOLS.extend([
+    {
+        "type": "function",
+        "function": {
+            "name": "get_my_agenda",
+            "description": (
+                "Saml ALT der venter på brugeren ét sted: kursusfrister der nærmer sig eller er "
+                "overskredet, bestillinger der afventer lederens godkendelse, certificeringer der "
+                "udløber, og udviklingsmål med måldato — sorteret efter hvor meget de haster. "
+                "Ét kald i stedet for flere separate opslag. Brug det ved 'hvad har jeg på tavlen', "
+                "'hvad skal jeg nå', 'har jeg noget der haster', 'hvad venter på mig', eller når du "
+                "vil starte en samtale med det der faktisk presser brugeren. Læser kun — ændrer intet."
+            ),
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "horizon_days": {
+                        "type": "integer",
+                        "description": "Hvor langt frem der kigges i dage (7-365). Standard 90.",
+                    },
+                },
+                "required": [],
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "get_my_compliance",
+            "description": (
+                "Vis brugerens EGEN status på virksomhedens obligatoriske og lovpligtige kurser: "
+                "hvilke krav gælder for dem, hvilke er opfyldt, hvilke mangler, og hvilke skal "
+                "fornys (recertificering). Samme udledning som HR ser, men kun brugerens egne rækker "
+                "— aldrig kollegers. Brug det ved 'er jeg compliant', 'mangler jeg noget lovpligtigt', "
+                "'skal jeg gentage arbejdsmiljøkurset', 'hvilke kurser er obligatoriske for mig'. "
+                "Følg gerne op med catalog_search på det krævede kursus, så brugeren kan handle."
+            ),
+            "parameters": {"type": "object", "properties": {}, "required": []},
+        },
+    },
+])
+
+
 # Cross-surface action tool: lets the assistant MOVE the user through the SPA
 # (open a product, the compare view, a profile section, the catalog, the
 # mind-map, or start an enrolment) instead of only describing links. It returns
@@ -1171,7 +1220,9 @@ OPENAI_TOOLS.append({
             "Åbn noget i appen for brugeren (navigation/handling i UI'et). Brug dette når du vil "
             "FØRE brugeren et sted hen i stedet for kun at beskrive et link: vis et konkret kursus, "
             "åbn sammenligningsvisning, åbn profil/CV, åbn kataloget (evt. filtreret), åbn mind-map, "
-            "skift til AI Profiler, eller start en tilmelding. Det opretter IKKE en ordre — start_order "
+            "skift til AI Profiler, eller start en tilmelding. Du kan også åbne brugerens egne sider: "
+            "open_my_learning (læringsoverblikket), open_goals (udviklingsmål) og open_timeline "
+            "(tidslinjen med frister og godkendelser). Det opretter IKKE en ordre — start_order "
             "åbner kun tilmeldingsflowet. Foretræk dette frem for at skrive rå URL'er i teksten."
         ),
         "parameters": {
@@ -1180,7 +1231,8 @@ OPENAI_TOOLS.append({
                 "action": {
                     "type": "string",
                     "enum": ["view_product", "open_compare", "open_profile", "open_mind_map",
-                             "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler"],
+                             "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler",
+                             "open_my_learning", "open_goals", "open_timeline"],
                     "description": "Hvilken handling/navigation der skal udføres i UI'et."
                 },
                 "handle": {"type": "string", "description": "Kursets handle (view_product / start_order)."},
@@ -5134,8 +5186,7 @@ def _execute_open_in_app(args, username=None):
     client never has to guess a route.
     """
     action = (args.get("action") or "").strip()
-    valid = {"view_product", "open_compare", "open_profile", "open_mind_map",
-             "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler"}
+    from app1.sse_events import UI_ACTIONS as valid
     if action not in valid:
         return json.dumps({"status": "error", "message": f"Ukendt handling: {action}"}, ensure_ascii=False)
 
@@ -5194,6 +5245,18 @@ def _execute_open_in_app(args, username=None):
         out["query"] = q
         out["target"] = "/catalog" + (f"?q={q}" if q else "")
         out["label"] = label or "Åbn kataloget"
+
+    elif action == "open_my_learning":
+        out["target"] = "/min-laering"
+        out["label"] = label or "Åbn min læring"
+
+    elif action == "open_goals":
+        out["target"] = "/mine-maal"
+        out["label"] = label or "Se mine udviklingsmål"
+
+    elif action == "open_timeline":
+        out["target"] = "/min-tidslinje"
+        out["label"] = label or "Se min tidslinje"
 
     return _model_tool_json(**out)
 
@@ -5306,6 +5369,243 @@ def _execute_show_skill_gaps(args, username):
         }, ensure_ascii=False, default=str)
     except Exception as e:
         return json.dumps({"status": "error", "message": str(e)})
+
+
+def _execute_get_my_agenda(args, username):
+    """Everything waiting on this learner, across four surfaces, in one read.
+
+    Sources (all strictly self-scoped):
+      * ``course_orders``  — completion deadlines (overdue / due soon) and the
+        approval state of orders that are still waiting on a manager,
+      * ``user_certifications`` — certificates about to lapse (expiry parsing is
+        reused from cert_expiry_service so chat and the reminder job agree),
+      * ``user_learning_goals`` — active goals with a target date.
+
+    Read-only. Each source degrades independently: a missing table or a DB error
+    drops that block and still returns the rest, because a partial agenda is far
+    more useful than an error.
+    """
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind for at se din agenda."}, ensure_ascii=False)
+
+    try:
+        horizon = int(args.get("horizon_days") or 90)
+    except (TypeError, ValueError):
+        horizon = 90
+    horizon = max(7, min(365, horizon))
+
+    today = datetime.date.today()
+    items = []
+
+    # ── Orders: deadlines + pending approvals ──
+    if has_request_context():
+        user_id = flask_session.get("user_id")
+        try:
+            import db_compat  # noqa: F401
+            from db_compat import refresh_flask_mysql_connection
+            import MySQLdb.cursors
+            try:
+                refresh_flask_mysql_connection(app.mysql)
+            except Exception:
+                pass
+            cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            base_select = """
+                SELECT co.order_id, co.product_handle, co.product_title, co.status,
+                       co.completion_status, co.completion_deadline{approval_col}
+                FROM course_orders co{approval_join}
+                WHERE (co.username = %s OR (co.user_id IS NOT NULL AND co.user_id = %s))
+                ORDER BY (co.completion_deadline IS NULL), co.completion_deadline ASC
+                LIMIT 100
+            """
+            try:
+                # order_approvals carries the manager decision; it is created lazily
+                # on some tenants, so fall back to orders alone rather than losing
+                # the deadlines too when the join target is absent.
+                cur.execute(base_select.format(
+                    approval_col=", oa.status AS approval_status",
+                    approval_join=" LEFT JOIN order_approvals oa ON oa.order_id = co.order_id",
+                ), (username, user_id))
+            except Exception:
+                # A failed statement can leave the cursor unusable, so retry on a
+                # fresh one rather than on the one that just errored.
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+                cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                cur.execute(base_select.format(approval_col="", approval_join=""),
+                            (username, user_id))
+            rows = cur.fetchall() or []
+            cur.close()
+        except Exception as e:
+            print(f"[get_my_agenda] orders query skipped: {e}")
+            rows = []
+
+        for r in rows:
+            done = (r.get("completion_status") or "").lower() == "completed"
+            status = (r.get("status") or "").lower()
+            if done or status in ("cancelled", "annulleret", "rejected", "afvist"):
+                continue
+            title = r.get("product_title") or "Ukendt kursus"
+            deadline = r.get("completion_deadline")
+            if deadline:
+                try:
+                    d = deadline.date() if hasattr(deadline, "date") else datetime.date.fromisoformat(str(deadline)[:10])
+                except Exception:
+                    d = None
+                if d is not None:
+                    days_left = (d - today).days
+                    if days_left <= horizon:
+                        items.append({
+                            "kind": "deadline",
+                            "title": title,
+                            "handle": r.get("product_handle") or "",
+                            "order_id": r.get("order_id"),
+                            "date": d.isoformat(),
+                            "days_left": days_left,
+                            "overdue": days_left < 0,
+                            "detail": ("Fristen er overskredet" if days_left < 0
+                                       else f"Frist om {days_left} dage"),
+                        })
+            approval = (r.get("approval_status") or "").lower()
+            if approval in ("pending", "afventer") or (not approval and status in ("pending", "afventer")):
+                items.append({
+                    "kind": "approval",
+                    "title": title,
+                    "handle": r.get("product_handle") or "",
+                    "order_id": r.get("order_id"),
+                    "date": None,
+                    "days_left": None,
+                    "overdue": False,
+                    "detail": "Afventer din leders godkendelse",
+                })
+
+    # ── Certifications about to lapse ──
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        from cert_expiry_service import parse_expiry
+        ensure_tables()
+        profile = get_full_profile(username)
+    except Exception as e:
+        print(f"[get_my_agenda] profile load skipped: {e}")
+        profile = {}
+        parse_expiry = None
+
+    if parse_expiry is not None:
+        for c in (profile.get("certifications") or []):
+            exp = parse_expiry(c.get("expiry_date"))
+            if not exp:
+                continue
+            days_left = (exp - today).days
+            if days_left <= horizon:
+                items.append({
+                    "kind": "certification",
+                    "title": c.get("name") or "Certificering",
+                    "handle": "",
+                    "order_id": None,
+                    "date": exp.isoformat(),
+                    "days_left": days_left,
+                    "overdue": days_left < 0,
+                    "detail": ("Certificeringen er udløbet" if days_left < 0
+                               else f"Udløber om {days_left} dage"),
+                })
+
+    # ── Active goals with a target date ──
+    for g in (profile.get("learning_goals") or []):
+        if (g.get("status") or "aktiv") != "aktiv":
+            continue
+        raw = (g.get("target_date") or "").strip()
+        if not raw:
+            continue
+        try:
+            d = datetime.date.fromisoformat(raw[:10])
+        except (ValueError, TypeError):
+            continue
+        days_left = (d - today).days
+        if days_left <= horizon:
+            items.append({
+                "kind": "goal",
+                "title": g.get("title") or "Udviklingsmål",
+                "handle": "",
+                "order_id": None,
+                "date": d.isoformat(),
+                "days_left": days_left,
+                "overdue": days_left < 0,
+                "detail": ("Måldatoen er passeret" if days_left < 0
+                           else f"Måldato om {days_left} dage"),
+            })
+
+    # Most urgent first: overdue before upcoming, then by days left. Items with
+    # no date (pending approvals) sit just after anything actually overdue.
+    def _sort_key(it):
+        dl = it.get("days_left")
+        return (0 if it.get("overdue") else 1, dl if dl is not None else 0.5)
+
+    items.sort(key=_sort_key)
+    urgent = [i for i in items if i.get("overdue") or (i.get("days_left") is not None and i["days_left"] <= 14)]
+
+    if not items:
+        message = "Der er ikke noget der haster for dig lige nu."
+    elif urgent:
+        message = f"{len(urgent)} ting haster ud af {len(items)} på din agenda."
+    else:
+        message = f"{len(items)} ting på din agenda inden for {horizon} dage — intet haster."
+
+    return json.dumps({
+        "status": "agenda",
+        "items": items[:12],
+        "count": len(items),
+        "urgent_count": len(urgent),
+        "horizon_days": horizon,
+        "message": message,
+    }, ensure_ascii=False, default=str)
+
+
+def _execute_get_my_compliance(args, username):
+    """The learner's own mandatory-training status.
+
+    Delegates to ``hr_tools.derive_employee_compliance`` — the same requirement
+    table, matching and expiry semantics HR sees — so the employee and the HR
+    manager can never be told two different things about the same person. Only
+    this user's own rows are returned.
+    """
+    from flask import session as flask_session, current_app as app, has_request_context
+    if not username:
+        return json.dumps({"status": "error", "message": "Du skal være logget ind."}, ensure_ascii=False)
+    if not has_request_context():
+        return json.dumps({"status": "error", "message": "Kan ikke slå compliance op uden for en session."}, ensure_ascii=False)
+    company_id = flask_session.get("company_id")
+    if not company_id:
+        return json.dumps({
+            "status": "compliance",
+            "has_requirements": False,
+            "requirements": [],
+            "message": "Obligatoriske kurser gælder kun for virksomhedsbrugere.",
+        }, ensure_ascii=False)
+
+    try:
+        import db_compat  # noqa: F401
+        from db_compat import refresh_flask_mysql_connection
+        from hr_tools import derive_employee_compliance
+        try:
+            refresh_flask_mysql_connection(app.mysql)
+        except Exception:
+            pass
+        result = derive_employee_compliance(
+            app.mysql.connection,
+            company_id,
+            username=username,
+            user_id=flask_session.get("user_id"),
+            department=flask_session.get("company_department") or "",
+            role=flask_session.get("company_role") or "",
+        )
+    except Exception as e:
+        print(f"[get_my_compliance] DB error: {e}")
+        return json.dumps({"status": "error", "message": "Kunne ikke hente dine obligatoriske kurser lige nu."}, ensure_ascii=False)
+
+    result["status"] = "compliance"
+    return json.dumps(result, ensure_ascii=False, default=str)
 
 
 def _execute_save_learning_path(args, username):
@@ -5449,6 +5749,10 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_show_mindmap_preview(args, username)
         elif function_name == "show_skill_gaps":
             return _execute_show_skill_gaps(args, username)
+        elif function_name == "get_my_agenda":
+            return _execute_get_my_agenda(args, username)
+        elif function_name == "get_my_compliance":
+            return _execute_get_my_compliance(args, username)
         else:
             return json.dumps({"status": "error", "message": f"Ukendt funktion: {function_name}"})
     except Exception as e:

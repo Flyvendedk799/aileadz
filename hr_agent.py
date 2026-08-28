@@ -77,6 +77,7 @@ HVAD DU KAN:
 - Vise chatbot-brugsstatistik for medarbejdere
 - Identificere inaktive medarbejdere og risikoomraader
 - Generere traeningsrapporter
+- Aabne den rigtige HR-side for brugeren (hr_open_in_app) i stedet for kun at fortaelle hvor den ligger
 
 SAMTALEFLOW:
 - Vaer direkte og handlingsorienteret. HR-ledere har travlt.
@@ -95,6 +96,8 @@ REGLER:
 - Hvis der mangler data, foreslaa hvordan HR kan udfylde det (f.eks. tilfoej kompetencemaal).
 - Brug værktøjer før du nævner konkrete budgetter, medarbejdertal, kompetencegab, leverandørstatus eller kursusanbefalinger.
 - Brug interne Futurematch-links (/products, /categories, /vendors). Brug aldrig gamle webshoplinks.
+- Naar dit svar peger paa en side brugeren skal handle paa (compliance, godkendelser, budgetter, kompetencer, leverandoerer, rapporter), saa AABN den med hr_open_in_app i stedet for kun at naevne den. Det aendrer intet — det navigerer kun.
+- Staar brugeren allerede paa den side du ville aabne, saa svar med dataen i stedet for at navigere dem til det sted de allerede er.
 
 OPFØLGNINGSFORSLAG:
 Afslut altid med 2-3 konkrete forslag til naeste skridt, formateret som:
@@ -136,8 +139,25 @@ def _classify_hr_intent(user_query: str) -> str:
     return "general"
 
 
-def handle_hr_ask(user_query, flask_session):
-    """Handle an HR chatbot query. Returns SSE stream response."""
+# Human-readable Danish label per HR page id, so the model is told which view
+# the manager is standing on in the SAME vocabulary the navigation tool uses.
+def _hr_page_label(page):
+    try:
+        from app1.sse_events import HR_DESTINATIONS
+        entry = HR_DESTINATIONS.get((page or "").strip())
+        return entry[2] if entry else ""
+    except Exception:
+        return ""
+
+
+def handle_hr_ask(user_query, flask_session, page=None):
+    """Handle an HR chatbot query. Returns SSE stream response.
+
+    ``page`` is the ``active_hr_page`` id of the view the panel is embedded on
+    (the panel posts it). It reaches the model as context AND the tool selector
+    as an additive hint, so "hvem mangler her?" resolves against the page the
+    manager is actually looking at instead of being answered generically.
+    """
     _cleanup_hr_sessions()
 
     hr_sid = flask_session.get("hr_chat_session_id")
@@ -168,6 +188,14 @@ def handle_hr_ask(user_query, flask_session):
     ]
     if user_dept:
         context_parts.append(f"AFDELING: {_fence('AFDELING', user_dept)}")
+    page_label = _hr_page_label(page)
+    if page_label:
+        # The page id is an internal enum resolved through HR_DESTINATIONS, so the
+        # label is ours — no fencing needed, and nothing user-supplied reaches here.
+        context_parts.append(
+            f"AKTUEL SIDE: {page_label}. Brugeren står på denne HR-side lige nu — "
+            "tolk vage spørgsmål ('hvem mangler her?', 'hvordan ser det ud?') i den kontekst."
+        )
 
     context_msg = {"role": "system", "content": "\n".join(context_parts)}
     if len(messages) > 2 and messages[1].get("role") == "system" and messages[1].get("content", "").startswith("HR-BRUGER"):
@@ -231,6 +259,7 @@ def handle_hr_ask(user_query, flask_session):
                 hr_tools, toolset_meta = get_hr_tool_selection(
                     company_id=flask_session.get("company_id"),
                     user_query=user_query,
+                    page=page,
                 )
             else:
                 from hr_tools import HR_TOOLS
@@ -343,6 +372,17 @@ def handle_hr_ask(user_query, flask_session):
                     _hr_tr_dict = json.loads(tool_result.output or "{}")
                 except (json.JSONDecodeError, TypeError):
                     _hr_tr_dict = {}
+                if tool_result.name == "hr_open_in_app" and _hr_tr_dict.get("target"):
+                    # Read-only navigation directive → a button in the panel.
+                    _nav_payload = {
+                        "type": "ui_action",
+                        "action": _hr_tr_dict.get("action", "navigate"),
+                        "destination": _hr_tr_dict.get("destination", ""),
+                        "target": _hr_tr_dict.get("target", ""),
+                        "label": _hr_tr_dict.get("label", "Åbn"),
+                        "new_tab": bool(_hr_tr_dict.get("new_tab")),
+                    }
+                    yield f"data: {json.dumps(_nav_payload, ensure_ascii=False)}\n\n"
                 if _hr_tr_dict.get("needs_confirmation"):
                     try:
                         from app1 import confirm_store as _cs

@@ -54,6 +54,10 @@ CV_SUMMARY_CARD = "cv_summary_card"    # structured CV snapshot + portal CTA
 MINDMAP_CARD = "mindmap_card"          # mind-map stats + 3D globe link
 SKILL_GAPS_CARD = "skill_gaps_card"    # per-learner current→target gaps (1-5 scale)
 
+# Cross-silo learner cards (AI empowerment pass)
+AGENDA_CARD = "agenda_card"            # one prioritised "what's on my plate" list
+COMPLIANCE_CARD = "compliance_card"    # the learner's own mandatory-training status
+
 # The full set the frontend is expected to handle (used by the drift test so a
 # new producer event without a consumer branch fails loudly in CI).
 KNOWN_EVENT_TYPES = frozenset({
@@ -65,6 +69,7 @@ KNOWN_EVENT_TYPES = frozenset({
     MEMORY_USED, MEMORY_SAVED, PROFILER_PROGRESS,
     CONFIRM_CARD,
     CV_SUMMARY_CARD, MINDMAP_CARD, SKILL_GAPS_CARD,
+    AGENDA_CARD, COMPLIANCE_CARD,
 })
 
 # Cross-surface action verbs accepted by the open_in_app tool and the chat.js
@@ -80,7 +85,45 @@ UI_ACTIONS = frozenset({
     "open_catalog",     # open the catalog, optionally pre-filtered
     "start_order",      # begin enrolment for a product (does NOT place an order)
     "open_profiler",    # switch to the AI profiler
+    "open_my_learning", # open the employee learning home (/min-laering)
+    "open_goals",       # open the development-goals dashboard (/mine-maal)
+    "open_timeline",    # open the personal deadline/approval timeline (/min-tidslinje)
 })
+
+
+# HR navigation destinations accepted by the hr_open_in_app tool. Keys are the
+# canonical `active_hr_page` ids used by templates/fm/_hr_subnav.html, so the
+# tool, the subnav and the page-context hint all speak one vocabulary. The
+# endpoint is resolved server-side (url_for) with the literal path as fallback,
+# so a renamed route breaks loudly in one place instead of shipping a dead link.
+HR_DESTINATIONS = {
+    "dashboard":          ("hr_dashboard.dashboard", "/hr", "Oversigt"),
+    "team":               ("hr_dashboard.team_cockpit", "/hr/team", "Mit team"),
+    "employees":          ("hr_dashboard.employee_progress", "/hr/employee-progress", "Medarbejdere"),
+    "departments":        ("hr_dashboard.departments", "/hr/departments", "Afdelinger"),
+    "approvals":          ("hr_dashboard.pending_approvals", "/hr/approvals", "Godkendelser"),
+    "approval_policies":  ("hr_dashboard.approval_policies", "/hr/approval-policies", "Auto-godkendelse"),
+    "budgets":            ("hr_dashboard.department_budgets", "/hr/budgets", "Budgetter"),
+    "roi":                ("hr_dashboard.roi_dashboard", "/hr/roi", "ROI"),
+    "funnel":             ("hr_dashboard.funnel_dashboard", "/hr/funnel", "Funnel"),
+    "retention":          ("hr_dashboard.retention_dashboard", "/hr/retention", "Fastholdelse"),
+    "learning_analytics": ("hr_dashboard.learning_analytics", "/hr/learning-analytics", "Læringsanalyse"),
+    "benchmarking":       ("hr_dashboard.benchmarking_view", "/hr/benchmarking", "Benchmarking"),
+    "skill_gaps":         ("hr_dashboard.skill_gaps_view", "/hr/skill-gaps", "Kompetencer"),
+    "training_plan":      ("hr_ext.training_plan", "/hr/training-plan", "Træningsplan"),
+    "learning_paths":     ("hr_dashboard.learning_paths", "/hr/learning-paths", "Læringsforløb"),
+    "internal_courses":   ("hr_dashboard.internal_courses", "/hr/courses", "Interne kurser"),
+    "compliance":         ("hr_dashboard.compliance_matrix", "/hr/compliance", "Compliance"),
+    "suppliers":          ("hr_dashboard.supplier_management", "/hr/suppliers", "Leverandører"),
+    "procurement":        ("hr_ext.procurement", "/hr/procurement", "Indkøb"),
+    "engagement":         ("hr_ext.engagement", "/hr/engagement", "Engagement"),
+    "ai_quality":         ("hr_ext.ai_quality", "/hr/ai-quality", "AI-kvalitet"),
+    "reports":            ("hr_dashboard.reports", "/hr/reports", "Rapporter"),
+}
+
+# The HR advisor may also send the manager to a catalog surface (public routes,
+# no endpoint indirection needed).
+HR_UI_ACTIONS = frozenset(set(HR_DESTINATIONS) | {"view_product", "open_catalog"})
 
 
 def sse(event_type, **payload):

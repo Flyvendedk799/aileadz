@@ -955,6 +955,94 @@ HR_TOOLS.extend([
 ])
 
 
+# ── AI empowerment pass: HR cross-surface navigation ──────────────────────────
+# The HR advisor sits on all 24 HR pages but could only ever TALK about them:
+# every answer that ended in "det kan du se på compliance-siden" left the manager
+# to find it. hr_open_in_app is the HR mirror of the employee open_in_app — a
+# read-only navigation directive the panel renders as a button. It mutates
+# nothing; the destination vocabulary is the same active_hr_page ids the subnav
+# uses (app1.sse_events.HR_DESTINATIONS).
+HR_TOOLS.append({
+    "type": "function",
+    "function": {
+        "name": "hr_open_in_app",
+        "description": (
+            "Åbn den rigtige HR-side for brugeren i stedet for kun at beskrive hvor den ligger. "
+            "Brug det når dit svar peger på en side de skal handle på — fx compliance-matrixen, "
+            "godkendelser, budgetter, kompetencer, leverandører eller rapporter — eller når de beder "
+            "om at komme et sted hen. Du kan også åbne et konkret kursus (view_product med handle) "
+            "eller kataloget (open_catalog). Det ændrer INTET; det navigerer kun. "
+            "Kombinér det gerne med det datasvar du lige har givet, så de kan handle med det samme."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "destination": {
+                    "type": "string",
+                    "enum": ["dashboard", "team", "employees", "departments", "approvals",
+                             "approval_policies", "budgets", "roi", "funnel", "retention",
+                             "learning_analytics", "benchmarking", "skill_gaps", "training_plan",
+                             "learning_paths", "internal_courses", "compliance", "suppliers",
+                             "procurement", "engagement", "ai_quality", "reports",
+                             "view_product", "open_catalog"],
+                    "description": "Hvilken HR-side (eller katalogside) der skal åbnes.",
+                },
+                "handle": {"type": "string", "description": "Kursets handle — kræves ved view_product."},
+                "query": {"type": "string", "description": "Valgfri søgetekst ved open_catalog."},
+                "label": {"type": "string", "description": "Kort dansk knaptekst, fx 'Åbn compliance'."},
+            },
+            "required": ["destination"],
+        },
+    },
+})
+
+
+def _execute_hr_open_in_app(args):
+    """Resolve an HR navigation directive to a concrete internal URL.
+
+    The URL is produced server-side (``url_for`` on the canonical endpoint, with
+    the literal path as an offline/boot-safe fallback) so the model never has to
+    guess a route and a renamed endpoint fails in one place. No mutation.
+    """
+    from app1.sse_events import HR_DESTINATIONS, HR_UI_ACTIONS
+
+    destination = (args.get("destination") or "").strip()
+    if destination not in HR_UI_ACTIONS:
+        return json.dumps({"error": f"Ukendt destination: {destination}"}, ensure_ascii=False)
+    label = (args.get("label") or "").strip()
+
+    if destination == "view_product":
+        handle = (args.get("handle") or "").strip()
+        if not handle:
+            return json.dumps({"error": "handle mangler til view_product."}, ensure_ascii=False)
+        return json.dumps({
+            "status": "success", "action": "view_product", "destination": destination,
+            "target": f"/products/{handle}", "handle": handle,
+            "label": label or "Åbn kurset", "new_tab": True,
+        }, ensure_ascii=False)
+
+    if destination == "open_catalog":
+        query = (args.get("query") or "").strip()
+        return json.dumps({
+            "status": "success", "action": "open_catalog", "destination": destination,
+            "target": "/catalog" + (f"?q={query}" if query else ""), "query": query,
+            "label": label or "Åbn kataloget", "new_tab": True,
+        }, ensure_ascii=False)
+
+    endpoint, fallback_path, page_label = HR_DESTINATIONS[destination]
+    target = fallback_path
+    try:
+        from flask import url_for
+        target = url_for(endpoint)
+    except Exception:
+        pass  # outside a request context / route not registered → literal path
+    return json.dumps({
+        "status": "success", "action": "navigate", "destination": destination,
+        "target": target, "label": label or f"Åbn {page_label}", "page_label": page_label,
+        "new_tab": False,
+    }, ensure_ascii=False)
+
+
 # ── Tool execution functions ──
 
 def _get_cursor():
@@ -1696,6 +1784,188 @@ def _parse_completion_dt(value):
         return None
 
 
+# ── Compliance derivation primitives (shared by the company matrix and the
+# per-learner view) ───────────────────────────────────────────────────────────
+# These were closures inside derive_company_compliance. The employee-facing
+# "am I compliant?" tool (app1.tools.get_my_compliance) needs the SAME
+# semantics — a second implementation would let the two answers disagree about
+# the same person, which is exactly the kind of drift this codebase pays to
+# avoid elsewhere (one completeness function, one 1-5 skill scale). Pure
+# functions: no DB, no session, fully unit-testable offline.
+
+COMPLIANCE_EXPIRING_DAYS = 60  # "compliant, but renew soon" window
+
+
+def compliance_requirement_applies(employee, requirement):
+    """True when a requirement targets this employee's department/role.
+
+    A NULL/empty applies_to_department or applies_to_role means "everyone".
+    """
+    dep = requirement.get('applies_to_department')
+    if dep and (employee.get('department') or '') != dep:
+        return False
+    role = requirement.get('applies_to_role')
+    if role and (employee.get('role') or '') != role:
+        return False
+    return True
+
+
+def compliance_completion_matches(entry, req_handle, req_title, req_category):
+    """True when one completion ``(handle, title, dt)`` satisfies a requirement.
+
+    A requirement with a required_course_handle matches on the handle only;
+    without one it falls back to a title/category text match.
+    """
+    handle, title, _dt = entry
+    if req_handle:
+        return handle == req_handle
+    needle = req_title or req_category
+    if not needle:
+        return False
+    return bool((title and needle in title) or (req_category and req_category in title))
+
+
+def compliance_state_for_entries(entries, requirement, now=None):
+    """Derive one person's state for one requirement from their completions.
+
+    Returns ``(state, expiry_date_or_None, days_left_or_None)`` where state is
+    one of ``compliant`` / ``expiring`` / ``overdue`` / ``missing``. A
+    recurrence of 0 never expires; a completion we cannot date is treated as
+    compliant (conservative — never manufacture an overdue we cannot prove).
+    """
+    now = now or datetime.now()
+    req_handle = (requirement.get('required_course_handle') or '').strip().lower()
+    req_title = (requirement.get('title') or '').strip().lower()
+    req_category = (requirement.get('category') or '').strip().lower()
+    try:
+        recurrence = int(requirement.get('recurrence_months') or 0)
+    except (TypeError, ValueError):
+        recurrence = 0
+
+    matched = [e for e in (entries or [])
+               if compliance_completion_matches(e, req_handle, req_title, req_category)]
+    if not matched:
+        return "missing", None, None
+    if recurrence <= 0:
+        return "compliant", None, None
+
+    dated = [e[2] for e in matched if e[2] is not None]
+    if not dated:
+        return "compliant", None, None
+    expiry = max(dated) + timedelta(days=int(recurrence * 30.44))
+    days_left = (expiry - now).days
+    if days_left < 0:
+        return "overdue", expiry, days_left
+    if days_left <= COMPLIANCE_EXPIRING_DAYS:
+        return "expiring", expiry, days_left
+    return "compliant", expiry, days_left
+
+
+def derive_employee_compliance(conn, company_id, *, username, user_id=None,
+                               department='', role=''):
+    """One learner's own mandatory-training status (read-only, self-scoped).
+
+    The employee-facing mirror of :func:`derive_company_compliance`: same
+    requirement table, same matching and expiry semantics, but scoped to a
+    SINGLE person and returning only that person's own rows — never a colleague's.
+    Used by the employee chatbot so "er jeg compliant?" is answered from the
+    same source HR sees, instead of a hand-rolled second opinion.
+    """
+    if not company_id or not username:
+        return {"has_requirements": False, "requirements": [], "message":
+                "Ingen virksomhedskrav fundet for dig."}
+
+    cur = conn.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        cur.execute("""
+            SELECT id, title, category, applies_to_department, applies_to_role,
+                   required_course_handle, recurrence_months, is_statutory
+            FROM compliance_requirements
+            WHERE company_id = %s
+            ORDER BY is_statutory DESC, title
+        """, (company_id,))
+        requirements = cur.fetchall() or []
+    except Exception as exc:
+        cur.close()
+        print(f"[HR_TOOLS][my-compliance] requirements query failed: {exc}")
+        return {"has_requirements": False, "requirements": [], "message":
+                "Din virksomhed har ingen registrerede compliance-krav."}
+
+    if not requirements:
+        cur.close()
+        return {"has_requirements": False, "requirements": [], "message":
+                "Din virksomhed har ikke defineret nogen obligatoriske kurser endnu."}
+
+    employee = {"user_id": user_id, "username": username,
+                "department": department or "", "role": role or ""}
+
+    entries = []
+    try:
+        cur.execute("""
+            SELECT product_handle, product_title, completion_date
+            FROM course_orders
+            WHERE company_id = %s AND completion_status = 'completed'
+              AND (username = %s OR (user_id IS NOT NULL AND user_id = %s))
+        """, (company_id, username, user_id))
+        for r in cur.fetchall() or []:
+            entries.append((
+                (r.get('product_handle') or '').strip().lower(),
+                (r.get('product_title') or '').strip().lower(),
+                _parse_completion_dt(r.get('completion_date')),
+            ))
+    except Exception as exc:
+        print(f"[HR_TOOLS][my-compliance] course_orders query skipped: {exc}")
+
+    try:
+        cur.execute("""
+            SELECT course_handle, course_title, completed_date
+            FROM user_completed_courses WHERE username = %s
+        """, (username,))
+        for r in cur.fetchall() or []:
+            entries.append((
+                (r.get('course_handle') or '').strip().lower(),
+                (r.get('course_title') or '').strip().lower(),
+                _parse_completion_dt(r.get('completed_date')),
+            ))
+    except Exception as exc:
+        print(f"[HR_TOOLS][my-compliance] user_completed_courses query skipped: {exc}")
+    cur.close()
+
+    rows = []
+    for req in requirements:
+        if not compliance_requirement_applies(employee, req):
+            continue
+        state, expiry, days_left = compliance_state_for_entries(entries, req)
+        rows.append({
+            "id": req.get('id'),
+            "title": req.get('title'),
+            "category": req.get('category') or "",
+            "is_statutory": bool(req.get('is_statutory')),
+            "required_course_handle": req.get('required_course_handle') or "",
+            "recurrence_months": int(req.get('recurrence_months') or 0),
+            "state": state,
+            "expires_on": expiry.date().isoformat() if expiry else None,
+            "days_left": days_left,
+        })
+
+    open_states = {"missing", "overdue", "expiring"}
+    action_needed = [r for r in rows if r["state"] in open_states]
+    # Worst first: overdue > missing > expiring > compliant.
+    order = {"overdue": 0, "missing": 1, "expiring": 2, "compliant": 3}
+    rows.sort(key=lambda r: (order.get(r["state"], 9), not r["is_statutory"], r["title"] or ""))
+    return {
+        "has_requirements": True,
+        "applicable": len(rows),
+        "action_needed": len(action_needed),
+        "is_compliant": not action_needed,
+        "requirements": rows,
+        "message": (
+            "Du opfylder alle dine obligatoriske krav." if not action_needed
+            else f"{len(action_needed)} af {len(rows)} obligatoriske krav mangler din handling."
+        ),
+    }
+
+
 def derive_company_compliance(conn, company_id, department='', only_gaps=False):
     """Derive (read-only) per-requirement compliance status for one company.
 
@@ -1724,7 +1994,6 @@ def derive_company_compliance(conn, company_id, department='', only_gaps=False):
 
     department = (department or '').strip()
     only_gaps = bool(only_gaps)
-    EXPIRING_DAYS = 60
     now = datetime.now()
 
     cur = conn.cursor(MySQLdb.cursors.DictCursor)
@@ -1825,60 +2094,17 @@ def derive_company_compliance(conn, company_id, department='', only_gaps=False):
 
     cur.close()
 
-    def _applies(emp, req):
-        dep = req.get('applies_to_department')
-        if dep and (emp.get('department') or '') != dep:
-            return False
-        role = req.get('applies_to_role')
-        if role and (emp.get('role') or '') != role:
-            return False
-        return True
-
-    def _matches(entry, req_handle, req_title, req_category):
-        handle, title, _dt = entry
-        if req_handle:
-            return handle == req_handle
-        # No required handle: match on the requirement title or category text.
-        needle = req_title or req_category
-        if not needle:
-            return False
-        return bool((title and needle in title) or (req_category and req_category in title))
+    _applies = compliance_requirement_applies
 
     def _employee_state(emp, req):
-        req_handle = (req.get('required_course_handle') or '').strip().lower()
-        req_title = (req.get('title') or '').strip().lower()
-        req_category = (req.get('category') or '').strip().lower()
-        recurrence = int(req.get('recurrence_months') or 0)
-
+        """This employee's state for one requirement, via the shared primitives."""
         entries = []
         if emp.get('user_id') is not None:
             entries.extend(completions_by_user.get(emp['user_id'], []))
         if emp.get('username'):
             entries.extend(completions_by_username.get(emp['username'], []))
-
-        matched = [e for e in entries if _matches(e, req_handle, req_title, req_category)]
-        if not matched:
-            return "missing"
-
-        # One-time requirement (recurrence 0 = never expires): any completion ok.
-        if recurrence <= 0:
-            return "compliant"
-
-        # Find the most recent completion with a parseable date.
-        dated = [e[2] for e in matched if e[2] is not None]
-        if not dated:
-            # Completed but we cannot date it — treat as compliant (conservative:
-            # don't manufacture an overdue we cannot prove).
-            return "compliant"
-        latest = max(dated)
-        # Expiry = completion + recurrence_months (approx 30.4 days/month).
-        expiry = latest + timedelta(days=int(recurrence * 30.44))
-        days_left = (expiry - now).days
-        if days_left < 0:
-            return "overdue"
-        if days_left <= EXPIRING_DAYS:
-            return "expiring"
-        return "compliant"
+        state, _expiry, _days_left = compliance_state_for_entries(entries, req, now=now)
+        return state
 
     per_requirement = []
     total_applicable = 0
@@ -3999,6 +4225,8 @@ def execute_hr_tool(tool_call):
         "send_company_email": _execute_send_company_email,
         "send_deadline_reminders": _execute_send_deadline_reminders,
         "create_order_for_employee": _execute_create_order_for_employee,
+        # AI empowerment pass: read-only cross-surface navigation
+        "hr_open_in_app": _execute_hr_open_in_app,
     }
 
     fn = router.get(name)

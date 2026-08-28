@@ -80,6 +80,8 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 | **`cv_summary_card`** | agent (`show_cv_summary`) | `renderCvSummaryCard` | `sections{skills[],experience[],…}`, `counts{}`, `total`, `has_cv`, `focus` |
 | **`mindmap_card`** | agent (`show_mindmap_preview`) | `renderMindmapCard` | `completeness{}`, `categories{}`, `counts{}`, `recent_memories[]` |
 | **`skill_gaps_card`** | agent (`show_skill_gaps`) | `renderSkillGapsCard` | `gaps[]` (each `{skill,category,current_level,current_label,target_level,target_label,gap,source,priority}`), `target_role`, `has_gaps`, `reason` |
+| **`agenda_card`** | agent (`get_my_agenda`) | `renderAgendaCard` | `items[]` (each `{kind,title,handle,order_id,date,days_left,overdue,detail}`), `count`, `urgent_count`, `horizon_days` |
+| **`compliance_card`** | agent (`get_my_compliance`) | `renderComplianceCard` | `requirements[]` (each `{title,category,is_statutory,state,expires_on,days_left}`), `has_requirements`, `action_needed`, `is_compliant` |
 | `[DONE]` | terminal | end-of-turn | — |
 
 **Guidance guarantee (new):** a turn never dead-ends — if the model omits
@@ -112,6 +114,11 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   (Danish + English synonyms) and additively surfaces the best specialised tool
   for paraphrased / English / typo'd queries the exact-keyword gates miss.
   Bounded to ≤2, env-gated by `AI_TOOL_SEMANTIC_FALLBACK` (default on).
+- **HR and vendor tools follow the same rule with different menus:** HR goes
+  through `get_hr_tool_selection` (core seed + keyword gates + `_HR_PAGE_TOOLS`
+  page hints) and `_HR_META`; the vendor path has no selector — `VENDOR_TOOLS`
+  is offered whole — so there a tool is live as soon as it is in the list and
+  the router, and the system prompt is what teaches the model to use it.
 - **Metadata/labels:** `_EMPLOYEE_META` + `_TOOL_LABELS`
   (`ai_tool_registry.py`). chat.js has a parallel `TOOL_LABELS` map; the
   backend-supplied `label` wins, with a `_humanize` fallback.
@@ -175,6 +182,33 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   is also on `employee_home.html`. The AI reaches them via the inline cards
   above and `open_in_app(open_cv_upload|open_mind_map)`.
 - **`save_learning_path` / `get_learning_path`** persist & recall paths.
+- **`get_my_agenda`** (new, profile-gated) — the cross-silo "hvad har jeg på
+  tavlen?" read. Before it, the learner's own commitments lived in four places
+  the advisor could only reach one at a time (or not at all): course deadlines
+  and pending manager approvals (`course_orders` + `order_approvals`), expiring
+  certifications (`user_certifications`, parsed with
+  **`cert_expiry_service.parse_expiry`** so chat and the reminder job agree on
+  partial dates), and dated learning goals. Items are sorted worst-first
+  (overdue → approvals → soonest) inside a clamped 7-365 day horizon, and every
+  source degrades independently — a missing `order_approvals` table falls back
+  to a plain `course_orders` read rather than losing the deadlines too. Emitted
+  as an `agenda_card`.
+- **`get_my_compliance`** (new, profile + company-gated) — the learner-side
+  mirror of HR's compliance matrix: which mandatory/statutory requirements apply
+  to *them*, which are met, missing, overdue or due for renewal. It does NOT
+  fork the semantics: `derive_company_compliance`'s closures were extracted into
+  the shared primitives `compliance_requirement_applies` /
+  `compliance_completion_matches` / `compliance_state_for_entries`
+  (`hr_tools.py`), and both the company matrix and the new
+  `derive_employee_compliance` run on them — so a learner and their manager can
+  never be told two different things about the same person. Returns only this
+  user's own rows. Emitted as a `compliance_card`; the model is told to chase a
+  missing requirement with a real course.
+- **`open_in_app`** also reaches the learner's own surfaces now:
+  `open_my_learning` (`/min-laering`), `open_goals` (`/mine-maal`) and
+  `open_timeline` (`/min-tidslinje`). The executor validates against
+  `sse_events.UI_ACTIONS` rather than a hand-copied set, and a test pins the
+  tool's enum to that list in both directions.
 
 ---
 
@@ -322,6 +356,69 @@ completed). Tool JSON is re-resolved to full products by handle
 
 ---
 
+## 7b. The other two chat surfaces (HR advisor · vendor assistant)
+
+The employee advisor is not the only chatbot. Two more run on the same
+`ai_runtime` loop with their own toolsets, and both were recently given reach
+beyond "answering in text".
+
+**HR advisor** (`hr_agent.py`, `POST /hr/chatbot/ask`, panel
+`templates/fm/_ai_panel.html` auto-included from `fm/_hr_subnav.html` → every HR
+page). Its SSE vocabulary is its own and much smaller than §3: `ping`,
+`thinking`, `text`, `tool_call`, `confirm_card`, **`ui_action`**, `error`,
+`done`.
+
+- **`hr_open_in_app`** (new, read-only, always on the menu) — the HR mirror of
+  `open_in_app`. The advisor sat on 24 HR pages but could only ever *name* them
+  ("det ligger på compliance-siden"); now it can open them. Destinations are the
+  canonical `active_hr_page` ids from **`sse_events.HR_DESTINATIONS`** — the same
+  vocabulary `_hr_subnav.html` uses — and the URL is resolved server-side with
+  `url_for(endpoint)` (literal path as boot-safe fallback), so a renamed route
+  fails in one place instead of shipping a dead link. It also reaches
+  `view_product` / `open_catalog`. `hr_agent` emits the result as a `ui_action`
+  frame; the panel renders it as an `<a class="fm-aip-action">` and drops
+  anything that is not a same-origin absolute path.
+- **Page context now reaches the server.** The panel had always posted `page`
+  (the `active_hr_page` id) and the route had always dropped it — the only
+  page-awareness was a client-side Danish prefix on the question. `page` is now
+  whitelisted against `HR_DESTINATIONS` in `hr_chatbot_ask`, passed to
+  `handle_hr_ask(..., page=…)` → an `AKTUEL SIDE:` context line, and to
+  `get_hr_tool_selection(..., page=…)` → `_HR_PAGE_TOOLS`, which additively
+  surfaces that view's tools (a test pins the map to every HR destination). So
+  "hvem mangler her?" on the compliance page reaches the compliance tools
+  without the manager naming the domain. Additive only: the keyword gates and
+  `_resolve_forced_tool`'s TR-01 demotion are unchanged — and **reads only**:
+  `_hr_page_tool_names` filters out any `side_effect` tool, because standing on
+  the approvals page says what the manager is looking at, not that they intend
+  to approve. Writes stay behind their explicit keyword gate + confirm card.
+
+**Vendor assistant** (`vendor_portal.py` `POST /vendor/ask`, tools in
+`vendor_tools.py`). Every turn is offered the whole (small) `VENDOR_TOOLS` list —
+there is no per-turn selector — and executed with the SESSION vendor name, so a
+vendor can never reach another vendor's or any buyer's data.
+
+- **`vendor_catalog_health`** (new, read-only) — an actionable audit of the
+  vendor's OWN listings: missing price, no bookable dates left, thin
+  description, missing category / difficulty / language / duration / image.
+  These are exactly the fields the platform's filters, search and AI
+  recommendations read, so each finding is lost visibility rather than
+  cosmetics. Findings are weighted (unpriceable/unbookable outrank a thin
+  description) into a per-course `severity` and a catalog-wide `health_score`
+  over (course × check) cells. Public catalog data only — no order, buyer or
+  competitor data — and an unparseable variant date is never counted as expired.
+  **Honesty rule:** difficulty / language / duration come from
+  `structured_metadata`, which is an LLM enrichment pass over the vendor's own
+  description (`app1/build_index.py:extract_structured_metadata`), NOT a field a
+  vendor fills in. If not one of the vendor's courses carries it, that pass has
+  not run for this catalog, so the three derived checks are skipped, the score's
+  denominator shrinks to `checks_applied`, and `enrichment_missing` + a Danish
+  note say so — rather than reporting "niveau mangler" on every course and
+  blaming the vendor for our build. (On the live catalog this is the difference
+  between "483 of 483 courses incomplete, score 62" and the truthful "24 of 483,
+  score 99 — 14 unpriced, 6 unbookable".)
+
+---
+
 ## 8. Env flags
 
 | Flag | Default | Effect |
@@ -368,6 +465,14 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 - **Competency layer** (canon/categories/scale/gap engine) in
   `tests/test_competency.py`; the **durable CV parse store** + CV-apply
   level-validity contract in `tests/test_cv_parse_store.py`.
+- The **AI empowerment pass** (cross-silo learner agenda, own-compliance,
+  HR navigation + page context, vendor catalog health) is covered offline by
+  `tests/test_platform_ai_empowerment.py`: executor behaviour incl. the
+  agenda's per-source degradation and its `order_approvals` fallback, the shared
+  compliance primitives as pure functions, every `HR_DESTINATIONS` entry
+  resolving, reachability for each new tool (Danish + English), and the drift
+  guards (tool enums ↔ `UI_ACTIONS`/`HR_UI_ACTIONS`, new SSE events ↔
+  `KNOWN_EVENT_TYPES` ↔ a chat.js branch, `HR_DESTINATIONS` ↔ the subnav).
 
 ---
 
@@ -383,6 +488,11 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | Profile store, completeness, learning paths | `app1/user_profile_db.py` (skills now canonicalized + categorized + level-validated on write) |
 | **Competency layer (canon, categories, 1-5 scale bridge, gap engine)** | `competency.py` (reuses `hr_tools.SKILL_LEVEL_MAP`; `compute_skill_gaps`) |
 | **CV parse-job store (durable, cross-worker)** | `cv_parse_store.py` (`ai_cv_parse_jobs` + in-proc fallback) |
+| **Compliance derivation (shared primitives + company matrix + per-learner view)** | `hr_tools.py` (`compliance_requirement_applies` / `compliance_completion_matches` / `compliance_state_for_entries`; `derive_company_compliance`, `derive_employee_compliance`) |
+| HR advisor loop, prompt, page context, `ui_action` | `hr_agent.py` |
+| HR tool definitions + executors + dispatch (incl. `hr_open_in_app`) | `hr_tools.py` |
+| Embedded HR AI panel (FAB, page id, action buttons) | `templates/fm/_ai_panel.html` (+ `.fm-aip-*` in `static/futurematch/assets/fm-pages.css`) |
+| Vendor assistant tools (perf, demand, comparables, catalog health) | `vendor_tools.py` |
 | Grounding / chain-of-custody | `grounding.py` |
 | Confirm-token store | `app1/confirm_store.py` |
 | SSE event vocabulary (canonical) | `app1/sse_events.py` |

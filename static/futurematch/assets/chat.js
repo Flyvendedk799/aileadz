@@ -1198,6 +1198,100 @@
     body.appendChild(card); down();
   }
 
+  /* ---------------- Agenda card (deadlines, approvals, certs, goals) -------- */
+  function renderAgendaCard(body, data) {
+    const items = data.items || [];
+    const card = document.createElement("div");
+    card.className = "agenda-card";
+    if (!items.length) {
+      card.innerHTML = `
+        <div class="agc-head"><i class="fa-solid ${icon("fa-list-check")}"></i><span>Din agenda</span></div>
+        <div class="agc-empty">Der er ikke noget der haster for dig lige nu. 🎉</div>
+        <div class="csv-footer"><button class="csv-btn" data-url="/min-laering"><i class="fa-solid ${icon("fa-graduation-cap")}"></i> Åbn min læring</button></div>`;
+      card.querySelectorAll("[data-url]").forEach((b) =>
+        b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
+      body.appendChild(card); down(); return;
+    }
+    const KIND = {
+      deadline: { label: "Frist", icon: "fa-hourglass-half" },
+      approval: { label: "Godkendelse", icon: "fa-circle-check" },
+      certification: { label: "Certificering", icon: "fa-certificate" },
+      goal: { label: "Mål", icon: "fa-bullseye" },
+    };
+    const rowsHtml = items.map((it) => {
+      const k = KIND[it.kind] || { label: it.kind || "", icon: "fa-circle-info" };
+      const urgency = it.overdue ? "overdue" : (it.days_left != null && it.days_left <= 14 ? "soon" : "later");
+      const when = it.days_left == null ? "" : (it.overdue ? `${Math.abs(it.days_left)} dage over` : `om ${it.days_left} dage`);
+      return `
+        <div class="agc-row ${urgency}">
+          <i class="fa-solid ${icon(k.icon)}"></i>
+          <div class="agc-main">
+            <span class="agc-title">${esc(it.title || "")}</span>
+            <span class="agc-detail">${esc(it.detail || "")}</span>
+          </div>
+          ${when ? `<span class="agc-when">${esc(when)}</span>` : ""}
+        </div>`;
+    }).join("");
+    const urgent = data.urgent_count || 0;
+    card.innerHTML = `
+      <div class="agc-head">
+        <i class="fa-solid ${icon("fa-list-check")}"></i><span>Din agenda</span>
+        ${urgent ? `<span class="agc-badge">${urgent} haster</span>` : ""}
+      </div>
+      <div class="agc-rows">${rowsHtml}</div>
+      <div class="csv-footer">
+        <button class="csv-btn primary" data-url="/min-tidslinje"><i class="fa-solid ${icon("fa-timeline")}"></i> Se hele tidslinjen</button>
+      </div>`;
+    card.querySelectorAll("[data-url]").forEach((b) =>
+      b.addEventListener("click", () => window.open(b.getAttribute("data-url"), "_blank")));
+    body.appendChild(card); down();
+  }
+
+  /* ---------------- My-compliance card (mandatory training, self-scoped) ---- */
+  function renderComplianceCard(body, data) {
+    const reqs = data.requirements || [];
+    const card = document.createElement("div");
+    card.className = "compliance-card";
+    if (!data.has_requirements || !reqs.length) {
+      card.innerHTML = `
+        <div class="cmc-head"><i class="fa-solid ${icon("fa-shield-halved")}"></i><span>Obligatoriske kurser</span></div>
+        <div class="cmc-empty">${esc(data.message || "Der er ingen obligatoriske krav registreret for dig.")}</div>`;
+      body.appendChild(card); down(); return;
+    }
+    const STATE = {
+      compliant: { label: "Opfyldt", cls: "ok" },
+      expiring: { label: "Skal fornys", cls: "warn" },
+      overdue: { label: "Udløbet", cls: "bad" },
+      missing: { label: "Mangler", cls: "bad" },
+    };
+    const rowsHtml = reqs.map((r) => {
+      const st = STATE[r.state] || { label: r.state || "", cls: "warn" };
+      const when = r.days_left != null && r.state !== "compliant"
+        ? (r.days_left < 0 ? `${Math.abs(r.days_left)} dage over` : `om ${r.days_left} dage`) : "";
+      return `
+        <div class="cmc-row">
+          <div class="cmc-main">
+            <span class="cmc-title">${esc(r.title || "")}</span>
+            ${r.is_statutory ? `<span class="cmc-tag">lovpligtig</span>` : ""}
+          </div>
+          <span class="cmc-state ${st.cls}">${esc(st.label)}${when ? ` · ${esc(when)}` : ""}</span>
+        </div>`;
+    }).join("");
+    const need = data.action_needed || 0;
+    card.innerHTML = `
+      <div class="cmc-head">
+        <i class="fa-solid ${icon("fa-shield-halved")}"></i><span>Obligatoriske kurser</span>
+        <span class="cmc-badge ${need ? "bad" : "ok"}">${need ? `${need} mangler` : "alt opfyldt"}</span>
+      </div>
+      <div class="cmc-rows">${rowsHtml}</div>
+      ${need ? `<div class="csv-footer">
+        <button class="csv-btn primary" data-ask="Find kurserne der lukker mine manglende obligatoriske krav"><i class="fa-solid ${icon("fa-magnifying-glass")}"></i> Find kurserne</button>
+      </div>` : ""}`;
+    card.querySelectorAll("[data-ask]").forEach((b) =>
+      b.addEventListener("click", () => { try { if (typeof ask === "function") ask(b.getAttribute("data-ask")); } catch (e) {} }));
+    body.appendChild(card); down();
+  }
+
   async function streamFromBackend(body, actualQuery) {
     // Abort plumbing: the Stop button aborts via currentAbort; a no-event
     // watchdog aborts a silently dead connection (backend emits an initial
@@ -1354,6 +1448,12 @@
           } else if (data.type === "skill_gaps_card") {
             // Per-learner current→target skill gaps (1-5), CTA to gap-closing courses.
             renderSkillGapsCard(body, data);
+          } else if (data.type === "agenda_card") {
+            // Cross-silo "what's on my plate": deadlines, approvals, certs, goals.
+            renderAgendaCard(body, data);
+          } else if (data.type === "compliance_card") {
+            // The learner's own mandatory-training status.
+            renderComplianceCard(body, data);
           }
         }
       }

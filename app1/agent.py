@@ -177,6 +177,17 @@ hvad det gør, hvornår det er det rigtige valg, og hvad det ikke svarer på. L�
 og vælg derefter — der er ingen fast rækkefølge du skal igennem. Kan et spørgsmål besvares
 med et filter frem for et opfølgende spørgsmål, så brug filteret.
 
+BRUGERENS EGNE FORPLIGTELSER:
+- Spørger brugeren hvad der venter på dem ("hvad har jeg på tavlen", "hvad haster",
+  "mine frister"), så brug get_my_agenda: den samler frister, ventende godkendelser,
+  udløbende certificeringer og måldatoer ét sted, så du slipper for at stykke det
+  sammen af flere opslag. Nævn det der haster først — og hvad de kan gøre ved det.
+- Spørger de om obligatoriske eller lovpligtige kurser ("er jeg compliant", "skal jeg
+  forny", "hvad er påkrævet for mig"), så brug get_my_compliance. Mangler der et krav,
+  så find kurset der lukker det med et katalogopslag i samme tur — et krav uden en vej
+  til at opfylde det er ikke en hjælp.
+- Du ser KUN brugerens egne rækker i begge værktøjer. Udtal dig aldrig om kolleger.
+
 KARRIERE & OPKVALIFICERING:
 - Spørgsmål om at blive til noget ("hvad skal jeg lære for at blive X", "hvilke
   kompetencer mangler jeg til Y", "lav en læringssti til Z") besvares med rigtige kurser
@@ -2442,6 +2453,31 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             "categories": tool_result_dict.get("categories", {}),
                             "counts": tool_result_dict.get("counts", {}),
                             "recent_memories": tool_result_dict.get("recent_memories", []),
+                        }, ensure_ascii=False, default=str))
+
+                elif fn == "get_my_agenda":
+                    if tool_result_dict.get("status") == "agenda":
+                        from app1.sse_events import AGENDA_CARD
+                        buffered_extra_events.append(json.dumps({
+                            "type": AGENDA_CARD,
+                            "items": tool_result_dict.get("items", []),
+                            "count": tool_result_dict.get("count", 0),
+                            "urgent_count": tool_result_dict.get("urgent_count", 0),
+                            "horizon_days": tool_result_dict.get("horizon_days", 90),
+                            "message": tool_result_dict.get("message", ""),
+                        }, ensure_ascii=False, default=str))
+
+                elif fn == "get_my_compliance":
+                    if tool_result_dict.get("status") == "compliance":
+                        from app1.sse_events import COMPLIANCE_CARD
+                        buffered_extra_events.append(json.dumps({
+                            "type": COMPLIANCE_CARD,
+                            "requirements": tool_result_dict.get("requirements", []),
+                            "has_requirements": tool_result_dict.get("has_requirements", False),
+                            "action_needed": tool_result_dict.get("action_needed", 0),
+                            "applicable": tool_result_dict.get("applicable", 0),
+                            "is_compliant": tool_result_dict.get("is_compliant", False),
+                            "message": tool_result_dict.get("message", ""),
                         }, ensure_ascii=False, default=str))
 
                 elif fn == "show_skill_gaps":

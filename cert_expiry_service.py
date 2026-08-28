@@ -60,6 +60,11 @@ def _parse_expiry(value):
         return None
 
 
+# Public alias: the chat agenda tool (app1.tools.get_my_agenda) needs the exact
+# same partial-date semantics as the reminder job, so both read one parser.
+parse_expiry = _parse_expiry
+
+
 def remind_expiring_certifications(within_days=DEFAULT_WITHIN_DAYS,
                                    grace_days=DEFAULT_GRACE_DAYS, limit=_MAX_ROWS):
     """Find soon-to-expire / just-lapsed certs and raise a learner notification.

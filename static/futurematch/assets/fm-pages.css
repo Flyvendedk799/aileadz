@@ -218,6 +218,12 @@
 .fm-aip-msg{padding:9px 12px;border-radius:12px;font-size:13px;line-height:1.5;max-width:90%;white-space:pre-wrap}
 .fm-aip-msg.user{align-self:flex-end;background:var(--fm-primary);color:#fff;border-bottom-right-radius:4px}
 .fm-aip-msg.bot{align-self:flex-start;background:var(--fm-surface-3);color:var(--fm-ink);border-bottom-left-radius:4px}
+/* Navigation directive from hr_open_in_app — rendered as a real destination. */
+.fm-aip-action{align-self:flex-start;display:inline-flex;align-items:center;gap:6px;
+  padding:8px 13px;border-radius:10px;font-size:12.5px;font-weight:650;text-decoration:none;
+  color:#fff;background:var(--fm-primary);border:1px solid transparent}
+.fm-aip-action::before{content:"\2192";font-weight:700}
+.fm-aip-action:hover{filter:brightness(1.07);text-decoration:none;color:#fff}
 .fm-aip-form{display:flex;gap:8px;padding:12px;border-top:1px solid var(--fm-line)}
 .fm-aip-form input{flex:1;border:1px solid var(--fm-line);border-radius:10px;padding:9px 12px;font-size:13px;
   background:var(--fm-surface-2);color:var(--fm-ink)}

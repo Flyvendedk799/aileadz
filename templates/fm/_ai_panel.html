@@ -91,6 +91,20 @@
     body.appendChild(d); body.scrollTop = body.scrollHeight;
     return d;
   }
+  // Navigation directive from hr_open_in_app: render the destination as a real
+  // button so "det ligger på compliance-siden" becomes one click. Targets are
+  // resolved server-side from the canonical endpoint map; anything that is not a
+  // same-origin absolute path is dropped rather than navigated to.
+  function addAction(d) {
+    var target = String(d.target || '');
+    if (!/^\/[^\/]/.test(target)) return;
+    var a = document.createElement('a');
+    a.className = 'fm-aip-action';
+    a.href = target;
+    if (d.new_tab) { a.target = '_blank'; a.rel = 'noopener'; }
+    a.textContent = d.label || 'Åbn';
+    body.appendChild(a); body.scrollTop = body.scrollHeight;
+  }
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var q = (input.value || '').trim(); if (!q) return;
@@ -111,6 +125,7 @@
               try {
                 var d = JSON.parse(line.substring(6));
                 if (d.type === 'text' && d.content) { acc += d.content; out.textContent = acc; body.scrollTop = body.scrollHeight; }
+                else if (d.type === 'ui_action' && d.target) { addAction(d); }
                 else if (d.type === 'error') { out.textContent = d.content || 'Der opstod en fejl.'; }
               } catch (err) {}
             });

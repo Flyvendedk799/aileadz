@@ -58,6 +58,7 @@ _EMPLOYEE_META = {
         "create_course_order",
         side_effect=True,
         parallel_safe=False,
+        confirm_required=True,
         toolset_tags=("order", "mutation"),
     ),
     "check_order_approval_status": ToolMeta(
@@ -982,8 +983,16 @@ def get_employee_tool_selection(
     intent: str,
     user_query: str,
     shown_count: int = 0,
+    order_flow_open: bool = False,
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
-    """Return strict Chat-style tools plus selection metadata for one employee turn."""
+    """Return strict Chat-style tools plus selection metadata for one employee turn.
+
+    ``order_flow_open`` says an order conversation is already in progress (set by
+    the ordering tools themselves, read back from the session). Without it the
+    ordering tools were keyword-gated per turn, so the user's bare "ja tak" on the
+    confirmation turn matched nothing and took them off the menu — leaving the
+    model to tell the user to go and order on the course page instead.
+    """
     from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS
 
     tool_map = _by_name(OPENAI_TOOLS + (PROFILE_TOOLS if logged_in else []))
@@ -1045,10 +1054,15 @@ def get_employee_tool_selection(
         # kendt udbydernavn er for tvetydigt til en tvungen vendor-lookup.
         if vendor_signal and not _is_self_directed_who_query(query):
             forced_candidates.append("catalog_get_vendor")
-    if (intent in {"buying", "team_buying"} or _has_any(query, ("tilmeld", "bestil", "ordre", "køb", "koeb", "plads"))) and not is_approval_query:
+    if (intent in {"buying", "team_buying"} or order_flow_open
+            or _has_any(query, ("tilmeld", "bestil", "ordre", "køb", "koeb", "plads"))) and not is_approval_query:
         names.update({"catalog_get_product", "check_course_readiness", "prepare_course_order"})
-        if _explicit_order_confirmation(query):
-            names.add("create_course_order")
+        # create_course_order is confirm-gated at EXECUTION (an unconfirmed call
+        # returns a preview and books nothing), so it can stay on the menu for the
+        # whole ordering conversation. The old keyword gate only admitted it on a
+        # handful of exact Danish phrases, which meant the model usually could not
+        # place the order the user had just asked for.
+        names.add("create_course_order")
     if is_approval_query:
         names.add("check_order_approval_status")
         forced_candidates.append("check_order_approval_status")

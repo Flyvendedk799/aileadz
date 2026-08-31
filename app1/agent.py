@@ -217,8 +217,18 @@ SIKKERHED (prompt-injektion):
 SYSTEM_PLAYBOOK_BUYING = """BESTILLINGSFLOW:
 1. Brug catalog_get_product + check_course_readiness.
 2. Brug prepare_course_order for bekræftelsesdata uden at oprette ordre.
-3. Kald create_course_order først ved eksplicit brugerbekræftelse.
-4. Vis ordrebekræftelsen. Ved gruppetilmelding: spørg om antal deltagere."""
+3. Kald create_course_order (uden confirm) for at vise bekræftelsen, og igen med
+   confirm=true når brugeren siger ja. DU opretter ordren — henvis ALDRIG brugeren
+   til selv at bestille på kursussiden eller hos udbyderen.
+4. Vis ordrebekræftelsen. Ved gruppetilmelding: spørg om antal deltagere.
+
+KONTAKTOPLYSNINGER:
+- Navn, email og telefon hentes automatisk fra brugerens profil. Spørg ALDRIG om
+  en oplysning, som et værktøj i denne tur allerede har returneret.
+- Spørg kun om det, værktøjet lister i missing_fields. Telefonnummer er valgfrit
+  og må ikke blokere en bestilling.
+- Står der confirm_fields: navn, så har vi kun brugerens login — bed om én kort
+  bekræftelse af navnet i stedet for at bede om alle oplysninger forfra."""
 
 SYSTEM_PLAYBOOK_CV = """CV-INTELLIGENS (automatisk):
 Når brugeren fortæller noget om sig selv, brug request_user_input til smart UI-kort.
@@ -418,7 +428,7 @@ _STAGE_HINTS = {
     "searching": "Brugeren har givet dig nok til at lede. Filtrene på catalog_search (category/vendor/format/location/price_min/price_max) findes, så krav om pris, by eller format hører hjemme i søgningen frem for i et opfølgende spørgsmål.",
     "comparing": "Brugeren vejer viste kurser op mod hinanden. catalog_compare_products tager 2-4 handles. Det de har brug for er, hvilken forskel der betyder noget for netop dem.",
     "deciding": "Brugeren er tæt på et valg og mangler et klart råd, ikke flere muligheder.",
-    "ready_to_buy": "Brugeren vil handle. catalog_get_product giver startdato, lokation, pris og hvad der er inkluderet; check_course_readiness fortæller om de kan bestille.",
+    "ready_to_buy": "Brugeren vil handle. catalog_get_product giver startdato, lokation, pris og hvad der er inkluderet; check_course_readiness fortæller om de kan bestille — og henter samtidig deres kontaktoplysninger, så de ikke skal spørges om dem. Du kan selv oprette ordren med create_course_order.",
     "browsing": "Brugeren orienterer sig og er ikke klar til at vælge. Inspirer med karriereværdi og læringsudbytte frem for at presse mod en beslutning.",
     "correcting": "Dit forrige svar ramte ved siden af. Find ud af hvad der ikke passede, før du leder igen.",
     "team_buying": "Det handler om flere personer: antal, fælles datoer, grupperabat, in-house.",
@@ -2086,12 +2096,20 @@ def handle_agentic_ask(user_query, session, mode="default"):
             from ai_tool_registry import get_employee_tool_selection, make_tool_choice, tool_name, toolset_enabled
 
             if toolset_enabled():
+                # An order conversation opened on an earlier turn keeps the ordering
+                # tools on the menu, so a bare "ja tak" can still be acted on.
+                try:
+                    from app1.tools import order_flow_open as _order_flow_open
+                    _order_open = _order_flow_open()
+                except Exception:
+                    _order_open = False
                 all_tools, toolset_meta = get_employee_tool_selection(
                     logged_in=bool(logged_in_user),
                     company_id=company_id,
                     intent=intent,
                     user_query=user_query,
                     shown_count=len(shown_handles),
+                    order_flow_open=_order_open,
                 )
             else:
                 all_tools = OPENAI_TOOLS + (PROFILE_TOOLS if logged_in_user else [])

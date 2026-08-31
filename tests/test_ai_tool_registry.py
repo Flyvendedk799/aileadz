@@ -81,7 +81,10 @@ class AIToolRegistryTests(unittest.TestCase):
         self.assertIn("catalog_get_product", names)
         self.assertEqual(meta["forced_tool"], "catalog_get_product")
 
-    def test_mutating_order_tool_requires_explicit_confirmation(self):
+    def test_order_creation_is_reachable_for_the_whole_buying_turn(self):
+        # The confirm gate lives in the executor (an unconfirmed call previews and
+        # books nothing), so the tool stays on the menu for a buying turn instead of
+        # only appearing on a handful of exact Danish confirmation phrases.
         tools, _ = get_employee_tool_selection(
             logged_in=True,
             company_id=1,
@@ -91,16 +94,25 @@ class AIToolRegistryTests(unittest.TestCase):
         )
         names = {tool_name(tool) for tool in tools}
         self.assertIn("prepare_course_order", names)
-        self.assertNotIn("create_course_order", names)
+        self.assertIn("create_course_order", names)
+        self.assertTrue(get_tool_meta("create_course_order").confirm_required)
 
-        confirmed, _ = get_employee_tool_selection(
-            logged_in=True,
-            company_id=1,
-            intent="buying",
-            user_query="Bekræft, opret ordre og tilmeld mig",
-            shown_count=1,
+    def test_open_order_flow_keeps_ordering_tools_on_a_bare_yes(self):
+        # "ja tak" matches no ordering keyword; without the open-flow signal the
+        # ordering tools vanish exactly on the turn the user confirms.
+        without, _ = get_employee_tool_selection(
+            logged_in=True, company_id=1, intent="follow_up",
+            user_query="ja tak", shown_count=1,
         )
-        self.assertIn("create_course_order", {tool_name(tool) for tool in confirmed})
+        self.assertNotIn("create_course_order", {tool_name(t) for t in without})
+
+        with_flow, _ = get_employee_tool_selection(
+            logged_in=True, company_id=1, intent="follow_up",
+            user_query="ja tak", shown_count=1, order_flow_open=True,
+        )
+        names = {tool_name(t) for t in with_flow}
+        self.assertIn("create_course_order", names)
+        self.assertIn("check_course_readiness", names)
 
     def test_company_tools_are_not_selected_without_company(self):
         tools, _ = get_employee_tool_selection(

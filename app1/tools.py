@@ -595,29 +595,37 @@ OPENAI_TOOLS = [
         "function": {
             "name": "create_course_order",
             "description": (
-                "Opret en kursusbestilling for brugeren. Brug dette når brugeren eksplicit vil tilmelde sig / bestille et kursus. "
-                "Du SKAL have følgende inden du kalder dette: kursets handle (fra get_course_details), "
-                "brugerens fulde navn, email og telefonnummer. Spørg brugeren om de manglende oplysninger først. "
-                "For logget-ind brugere kan du hente info fra get_user_profile."
+                "Opret en kursusbestilling for brugeren. DU opretter ordren — henvis ALDRIG brugeren "
+                "til selv at bestille på kursussiden. Kald den med confirm=false (eller udeladt) for "
+                "at få et bekræftelseskort med kursus, pris og kontaktoplysninger; kald den igen med "
+                "confirm=true når brugeren har sagt ja. "
+                "Navn, email og telefon hentes automatisk fra brugerens profil — send dem KUN med, "
+                "hvis brugeren selv har oplyst eller rettet dem i samtalen. Spørg aldrig om "
+                "oplysninger som check_course_readiness eller prepare_course_order allerede har "
+                "returneret. Telefonnummer er valgfrit."
             ),
             "parameters": {
                 "type": "object",
                 "properties": {
                     "product_handle": {
                         "type": "string",
-                        "description": "Kursets handle (f.eks. 'prince2-grundkursus'). Fås fra get_course_details."
+                        "description": "Kursets handle (f.eks. 'prince2-grundkursus'). Fås fra catalog_get_product."
+                    },
+                    "confirm": {
+                        "type": "boolean",
+                        "description": "true opretter ordren. Udeladt/false returnerer et bekræftelseskort uden at oprette noget."
                     },
                     "user_name": {
                         "type": "string",
-                        "description": "Brugerens fulde navn."
+                        "description": "Kun hvis brugeren selv oplyser/retter navnet. Ellers hentes det fra profilen."
                     },
                     "user_email": {
                         "type": "string",
-                        "description": "Brugerens email-adresse."
+                        "description": "Kun hvis brugeren selv oplyser/retter emailen. Ellers hentes den fra profilen."
                     },
                     "user_phone": {
                         "type": "string",
-                        "description": "Brugerens telefonnummer."
+                        "description": "Kun hvis brugeren selv oplyser/retter telefonnummeret. Valgfrit."
                     },
                     "variant_date": {
                         "type": "string",
@@ -628,7 +636,7 @@ OPENAI_TOOLS = [
                         "description": "Valgt lokation (f.eks. 'København'). Valgfrit."
                     }
                 },
-                "required": ["product_handle", "user_name", "user_email", "user_phone"]
+                "required": ["product_handle"]
             }
         }
     },
@@ -823,8 +831,11 @@ OPENAI_TOOLS.extend([
             "description": (
                 "Check whether this user can actually order a specific course right now: the product "
                 "exists, the supplier is active, required contact fields are filled, the chosen variant is "
-                "valid, and budget plus approval status allow it. Use it before prepare_course_order so you "
-                "can tell the user what is missing instead of failing at the order step. Pass variant_date "
+                "valid, and budget plus approval status allow it. Contact details are resolved from the "
+                "user's own profile, so treat the returned employee block as known: ask ONLY for what "
+                "missing_fields lists, never for details the result already contains. Use it before "
+                "prepare_course_order so you can tell the user what is missing instead of failing at the "
+                "order step. Pass variant_date "
                 "and variant_location when they have picked one, so the check runs against the right "
                 "variant. This is about ORDERING eligibility — check_course_prerequisites answers the "
                 "different question of whether they have the skills for the course. It reserves nothing."
@@ -846,7 +857,9 @@ OPENAI_TOOLS.extend([
             "name": "prepare_course_order",
             "description": (
                 "Prepare an order request and return a confirmation summary. This does NOT create an order. "
-                "Use before create_course_order."
+                "Use before create_course_order. Name, email and phone are filled in from the user's "
+                "profile automatically — only pass user_name/user_email/user_phone when the user stated or "
+                "corrected them in the conversation, and never ask for a field the result comes back with."
             ),
             "parameters": {
                 "type": "object",
@@ -2010,6 +2023,170 @@ def _company_employee_contact(username):
         return {}
 
 
+def _user_account_contact(username):
+    """Email (and username) from the core ``users`` row.
+
+    ``company_users`` is the richest contact source, but it only exists for people
+    who were invited into a company workspace. Everyone else still signed up with
+    an email, and asking a logged-in user for an address we already store is
+    exactly the friction this resolver exists to remove.
+    """
+    from flask import current_app as app, has_request_context
+    if not has_request_context() or not username:
+        return {}
+    try:
+        import db_compat  # noqa: F401
+        import MySQLdb.cursors
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT username, email FROM users WHERE username = %s LIMIT 1", (username,))
+        row = cur.fetchone() or {}
+        cur.close()
+        return row
+    except Exception:
+        return {}
+
+
+_CONTACT_FIELDS = ("name", "email", "phone")
+
+
+def resolve_user_contact(username, overrides=None):
+    """Best available name/email/phone for the ordering flow, with provenance.
+
+    Layered by specificity: an explicit tool argument beats the company employee
+    record, which beats the account row, which beats details the user typed for an
+    earlier order in this session. ``sources`` records where each value came from,
+    so a caller can tell "confirm this" apart from "ask for this".
+
+    ``missing_required`` lists only what an order genuinely cannot be created
+    without (name + email). Phone is reported separately in ``missing_optional``:
+    treating it as a hard requirement is what made the assistant re-ask for a full
+    set of contact details it already had on file.
+    """
+    from flask import session as flask_session, has_request_context
+
+    resolved = {field: "" for field in _CONTACT_FIELDS}
+    sources = {}
+
+    def _take(field, value, source):
+        if value is None:
+            return
+        text = value.strip() if isinstance(value, str) else str(value).strip()
+        if text and not resolved[field]:
+            resolved[field] = text
+            sources[field] = source
+
+    overrides = overrides or {}
+    for field in _CONTACT_FIELDS:
+        _take(field, overrides.get(field), "argument")
+
+    employee = _company_employee_contact(username) or {}
+    _take("name", employee.get("full_name"), "company_profile")
+    _take("email", employee.get("email"), "company_profile")
+    _take("phone", employee.get("phone"), "company_profile")
+
+    account = _user_account_contact(username) or {}
+    _take("email", account.get("email"), "account")
+
+    if has_request_context():
+        try:
+            prior = flask_session.get("order_user_info") or {}
+        except Exception:
+            prior = {}
+        for field in _CONTACT_FIELDS:
+            _take(field, prior.get(field), "earlier_in_session")
+
+    # Last resort for the name: the login handle. It is usually not how the user
+    # would write their name on a course registration, so it is reported as
+    # something to CONFIRM rather than something to ask for from scratch — one
+    # targeted question instead of three.
+    confirm_fields = []
+    if not resolved["name"] and username:
+        _take("name", username, "username")
+        confirm_fields.append("name")
+
+    return {
+        "name": resolved["name"],
+        "email": resolved["email"],
+        "phone": resolved["phone"],
+        "department": (employee.get("department") or ""),
+        "job_title": (employee.get("job_title") or ""),
+        "sources": sources,
+        "confirm_fields": confirm_fields,
+        "missing_required": [f for f in ("name", "email") if not resolved[f]],
+        "missing_optional": [] if resolved["phone"] else ["phone"],
+        "on_record": [f for f in _CONTACT_FIELDS if resolved[f] and sources.get(f) != "username"],
+    }
+
+
+# ── Open-order-flow session flag ──
+# The ordering tools used to be keyword-gated, so a bare "ja tak" on the turn
+# AFTER the assistant offered to book took the order tools straight off the menu
+# — the model then had no way to place the order and fell back to telling the
+# user to go and order on the course page. This flag records that an order
+# conversation is open so the next turn keeps those tools reachable.
+
+_ORDER_FLOW_SESSION_KEY = "ai_order_flow"
+
+
+def mark_order_flow_open(product_handle="", **extra):
+    """Record that an order conversation is in progress. Best effort, never raises."""
+    from flask import session as flask_session, has_request_context
+    if not has_request_context():
+        return
+    try:
+        state = {"handle": product_handle or "", "updated_at": datetime.datetime.now().isoformat()}
+        state.update({k: v for k, v in extra.items() if v})
+        flask_session[_ORDER_FLOW_SESSION_KEY] = state
+        flask_session.modified = True
+    except Exception:
+        pass
+
+
+def clear_order_flow():
+    """Forget the open order conversation (order placed, or explicitly abandoned)."""
+    from flask import session as flask_session, has_request_context
+    if not has_request_context():
+        return
+    try:
+        flask_session.pop(_ORDER_FLOW_SESSION_KEY, None)
+        flask_session.modified = True
+    except Exception:
+        pass
+
+
+_ORDER_FLOW_TTL_MINUTES = 60
+
+
+def order_flow_state():
+    """The open order conversation for this session, or ``{}``.
+
+    Expires after an hour so an abandoned order conversation stops widening the
+    tool menu for the rest of the session.
+    """
+    from flask import session as flask_session, has_request_context
+    if not has_request_context():
+        return {}
+    try:
+        state = dict(flask_session.get(_ORDER_FLOW_SESSION_KEY) or {})
+    except Exception:
+        return {}
+    if not state:
+        return {}
+    try:
+        updated = datetime.datetime.fromisoformat(state.get("updated_at", ""))
+    except (TypeError, ValueError):
+        return state
+    age = datetime.datetime.now() - updated
+    if age > datetime.timedelta(minutes=_ORDER_FLOW_TTL_MINUTES):
+        clear_order_flow()
+        return {}
+    return state
+
+
+def order_flow_open():
+    return bool(order_flow_state())
+
+
 def _open_orders_for_user(username, limit=5):
     from flask import session as flask_session, current_app as app, has_request_context
     if not has_request_context():
@@ -2099,8 +2276,8 @@ def _execute_get_learning_context(args, username):
         except Exception:
             profile = {}
 
-    employee = _company_employee_contact(username)
-    department = (flask_session.get("company_department") if has_request_context() else "") or employee.get("department") or ""
+    contact = resolve_user_contact(username)
+    department = (flask_session.get("company_department") if has_request_context() else "") or contact.get("department") or ""
 
     # Company budget for the user's department (the contract item that was
     # missing — the model previously asserted budget checks it never made).
@@ -2150,10 +2327,13 @@ def _execute_get_learning_context(args, username):
         username=username or "",
         department=department,
         employee={
-            "name": employee.get("full_name", ""),
-            "email": employee.get("email", ""),
-            "phone": employee.get("phone", ""),
-            "job_title": employee.get("job_title", ""),
+            "name": contact["name"],
+            "email": contact["email"],
+            "phone": contact["phone"],
+            "job_title": contact["job_title"],
+            # Provenance, so the model can tell "already on file" from "still to ask".
+            "contact_sources": contact["sources"],
+            "contact_missing": contact["missing_required"],
         },
         profile=profile_summary,
         completed_courses=completed,
@@ -2164,37 +2344,70 @@ def _execute_get_learning_context(args, username):
     )
 
 
+_DA_CONTACT_LABELS = {"name": "navn", "email": "email", "phone": "telefon"}
+
+
+def _contact_note(contact):
+    """One Danish line telling the model what it already knows, so it stops re-asking.
+
+    The reported failure was the assistant asking for name, email and phone from a
+    user whose profile carries all three. The tool result now says so explicitly
+    instead of leaving the model to infer it from an empty ``missing_fields``.
+    """
+    on_record = [_DA_CONTACT_LABELS[f] for f in contact["on_record"]]
+    parts = []
+    if on_record:
+        parts.append(
+            "Kontaktoplysninger er hentet fra brugerens profil (" + ", ".join(on_record)
+            + ") — spørg IKKE om dem igen."
+        )
+    if contact["confirm_fields"]:
+        parts.append("Navnet er kun brugerens login — få det bekræftet med ét kort spørgsmål.")
+    if contact["missing_optional"]:
+        parts.append("Telefonnummer mangler, men er valgfrit og blokerer ikke bestillingen.")
+    if contact["missing_required"]:
+        parts.append(
+            "Mangler før bestilling: "
+            + ", ".join(_DA_CONTACT_LABELS[f] for f in contact["missing_required"]) + "."
+        )
+    return " ".join(parts)
+
+
 def _execute_check_course_readiness(args, username):
     product = catalog.get_product(args.get("product_handle", ""))
     if not product:
         return json.dumps({"status": "not_found", "message": "Kurset blev ikke fundet."}, ensure_ascii=False)
     supplier_state = _supplier_state_for_vendor(product.get("vendor"))
-    employee = _company_employee_contact(username)
-    missing = []
-    if not employee.get("full_name"):
-        missing.append("navn")
-    if not employee.get("email"):
-        missing.append("email")
-    if not employee.get("phone"):
-        missing.append("telefon")
+    contact = resolve_user_contact(username)
+    # Only name + email block an order; a missing phone is reported as optional so
+    # the assistant does not stall a booking on a field the order flow can live
+    # without.
+    missing = [_DA_CONTACT_LABELS[f] for f in contact["missing_required"]]
     variant_date = args.get("variant_date") or ""
     variant_location = args.get("variant_location") or ""
     if product.get("variants") and not (variant_date or variant_location):
         missing.append("dato/lokation")
-    readiness = "ready" if not missing and supplier_state.get("is_active", True) else "blocked" if not supplier_state.get("is_active", True) else "needs_info"
+    supplier_active = supplier_state.get("is_active", True)
+    readiness = "blocked" if not supplier_active else ("ready" if not missing else "needs_info")
+    if readiness != "blocked":
+        mark_order_flow_open(product.get("handle", ""), stage="readiness")
+    message = "Klar til bekræftelse." if readiness == "ready" else "Der mangler oplysninger før tilmelding."
     return json.dumps({
         "status": "success",
         "readiness": readiness,
         "missing_fields": missing,
+        "optional_missing": contact["missing_optional"],
+        "confirm_fields": contact["confirm_fields"],
+        "contact_sources": contact["sources"],
         "product": _catalog_compact_fields(product),
         "supplier_state": supplier_state,
         "employee": {
-            "name": employee.get("full_name", ""),
-            "email": employee.get("email", ""),
-            "phone": employee.get("phone", ""),
-            "department": employee.get("department", ""),
+            "name": contact["name"],
+            "email": contact["email"],
+            "phone": contact["phone"],
+            "department": contact["department"],
         },
-        "message": "Klar til bekræftelse." if readiness == "ready" else "Der mangler oplysninger før tilmelding.",
+        "message": (message + " " + _contact_note(contact)).strip(),
     }, ensure_ascii=False, default=str)
 
 
@@ -2202,35 +2415,39 @@ def _execute_prepare_course_order(args, username):
     product = catalog.get_product(args.get("product_handle", ""))
     if not product:
         return json.dumps({"status": "not_found", "message": "Kurset blev ikke fundet."}, ensure_ascii=False)
-    employee = _company_employee_contact(username)
-    user_name = args.get("user_name") or employee.get("full_name") or username or ""
-    user_email = args.get("user_email") or employee.get("email") or ""
-    user_phone = args.get("user_phone") or employee.get("phone") or ""
-    missing = []
-    if not user_name:
-        missing.append("user_name")
-    if not user_email:
-        missing.append("user_email")
-    if not user_phone:
-        missing.append("user_phone")
+    contact = resolve_user_contact(username, overrides={
+        "name": args.get("user_name"),
+        "email": args.get("user_email"),
+        "phone": args.get("user_phone"),
+    })
+    missing = ["user_" + field for field in contact["missing_required"]]
     payload = {
         "product_handle": product["handle"],
-        "user_name": user_name,
-        "user_email": user_email,
-        "user_phone": user_phone,
+        "user_name": contact["name"],
+        "user_email": contact["email"],
+        "user_phone": contact["phone"],
         "variant_date": args.get("variant_date") or "",
         "variant_location": args.get("variant_location") or "",
     }
+    mark_order_flow_open(product["handle"], stage="prepared")
     return json.dumps({
         "status": "ready_for_confirmation" if not missing else "needs_info",
         "creates_order": False,
         "missing_fields": missing,
+        "optional_missing": contact["missing_optional"],
+        "confirm_fields": contact["confirm_fields"],
+        "contact_sources": contact["sources"],
         "confirmation_payload": payload,
         "product": _catalog_compact_fields(product),
         "confirmation_text": (
             f"Bekræft at du vil anmode om tilmelding til {product['title']} "
-            f"for {user_name or 'brugeren'}."
+            f"for {contact['name'] or 'brugeren'}."
         ),
+        "next_step": (
+            "Når brugeren siger ja, kald create_course_order med confirm=true. "
+            "Henvis ALDRIG brugeren til at bestille selv på kursussiden."
+        ),
+        "message": _contact_note(contact),
     }, ensure_ascii=False, default=str)
 
 
@@ -4735,21 +4952,43 @@ def _execute_mark_course_complete(args, username):
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
-def _execute_create_order(args):
-    """Create a course order from chatbot conversation."""
+def _execute_create_order(args, username=None):
+    """MUTATION — create a course order for the user. Confirm-gated.
+
+    Contact details are resolved from the user's own record first (see
+    ``resolve_user_contact``), so a logged-in user is never asked for a name or an
+    email the platform already holds; explicit arguments still win when the user
+    corrects one. The order is only written once the model passes ``confirm=true``,
+    which is what lets this tool sit on the menu for the whole ordering
+    conversation instead of behind a brittle keyword gate.
+    """
     from flask import session as flask_session
     from app1.rag import load_augmented_products
     from app1.order_handler import order_handler, store_user_info_for_order
+    from tool_confirm import needs_confirmation_payload
 
     handle = args.get("product_handle", "")
-    user_name = args.get("user_name", "").strip()
-    user_email = args.get("user_email", "").strip()
-    user_phone = args.get("user_phone", "").strip()
-
     if not handle:
         return json.dumps({"status": "error", "message": "product_handle mangler."})
-    if not user_name or not user_email:
-        return json.dumps({"status": "error", "message": "Navn og email er påkrævet."})
+
+    contact = resolve_user_contact(username, overrides={
+        "name": args.get("user_name"),
+        "email": args.get("user_email"),
+        "phone": args.get("user_phone"),
+    })
+    user_name = contact["name"]
+    user_email = contact["email"]
+    user_phone = contact["phone"]
+    if contact["missing_required"]:
+        mark_order_flow_open(handle, stage="needs_info")
+        return json.dumps({
+            "status": "needs_info",
+            "missing_fields": contact["missing_required"],
+            "message": (
+                "Mangler " + " og ".join(_DA_CONTACT_LABELS[f] for f in contact["missing_required"])
+                + " før ordren kan oprettes. " + _contact_note(contact)
+            ).strip(),
+        }, ensure_ascii=False)
 
     # Look up product
     products = load_augmented_products()
@@ -4794,10 +5033,6 @@ def _execute_create_order(args):
         "product_type": product.get("product_type", ""),
     }
 
-    # Store user info in session
-    user_info = {"name": user_name, "email": user_email, "phone": user_phone}
-    store_user_info_for_order(user_info)
-
     # Variant selection
     variant_selection = {}
     if args.get("variant_date"):
@@ -4805,11 +5040,40 @@ def _execute_create_order(args):
     if args.get("variant_location"):
         variant_selection["location"] = args["variant_location"]
 
+    # Confirm gate: the first call previews the order rather than creating it, so
+    # the tool can stay available for the whole ordering conversation without a
+    # stray call booking a course. The user's own yes is what sets confirm=true.
+    if not bool(args.get("confirm")):
+        mark_order_flow_open(handle, stage="awaiting_confirm")
+        return json.dumps(needs_confirmation_payload(
+            action="create_course_order",
+            summary_da=(
+                f"Bekræft bestilling af '{product_data['title']}' til {user_name} "
+                f"({user_email}). Kald create_course_order igen med confirm=true når brugeren siger ja."
+            ),
+            details={
+                "product_handle": handle,
+                "product_title": product_data["title"],
+                "price": price_str,
+                "vendor": vendor_name,
+                "user_name": user_name,
+                "user_email": user_email,
+                "user_phone": user_phone,
+                "variant": variant_selection,
+                "contact_sources": contact["sources"],
+            },
+        ), ensure_ascii=False, default=str)
+
+    # Store user info in session
+    user_info = {"name": user_name, "email": user_email, "phone": user_phone}
+    store_user_info_for_order(user_info)
+
     # Create order
     from app1.order_handler import create_order_from_chatbot
     result = create_order_from_chatbot(product_data, variant_selection or None)
 
     if result.get("success"):
+        clear_order_flow()
         return json.dumps({
             "status": "order_created",
             "order_id": result.get("order_id", ""),
@@ -5705,7 +5969,7 @@ def execute_tool(tool_call, username=None, session_id=None):
         elif function_name == "request_user_input":
             return _execute_request_user_input(args, username)
         elif function_name == "create_course_order":
-            return _execute_create_order(args)
+            return _execute_create_order(args, username)
         elif function_name == "analyze_skill_gaps":
             return _execute_analyze_skill_gaps(args)
         elif function_name == "check_order_approval_status":

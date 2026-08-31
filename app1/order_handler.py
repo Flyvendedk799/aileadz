@@ -343,10 +343,16 @@ class OrderHandler:
             logger.error(f"Error updating order status: {e}")
             return False
     
-    def validate_user_info(self, user_info: Dict) -> Tuple[bool, List[str]]:
+    def validate_user_info(self, user_info: Dict, require_phone: bool = True) -> Tuple[bool, List[str]]:
         """
         Validate user information for order
-        
+
+        ``require_phone`` lets a caller accept an order without a phone number while
+        still rejecting a malformed one. The order form keeps demanding it; the
+        chatbot does not, because a company profile without a phone number is common
+        and blocking on it made the assistant re-ask for contact details it already
+        had.
+
         Returns:
             Tuple of (is_valid, list_of_errors)
         """
@@ -362,7 +368,8 @@ class OrderHandler:
             errors.append('Ugyldig email adresse')
         
         if not user_info.get('phone'):
-            errors.append('Telefonnummer er påkrævet')
+            if require_phone:
+                errors.append('Telefonnummer er påkrævet')
         elif not self._is_valid_phone(user_info['phone']):
             errors.append('Ugyldigt telefonnummer')
         
@@ -458,27 +465,33 @@ class OrderHandler:
 order_handler = OrderHandler()
 
 
-def create_order_from_chatbot(product_data: Dict, variant_selection: Dict = None) -> Dict:
+def create_order_from_chatbot(product_data: Dict, variant_selection: Dict = None,
+                              require_phone: bool = False) -> Dict:
     """
     Create an order from chatbot interaction
     
     This is the main function to be called from the chatbot
+
+    Only name and email are mandatory here: the chatbot resolves contact details
+    from the user's own profile, and a profile without a phone number should still
+    be able to book a course rather than trigger a round of questions.
     """
     try:
         # Get user info from session or request collection
         user_info = session.get('order_user_info', {})
         
         # If no user info, return a request for information
-        if not user_info or not all(user_info.get(field) for field in ['name', 'email', 'phone']):
+        required_fields = ['name', 'email'] + (['phone'] if require_phone else [])
+        if not user_info or not all(user_info.get(field) for field in required_fields):
             return {
                 'success': False,
                 'action': 'collect_user_info',
                 'message': 'For at bestille dette kursus, har jeg brug for nogle oplysninger.',
-                'required_fields': ['name', 'email', 'phone']
+                'required_fields': required_fields
             }
         
         # Validate user info
-        is_valid, errors = order_handler.validate_user_info(user_info)
+        is_valid, errors = order_handler.validate_user_info(user_info, require_phone=require_phone)
         if not is_valid:
             return {
                 'success': False,

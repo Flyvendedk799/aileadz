@@ -103,6 +103,7 @@ _TABLES_SQL = [
         username VARCHAR(255) NOT NULL,
         session_id VARCHAR(100) NOT NULL,
         title VARCHAR(255) DEFAULT 'Ny samtale',
+        mode VARCHAR(20) NOT NULL DEFAULT 'chat',
         messages LONGTEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -281,6 +282,25 @@ def ensure_tables():
                 current_app.mysql.connection.commit()
             except Exception as alter_err:
                 print(f"[UserProfileDB] expiry_reminded_for column migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
+
+        # Idempotent migration: tag conversation_history rows with the AI tool
+        # they last ran in (chat vs profiler) so the shared sidebar can badge
+        # them and open the right surface from Mind-Map.
+        try:
+            cur.execute("SELECT mode FROM conversation_history LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute(
+                    "ALTER TABLE conversation_history ADD COLUMN mode VARCHAR(20) NOT NULL DEFAULT 'chat'"
+                )
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] conversation_history.mode migration skipped: {alter_err}")
                 try:
                     current_app.mysql.connection.rollback()
                 except Exception:
@@ -1442,24 +1462,72 @@ def load_conversation_summary(username):
 
 # ── Conversation History (multi-session) ──
 
-def _extract_title(messages, max_len=60):
-    """Extract a title from the first user message."""
+# Auto-seeded profiler / welcome prompts. Skipping these as titles keeps the
+# sidebar readable instead of a wall of "Hjælp mig med at gøre min profil…".
+_CANNED_TITLE_PREFIXES = (
+    "hjælp mig med at gøre min profil komplet",
+    "start profiler",
+)
+
+
+def normalize_conversation_mode(mode):
+    """Map /ask mode values onto the two sidebar surfaces: chat | profiler."""
+    m = (mode or "").strip().lower()
+    if m in ("profiler", "profile"):
+        return "profiler"
+    return "chat"
+
+
+def _is_canned_title_source(text):
+    t = (text or "").strip().lower()
+    return any(t.startswith(p) for p in _CANNED_TITLE_PREFIXES)
+
+
+def _extract_title(messages, max_len=60, mode="chat"):
+    """Extract a title from the first meaningful user message."""
+    saw_profiler_seed = False
     for m in messages:
         if m.get("role") == "user" and m.get("content"):
             text = m["content"].strip()
+            if _is_canned_title_source(text):
+                saw_profiler_seed = True
+                continue
             if len(text) > max_len:
-                return text[:max_len].rsplit(" ", 1)[0] + "..."
+                clipped = text[:max_len].rsplit(" ", 1)[0]
+                return (clipped or text[:max_len]) + "..."
             return text
+    if mode == "profiler" or saw_profiler_seed:
+        return "Profilsamtale"
     return "Ny samtale"
 
 
-def save_conversation_history(username, session_id, messages):
-    """Save or update a conversation in the history table."""
+def _row_id(row):
+    """id from a dict or sequence cursor row."""
+    if row is None:
+        return None
+    if isinstance(row, dict):
+        return row.get("id")
+    try:
+        return row[0]
+    except Exception:
+        return None
+
+
+def save_conversation_history(username, session_id, messages, mode=None):
+    """Save or update a conversation in the history table.
+
+    ``mode`` is the last AI surface the turn ran on (``chat`` or ``profiler``).
+    On insert it is stored; on update it is refreshed when provided so the
+    sidebar badge follows the tool the user actually used last. A missing
+    ``mode`` column (pre-migration) is tolerated — the save still lands.
+    """
     import json as _json
     saved = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
     if not saved:
         return
-    title = _extract_title(saved)
+    hist_mode = normalize_conversation_mode(mode) if mode else None
+    title = _extract_title(saved, mode=hist_mode or "chat")
+    payload = _json.dumps(saved, ensure_ascii=False)
     try:
         current_app.mysql.connection.ping(True)
     except Exception:
@@ -1468,18 +1536,42 @@ def save_conversation_history(username, session_id, messages):
     # Check if this session already exists
     cur.execute("SELECT id FROM conversation_history WHERE username = %s AND session_id = %s", (username, session_id))
     row = cur.fetchone()
-    if row:
-        cur.execute(
-            "UPDATE conversation_history SET messages = %s, title = %s WHERE id = %s",
-            (_json.dumps(saved, ensure_ascii=False), title, row["id"])
-        )
-    else:
-        cur.execute(
-            "INSERT INTO conversation_history (username, session_id, title, messages) VALUES (%s, %s, %s, %s)",
-            (username, session_id, title, _json.dumps(saved, ensure_ascii=False))
-        )
-    current_app.mysql.connection.commit()
-    cur.close()
+    rid = _row_id(row)
+    try:
+        if rid:
+            if hist_mode:
+                try:
+                    cur.execute(
+                        "UPDATE conversation_history SET messages = %s, title = %s, mode = %s WHERE id = %s",
+                        (payload, title, hist_mode, rid),
+                    )
+                except Exception:
+                    current_app.mysql.connection.rollback()
+                    cur.execute(
+                        "UPDATE conversation_history SET messages = %s, title = %s WHERE id = %s",
+                        (payload, title, rid),
+                    )
+            else:
+                cur.execute(
+                    "UPDATE conversation_history SET messages = %s, title = %s WHERE id = %s",
+                    (payload, title, rid),
+                )
+        else:
+            try:
+                cur.execute(
+                    "INSERT INTO conversation_history (username, session_id, title, mode, messages) "
+                    "VALUES (%s, %s, %s, %s, %s)",
+                    (username, session_id, title, hist_mode or "chat", payload),
+                )
+            except Exception:
+                current_app.mysql.connection.rollback()
+                cur.execute(
+                    "INSERT INTO conversation_history (username, session_id, title, messages) VALUES (%s, %s, %s, %s)",
+                    (username, session_id, title, payload),
+                )
+        current_app.mysql.connection.commit()
+    finally:
+        cur.close()
 
 
 def list_conversations(username, limit=30):
@@ -1489,14 +1581,63 @@ def list_conversations(username, limit=30):
     except Exception:
         pass
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute(
-        "SELECT id, session_id, title, created_at, updated_at FROM conversation_history "
-        "WHERE username = %s ORDER BY updated_at DESC LIMIT %s",
-        (username, limit)
-    )
-    rows = cur.fetchall()
+    rows = []
+    try:
+        cur.execute(
+            "SELECT id, session_id, title, mode, created_at, updated_at FROM conversation_history "
+            "WHERE username = %s ORDER BY updated_at DESC LIMIT %s",
+            (username, limit)
+        )
+        rows = list(cur.fetchall() or [])
+    except Exception:
+        current_app.mysql.connection.rollback()
+        cur.execute(
+            "SELECT id, session_id, title, created_at, updated_at FROM conversation_history "
+            "WHERE username = %s ORDER BY updated_at DESC LIMIT %s",
+            (username, limit)
+        )
+        rows = list(cur.fetchall() or [])
+        for r in rows:
+            r["mode"] = "chat"
     cur.close()
+    for r in rows:
+        r["mode"] = normalize_conversation_mode(r.get("mode"))
     return rows
+
+
+def find_conversation_by_session(username, session_id):
+    """Look up the history row for an active session. Returns dict or None."""
+    if not username or not session_id:
+        return None
+    try:
+        current_app.mysql.connection.ping(True)
+    except Exception:
+        pass
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    row = None
+    try:
+        cur.execute(
+            "SELECT id, session_id, title, mode, updated_at FROM conversation_history "
+            "WHERE username = %s AND session_id = %s LIMIT 1",
+            (username, session_id),
+        )
+        row = cur.fetchone()
+    except Exception:
+        current_app.mysql.connection.rollback()
+        try:
+            cur.execute(
+                "SELECT id, session_id, title, updated_at FROM conversation_history "
+                "WHERE username = %s AND session_id = %s LIMIT 1",
+                (username, session_id),
+            )
+            row = cur.fetchone()
+        except Exception:
+            row = None
+    cur.close()
+    if not row:
+        return None
+    row["mode"] = normalize_conversation_mode(row.get("mode"))
+    return row
 
 
 def load_conversation_by_id(username, conv_id):
@@ -1508,16 +1649,27 @@ def load_conversation_by_id(username, conv_id):
     except Exception:
         pass
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute(
-        "SELECT id, session_id, title, messages, updated_at FROM conversation_history "
-        "WHERE id = %s AND username = %s",
-        (conv_id, username)
-    )
-    row = cur.fetchone()
+    row = None
+    try:
+        cur.execute(
+            "SELECT id, session_id, title, mode, messages, updated_at FROM conversation_history "
+            "WHERE id = %s AND username = %s",
+            (conv_id, username)
+        )
+        row = cur.fetchone()
+    except Exception:
+        current_app.mysql.connection.rollback()
+        cur.execute(
+            "SELECT id, session_id, title, messages, updated_at FROM conversation_history "
+            "WHERE id = %s AND username = %s",
+            (conv_id, username)
+        )
+        row = cur.fetchone()
     cur.close()
     if not row:
         print(f"[load_conversation_by_id] No row found for id={conv_id}, user={username}")
         return None
+    row["mode"] = normalize_conversation_mode(row.get("mode"))
     if not row.get("messages"):
         print(f"[load_conversation_by_id] Empty messages for id={conv_id}")
         # Return with empty messages instead of None so it doesn't 404

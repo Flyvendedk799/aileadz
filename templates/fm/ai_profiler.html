@@ -33,10 +33,6 @@
   body.chat-page .fm-foot { display: none; }
   .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
   .chatx .scroll { flex: 1; min-height: 0; }
-  .fm-side .chat-newbtn { width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 11px; margin: 2px 0 4px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 13.5px; }
-  .fm-side .chat-newbtn:hover { border-color: var(--fm-primary); color: var(--fm-primary); background: var(--fm-primary-tint); }
-  .fm-side .chat-newbtn svg { width: 16px; height: 16px; flex: 0 0 16px; }
-  .fm-side #convList { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
 
   /* Profiler progress banner */
   .prof-banner { display: flex; align-items: center; gap: 16px; padding: 14px 20px; border-bottom: 1px solid var(--fm-line); background: linear-gradient(100deg, var(--fm-primary-tint), transparent 60%), var(--fm-surface); }
@@ -59,15 +55,6 @@
   .prof-link { font-size: 12px; font-weight: 600; color: var(--fm-primary); white-space: nowrap; text-decoration: none; }
   @media (max-width: 640px) { .prof-link { display: none; } .prof-sub { display: none; } }
 </style>
-{% endblock %}
-
-{% block sidebar_extra %}
-<div class="fm-nav-label">Samtaler</div>
-<button class="chat-newbtn" data-new>
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-  <span>Ny samtale</span>
-</button>
-<div class="conv-group" id="convList"></div>
 {% endblock %}
 
 {% block content %}
@@ -123,7 +110,7 @@
 {% block extra_scripts %}
 <script>window.CHAT_MODE = 'profiler';</script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=13"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=14"></script>
 <script>
   (function () {
     function setProfilerStats(d) {
@@ -176,14 +163,19 @@
         setProfilerStats(d);
         var c = d && d.completeness;
         if (c) window.onProfilerProgress(c);
-        var thread = document.getElementById('thread');
-        var empty = !thread || !thread.querySelector('.msg');
-        var alreadyStarted = sessionStorage.getItem('fmProfilerAutoStarted') === '1';
-        if (c && (c.pct || 0) < 100 && empty && !alreadyStarted) {
-          sessionStorage.setItem('fmProfilerAutoStarted', '1');
-          var weak = (c.missing && c.missing.length) ? c.missing[0].toLowerCase() : '';
-          setTimeout(function () { startProfiler(weak); }, 500);
+        function maybeStart() {
+          var thread = document.getElementById('thread');
+          var empty = !thread || !thread.querySelector('.msg');
+          var alreadyStarted = sessionStorage.getItem('fmProfilerAutoStarted') === '1';
+          var openingSaved = false;
+          try { openingSaved = !!(new URLSearchParams(location.search).get('c')); } catch (e) {}
+          if (c && (c.pct || 0) < 100 && empty && !alreadyStarted && !openingSaved) {
+            sessionStorage.setItem('fmProfilerAutoStarted', '1');
+            var weak = (c.missing && c.missing.length) ? c.missing[0].toLowerCase() : '';
+            setTimeout(function () { startProfiler(weak); }, 500);
+          }
         }
+        Promise.resolve(window.fmChatBoot).then(maybeStart, maybeStart);
       })
       .catch(function () { });
     // "Start" → ask the profiler to drive the conversation (manual fallback).

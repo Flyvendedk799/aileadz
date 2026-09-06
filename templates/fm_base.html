@@ -11,7 +11,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=15" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=16" />
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=14" />
   {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
   <style id="fm-wl-vars">
@@ -68,32 +68,45 @@
     </div>
 
     <div class="fm-side-scroll">
-      {% set page = self.page_id() %}
+      {% set page = self.page_id()|trim %}
+      {% set _ai_pages = ['chat', 'profiler', 'mindmap'] %}
+      {% set _in_ai = page in _ai_pages %}
       {% if _role == 'employee' %}
       <div class="fm-nav-label">Min læring</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>Upload CV</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
       </ul>
       {% else %}
       <div class="fm-nav-label">Workspace</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'index' }}" href="{{ url_for('dashboard.dashboard') }}"><i class="fa-solid fa-house"></i><span>Oversigt</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
+      </ul>
+      {% endif %}
+
+      <div class="fm-ai-cluster {{ 'in' if _in_ai }}">
+        <ul class="fm-nav-list">
+          <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
+          <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
+          <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
+        </ul>
+        {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
+      </div>
+
+      {% if _role == 'employee' %}
+      <ul class="fm-nav-list">
+        <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>Upload CV</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
+      </ul>
+      {% else %}
+      <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'analytics' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-chart-line"></i><span>Analyse</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'reports' }}" href="{{ url_for('reports.reports') }}"><i class="fa-solid fa-file-lines"></i><span>Rapporter</span></a></li>
       </ul>
       {% endif %}
 
-      {# Page-specific sidebar content (e.g. the chat's conversation list),
-         placed right under the workspace nav. Empty on every other page. #}
+      {# Page-specific sidebar extras (unused on the AI workspace pages — those
+         use the shared conversation panel above). #}
       {% block sidebar_extra %}{% endblock %}
 
       {% if session.get('company_id') %}
@@ -222,6 +235,9 @@
 </div>
 
 <script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=10"></script>
+{% if self.page_id()|trim in ['chat', 'profiler', 'mindmap'] %}
+<script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v=1"></script>
+{% endif %}
 {% block extra_scripts %}{% endblock %}
 </body>
 </html>

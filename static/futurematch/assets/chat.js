@@ -13,6 +13,7 @@
   // prevent breakout. Falls back to a neutral icon when empty/invalid.
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
   const isProfiler = window.CHAT_MODE === "profiler";
+  let activeConvId = null;
 
   /* ---------------- HTML sanitizer ----------------
      Agent/assistant content (markdown-rendered chunks, profile_update messages,
@@ -1534,7 +1535,12 @@
     }
     finish();
   }
-  function finish() { sending = false; setSending(false); toggleSend(); input.focus(); }
+  function finish() {
+    sending = false; setSending(false); toggleSend(); input.focus();
+    if (window.fmAiSidebar && typeof window.fmAiSidebar.refresh === "function") {
+      window.fmAiSidebar.refresh({ selectNewestIfNone: !activeConvId });
+    }
+  }
   function ask(text) { run(text); }
   window.fmAsk = ask;
 
@@ -1605,85 +1611,27 @@
       });
     } catch (e) { /* offline / anonymous: still reset the UI */ }
     activeConvId = null;
+    syncConvUrl(null);
+    if (window.fmAiSidebar && typeof window.fmAiSidebar.setActive === "function") {
+      window.fmAiSidebar.setActive(null);
+    }
     welcome();
-    refreshConv();
     input.focus();
   }
   window.fmNewChat = newChat;
+  window.fmSetActiveConvId = (id) => { activeConvId = id || null; };
 
-  /* ---------------- conversation list ----------------
-     Real history from GET /app1/conversations. No fabricated rows: an empty or
-     failed fetch renders a neutral empty state, never placeholder samples. */
-  const convIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
-  const delIcon = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>';
-  let CONVS = [];
-  let activeConvId = null;
+  /* ---------------- conversation restore ---------------- */
 
-  // Group a conversation by its updated_at into "today" / "yesterday" / "older".
-  function convGroup(iso) {
-    if (!iso) return "older";
-    const d = new Date(iso);
-    if (isNaN(d.getTime())) return "older";
-    const now = new Date();
-    const startOfDay = (x) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
-    const dayMs = 86400000;
-    const diff = startOfDay(now) - startOfDay(d);
-    if (diff <= 0) return "today";
-    if (diff <= dayMs) return "yesterday";
-    return "older";
-  }
-
-  function renderConv() {
-    const list = $("#convList");
-    if (!list) return;
-    if (!CONVS.length) {
-      // Neutral empty state — no fake conversations. Styled inline (no chat.css dep)
-      // to match the muted rail labels.
-      list.innerHTML = `<div class="conv-empty" style="padding:12px 9px;font-size:12px;color:var(--ink-4)">Ingen samtaler endnu</div>`;
-      return;
-    }
-    const groups = [["today", "I dag"], ["yesterday", "I går"], ["older", "Ældre"]];
-    list.innerHTML = groups.map(([k, lab]) => {
-      const items = CONVS.filter((c) => convGroup(c.updated_at) === k);
-      if (!items.length) return "";
-      return `<div class="conv-date">${esc(lab)}</div>` + items.map((c) => `
-        <div class="conv${c.id == activeConvId ? " active" : ""}" data-id="${esc(c.id)}">
-          ${convIcon}
-          <span>${esc(c.title || "Samtale")}</span>
-          <button class="conv-del" data-id="${esc(c.id)}" title="Slet">${delIcon}</button>
-        </div>`).join("");
-    }).join("");
-    list.querySelectorAll(".conv").forEach((el) => el.onclick = () => {
-      openConversation(el.dataset.id);
-    });
-    list.querySelectorAll(".conv-del").forEach((b) => b.onclick = (e) => {
-      e.stopPropagation();
-      const id = b.dataset.id;
-      // Optimistic removal; persist deletion to the real backend.
-      CONVS = CONVS.filter((c) => String(c.id) !== String(id));
-      if (String(activeConvId) === String(id)) activeConvId = null;
-      renderConv();
-      fetch("/app1/conversations/" + encodeURIComponent(id), {
-        method: "DELETE",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin",
-      }).catch(() => {});
-    });
-  }
-
-  async function refreshConv() {
+  function syncConvUrl(id) {
+    if (!window.history || !history.replaceState) return;
     try {
-      const resp = await fetch("/app1/conversations", {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin",
-      });
-      if (!resp.ok) { CONVS = []; renderConv(); return; }
-      const data = await resp.json();
-      CONVS = Array.isArray(data && data.conversations) ? data.conversations : [];
-    } catch (e) {
-      CONVS = [];
-    }
-    renderConv();
+      const u = new URL(location.href);
+      if (id) u.searchParams.set("c", String(id));
+      else u.searchParams.delete("c");
+      u.searchParams.delete("new");
+      history.replaceState({}, "", u.pathname + u.search + u.hash);
+    } catch (e) { /* ignore */ }
   }
 
   // Paint a stored conversation's messages into the thread. Stored history only
@@ -1719,7 +1667,10 @@
   async function openConversation(id) {
     if (!id || sending) return;
     activeConvId = id;
-    renderConv();
+    syncConvUrl(id);
+    if (window.fmAiSidebar && typeof window.fmAiSidebar.setActive === "function") {
+      window.fmAiSidebar.setActive(id);
+    }
     if (rail && window.innerWidth <= 860) rail.classList.remove("open");
     try {
       const resp = await fetch("/app1/conversations/" + encodeURIComponent(id) + "/resume", {
@@ -1729,7 +1680,7 @@
       });
       if (resp.ok) {
         const data = await resp.json();
-        if (data && data.status === "ok") { renderHistory(data.messages); input.focus(); return; }
+        if (data && data.status === "ok") { renderHistory(data.messages); input.focus(); return true; }
       }
     } catch (e) { /* fall through to read-only load */ }
     // Resume unavailable (offline/older backend): still show the transcript.
@@ -1740,9 +1691,36 @@
       if (r2.ok) {
         const d2 = await r2.json();
         const conv = d2 && (d2.conversation || d2);
-        if (conv && conv.messages) renderHistory(conv.messages);
+        if (conv && conv.messages) { renderHistory(conv.messages); return true; }
       }
     } catch (e) { /* leave current view untouched */ }
+    return false;
+  }
+  window.fmOpenConversation = openConversation;
+
+  async function restoreActiveConversation() {
+    try {
+      const resp = await fetch("/app1/load_conversation", {
+        headers: { "X-Requested-With": "XMLHttpRequest" },
+        credentials: "same-origin",
+      });
+      if (!resp.ok) { welcome(); return false; }
+      const data = await resp.json();
+      const msgs = data && data.messages;
+      if (data && data.status === "ok" && Array.isArray(msgs) && msgs.length) {
+        renderHistory(msgs);
+        if (data.id) {
+          activeConvId = data.id;
+          syncConvUrl(data.id);
+          if (window.fmAiSidebar && typeof window.fmAiSidebar.setActive === "function") {
+            window.fmAiSidebar.setActive(data.id);
+          }
+        }
+        return true;
+      }
+    } catch (e) { /* fall through to welcome */ }
+    welcome();
+    return false;
   }
 
   /* ---------------- real profile completeness ----------------
@@ -1842,8 +1820,10 @@
   const overlayEl = $("#overlay");
   if (overlayEl && rail) overlayEl.onclick = () => rail.classList.remove("open");
   document.querySelectorAll("[data-new]").forEach((b) => b.onclick = newChat);
-  $("#nudgeX").onclick = () => hideNudge();
-  $("#nudgeLink").onclick = (e) => {
+  const nudgeX = $("#nudgeX");
+  if (nudgeX) nudgeX.onclick = () => hideNudge();
+  const nudgeLink = $("#nudgeLink");
+  if (nudgeLink) nudgeLink.onclick = (e) => {
     e.preventDefault();
     hideNudge();
     const url = e.currentTarget.dataset.url;
@@ -1851,9 +1831,22 @@
     ask("Hvad mangler min profil?");
   };
 
-  /* ---------------- init ---------------- */
-  refreshConv();
-  welcome();
+  /* ---------------- init ----------------
+     Restore the active thread when hopping between /chat, /ai-profiler and
+     /mind-map so the three surfaces share one conversation, not a fresh
+     welcome screen on every navigation. ?c= opens a specific history row;
+     ?new=1 forces a blank session. */
+  function bootChat() {
+    let params;
+    try { params = new URLSearchParams(location.search); } catch (e) { params = new URLSearchParams(); }
+    if (params.get("new") === "1") {
+      return newChat().then(() => false);
+    }
+    const cid = params.get("c");
+    if (cid) return openConversation(cid);
+    return restoreActiveConversation();
+  }
+  window.fmChatBoot = bootChat();
   renderRef();
   refreshWorkspaceStatus();
   loadProfile();

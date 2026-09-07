@@ -2947,7 +2947,10 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     # copy; CHAT_MEMORY stays clean (artifact keys never hit the API).
                     _persist_messages = _messages_with_artifacts(sid, messages)
                     save_conversation(logged_in_user, sid, _persist_messages)
-                    save_conversation_history(logged_in_user, sid, _persist_messages)
+                    save_conversation_history(
+                        logged_in_user, sid, _persist_messages,
+                        mode=("profiler" if mode == "profiler" else "chat"),
+                    )
                 except Exception as e:
                     print(f"[Conversation Save Error] {e}")
                     try:

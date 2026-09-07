@@ -1,60 +1,239 @@
 {% extends "fm_base.html" %}
 {% block page_id %}catalog{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}{{ product.title if product else 'Kursus' }}{% endblock %}
-{% block topbar_sub %}{{ product.vendor if product else '' }}{% if product and product.product_type %} · {{ product.product_type }}{% endif %}{% endblock %}
+{% block title %}{{ product.title }} · Futurematch{% endblock %}
+{% block topbar_title %}{{ product.title }}{% endblock %}
+{% block topbar_sub %}{{ product.vendor }}{% if product.product_type %} · {{ product.product_type }}{% endif %}{% endblock %}
+
 {% block extra_head %}
 <style>
-  .detail-tags .cpill { display:inline-flex;align-items:center;gap:5px;height:25px;padding:0 10px;border-radius:999px;border:1px solid var(--fm-line);background:var(--fm-surface-2);font-size:11.5px;font-weight:600;color:var(--fm-ink-2); }
-  .detail-tags .cpill i { font-size:10px;color:var(--fm-ink-3); }
-  .variant-list { display: flex; flex-direction: column; gap: 8px; }
-  .variant-option { display: flex; gap: 10px; align-items: flex-start; padding: 11px 12px; border: 1px solid var(--fm-line); border-radius: var(--r-md); cursor: pointer; transition: var(--t); }
-  .variant-option:hover { border-color: var(--fm-line-2); }
-  .variant-option input { margin-top: 3px; accent-color: var(--fm-primary); }
-  .req-field { display: flex; flex-direction: column; gap: 5px; margin-top: 10px; }
-  .req-field label { font-size: 12px; font-weight: 600; color: var(--fm-ink-3); }
-  .req-field .fm-input, .req-field textarea { width: 100%; }
-  .req-field textarea { min-height: 60px; border: 1px solid var(--fm-line); border-radius: var(--r-sm); background: var(--fm-surface); color: var(--fm-ink); padding: 9px 11px; font: inherit; font-size: 13.5px; resize: vertical; }
-  .grid-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 16px; }
-  .grid-meta .gm strong { display: block; font-size: 13px; }
-  .grid-meta .gm span { font-size: 13px; color: var(--fm-ink-2); }
-  .deal-badge { display: inline-flex; align-items: center; gap: 5px; height: 24px; padding: 0 10px; border-radius: 999px; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 11.5px; font-weight: 700; }
-  .deal-badge i { font-size: 10px; }
-  .deal-was { font-size: 14px; color: var(--fm-ink-3); text-decoration: line-through; }
-  .deal-now { font-family: var(--ff-display); font-size: 30px; font-weight: 700; letter-spacing: -.03em; color: var(--fm-primary); }
-  .agreement-note { margin-top: 12px; display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; line-height: 1.4; border-radius: var(--r-sm); background: var(--fm-primary-tint); color: var(--fm-ink-2); font-size: 12.5px; }
-  .agreement-note i { color: var(--fm-primary); margin-top: 2px; }
+  /* ── Product detail ─────────────────────────────────────────────
+     Layout for /products/<handle>. Everything is expressed in fm tokens so the
+     page follows white-label branding and the dark theme. */
+  :root { --pd-top: 70px; }
+
+  /* Hero */
+  .pd-hero { display: flex; flex-wrap: wrap; gap: 24px; align-items: stretch; padding: 26px; border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface); box-shadow: var(--sh-sm); margin-bottom: 14px; }
+  .pd-hero-main { flex: 1 1 420px; min-width: 0; display: flex; flex-direction: column; }
+  .pd-kick-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  .pd-kick { font-family: var(--ff-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--fm-ink-3); text-decoration: none; }
+  a.pd-kick:hover { color: var(--fm-primary); }
+  .pd-title { font-family: var(--ff-display); font-size: clamp(24px, 3vw, 38px); font-weight: 700; letter-spacing: -.035em; line-height: 1.08; margin: 0; text-wrap: pretty; }
+  .pd-lede { color: var(--fm-ink-2); font-size: 16px; line-height: 1.55; margin: 12px 0 0; max-width: 60ch; text-wrap: pretty; }
+  .pd-proof { display: flex; align-items: center; gap: 16px; flex-wrap: wrap; margin-top: 16px; }
+  .pd-proof-sep { width: 1px; height: 18px; background: var(--fm-line); }
+  .pd-proof-note { font-size: 13px; color: var(--fm-ink-2); }
+  .pd-stars { color: var(--fm-gold); font-size: 16px; letter-spacing: 1px; }
+  .pd-stars .empty { color: var(--fm-line-2); }
+  .pd-rating-link { font-size: 13px; color: var(--fm-ink-2); text-decoration: none; border-bottom: 1px solid var(--fm-line-2); }
+  .pd-rating-link:hover { color: var(--fm-primary); }
+  .pd-tags { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 18px; }
+  .pd-tag { display: inline-flex; align-items: center; gap: 6px; height: 27px; padding: 0 12px; border-radius: var(--r-pill); border: 1px solid var(--fm-line); background: var(--fm-surface-2); font-size: 12px; font-weight: 600; color: var(--fm-ink-2); text-decoration: none; }
+  a.pd-tag:hover { border-color: var(--fm-primary-300); color: var(--fm-primary); }
+  .pd-tag i { font-size: 10px; color: var(--fm-ink-3); }
+  .pd-hero-media { flex: 1 1 300px; min-width: 260px; min-height: 230px; border-radius: 14px; border: 1px solid var(--fm-line); background: repeating-linear-gradient(135deg, var(--fm-surface-3) 0 10px, var(--fm-surface-2) 10px 20px); display: grid; place-items: center; text-align: center; padding: 16px; overflow: hidden; }
+  .pd-hero-media img { width: 100%; height: 100%; object-fit: cover; border-radius: inherit; }
+  .pd-media-ph i { font-size: 26px; color: var(--fm-line-2); }
+  .pd-media-ph span { display: block; font-family: var(--ff-mono); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; color: var(--fm-ink-3); line-height: 1.7; margin-top: 8px; }
+
+  /* Quick facts */
+  .pd-facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 22px; }
+  .pd-fact { padding: 14px 16px; border-radius: var(--r-md); border: 1px solid var(--fm-line); background: var(--fm-surface); }
+  .pd-fact-k { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .pd-fact-v { font-family: var(--ff-display); font-size: 19px; font-weight: 700; letter-spacing: -.02em; margin-top: 4px; }
+  .pd-fact-v.accent { color: var(--fm-primary); }
+
+  /* Sticky action bar */
+  .pd-sticky { position: sticky; top: var(--pd-top); z-index: 6; margin: 0 -4px 16px; padding: 10px 16px; border-radius: var(--r-md); border: 1px solid var(--fm-line); background: color-mix(in srgb, var(--fm-surface) 94%, transparent); backdrop-filter: blur(10px); box-shadow: var(--sh-sm); display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+  .pd-sticky-when { flex: 1 1 200px; min-width: 0; display: flex; align-items: center; gap: 10px; }
+  .pd-sticky-ic { flex: 0 0 auto; width: 30px; height: 30px; border-radius: 9px; display: grid; place-items: center; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 12px; }
+  .pd-sticky-when .t { font-weight: 700; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pd-sticky-when .s { font-size: 12px; color: var(--fm-ink-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .pd-sticky-end { display: flex; align-items: center; gap: 14px; flex: 0 0 auto; }
+  .pd-sticky-price { text-align: right; }
+  .pd-sticky-price .p { font-family: var(--ff-display); font-weight: 700; font-size: 17px; letter-spacing: -.02em; }
+  .pd-sticky-price .u { font-family: var(--ff-mono); font-size: 10.5px; color: var(--fm-ink-3); }
+
+  /* Section tabs (anchors) */
+  .pd-tabs { display: flex; gap: 4px; padding: 4px; border-radius: var(--r-ctrl); background: var(--fm-surface-3); border: 1px solid var(--fm-line); width: max-content; max-width: 100%; overflow-x: auto; }
+  .pd-tabs a { height: 34px; padding: 0 14px; display: inline-flex; align-items: center; border-radius: var(--r-sm); font-size: 13px; font-weight: 600; color: var(--fm-ink-2); text-decoration: none; white-space: nowrap; transition: var(--t); }
+  .pd-tabs a:hover { color: var(--fm-ink); }
+  .pd-tabs a.is-active { background: var(--fm-surface); color: var(--fm-ink); box-shadow: var(--sh-xs); }
+  .pd-anchor { scroll-margin-top: calc(var(--pd-top) + 62px); }
+
+  /* Prose + takeaways */
+  .pd-p { color: var(--fm-ink-2); font-size: 15px; line-height: 1.7; margin: 0 0 14px; max-width: 68ch; }
+  .pd-checks { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; margin-top: 6px; }
+  .pd-check { display: flex; gap: 10px; align-items: flex-start; }
+  .pd-check i { flex: 0 0 auto; width: 20px; height: 20px; border-radius: var(--r-pill); background: var(--fm-primary-tint); color: var(--fm-primary); display: grid; place-items: center; font-size: 9px; margin-top: 1px; }
+  .pd-check span { font-size: 14px; color: var(--fm-ink-2); line-height: 1.5; }
+  .pd-sub-h { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); margin: 20px 0 8px; }
+
+  /* Variant (hold) picker */
+  .pd-var-list { padding: 14px 16px 18px; display: grid; gap: 8px; }
+  .pd-var { position: relative; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 13px 14px; border-radius: var(--r-md); cursor: pointer; transition: var(--t); border: 1px solid var(--fm-line); background: var(--fm-surface); }
+  .pd-var:hover { border-color: var(--fm-line-2); }
+  .pd-var input { position: absolute; opacity: 0; width: 0; height: 0; }
+  .pd-var-dot { flex: 0 0 auto; width: 16px; height: 16px; border-radius: var(--r-pill); border: 1.5px solid var(--fm-line-2); background: var(--fm-surface); transition: var(--t); }
+  .pd-var:has(input:checked), .pd-var.is-selected { border-color: var(--fm-primary); background: var(--fm-primary-tint); box-shadow: 0 0 0 1px var(--fm-primary) inset; }
+  .pd-var:has(input:checked) .pd-var-dot, .pd-var.is-selected .pd-var-dot { border: 5px solid var(--fm-primary); }
+  .pd-var:has(input:focus-visible), .pd-var.is-focus { outline: 2px solid var(--fm-primary); outline-offset: 2px; }
+  .pd-var.is-sold { opacity: .55; cursor: not-allowed; }
+  .pd-var-tx { flex: 1 1 200px; min-width: 0; }
+  .pd-var-tx .d { display: block; font-weight: 700; font-size: 14.5px; }
+  .pd-var-tx .w { display: block; font-size: 12.5px; color: var(--fm-ink-3); margin-top: 2px; }
+  .pd-var-end { flex: 0 0 auto; display: flex; align-items: center; gap: 12px; }
+  .pd-var-price { text-align: right; min-width: 96px; }
+  .pd-var-price .now { display: block; font-family: var(--ff-mono); font-size: 13.5px; font-weight: 500; color: var(--fm-primary); }
+  .pd-var-price .was { display: block; font-family: var(--ff-mono); font-size: 11px; color: var(--fm-ink-3); text-decoration: line-through; }
+  .pd-spots { display: inline-flex; align-items: center; height: 22px; padding: 0 9px; border-radius: var(--r-pill); font-size: 11px; font-weight: 700; background: var(--fm-surface-3); color: var(--fm-ink-2); }
+  .pd-spots.warn { background: var(--fm-clay-tint); color: var(--fm-clay); }
+  .pd-spots.sold { background: var(--fm-surface-3); color: var(--fm-ink-3); }
+  .pd-more { justify-self: start; margin-top: 4px; }
+
+  /* Right rail */
+  .pd-rail { position: sticky; top: calc(var(--pd-top) + 76px); display: grid; gap: 14px; align-self: start; }
+  .pd-price-row { display: flex; align-items: baseline; gap: 9px; flex-wrap: wrap; }
+  .pd-price { font-family: var(--ff-display); font-size: 32px; font-weight: 700; letter-spacing: -.035em; line-height: 1; }
+  .pd-price-was { font-size: 14px; color: var(--fm-ink-3); text-decoration: line-through; }
+  .pd-price-unit { font-size: 12.5px; color: var(--fm-ink-3); margin-top: 4px; }
+  .pd-deal { display: inline-flex; align-items: center; gap: 6px; height: 23px; padding: 0 10px; border-radius: var(--r-pill); background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 11px; font-weight: 700; margin-bottom: 10px; }
+  .pd-chosen { margin-top: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--fm-surface-2); border: 1px solid var(--fm-line); }
+  .pd-chosen .k { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .pd-chosen .d { font-weight: 700; font-size: 14px; margin-top: 3px; }
+  .pd-chosen .w { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 1px; }
+  .pd-warn { margin-top: 12px; display: flex; gap: 9px; padding: 11px 13px; border-radius: var(--r-ctrl); background: var(--fm-clay-tint); border: 1px solid color-mix(in srgb, var(--fm-clay) 35%, transparent); font-size: 12.5px; line-height: 1.45; color: var(--fm-ink-2); }
+  .pd-warn i { color: var(--fm-clay); margin-top: 2px; }
+  .pd-assure { margin-top: 14px; display: grid; gap: 7px; }
+  .pd-assure div { display: flex; gap: 8px; font-size: 12.5px; color: var(--fm-ink-2); line-height: 1.45; }
+  .pd-assure i { color: var(--fm-primary); font-size: 11px; margin-top: 3px; }
+  .pd-budget { border-radius: var(--r-card); border: 1px solid var(--fm-line); background: var(--fm-surface-2); padding: 16px 18px; }
+  .pd-budget .k { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); margin-bottom: 8px; }
+  .pd-budget .b { font-size: 13px; color: var(--fm-ink-2); line-height: 1.55; }
+  .pd-budget strong { color: var(--fm-ink); }
+  .pd-budget-bar { margin-top: 10px; height: 6px; border-radius: var(--r-pill); background: var(--fm-surface-3); overflow: hidden; }
+  .pd-budget-bar span { display: block; height: 100%; background: var(--fm-primary); }
+
+  /* CTA buttons (anchor-based so they work without JS) */
+  .pd-cta { width: 100%; height: 46px; margin-top: 14px; border-radius: 11px; border: 0; background: var(--fm-primary); color: #fff; font-size: 14.5px; font-weight: 600; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; gap: 8px; text-decoration: none; transition: var(--t); }
+  .pd-cta:hover { background: var(--fm-primary-700); color: #fff; }
+  .pd-cta.sm { width: auto; height: 40px; margin-top: 0; padding: 0 18px; border-radius: var(--r-ctrl); font-size: 13.5px; white-space: nowrap; }
+  .pd-cta.ghost { background: var(--fm-surface); color: var(--fm-ink); border: 1px solid var(--fm-line); margin-top: 8px; }
+  .pd-cta.ghost:hover { background: var(--fm-surface-2); border-color: var(--fm-line-2); color: var(--fm-ink); }
+  .pd-cta[aria-disabled="true"] { background: var(--fm-ink-3); cursor: not-allowed; pointer-events: none; }
+
+  /* Vendor strip */
+  .pd-vendor { display: flex; gap: 16px; align-items: center; flex-wrap: wrap; }
+  .pd-vendor-mark { flex: 0 0 auto; width: 48px; height: 48px; border-radius: 14px; display: grid; place-items: center; font-family: var(--ff-display); font-weight: 700; font-size: 16px; color: #fff; background: linear-gradient(140deg, var(--fm-indigo), var(--fm-primary)); }
+  .pd-vendor-tx { flex: 1 1 220px; min-width: 0; }
+  .pd-vendor-tx .n { font-family: var(--ff-display); font-size: 16px; font-weight: 700; letter-spacing: -.02em; }
+  .pd-vendor-tx .m { font-size: 13px; color: var(--fm-ink-2); margin-top: 2px; }
+
+  /* Related grid */
+  .pd-rel-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 14px; flex-wrap: wrap; }
+  .pd-rel-head h2 { font-family: var(--ff-display); font-size: 22px; font-weight: 700; letter-spacing: -.03em; margin: 0; }
+  .pd-rel-head h2 i { font-size: 15px; color: var(--fm-ink-3); margin-right: 9px; }
+  .pd-rel-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; }
+  .pd-rel { display: flex; flex-direction: column; border-radius: 14px; border: 1px solid var(--fm-line); background: var(--fm-surface); text-decoration: none; color: inherit; overflow: hidden; transition: var(--t); }
+  .pd-rel:hover { border-color: var(--fm-primary-300); color: inherit; transform: translateY(-2px); }
+  .pd-rel-img { height: 96px; background: repeating-linear-gradient(135deg, var(--fm-surface-3) 0 10px, var(--fm-surface-2) 10px 20px); }
+  .pd-rel-img img { width: 100%; height: 100%; object-fit: cover; }
+  .pd-rel-b { padding: 14px 16px 16px; }
+  .pd-rel-v { font-family: var(--ff-mono); font-size: 10.5px; letter-spacing: .05em; text-transform: uppercase; color: var(--fm-ink-3); }
+  .pd-rel-t { font-family: var(--ff-display); font-size: 16px; font-weight: 700; letter-spacing: -.02em; margin-top: 5px; line-height: 1.25; }
+  .pd-rel-f { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
+  .pd-rel-f .price { margin-left: auto; font-family: var(--ff-mono); font-size: 13px; color: var(--fm-primary); font-weight: 500; }
+
   /* Reviews */
-  .rv-summary { display: flex; align-items: center; gap: 18px; flex-wrap: wrap; }
-  .rv-score { font-family: var(--ff-display); font-size: 40px; font-weight: 700; line-height: 1; letter-spacing: -.03em; }
-  .rv-stars { color: var(--fm-gold, #d9a441); font-size: 18px; letter-spacing: 1px; }
-  .rv-stars .empty { color: var(--fm-line-2); }
-  .rv-meta { color: var(--fm-ink-2); font-size: 13px; }
-  .rv-bars { flex: 1; min-width: 180px; display: flex; flex-direction: column; gap: 4px; }
-  .rv-bar-row { display: flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--fm-ink-3); }
-  .rv-bar-row .lbl { width: 12px; text-align: right; }
-  .rv-bar-track { flex: 1; height: 7px; border-radius: 999px; background: var(--fm-surface-2); overflow: hidden; }
-  .rv-bar-fill { height: 100%; border-radius: 999px; background: var(--fm-gold, #d9a441); }
-  .rv-list { margin-top: 16px; display: flex; flex-direction: column; gap: 14px; }
-  .rv-item { padding-top: 12px; border-top: 1px solid var(--fm-line); }
+  .rv-summary { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; }
+  .rv-score { font-family: var(--ff-display); font-size: 44px; font-weight: 700; line-height: 1; letter-spacing: -.03em; }
+  .rv-bars { flex: 1 1 220px; min-width: 180px; display: grid; gap: 5px; }
+  .rv-bar-row { display: flex; align-items: center; gap: 9px; font-size: 11.5px; color: var(--fm-ink-3); }
+  .rv-bar-row .lbl { width: 26px; text-align: right; }
+  .rv-bar-track { flex: 1; height: 7px; border-radius: var(--r-pill); background: var(--fm-surface-3); overflow: hidden; }
+  .rv-bar-fill { display: block; height: 100%; background: var(--fm-gold); }
+  .rv-list { margin-top: 20px; display: grid; gap: 16px; }
+  .rv-item { padding-top: 14px; border-top: 1px solid var(--fm-line); }
   .rv-item:first-child { border-top: 0; padding-top: 0; }
-  .rv-item .rv-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; }
-  .rv-item .rv-name { font-weight: 650; font-size: 13px; }
-  .rv-item .rv-stars-sm { color: var(--fm-gold, #d9a441); font-size: 12px; }
-  .rv-item .rv-date { margin-left: auto; color: var(--fm-ink-3); font-size: 11.5px; }
-  .rv-item .rv-body { color: var(--fm-ink-2); font-size: 13.5px; line-height: 1.6; }
-  .rv-form-stars { display: inline-flex; flex-direction: row-reverse; gap: 4px; }
+  .rv-head { display: flex; align-items: center; gap: 9px; margin-bottom: 5px; }
+  .rv-name { font-weight: 600; font-size: 13px; }
+  .rv-stars-sm { color: var(--fm-gold); font-size: 12px; }
+  .rv-stars-sm .empty { color: var(--fm-line-2); }
+  .rv-date { margin-left: auto; font-size: 11.5px; color: var(--fm-ink-3); }
+  .rv-body { color: var(--fm-ink-2); font-size: 14px; line-height: 1.6; margin: 0; }
+  .rv-form-stars { display: inline-flex; flex-direction: row-reverse; gap: 4px; border: 0; margin: 0; padding: 0; }
   .rv-form-stars input { position: absolute; opacity: 0; width: 0; height: 0; }
   .rv-form-stars label { font-size: 24px; color: var(--fm-line-2); cursor: pointer; line-height: 1; transition: color .12s; }
   .rv-form-stars label:hover, .rv-form-stars label:hover ~ label,
-  .rv-form-stars input:checked ~ label { color: var(--fm-gold, #d9a441); }
+  .rv-form-stars input:checked ~ label { color: var(--fm-gold); }
   .rv-form-stars input:focus-visible + label { outline: 2px solid var(--fm-primary); outline-offset: 2px; border-radius: 4px; }
+
+  /* Request dialog */
+  .pd-field { display: grid; gap: 5px; }
+  .pd-field label { font-size: 12px; font-weight: 600; color: var(--fm-ink-2); }
+  .pd-field label .opt { font-weight: 400; color: var(--fm-ink-3); }
+  .pd-field input, .pd-field textarea { width: 100%; padding: 0 12px; height: 42px; border-radius: var(--r-ctrl); border: 1px solid var(--fm-line); background: var(--fm-surface); font: inherit; font-size: 14px; color: var(--fm-ink); }
+  .pd-field textarea { height: auto; min-height: 62px; padding: 10px 12px; resize: vertical; }
+  .pd-field input:focus, .pd-field textarea:focus { outline: none; border-color: var(--fm-primary); box-shadow: 0 0 0 3px var(--fm-ring); }
+  .pd-modal { position: fixed; inset: 0; z-index: 80; display: grid; place-items: center; padding: 20px; background: rgba(26, 33, 29, .42); }
+  .pd-modal[hidden], .pd-var[hidden] { display: none; }
+  .pd-modal-card { position: relative; width: 100%; max-width: 480px; max-height: 88vh; overflow: auto; background: var(--fm-surface); border: 1px solid var(--fm-line); border-radius: 18px; box-shadow: var(--sh-lg); padding: 24px; }
+  .pd-modal-head { display: flex; align-items: flex-start; gap: 12px; }
+  .pd-modal-head h3 { font-family: var(--ff-display); font-size: 20px; font-weight: 700; letter-spacing: -.03em; margin: 0; }
+  .pd-modal-head .sub { font-size: 13px; color: var(--fm-ink-2); margin-top: 4px; }
+  .pd-modal-close { flex: 0 0 auto; width: 32px; height: 32px; border-radius: 9px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); color: var(--fm-ink-2); font-size: 13px; cursor: pointer; text-decoration: none; display: grid; place-items: center; }
+  .pd-modal-close:hover { color: var(--fm-ink); border-color: var(--fm-line-2); }
+  .pd-modal-fields { margin-top: 18px; display: grid; gap: 12px; }
+  .pd-modal-total { margin-top: 16px; padding: 12px 14px; border-radius: var(--r-md); background: var(--fm-surface-2); border: 1px solid var(--fm-line); display: flex; justify-content: space-between; gap: 12px; align-items: baseline; }
+  .pd-modal-total .k { font-size: 13px; color: var(--fm-ink-2); }
+  .pd-modal-total .v { font-family: var(--ff-display); font-size: 18px; font-weight: 700; letter-spacing: -.02em; }
+  .pd-modal-foot { font-size: 11.5px; color: var(--fm-ink-3); text-align: center; margin-top: 9px; }
+
+  @media (max-width: 1080px) {
+    .pd-rail { position: static; }
+  }
+  @media (max-width: 760px) {
+    :root { --pd-top: 62px; }
+    .pd-sticky { margin-left: 0; margin-right: 0; }
+    .pd-hero { padding: 18px; }
+    .pd-hero-media { min-height: 150px; }
+  }
 </style>
+<noscript><style>
+  /* No JS: the request form is rendered inline at the end of the page instead of
+     as an overlay, and every date stays visible (nothing to expand). */
+  .pd-modal, .pd-modal[hidden] { position: static; background: none; padding: 0; display: block; }
+  .pd-modal-card { max-width: 620px; margin: 0 auto 32px; box-shadow: var(--sh-sm); }
+  .pd-modal-close { display: none; }
+</style></noscript>
 {% endblock %}
+
 {% block content %}
+{% set variants = (product.variants or [])[:24] %}
+{# Preselect the first bookable date: a sold-out first row would otherwise be
+   posted as variant_index 0 and bounced by the server-side sold-out guard. #}
+{% set ns = namespace(sel=none) %}
+{% for v in variants %}{% if ns.sel is none and not (v.get('seats') is not none and v.get('seats') <= 0) %}{% set ns.sel = loop.index0 %}{% endif %}{% endfor %}
+{% set first = variants[ns.sel] if ns.sel is not none else (variants[0] if variants else None) %}
+{% set has_deal = product.has_agreement and product.discounted_price_label %}
+{% set rv_count = (review_summary.count if review_summary else 0) or 0 %}
+{% set rv_avg = (review_summary.avg_rating if review_summary else None) or 0 %}
+{% set blocked = supplier_state and not supplier_state.is_active %}
+{# Requesting enrolment is login-gated (catalog.request_product). Send anonymous
+   visitors to the login page instead of a dialog whose POST they would lose. #}
+{% set anon = not session.get('user') %}
+{% set meta = product.metadata or {} %}
+{% set difficulty_labels = {'beginner': 'Grundlæggende', 'intermediate': 'Øvet', 'advanced': 'Avanceret'} %}
+{% set language_labels = {'dansk': 'Dansk', 'engelsk': 'Engelsk', 'begge': 'Dansk og engelsk'} %}
+{% set first_price = (first.discounted_price_label or first.price_label) if first else product.price_label %}
+{% set first_was = first.price_label if (first and first.discounted_price_label) else (product.original_price_label if has_deal else '') %}
+
 <div class="fm-wrap">
 
-  <div class="crumb"><a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i>{% if product and product.vendor_slug %}<a href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}">{{ product.vendor }}</a><i class="fa-solid fa-chevron-right"></i>{% endif %}<span>{{ product.title if product else 'Kursus' }}</span></div>
+  <div class="crumb">
+    <a href="{{ url_for('catalog.catalog_index') }}">Katalog</a><i class="fa-solid fa-chevron-right"></i>
+    {% if product.vendor_slug %}<a href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}">{{ product.vendor }}</a><i class="fa-solid fa-chevron-right"></i>{% endif %}
+    <span>{{ product.title }}</span>
+  </div>
 
   {% if request.args.get('order') %}
   <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-success);background:color-mix(in srgb,var(--fm-success) 8%,var(--fm-surface))">
@@ -62,88 +241,220 @@
   </div>
   {% endif %}
 
-  <section class="detail-hero" data-reveal>
-    <div class="detail-mark">
-      {% if product and product.image_url %}<img src="{{ product.image_url }}" alt="{{ product.title }}" style="width:100%;height:100%;object-fit:cover;border-radius:inherit">{% else %}<i class="fa-solid fa-graduation-cap"></i>{% endif %}
-    </div>
-    <div class="detail-info">
-      <div class="detail-kick">{{ product.vendor if product else '' }}</div>
-      <h1 class="detail-title">{{ product.title if product else 'Kursus' }}</h1>
-      {% if product and product.summary %}<p class="detail-sub">{{ product.summary }}</p>{% endif %}
-      <div class="detail-tags">
-        {% for category in (product.categories if product else []) %}
-        <a class="cpill" style="text-decoration:none" href="{{ url_for('catalog.category_detail', slug=product.category_slugs[loop.index0]) }}">{{ category }}</a>
-        {% endfor %}
-        {% if product and product.format %}<span class="cpill"><i class="fa-solid fa-display"></i>{{ product.format }}</span>{% endif %}
-        {% if product and product.locations %}<span class="cpill"><i class="fa-solid fa-location-dot"></i>{{ product.locations[:3]|join(', ') }}</span>{% endif %}
+  {# ── Hero ───────────────────────────────────────────────────── #}
+  <section class="pd-hero" data-reveal>
+    <div class="pd-hero-main">
+      <div class="pd-kick-row">
+        {% if product.vendor_slug %}
+        <a class="pd-kick" href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}">{{ product.vendor }}</a>
+        {% else %}<span class="pd-kick">{{ product.vendor }}</span>{% endif %}
+        {% if product.has_agreement %}
+        <span class="pd-deal" style="margin:0"><i class="fa-solid fa-handshake"></i>Aftalepris{% if product.discount_label %} {{ product.discount_label }}{% endif %}</span>
+        {% endif %}
       </div>
+      <h1 class="pd-title">{{ product.title }}</h1>
+      {% if product.summary %}<p class="pd-lede">{{ product.summary }}</p>{% endif %}
+
+      {% if rv_count or completed_count %}
+      <div class="pd-proof">
+        {% if rv_count %}
+        {% set full = rv_avg|round(0, 'floor')|int %}
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="pd-stars" role="img" aria-label="{{ rv_avg }} ud af 5 stjerner">{% for i in range(1, 6) %}{% if i <= full %}★{% else %}<span class="empty">★</span>{% endif %}{% endfor %}</span>
+          <span style="font-weight:700;font-size:14px">{{ rv_avg|string|replace('.', ',') }}</span>
+          <a class="pd-rating-link" href="#anmeldelser">{{ rv_count }} anmeldelse{{ '' if rv_count == 1 else 'r' }}</a>
+        </div>
+        {% endif %}
+        {% if rv_count and completed_count %}<span class="pd-proof-sep"></span>{% endif %}
+        {% if completed_count %}
+        <span class="pd-proof-note">{{ completed_count }} {{ 'medarbejder har' if completed_count == 1 else 'medarbejdere har' }} gennemført</span>
+        {% endif %}
+      </div>
+      {% endif %}
+
+      <div class="pd-tags">
+        {% for category in product.categories %}
+        <a class="pd-tag" href="{{ url_for('catalog.category_detail', slug=product.category_slugs[loop.index0]) }}">{{ category }}</a>
+        {% endfor %}
+        {% if product.locations %}<span class="pd-tag"><i class="fa-solid fa-location-dot"></i>{{ product.locations[:3]|join(' · ') }}</span>{% endif %}
+      </div>
+    </div>
+
+    <div class="pd-hero-media">
+      {% if product.image_url %}
+      <img src="{{ product.image_url }}" alt="{{ product.title }}">
+      {% else %}
+      <div class="pd-media-ph"><i class="fa-solid fa-graduation-cap"></i><span>{{ product.product_type or 'Kursus' }}<br>{{ product.vendor }}</span></div>
+      {% endif %}
     </div>
   </section>
 
+  {# ── Quick facts ────────────────────────────────────────────── #}
+  {# "Næste hold" is the first bookable date, i.e. the one preselected below. #}
+  {% set next_variant = first if (first and first.date) else ((variants|selectattr('date')|first) if variants else None) %}
+  <div class="pd-facts">
+    {% if product.format %}
+    <div class="pd-fact"><div class="pd-fact-k">Format</div><div class="pd-fact-v">{{ product.format }}</div></div>
+    {% endif %}
+    {% if meta.duration_days %}
+    <div class="pd-fact"><div class="pd-fact-k">Varighed</div><div class="pd-fact-v">{% if meta.duration_days|float < 1 %}½ dag{% else %}{{ meta.duration_days|round|int }} {{ 'dag' if meta.duration_days|round|int == 1 else 'dage' }}{% endif %}</div></div>
+    {% endif %}
+    {% if meta.difficulty %}
+    <div class="pd-fact"><div class="pd-fact-k">Niveau</div><div class="pd-fact-v">{{ difficulty_labels.get(meta.difficulty|lower, meta.difficulty|capitalize) }}</div></div>
+    {% endif %}
+    {% if meta.certification %}
+    <div class="pd-fact"><div class="pd-fact-k">Certificering</div><div class="pd-fact-v">{{ meta.certification }}</div></div>
+    {% endif %}
+    {% if meta.language %}
+    <div class="pd-fact"><div class="pd-fact-k">Sprog</div><div class="pd-fact-v">{{ language_labels.get(meta.language|lower, meta.language|capitalize) }}</div></div>
+    {% endif %}
+    {% if next_variant %}
+    <div class="pd-fact"><div class="pd-fact-k">Næste hold</div><div class="pd-fact-v accent">{{ next_variant.date }}</div></div>
+    {% endif %}
+  </div>
+
+  {# ── Sticky action bar ──────────────────────────────────────── #}
+  <div class="pd-sticky">
+    <div class="pd-sticky-when">
+      <span class="pd-sticky-ic"><i class="fa-solid fa-calendar-day"></i></span>
+      <div style="min-width:0">
+        <div class="t" data-pd-date>{{ (first.date if first and first.date else 'Dato efter aftale') }}</div>
+        <div class="s" data-pd-where>{{ (first.location or first.city if first else '') or 'Online / efter aftale' }}</div>
+      </div>
+    </div>
+    <div class="pd-sticky-end">
+      <div class="pd-sticky-price">
+        <div class="p" data-pd-price>{{ first_price }}</div>
+        <div class="u">pr. deltager</div>
+      </div>
+      {% if anon %}
+      <a class="pd-cta sm" href="{{ url_for('auth.login') }}"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind for at anmode</a>
+      {% else %}
+      <a class="pd-cta sm" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>Anmod om tilmelding</a>
+      {% endif %}
+    </div>
+  </div>
+
   <div class="split">
     <div class="stack">
-      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-align-left"></i></span><h3>Om kurset</h3></div>
+
+      <nav class="pd-tabs" aria-label="Sektioner">
+        <a href="#om" class="is-active">Om kurset</a>
+        {% if variants %}<a href="#hold">Hold og datoer</a>{% endif %}
+        <a href="#anmeldelser">Anmeldelser</a>
+        <a href="#leverandor">Leverandør</a>
+      </nav>
+
+      {# ── Om kurset ── #}
+      <div class="fm-card pd-anchor" id="om">
+        <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-align-left"></i></span><h3>Om kurset</h3></div>
         <div class="fm-card-body">
-          {% if product and product.description_text and product.description_text != product.summary %}
+          {% if product.description_text and product.description_text != product.summary %}
             {% for paragraph in product.description_text.split('\n\n')[:8] %}
-            {% if paragraph.strip() %}<p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0 0 12px">{{ paragraph }}</p>{% endif %}
+            {% if paragraph.strip() %}<p class="pd-p">{{ paragraph }}</p>{% endif %}
             {% endfor %}
-          {% elif product and product.summary %}
-            <p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0">{{ product.summary }}</p>
+          {% elif product.summary %}
+            <p class="pd-p">{{ product.summary }}</p>
           {% else %}
-            <p style="color:var(--fm-ink-2);font-size:14.5px;line-height:1.7;margin:0">Beskrivelse følger.</p>
+            <p class="pd-p">Beskrivelse følger.</p>
           {% endif %}
 
-          {% if product and product.metadata %}
-          <div class="grid-meta">
-            {% if product.metadata.duration_days %}<div class="gm"><strong>Varighed</strong><span>{{ product.metadata.duration_days }} dage</span></div>{% endif %}
-            {% if product.metadata.difficulty %}<div class="gm"><strong>Niveau</strong><span>{{ product.metadata.difficulty }}</span></div>{% endif %}
-            {% if product.metadata.certification %}<div class="gm"><strong>Certificering</strong><span>{{ product.metadata.certification }}</span></div>{% endif %}
+          {% if meta.includes and meta.includes is iterable and meta.includes is not string %}
+          <div class="pd-sub-h">Inkluderet</div>
+          <div class="pd-checks">
+            {% for item in meta.includes[:8] %}
+            <div class="pd-check"><i class="fa-solid fa-check"></i><span>{{ item }}</span></div>
+            {% endfor %}
+          </div>
+          {% endif %}
+
+          {% if meta.target_audience and meta.target_audience is iterable and meta.target_audience is not string %}
+          <div class="pd-sub-h">Målgruppe</div>
+          <div class="pd-tags" style="margin-top:0">
+            {% for item in meta.target_audience[:6] %}<span class="pd-tag">{{ item }}</span>{% endfor %}
+          </div>
+          {% endif %}
+
+          {% if meta.prerequisites and meta.prerequisites is iterable and meta.prerequisites is not string %}
+          <div class="pd-sub-h">Forudsætninger</div>
+          <div class="pd-checks">
+            {% for item in meta.prerequisites[:6] %}
+            <div class="pd-check"><i class="fa-solid fa-circle-info"></i><span>{{ item }}</span></div>
+            {% endfor %}
           </div>
           {% endif %}
         </div>
       </div>
 
-      {% if product and product.variants %}
-      <div class="fm-table-wrap">
-        <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-calendar"></i></span><h3 style="font-size:15px;font-weight:700">Kommende hold</h3></div><span class="fm-badge teal">{{ product.variants|length }} dato{{ '' if product.variants|length == 1 else 'er' }}</span></div>
-        <table class="fm-table"><thead><tr><th>Dato</th><th>Sted</th><th>Pris</th></tr></thead><tbody>
-          {% for variant in product.variants[:12] %}
-          <tr>
-            <td><div style="display:flex;align-items:center;gap:8px;font-weight:650"><i class="fa-solid fa-calendar-day" style="color:var(--fm-ink-3);font-size:12px"></i>{{ variant.date or 'Dato efter aftale' }}</div></td>
-            <td class="muted">{{ variant.location or variant.city or 'Online/efter aftale' }}</td>
-            <td class="mono" style="color:var(--fm-primary);font-weight:700">
-              {% if variant.discounted_price_label %}{{ variant.discounted_price_label }} <span class="deal-was" style="font-size:12px">{{ variant.price_label or product.price_label }}</span>{% else %}{{ variant.price_label or product.price_label }}{% endif %}
-            </td>
-          </tr>
+      {# ── Hold og datoer ── #}
+      {% if variants %}
+      <div class="fm-card pd-anchor" id="hold">
+        <div class="fm-card-head">
+          <span class="fm-ch-icon"><i class="fa-solid fa-calendar"></i></span><h3>Hold og datoer</h3>
+          <span class="fm-badge teal">{{ variants|length }} dato{{ '' if variants|length == 1 else 'er' }}</span>
+          <span style="margin-left:auto;font-size:12.5px;color:var(--fm-ink-3)">Vælg et hold — det følger med i din anmodning</span>
+        </div>
+        <div class="pd-var-list" data-pd-variants>
+          {% for variant in variants %}
+          {% set seats = variant.get('seats') %}
+          {% set sold_out = seats is not none and seats <= 0 %}
+          <label class="pd-var{{ ' is-sold' if sold_out }}"{% if loop.index0 >= 4 %} data-pd-extra{% endif %}>
+            <input type="radio" name="variant_index" value="{{ loop.index0 }}"{% if not anon %} form="pd-request-form"{% endif %}
+                   {% if loop.index0 == ns.sel %}checked{% endif %}
+                   {% if sold_out or blocked %}disabled{% endif %}
+                   data-pd-date="{{ variant.date or 'Dato efter aftale' }}"
+                   data-pd-where="{{ variant.location or variant.city or 'Online / efter aftale' }}"
+                   data-pd-price="{{ variant.discounted_price_label or variant.price_label or product.price_label }}"
+                   data-pd-was="{{ variant.price_label if variant.discounted_price_label else '' }}">
+            <span class="pd-var-dot" aria-hidden="true"></span>
+            <span class="pd-var-tx">
+              <span class="d">{{ variant.date or 'Dato efter aftale' }}</span>
+              <span class="w">{{ variant.location or variant.city or 'Online / efter aftale' }}</span>
+            </span>
+            <span class="pd-var-end">
+              {% if sold_out %}
+              <span class="pd-spots sold">Udsolgt</span>
+              {% elif seats is not none and seats <= 5 %}
+              <span class="pd-spots warn">{{ seats }} plads{{ '' if seats == 1 else 'er' }} tilbage</span>
+              {% elif seats is not none %}
+              <span class="pd-spots">Ledige pladser</span>
+              {% endif %}
+              <span class="pd-var-price">
+                <span class="now">{{ variant.discounted_price_label or variant.price_label or product.price_label }}</span>
+                {% if variant.discounted_price_label %}<span class="was">{{ variant.price_label }}</span>{% endif %}
+              </span>
+            </span>
+          </label>
           {% endfor %}
-        </tbody></table>
+          {% if variants|length > 4 %}
+          <button type="button" class="btn btn-ghost btn-sm pd-more" data-pd-more hidden>
+            <i class="fa-solid fa-chevron-down" style="font-size:10px"></i> <span>Vis alle {{ variants|length }} datoer</span>
+          </button>
+          {% endif %}
+        </div>
       </div>
       {% endif %}
 
-      {# ── Anmeldelser (ratings & reviews) ── #}
-      <div class="fm-card">
+      {# ── Anmeldelser ── #}
+      <div class="fm-card pd-anchor" id="anmeldelser">
         <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-star"></i></span><h3>Anmeldelser</h3>
-          {% if review_summary and review_summary.count %}<span class="fm-badge teal" style="margin-left:auto">{{ review_summary.count }}</span>{% endif %}
+          {% if rv_count %}<span class="fm-badge teal" style="margin-left:auto">{{ rv_count }}</span>{% endif %}
         </div>
         <div class="fm-card-body">
-          {% if review_summary and review_summary.count %}
-          {% set avg = review_summary.avg_rating or 0 %}
-          {% set full = avg|round(0, 'floor')|int %}
+          {% if rv_count %}
+          {% set full = rv_avg|round(0, 'floor')|int %}
           <div class="rv-summary">
             <div>
-              <div class="rv-score">{{ avg }}</div>
-              <div class="rv-stars" role="img" aria-label="{{ avg }} ud af 5 stjerner">
-                {% for i in range(1, 6) %}{% if i <= full %}★{% else %}<span class="empty">★</span>{% endif %}{% endfor %}
-              </div>
-              <div class="rv-meta">{{ review_summary.count }} anmeldelse{{ '' if review_summary.count == 1 else 'r' }}</div>
+              <div class="rv-score">{{ rv_avg|string|replace('.', ',') }}</div>
+              <div class="pd-stars" style="margin-top:6px" role="img" aria-label="{{ rv_avg }} ud af 5 stjerner">{% for i in range(1, 6) %}{% if i <= full %}★{% else %}<span class="empty">★</span>{% endif %}{% endfor %}</div>
+              <div style="font-size:13px;color:var(--fm-ink-3);margin-top:4px">{{ rv_count }} anmeldelse{{ '' if rv_count == 1 else 'r' }}</div>
             </div>
             <div class="rv-bars">
               {% for star in [5, 4, 3, 2, 1] %}
               {% set c = review_summary.breakdown.get(star, 0) %}
               <div class="rv-bar-row">
-                <span class="lbl">{{ star }}</span><i class="fa-solid fa-star" style="font-size:9px;color:var(--fm-gold,#d9a441)"></i>
-                <span class="rv-bar-track"><span class="rv-bar-fill" style="width: {{ (100 * c / review_summary.count)|round(0, 'common')|int if review_summary.count else 0 }}%"></span></span>
+                <span class="lbl">{{ star }} ★</span>
+                <span class="rv-bar-track"><span class="rv-bar-fill" style="width: {{ (100 * c / rv_count)|round(0, 'common')|int }}%"></span></span>
                 <span style="width:22px;text-align:right">{{ c }}</span>
               </div>
               {% endfor %}
@@ -155,11 +466,11 @@
             {% set rf = (r.rating or 0)|int %}
             <div class="rv-item">
               <div class="rv-head">
-                <span class="rv-stars-sm" role="img" aria-label="{{ rf }} ud af 5 stjerner">{% for i in range(1, 6) %}{% if i <= rf %}★{% else %}<span style="color:var(--fm-line-2)">★</span>{% endif %}{% endfor %}</span>
+                <span class="rv-stars-sm" role="img" aria-label="{{ rf }} ud af 5 stjerner">{% for i in range(1, 6) %}{% if i <= rf %}★{% else %}<span class="empty">★</span>{% endif %}{% endfor %}</span>
                 <span class="rv-name">{{ r.username or 'Anonym' }}</span>
                 <span class="rv-date">{{ r.created_at.strftime('%d/%m/%Y') if r.created_at and r.created_at.strftime is defined else (r.created_at or '') }}</span>
               </div>
-              {% if r.body %}<div class="rv-body">{{ r.body }}</div>{% endif %}
+              {% if r.body %}<p class="rv-body">{{ r.body }}</p>{% endif %}
             </div>
             {% endfor %}
           </div>
@@ -168,126 +479,269 @@
           {% endif %}
 
           {% if can_review %}
-          <form method="POST" action="{{ url_for('catalog.submit_review', handle=product.handle) }}" style="margin-top:18px;border-top:1px solid var(--fm-line);padding-top:16px">
-            <div class="req-field"><label for="rv-rating">Din bedømmelse</label>
-              <fieldset class="rv-form-stars" id="rv-rating" style="border:0;margin:0;padding:0">
-                <legend class="sr-only" style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Vælg antal stjerner</legend>
+          <form method="POST" action="{{ url_for('catalog.submit_review', handle=product.handle) }}" style="margin-top:20px;border-top:1px solid var(--fm-line);padding-top:18px">
+            <div style="font-weight:700;font-size:14px;margin-bottom:8px">Du har gennemført dette kursus</div>
+            <div class="pd-field" style="margin-bottom:12px">
+              <label for="rv-rating">Din bedømmelse</label>
+              <fieldset class="rv-form-stars" id="rv-rating">
+                <legend style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Vælg antal stjerner</legend>
                 {% for star in [5, 4, 3, 2, 1] %}
                 <input type="radio" name="rating" id="rv-star-{{ star }}" value="{{ star }}" {% if star == 5 %}required{% endif %}>
                 <label for="rv-star-{{ star }}" aria-label="{{ star }} stjerne{{ '' if star == 1 else 'r' }}" title="{{ star }} stjerne{{ '' if star == 1 else 'r' }}">★</label>
                 {% endfor %}
               </fieldset>
             </div>
-            <div class="req-field"><label for="rv-body">Kommentar (valgfri)</label>
+            <div class="pd-field">
+              <label for="rv-body">Kommentar <span class="opt">(valgfri)</span></label>
               <textarea id="rv-body" name="body" rows="3" maxlength="4000" placeholder="Hvad fik du ud af kurset?"></textarea>
             </div>
-            <button class="btn btn-primary" type="submit" style="margin-top:10px"><i class="fa-solid fa-paper-plane"></i> Send anmeldelse</button>
+            <button class="btn btn-primary" type="submit" style="margin-top:12px"><i class="fa-solid fa-paper-plane"></i> Send anmeldelse</button>
           </form>
           {% endif %}
         </div>
       </div>
+
+      {# ── Leverandør ── #}
+      <div class="fm-card pd-anchor" id="leverandor">
+        <div class="fm-card-body pd-vendor">
+          <span class="pd-vendor-mark"><i class="fa-solid fa-building"></i></span>
+          <div class="pd-vendor-tx">
+            <div class="n">{{ product.vendor }}</div>
+            <div class="m">
+              {% if vendor and vendor.course_count %}{{ vendor.course_count }} kurs{{ 'us' if vendor.course_count == 1 else 'er' }} i kataloget{% endif %}
+              {% if product.agreement and product.agreement.valid_until %}{% if vendor and vendor.course_count %} · {% endif %}Aftale gældende til {{ product.agreement.valid_until }}{% elif product.agreement and product.agreement.agreement_name %}{% if vendor and vendor.course_count %} · {% endif %}Aftale: {{ product.agreement.agreement_name }}{% endif %}
+            </div>
+          </div>
+          {% if product.vendor_slug %}
+          <a class="btn btn-ghost" href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}">Se alle kurser <i class="fa-solid fa-arrow-right" style="font-size:11px;color:var(--fm-ink-3)"></i></a>
+          {% endif %}
+        </div>
+      </div>
     </div>
 
-    <div class="stack">
+    {# ── Right rail ─────────────────────────────────────────────── #}
+    <div class="pd-rail">
       <div class="fm-card"><div class="fm-card-body">
-        <div class="fm-flex" style="align-items:baseline;gap:8px">
-          {% if product and product.has_agreement and product.discounted_price_label %}
-          <span class="deal-now">{{ product.discounted_price_label }}</span>
-          <span class="deal-was">{{ product.original_price_label or product.price_label }}</span>
-          {% else %}
-          <span style="font-family:var(--ff-display);font-size:30px;font-weight:700;letter-spacing:-.03em">{{ product.price_label if product else 'Pris på forespørgsel' }}</span>
-          {% endif %}
-          <span style="margin-left:auto" class="fm-badge">{{ (product.variants|length) if product else 0 }} variant{{ '' if product and product.variants|length == 1 else 'er' }}</span>
-        </div>
-
-        {% if product and product.has_agreement %}
-        <div style="margin-top:10px;display:flex;flex-wrap:wrap;gap:8px;align-items:center">
-          <span class="deal-badge"><i class="fa-solid fa-handshake"></i>Aftalepris{% if product.discount_label %} {{ product.discount_label }}{% endif %}</span>
-        </div>
-        {% if product.agreement and (product.agreement.agreement_name or product.agreement.valid_until) %}
-        <div class="agreement-note">
-          <i class="fa-solid fa-file-signature"></i>
-          <span>
-            {% if product.agreement.agreement_name %}Aftale: {{ product.agreement.agreement_name }}{% endif %}
-            {% if product.agreement.valid_until %}{% if product.agreement.agreement_name %} · {% endif %}Gælder til {{ product.agreement.valid_until }}{% endif %}
-          </span>
-        </div>
+        {% if product.has_agreement %}
+        <div class="pd-deal"><i class="fa-solid fa-handshake"></i>Aftalepris for din virksomhed</div>
         {% endif %}
-        {% endif %}
+        <div class="pd-price-row">
+          <span class="pd-price" data-pd-price>{{ first_price }}</span>
+          <span class="pd-price-was" data-pd-was {% if not first_was %}hidden{% endif %}>{{ first_was }}</span>
+        </div>
+        <div class="pd-price-unit">pr. deltager, ekskl. moms</div>
 
-        {% if supplier_state and not supplier_state.is_active %}
-        <div class="status-pill amber" style="margin-top:12px;display:flex;gap:8px;align-items:flex-start;padding:10px 12px;line-height:1.4">
-          <i class="fa-solid fa-triangle-exclamation" style="background:none;width:auto;height:auto;margin-top:2px"></i>
-          <span>Denne leverandør er deaktiveret for din virksomhed. HR kan aktivere den under leverandørstyring.</span>
+        {% if first %}
+        <div class="pd-chosen">
+          <div class="k">Valgt hold</div>
+          <div class="d" data-pd-date>{{ first.date or 'Dato efter aftale' }}</div>
+          <div class="w" data-pd-where>{{ first.location or first.city or 'Online / efter aftale' }}</div>
         </div>
         {% endif %}
 
-        <form method="POST" action="{{ url_for('catalog.request_product', handle=product.handle) }}" style="margin-top:14px">
-          <div class="req-field"><label>Vælg tidspunkt/lokation</label></div>
-          <div class="variant-list">
-            {% for variant in (product.variants[:12] if product else []) %}
-            <label class="variant-option">
-              <input type="radio" name="variant_index" value="{{ loop.index0 }}" {% if loop.first %}checked{% endif %} {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
-              <span>
-                <strong>{{ variant.date or 'Dato efter aftale' }}</strong><br>
-                <span class="muted" style="font-size:12.5px">{{ variant.location or variant.city or 'Online/efter aftale' }}</span><br>
-                {% if variant.discounted_price_label %}
-                <span style="font-size:12.5px;color:var(--fm-primary);font-weight:700">{{ variant.discounted_price_label }}</span>
-                <span class="deal-was" style="font-size:11.5px">{{ variant.price_label or product.price_label }}</span>
-                {% else %}
-                <span style="font-size:12.5px">{{ variant.price_label or product.price_label }}</span>
-                {% endif %}
-              </span>
-            </label>
-            {% endfor %}
-          </div>
+        {% if blocked %}
+        <div class="pd-warn">
+          <i class="fa-solid fa-triangle-exclamation"></i>
+          <span>Leverandøren er deaktiveret for din virksomhed. HR kan aktivere den under leverandørstyring.</span>
+        </div>
+        {% endif %}
 
-          <div class="req-field">
-            <label for="request-name">Navn</label>
-            <input id="request-name" class="fm-input" name="name" value="{{ session.get('user', '') }}" required {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
-          </div>
-          <div class="req-field">
-            <label for="request-email">Email</label>
-            <input id="request-email" class="fm-input" type="email" name="email" required {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
-          </div>
-          <div class="req-field">
-            <label for="request-phone">Telefon</label>
-            <input id="request-phone" class="fm-input" name="phone" {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
-          </div>
-          <div class="req-field">
-            <label for="request-notes">Note</label>
-            <textarea id="request-notes" name="notes" rows="2" {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}></textarea>
-          </div>
+        {% if anon %}
+        <a class="pd-cta" href="{{ url_for('auth.login') }}"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind for at anmode</a>
+        {% else %}
+        <a class="pd-cta" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>Anmod om tilmelding</a>
+        {% endif %}
+        <a class="pd-cta ghost" href="{{ url_for('app1.index', product_handle=product.handle, product_title=product.title) }}"><i class="fa-solid fa-comments"></i>Spørg AI om kurset</a>
 
-          <button class="btn btn-primary" type="submit" style="width:100%;margin-top:14px" {% if supplier_state and not supplier_state.is_active %}disabled{% endif %}>
-            <i class="fa-solid fa-circle-check"></i> Anmod om tilmelding
-          </button>
-          <a class="btn btn-ghost" style="width:100%;margin-top:8px" href="{{ url_for('app1.index', product_handle=product.handle, product_title=product.title) }}">
-            <i class="fa-solid fa-comments"></i> Spørg AI om kurset
-          </a>
-        </form>
+        <div class="pd-assure">
+          <div><i class="fa-solid fa-check"></i><span>{{ 'Log ind med din arbejdskonto for at anmode' if anon else 'Ingen betaling nu — HR godkender først' }}</span></div>
+          <div><i class="fa-solid fa-check"></i><span>Anmodningen gemmes på din profil i Futurematch</span></div>
+          <div><i class="fa-solid fa-check"></i><span>Leverandøren kontakter dig med bekræftelse</span></div>
+        </div>
       </div></div>
 
-      {% if product and product.vendor_slug %}
-      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Leverandør</h3></div>
-        <div class="fm-card-body"><a href="{{ url_for('catalog.vendor_detail', slug=product.vendor_slug) }}" class="row-item" style="text-decoration:none;border:0;padding:0"><span class="ra">{{ product.vendor[:2]|upper }}</span><div class="rt"><div class="rn">{{ product.vendor }}</div><div class="rm">Se alle kurser</div></div><i class="fa-solid fa-arrow-right" style="color:var(--fm-ink-3)"></i></a></div>
-      </div>
-      {% endif %}
-
-      {% if related_products %}
-      <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shuffle"></i></span><h3>Lignende kurser</h3></div>
-        <div class="fm-card-body" style="padding-top:6px">
-          {% for related in related_products %}
-          <a href="{{ url_for('catalog.product_detail', handle=related.handle) }}" class="row-item" style="text-decoration:none">
-            <span class="ra soft"><i class="fa-solid fa-graduation-cap"></i></span>
-            <div class="rt"><div class="rn">{{ related.title }}</div><div class="rm">{{ related.vendor }}{% if related.has_agreement %} · <span style="color:var(--fm-primary);font-weight:700">Aftalepris</span>{% endif %}</div></div>
-            <span class="mono" style="font-weight:700;color:var(--fm-primary)">{{ related.discounted_price_label if related.has_agreement and related.discounted_price_label else related.price_label }}</span>
-          </a>
-          {% endfor %}
-        </div>
+      {% if department_budget %}
+      <div class="pd-budget">
+        <div class="k">Budget · {{ department_budget.department }}</div>
+        <div class="b">Din afdeling har <strong>{{ department_budget.remaining_label }}</strong> tilbage af {{ department_budget.annual_label }} i {{ department_budget.fiscal_year }}.</div>
+        {% if department_budget.utilization is not none %}
+        <div class="pd-budget-bar"><span style="width: {{ [department_budget.utilization, 100]|min }}%"></span></div>
+        {% endif %}
       </div>
       {% endif %}
     </div>
   </div>
+
+  {# ── Lignende kurser ────────────────────────────────────────── #}
+  {% if related_products %}
+  <section style="margin-top:34px">
+    <div class="pd-rel-head">
+      <h2><i class="fa-solid fa-shuffle"></i>Lignende kurser</h2>
+      {% if product.category_slugs %}
+      <a href="{{ url_for('catalog.category_detail', slug=product.category_slugs[0]) }}" style="font-size:13.5px;font-weight:600;color:var(--fm-primary);text-decoration:none">Se hele kategorien</a>
+      {% endif %}
+    </div>
+    <div class="pd-rel-grid">
+      {% for related in related_products[:4] %}
+      <a class="pd-rel" href="{{ url_for('catalog.product_detail', handle=related.handle) }}">
+        <div class="pd-rel-img">{% if related.image_url %}<img src="{{ related.image_url }}" alt="{{ related.title }}">{% endif %}</div>
+        <div class="pd-rel-b">
+          <div class="pd-rel-v">{{ related.vendor }}</div>
+          <div class="pd-rel-t">{{ related.title }}</div>
+          <div class="pd-rel-f">
+            {% if related.has_agreement %}<span class="pd-spots" style="background:var(--fm-primary-tint);color:var(--fm-primary)">Aftalepris</span>{% endif %}
+            <span class="price">{{ related.discounted_price_label if related.has_agreement and related.discounted_price_label else related.price_label }}</span>
+          </div>
+        </div>
+      </a>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
 </div>
+
+{# ── Request dialog ───────────────────────────────────────────────
+   The date radios above live in the page but belong to this form via
+   form="pd-request-form", so one submit carries the chosen hold. Hidden by
+   default; JS opens it, and the <noscript> rules above render it inline. #}
+{% if not anon %}
+<div class="pd-modal" id="pd-request" role="dialog" aria-modal="true" aria-labelledby="pd-request-title" hidden>
+  <form class="pd-modal-card" id="pd-request-form" method="POST" action="{{ url_for('catalog.request_product', handle=product.handle) }}">
+    <div class="pd-modal-head">
+      <div style="flex:1 1 auto;min-width:0">
+        <h3 id="pd-request-title">Anmod om tilmelding</h3>
+        <div class="sub">{{ product.title }} · <span data-pd-date>{{ (first.date if first and first.date else 'Dato efter aftale') }}</span> · <span data-pd-where>{{ (first.location or first.city if first else '') or 'Online / efter aftale' }}</span></div>
+      </div>
+      <a class="pd-modal-close" href="#" data-pd-close aria-label="Luk"><i class="fa-solid fa-xmark"></i></a>
+    </div>
+
+    <div class="pd-modal-fields">
+      <div class="pd-field">
+        <label for="rq-name">Navn</label>
+        <input id="rq-name" name="name" value="{{ buyer_profile.full_name or session.get('user', '') }}" required {% if blocked %}disabled{% endif %}>
+      </div>
+      <div class="pd-field">
+        <label for="rq-mail">Arbejdsmail</label>
+        <input id="rq-mail" name="email" type="email" value="{{ buyer_profile.email }}" required {% if blocked %}disabled{% endif %}>
+      </div>
+      <div class="pd-field">
+        <label for="rq-tel">Telefon <span class="opt">(valgfri)</span></label>
+        <input id="rq-tel" name="phone" value="{{ buyer_profile.phone }}" {% if blocked %}disabled{% endif %}>
+      </div>
+      <div class="pd-field">
+        <label for="rq-note">Note til leverandøren <span class="opt">(valgfri)</span></label>
+        <textarea id="rq-note" name="notes" rows="2" {% if blocked %}disabled{% endif %}></textarea>
+      </div>
+    </div>
+
+    <div class="pd-modal-total">
+      <span class="k">Pris pr. deltager</span>
+      <span class="v" data-pd-price>{{ first_price }}</span>
+    </div>
+
+    <button class="pd-cta" type="submit" style="margin-top:16px" {% if blocked %}disabled aria-disabled="true"{% endif %}><i class="fa-solid fa-paper-plane"></i>Send anmodning</button>
+    <div class="pd-modal-foot">Anmodningen gemmes i Futurematch og sendes til HR-godkendelse.</div>
+  </form>
+</div>
+{% endif %}
+{% endblock %}
+
+{% block extra_scripts %}
+<script>
+(function () {
+  var modal = document.getElementById('pd-request');
+  var form = document.getElementById('pd-request-form');
+  if (!form) return;
+
+  /* ── Selected hold → sticky bar, price card and dialog header ── */
+  function paint(input) {
+    if (!input) return;
+    var d = input.getAttribute('data-pd-date') || '';
+    var w = input.getAttribute('data-pd-where') || '';
+    var p = input.getAttribute('data-pd-price') || '';
+    var was = input.getAttribute('data-pd-was') || '';
+    document.querySelectorAll('[data-pd-date]').forEach(function (el) { if (el.tagName !== 'INPUT') el.textContent = d; });
+    document.querySelectorAll('[data-pd-where]').forEach(function (el) { if (el.tagName !== 'INPUT') el.textContent = w; });
+    document.querySelectorAll('[data-pd-price]').forEach(function (el) { if (el.tagName !== 'INPUT') el.textContent = p; });
+    document.querySelectorAll('[data-pd-was]').forEach(function (el) { el.textContent = was; el.hidden = !was; });
+  }
+  var radios = Array.prototype.slice.call(document.querySelectorAll('input[name="variant_index"]'));
+  function syncSelected() {
+    /* Mirrors :checked onto the row for engines without :has(). */
+    radios.forEach(function (r) {
+      var row = r.closest('.pd-var');
+      if (row) row.classList.toggle('is-selected', r.checked);
+    });
+  }
+  radios.forEach(function (r) {
+    r.addEventListener('change', function () { if (r.checked) { paint(r); syncSelected(); } });
+    r.addEventListener('focus', function () { var row = r.closest('.pd-var'); if (row) row.classList.add('is-focus'); });
+    r.addEventListener('blur', function () { var row = r.closest('.pd-var'); if (row) row.classList.remove('is-focus'); });
+  });
+  syncSelected();
+
+  /* ── Collapse the date list (JS only — without JS every date stays shown) ── */
+  var extras = Array.prototype.slice.call(document.querySelectorAll('[data-pd-extra]'));
+  var more = document.querySelector('[data-pd-more]');
+  if (more && extras.length) {
+    var open = false;
+    var setOpen = function (next) {
+      open = next;
+      extras.forEach(function (el) { el.hidden = !open; });
+      more.querySelector('span').textContent = open ? 'Vis færre datoer' : 'Vis alle ' + (extras.length + 4) + ' datoer';
+      more.querySelector('i').style.transform = open ? 'rotate(180deg)' : '';
+    };
+    /* Keep a checked date visible even when it sits in the collapsed tail. */
+    var checkedExtra = extras.some(function (el) { var i = el.querySelector('input'); return i && i.checked; });
+    more.hidden = false;
+    setOpen(checkedExtra);
+    more.addEventListener('click', function () { setOpen(!open); });
+  }
+
+  /* ── Request dialog ── */
+  var lastFocus = null;
+  function openModal(e) {
+    if (e) e.preventDefault();
+    if (!modal) return;
+    lastFocus = document.activeElement;
+    modal.hidden = false;
+    document.body.style.overflow = 'hidden';
+    var firstField = modal.querySelector('input:not([disabled])');
+    if (firstField) firstField.focus();
+  }
+  function closeModal(e) {
+    if (e) e.preventDefault();
+    if (!modal) return;
+    modal.hidden = true;
+    document.body.style.overflow = '';
+    if (lastFocus && lastFocus.focus) lastFocus.focus();
+  }
+  document.querySelectorAll('[data-pd-open]').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      if (el.getAttribute('aria-disabled') === 'true') { e.preventDefault(); return; }
+      openModal(e);
+    });
+  });
+  document.querySelectorAll('[data-pd-close]').forEach(function (el) { el.addEventListener('click', closeModal); });
+  if (modal) {
+    modal.addEventListener('mousedown', function (e) { if (e.target === modal) closeModal(e); });
+  }
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && modal && !modal.hidden) closeModal(e);
+  });
+
+  /* ── Section tabs follow the scroll position ── */
+  var tabs = Array.prototype.slice.call(document.querySelectorAll('.pd-tabs a'));
+  var sections = tabs.map(function (t) { return document.querySelector(t.getAttribute('href')); });
+  if (tabs.length && 'IntersectionObserver' in window) {
+    var io = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) {
+        if (!entry.isIntersecting) return;
+        tabs.forEach(function (t, i) { t.classList.toggle('is-active', sections[i] === entry.target); });
+      });
+    }, { rootMargin: '-30% 0px -60% 0px' });
+    sections.forEach(function (s) { if (s) io.observe(s); });
+  }
+})();
+</script>
 {% endblock %}

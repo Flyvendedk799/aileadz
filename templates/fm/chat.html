@@ -52,28 +52,7 @@
 
   .chatx { flex: 1; display: flex; flex-direction: column; min-width: 0; min-height: 0; background: var(--fm-bg); }
   .chatx .scroll { flex: 1; min-height: 0; }
-
-  /* Conversation history lives in the main sidebar (block sidebar_extra). */
-  .fm-side .chat-newbtn { width: 100%; display: flex; align-items: center; gap: 9px; padding: 9px 11px; margin: 2px 0 4px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface); color: var(--fm-ink); font-weight: 650; font-size: 13.5px; transition: border-color var(--t), color var(--t), background var(--t); }
-  .fm-side .chat-newbtn:hover { border-color: var(--fm-primary); color: var(--fm-primary); background: var(--fm-primary-tint); }
-  .fm-side .chat-newbtn svg { width: 16px; height: 16px; flex: 0 0 16px; }
-  .fm-side #convList { display: flex; flex-direction: column; gap: 1px; margin-top: 2px; }
-  .fm-side #convList .conv { padding: 8px 10px; }
-  .fm-side .conv-empty { padding: 8px 11px; font-size: 12.5px; color: var(--fm-ink-3); }
-  /* collapsed sidebar: keep just the + button */
-  .fm-side.collapsed .chat-newbtn { justify-content: center; padding: 9px 0; }
-  .fm-side.collapsed .chat-newbtn span,
-  .fm-side.collapsed #convList { display: none; }
 </style>
-{% endblock %}
-
-{% block sidebar_extra %}
-<div class="fm-nav-label">Samtaler</div>
-<button class="chat-newbtn" data-new>
-  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-  <span>Ny samtale</span>
-</button>
-<div class="conv-group" id="convList"></div>
 {% endblock %}
 
 {% block content %}
@@ -122,5 +101,5 @@
 
 {% block extra_scripts %}
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=13"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=14"></script>
 {% endblock %}

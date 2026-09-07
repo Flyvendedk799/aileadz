@@ -90,6 +90,7 @@ class ConversationResumeTest(unittest.TestCase):
             data = resp.get_json()
             self.assertEqual(data["status"], "ok")
             self.assertEqual(data["session_id"], "stored-sid-7")
+            self.assertEqual(data.get("mode") or "chat", "chat")
             self.assertEqual(len(data["messages"]), 2)
 
             # Promoted to active conversation with the stored session id + messages.
@@ -108,6 +109,39 @@ class ConversationResumeTest(unittest.TestCase):
              patch("app1.user_profile_db.load_conversation_by_id", return_value=None):
             resp = self._client(user="alice").post("/app1/conversations/999/resume")
             self.assertEqual(resp.status_code, 404)
+
+    def test_list_includes_mode_and_session_id(self):
+        convs = [{
+            "id": 7, "session_id": "stored-sid-7", "title": "Ledelseskurser",
+            "mode": "profiler", "updated_at": None,
+        }]
+        with patch("app1.user_profile_db.ensure_tables", lambda: None), \
+             patch("app1.user_profile_db.list_conversations", return_value=convs):
+            resp = self._client(user="alice").get("/app1/conversations")
+            self.assertEqual(resp.status_code, 200)
+            row = resp.get_json()["conversations"][0]
+            self.assertEqual(row["mode"], "profiler")
+            self.assertEqual(row["session_id"], "stored-sid-7")
+
+    def test_load_active_conversation_restores_session(self):
+        saved = {
+            "session_id": "stored-sid-7",
+            "messages": _CONV["messages"],
+        }
+        meta = {"id": 7, "title": "Ledelseskurser", "mode": "chat"}
+        with patch("app1.user_profile_db.ensure_tables", lambda: None), \
+             patch("app1.user_profile_db.load_conversation", return_value=saved), \
+             patch("app1.user_profile_db.find_conversation_by_session", return_value=meta):
+            client = self._client(user="alice")
+            resp = client.get("/app1/load_conversation")
+            self.assertEqual(resp.status_code, 200)
+            data = resp.get_json()
+            self.assertEqual(data["status"], "ok")
+            self.assertEqual(data["id"], 7)
+            self.assertEqual(data["mode"], "chat")
+            self.assertEqual(data["session_id"], "stored-sid-7")
+            with client.session_transaction() as sess:
+                self.assertEqual(sess["session_id"], "stored-sid-7")
 
     def test_resume_returns_stored_ui_artifacts(self):
         """Cards/tool chips persisted on an assistant turn survive the round-trip

@@ -1214,11 +1214,26 @@ def load_conversation_endpoint():
     if not logged_in_user:
         return jsonify({"status": "no_user", "messages": []})
     try:
-        from app1.user_profile_db import load_conversation, ensure_tables
+        from app1.user_profile_db import load_conversation, find_conversation_by_session, ensure_tables
         ensure_tables()
         saved = load_conversation(logged_in_user)
         if saved and saved.get("messages"):
-            return jsonify({"status": "ok", "messages": saved["messages"]})
+            sid = saved.get("session_id")
+            if sid:
+                session["session_id"] = sid
+            meta = None
+            try:
+                meta = find_conversation_by_session(logged_in_user, sid) if sid else None
+            except Exception:
+                meta = None
+            return jsonify({
+                "status": "ok",
+                "messages": saved["messages"],
+                "session_id": sid,
+                "id": (meta or {}).get("id"),
+                "title": (meta or {}).get("title"),
+                "mode": (meta or {}).get("mode") or "chat",
+            })
         return jsonify({"status": "empty", "messages": []})
     except Exception as e:
         print(f"[Load Conversation Error] {e}")
@@ -1240,8 +1255,9 @@ def list_conversations_endpoint():
         ensure_tables()
         convs = list_conversations(logged_in_user)
         return jsonify({"conversations": [
-            {"id": c["id"], "title": c["title"],
-             "updated_at": c["updated_at"].isoformat() if c.get("updated_at") else None}
+            {"id": c["id"], "session_id": c.get("session_id"),
+             "title": c["title"], "mode": c.get("mode") or "chat",
+             "updated_at": c["updated_at"].isoformat() if getattr(c.get("updated_at"), "isoformat", None) else (c.get("updated_at") or None)}
             for c in convs
         ]})
     except Exception as e:
@@ -1264,7 +1280,8 @@ def load_conversation_history_endpoint(conv_id):
             return jsonify({"status": "not_found"}), 404
         return jsonify({"status": "ok", "conversation": {
             "id": conv["id"], "session_id": conv["session_id"],
-            "title": conv["title"], "messages": conv["messages"]
+            "title": conv["title"], "mode": conv.get("mode") or "chat",
+            "messages": conv["messages"]
         }})
     except Exception as e:
         import traceback
@@ -1341,6 +1358,7 @@ def resume_conversation_endpoint(conv_id):
         seed_artifacts_from_messages(target_sid, messages)
 
         return jsonify({"status": "ok", "session_id": target_sid,
+                        "id": conv.get("id"), "mode": conv.get("mode") or "chat",
                         "title": conv.get("title"), "messages": messages})
     except Exception as e:
         import traceback

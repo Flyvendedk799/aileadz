@@ -1,0 +1,24 @@
+{# Shared conversation panel for /chat, /ai-profiler and /mind-map.
+   Mounted inside .fm-ai-cluster in fm_base.html. ai-sidebar.js fills #aiConvList. #}
+<div class="ai-conv-panel" id="aiConvPanel" data-ai-page="{{ page }}">
+  <div class="ai-conv-head">
+    <span class="ai-conv-label">Samtaler</span>
+    <button type="button" class="ai-conv-new" data-ai-new
+            data-ai-new-href="{{ url_for('futurematch.chat') }}?new=1"
+            title="Ny samtale" aria-label="Ny samtale">
+      <i class="fa-solid fa-plus"></i><span>Ny</span>
+    </button>
+  </div>
+  <label class="ai-conv-search">
+    <i class="fa-solid fa-magnifying-glass"></i>
+    <input id="aiConvSearch" type="search" placeholder="Søg samtaler…" autocomplete="off" />
+  </label>
+  <div class="ai-conv-filters" role="tablist" aria-label="Filtrer samtaler">
+    <button type="button" class="ai-conv-filter is-on" data-ai-filter="all" role="tab" aria-selected="true">Alle</button>
+    <button type="button" class="ai-conv-filter" data-ai-filter="chat" role="tab" aria-selected="false">Rådgiver</button>
+    <button type="button" class="ai-conv-filter" data-ai-filter="profiler" role="tab" aria-selected="false">Profiler</button>
+  </div>
+  <div class="ai-conv-list" id="aiConvList" role="list">
+    <div class="ai-conv-empty">Indlæser…</div>
+  </div>
+</div>

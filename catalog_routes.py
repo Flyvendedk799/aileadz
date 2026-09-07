@@ -1,3 +1,4 @@
+import datetime
 from urllib.parse import urlencode
 
 from flask import Blueprint, current_app, flash, redirect, render_template, request, session, url_for
@@ -283,6 +284,112 @@ def _user_reviewable_orders(handle):
         return []
 
 
+def _completed_count(handle):
+    """How many people have completed this course, platform-wide. Social proof
+    only — aggregate, never buyer-attributable. Fully guarded: a missing
+    course_orders table yields 0 and the template hides the line."""
+    if not handle:
+        return 0
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT COUNT(*) AS c FROM course_orders
+               WHERE product_handle = %s
+                 AND (status = 'completed' OR completion_status = 'completed')""",
+            (handle,),
+        )
+        row = cur.fetchone() or {}
+        cur.close()
+        return int(row.get("c") or 0)
+    except Exception as exc:
+        try:
+            current_app.logger.debug("Completed-count skipped for %s: %s", handle, exc)
+        except Exception:
+            pass
+        return 0
+
+
+def _company_profile():
+    """The logged-in user's own company_users row (department + contact details).
+
+    Used to prefill the enrolment request with the details HR already has on
+    file, and to resolve which department budget applies. Empty dict for
+    anonymous / non-company users.
+    """
+    company_id = session.get("company_id")
+    user_id = session.get("user_id")
+    username = session.get("user")
+    if not company_id or not (user_id or username):
+        return {}
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT full_name, email, phone, department
+               FROM company_users
+               WHERE company_id = %s
+                 AND ( (%s IS NOT NULL AND user_id = %s)
+                       OR (%s <> '' AND username = %s) )
+               LIMIT 1""",
+            (company_id, user_id, user_id, username or "", username or ""),
+        )
+        row = cur.fetchone() or {}
+        cur.close()
+    except Exception as exc:
+        try:
+            current_app.logger.debug("Company profile lookup skipped: %s", exc)
+        except Exception:
+            pass
+        return {}
+    return {
+        "full_name": (row.get("full_name") or "").strip(),
+        "email": (row.get("email") or "").strip(),
+        "phone": (row.get("phone") or "").strip(),
+        "department": (row.get("department") or "").strip(),
+    }
+
+
+def _department_budget(department):
+    """Remaining training budget for `department` in the current fiscal year, so
+    the buyer sees affordability before requesting.
+
+    None for anonymous users, users without a department, or departments with no
+    budget row — the template then omits the budget card entirely.
+    """
+    company_id = session.get("company_id")
+    department = (department or "").strip()
+    if not company_id or not department:
+        return None
+    fiscal_year = datetime.date.today().year
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT annual_budget, spent FROM department_budgets
+               WHERE company_id = %s AND department = %s AND fiscal_year = %s""",
+            (company_id, department, fiscal_year),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return None
+        annual = float(row.get("annual_budget") or 0)
+        spent = float(row.get("spent") or 0)
+    except Exception as exc:
+        try:
+            current_app.logger.debug("Department budget lookup skipped: %s", exc)
+        except Exception:
+            pass
+        return None
+    remaining = annual - spent
+    return {
+        "department": department,
+        "fiscal_year": fiscal_year,
+        "remaining": remaining,
+        "remaining_label": catalog.format_price(max(remaining, 0)),
+        "annual_label": catalog.format_price(annual),
+        "utilization": int(round(spent / annual * 100)) if annual > 0 else None,
+    }
+
+
 @catalog_bp.route("/products/<handle>")
 def product_detail(handle):
     product = catalog.get_product(handle)
@@ -302,6 +409,11 @@ def product_detail(handle):
     # Only show the write-a-review form when the user actually owns a completed,
     # not-yet-reviewed order for this course (strict ownership gate).
     reviewable_orders = _user_reviewable_orders(handle)
+    try:
+        vendor = catalog.get_vendor(product.get("vendor_slug"))
+    except Exception:
+        vendor = None
+    profile = _company_profile()
     return render_template(
         "fm/product_detail.html",
         product=product,
@@ -309,6 +421,10 @@ def product_detail(handle):
         supplier_state=supplier_state,
         review_summary=review_summary,
         can_review=bool(reviewable_orders),
+        vendor=vendor,
+        completed_count=_completed_count(handle),
+        buyer_profile=profile,
+        department_budget=_department_budget(profile.get("department")),
     )
 
 
@@ -399,6 +515,10 @@ def request_product(handle):
         variant_index = 0
     variants = product.get("variants") or []
     variant = variants[variant_index] if 0 <= variant_index < len(variants) else {}
+    # The UI disables sold-out dates; re-check server side (never trust the post).
+    if variant.get("seats") is not None and int(variant.get("seats")) <= 0:
+        flash("Det valgte hold er udsolgt. Vaelg en anden dato.", "warning")
+        return redirect(url_for("catalog.product_detail", handle=handle))
     price = variant.get("price") if variant.get("price") is not None else product.get("price_min") or 0
 
     # Apply the negotiated supplier discount AT CAPTURE so the order is charged

@@ -267,6 +267,29 @@ def normalize_variant(variant, fallback_price=None):
     location = (variant.get("option1") or variant.get("location") or "").strip()
     date = (variant.get("option2") or variant.get("date") or "").strip()
     title = (variant.get("title") or "").strip()
+    # Seat availability. inventory_quantity only means anything when the vendor
+    # actually tracks stock (inventory_management set) — most of the catalog ships
+    # untracked rows with a hardcoded 0, which must NOT read as sold out. Unknown
+    # stays None so the UI omits the pill rather than inventing availability.
+    seats = None
+    if isinstance(variant, dict):
+        tracked = bool(str(variant.get("inventory_management") or "").strip())
+        if tracked:
+            try:
+                seats = int(variant.get("inventory_quantity"))
+            except (TypeError, ValueError):
+                seats = None
+            # "continue" lets the vendor oversell, so a zero count is not a stop sign.
+            if seats is not None and seats <= 0 and str(variant.get("inventory_policy") or "").lower() == "continue":
+                seats = None
+        elif variant.get("available") is False:
+            seats = 0
+        elif variant.get("seats") is not None:
+            # Rows from non-Shopify importers may carry a plain seat count.
+            try:
+                seats = int(variant.get("seats"))
+            except (TypeError, ValueError):
+                seats = None
     return {
         "id": variant.get("id") if isinstance(variant, dict) else None,
         "title": title,
@@ -275,6 +298,7 @@ def normalize_variant(variant, fallback_price=None):
         "location": location,
         "city": extract_city_name(location),
         "date": date,
+        "seats": seats,
     }
 
 

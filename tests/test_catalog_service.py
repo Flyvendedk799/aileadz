@@ -43,6 +43,48 @@ class CatalogServiceTest(unittest.TestCase):
         self.assertIn("Ledelse", product["categories"])
         self.assertEqual(product["price_label"], "1.200 kr")
 
+    def test_variant_seats_only_count_when_inventory_is_tracked(self):
+        """The live catalog ships untracked Shopify rows with inventory_quantity 0.
+        Reading those as sold out would disable booking for the whole catalog, so a
+        seat count is only trusted when inventory_management is set."""
+        untracked = catalog.normalize_variant(
+            {"price": "100", "inventory_management": None, "inventory_quantity": 0})
+        self.assertIsNone(untracked["seats"])
+
+        tracked = catalog.normalize_variant(
+            {"price": "100", "inventory_management": "shopify", "inventory_quantity": 3})
+        self.assertEqual(tracked["seats"], 3)
+
+        sold_out = catalog.normalize_variant(
+            {"price": "100", "inventory_management": "shopify",
+             "inventory_quantity": 0, "inventory_policy": "deny"})
+        self.assertEqual(sold_out["seats"], 0)
+
+        # "continue" means the vendor allows overselling -> not a stop sign.
+        oversell = catalog.normalize_variant(
+            {"price": "100", "inventory_management": "shopify",
+             "inventory_quantity": 0, "inventory_policy": "continue"})
+        self.assertIsNone(oversell["seats"])
+
+        self.assertEqual(catalog.normalize_variant({"price": "100", "available": False})["seats"], 0)
+        self.assertEqual(catalog.normalize_variant({"price": "100", "seats": 7})["seats"], 7)
+
+    def test_live_catalog_has_no_falsely_sold_out_variants(self):
+        sold_out = [v for product in catalog.get_products() for v in product["variants"]
+                    if v["seats"] is not None and v["seats"] <= 0]
+        self.assertEqual(sold_out, [])
+
+    def test_discount_decoration_preserves_seats(self):
+        product = catalog.normalize_product({
+            "title": "Test", "vendor": "V", "handle": "test",
+            "variants": [{"price": "1000", "inventory_management": "shopify",
+                          "inventory_quantity": 4, "option1": "Aarhus", "option2": "1. maj"}],
+        }, overrides={})
+        decorated = catalog.decorate_product_with_discount(
+            product, {"discount_type": "percentage", "discount_value": 10})
+        self.assertEqual(decorated["variants"][0]["seats"], 4)
+        self.assertEqual(decorated["variants"][0]["discounted_price_label"], "900 kr")
+
 
 if __name__ == "__main__":
     unittest.main()

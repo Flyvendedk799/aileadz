@@ -500,7 +500,8 @@ class AIRuntimeTests(unittest.TestCase):
             )
 
         self.assertEqual(result.text, "done")
-        self.assertEqual([event["phase"] for event in events], ["start", "finish"])
+        self.assertEqual([event["phase"] for event in events], ["start", "progress", "finish"])
+        self.assertEqual(events[1]["percent"], 20)
         self.assertEqual(events[0]["status"], "running")
         self.assertEqual(events[1]["label"], "Hent kursus")
         self.assertEqual(events[1]["results_count"], 1)

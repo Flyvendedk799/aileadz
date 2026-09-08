@@ -123,5 +123,37 @@ class ExtractImageRoutingTests(unittest.TestCase):
         self.assertTrue(hint)
 
 
+class CompletedCoursesPath(unittest.TestCase):
+    """A CV's kursus/AMU section must have a bucket of its own.
+
+    Before this, the extraction schema had no `courses` key, so every completed
+    course a CV listed could only land in skills — and "Salgsledelse" is a
+    course you took, not a competency you hold. The contract spans three files,
+    so check that they still agree on it.
+    """
+
+    def test_parser_emits_a_courses_bucket(self):
+        out = cv_ingest._normalise_profile(
+            {"courses": [{"title": "Salgsledelse", "vendor": "AMU", "completed_date": "2024"}]})
+        self.assertEqual(out["courses"],
+                         [{"title": "Salgsledelse", "vendor": "AMU", "completed_date": "2024"}])
+        self.assertEqual(out["skills"], [])
+
+    def test_extraction_prompt_asks_for_courses_and_separates_them_from_skills(self):
+        prompt = cv_ingest._EXTRACTION_SYSTEM_PROMPT
+        self.assertIn('"courses"', prompt)
+        self.assertIn("ALDRIG i skills", prompt)
+
+    def test_apply_endpoint_handles_the_course_kind_the_portal_sends(self):
+        source = open("api.py", encoding="utf-8").read()
+        self.assertIn("kind in ('courses', 'course')", source)
+        self.assertIn("add_completed_course(username, course_title=title", source)
+
+    def test_portal_sends_that_kind(self):
+        portal = open("templates/fm/cv_upload.html", encoding="utf-8").read()
+        self.assertIn("kind:'courses'", portal)          # 3D review objects
+        self.assertIn("name=\"accept_course\"", portal)  # no-JS fallback form
+
+
 if __name__ == "__main__":
     unittest.main()

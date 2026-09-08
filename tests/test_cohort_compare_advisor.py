@@ -99,11 +99,25 @@ class CompareCohortsExecutorTests(unittest.TestCase):
                       company_id=None)
         self.assertIn("error", out)
 
-    def test_missing_selectors_errors(self):
-        out, cursor = _run({"cohort_a": "Salg", "cohort_b": "Marketing"})
-        self.assertIn("error", out)
-        # Never even ran the aggregate when selectors are malformed.
-        self.assertEqual(cursor.executed, [])
+    def test_unusable_selectors_error(self):
+        # No cohort at all, and a value nothing can be read out of.
+        for args in ({}, {"cohort_a": 7, "cohort_b": 9}):
+            out, cursor = _run(args)
+            self.assertIn("error", out, args)
+            # Never even ran the aggregate when selectors are unusable.
+            self.assertEqual(cursor.executed, [], args)
+
+    def test_bare_strings_are_read_as_selectors(self):
+        # "Salg vs Marketing" is the shape the question comes in; a model that
+        # sends the cohort as a plain string named the right two cohorts, so
+        # read it as a department (or a role) instead of refusing the turn.
+        out, cursor = _run({"cohort_a": "Salg", "cohort_b": "ledere"},
+                           fetch_results=[_BIG_A, _BIG_B])
+        self.assertNotIn("error", out)
+        self.assertEqual(len(cursor.executed), 2)
+        params_a, params_b = cursor.executed[0][1], cursor.executed[1][1]
+        self.assertIn("Salg", params_a)       # department filter
+        self.assertIn("manager", params_b)    # "ledere" is a role, not a department
 
     def test_two_k_safe_cohorts_compare_with_delta(self):
         out, _ = _run(

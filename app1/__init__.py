@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect
 from markupsafe import escape
 import db_compat  # noqa: F401
 import json
@@ -45,15 +45,8 @@ def _dkprice_filter(value):
 @app1_bp.route('')
 @app1_bp.route('/')
 def index():
-    from branding_service import get_template_context
-    branding_ctx = get_template_context(session.get('company_id')) if session.get('company_id') else {}
-    return render_template(
-        'index.html',
-        logged_in_user=session.get('user'),
-        demo_mode=False,
-        demo_messages=[],
-        **branding_ctx,
-    )
+    """Canonicalise the learner chat entry point on the Futurematch shell."""
+    return redirect(url_for('futurematch.chat'))
 
 SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
@@ -1507,6 +1500,107 @@ def confirm_profile_update():
                 return jsonify({"status": "error", "message": "URL mangler"}), 400
             add_portfolio_link(logged_in_user, payload.get("label", ""), url, kind=payload.get("kind"))
             return _success("Link tilføjet")
+
+        elif action == "remove_skill":
+            from app1.user_profile_db import remove_skill
+            name = (payload.get("skill_name") or "").strip()
+            if not name:
+                return jsonify({"status": "error", "message": "Kompetence mangler"}), 400
+            return _success("Kompetence fjernet") if remove_skill(logged_in_user, name) else (
+                jsonify({"status": "not_found", "message": "Kompetencen blev ikke fundet"}), 404
+            )
+
+        elif action == "update_skill_level":
+            from app1.user_profile_db import update_skill_level, is_valid_skill_level
+            name = (payload.get("skill_name") or "").strip()
+            level = (payload.get("skill_level") or "").strip()
+            if not name or not is_valid_skill_level(level):
+                return jsonify({"status": "error", "message": "Kompetence og gyldigt niveau kræves"}), 400
+            return _success("Kompetenceniveau opdateret") if update_skill_level(logged_in_user, name, level) else (
+                jsonify({"status": "not_found", "message": "Kompetencen blev ikke fundet"}), 404
+            )
+
+        elif action == "remove_experience":
+            from app1.user_profile_db import remove_experience
+            exp_id = payload.get("id")
+            if not exp_id:
+                return jsonify({"status": "error", "message": "id mangler"}), 400
+            return _success("Erfaring fjernet") if remove_experience(logged_in_user, exp_id) else (
+                jsonify({"status": "not_found", "message": "Erfaringen blev ikke fundet"}), 404
+            )
+
+        elif action == "remove_education":
+            from app1.user_profile_db import remove_education
+            edu_id = payload.get("id")
+            if not edu_id:
+                return jsonify({"status": "error", "message": "id mangler"}), 400
+            return _success("Uddannelse fjernet") if remove_education(logged_in_user, edu_id) else (
+                jsonify({"status": "not_found", "message": "Uddannelsen blev ikke fundet"}), 404
+            )
+
+        elif action == "remove_course":
+            from app1.user_profile_db import remove_completed_course
+            title = (payload.get("course_title") or "").strip()
+            if not title:
+                return jsonify({"status": "error", "message": "Kursusnavn mangler"}), 400
+            return _success("Kursus fjernet") if remove_completed_course(logged_in_user, title) else (
+                jsonify({"status": "not_found", "message": "Kurset blev ikke fundet"}), 404
+            )
+
+        elif action == "remove_certification":
+            from app1.user_profile_db import get_certifications, remove_certification
+            cert_id = payload.get("id")
+            if not cert_id and payload.get("name"):
+                wanted = str(payload["name"]).casefold()
+                cert_id = next((c["id"] for c in get_certifications(logged_in_user)
+                                if str(c.get("name") or "").casefold() == wanted), None)
+            if not cert_id:
+                return jsonify({"status": "error", "message": "Certificering mangler"}), 400
+            return _success("Certificering fjernet") if remove_certification(logged_in_user, cert_id) else (
+                jsonify({"status": "not_found", "message": "Certificeringen blev ikke fundet"}), 404
+            )
+
+        elif action == "update_certification":
+            from app1.user_profile_db import update_certification
+            cert_id = payload.get("id")
+            fields = {k: v for k, v in payload.items() if k != "id" and v is not None}
+            if not cert_id or not fields:
+                return jsonify({"status": "error", "message": "id og ændringer kræves"}), 400
+            return _success("Certificering opdateret") if update_certification(logged_in_user, cert_id, **fields) else (
+                jsonify({"status": "not_found", "message": "Certificeringen blev ikke fundet"}), 404
+            )
+
+        elif action == "remove_language":
+            from app1.user_profile_db import remove_language
+            language = (payload.get("language") or "").strip()
+            if not language:
+                return jsonify({"status": "error", "message": "Sprog mangler"}), 400
+            return _success("Sprog fjernet") if remove_language(logged_in_user, language) else (
+                jsonify({"status": "not_found", "message": "Sproget blev ikke fundet"}), 404
+            )
+
+        elif action == "update_language_level":
+            from app1.user_profile_db import update_language_level
+            language = (payload.get("language") or "").strip()
+            level = (payload.get("proficiency") or "").strip()
+            if not language or not level:
+                return jsonify({"status": "error", "message": "Sprog og niveau kræves"}), 400
+            return _success("Sprogniveau opdateret") if update_language_level(logged_in_user, language, level) else (
+                jsonify({"status": "not_found", "message": "Sproget blev ikke fundet"}), 404
+            )
+
+        elif action == "remove_link":
+            from app1.user_profile_db import get_portfolio_links, remove_portfolio_link
+            link_id = payload.get("id")
+            if not link_id and payload.get("url"):
+                wanted = str(payload["url"]).rstrip("/")
+                link_id = next((p["id"] for p in get_portfolio_links(logged_in_user)
+                                if str(p.get("url") or "").rstrip("/") == wanted), None)
+            if not link_id:
+                return jsonify({"status": "error", "message": "Link mangler"}), 400
+            return _success("Link fjernet") if remove_portfolio_link(logged_in_user, link_id) else (
+                jsonify({"status": "not_found", "message": "Linket blev ikke fundet"}), 404
+            )
 
         elif action == "update_experience":
             from app1.user_profile_db import update_experience

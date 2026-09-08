@@ -2764,6 +2764,14 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         _raw = resolve_products_for_ui(compact_results=_rec["results"])
                         if _raw:
                             _track_shown_products(sid, _rec["results"])
+                            try:
+                                _get_store().log_event(
+                                    sid, "profiler_handoff",
+                                    results_count=len(_raw),
+                                    extra={"target_role": bool(_profiler_completeness.get("target_role"))},
+                                )
+                            except Exception:
+                                pass
                             _ho_role = (_profiler_completeness.get("target_role") or "").strip()
                             _ho_notice = (
                                 f"Med {_ho_role} som mål er det her kurserne der peger den vej."
@@ -2775,6 +2783,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_catalog', 'target': '/catalog', 'label': 'Find flere kurser til din profil'})}\n\n"
                 except Exception as _ho_err:
                     print(f"[Profiler Handoff] {_ho_err}")
+                    yield f"data: {json.dumps({'type': 'notice', 'content': 'Din profil er gemt, men anbefalingerne kunne ikke hentes lige nu. Du kan prøve igen i Kursusrådgiveren.'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_advisor', 'target': '/chat?intent=Anbefal%20kurser%20ud%20fra%20min%20profil', 'label': 'Prøv i Kursusrådgiver', 'new_tab': False}, ensure_ascii=False)}\n\n"
 
             # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)

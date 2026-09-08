@@ -1,5 +1,14 @@
 # Interactive CV — Full Implementation Plan
 
+## Current completion status (2026-09)
+
+The progressive 3D portal and server fallback are both live. Parsing uses a
+user-bound, cross-worker job key with real lifecycle stages; failures never
+substitute sample CV data. Review is DOM-accessible with 3D enhancement,
+merge/replace/keep conflict handling, full experience fields, and an honest
+post-save result. The section-level AI CV coach is available through
+`POST /api/cv/improve` and suggestions are never applied without user approval.
+
 ## What exists today
 - `templates/fm/cv_upload.html` — 2-step server-rendered flow: upload → review checkboxes → apply
 - `futurematch_ui.py` routes: `cv_upload` (GET), `cv_upload_parse` (POST → HTML), `cv_upload_apply` (POST → redirect)

@@ -14,6 +14,15 @@
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
   const isProfiler = window.CHAT_MODE === "profiler";
   let activeConvId = null;
+  function trackLearner(event, meta) {
+    try {
+      fetch("/api/learner/events", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: event, meta: meta || {} }),
+      }).catch(() => {});
+    } catch (_) {}
+  }
 
   /* ---------------- HTML sanitizer ----------------
      Agent/assistant content (markdown-rendered chunks, profile_update messages,
@@ -328,7 +337,10 @@
     }));
     // "Side" opens the real catalog product page when we have a handle.
     const det = card.querySelector(".det");
-    if (det && c.handle) det.addEventListener("click", (e) => { e.stopPropagation(); window.open("/products/" + encodeURIComponent(c.handle), "_blank"); });
+    if (det && c.handle) det.addEventListener("click", (e) => {
+      e.stopPropagation(); trackLearner("recommendation_click", { source: "course_card" });
+      window.open("/products/" + encodeURIComponent(c.handle), "_blank");
+    });
     return card;
   }
   function addCourses(body, list) {
@@ -995,7 +1007,7 @@
     open_profile: "fa-user-pen", open_mind_map: "fa-brain",
     open_cv_upload: "fa-file-arrow-up",
     open_learning_path: "fa-route", open_catalog: "fa-magnifying-glass",
-    start_order: "fa-cart-plus", open_profiler: "fa-user-check",
+    start_order: "fa-cart-plus", open_profiler: "fa-user-check", open_advisor: "fa-comments",
   };
   function renderActionCard(body, data) {
     const target = data.target || "";
@@ -1017,6 +1029,8 @@
       if (action === "start_order" && data.handle && !isLoggedIn()) {
         toast("Log ind for at tilmelde dig", "courses"); return;
       }
+      if (action === "start_order") trackLearner("order_start", { source: "ai_action" });
+      if (action === "open_learning_path") trackLearner("learning_path_open", { source: "ai_action" });
       if (newTab) window.open(target, "_blank");
       else window.location.href = target;
     });
@@ -1058,7 +1072,10 @@
       <div class="compare-grid">${cols}</div>
       ${analysis.verdict ? `<div class="compare-verdict"><i class="fa-solid fa-lightbulb"></i><span>${esc(analysis.verdict)}</span></div>` : ""}`;
     card.querySelectorAll(".cc-open").forEach((b) =>
-      b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(b.getAttribute("data-h")), "_blank")));
+      b.addEventListener("click", () => {
+        trackLearner("recommendation_click", { source: "comparison" });
+        window.open("/products/" + encodeURIComponent(b.getAttribute("data-h")), "_blank");
+      }));
     body.appendChild(card); down();
   }
 
@@ -1089,7 +1106,10 @@
       <div class="lpath-steps">${stepsHtml}</div>`;
     card.querySelectorAll(".lp-course").forEach((b) => {
       const h = b.getAttribute("data-h");
-      if (h) b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(h), "_blank"));
+      if (h) b.addEventListener("click", () => {
+        trackLearner("recommendation_click", { source: "learning_path" });
+        window.open("/products/" + encodeURIComponent(h), "_blank");
+      });
     });
     body.appendChild(card); down();
   }
@@ -1137,7 +1157,7 @@
     const catsHtml = Object.entries(cats).filter(([, n]) => n > 0).map(([k, n]) =>
       `<div class="mmp-cat"><span>${esc(CLABELS[k] || k)}</span><b>${n}</b></div>`).join("");
     const memHtml = memories.length ? memories.map((m) =>
-      `<div class="mmp-mem"><i class="fa-solid ${icon("fa-brain")}"></i>${esc(m.label)}</div>`).join("") : "";
+      `<button type="button" class="mmp-mem" data-node="${esc(m.node_id || "")}"><i class="fa-solid ${icon("fa-brain")}"></i>${esc(m.label)}</button>`).join("") : "";
     const pctNum = typeof pct === "number" ? pct : 0;
     card.innerHTML = `
       <div class="mmp-head"><i class="fa-solid ${icon("fa-brain")}"></i><span>AI Mind-Map</span><span class="mmp-pct">${esc(String(pct))}%</span></div>
@@ -1148,6 +1168,10 @@
         <button class="csv-btn primary" data-url="/mind-map"><i class="fa-solid ${icon("fa-brain")}"></i> Åbn 3D Mind-Map</button>
       </div>`;
     card.querySelector("[data-url]").addEventListener("click", () => window.open("/mind-map", "_blank"));
+    card.querySelectorAll("[data-node]").forEach((b) => b.addEventListener("click", () => {
+      const node = b.getAttribute("data-node");
+      window.open("/mind-map" + (node ? "#n=" + encodeURIComponent(node) : ""), "_blank");
+    }));
     body.appendChild(card); down();
   }
 
@@ -1174,7 +1198,7 @@
       const tgt = Math.max(0, Math.min(5, g.target_level || 0));
       const curPct = (cur / 5) * 100, tgtPct = (tgt / 5) * 100;
       return `
-        <div class="sgc-row">
+        <button type="button" class="sgc-row" data-node="${esc(g.node_id || "kompetencer")}">
           <div class="sgc-row-top">
             <span class="sgc-skill">${esc(g.skill)}</span>
             ${g.category ? `<span class="sgc-cat">${esc(g.category)}</span>` : ""}
@@ -1185,7 +1209,7 @@
             <div class="sgc-current" style="width:${curPct}%"></div>
           </div>
           <div class="sgc-levels"><span>${esc(g.current_label || "")}</span><span>mål: ${esc(g.target_label || "")}</span></div>
-        </div>`;
+        </button>`;
     }).join("");
     const role = data.target_role ? `<span class="sgc-role">mod ${esc(data.target_role)}</span>` : "";
     card.innerHTML = `
@@ -1196,6 +1220,8 @@
       </div>`;
     card.querySelectorAll("[data-ask]").forEach((b) =>
       b.addEventListener("click", () => { try { if (typeof ask === "function") ask(b.getAttribute("data-ask")); } catch (e) {} }));
+    card.querySelectorAll("[data-node]").forEach((b) =>
+      b.addEventListener("click", () => window.open("/mind-map#n=" + encodeURIComponent(b.getAttribute("data-node")), "_blank")));
     body.appendChild(card); down();
   }
 
@@ -1841,6 +1867,19 @@
     try { params = new URLSearchParams(location.search); } catch (e) { params = new URLSearchParams(); }
     if (params.get("new") === "1") {
       return newChat().then(() => false);
+    }
+    const intent = (params.get("intent") || "").trim();
+    if (intent) {
+      try {
+        params.delete("intent");
+        history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : ""));
+      } catch (e) { /* non-critical */ }
+      return restoreActiveConversation().then(() => {
+        input.value = intent;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        setTimeout(() => { if (!sending) send.click(); }, 80);
+        return true;
+      });
     }
     const cid = params.get("c");
     if (cid) return openConversation(cid);

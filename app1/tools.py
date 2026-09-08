@@ -1245,7 +1245,7 @@ OPENAI_TOOLS.append({
                     "type": "string",
                     "enum": ["view_product", "open_compare", "open_profile", "open_mind_map",
                              "open_cv_upload", "open_learning_path", "open_catalog", "start_order", "open_profiler",
-                             "open_my_learning", "open_goals", "open_timeline"],
+                             "open_advisor", "open_my_learning", "open_goals", "open_timeline"],
                     "description": "Hvilken handling/navigation der skal udføres i UI'et."
                 },
                 "handle": {"type": "string", "description": "Kursets handle (view_product / start_order)."},
@@ -1253,7 +1253,9 @@ OPENAI_TOOLS.append({
                             "description": "2-4 handles til open_compare."},
                 "section": {"type": "string",
                             "description": "Profilsektion til open_profile (fx 'skills','experience','goals','certifications','languages')."},
+                "node": {"type": "string", "description": "Stabilt node-id til open_mind_map, fx 'skill:42' eller 'mem:7'."},
                 "query": {"type": "string", "description": "Søge-/kategoritekst til open_catalog."},
+                "intent": {"type": "string", "description": "Spørgsmål/intention til open_advisor."},
                 "label": {"type": "string", "description": "Kort dansk knaptekst, fx 'Åbn kurset' eller 'Sammenlign'."}
             },
             "required": ["action"]
@@ -3079,6 +3081,35 @@ def _execute_update_user_profile(args, username):
     try:
         from app1 import user_profile_db as db
         db.ensure_tables()
+
+        # Every correction/destructive profile write is proposed first. This
+        # keeps chat/profiler behavior aligned with add-actions and gives the
+        # user one explicit review point before data is replaced or removed.
+        if action.startswith("remove_") or action.startswith("update_"):
+            section_by_action = {
+                "remove_skill": "skills", "update_skill_level": "skills",
+                "remove_experience": "experience", "update_experience": "experience",
+                "remove_education": "education", "update_education": "education",
+                "remove_course": "courses", "update_course": "courses",
+                "remove_certification": "certifications", "update_certification": "certifications",
+                "remove_language": "languages", "update_language_level": "languages",
+                "remove_link": "links", "update_summary": "summary",
+            }
+            section = section_by_action.get(action)
+            if not section:
+                return json.dumps({"status": "error", "message": f"Ukendt profilhandling: {action}"})
+            verb = "Fjern" if action.startswith("remove_") else "Opdatér"
+            label = (
+                data.get("skill_name") or data.get("title") or data.get("degree")
+                or data.get("course_title") or data.get("name") or data.get("language")
+                or data.get("label") or section
+            )
+            return json.dumps({
+                "status": "proposed",
+                "section": section,
+                "message": f'{verb} {label}?',
+                "confirm": {"action": action, "data": data},
+            }, ensure_ascii=False)
 
         # ── Add-actions: validate + return proposed (not executed yet) ──
 
@@ -5489,7 +5520,10 @@ def _execute_open_in_app(args, username=None):
         out["label"] = label or "Åbn profil"
 
     elif action == "open_mind_map":
-        out["target"] = "/mind-map"
+        from urllib.parse import quote
+        node = (args.get("node") or "").strip()
+        out["node"] = node
+        out["target"] = "/mind-map" + (f"#n={quote(node, safe='')}" if node else "")
         out["label"] = label or "Åbn 3D Mind-Map"
 
     elif action == "open_cv_upload":
@@ -5503,6 +5537,14 @@ def _execute_open_in_app(args, username=None):
     elif action == "open_profiler":
         out["target"] = "/ai-profiler"
         out["label"] = label or "Gør profilen færdig"
+
+    elif action == "open_advisor":
+        from urllib.parse import quote
+        intent = (args.get("intent") or args.get("query") or "").strip()
+        out["intent"] = intent
+        out["target"] = "/chat" + (f"?intent={quote(intent)}" if intent else "")
+        out["label"] = label or "Fortsæt i Kursusrådgiver"
+        out["new_tab"] = False
 
     elif action == "open_catalog":
         q = (args.get("query") or "").strip()
@@ -5588,7 +5630,12 @@ def _execute_show_mindmap_preview(args, username):
         }
         recent = []
         for m in sorted(memories, key=lambda x: x.get("created_at") or "", reverse=True)[:3]:
-            recent.append({"label": m.get("label", ""), "category": m.get("category", "andet")})
+            recent.append({
+                "id": m.get("id"),
+                "node_id": f"mem:{m.get('id')}" if m.get("id") else "",
+                "label": m.get("label", ""),
+                "category": m.get("category", "andet"),
+            })
         leaf_count = sum(categories.values())
         return json.dumps({
             "status": "mindmap_preview",
@@ -5615,6 +5662,17 @@ def _execute_show_skill_gaps(args, username):
         ensure_tables()
         profile = get_full_profile(username)
         gaps = compute_skill_gaps(username, profile=profile)
+        from competency import canonical_skill
+        skill_nodes = {
+            canonical_skill(s.get("name")).casefold(): (
+                f"skill:{s.get('id')}" if s.get("id") else "kompetencer"
+            )
+            for s in (profile.get("skills") or []) if s.get("name")
+        }
+        for gap in gaps:
+            gap["node_id"] = skill_nodes.get(
+                canonical_skill(gap.get("skill")).casefold(), "kompetencer"
+            )
         target_role = (profile.get("target_role") or "").strip()
         # Honest empty-states: distinguish "no target set" from "no gaps".
         if not gaps:

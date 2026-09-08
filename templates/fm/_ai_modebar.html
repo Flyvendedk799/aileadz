@@ -1,0 +1,11 @@
+<nav class="ai-modebar" aria-label="AI arbejdsområde">
+  <a class="{% if request.endpoint == 'futurematch.chat' %}active{% endif %}" href="{{ url_for('futurematch.chat') }}">
+    <i class="fa-solid fa-comments"></i> Kursusrådgiver
+  </a>
+  <a class="{% if request.endpoint == 'futurematch.ai_profiler' %}active{% endif %}" href="{{ url_for('futurematch.ai_profiler') }}">
+    <i class="fa-solid fa-user-check"></i> AI Profiler
+  </a>
+  <a class="{% if request.endpoint == 'futurematch.mind_map' %}active{% endif %}" href="{{ url_for('futurematch.mind_map') }}">
+    <i class="fa-solid fa-brain"></i> Mind-Map
+  </a>
+</nav>

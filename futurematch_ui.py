@@ -486,8 +486,16 @@ def _cv_proposal_to_form_lists(proposal):
         company = (e.get('company') or '').strip()
         if not (title or company):
             continue
-        experience.append({'idx': i, 'title': title, 'company': company,
-                           'years': (e.get('years') or '').strip()})
+        experience.append({
+            'idx': i,
+            'title': title,
+            'company': company,
+            'years': (e.get('years') or '').strip(),
+            'start_year': e.get('start_year'),
+            'end_year': e.get('end_year'),
+            'is_current': bool(e.get('is_current')),
+            'description': (e.get('description') or '').strip(),
+        })
     for i, ed in enumerate((proposal.get('education') or [])[:_CV_MAX_ITEMS]):
         degree = (ed.get('degree') or '').strip()
         institution = (ed.get('institution') or '').strip()
@@ -626,16 +634,23 @@ def cv_upload_apply():
         return redirect(url_for('auth.login'))
 
     username = session['user']
-    added_skills = added_exp = added_edu = added_cert = added_lang = 0
+    added_summary = added_skills = added_exp = added_edu = added_cert = added_lang = 0
 
     try:
         from app1.user_profile_db import (add_skill, add_experience,
                                           add_education, add_certification,
-                                          add_language, ensure_tables)
+                                          add_language, update_profile_summary,
+                                          ensure_tables)
         try:
             ensure_tables()
         except Exception as e:
             current_app.logger.warning("cv apply ensure_tables: %s", e)
+
+        if request.form.get('accept_summary'):
+            summary = (request.form.get('summary') or '').strip()
+            if summary:
+                update_profile_summary(username, bio=summary)
+                added_summary = 1
 
         # Skills — accepted rows arrive as accept_skill = "<idx>" (one per box).
         for idx in request.form.getlist('accept_skill'):
@@ -655,11 +670,16 @@ def cv_upload_apply():
             title = (request.form.get(f'exp_title_{idx}') or '').strip()
             company = (request.form.get(f'exp_company_{idx}') or '').strip()
             years = request.form.get(f'exp_years_{idx}') or ''
+            start_year = request.form.get(f'exp_start_{idx}') or _parse_years_to_int(years)
+            end_year = request.form.get(f'exp_end_{idx}') or None
+            is_current = bool(request.form.get(f'exp_current_{idx}'))
+            description = (request.form.get(f'exp_description_{idx}') or '').strip()
             if not title and not company:
                 continue
             try:
                 add_experience(username, title or company, company=company,
-                               start_year=_parse_years_to_int(years))
+                               start_year=start_year, end_year=end_year,
+                               is_current=is_current, description=description)
                 added_exp += 1
             except Exception as e:
                 current_app.logger.warning("cv apply experience: %s", e)
@@ -712,9 +732,11 @@ def cv_upload_apply():
         flash('Kunne ikke gemme profilen. Prøv igen.', 'danger')
         return redirect(url_for('futurematch.cv_upload'))
 
-    total = added_skills + added_exp + added_edu + added_cert + added_lang
+    total = added_summary + added_skills + added_exp + added_edu + added_cert + added_lang
     if total:
         parts = []
+        if added_summary:
+            parts.append('profiltekst')
         if added_skills:
             parts.append(f'{added_skills} kompetence' + ('r' if added_skills != 1 else ''))
         if added_exp:

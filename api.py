@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, session, current_app, request, Response, s
 from auth_decorators import login_required
 import io as _cv_io
 import json
+import hashlib as _cv_hashlib
 import threading as _cv_thread
 import time as _cv_time
 
@@ -545,6 +546,12 @@ class _CvFileShim:
         return self.stream.read()
 
 
+def _cv_job_key(username, session_id):
+    """Bind browser-generated parse ids to the authenticated user."""
+    raw = f"{username or ''}\0{session_id or ''}".encode("utf-8", "ignore")
+    return _cv_hashlib.sha256(raw).hexdigest()
+
+
 @api_bp.route('/api/cv/parse', methods=['POST'])
 @login_required
 def api_cv_parse():
@@ -555,6 +562,8 @@ def api_cv_parse():
     session_id = request.form.get('session_id', '')
     if not session_id:
         return jsonify({'success': False, 'error': 'session_id required'}), 400
+    username = session.get('user')
+    job_key = _cv_job_key(username, session_id)
     file = request.files.get('cv')
     text_input = request.form.get('cv_text', '') or ''
 
@@ -575,7 +584,7 @@ def api_cv_parse():
     elif not text_input.strip():
         return jsonify({'success': False, 'error': 'Ingen fil eller tekst modtaget.'}), 400
 
-    cv_parse_store.start(session_id)
+    cv_parse_store.start(job_key, "extracting")
     app = current_app._get_current_object()
 
     def _run():
@@ -588,14 +597,21 @@ def api_cv_parse():
                     text, hint = extract_text(_CvFileShim(raw, filename))
                 else:
                     text, hint = text_input, ''
-                proposal = parse_profile_from_text(text) if (text or '').strip() else {}
-                cv_parse_store.finish(session_id, {'proposal': proposal, 'hint': hint})
+                cv_parse_store.progress(job_key, "reading")
+                proposal = parse_profile_from_text(
+                    text,
+                    progress_callback=lambda stage: cv_parse_store.progress(job_key, stage),
+                ) if (text or '').strip() else {}
+                cv_parse_store.finish(job_key, {'proposal': proposal, 'hint': hint})
             except Exception as exc:
                 try:
                     app.logger.error('cv parse error: %s', exc)
                 except Exception:
                     pass
-                cv_parse_store.finish(session_id, {'error': str(exc), 'proposal': {}})
+                cv_parse_store.finish(job_key, {
+                    'error': 'CV’et kunne ikke analyseres. Prøv igen eller indsæt teksten direkte.',
+                    'proposal': {},
+                })
 
     _cv_thread.Thread(target=_run, daemon=True).start()
     return jsonify({'success': True})
@@ -611,35 +627,40 @@ def api_cv_parse_stream():
     parse thread ran on a different gunicorn worker — the bug this fixes)."""
     import cv_parse_store
     session_id = request.args.get('session_id', '')
-    _STAGES = ['Udtrækker tekst', 'Analyserer', 'Foreslår profil']
-    schedule = [(4.0, _STAGES[1]), (10.0, _STAGES[2])]
+    if not session_id:
+        return jsonify({'success': False, 'error': 'session_id required'}), 400
+    job_key = _cv_job_key(session.get('user'), session_id)
+    stage_labels = {
+        'extracting': 'Udtrækker tekst',
+        'reading': 'Læser CV',
+        'analysing': 'Analyserer',
+        'ready': 'Foreslår profil',
+    }
 
     def generate():
-        yield f"event: stage\ndata: {_STAGES[0]}\n\n"
         t0 = _cv_time.time()
-        emitted = 0
+        last_stage = None
         while _cv_time.time() - t0 < 90:
-            elapsed = _cv_time.time() - t0
-            while emitted < len(schedule) and elapsed >= schedule[emitted][0]:
-                yield f"event: stage\ndata: {schedule[emitted][1]}\n\n"
-                emitted += 1
-
-            result = cv_parse_store.read(session_id)
-            if result is not None:
-                while emitted < len(schedule):
-                    yield f"event: stage\ndata: {schedule[emitted][1]}\n\n"
-                    emitted += 1
+            state = cv_parse_store.read_state(job_key)
+            if state is not None:
+                stage = state.get('stage') or 'extracting'
+                if stage != last_stage:
+                    yield f"event: stage\ndata: {stage_labels.get(stage, stage)}\n\n"
+                    last_stage = stage
+            if state and state.get('status') == 'done':
+                result = state.get('result') or {}
                 if result.get('error'):
                     yield f"event: error\ndata: {result['error']}\n\n"
                 else:
                     payload = {'proposal': result.get('proposal') or {}, 'hint': result.get('hint') or ''}
                     yield f"event: result\ndata: {json.dumps(payload)}\n\n"
-                cv_parse_store.discard(session_id)
+                cv_parse_store.discard(job_key)
                 return
 
             _cv_time.sleep(0.5)
             yield ': ping\n\n'
 
+        cv_parse_store.discard(job_key)
         yield "event: error\ndata: timeout\n\n"
 
     return Response(
@@ -691,18 +712,53 @@ def _parse_year(val):
 @api_bp.route('/api/cv/apply', methods=['POST'])
 @login_required
 def api_cv_apply():
-    """Apply accepted CV items from the 3D portal to the user's profile."""
+    """Apply reviewed CV items and report created/merged/skipped/failed rows."""
     username = session.get('user')
     data = request.get_json() or {}
     accepted = data.get('accepted', [])
+    conflict_mode = data.get('conflict_mode', 'merge')
+    if conflict_mode not in ('merge', 'replace', 'keep'):
+        return jsonify({'success': False, 'error': 'conflict_mode must be merge, replace, or keep'}), 400
 
     try:
         from app1.user_profile_db import (
             add_skill, add_experience, add_education,
-            add_certification, add_language, ensure_tables,
+            add_certification, add_language, ensure_tables, get_full_profile,
+            update_skill_level, update_experience, update_education,
+            update_certification, update_language_level, update_profile_summary,
         )
+        from competency import canonical_skill, level_to_score
         ensure_tables()
         counts = {k: 0 for k in ('skills', 'experience', 'education', 'certifications', 'languages')}
+        outcomes = {k: 0 for k in ('created', 'updated', 'merged', 'skipped', 'failed')}
+        errors = []
+        existing = get_full_profile(username) or {}
+        skills = {canonical_skill(s.get('name')).casefold(): s for s in existing.get('skills', []) if s.get('name')}
+        experience = {
+            ((e.get('title') or '').casefold(), (e.get('company') or '').casefold()): e
+            for e in existing.get('experience', [])
+        }
+        education = {
+            ((e.get('degree') or '').casefold(), (e.get('institution') or '').casefold()): e
+            for e in existing.get('education', [])
+        }
+        certifications = {
+            ((c.get('name') or '').casefold(), (c.get('issuer') or '').casefold()): c
+            for c in existing.get('certifications', [])
+        }
+        languages = {(l.get('language') or '').casefold(): l for l in existing.get('languages', [])}
+
+        summary = (data.get('summary') or '').strip()
+        if summary:
+            old_bio = (existing.get('bio') or '').strip()
+            if old_bio and conflict_mode == 'keep':
+                outcomes['skipped'] += 1
+            elif old_bio and conflict_mode == 'merge' and summary.casefold() not in old_bio.casefold():
+                update_profile_summary(username, bio=(old_bio + '\n\n' + summary)[:4000])
+                outcomes['merged'] += 1
+            else:
+                update_profile_summary(username, bio=summary[:4000])
+                outcomes['updated' if old_bio else 'created'] += 1
 
         for item in accepted:
             kind = item.get('type', '')
@@ -712,44 +768,145 @@ def api_cv_apply():
                     if not name:
                         continue
                     level = _SKILL_LEVEL_MAP.get((item.get('level') or '').strip().lower(), 'mellem')
-                    add_skill(username, name, level, source='cv_upload')
+                    key = canonical_skill(name).casefold()
+                    current = skills.get(key)
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current and conflict_mode == 'replace':
+                        update_skill_level(username, current['name'], level)
+                        outcomes['updated'] += 1
+                    elif current:
+                        add_skill(username, name, level, source='cv_upload')
+                        outcomes['merged'] += 1
+                    else:
+                        add_skill(username, name, level, source='cv_upload')
+                        outcomes['created'] += 1
+                    skills[key] = {'name': canonical_skill(name), 'level': level}
                     counts['skills'] += 1
                 elif kind == 'experience':
                     title = (item.get('title') or '').strip()
                     company = (item.get('company') or '').strip()
                     if not title and not company:
                         continue
-                    add_experience(username, title or company, company=company,
-                                   start_year=_parse_year(item.get('years')))
+                    key = (title.casefold(), company.casefold())
+                    current = experience.get(key)
+                    fields = {
+                        'title': title or company,
+                        'company': company,
+                        'start_year': item.get('start_year') or _parse_year(item.get('years')),
+                        'end_year': item.get('end_year'),
+                        'is_current': bool(item.get('is_current')),
+                        'description': (item.get('description') or '').strip(),
+                    }
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current:
+                        if conflict_mode == 'merge':
+                            fields = {k: (current.get(k) if current.get(k) not in (None, '') else v) for k, v in fields.items()}
+                            outcomes['merged'] += 1
+                        else:
+                            outcomes['updated'] += 1
+                        update_experience(username, current['id'], **fields)
+                    else:
+                        new_id = add_experience(username, **fields)
+                        fields['id'] = new_id
+                        outcomes['created'] += 1
+                    experience[key] = fields
                     counts['experience'] += 1
                 elif kind == 'education':
                     degree = (item.get('degree') or '').strip()
                     institution = (item.get('institution') or '').strip()
                     if not degree and not institution:
                         continue
-                    add_education(username, degree or institution, institution=institution,
-                                  year_completed=_parse_year(item.get('year')))
+                    key = (degree.casefold(), institution.casefold())
+                    current = education.get(key)
+                    fields = {
+                        'degree': degree or institution,
+                        'institution': institution,
+                        'year_completed': _parse_year(item.get('year') or item.get('year_completed')),
+                        'description': (item.get('description') or '').strip(),
+                    }
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current:
+                        if conflict_mode == 'merge':
+                            fields = {k: (current.get(k) if current.get(k) not in (None, '') else v) for k, v in fields.items()}
+                            outcomes['merged'] += 1
+                        else:
+                            outcomes['updated'] += 1
+                        update_education(username, current['id'], **fields)
+                    else:
+                        new_id = add_education(username, **fields)
+                        fields['id'] = new_id
+                        outcomes['created'] += 1
+                    education[key] = fields
                     counts['education'] += 1
                 elif kind == 'certifications':
                     name = (item.get('name') or '').strip()
                     if not name:
                         continue
-                    add_certification(username, name, issuer=item.get('issuer', ''),
-                                      issue_date=item.get('issue_date') or None,
-                                      expiry_date=item.get('expiry_date') or None,
-                                      source='cv_upload')
+                    issuer = (item.get('issuer') or '').strip()
+                    key = (name.casefold(), issuer.casefold())
+                    current = certifications.get(key)
+                    fields = {
+                        'name': name, 'issuer': issuer,
+                        'issue_date': item.get('issue_date') or None,
+                        'expiry_date': item.get('expiry_date') or None,
+                    }
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current:
+                        if conflict_mode == 'merge':
+                            fields = {k: (current.get(k) if current.get(k) not in (None, '') else v) for k, v in fields.items()}
+                            outcomes['merged'] += 1
+                        else:
+                            outcomes['updated'] += 1
+                        update_certification(username, current['id'], **fields)
+                    else:
+                        new_id = add_certification(username, source='cv_upload', **fields)
+                        fields['id'] = new_id
+                        outcomes['created'] += 1
+                    certifications[key] = fields
                     counts['certifications'] += 1
                 elif kind == 'languages':
                     language = (item.get('language') or '').strip()
                     if not language:
                         continue
                     proficiency = _LANG_PROF_MAP.get((item.get('proficiency') or '').strip().lower(), 'mellem')
-                    add_language(username, language, proficiency=proficiency, source='cv_upload')
+                    key = language.casefold()
+                    current = languages.get(key)
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current and conflict_mode == 'replace':
+                        update_language_level(username, current['language'], proficiency)
+                        outcomes['updated'] += 1
+                    elif current:
+                        lang_scores = {'begynder': 1, 'mellem': 2, 'flydende': 3, 'modersmaal': 4}
+                        best = proficiency if lang_scores[proficiency] >= lang_scores.get(current.get('proficiency'), 0) else current['proficiency']
+                        update_language_level(username, current['language'], best)
+                        outcomes['merged'] += 1
+                    else:
+                        add_language(username, language, proficiency=proficiency, source='cv_upload')
+                        outcomes['created'] += 1
+                    languages[key] = {'language': language, 'proficiency': proficiency}
                     counts['languages'] += 1
             except Exception as exc:
                 current_app.logger.warning('cv apply item %s: %s', kind, exc)
+                outcomes['failed'] += 1
+                errors.append({'type': kind or 'unknown', 'label': item.get('name') or item.get('title') or item.get('degree') or item.get('language') or '', 'error': 'Kunne ikke gemmes'})
 
-        return jsonify({'success': True, 'saved': counts})
+        return jsonify({
+            'success': outcomes['failed'] == 0,
+            'partial_success': outcomes['failed'] > 0 and sum(counts.values()) > 0,
+            'saved': counts,
+            'outcomes': outcomes,
+            'errors': errors,
+        }), (207 if outcomes['failed'] else 200)
     except Exception as exc:
         current_app.logger.error('cv apply: %s', exc)
         return jsonify({'success': False, 'error': str(exc)}), 500

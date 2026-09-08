@@ -30,9 +30,13 @@ class CvParseStoreRoundTrip(unittest.TestCase):
         self.assertIsNone(cv_parse_store.read(sid))      # nothing yet
         cv_parse_store.start(sid)
         self.assertIsNone(cv_parse_store.read(sid))      # running ≠ done
+        self.assertEqual(cv_parse_store.read_state(sid)["stage"], "extracting")
+        cv_parse_store.progress(sid, "analysing")
+        self.assertEqual(cv_parse_store.read_state(sid)["stage"], "analysing")
         cv_parse_store.finish(sid, {"proposal": {"skills": [{"name": "Python"}]}, "hint": ""})
         got = cv_parse_store.read(sid)
         self.assertTrue(got and got["proposal"]["skills"])
+        self.assertEqual(cv_parse_store.read_state(sid)["status"], "done")
         cv_parse_store.discard(sid)
         self.assertIsNone(cv_parse_store.read(sid))      # consumed
 

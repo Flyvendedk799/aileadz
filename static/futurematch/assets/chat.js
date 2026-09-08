@@ -14,6 +14,15 @@
   const icon = (s) => (String(s == null ? "" : s).replace(/[^a-z0-9 _-]/gi, "").slice(0, 40) || "fa-graduation-cap");
   const isProfiler = window.CHAT_MODE === "profiler";
   let activeConvId = null;
+  function trackLearner(event, meta) {
+    try {
+      fetch("/api/learner/events", {
+        method: "POST", credentials: "same-origin",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event: event, meta: meta || {} }),
+      }).catch(() => {});
+    } catch (_) {}
+  }
 
   /* ---------------- HTML sanitizer ----------------
      Agent/assistant content (markdown-rendered chunks, profile_update messages,
@@ -328,7 +337,10 @@
     }));
     // "Side" opens the real catalog product page when we have a handle.
     const det = card.querySelector(".det");
-    if (det && c.handle) det.addEventListener("click", (e) => { e.stopPropagation(); window.open("/products/" + encodeURIComponent(c.handle), "_blank"); });
+    if (det && c.handle) det.addEventListener("click", (e) => {
+      e.stopPropagation(); trackLearner("recommendation_click", { source: "course_card" });
+      window.open("/products/" + encodeURIComponent(c.handle), "_blank");
+    });
     return card;
   }
   function addCourses(body, list) {
@@ -1017,6 +1029,8 @@
       if (action === "start_order" && data.handle && !isLoggedIn()) {
         toast("Log ind for at tilmelde dig", "courses"); return;
       }
+      if (action === "start_order") trackLearner("order_start", { source: "ai_action" });
+      if (action === "open_learning_path") trackLearner("learning_path_open", { source: "ai_action" });
       if (newTab) window.open(target, "_blank");
       else window.location.href = target;
     });
@@ -1058,7 +1072,10 @@
       <div class="compare-grid">${cols}</div>
       ${analysis.verdict ? `<div class="compare-verdict"><i class="fa-solid fa-lightbulb"></i><span>${esc(analysis.verdict)}</span></div>` : ""}`;
     card.querySelectorAll(".cc-open").forEach((b) =>
-      b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(b.getAttribute("data-h")), "_blank")));
+      b.addEventListener("click", () => {
+        trackLearner("recommendation_click", { source: "comparison" });
+        window.open("/products/" + encodeURIComponent(b.getAttribute("data-h")), "_blank");
+      }));
     body.appendChild(card); down();
   }
 
@@ -1089,7 +1106,10 @@
       <div class="lpath-steps">${stepsHtml}</div>`;
     card.querySelectorAll(".lp-course").forEach((b) => {
       const h = b.getAttribute("data-h");
-      if (h) b.addEventListener("click", () => window.open("/products/" + encodeURIComponent(h), "_blank"));
+      if (h) b.addEventListener("click", () => {
+        trackLearner("recommendation_click", { source: "learning_path" });
+        window.open("/products/" + encodeURIComponent(h), "_blank");
+      });
     });
     body.appendChild(card); down();
   }

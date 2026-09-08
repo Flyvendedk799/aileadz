@@ -108,6 +108,12 @@
 <script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=14"></script>
 <script>
   (function () {
+    var profilerCompleteTracked = false;
+    function track(event, meta) {
+      fetch('/api/learner/events', { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ event: event, meta: meta || {} }) }).catch(function () {});
+    }
     function setProfilerStats(d) {
       if (!d) return;
       var counts = d.counts || {};
@@ -126,6 +132,9 @@
       var ring = document.getElementById('profRing');
       if (ring) ring.style.setProperty('--p', c.pct);
       var pct = document.getElementById('profPct'); if (pct) pct.textContent = c.pct + '%';
+      if (!profilerCompleteTracked && (c.pct || 0) >= 100) {
+        profilerCompleteTracked = true; track('profiler_complete', { pct: c.pct || 0 });
+      }
       var done = document.getElementById('profDone');
       if (done && c.total) done.textContent = (c.done || 0) + '/' + c.total;
       var miss = document.getElementById('profMissing');
@@ -141,6 +150,7 @@
       var input = document.getElementById('input');
       var send = document.getElementById('send');
       if (!input || !send) return;
+      track('profiler_start', { source: seedSection ? 'targeted' : 'manual' });
       input.value = seedSection
         ? ('Hjælp mig med at gøre min profil komplet. Start med min ' + seedSection + ', og stil mig ét spørgsmål ad gangen.')
         : 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';

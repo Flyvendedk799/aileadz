@@ -784,14 +784,15 @@ def api_cv_apply():
 
     try:
         from app1.user_profile_db import (
-            add_skill, add_experience, add_education,
+            add_skill, add_experience, add_education, add_completed_course,
             add_certification, add_language, ensure_tables, get_full_profile,
             update_skill_level, update_experience, update_education,
             update_certification, update_language_level, update_profile_summary,
         )
         from competency import canonical_skill, level_to_score
         ensure_tables()
-        counts = {k: 0 for k in ('skills', 'experience', 'education', 'certifications', 'languages')}
+        counts = {k: 0 for k in ('skills', 'experience', 'education', 'courses',
+                                 'certifications', 'languages')}
         outcomes = {k: 0 for k in ('created', 'updated', 'merged', 'skipped', 'failed')}
         errors = []
         existing = get_full_profile(username) or {}
@@ -807,6 +808,10 @@ def api_cv_apply():
         certifications = {
             ((c.get('name') or '').casefold(), (c.get('issuer') or '').casefold()): c
             for c in existing.get('certifications', [])
+        }
+        courses = {
+            (c.get('title') or '').casefold(): c
+            for c in existing.get('completed_courses', [])
         }
         languages = {(l.get('language') or '').casefold(): l for l in existing.get('languages', [])}
 
@@ -906,6 +911,32 @@ def api_cv_apply():
                         outcomes['created'] += 1
                     education[key] = fields
                     counts['education'] += 1
+                elif kind in ('courses', 'course'):
+                    title = (item.get('title') or item.get('course_title') or '').strip()
+                    if not title:
+                        continue
+                    key = title.casefold()
+                    current = courses.get(key)
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    fields = {
+                        'vendor': (item.get('vendor') or '').strip(),
+                        'completed_date': (item.get('completed_date') or item.get('year') or '').strip() or None,
+                    }
+                    if current and conflict_mode == 'merge':
+                        # add_completed_course upserts on (username, title), so a
+                        # merge must carry the stored values forward itself.
+                        fields = {k: (current.get(k) if current.get(k) not in (None, '') else v)
+                                  for k, v in fields.items()}
+                        outcomes['merged'] += 1
+                    elif current:
+                        outcomes['updated'] += 1
+                    else:
+                        outcomes['created'] += 1
+                    add_completed_course(username, course_title=title, **fields)
+                    courses[key] = dict(fields, title=title)
+                    counts['courses'] += 1
                 elif kind == 'certifications':
                     name = (item.get('name') or '').strip()
                     if not name:

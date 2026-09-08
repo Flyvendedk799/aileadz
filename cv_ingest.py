@@ -284,6 +284,7 @@ _EXTRACTION_SYSTEM_PROMPT = (
     '"start_year": 2019, "end_year": 2023, "is_current": false, '
     '"description": "kort beskrivelse af ansvar og dokumenterede resultater"}],\n'
     '  "education": [{"degree": "uddannelse/grad", "institution": "institution", "year": "2018"}],\n'
+    '  "courses": [{"title": "kursustitel", "vendor": "udbyder", "completed_date": "2024"}],\n'
     '  "certifications": [{"name": "certificering", "issuer": "udsteder", "issue_date": "2022", "expiry_date": "2025 eller tom"}],\n'
     '  "languages": [{"language": "sprog", "proficiency": "begynder|mellem|flydende|modersmaal"}]\n'
     "}\n"
@@ -292,6 +293,10 @@ _EXTRACTION_SYSTEM_PROMPT = (
     "En certificering er et formelt bevis med en udsteder eller en udløbsdato (fx PRINCE2, AWS, "
     "Google Ads, kørekort, ISTQB) — adskil dem fra almindelige gennemførte kurser. Hvis en "
     "certificering ikke udløber, så lad expiry_date være tom. "
+    "Gennemførte kurser (AMU-kurser som 'Salgsledelse' eller 'Konflikthåndtering', interne "
+    "kurser, webinarer) hører i courses — ALDRIG i skills. En kompetence er noget personen KAN; "
+    "et kursus er noget de HAR TAGET. Udled gerne kompetencer af et kursus, men behold kurset "
+    "i courses. "
     "Oversæt felter til dansk hvor det er naturligt. Find på INTET — udelad felter du ikke kan udlede, "
     "og brug tomme strenge hvor en værdi mangler. Returnér tomme lister hvis intet kan udledes."
 )
@@ -348,7 +353,7 @@ def _normalise_profile(data) -> dict:
     if not isinstance(data, dict):
         return {}
     out = {"summary": "", "skills": [], "experience": [], "education": [],
-           "certifications": [], "languages": []}
+           "courses": [], "certifications": [], "languages": []}
     try:
         out["summary"] = _clean_str(data.get("summary"), 600)
     except Exception:
@@ -413,6 +418,27 @@ def _normalise_profile(data) -> dict:
                 out["education"].append(
                     {"degree": degree, "institution": institution, "year": year}
                 )
+    except Exception:
+        pass
+
+    try:
+        # Completed courses are their own bucket now: without one, a CV's
+        # "Kurser"/AMU section had nowhere to land but skills — and a course
+        # title ("Salgsledelse") is something you took, not something you are.
+        for c in (data.get("courses") or data.get("kurser") or [])[:40]:
+            if isinstance(c, dict):
+                title = _clean_str(c.get("title") or c.get("titel") or c.get("name")
+                                   or c.get("course") or c.get("kursus"))
+                vendor = _clean_str(c.get("vendor") or c.get("udbyder") or c.get("provider")
+                                    or c.get("institution") or c.get("issuer"))
+                completed = _clean_str(c.get("completed_date") or c.get("year") or c.get("år")
+                                       or c.get("date") or c.get("gennemført"), 20)
+            else:
+                title, vendor, completed = _clean_str(c), "", ""
+            if title:
+                out["courses"].append({
+                    "title": title, "vendor": vendor, "completed_date": completed,
+                })
     except Exception:
         pass
 

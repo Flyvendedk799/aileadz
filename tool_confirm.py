@@ -20,6 +20,39 @@ from __future__ import annotations
 from typing import Any, Dict, Optional, Tuple
 
 
+def tool_call_parts(tool_call: Any) -> Tuple[str, Dict[str, Any]]:
+    """Return ``(tool_name, args)`` from either tool-call shape.
+
+    Providers hand over ``tool_call.function.name`` with ``arguments`` as a JSON
+    string. Internal re-dispatch — the confirm route replaying a held mutation —
+    naturally builds a flat object carrying an already-parsed dict. Both are
+    legitimate callers, so both executors read through this instead of assuming
+    one shape (assuming the provider shape is what made every "Bekræft" click
+    fail with AttributeError before it reached the tool).
+
+    Raises ``ValueError`` when the arguments are a string that isn't JSON, so
+    the caller can keep reporting a parse error the way it always has.
+    """
+    import json as _json
+
+    fn = getattr(tool_call, "function", None) or tool_call
+    name = getattr(fn, "name", "") or ""
+    raw = getattr(fn, "arguments", None)
+    if raw is None:
+        raw = getattr(tool_call, "arguments", None)
+
+    if isinstance(raw, dict):
+        return name, dict(raw)
+    if raw in (None, ""):
+        return name, {}
+    if isinstance(raw, (bytes, bytearray)):
+        raw = raw.decode("utf-8", "replace")
+    if isinstance(raw, str):
+        parsed = _json.loads(raw)  # ValueError propagates to the caller
+        return name, parsed if isinstance(parsed, dict) else {}
+    return name, {}
+
+
 def needs_confirmation_payload(
     *,
     action: str,

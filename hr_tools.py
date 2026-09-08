@@ -1049,6 +1049,71 @@ def _get_cursor():
     return current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
 
+# ── Argument-shape tolerance ──
+# A model that names the right employees or the right two cohorts, but hands the
+# argument over as "12,13" or as the bare string "Salg", carried everything the
+# tool needed. Rejecting the shape reads to the HR user as "the AI couldn't do
+# it", so coerce the shapes models actually emit before validating intent.
+
+def _as_id_list(value):
+    """Coerce an id-array argument into a list of ints (JSON string, CSV, scalar)."""
+    if value is None or isinstance(value, bool):
+        return []
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text.startswith("[") and text.endswith("]"):
+            try:
+                parsed = json.loads(text)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, list):
+                return _as_id_list(parsed)
+        value = re.split(r"[,;\s]+", text)
+    elif not isinstance(value, (list, tuple, set)):
+        value = [value]
+    out = []
+    for item in value:
+        if isinstance(item, dict):
+            item = item.get("user_id") or item.get("id")
+        try:
+            uid = int(str(item).strip())
+        except (TypeError, ValueError):
+            continue
+        if uid not in out:
+            out.append(uid)
+    return out
+
+
+# Role values company_users actually stores — a bare cohort string matching one
+# of these is a role filter, anything else is a department.
+_COHORT_ROLE_WORDS = {
+    "manager": "manager", "leder": "manager", "ledere": "manager", "chef": "manager",
+    "employee": "employee", "medarbejder": "employee", "medarbejdere": "employee",
+    "ansat": "employee", "ansatte": "employee",
+    "hr": "hr", "admin": "admin",
+}
+
+
+def _as_cohort(value):
+    """Coerce a cohort selector into {department|role|period_days}, or None."""
+    if isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return {}
+        if text.startswith("{") and text.endswith("}"):
+            try:
+                parsed = json.loads(text)
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, dict):
+                return parsed
+        role = _COHORT_ROLE_WORDS.get(text.lower())
+        return {"role": role} if role else {"department": text}
+    return value if isinstance(value, dict) else None
+
+
 def _execute_get_team_training_status(args):
     company_id = session.get('company_id')
     if not company_id:
@@ -2662,19 +2727,11 @@ def _execute_assign_learning_path_to_team(args):
     if not company_id:
         return json.dumps({"error": "Ingen virksomhed fundet."})
 
-    raw_ids = args.get('employee_ids') or []
-    if not isinstance(raw_ids, list) or not raw_ids:
-        return json.dumps({"error": "Angiv mindst ét user_id i employee_ids."})
-
-    # Coerce to ints, drop junk.
-    employee_ids = []
-    for v in raw_ids:
-        try:
-            employee_ids.append(int(v))
-        except (TypeError, ValueError):
-            continue
+    # Accepts a real array, a JSON string, "12,13" or a single id — the shapes
+    # models emit for an id list. Junk entries are dropped, not guessed at.
+    employee_ids = _as_id_list(args.get('employee_ids'))
     if not employee_ids:
-        return json.dumps({"error": "employee_ids indeholder ingen gyldige id'er."})
+        return json.dumps({"error": "Angiv mindst ét gyldigt user_id i employee_ids."})
 
     path_id = args.get('path_id')
     try:
@@ -3536,9 +3593,9 @@ def _execute_hr_compare_cohorts(args):
     if not company_id:
         return json.dumps({"error": "Ingen virksomhed fundet."})
 
-    cohort_a = args.get('cohort_a')
-    cohort_b = args.get('cohort_b')
-    if not isinstance(cohort_a, dict) or not isinstance(cohort_b, dict):
+    cohort_a = _as_cohort(args.get('cohort_a'))
+    cohort_b = _as_cohort(args.get('cohort_b'))
+    if cohort_a is None or cohort_b is None:
         return json.dumps({
             "error": "Angiv to kohorter at sammenligne (cohort_a og cohort_b), "
                      "hver med fx department, role eller period_days."
@@ -4182,9 +4239,12 @@ def _execute_create_order_for_employee(args):
 
 def execute_hr_tool(tool_call):
     """Execute an HR tool call and return JSON result."""
-    name = tool_call.function.name
+    from tool_confirm import tool_call_parts
+
+    # Resolve the name first so a bad-arguments error can still name the tool.
+    name = getattr(getattr(tool_call, "function", None), "name", "") or getattr(tool_call, "name", "")
     try:
-        args = json.loads(tool_call.function.arguments)
+        name, args = tool_call_parts(tool_call)
     except Exception as e:
         return json.dumps({"error": f"Kunne ikke parse argumenter: {e}"})
 

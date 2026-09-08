@@ -647,11 +647,15 @@ class ConfirmCardSSETests(unittest.TestCase):
         self.assertIsNotNone(body, resp2.get_data(as_text=True))
         self.assertEqual(body.get("status"), "success")
 
-        # Verify confirm=True was injected into args
+        # Verify confirm=True was injected into args. Read the call the way the
+        # real executor does — asserting on one hand-picked attribute let the
+        # route hand execute_tool a shape it could not read at all.
         self.assertTrue(mock_exec.called)
         tc = mock_exec.call_args[0][0]  # positional tool_call arg
-        self.assertTrue(tc.arguments.get("confirm"), "confirm=True must be set")
-        self.assertEqual(tc.name, "manage_my_order")
+        from tool_confirm import tool_call_parts
+        name, args = tool_call_parts(tc)
+        self.assertEqual(name, "manage_my_order")
+        self.assertTrue(args.get("confirm"), "confirm=True must be set")
 
     def test_double_confirm_is_idempotent(self):
         """Second POST with same token returns already_confirmed, not an error."""

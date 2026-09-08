@@ -2138,6 +2138,11 @@ def _execute_tool_calls_parallel(
                     call["id"],
                     agent_scope=agent_scope,
                 ))
+                _emit_tool_event(on_tool_event, build_tool_progress_event(
+                    call["name"], call["id"], percent=20,
+                    note="Henter og kontrollerer data…",
+                    agent_scope=agent_scope,
+                ))
                 futures[pool.submit(
                     # Per-task context copy — see _in_request_context.
                     _in_request_context(_execute_one_tool),
@@ -2166,6 +2171,11 @@ def _execute_tool_calls_parallel(
         _emit_tool_event(on_tool_event, build_tool_start_event(
             call["name"],
             call["id"],
+            agent_scope=agent_scope,
+        ))
+        _emit_tool_event(on_tool_event, build_tool_progress_event(
+            call["name"], call["id"], percent=20,
+            note="Henter og kontrollerer data…",
             agent_scope=agent_scope,
         ))
         result = _execute_one_tool(

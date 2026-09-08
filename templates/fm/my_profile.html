@@ -268,7 +268,7 @@
         </div>
 
         <!-- Proficiency matrix -->
-        <div class="fm-card" data-reveal style="margin-top:18px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span></div>
+        <div class="fm-card" data-reveal id="skills" style="margin-top:18px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span></div>
           <div class="fm-card-body">
             <div id="skillMatrix"><div class="muted" style="font-size:13px;padding:8px 0">Indlæser…</div></div>
             <div class="inline-add" id="addSkill">
@@ -282,7 +282,7 @@
 
         <!-- Career + education/languages -->
         <div class="split" style="margin-top:18px">
-          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="ch-add" onclick="toggleForm('addExp')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+          <div class="fm-card" data-reveal data-d="1" id="experience"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="ch-add" onclick="toggleForm('addExp')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
             <div class="fm-card-body">
               <div class="inline-add" id="addExp" style="margin-top:0;margin-bottom:14px">
                 <div class="fm-field" style="flex:2;min-width:160px"><label>Stilling / titel</label><input class="fm-input" id="expTitle" placeholder="F.eks. Projektleder" /></div>
@@ -297,7 +297,7 @@
             </div>
           </div>
           <div class="stack">
-            <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3><button class="ch-add" onclick="toggleForm('addEdu')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card" data-reveal data-d="2" id="education"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3><button class="ch-add" onclick="toggleForm('addEdu')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addEdu" style="margin-top:0;margin-bottom:12px">
                   <div class="fm-field" style="flex:2;min-width:160px"><label>Uddannelse / grad</label><input class="fm-input" id="eduDegree" placeholder="F.eks. Cand.merc." /></div>
@@ -309,7 +309,7 @@
                 <div id="eduList" style="display:flex;flex-direction:column;gap:10px"><div class="muted" style="font-size:13px">Indlæser…</div></div>
               </div>
             </div>
-            <div class="fm-card" data-reveal data-d="3"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-language"></i></span><h3>Sprog</h3><button class="ch-add" onclick="toggleForm('addLang')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card" data-reveal data-d="3" id="languages"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-language"></i></span><h3>Sprog</h3><button class="ch-add" onclick="toggleForm('addLang')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addLang" style="margin-top:0;margin-bottom:12px">
                   <div class="fm-field" style="flex:2;min-width:140px"><label>Sprog</label><input class="fm-input" id="langName" placeholder="F.eks. Engelsk" /></div>
@@ -320,7 +320,7 @@
                 <div class="lang-wrap" id="langList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
               </div>
             </div>
-            <div class="fm-card" data-reveal data-d="4"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-clay) 16%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-link"></i></span><h3>Portfolio &amp; links</h3><button class="ch-add" onclick="toggleForm('addLink')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card" data-reveal data-d="4" id="portfolio"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-clay) 16%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-link"></i></span><h3>Portfolio &amp; links</h3><button class="ch-add" onclick="toggleForm('addLink')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addLink" style="margin-top:0;margin-bottom:12px">
                   <div class="fm-field" style="flex:1;min-width:120px"><label>Tekst</label><input class="fm-input" id="lnkLabel" placeholder="F.eks. LinkedIn" /></div>
@@ -331,14 +331,14 @@
                 <div class="link-wrap" id="linkList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
               </div>
             </div>
-            <div class="fm-card" data-reveal data-d="5"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
+            <div class="fm-card" data-reveal data-d="5" id="goals"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
               <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.chat') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</a></div>
             </div>
           </div>
         </div>
 
         <!-- Certifications (first-class) -->
-        <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Beviser</span><h2 class="fm-section-title">Certificeringer</h2></div><button class="ch-add" onclick="toggleForm('addCert')"><i class="fa-solid fa-plus"></i> Tilføj certificering</button></div>
+        <div class="fm-section-head" id="certifications"><div><span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Beviser</span><h2 class="fm-section-title">Certificeringer</h2></div><button class="ch-add" onclick="toggleForm('addCert')"><i class="fa-solid fa-plus"></i> Tilføj certificering</button></div>
         <div class="inline-add" id="addCert" style="margin-bottom:16px">
           <div class="fm-field" style="flex:2;min-width:180px"><label>Certificering</label><input class="fm-input" id="crtName" placeholder="F.eks. PRINCE2 Foundation" /></div>
           <div class="fm-field" style="flex:2;min-width:160px"><label>Udsteder</label><input class="fm-input" id="crtIssuer" placeholder="F.eks. AXELOS" /></div>
@@ -352,7 +352,7 @@
         <div class="fm-grid" id="certList" style="grid-template-columns:repeat(3,1fr)"><div class="muted" style="font-size:13px">Indlæser…</div></div>
 
         <!-- Completed courses -->
-        <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>
+        <div class="fm-section-head" id="courses" style="margin-top:24px"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-award"></i> Gennemført</span><h2 class="fm-section-title">Kurser</h2></div><a href="{{ url_for('catalog.catalog_index') }}" class="fm-badge teal">Find flere</a></div>
         <div class="fm-grid" id="courseList" style="grid-template-columns:repeat(4,1fr)"><div class="muted" style="font-size:13px">Indlæser…</div></div>
 
       </div>

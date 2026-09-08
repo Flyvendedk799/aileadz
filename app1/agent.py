@@ -2775,6 +2775,8 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_catalog', 'target': '/catalog', 'label': 'Find flere kurser til din profil'})}\n\n"
                 except Exception as _ho_err:
                     print(f"[Profiler Handoff] {_ho_err}")
+                    yield f"data: {json.dumps({'type': 'notice', 'content': 'Din profil er gemt, men anbefalingerne kunne ikke hentes lige nu. Du kan prøve igen i Kursusrådgiveren.'}, ensure_ascii=False)}\n\n"
+                    yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_advisor', 'target': '/chat?intent=Anbefal%20kurser%20ud%20fra%20min%20profil', 'label': 'Prøv i Kursusrådgiver', 'new_tab': False}, ensure_ascii=False)}\n\n"
 
             # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)

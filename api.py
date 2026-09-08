@@ -962,6 +962,10 @@ def get_mindmap_api():
                           'category': branch_id, 'meta': meta})
             edges.append({'source': branch_id, 'target': leaf_id})
 
+        def stable_text_id(prefix, value):
+            digest = _cv_hashlib.sha1(str(value or '').casefold().encode('utf-8')).hexdigest()[:12]
+            return f'{prefix}:{digest}'
+
         # Structured profile branches.
         if profile.get('headline') or profile.get('bio') or profile.get('preferred_format') or profile.get('preferred_location'):
             add_branch('om', 'Om mig', 'user')
@@ -981,13 +985,15 @@ def get_mindmap_api():
                 lvl = s.get('level')
                 meta = {'source': 'profil', 'kind': 'Kompetence', 'level': lvl,
                         'level_score': level_to_score(lvl),
-                        'skill_category': s.get('category') or _skill_cat(name)}
+                        'skill_category': s.get('category') or _skill_cat(name),
+                        'entity_type': 'skill', 'entity_id': s.get('id'),
+                        'profile_section': 'skills'}
                 g = _gap_by_key.get(canonical_skill(name).lower())
                 if g:
                     meta['gap'] = {'target_label': g['target_label'],
                                    'target_score': g['target_level'],
                                    'priority': g['priority'], 'source': g['source']}
-                add_leaf('kompetencer', f'skill:{i}', name, meta)
+                add_leaf('kompetencer', f"skill:{s.get('id')}" if s.get('id') else stable_text_id('skill', name), name, meta)
 
         exp = profile.get('experience') or []
         if exp:
@@ -1001,7 +1007,9 @@ def get_mindmap_api():
                     'title': e.get('title'), 'company': e.get('company'),
                     'start_year': e.get('start_year'), 'end_year': e.get('end_year'),
                     'is_current': bool(e.get('is_current')),
-                    'detail': e.get('description') or ''})
+                    'detail': e.get('description') or '',
+                    'entity_type': 'experience', 'entity_id': e.get('id'),
+                    'profile_section': 'experience'})
 
         edu = profile.get('education') or []
         if edu:
@@ -1011,7 +1019,9 @@ def get_mindmap_api():
                     'source': 'profil', 'kind': 'Uddannelse',
                     'institution': e.get('institution'),
                     'year': e.get('year_completed'),
-                    'detail': e.get('description') or ''})
+                    'detail': e.get('description') or '',
+                    'entity_type': 'education', 'entity_id': e.get('id'),
+                    'profile_section': 'education'})
 
         certs = profile.get('certifications') or []
         if certs:
@@ -1023,14 +1033,18 @@ def get_mindmap_api():
                     'issue_date': c.get('issue_date'),
                     'expiry_date': c.get('expiry_date'),
                     'credential_id': c.get('credential_id'),
-                    'credential_url': c.get('credential_url')})
+                    'credential_url': c.get('credential_url'),
+                    'entity_type': 'certification', 'entity_id': c.get('id'),
+                    'profile_section': 'certifications'})
 
         langs = profile.get('languages') or []
         if langs:
             add_branch('sprog', 'Sprog', 'language')
             for l in langs:
                 add_leaf('sprog', f"lang:{l.get('id')}", l.get('language', ''),
-                         {'source': 'profil', 'kind': 'Sprog', 'level': l.get('proficiency')})
+                         {'source': 'profil', 'kind': 'Sprog', 'level': l.get('proficiency'),
+                          'entity_type': 'language', 'entity_id': l.get('id'),
+                          'profile_section': 'languages'})
 
         goals = profile.get('learning_goals') or []
         gtext = (profile.get('goals') or '').strip()
@@ -1042,7 +1056,46 @@ def get_mindmap_api():
                 add_leaf('maal', f"goal:{g.get('id')}", g.get('title', ''), {
                     'source': 'profil', 'kind': 'Mål', 'status': g.get('status'),
                     'target_date': g.get('target_date'),
-                    'detail': g.get('description') or ''})
+                    'detail': g.get('description') or '',
+                    'entity_type': 'goal', 'entity_id': g.get('id'),
+                    'profile_section': 'goals'})
+
+        links = profile.get('portfolio_links') or []
+        if links:
+            add_branch('portfolio', 'Portfolio & links', 'link')
+            for link in links:
+                add_leaf('portfolio', f"link:{link.get('id')}", link.get('label') or link.get('url') or 'Link', {
+                    'source': 'profil', 'kind': 'Portfolio-link', 'detail': link.get('url') or '',
+                    'url': link.get('url') or '', 'link_kind': link.get('kind') or 'link',
+                    'entity_type': 'link', 'entity_id': link.get('id'), 'profile_section': 'portfolio',
+                })
+
+        courses = profile.get('completed_courses') or []
+        if courses:
+            add_branch('kurser', 'Gennemførte kurser', 'award')
+            for course in courses:
+                key = course.get('handle') or course.get('title')
+                add_leaf('kurser', stable_text_id('course', key), course.get('title') or 'Kursus', {
+                    'source': 'profil', 'kind': 'Gennemført kursus',
+                    'vendor': course.get('vendor') or '',
+                    'completed_date': course.get('completed_date') or '',
+                    'course_handle': course.get('handle') or '',
+                    'detail': course.get('certificate_note') or '',
+                    'entity_type': 'course', 'entity_id': course.get('title'), 'profile_section': 'courses',
+                })
+
+        paths = profile.get('learning_paths') or []
+        if paths:
+            add_branch('laeringsstier', 'Læringsstier', 'route')
+            for path in paths:
+                add_leaf('laeringsstier', f"path:{path.get('id')}", path.get('title') or 'Læringssti', {
+                    'source': path.get('source') or 'ai', 'kind': 'Læringssti',
+                    'detail': path.get('goal') or '',
+                    'status': path.get('status') or 'aktiv',
+                    'step_count': len(path.get('steps') or []),
+                    'entity_type': 'learning_path', 'entity_id': path.get('id'),
+                    'profile_section': 'learning-paths',
+                })
 
         # Atomic memories branch, sub-labelled by their own category.
         if memories:

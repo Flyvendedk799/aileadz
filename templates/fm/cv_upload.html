@@ -217,10 +217,135 @@
     letter-spacing: .03em; color: #f2f2f7;
   }
   #hintTip.show { opacity: .5; }
+  #reviewList {
+    position: absolute; left: 18px; top: 72px; bottom: 18px; width: min(440px, calc(100vw - 36px));
+    overflow: auto; padding: 18px; border: 1px solid rgba(255,255,255,.12); border-radius: 18px;
+    background: rgba(20,20,32,.97); box-shadow: 0 24px 70px rgba(0,0,0,.55);
+    opacity: 0; transform: translateX(-18px); pointer-events: none; transition: .25s ease;
+  }
+  #reviewList.show { opacity: 1; transform: none; pointer-events: auto; }
+  #reviewList h2 { margin: 0 0 4px; font-size: 18px; color: #fff; }
+  #reviewList .review-help { color: rgba(255,255,255,.62); font-size: 12px; line-height: 1.5; margin-bottom: 14px; }
+  .review-toolbar { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:12px; }
+  .review-group { border-top: 1px solid rgba(255,255,255,.1); padding-top: 12px; margin-top: 12px; }
+  .review-group h3 { color:#fff; font-size:13px; margin:0 0 8px; }
+  .review-item { display:grid; grid-template-columns:22px 1fr; gap:8px; padding:9px 0; }
+  .review-fields { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:7px; }
+  .review-fields .wide { grid-column:1/-1; }
+  .review-fields input, .review-fields textarea, .review-fields select, .review-conflict {
+    width:100%; min-width:0; padding:8px 9px; border-radius:8px; border:1px solid rgba(255,255,255,.12);
+    background:rgba(0,0,0,.25); color:#fff; font:inherit; font-size:12px;
+  }
+  #completionPanel {
+    position:absolute; inset:0; display:grid; place-items:center; padding:24px;
+    background:rgba(10,10,20,.86); opacity:0; pointer-events:none; transition:opacity .3s ease;
+  }
+  #completionPanel.show { opacity:1; pointer-events:auto; }
+  .completion-card { width:min(620px,94vw); padding:28px; border:1px solid rgba(255,255,255,.12); border-radius:20px; background:rgba(20,20,32,.98); text-align:center; color:#fff; }
+  .completion-card h2 { margin:0 0 8px; }
+  .completion-actions { display:flex; justify-content:center; flex-wrap:wrap; gap:10px; margin-top:20px; }
+  @media (prefers-reduced-motion: reduce) {
+    .cv3d-stage *, .cv3d-stage *::before, .cv3d-stage *::after { animation-duration:.01ms!important; transition-duration:.01ms!important; }
+  }
+
+  /* Server-rendered, no-JS review. This is also the semantic fallback for the
+     visual portal: every proposed value remains editable and explicitly
+     approved before it is written. */
+  .cv-server-review { max-width: 960px; margin: 0 auto; padding: 28px 20px 64px; }
+  .cv-server-review h1 { margin: 0 0 8px; }
+  .cv-server-review > p { color: var(--fm-ink-2); margin: 0 0 22px; }
+  .cv-review-section { border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); padding: 18px; margin-bottom: 14px; }
+  .cv-review-section h2 { font-size: 16px; margin: 0 0 12px; }
+  .cv-review-row { display: grid; grid-template-columns: 24px repeat(2,minmax(0,1fr)); gap: 10px; align-items: start; padding: 12px 0; border-top: 1px solid var(--fm-line); }
+  .cv-review-row:first-of-type { border-top: 0; }
+  .cv-review-row .wide { grid-column: 2 / -1; }
+  .cv-review-row input:not([type=checkbox]), .cv-review-row textarea, .cv-review-row select {
+    width: 100%; border: 1px solid var(--fm-line); border-radius: 9px; background: var(--fm-surface-2);
+    color: var(--fm-ink); padding: 9px 10px; font: inherit;
+  }
+  .cv-review-actions { position: sticky; bottom: 12px; display: flex; justify-content: flex-end; gap: 10px; padding: 12px; border: 1px solid var(--fm-line); border-radius: 14px; background: color-mix(in srgb,var(--fm-surface) 94%,transparent); box-shadow: var(--sh-md); }
+  @media (max-width:640px) { .cv-review-row { grid-template-columns:24px 1fr; } .cv-review-row .wide { grid-column:2; } }
 </style>
 {% endblock %}
 
 {% block content %}
+{% if step == 'review' %}
+<main class="cv-server-review">
+  <h1>Gennemgå dit CV</h1>
+  <p>Ret forslagene og fjern markeringen ved det, du ikke vil gemme.</p>
+  <form action="{{ url_for('futurematch.cv_upload_apply') }}" method="post">
+    {% if summary %}
+    <section class="cv-review-section">
+      <h2>Profiltekst</h2>
+      <label class="cv-review-row"><input type="checkbox" name="accept_summary" value="1" checked />
+        <textarea class="wide" name="summary" rows="4">{{ summary }}</textarea></label>
+    </section>
+    {% endif %}
+    {% if skills %}
+    <section class="cv-review-section"><h2>Kompetencer</h2>
+      {% for s in skills %}<div class="cv-review-row">
+        <input type="checkbox" name="accept_skill" value="{{ s.idx }}" checked />
+        <input name="skill_name_{{ s.idx }}" value="{{ s.name }}" aria-label="Kompetence" />
+        <select name="skill_level_{{ s.idx }}" aria-label="Niveau">
+          {% for value,label in [('begynder','Begynder'),('mellem','Mellem'),('avanceret','Avanceret'),('ekspert','Ekspert')] %}
+          <option value="{{ value }}" {% if s.level == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>{% endfor %}
+    </section>
+    {% endif %}
+    {% if experience %}
+    <section class="cv-review-section"><h2>Erfaring</h2>
+      {% for e in experience %}<div class="cv-review-row">
+        <input type="checkbox" name="accept_experience" value="{{ e.idx }}" checked />
+        <input name="exp_title_{{ e.idx }}" value="{{ e.title }}" aria-label="Titel" />
+        <input name="exp_company_{{ e.idx }}" value="{{ e.company }}" aria-label="Virksomhed" />
+        <input name="exp_start_{{ e.idx }}" value="{{ e.start_year or '' }}" inputmode="numeric" aria-label="Startår" />
+        <input name="exp_end_{{ e.idx }}" value="{{ e.end_year or '' }}" inputmode="numeric" aria-label="Slutår" />
+        <label><input type="checkbox" name="exp_current_{{ e.idx }}" value="1" {% if e.is_current %}checked{% endif %} /> Nuværende</label>
+        <textarea class="wide" name="exp_description_{{ e.idx }}" rows="2" placeholder="Ansvar og resultater">{{ e.description }}</textarea>
+      </div>{% endfor %}
+    </section>
+    {% endif %}
+    {% if education %}
+    <section class="cv-review-section"><h2>Uddannelse</h2>
+      {% for e in education %}<div class="cv-review-row">
+        <input type="checkbox" name="accept_education" value="{{ e.idx }}" checked />
+        <input name="edu_degree_{{ e.idx }}" value="{{ e.degree }}" aria-label="Uddannelse" />
+        <input name="edu_institution_{{ e.idx }}" value="{{ e.institution }}" aria-label="Institution" />
+        <input class="wide" name="edu_year_{{ e.idx }}" value="{{ e.year }}" aria-label="Afsluttet år" />
+      </div>{% endfor %}
+    </section>
+    {% endif %}
+    {% if certifications %}
+    <section class="cv-review-section"><h2>Certificeringer</h2>
+      {% for c in certifications %}<div class="cv-review-row">
+        <input type="checkbox" name="accept_certification" value="{{ c.idx }}" checked />
+        <input name="crt_name_{{ c.idx }}" value="{{ c.name }}" aria-label="Certificering" />
+        <input name="crt_issuer_{{ c.idx }}" value="{{ c.issuer }}" aria-label="Udsteder" />
+        <input name="crt_issued_{{ c.idx }}" value="{{ c.issue_date }}" aria-label="Udstedt" />
+        <input name="crt_expiry_{{ c.idx }}" value="{{ c.expiry_date }}" aria-label="Udløber" />
+      </div>{% endfor %}
+    </section>
+    {% endif %}
+    {% if languages %}
+    <section class="cv-review-section"><h2>Sprog</h2>
+      {% for l in languages %}<div class="cv-review-row">
+        <input type="checkbox" name="accept_language" value="{{ l.idx }}" checked />
+        <input name="lang_name_{{ l.idx }}" value="{{ l.language }}" aria-label="Sprog" />
+        <select name="lang_level_{{ l.idx }}" aria-label="Niveau">
+          {% for value,label in [('begynder','Begynder'),('mellem','Mellem'),('flydende','Flydende'),('modersmaal','Modersmål')] %}
+          <option value="{{ value }}" {% if l.proficiency == value %}selected{% endif %}>{{ label }}</option>{% endfor %}
+        </select>
+      </div>{% endfor %}
+    </section>
+    {% endif %}
+    <div class="cv-review-actions">
+      <a class="btn btn-ghost" href="{{ url_for('futurematch.cv_upload') }}">Start forfra</a>
+      <button class="btn btn-primary" type="submit">Gem valgte oplysninger</button>
+    </div>
+  </form>
+</main>
+{% else %}
 <div class="cv-wrap">
   <div class="cv3d-stage">
 
@@ -236,13 +361,13 @@
     </div>
 
     <!-- 3D canvas -->
-    <canvas id="scene"></canvas>
+    <canvas id="scene" aria-hidden="true"></canvas>
 
     <!-- Overlay UI -->
     <div id="ui">
       <div id="topbar">
         <div id="brand"><span class="dot"></span> CV-portal</div>
-        <div id="stageLabel"></div>
+        <div id="stageLabel" role="status" aria-live="polite"></div>
       </div>
 
       <div id="profileIcon" title="Din profil">
@@ -290,10 +415,39 @@
 
       <div id="reviewBar">
         <span id="counter"><b>0</b> accepteret</span>
+        <button class="cv-btn ghost" id="reviewListBtn" type="button" aria-expanded="false">Listevisning</button>
         <button class="cv-btn primary" id="saveBtn">Gem til min profil</button>
       </div>
 
-      <div id="toast"></div>
+      <section id="reviewList" aria-label="Gennemgå CV-forslag">
+        <h2>Gennemgå forslag</h2>
+        <p class="review-help">Alle forslag er valgt. Ret oplysningerne eller fjern markeringen, før du gemmer.</p>
+        <div class="review-toolbar">
+          <button class="cv-btn ghost" id="selectAllBtn" type="button">Vælg alle</button>
+          <button class="cv-btn ghost" id="selectNoneBtn" type="button">Fravælg alle</button>
+        </div>
+        <label class="review-help" for="conflictMode">Ved oplysninger der allerede findes</label>
+        <select id="conflictMode" class="review-conflict">
+          <option value="merge">Flet og behold det højeste niveau</option>
+          <option value="replace">Erstat med CV-oplysningerne</option>
+          <option value="keep">Behold de eksisterende</option>
+        </select>
+        <div id="reviewItems"></div>
+      </section>
+
+      <div id="completionPanel">
+        <div class="completion-card">
+          <h2>Din profil er opdateret</h2>
+          <p id="completionSummary">Oplysningerne fra dit CV er gemt.</p>
+          <div class="completion-actions">
+            <a class="cv-btn ghost" href="/profile">Gennemgå profil</a>
+            <a class="cv-btn ghost" href="/mind-map?source=cv">Udforsk Mind-Map</a>
+            <a class="cv-btn primary" href="/chat?intent=cv-gaps">Find næste læringstrin</a>
+          </div>
+        </div>
+      </div>
+
+      <div id="toast" role="status" aria-live="polite"></div>
       <div id="hintTip" class="hidden">Klik på et kort for at redigere · Acceptér eller kassér</div>
     </div><!-- /#ui -->
 
@@ -301,9 +455,11 @@
 
   </div><!-- /.cv3d-stage -->
 </div><!-- /.cv-wrap -->
+{% endif %}
 {% endblock %}
 
 {% block extra_scripts %}
+{% if step != 'review' %}
 <script type="module">
 import * as THREE from 'three';
 import * as TWEEN from 'tween';
@@ -665,7 +821,7 @@ const ARC_LEN = 2 * Math.PI * 150;
 arcFill.style.strokeDasharray = ARC_LEN;
 arcFill.style.strokeDashoffset = ARC_LEN;
 function setArc(p){ arcFill.style.strokeDashoffset = ARC_LEN * (1 - p); }
-const STAGES = ['Udtrækker tekst', 'Analyserer', 'Foreslår profil'];
+const STAGES = ['Udtrækker tekst', 'Læser CV', 'Analyserer', 'Foreslår profil'];
 
 function setStageLabel(txt){ const el=$('#stageLabel'); el.innerHTML = txt; el.style.opacity = txt? 1:0; }
 
@@ -704,27 +860,44 @@ function moveCamera(pos, target, dur){
 }
 
 // ---- SSE handling ----
-let es = null, gotMessage = false, mockTimer = null;
+let es = null, gotMessage = false, parseTimer = null, parseFailed = false;
 function connectStream(){
   try {
     es = new EventSource(`/api/cv/parse-stream?session_id=${encodeURIComponent(sessionId)}`);
     es.addEventListener('stage', e => { gotMessage = true; handleStage(e.data); });
     es.addEventListener('chunk', e => { gotMessage = true; handleChunk(e.data); });
     es.addEventListener('result', e => { gotMessage = true; try { const d = JSON.parse(e.data); handleResult(d.proposal !== undefined ? d.proposal : d, d.hint || ''); } catch(_){} closeStream(); });
-    es.addEventListener('error', () => { if(!gotMessage){ closeStream(); runMock(); } });
-    postPayload();
-    mockTimer = setTimeout(()=>{ if(!gotMessage){ closeStream(); runMock(); } }, 1800);
-  } catch(_) { runMock(); }
+    es.addEventListener('error', e => {
+      if (parseFailed) return;
+      parseFailed = true;
+      closeStream();
+      showParseError((e && e.data) || 'Forbindelsen til CV-analysen blev afbrudt.');
+    });
+    postPayload().catch(err => {
+      if (parseFailed) return;
+      parseFailed = true;
+      closeStream();
+      showParseError(err && err.message);
+    });
+    parseTimer = setTimeout(()=>{
+      if(parseFailed) return;
+      parseFailed = true;
+      closeStream();
+      showParseError('Analysen tog for lang tid. Prøv igen eller indsæt teksten direkte.');
+    }, 95000);
+  } catch(_) { showParseError('CV-analysen kunne ikke startes.'); }
 }
-function closeStream(){ if(es){ es.close(); es=null; } if(mockTimer){ clearTimeout(mockTimer); mockTimer=null; } }
-function postPayload(){
-  try {
-    const fd = new FormData();
-    fd.append('session_id', sessionId);
-    if (staged?.type==='file') fd.append('cv', staged.file);
-    else fd.append('cv_text', staged?.text || '');
-    fetch('/api/cv/parse', { method:'POST', credentials:'same-origin', body: fd }).catch(()=>{});
-  } catch(_){}
+function closeStream(){ if(es){ es.close(); es=null; } if(parseTimer){ clearTimeout(parseTimer); parseTimer=null; } }
+async function postPayload(){
+  const fd = new FormData();
+  fd.append('session_id', sessionId);
+  if (staged?.type==='file') fd.append('cv', staged.file);
+  else fd.append('cv_text', staged?.text || '');
+  const response = await fetch('/api/cv/parse', { method:'POST', credentials:'same-origin', body: fd });
+  const data = await response.json().catch(()=>({}));
+  if (!response.ok || data.success === false) {
+    throw new Error(data.error || 'CV’et kunne ikke sendes til analyse.');
+  }
 }
 
 let arcProgress = 0;
@@ -740,47 +913,12 @@ function handleChunk(){
   tween(centerCore.material).to({ emissiveIntensity: 1.4 }, 120).yoyo(true).repeat(1).start();
 }
 
-// ---- MOCK stream (fallback when no backend parse available) ----
-const SAMPLE = {
-  summary: 'Erfaren produktdesigner med 8+ års erfaring inden for digitale tjenester og tværfagligt samarbejde.',
-  skills: [
-    { name:'UX-design', level:'Ekspert' }, { name:'Figma', level:'Ekspert' },
-    { name:'Prototyping', level:'Erfaren' }, { name:'Brugertest', level:'Erfaren' },
-    { name:'Designsystemer', level:'Ekspert' }, { name:'HTML & CSS', level:'Øvet' },
-    { name:'Workshops', level:'Erfaren' }, { name:'Tilgængelighed', level:'Øvet' },
-  ],
-  experience: [
-    { title:'Lead Product Designer', company:'Nordisk Digital A/S', years:'2021–2026' },
-    { title:'Senior UX-designer', company:'Bolig & Co', years:'2018–2021' },
-    { title:'UX-designer', company:'Studio Kobenhavn', years:'2016–2018' },
-  ],
-  education: [
-    { degree:'Cand.it. i Interaktionsdesign', institution:'Aarhus Universitet', year:'2016' },
-    { degree:'BA i Multimediedesign', institution:'KEA', year:'2013' },
-  ],
-  certifications: [
-    { name:'Certified Scrum Product Owner', issuer:'Scrum Alliance', issue_date:'2022', expiry_date:'2024' },
-    { name:'Google UX Design', issuer:'Google', issue_date:'2021', expiry_date:null },
-  ],
-  languages: [
-    { language:'Dansk', proficiency:'Modersmål' }, { language:'Engelsk', proficiency:'Flydende' },
-    { language:'Tysk', proficiency:'Professionelt' },
-  ],
-};
-function runMock(){
-  const seq = [
-    [200,  ()=>handleStage('Udtrækker tekst')],
-    [500,  ()=>handleChunk()], [800,()=>handleChunk()], [1100,()=>handleChunk()],
-    [1400, ()=>handleStage('Analyserer')],
-    [1500, ()=>{ lightNode('skills'); revealNode('skills'); }],
-    [1900, ()=>{ lightNode('experience'); revealNode('experience'); handleChunk(); }],
-    [2300, ()=>{ lightNode('education'); revealNode('education'); handleChunk(); }],
-    [2700, ()=>{ lightNode('certifications'); revealNode('certifications'); handleChunk(); }],
-    [3100, ()=>{ lightNode('languages'); revealNode('languages'); handleChunk(); }],
-    [3500, ()=>handleStage('Foreslår profil')],
-    [4200, ()=>handleResult(SAMPLE, '')],
-  ];
-  seq.forEach(([t, fn])=> setTimeout(fn, t));
+function showParseError(message){
+  $('#arcWrap').style.opacity = 0;
+  setStageLabel('');
+  $('#intro').classList.remove('invisible');
+  state = 'upload';
+  showToast('CV’et blev ikke analyseret', message || 'Prøv igen eller indsæt teksten direkte.');
 }
 
 // ============================================================
@@ -813,6 +951,7 @@ function enterReview(){
   tween(pMat).to({ opacity: 0.25 }, 1200).start();
 
   buildReviewObjects();
+  buildAccessibleReview();
 
   moveCamera(new THREE.Vector3(0, 1.0, 16.5), new THREE.Vector3(0, 0.3, 0), 1700);
   $('#profileIcon').classList.add('show');
@@ -834,7 +973,8 @@ function buildReviewObjects(){
   const sk = nodes.skills;
   (proposal.skills||[]).forEach((s, i)=>{
     const chip = textSprite(s.name, { fontSize:36, font:600, bg:'rgba(20,20,32,0.9)', border:PRIMARY_HEX, fg:'#fff' });
-    chip.userData = { kind:'skill', data:{...s}, idx:i, accepted:false, baseScale: chip.scale.clone() };
+    chip.userData = { kind:'skill', data:{...s}, idx:i, accepted:true, baseScale: chip.scale.clone() };
+    accepted.add(chip);
     chip.userData.orbit = { r: 2.4 + (i%2)*0.7, a: (i/(proposal.skills.length||1))*Math.PI*2, y: (Math.random()-.5)*1.6, speed: 0.18 + Math.random()*0.1 };
     sk.items.add(chip); pickables.push(chip);
     chip.material.opacity = 0; tween(chip.material).to({opacity:1}, 600).delay(i*60).start();
@@ -846,7 +986,8 @@ function buildReviewObjects(){
     const off = (i - ((proposal.experience.length-1)/2));
     card.position.set(off*0.45, -off*0.55, -i*1.4 + 1.6);
     card.rotation.y = -0.25; card.rotation.x = 0.04;
-    card.userData = { kind:'experience', data:{...e}, idx:i, accepted:false, home: card.position.clone(), homeRot: card.rotation.clone() };
+    card.userData = { kind:'experience', data:{...e}, idx:i, accepted:true, home: card.position.clone(), homeRot: card.rotation.clone() };
+    accepted.add(card);
     ex.items.add(card); pickables.push(card);
     card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
   });
@@ -856,7 +997,8 @@ function buildReviewObjects(){
     const card = makeCardMesh(2.8, 1.7, tex, ACCENT2.getHex());
     card.position.set(i*0.35, -i*0.42, i*0.4);
     card.rotation.z = (i%2?1:-1)*0.04; card.rotation.x = 0.05;
-    card.userData = { kind:'education', data:{...e}, idx:i, accepted:false, home: card.position.clone(), homeRot: card.rotation.clone() };
+    card.userData = { kind:'education', data:{...e}, idx:i, accepted:true, home: card.position.clone(), homeRot: card.rotation.clone() };
+    accepted.add(card);
     ed.items.add(card); pickables.push(card);
     card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
   });
@@ -867,19 +1009,117 @@ function buildReviewObjects(){
     const card = makeCardMesh(2.7, 1.7, tex, PRIMARY.getHex());
     card.position.set(-i*0.34, i*0.4, i*0.4);
     card.rotation.x = 0.05;
-    card.userData = { kind:'certifications', data:{...c}, idx:i, accepted:false, home: card.position.clone(), homeRot: card.rotation.clone() };
+    card.userData = { kind:'certifications', data:{...c}, idx:i, accepted:true, home: card.position.clone(), homeRot: card.rotation.clone() };
+    accepted.add(card);
     ce.items.add(card); pickables.push(card);
     card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
   });
   const lg = nodes.languages;
   (proposal.languages||[]).forEach((l, i)=>{
     const chip = textSprite(`${l.language} · ${l.proficiency}`, { fontSize:32, font:600, bg:'rgba(20,20,32,0.9)', border:'#'+ACCENT.getHexString(), fg:'#fff' });
-    chip.userData = { kind:'languages', data:{...l}, idx:i, accepted:false };
+    chip.userData = { kind:'languages', data:{...l}, idx:i, accepted:true };
+    accepted.add(chip);
     chip.userData.orbit = { r: 1.9 + (i%2)*0.5, a: (i/(proposal.languages.length||1))*Math.PI*2, y:(Math.random()-.5)*1.2, speed: 0.2 };
     lg.items.add(chip); pickables.push(chip);
     chip.material.opacity = 0; tween(chip.material).to({opacity:1},600).delay(i*60).start();
   });
 }
+
+function objectFor(kind, idx){
+  return pickables.find(o => o.userData && o.userData.kind === kind && Number(o.userData.idx) === Number(idx));
+}
+function addReviewControl(fields, item, key, label, type='text', wide=false, options=null){
+  let el;
+  if (options) {
+    el=document.createElement('select');
+    options.forEach(([value,text])=>{ const op=document.createElement('option');op.value=value;op.textContent=text;if(value===String(item[key]??''))op.selected=true;el.appendChild(op); });
+  } else if (type==='textarea') {
+    el=document.createElement('textarea'); el.rows=2;
+  } else {
+    el=document.createElement('input'); el.type=type;
+  }
+  el.value=item[key]??''; el.dataset.key=key; el.setAttribute('aria-label',label);
+  if(wide) el.classList.add('wide');
+  fields.appendChild(el);
+  return el;
+}
+function buildReviewItem(kind, item, idx, specs){
+  const row=document.createElement('div'); row.className='review-item'; row.dataset.kind=kind; row.dataset.idx=idx;
+  const check=document.createElement('input'); check.type='checkbox'; check.checked=true; check.setAttribute('aria-label','Gem dette forslag');
+  const fields=document.createElement('div'); fields.className='review-fields';
+  specs.forEach(spec=>addReviewControl(fields,item,...spec));
+  fields.addEventListener('input',e=>{
+    if(!e.target.dataset.key)return;
+    const key=e.target.dataset.key;
+    item[key]=key==='is_current' ? e.target.value==='true' : (e.target.type==='checkbox'?e.target.checked:e.target.value);
+    const obj=objectFor(kind,idx); if(obj)obj.userData.data[key]=item[key];
+  });
+  check.addEventListener('change',()=>{
+    const obj=objectFor(kind,idx);
+    if(obj){
+      obj.userData.accepted=check.checked;
+      if(check.checked)accepted.add(obj);else accepted.delete(obj);
+    }
+    updateCounter();
+  });
+  row.append(check,fields); return row;
+}
+function buildAccessibleReview(){
+  const root=$('#reviewItems'); root.innerHTML='';
+  const group=(title)=>{
+    const g=document.createElement('section');g.className='review-group';
+    const h=document.createElement('h3');h.textContent=title;g.appendChild(h);root.appendChild(g);return g;
+  };
+  if(proposal.summary){
+    const g=group('Profiltekst');
+    const item={summary:proposal.summary};
+    const row=buildReviewItem('summary',item,0,[['summary','Profiltekst','textarea',true]]);
+    row.querySelector('textarea').addEventListener('input',e=>{proposal.summary=e.target.value;});
+    g.appendChild(row);
+  }
+  if((proposal.skills||[]).length){
+    const g=group('Kompetencer');
+    proposal.skills.forEach((item,i)=>g.appendChild(buildReviewItem('skill',item,i,[
+      ['name','Kompetence'],['level','Niveau','text',false,LEVELS.map(v=>[v,v])]
+    ])));
+  }
+  if((proposal.experience||[]).length){
+    const g=group('Erfaring');
+    proposal.experience.forEach((item,i)=>g.appendChild(buildReviewItem('experience',item,i,[
+      ['title','Titel'],['company','Virksomhed'],['start_year','Startår','number'],
+      ['end_year','Slutår','number'],['is_current','Nuværende','text',false,[['false','Nej'],['true','Ja']]],
+      ['description','Ansvar og resultater','textarea',true]
+    ])));
+  }
+  if((proposal.education||[]).length){
+    const g=group('Uddannelse');
+    proposal.education.forEach((item,i)=>g.appendChild(buildReviewItem('education',item,i,[
+      ['degree','Uddannelse'],['institution','Institution'],['year','År']
+    ])));
+  }
+  if((proposal.certifications||[]).length){
+    const g=group('Certificeringer');
+    proposal.certifications.forEach((item,i)=>g.appendChild(buildReviewItem('certifications',item,i,[
+      ['name','Certificering'],['issuer','Udsteder'],['issue_date','Udstedt'],['expiry_date','Udløber']
+    ])));
+  }
+  if((proposal.languages||[]).length){
+    const g=group('Sprog');
+    proposal.languages.forEach((item,i)=>g.appendChild(buildReviewItem('languages',item,i,[
+      ['language','Sprog'],['proficiency','Niveau','text',false,PROF.map(v=>[v,v])]
+    ])));
+  }
+  updateCounter();
+}
+$('#reviewListBtn').addEventListener('click',e=>{
+  const show=!$('#reviewList').classList.contains('show');
+  $('#reviewList').classList.toggle('show',show);e.currentTarget.setAttribute('aria-expanded',String(show));
+});
+function setAllReview(checked){
+  $('#reviewItems').querySelectorAll('.review-item>input[type=checkbox]').forEach(c=>{c.checked=checked;c.dispatchEvent(new Event('change'));});
+}
+$('#selectAllBtn').addEventListener('click',()=>setAllReview(true));
+$('#selectNoneBtn').addEventListener('click',()=>setAllReview(false));
 
 // ============================================================
 //  RAYCAST / CARD INTERACTION
@@ -965,6 +1205,8 @@ function openEditor(obj){
 function readEditor(){
   if (!selected) return;
   $('#editorFields').querySelectorAll('input,select').forEach(el=>{ selected.userData.data[el.dataset.key] = el.value; });
+  const row=$(`#reviewItems .review-item[data-kind="${selected.userData.kind}"][data-idx="${selected.userData.idx}"]`);
+  if(row)row.querySelectorAll('[data-key]').forEach(el=>{el.value=selected.userData.data[el.dataset.key]??'';});
 }
 $('#closeEditor').addEventListener('click', ()=>{ readEditor(); deselect(true); });
 $('#acceptBtn').addEventListener('click', ()=>{
@@ -987,16 +1229,43 @@ $('#discardBtn').addEventListener('click', ()=>{
   updateCounter();
 });
 
-function updateCounter(){ $('#counter').innerHTML = `<b>${accepted.size}</b> accepteret`; }
+function updateCounter(){
+  const summaryCheck=$('#reviewItems .review-item[data-kind="summary"]>input[type=checkbox]');
+  const count=accepted.size+(summaryCheck&&summaryCheck.checked?1:0);
+  $('#counter').innerHTML = `<b>${count}</b> accepteret`;
+}
 
 // ---- Save to profile ----
 $('#saveBtn').addEventListener('click', saveProfile);
-function saveProfile(){
-  if (accepted.size === 0){ showToast('Acceptér mindst ét kort først', ''); return; }
+async function saveProfile(){
+  const summaryCheck=$('#reviewItems .review-item[data-kind="summary"]>input[type=checkbox]');
+  if (accepted.size === 0 && !(summaryCheck&&summaryCheck.checked)){ showToast('Acceptér mindst ét forslag først', ''); return; }
   deselect(true);
+  const saveBtn=$('#saveBtn'); saveBtn.disabled=true; saveBtn.textContent='Gemmer…';
+  const payload = {
+    session_id: sessionId,
+    conflict_mode: $('#conflictMode').value,
+    summary: summaryCheck&&summaryCheck.checked ? proposal.summary : '',
+    accepted: [...accepted].map(o=>({ type:o.userData.kind, ...o.userData.data }))
+  };
+  try {
+    const response=await fetch('/api/cv/apply', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const res=await response.json().catch(()=>({}));
+    if ((!response.ok && response.status!==207) || (!res.success && !res.partial_success)) throw new Error((res&&res.error)||'apply failed');
+    const out=res.outcomes||{};
+    const changed=(out.created||0)+(out.updated||0)+(out.merged||0);
+    $('#completionSummary').textContent=`${changed} oplysninger blev gemt${out.skipped?`, ${out.skipped} eksisterende blev beholdt`:''}${out.failed?`, og ${out.failed} kunne ikke gemmes`:''}.`;
+    animateSaveSuccess();
+  } catch (_) {
+    saveBtn.disabled=false; saveBtn.textContent='Gem til min profil';
+    showToast('Kunne ikke gemme', 'Dine forslag er stadig her. Prøv igen.');
+  }
+}
+function animateSaveSuccess(){
   const iconRect = $('#profileIcon').getBoundingClientRect();
   const target = screenToWorld(iconRect.left + iconRect.width/2, iconRect.top + iconRect.height/2, 8);
   let done = 0; const total = accepted.size;
+  if(!total){finishSave();return;}
   [...accepted].forEach((obj, i)=>{
     scene.attach(obj);
     const delay = i*90;
@@ -1006,23 +1275,12 @@ function saveProfile(){
         if(++done>=total) finishSave(); }).start();
     if (obj.material.opacity!==undefined) tween(obj.material).to({opacity:0},800).delay(delay+200).start();
   });
-  const payload = { session_id: sessionId, accepted: [...accepted].map(o=>({ type:o.userData.kind, ...o.userData.data })) };
-  // Drive the toast off the REAL server result — never claim "gemt" before the
-  // apply actually succeeds (the old fire-and-forget could silently drop data).
-  fetch('/api/cv/apply', { method:'POST', credentials:'same-origin', headers:{'Content-Type':'application/json'}, body: JSON.stringify(payload) })
-    .then(r => r.ok ? r.json() : Promise.reject(r.status))
-    .then(res => {
-      if (!res || !res.success) throw new Error('apply failed');
-      const n = res.saved ? Object.values(res.saved).reduce((a,b)=>a+(b||0),0) : total;
-      showToast('Profil opdateret ✓', `${n} oplysninger tilføjet til din profil.`);
-    })
-    .catch(() => showToast('Kunne ikke gemme', 'Noget gik galt — dine valg blev ikke gemt. Prøv igen.'));
 }
 function finishSave(){
   $('#reviewBar').classList.add('invisible');
+  $('#reviewList').classList.remove('show');
   moveCamera(new THREE.Vector3(0,1,20), new THREE.Vector3(0,0,0), 1400);
-  // The success/failure toast is fired by the apply response in saveProfile,
-  // so the user is never told "gemt" before it actually persisted.
+  setTimeout(()=>$('#completionPanel').classList.add('show'),450);
 }
 function showToast(title, sub){
   const t = $('#toast'); t.innerHTML = title + (sub? `<div class="sub">${sub}</div>`:''); t.classList.add('show');
@@ -1088,4 +1346,5 @@ window.addEventListener('resize', ()=>{
   renderer.setSize(container.clientWidth, container.clientHeight);
 });
 </script>
+{% endif %}
 {% endblock %}

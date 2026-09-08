@@ -90,14 +90,19 @@ def _db_sweep(mysql):
             pass
 
 
-def start(session_id):
+def start(session_id, stage="extracting"):
     """Mark a parse job as running (clears any previous result for the id)."""
     if not session_id:
         return
     expires_at = time.time() + _TTL_S
     with _LOCK:
         _cleanup_expired_locked()
-        _STORE[session_id] = {"status": "running", "result": None, "expires_at": expires_at}
+        _STORE[session_id] = {
+            "status": "running",
+            "result": None,
+            "stage": str(stage or "extracting"),
+            "expires_at": expires_at,
+        }
     mysql = _mysql()
     if mysql is not None and _ensure_table(mysql):
         try:
@@ -119,12 +124,52 @@ def start(session_id):
                 pass
 
 
+def progress(session_id, stage):
+    """Persist a real parse lifecycle stage for cross-worker SSE consumers."""
+    if not session_id or not stage:
+        return
+    expires_at = time.time() + _TTL_S
+    payload = {"stage": str(stage)}
+    with _LOCK:
+        entry = _STORE.get(session_id) or {}
+        entry.update({
+            "status": "running",
+            "result": None,
+            "stage": str(stage),
+            "expires_at": expires_at,
+        })
+        _STORE[session_id] = entry
+    mysql = _mysql()
+    if mysql is not None and _ensure_table(mysql):
+        try:
+            cur = mysql.connection.cursor()
+            cur.execute(
+                "INSERT INTO ai_cv_parse_jobs (session_id, status, result_json, expires_at) "
+                "VALUES (%s, 'running', %s, %s) "
+                "ON DUPLICATE KEY UPDATE status='running', result_json=VALUES(result_json), expires_at=VALUES(expires_at)",
+                (str(session_id), json.dumps(payload, ensure_ascii=False), expires_at),
+            )
+            mysql.connection.commit()
+            cur.close()
+        except Exception as e:
+            print(f"[cv_parse_store] progress DB write failed (in-process still valid): {e}")
+            try:
+                mysql.connection.rollback()
+            except Exception:
+                pass
+
+
 def finish(session_id, payload):
     """Store the terminal result ({'proposal','hint'} or {'error',...})."""
     if not session_id:
         return
     expires_at = time.time() + _TTL_S
-    entry = {"status": "done", "result": dict(payload or {}), "expires_at": expires_at}
+    entry = {
+        "status": "done",
+        "result": dict(payload or {}),
+        "stage": "ready",
+        "expires_at": expires_at,
+    }
     with _LOCK:
         _STORE[session_id] = entry
     mysql = _mysql()
@@ -190,6 +235,50 @@ def read(session_id):
         if entry["status"] != "done":
             return None
         return entry["result"]
+
+
+def read_state(session_id):
+    """Return ``{status, stage, result?}`` for progress-aware consumers."""
+    if not session_id:
+        return None
+    mysql = _mysql()
+    if mysql is not None and _ensure_table(mysql):
+        try:
+            cur = mysql.connection.cursor()
+            cur.execute(
+                "SELECT status, result_json, expires_at FROM ai_cv_parse_jobs WHERE session_id = %s",
+                (str(session_id),),
+            )
+            row = cur.fetchone()
+            cur.close()
+            if row:
+                if isinstance(row, dict):
+                    status, result_json, expires_at = row["status"], row["result_json"], row["expires_at"]
+                else:
+                    status, result_json, expires_at = row
+                if float(expires_at) < time.time():
+                    return None
+                try:
+                    payload = json.loads(result_json or "{}")
+                except Exception:
+                    payload = {}
+                if status == "done":
+                    return {"status": "done", "stage": "ready", "result": payload}
+                return {"status": "running", "stage": payload.get("stage") or "extracting"}
+        except Exception as e:
+            print(f"[cv_parse_store] state DB failed (falling back to in-process): {e}")
+            try:
+                mysql.connection.rollback()
+            except Exception:
+                pass
+    with _LOCK:
+        entry = _STORE.get(session_id)
+        if not entry or entry["expires_at"] < time.time():
+            return None
+        state = {"status": entry["status"], "stage": entry.get("stage") or "extracting"}
+        if entry["status"] == "done":
+            state["result"] = entry.get("result") or {}
+        return state
 
 
 def discard(session_id):

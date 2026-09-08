@@ -1390,6 +1390,15 @@ def confirm_profile_update():
     data = request.json or {}
     action = data.get("action", "")
     payload = data.get("data", {})
+    # The card's values come from the model (ui_card fields are named by it), so
+    # accept the same aliases the tool executor does — otherwise a field called
+    # "course_name" or "skill" saves nothing at all.
+    try:
+        from app1.tools import _normalize_profile_args
+        _, payload = _normalize_profile_args({"action": action, "data": payload})
+    except Exception as norm_err:
+        logging.debug("confirm_profile_update: arg normalization skipped: %s", norm_err)
+        payload = payload if isinstance(payload, dict) else {}
     # Trim whitespace from all string fields
     payload = {k: v.strip() if isinstance(v, str) else v for k, v in payload.items()}
 
@@ -1410,7 +1419,10 @@ def confirm_profile_update():
         ensure_tables()
 
         if action == "add_skill":
-            add_skill(logged_in_user, payload.get("skill_name", ""), payload.get("skill_level", "mellem"))
+            # add_skill returns False when the name canonicalizes to nothing —
+            # report that instead of telling the card it saved something.
+            if not add_skill(logged_in_user, payload.get("skill_name", ""), payload.get("skill_level", "mellem")):
+                return jsonify({"status": "error", "message": "Kompetencens navn mangler"}), 400
             return _success("Kompetence tilføjet")
 
         elif action == "add_experience":
@@ -1464,7 +1476,11 @@ def confirm_profile_update():
             add_completed_course(
                 logged_in_user,
                 course_title=title,
+                course_handle=payload.get("course_handle") or None,
                 vendor=payload.get("vendor", ""),
+                # The year the learner gave ("2024") reached the card but was
+                # dropped here, so every saved course looked undated.
+                completed_date=payload.get("completed_date") or None,
                 certificate_note=payload.get("certificate_note", "")
             )
             return _success("Kursus tilføjet")
@@ -1737,8 +1753,14 @@ def confirm_tool_action():
     args = dict(entry["args"])
     args["confirm"] = True  # inject the confirmation flag
 
+    # Rebuild the provider-shaped tool call the executors expect
+    # (tool_call.function.name / .arguments), not a flat stand-in.
     import types
-    tool_call = types.SimpleNamespace(name=tool_name, arguments=args)
+    tool_call = types.SimpleNamespace(
+        name=tool_name,
+        arguments=args,
+        function=types.SimpleNamespace(name=tool_name, arguments=json.dumps(args)),
+    )
 
     try:
         if scope == "hr":

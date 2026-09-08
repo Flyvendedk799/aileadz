@@ -475,7 +475,7 @@ _CV_MAX_ITEMS = 60
 def _cv_proposal_to_form_lists(proposal):
     """Shape a cv_ingest proposal into review-ready, index-tagged lists."""
     proposal = proposal or {}
-    skills, experience, education, certifications, languages = [], [], [], [], []
+    skills, experience, education, courses, certifications, languages = [], [], [], [], [], []
     for i, s in enumerate((proposal.get('skills') or [])[:_CV_MAX_ITEMS]):
         name = (s.get('name') or '').strip()
         if not name:
@@ -503,6 +503,12 @@ def _cv_proposal_to_form_lists(proposal):
             continue
         education.append({'idx': i, 'degree': degree, 'institution': institution,
                          'year': (ed.get('year') or '').strip()})
+    for i, c in enumerate((proposal.get('courses') or [])[:_CV_MAX_ITEMS]):
+        title = (c.get('title') or '').strip()
+        if not title:
+            continue
+        courses.append({'idx': i, 'title': title, 'vendor': (c.get('vendor') or '').strip(),
+                        'completed_date': (c.get('completed_date') or '').strip()})
     for i, c in enumerate((proposal.get('certifications') or [])[:_CV_MAX_ITEMS]):
         name = (c.get('name') or '').strip()
         if not name:
@@ -516,7 +522,7 @@ def _cv_proposal_to_form_lists(proposal):
             continue
         languages.append({'idx': i, 'language': language,
                           'proficiency': (lg.get('proficiency') or 'mellem')})
-    return skills, experience, education, certifications, languages
+    return skills, experience, education, courses, certifications, languages
 
 
 def _parse_years_to_int(value):
@@ -601,8 +607,8 @@ def cv_upload_parse():
             current_app.logger.warning("cv parse: %s", e)
             proposal = {}
 
-    skills, experience, education, certifications, languages = _cv_proposal_to_form_lists(proposal)
-    has_any = bool(skills or experience or education or certifications or languages
+    skills, experience, education, courses, certifications, languages = _cv_proposal_to_form_lists(proposal)
+    has_any = bool(skills or experience or education or courses or certifications or languages
                    or (proposal.get('summary') or '').strip())
 
     if not has_any:
@@ -617,6 +623,7 @@ def cv_upload_parse():
         skills=skills,
         experience=experience,
         education=education,
+        courses=courses,
         certifications=certifications,
         languages=languages,
     )
@@ -634,13 +641,13 @@ def cv_upload_apply():
         return redirect(url_for('auth.login'))
 
     username = session['user']
-    added_summary = added_skills = added_exp = added_edu = added_cert = added_lang = 0
+    added_summary = added_skills = added_exp = added_edu = added_course = added_cert = added_lang = 0
 
     try:
         from app1.user_profile_db import (add_skill, add_experience,
                                           add_education, add_certification,
-                                          add_language, update_profile_summary,
-                                          ensure_tables)
+                                          add_completed_course, add_language,
+                                          update_profile_summary, ensure_tables)
         try:
             ensure_tables()
         except Exception as e:
@@ -698,6 +705,21 @@ def cv_upload_apply():
             except Exception as e:
                 current_app.logger.warning("cv apply education: %s", e)
 
+        # Completed courses — a course belongs in the course list, not in skills.
+        for idx in request.form.getlist('accept_course'):
+            title = (request.form.get(f'crs_title_{idx}') or '').strip()
+            if not title:
+                continue
+            try:
+                add_completed_course(
+                    username, course_title=title,
+                    vendor=(request.form.get(f'crs_vendor_{idx}') or '').strip(),
+                    completed_date=(request.form.get(f'crs_date_{idx}') or '').strip() or None,
+                )
+                added_course += 1
+            except Exception as e:
+                current_app.logger.warning("cv apply course: %s", e)
+
         # Certifications.
         for idx in request.form.getlist('accept_certification'):
             name = (request.form.get(f'crt_name_{idx}') or '').strip()
@@ -732,7 +754,8 @@ def cv_upload_apply():
         flash('Kunne ikke gemme profilen. Prøv igen.', 'danger')
         return redirect(url_for('futurematch.cv_upload'))
 
-    total = added_summary + added_skills + added_exp + added_edu + added_cert + added_lang
+    total = (added_summary + added_skills + added_exp + added_edu
+             + added_course + added_cert + added_lang)
     if total:
         parts = []
         if added_summary:
@@ -743,6 +766,8 @@ def cv_upload_apply():
             parts.append(f'{added_exp} erfaring' + ('er' if added_exp != 1 else ''))
         if added_edu:
             parts.append(f'{added_edu} uddannelse' + ('r' if added_edu != 1 else ''))
+        if added_course:
+            parts.append(f'{added_course} kursus' + ('er' if added_course != 1 else ''))
         if added_cert:
             parts.append(f'{added_cert} certificering' + ('er' if added_cert != 1 else ''))
         if added_lang:

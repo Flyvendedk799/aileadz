@@ -141,6 +141,12 @@ a failure and not as "you have no profile". A *background* refresh that fails
 Memory CRUD moved off `window.prompt`: an inline composer with the real category
 vocabulary, and delete asks first.
 
+Structured profile facts now carry stable entity ids and correction metadata.
+The inspector links to the canonical profile editor and can remove supported
+facts through the user-scoped REST endpoints after confirmation. The graph also
+includes portfolio links, completed courses, and saved learning paths, so
+“everything the AI knows” no longer omits the learner's evidence and plan.
+
 ---
 
 ## 5. Gotchas (read before editing)

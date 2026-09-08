@@ -280,7 +280,9 @@ _EXTRACTION_SYSTEM_PROMPT = (
     "{\n"
     '  "summary": "kort dansk opsummering (maks 2-3 sætninger)",\n'
     '  "skills": [{"name": "kompetence", "level": "begynder|mellem|avanceret|ekspert"}],\n'
-    '  "experience": [{"title": "stillingsbetegnelse", "company": "virksomhed", "years": "2019-2023 eller fx 4"}],\n'
+    '  "experience": [{"title": "stillingsbetegnelse", "company": "virksomhed", '
+    '"start_year": 2019, "end_year": 2023, "is_current": false, '
+    '"description": "kort beskrivelse af ansvar og dokumenterede resultater"}],\n'
     '  "education": [{"degree": "uddannelse/grad", "institution": "institution", "year": "2018"}],\n'
     '  "certifications": [{"name": "certificering", "issuer": "udsteder", "issue_date": "2022", "expiry_date": "2025 eller tom"}],\n'
     '  "languages": [{"language": "sprog", "proficiency": "begynder|mellem|flydende|modersmaal"}]\n'
@@ -331,6 +333,16 @@ def _clean_str(value, max_len: int = 255) -> str:
     return s[:max_len]
 
 
+def _coerce_year(value):
+    """Return a plausible four-digit year or None."""
+    try:
+        import re
+        match = re.search(r"(?:19|20)\d{2}", str(value or ""))
+        return int(match.group(0)) if match else None
+    except Exception:
+        return None
+
+
 def _normalise_profile(data) -> dict:
     """Coerce arbitrary model JSON into our strict proposal shape. Guarded."""
     if not isinstance(data, dict):
@@ -361,8 +373,32 @@ def _normalise_profile(data) -> dict:
             title = _clean_str(e.get("title") or e.get("stilling") or e.get("titel"))
             company = _clean_str(e.get("company") or e.get("virksomhed") or e.get("firma"))
             years = _clean_str(e.get("years") or e.get("år") or e.get("period") or e.get("periode"), 60)
+            start_year = _coerce_year(e.get("start_year"))
+            end_year = _coerce_year(e.get("end_year"))
+            if not start_year and years:
+                import re
+                found = re.findall(r"(?:19|20)\d{2}", years)
+                start_year = int(found[0]) if found else None
+                end_year = int(found[1]) if len(found) > 1 else None
+            is_current = bool(e.get("is_current")) or any(
+                marker in years.lower() for marker in ("nu", "present", "current", "d.d.")
+            )
+            if is_current:
+                end_year = None
+            description = _clean_str(
+                e.get("description") or e.get("beskrivelse") or e.get("responsibilities"),
+                1200,
+            )
             if title or company:
-                out["experience"].append({"title": title, "company": company, "years": years})
+                out["experience"].append({
+                    "title": title,
+                    "company": company,
+                    "years": years,
+                    "start_year": start_year,
+                    "end_year": end_year,
+                    "is_current": is_current,
+                    "description": description,
+                })
     except Exception:
         pass
 
@@ -411,7 +447,7 @@ def _normalise_profile(data) -> dict:
     return out
 
 
-def parse_profile_from_text(text: str) -> dict:
+def parse_profile_from_text(text: str, progress_callback=None) -> dict:
     """Extract a structured Danish profile proposal from raw CV text.
 
     Never raises. Returns {} on any failure (no client, OpenAI error, bad JSON,
@@ -429,6 +465,11 @@ def parse_profile_from_text(text: str) -> dict:
         if client is None:
             return {}
 
+        if progress_callback:
+            try:
+                progress_callback("analysing")
+            except Exception:
+                pass
         model = _model_name()
         # Fence the CV as untrusted DATA so a "Ignore previous instructions…"
         # line embedded in an uploaded CV can't steer the extraction.
@@ -482,7 +523,70 @@ def parse_profile_from_text(text: str) -> dict:
         parsed = _safe_load_json(raw)
         if parsed is None:
             return {}
-        return _normalise_profile(parsed)
+        proposal = _normalise_profile(parsed)
+        if progress_callback:
+            try:
+                progress_callback("ready")
+            except Exception:
+                pass
+        return proposal
+    except Exception:
+        return {}
+
+
+def improve_cv_section(section: str, content, *, target_role: str = "", gaps=None) -> dict:
+    """Suggest a grounded rewrite for one CV section without mutating data."""
+    try:
+        section = (section or "").strip().lower()
+        if section not in {"summary", "experience"}:
+            return {}
+        if not content:
+            return {}
+        client = _get_openai_client()
+        if client is None:
+            return {}
+        source = json.dumps(content, ensure_ascii=False, default=str)[:5000]
+        gap_names = [str(g.get("skill") or "") for g in (gaps or [])[:5] if g.get("skill")]
+        context = {
+            "target_role": (target_role or "")[:150],
+            "relevant_skill_gaps": gap_names,
+        }
+        fenced = "--- CV-DATA ---\n" + source + "\n--- SLUT CV-DATA ---"
+        prompt = (
+            "Forbedr den angivne CV-sektion på dansk. Brug KUN fakta i CV-DATA. "
+            "Du må gøre formuleringer skarpere, men må aldrig opfinde tal, ansvar, "
+            "resultater, arbejdsgivere eller kompetencer. Hvis vigtig evidens mangler, "
+            "skal den nævnes som et spørgsmål i missing_evidence og IKKE skrives ind i "
+            "forslaget. Svar kun som JSON med: suggestion (tekst), rationale (kort tekst), "
+            "missing_evidence (liste af spørgsmål), inferred (altid false medmindre du "
+            "tydeligt markerer en sproglig inferens).\n"
+            f"Sektion: {section}\nKontekst: {json.dumps(context, ensure_ascii=False)}\n{fenced}"
+        )
+        resp = client.chat.completions.create(
+            model=_model_name(),
+            messages=[
+                {"role": "system", "content": "Du er en faktatro CV-redaktør. Opfind aldrig evidens."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            max_tokens=700,
+            timeout=30,
+        )
+        raw = (resp.choices[0].message.content or "") if resp else ""
+        parsed = _safe_load_json(raw) or {}
+        suggestion = _clean_str(parsed.get("suggestion"), 1800)
+        if not suggestion:
+            return {}
+        return {
+            "suggestion": suggestion,
+            "rationale": _clean_str(parsed.get("rationale"), 500),
+            "missing_evidence": [
+                _clean_str(x, 300) for x in (parsed.get("missing_evidence") or [])[:5]
+                if _clean_str(x, 300)
+            ],
+            "inferred": bool(parsed.get("inferred")),
+        }
     except Exception:
         return {}
 

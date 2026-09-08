@@ -2,6 +2,7 @@ from flask import Blueprint, jsonify, session, current_app, request, Response, s
 from auth_decorators import login_required
 import io as _cv_io
 import json
+import hashlib as _cv_hashlib
 import threading as _cv_thread
 import time as _cv_time
 
@@ -14,6 +15,35 @@ _ALLOWED_CV_EXTS = {
 }
 
 api_bp = Blueprint('api', __name__)
+
+_LEARNER_EVENT_TYPES = frozenset({
+    'cv_start', 'cv_parse_failed', 'cv_review', 'cv_apply',
+    'profiler_start', 'profiler_complete', 'profiler_handoff',
+    'mindmap_correct', 'mindmap_gap_cta', 'recommendation_click',
+    'learning_path_open', 'order_start',
+})
+
+
+@api_bp.route('/api/learner/events', methods=['POST'])
+@login_required
+def learner_event():
+    """Small allowlisted product-funnel event endpoint (no free-text/PII)."""
+    data = request.get_json() or {}
+    event = (data.get('event') or '').strip()
+    if event not in _LEARNER_EVENT_TYPES:
+        return jsonify({'success': False, 'error': 'unknown event'}), 400
+    raw_meta = data.get('meta') if isinstance(data.get('meta'), dict) else {}
+    meta = {
+        str(k)[:50]: v for k, v in raw_meta.items()
+        if isinstance(v, (bool, int, float)) or (isinstance(v, str) and len(v) <= 120)
+    }
+    try:
+        from app1.memory_store import log_event
+        log_event(session.get('sid', 'unknown'), event, extra=meta)
+    except Exception as exc:
+        current_app.logger.warning('learner event %s: %s', event, exc)
+    return jsonify({'success': True})
+
 
 @api_bp.route('/api/credits')
 def get_credits():
@@ -545,6 +575,12 @@ class _CvFileShim:
         return self.stream.read()
 
 
+def _cv_job_key(username, session_id):
+    """Bind browser-generated parse ids to the authenticated user."""
+    raw = f"{username or ''}\0{session_id or ''}".encode("utf-8", "ignore")
+    return _cv_hashlib.sha256(raw).hexdigest()
+
+
 @api_bp.route('/api/cv/parse', methods=['POST'])
 @login_required
 def api_cv_parse():
@@ -555,6 +591,8 @@ def api_cv_parse():
     session_id = request.form.get('session_id', '')
     if not session_id:
         return jsonify({'success': False, 'error': 'session_id required'}), 400
+    username = session.get('user')
+    job_key = _cv_job_key(username, session_id)
     file = request.files.get('cv')
     text_input = request.form.get('cv_text', '') or ''
 
@@ -575,7 +613,7 @@ def api_cv_parse():
     elif not text_input.strip():
         return jsonify({'success': False, 'error': 'Ingen fil eller tekst modtaget.'}), 400
 
-    cv_parse_store.start(session_id)
+    cv_parse_store.start(job_key, "extracting")
     app = current_app._get_current_object()
 
     def _run():
@@ -588,14 +626,21 @@ def api_cv_parse():
                     text, hint = extract_text(_CvFileShim(raw, filename))
                 else:
                     text, hint = text_input, ''
-                proposal = parse_profile_from_text(text) if (text or '').strip() else {}
-                cv_parse_store.finish(session_id, {'proposal': proposal, 'hint': hint})
+                cv_parse_store.progress(job_key, "reading")
+                proposal = parse_profile_from_text(
+                    text,
+                    progress_callback=lambda stage: cv_parse_store.progress(job_key, stage),
+                ) if (text or '').strip() else {}
+                cv_parse_store.finish(job_key, {'proposal': proposal, 'hint': hint})
             except Exception as exc:
                 try:
                     app.logger.error('cv parse error: %s', exc)
                 except Exception:
                     pass
-                cv_parse_store.finish(session_id, {'error': str(exc), 'proposal': {}})
+                cv_parse_store.finish(job_key, {
+                    'error': 'CV’et kunne ikke analyseres. Prøv igen eller indsæt teksten direkte.',
+                    'proposal': {},
+                })
 
     _cv_thread.Thread(target=_run, daemon=True).start()
     return jsonify({'success': True})
@@ -611,35 +656,40 @@ def api_cv_parse_stream():
     parse thread ran on a different gunicorn worker — the bug this fixes)."""
     import cv_parse_store
     session_id = request.args.get('session_id', '')
-    _STAGES = ['Udtrækker tekst', 'Analyserer', 'Foreslår profil']
-    schedule = [(4.0, _STAGES[1]), (10.0, _STAGES[2])]
+    if not session_id:
+        return jsonify({'success': False, 'error': 'session_id required'}), 400
+    job_key = _cv_job_key(session.get('user'), session_id)
+    stage_labels = {
+        'extracting': 'Udtrækker tekst',
+        'reading': 'Læser CV',
+        'analysing': 'Analyserer',
+        'ready': 'Foreslår profil',
+    }
 
     def generate():
-        yield f"event: stage\ndata: {_STAGES[0]}\n\n"
         t0 = _cv_time.time()
-        emitted = 0
+        last_stage = None
         while _cv_time.time() - t0 < 90:
-            elapsed = _cv_time.time() - t0
-            while emitted < len(schedule) and elapsed >= schedule[emitted][0]:
-                yield f"event: stage\ndata: {schedule[emitted][1]}\n\n"
-                emitted += 1
-
-            result = cv_parse_store.read(session_id)
-            if result is not None:
-                while emitted < len(schedule):
-                    yield f"event: stage\ndata: {schedule[emitted][1]}\n\n"
-                    emitted += 1
+            state = cv_parse_store.read_state(job_key)
+            if state is not None:
+                stage = state.get('stage') or 'extracting'
+                if stage != last_stage:
+                    yield f"event: stage\ndata: {stage_labels.get(stage, stage)}\n\n"
+                    last_stage = stage
+            if state and state.get('status') == 'done':
+                result = state.get('result') or {}
                 if result.get('error'):
                     yield f"event: error\ndata: {result['error']}\n\n"
                 else:
                     payload = {'proposal': result.get('proposal') or {}, 'hint': result.get('hint') or ''}
                     yield f"event: result\ndata: {json.dumps(payload)}\n\n"
-                cv_parse_store.discard(session_id)
+                cv_parse_store.discard(job_key)
                 return
 
             _cv_time.sleep(0.5)
             yield ': ping\n\n'
 
+        cv_parse_store.discard(job_key)
         yield "event: error\ndata: timeout\n\n"
 
     return Response(
@@ -688,21 +738,89 @@ def _parse_year(val):
     return None
 
 
+@api_bp.route('/api/cv/improve', methods=['POST'])
+@login_required
+def api_cv_improve():
+    """Return a non-destructive, source-grounded CV section suggestion."""
+    data = request.get_json() or {}
+    section = (data.get('section') or '').strip().lower()
+    content = data.get('content')
+    if section not in ('summary', 'experience') or not content:
+        return jsonify({'success': False, 'error': 'section og content kræves'}), 400
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        from competency import compute_skill_gaps
+        from cv_ingest import improve_cv_section
+        ensure_tables()
+        username = session.get('user')
+        profile = get_full_profile(username)
+        suggestion = improve_cv_section(
+            section,
+            content,
+            target_role=profile.get('target_role') or '',
+            gaps=compute_skill_gaps(username, profile=profile),
+        )
+        if not suggestion:
+            return jsonify({
+                'success': False,
+                'error': 'CV-coachen kunne ikke lave et sikkert forslag lige nu.',
+            }), 503
+        return jsonify({'success': True, 'section': section, **suggestion})
+    except Exception as exc:
+        current_app.logger.error('cv improve: %s', exc)
+        return jsonify({'success': False, 'error': 'CV-coachen er midlertidigt utilgængelig.'}), 500
+
+
 @api_bp.route('/api/cv/apply', methods=['POST'])
 @login_required
 def api_cv_apply():
-    """Apply accepted CV items from the 3D portal to the user's profile."""
+    """Apply reviewed CV items and report created/merged/skipped/failed rows."""
     username = session.get('user')
     data = request.get_json() or {}
     accepted = data.get('accepted', [])
+    conflict_mode = data.get('conflict_mode', 'merge')
+    if conflict_mode not in ('merge', 'replace', 'keep'):
+        return jsonify({'success': False, 'error': 'conflict_mode must be merge, replace, or keep'}), 400
 
     try:
         from app1.user_profile_db import (
             add_skill, add_experience, add_education,
-            add_certification, add_language, ensure_tables,
+            add_certification, add_language, ensure_tables, get_full_profile,
+            update_skill_level, update_experience, update_education,
+            update_certification, update_language_level, update_profile_summary,
         )
+        from competency import canonical_skill, level_to_score
         ensure_tables()
         counts = {k: 0 for k in ('skills', 'experience', 'education', 'certifications', 'languages')}
+        outcomes = {k: 0 for k in ('created', 'updated', 'merged', 'skipped', 'failed')}
+        errors = []
+        existing = get_full_profile(username) or {}
+        skills = {canonical_skill(s.get('name')).casefold(): s for s in existing.get('skills', []) if s.get('name')}
+        experience = {
+            ((e.get('title') or '').casefold(), (e.get('company') or '').casefold()): e
+            for e in existing.get('experience', [])
+        }
+        education = {
+            ((e.get('degree') or '').casefold(), (e.get('institution') or '').casefold()): e
+            for e in existing.get('education', [])
+        }
+        certifications = {
+            ((c.get('name') or '').casefold(), (c.get('issuer') or '').casefold()): c
+            for c in existing.get('certifications', [])
+        }
+        languages = {(l.get('language') or '').casefold(): l for l in existing.get('languages', [])}
+
+        summary = (data.get('summary') or '').strip()
+        if summary:
+            old_bio = (existing.get('bio') or '').strip()
+            if old_bio and conflict_mode == 'keep':
+                outcomes['skipped'] += 1
+            elif old_bio and conflict_mode == 'merge' and summary.casefold() not in old_bio.casefold():
+                update_profile_summary(username, bio=(old_bio + '\n\n' + summary)[:4000])
+                outcomes['merged'] += 1
+            else:
+                update_profile_summary(username, bio=summary[:4000])
+                outcomes['updated' if old_bio else 'created'] += 1
 
         for item in accepted:
             kind = item.get('type', '')
@@ -712,44 +830,160 @@ def api_cv_apply():
                     if not name:
                         continue
                     level = _SKILL_LEVEL_MAP.get((item.get('level') or '').strip().lower(), 'mellem')
-                    add_skill(username, name, level, source='cv_upload')
+                    key = canonical_skill(name).casefold()
+                    current = skills.get(key)
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current and conflict_mode == 'replace':
+                        update_skill_level(username, current['name'], level)
+                        outcomes['updated'] += 1
+                    elif current:
+                        add_skill(username, name, level, source='cv_upload')
+                        outcomes['merged'] += 1
+                    else:
+                        add_skill(username, name, level, source='cv_upload')
+                        outcomes['created'] += 1
+                    skills[key] = {'name': canonical_skill(name), 'level': level}
                     counts['skills'] += 1
                 elif kind == 'experience':
                     title = (item.get('title') or '').strip()
                     company = (item.get('company') or '').strip()
                     if not title and not company:
                         continue
-                    add_experience(username, title or company, company=company,
-                                   start_year=_parse_year(item.get('years')))
+                    key = (title.casefold(), company.casefold())
+                    current = experience.get(key)
+                    fields = {
+                        'title': title or company,
+                        'company': company,
+                        'start_year': item.get('start_year') or _parse_year(item.get('years')),
+                        'end_year': item.get('end_year'),
+                        'is_current': bool(item.get('is_current')),
+                        'description': (item.get('description') or '').strip(),
+                    }
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current:
+                        if conflict_mode == 'merge':
+                            fields = {k: (current.get(k) if current.get(k) not in (None, '') else v) for k, v in fields.items()}
+                            outcomes['merged'] += 1
+                        else:
+                            outcomes['updated'] += 1
+                        update_experience(username, current['id'], **fields)
+                    else:
+                        new_id = add_experience(username, **fields)
+                        fields['id'] = new_id
+                        outcomes['created'] += 1
+                    experience[key] = fields
                     counts['experience'] += 1
                 elif kind == 'education':
                     degree = (item.get('degree') or '').strip()
                     institution = (item.get('institution') or '').strip()
                     if not degree and not institution:
                         continue
-                    add_education(username, degree or institution, institution=institution,
-                                  year_completed=_parse_year(item.get('year')))
+                    key = (degree.casefold(), institution.casefold())
+                    current = education.get(key)
+                    fields = {
+                        'degree': degree or institution,
+                        'institution': institution,
+                        'year_completed': _parse_year(item.get('year') or item.get('year_completed')),
+                        'description': (item.get('description') or '').strip(),
+                    }
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current:
+                        if conflict_mode == 'merge':
+                            fields = {k: (current.get(k) if current.get(k) not in (None, '') else v) for k, v in fields.items()}
+                            outcomes['merged'] += 1
+                        else:
+                            outcomes['updated'] += 1
+                        update_education(username, current['id'], **fields)
+                    else:
+                        new_id = add_education(username, **fields)
+                        fields['id'] = new_id
+                        outcomes['created'] += 1
+                    education[key] = fields
                     counts['education'] += 1
                 elif kind == 'certifications':
                     name = (item.get('name') or '').strip()
                     if not name:
                         continue
-                    add_certification(username, name, issuer=item.get('issuer', ''),
-                                      issue_date=item.get('issue_date') or None,
-                                      expiry_date=item.get('expiry_date') or None,
-                                      source='cv_upload')
+                    issuer = (item.get('issuer') or '').strip()
+                    key = (name.casefold(), issuer.casefold())
+                    current = certifications.get(key)
+                    fields = {
+                        'name': name, 'issuer': issuer,
+                        'issue_date': item.get('issue_date') or None,
+                        'expiry_date': item.get('expiry_date') or None,
+                    }
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current:
+                        if conflict_mode == 'merge':
+                            fields = {k: (current.get(k) if current.get(k) not in (None, '') else v) for k, v in fields.items()}
+                            outcomes['merged'] += 1
+                        else:
+                            outcomes['updated'] += 1
+                        update_certification(username, current['id'], **fields)
+                    else:
+                        new_id = add_certification(username, source='cv_upload', **fields)
+                        fields['id'] = new_id
+                        outcomes['created'] += 1
+                    certifications[key] = fields
                     counts['certifications'] += 1
                 elif kind == 'languages':
                     language = (item.get('language') or '').strip()
                     if not language:
                         continue
                     proficiency = _LANG_PROF_MAP.get((item.get('proficiency') or '').strip().lower(), 'mellem')
-                    add_language(username, language, proficiency=proficiency, source='cv_upload')
+                    key = language.casefold()
+                    current = languages.get(key)
+                    if current and conflict_mode == 'keep':
+                        outcomes['skipped'] += 1
+                        continue
+                    if current and conflict_mode == 'replace':
+                        update_language_level(username, current['language'], proficiency)
+                        outcomes['updated'] += 1
+                    elif current:
+                        lang_scores = {'begynder': 1, 'mellem': 2, 'flydende': 3, 'modersmaal': 4}
+                        best = proficiency if lang_scores[proficiency] >= lang_scores.get(current.get('proficiency'), 0) else current['proficiency']
+                        update_language_level(username, current['language'], best)
+                        outcomes['merged'] += 1
+                    else:
+                        add_language(username, language, proficiency=proficiency, source='cv_upload')
+                        outcomes['created'] += 1
+                    languages[key] = {'language': language, 'proficiency': proficiency}
                     counts['languages'] += 1
             except Exception as exc:
                 current_app.logger.warning('cv apply item %s: %s', kind, exc)
+                outcomes['failed'] += 1
+                errors.append({'type': kind or 'unknown', 'label': item.get('name') or item.get('title') or item.get('degree') or item.get('language') or '', 'error': 'Kunne ikke gemmes'})
 
-        return jsonify({'success': True, 'saved': counts})
+        career_action = {}
+        try:
+            from competency import compute_skill_gaps
+            updated_profile = get_full_profile(username)
+            top_gaps = compute_skill_gaps(username, profile=updated_profile)[:3]
+            career_action = {
+                'target_role': updated_profile.get('target_role') or '',
+                'strongest_evidence': [s.get('name') for s in (updated_profile.get('skills') or [])[:5] if s.get('name')],
+                'top_gaps': top_gaps,
+                'next_action': 'recommend_for_profile' if top_gaps else 'review_profile',
+            }
+        except Exception:
+            career_action = {}
+
+        return jsonify({
+            'success': outcomes['failed'] == 0,
+            'partial_success': outcomes['failed'] > 0 and sum(counts.values()) > 0,
+            'saved': counts,
+            'outcomes': outcomes,
+            'errors': errors,
+            'career_action': career_action,
+        }), (207 if outcomes['failed'] else 200)
     except Exception as exc:
         current_app.logger.error('cv apply: %s', exc)
         return jsonify({'success': False, 'error': str(exc)}), 500
@@ -805,6 +1039,10 @@ def get_mindmap_api():
                           'category': branch_id, 'meta': meta})
             edges.append({'source': branch_id, 'target': leaf_id})
 
+        def stable_text_id(prefix, value):
+            digest = _cv_hashlib.sha1(str(value or '').casefold().encode('utf-8')).hexdigest()[:12]
+            return f'{prefix}:{digest}'
+
         # Structured profile branches.
         if profile.get('headline') or profile.get('bio') or profile.get('preferred_format') or profile.get('preferred_location'):
             add_branch('om', 'Om mig', 'user')
@@ -824,13 +1062,15 @@ def get_mindmap_api():
                 lvl = s.get('level')
                 meta = {'source': 'profil', 'kind': 'Kompetence', 'level': lvl,
                         'level_score': level_to_score(lvl),
-                        'skill_category': s.get('category') or _skill_cat(name)}
+                        'skill_category': s.get('category') or _skill_cat(name),
+                        'entity_type': 'skill', 'entity_id': s.get('id'),
+                        'profile_section': 'skills'}
                 g = _gap_by_key.get(canonical_skill(name).lower())
                 if g:
                     meta['gap'] = {'target_label': g['target_label'],
                                    'target_score': g['target_level'],
                                    'priority': g['priority'], 'source': g['source']}
-                add_leaf('kompetencer', f'skill:{i}', name, meta)
+                add_leaf('kompetencer', f"skill:{s.get('id')}" if s.get('id') else stable_text_id('skill', name), name, meta)
 
         exp = profile.get('experience') or []
         if exp:
@@ -844,7 +1084,9 @@ def get_mindmap_api():
                     'title': e.get('title'), 'company': e.get('company'),
                     'start_year': e.get('start_year'), 'end_year': e.get('end_year'),
                     'is_current': bool(e.get('is_current')),
-                    'detail': e.get('description') or ''})
+                    'detail': e.get('description') or '',
+                    'entity_type': 'experience', 'entity_id': e.get('id'),
+                    'profile_section': 'experience'})
 
         edu = profile.get('education') or []
         if edu:
@@ -854,7 +1096,9 @@ def get_mindmap_api():
                     'source': 'profil', 'kind': 'Uddannelse',
                     'institution': e.get('institution'),
                     'year': e.get('year_completed'),
-                    'detail': e.get('description') or ''})
+                    'detail': e.get('description') or '',
+                    'entity_type': 'education', 'entity_id': e.get('id'),
+                    'profile_section': 'education'})
 
         certs = profile.get('certifications') or []
         if certs:
@@ -866,14 +1110,18 @@ def get_mindmap_api():
                     'issue_date': c.get('issue_date'),
                     'expiry_date': c.get('expiry_date'),
                     'credential_id': c.get('credential_id'),
-                    'credential_url': c.get('credential_url')})
+                    'credential_url': c.get('credential_url'),
+                    'entity_type': 'certification', 'entity_id': c.get('id'),
+                    'profile_section': 'certifications'})
 
         langs = profile.get('languages') or []
         if langs:
             add_branch('sprog', 'Sprog', 'language')
             for l in langs:
                 add_leaf('sprog', f"lang:{l.get('id')}", l.get('language', ''),
-                         {'source': 'profil', 'kind': 'Sprog', 'level': l.get('proficiency')})
+                         {'source': 'profil', 'kind': 'Sprog', 'level': l.get('proficiency'),
+                          'entity_type': 'language', 'entity_id': l.get('id'),
+                          'profile_section': 'languages'})
 
         goals = profile.get('learning_goals') or []
         gtext = (profile.get('goals') or '').strip()
@@ -885,7 +1133,46 @@ def get_mindmap_api():
                 add_leaf('maal', f"goal:{g.get('id')}", g.get('title', ''), {
                     'source': 'profil', 'kind': 'Mål', 'status': g.get('status'),
                     'target_date': g.get('target_date'),
-                    'detail': g.get('description') or ''})
+                    'detail': g.get('description') or '',
+                    'entity_type': 'goal', 'entity_id': g.get('id'),
+                    'profile_section': 'goals'})
+
+        links = profile.get('portfolio_links') or []
+        if links:
+            add_branch('portfolio', 'Portfolio & links', 'link')
+            for link in links:
+                add_leaf('portfolio', f"link:{link.get('id')}", link.get('label') or link.get('url') or 'Link', {
+                    'source': 'profil', 'kind': 'Portfolio-link', 'detail': link.get('url') or '',
+                    'url': link.get('url') or '', 'link_kind': link.get('kind') or 'link',
+                    'entity_type': 'link', 'entity_id': link.get('id'), 'profile_section': 'portfolio',
+                })
+
+        courses = profile.get('completed_courses') or []
+        if courses:
+            add_branch('kurser', 'Gennemførte kurser', 'award')
+            for course in courses:
+                key = course.get('handle') or course.get('title')
+                add_leaf('kurser', stable_text_id('course', key), course.get('title') or 'Kursus', {
+                    'source': 'profil', 'kind': 'Gennemført kursus',
+                    'vendor': course.get('vendor') or '',
+                    'completed_date': course.get('completed_date') or '',
+                    'course_handle': course.get('handle') or '',
+                    'detail': course.get('certificate_note') or '',
+                    'entity_type': 'course', 'entity_id': course.get('title'), 'profile_section': 'courses',
+                })
+
+        paths = profile.get('learning_paths') or []
+        if paths:
+            add_branch('laeringsstier', 'Læringsstier', 'route')
+            for path in paths:
+                add_leaf('laeringsstier', f"path:{path.get('id')}", path.get('title') or 'Læringssti', {
+                    'source': path.get('source') or 'ai', 'kind': 'Læringssti',
+                    'detail': path.get('goal') or '',
+                    'status': path.get('status') or 'aktiv',
+                    'step_count': len(path.get('steps') or []),
+                    'entity_type': 'learning_path', 'entity_id': path.get('id'),
+                    'profile_section': 'learning-paths',
+                })
 
         # Atomic memories branch, sub-labelled by their own category.
         if memories:

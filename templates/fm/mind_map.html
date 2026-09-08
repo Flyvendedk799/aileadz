@@ -77,11 +77,7 @@
 
 {% block content %}
 <div class="mm-wrap">
-  <nav class="ai-modebar" aria-label="AI arbejdsområde">
-    <a href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Kursusrådgiver</a>
-    <a href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> AI Profiler</a>
-    <a class="active" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i> Mind-Map</a>
-  </nav>
+  {% include 'fm/_ai_modebar.html' %}
   <div class="mm3d-stage">
 {% raw %}
 <x-dc>
@@ -464,6 +460,15 @@
         </div>
       </sc-if>
 
+      <sc-if value="{{ showProfileActions }}" hint-placeholder-val="{{ false }}">
+        <div style="display:flex;gap:8px;">
+          <button class="mm-btn" onClick="{{ onEditProfile }}" style="flex:1;padding:10px;border-radius:9px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.08);color:#93c5fd;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;">Ret på profil</button>
+          <sc-if value="{{ canDeleteProfile }}" hint-placeholder-val="{{ false }}">
+            <button class="mm-btn" onClick="{{ onDeleteProfile }}" style="padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07);color:#f87171;font-size:12px;font-family:inherit;cursor:pointer;font-weight:600;">Fjern</button>
+          </sc-if>
+        </div>
+      </sc-if>
+
       <!-- ROOT actions live at the bottom so the navigator stays above the fold -->
       <sc-if value="{{ isPRoot }}" hint-placeholder-val="{{ false }}">
         <div style="display:flex;flex-direction:column;gap:8px;">
@@ -598,16 +603,18 @@ class Component extends DCLogic {
   _C = {
     root:'#e2eaf8', kompetencer:'#3b82f6', erfaring:'#f59e0b',
     uddannelse:'#10b981', certificeringer:'#a855f7', sprog:'#06b6d4',
-    maal:'#f97316', hukommelse:'#ec4899', samtale:'#6366f1', om:'#94a3b8',
+    maal:'#f97316', portfolio:'#14b8a6', kurser:'#84cc16', laeringsstier:'#8b5cf6',
+    hukommelse:'#ec4899', samtale:'#6366f1', om:'#94a3b8',
   };
   _L = {
     root:'Profil',
     kompetencer:'Kompetencer', erfaring:'Erfaring', uddannelse:'Uddannelse',
-    certificeringer:'Certifikater', sprog:'Sprog', maal:'Mål',
+    certificeringer:'Certifikater', sprog:'Sprog', maal:'Mål', portfolio:'Portfolio',
+    kurser:'Kurser', laeringsstier:'Læringsstier',
     hukommelse:'Hukommelse', samtale:'Samtale', om:'Om mig',
   };
   _S = { ai:'AI', profiler:'AI Profiler', user:'Dig', cv:'CV', profil:'Profil', samtale:'Samtale' };
-  _CAT_ORDER = ['kompetencer','erfaring','uddannelse','certificeringer','sprog','maal','hukommelse','samtale','om'];
+  _CAT_ORDER = ['kompetencer','erfaring','uddannelse','certificeringer','sprog','maal','portfolio','kurser','laeringsstier','hukommelse','samtale','om'];
   _MEM_CATS = [
     {id:'praeference',label:'Præference'},{id:'maal',label:'Mål'},
     {id:'kontekst',label:'Kontekst'},{id:'personlighed',label:'Personlighed'},
@@ -1924,6 +1931,35 @@ class Component extends DCLogic {
     this._selId=null;
     await this._loadData({quiet:true,keepSel:true,select:parent});
   };
+  _deleteProfileFact=async()=>{
+    const sn=this._selId?this._byId[this._selId]:null;
+    const m=sn&&sn.meta||{},type=m.entity_type;
+    const configs={
+      skill:['/api/profile/skills',{skill_name:sn&&sn.label}],
+      experience:['/api/profile/experience',{id:m.entity_id}],
+      education:['/api/profile/education',{id:m.entity_id}],
+      certification:['/api/profile/certifications',{id:m.entity_id}],
+      language:['/api/profile/languages',{language:sn&&sn.label}],
+      link:['/api/profile/links',{id:m.entity_id}],
+      course:['/api/profile/courses',{course_title:m.entity_id}],
+    };
+    const cfg=configs[type];if(!cfg)return;
+    if(!window.confirm('Fjern "'+(sn.label||'denne oplysning')+'" fra din profil?'))return;
+    try{
+      const r=await fetch(cfg[0],{method:'DELETE',headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',body:JSON.stringify(cfg[1])});
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||j.success===false)throw new Error(j.error||'Kunne ikke fjerne oplysningen');
+      this._track('mindmap_correct',{action:'delete',section:m.profile_section||''});
+      const parent=this._parent[this._selId]||this._rootId;
+      this._selId=null;
+      await this._loadData({quiet:true,keepSel:true,select:parent});
+    }catch(e){window.alert(e.message||'Oplysningen kunne ikke fjernes.');}
+  };
+  _goAdvisor(query){
+    const q=(query||'').trim();
+    this._go('/chat'+(q?'?intent='+encodeURIComponent(q):''));
+  }
   _openAdd=()=>{this.setState({addOpen:true,addLabel:'',addDetail:'',addCat:'praeference'});
     setTimeout(()=>{
       const root=this._rootRef.current;
@@ -1985,6 +2021,10 @@ class Component extends DCLogic {
     try{return new Date(s).toLocaleDateString('da-DK',{day:'numeric',month:'long'});}catch(e){return s;}
   }
   _go(url){try{window.location.href=url;}catch(e){}}
+  _track(event,meta){
+    try{fetch('/api/learner/events',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({event:event,meta:meta||{}})}).catch(()=>{});}catch(e){}
+  }
   _leavesOf(branchId){
     return (this._kids[branchId]||[]).map(id=>this._byId[id]).filter(Boolean);
   }
@@ -2039,6 +2079,9 @@ class Component extends DCLogic {
       const used=leaves.filter(l=>(l.meta&&l.meta.used_count||0)>0).length;
       return[A('Minder',leaves.length),A('Brugt af AI',used,'#ec4899')];
     }
+    if(cat==='portfolio')return[A('Links',leaves.length)];
+    if(cat==='kurser')return[A('Gennemført',leaves.length,'#84cc16')];
+    if(cat==='laeringsstier')return[A('Læringsstier',leaves.length,'#8b5cf6')];
     return[A('Noder',leaves.length)];
   }
   _rootStats(){
@@ -2066,6 +2109,8 @@ class Component extends DCLogic {
     if(n.category==='uddannelse')return m.year?String(m.year):'';
     if(n.category==='certificeringer')return this._certValidity(m.expiry_date).s==='expired'?'udløbet':'';
     if(n.category==='sprog')return m.level?String(m.level):'';
+    if(n.category==='kurser')return m.completed_date?String(m.completed_date):'';
+    if(n.category==='laeringsstier')return m.step_count?String(m.step_count)+' trin':'';
     return '';
   }
 
@@ -2143,6 +2188,9 @@ class Component extends DCLogic {
     const isSkill=lc==='kompetencer',isExp=lc==='erfaring',isEdu=lc==='uddannelse';
     const isCert=lc==='certificeringer',isLang=lc==='sprog',isGoal=lc==='maal';
     const isMem=lc==='hukommelse';
+    const editableTypes=['skill','experience','education','certification','language','link','course'];
+    const showProfileActions=isLeaf&&!isMem&&!!meta.profile_section;
+    const canDeleteProfile=showProfileActions&&editableTypes.indexOf(meta.entity_type)>=0;
     const skLab={begynder:'Begynder',mellem:'Mellem',avanceret:'Avanceret',ekspert:'Ekspert'};
     const skScore=meta.level_score||0,gap=meta.gap||null;
     const langMap={begynder:1,mellem:2,flydende:3,modersmaal:4};
@@ -2245,6 +2293,8 @@ class Component extends DCLogic {
       isPBranch:isBranchSel,
       isPRoot:rootSel,
       isHukMem:isMem,
+      showProfileActions,
+      canDeleteProfile,
       hasConf:isMem&&meta.confidence!=null,
       pConf:meta.confidence?Math.round(meta.confidence*100):0,
       pUsed:used,
@@ -2324,8 +2374,16 @@ class Component extends DCLogic {
       // actions
       onClose:this._deselect,
       onDelete:this.onDelete,
+      onDeleteProfile:this._deleteProfileFact,
+      onEditProfile:()=>this._go('/profile#'+encodeURIComponent(meta.profile_section||'')),
       onAddMem:this._openAdd,
-      onFindCourses:()=>this._go('/chat'),
+      onFindCourses:()=>{
+        this._track('mindmap_gap_cta',{section:sn&&sn.category||''});
+        this._goAdvisor(isSkill&&gap
+          ? 'Find kurser der lukker mit kompetencegab i '+(sn.label||'')+' fra '+(skLab[meta.level]||meta.level||'intet niveau')+' til '+gap.target_label
+          : 'Find kurser der passer til '+(sn&&sn.label||'min profil')
+        );
+      },
       onOpenProfiler:()=>this._go('/ai-profiler'),
       onOpenCv:()=>this._go('/profil-upload'),
     };

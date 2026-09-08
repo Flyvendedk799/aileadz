@@ -85,6 +85,7 @@ UI_ACTIONS = frozenset({
     "open_catalog",     # open the catalog, optionally pre-filtered
     "start_order",      # begin enrolment for a product (does NOT place an order)
     "open_profiler",    # switch to the AI profiler
+    "open_advisor",     # open course advisor with a prefilled intent
     "open_my_learning", # open the employee learning home (/min-laering)
     "open_goals",       # open the development-goals dashboard (/mine-maal)
     "open_timeline",    # open the personal deadline/approval timeline (/min-tidslinje)

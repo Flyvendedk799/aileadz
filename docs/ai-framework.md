@@ -62,7 +62,7 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 | `thinking` | agent (env-gated) | `thinkStatus` (status line) | `content` |
 | `chunk` | agent | appends to answer, markdown re-render | `content` |
 | `tool_call` | `ai_runtime.build_tool_call_event` | `renderToolCall` (chips) | label/category/status/results_count/latency/side_effect/… |
-| `tool_progress` | (currently unused) | `updateToolProgress` | percent/note |
+| `tool_progress` | runtime tool lifecycle | `updateToolProgress` | percent/note |
 | `course_cards` | agent | `addCourses` (native cards) | `items[]` (each card may carry **`why`**) |
 | `product` | agent | `injectProductHtml` (legacy HTML, only if no course_cards) | `html` |
 | **`comparison_card`** | agent (new) | `renderComparisonCard` | `comparison[]`, `analysis{winners,verdict}` |
@@ -270,8 +270,8 @@ profile hero, and (CV) `employee_home`.
     gunicorn workers (parse thread on worker B, SSE poller on worker A → never
     saw the result) and leaked. Mirrors `confirm_store`: MySQL `ai_cv_parse_jobs`
     + in-process fallback + TTL sweep. `start`/`finish`/`read`/`discard`.
-  - `GET /api/cv/parse-stream` (SSE) — stage labels advance on a gentle schedule
-    but **completion is driven off the real `cv_parse_store.read`** result, then
+  - `GET /api/cv/parse-stream` (SSE) — stage labels are driven by persisted
+    extraction/parsing lifecycle updates and **completion is driven off the real `cv_parse_store.read_state`** result, then
     emits one terminal `result` (`{proposal, hint}`) or `error`. Event names here
     are `stage` / `result` / `error` — NOT the chat `type` strings.
   - `POST /api/cv/apply` (`api.py:598`, JSON `{session_id, accepted:[…]}`) —
@@ -281,6 +281,12 @@ profile hero, and (CV) `employee_home`.
     portal's display labels (Begynder/Øvet/…) and the parser's canonical
     lowercase output (begynder/mellem/…); the old capitalized-only map silently
     inflated every parsed skill to `avanceret`.
+    It now preserves summary and full experience dates/descriptions, supports
+    merge/replace/keep conflict policies, and returns per-item outcomes plus a
+    CV→career action summary.
+  - `POST /api/cv/improve` — a section-scoped, non-destructive CV coach. It can
+    sharpen summary/experience language but is forbidden to invent evidence;
+    missing evidence is returned as questions and suggestions require explicit accept.
   - Empty proposal → the portal resets to upload state and shows the `hint`
     toast rather than entering a blank 0-card review.
   - **No-JS fallback:** the `<form>` posts to `/profil-upload` +
@@ -318,6 +324,9 @@ profile hero, and (CV) `employee_home`.
   - Memory CRUD from the page: DELETE `/api/profile/memories` `{id}` (confirm
     first), POST `{label,detail,category,source}` from an inline composer whose
     category chips mirror `_MEMORY_CATEGORIES` — a test asserts they can't drift.
+    Structured profile leaves carry stable entity metadata; users can jump to
+    the canonical inline editor or remove supported facts directly. Portfolio
+    links, completed courses, and saved learning paths are included in the graph.
     A non-2xx from the mindmap API shows a retry card (plus an explicit "show
     demo data"), never a fake-empty profile.
 

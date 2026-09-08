@@ -57,11 +57,7 @@
 
 {% block content %}
 <div class="chatx">
-  <nav class="ai-modebar" aria-label="AI arbejdsområde">
-    <a class="active" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Kursusrådgiver</a>
-    <a href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> AI Profiler</a>
-    <a href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i> Mind-Map</a>
-  </nav>
+  {% include 'fm/_ai_modebar.html' %}
   <div class="ai-statusbar" id="aiWorkspaceStatus" hidden>
     <div class="ai-status-title"><i class="fa-solid fa-circle-nodes"></i> Fælles AI-kontekst</div>
     <div class="ai-status-items">
@@ -89,7 +85,6 @@
   <div class="input-wrap">
     <div class="ref-bar" id="refBar"></div>
     <div class="composer">
-      <button class="plus" title="Vedhæft"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></button>
       <textarea id="input" rows="1" placeholder="Spørg om kurser, kompetencer eller hold…"></textarea>
       <button class="stop" id="stop"><svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="6" width="12" height="12" rx="2"/></svg> Stop</button>
       <button class="send" id="send" aria-label="Send"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg></button>

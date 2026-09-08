@@ -1250,6 +1250,10 @@ def get_full_profile(username):
         portfolio_links = get_portfolio_links(username)
     except Exception:
         portfolio_links = []
+    try:
+        learning_paths = get_learning_paths(username, limit=10)
+    except Exception:
+        learning_paths = []
 
     return {
         "username": username,
@@ -1265,7 +1269,11 @@ def get_full_profile(username):
         "preferred_location": profile.get("preferred_location", ""),
         "preferred_format": profile.get("preferred_format", ""),
         "budget_range": profile.get("budget_range", ""),
-        "skills": [{"name": s["skill_name"], "level": s["skill_level"], "category": s.get("category") or ""} for s in skills],
+        "skills": [
+            {"id": s.get("id"), "name": s["skill_name"], "level": s["skill_level"],
+             "category": s.get("category") or "", "source": s.get("source") or "profil"}
+            for s in skills
+        ],
         "experience": [
             {"id": e["id"], "title": e["title"], "company": e["company"],
              "start_year": e["start_year"], "end_year": e["end_year"],
@@ -1297,6 +1305,7 @@ def get_full_profile(username):
             {"id": p["id"], "label": p["label"], "url": p["url"], "kind": p.get("kind") or "link"}
             for p in portfolio_links
         ],
+        "learning_paths": learning_paths,
     }
 
 

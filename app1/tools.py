@@ -272,6 +272,74 @@ def _model_tool_json(**payload):
     return json.dumps(payload, ensure_ascii=False, default=str)
 
 
+def _as_list(value):
+    """Coerce a model-supplied array argument into a real list of strings.
+
+    Models hand array params over as a JSON string, a comma/newline separated
+    string, or a single bare value about as often as they send an actual array.
+    A string that slips through is still iterable and sliceable, so the code
+    downstream silently walks CHARACTERS — that is how a `handles` argument
+    turned into four one-letter product lookups instead of one comparison.
+    """
+    if value is None or isinstance(value, bool):
+        return []
+    if isinstance(value, (list, tuple, set)):
+        items = list(value)
+    elif isinstance(value, str):
+        text = value.strip()
+        if not text:
+            return []
+        if text[0] in "[(" and text[-1] in "])":
+            try:
+                parsed = json.loads(text.replace("(", "[").replace(")", "]"))
+            except (ValueError, TypeError):
+                parsed = None
+            if isinstance(parsed, list):
+                return _as_list(parsed)
+        items = re.split(r"[,;\n]+", text)
+    else:
+        items = [value]
+    out = []
+    for item in items:
+        if isinstance(item, dict):
+            item = item.get("handle") or item.get("id") or item.get("value") or ""
+        if item is None or isinstance(item, bool):
+            continue
+        text = str(item).strip().strip("\"'")
+        if text and text not in out:
+            out.append(text)
+    return out
+
+
+def _as_object_list(value):
+    """Coerce an array-of-objects argument (steps, fields, choices) to a list.
+
+    Same failure as `_as_list`: the array arrives as a JSON string often enough
+    that requiring a real list rejects a call carrying every value it needed.
+    Non-object entries are dropped rather than guessed at.
+    """
+    if isinstance(value, str):
+        try:
+            value = json.loads(value.strip())
+        except (ValueError, TypeError):
+            return []
+    if isinstance(value, dict):
+        value = [value]
+    if not isinstance(value, (list, tuple)):
+        return []
+    return [item for item in value if isinstance(item, dict)]
+
+
+def _as_object(value):
+    """Coerce an object argument (prefilled) to a dict, tolerating JSON strings."""
+    if isinstance(value, str):
+        try:
+            value = json.loads(value.strip())
+        except (ValueError, TypeError):
+            return {}
+    return value if isinstance(value, dict) else {}
+
+
 def resolve_products_for_ui(compact_results=None, handles=None, single_handle=None):
     """Load full product dicts for card rendering from catalog or RAG cache."""
     from app1.rag import load_augmented_products
@@ -1931,7 +1999,7 @@ def _comparison_guardrails(requested_count, vendors):
 
 
 def _execute_catalog_compare_products(args):
-    handles = args.get("handles") or []
+    handles = _as_list(args.get("handles"))
     requested_count = len(handles)
     # Hard-cap to COMPARE_MAX_COURSES — extras are truncated (and noted below).
     products = [catalog.get_product(handle) for handle in handles[:COMPARE_MAX_COURSES]]
@@ -2728,7 +2796,7 @@ def _execute_get_course_details(args):
 
 def _execute_compare_courses(args):
     """Phase 2: Compare 2-4 courses side by side."""
-    handles = args.get("handles", [])
+    handles = _as_list(args.get("handles"))
     requested_count = len(handles)
     if requested_count < 2:
         return json.dumps({"status": "error", "message": "Mindst 2 kurser kræves for sammenligning."})
@@ -2867,7 +2935,7 @@ PROFILE_TOOLS = [
         "type": "function",
         "function": {
             "name": "update_user_profile",
-            "description": "Opdater brugerens profil: tilføj/fjern kompetencer, erfaring, uddannelse, gennemførte kurser, certificeringer, sprog, eller opdater profiloversigt (headline, bio, mål, præferencer). Brug dette når brugeren fortæller om sig selv, tilføjer en kompetence/certificering/sprog, eller vil opdatere sin profil. Brug add_certification (ikke add_course) når der er tale om en rigtig certificering med udsteder eller udløbsdato (fx PRINCE2, AWS, Google Ads, kørekort).",
+            "description": "Opdater brugerens profil: tilføj/fjern kompetencer, erfaring, uddannelse, gennemførte kurser, certificeringer, sprog, eller opdater profiloversigt (headline, bio, mål, præferencer). Brug dette når brugeren fortæller om sig selv, tilføjer en kompetence/certificering/sprog, eller vil opdatere sin profil. Brug add_certification (ikke add_course) når der er tale om en rigtig certificering med udsteder eller udløbsdato (fx PRINCE2, AWS, Google Ads, kørekort). En kursustitel (fx et AMU-kursus som 'Salgsledelse' eller 'Konflikthåndtering') er et KURSUS — brug add_course med vendor, ikke add_skill. Alle felter skal ligge i objektet data, og ét kald gemmer ét element: nævner brugeren tre kurser, så kald værktøjet tre gange.",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -3054,7 +3122,96 @@ _FIELD_MAX_LENGTHS = {
     "preferred_location": 100, "preferred_format": 50,
     "name": 200, "issuer": 150, "issue_date": 20, "expiry_date": 20,
     "credential_id": 120, "credential_url": 500, "language": 80,
+    "completed_date": 50, "course_handle": 255,
 }
+
+# Every field the tool schema accepts inside `data`. Models — the fast turn
+# model in particular — routinely FLATTEN these to the top level next to
+# `action` instead of nesting them under `data`. The executor then read an
+# empty `data` and answered "<felt> mangler" on a call that carried the value
+# all along (three AMU courses in one profiler turn failed exactly this way).
+_PROFILE_DATA_FIELDS = {
+    "skill_name", "skill_level", "title", "company", "start_year", "end_year",
+    "is_current", "description", "degree", "institution", "year_completed",
+    "course_title", "course_handle", "vendor", "completed_date",
+    "certificate_note", "name", "issuer", "issue_date", "expiry_date",
+    "credential_id", "credential_url", "language", "proficiency", "label",
+    "url", "kind", "id", "headline", "bio", "goals", "preferred_location",
+    "preferred_format", "budget_range",
+}
+
+# Per-action renames the models actually emit. Action-scoped on purpose: "name"
+# is the certification field, but on add_skill it means the skill, and "title"
+# is the experience field, but on add_course it means the course.
+_PROFILE_FIELD_ALIASES = {
+    "add_skill": {"skill": "skill_name", "name": "skill_name", "level": "skill_level"},
+    "remove_skill": {"skill": "skill_name", "name": "skill_name"},
+    "update_skill_level": {"skill": "skill_name", "name": "skill_name", "level": "skill_level"},
+    "add_course": {"course": "course_title", "course_name": "course_title",
+                   "title": "course_title", "name": "course_title", "provider": "vendor"},
+    "remove_course": {"course": "course_title", "course_name": "course_title",
+                      "title": "course_title", "name": "course_title"},
+    "update_course": {"course": "course_title", "course_name": "course_title",
+                      "title": "course_title", "name": "course_title", "provider": "vendor"},
+    "add_certification": {"certification": "name", "certification_name": "name",
+                          "title": "name", "provider": "issuer"},
+    "add_language": {"language_name": "language", "name": "language", "level": "proficiency"},
+    "remove_language": {"language_name": "language", "name": "language"},
+    "update_language_level": {"language_name": "language", "name": "language", "level": "proficiency"},
+    "update_summary": {"summary": "bio", "goal": "goals",
+                       "location": "preferred_location", "format": "preferred_format"},
+}
+
+
+def _normalize_profile_args(args):
+    """Return (action, data) from whatever shape the model actually emitted.
+
+    Tolerates the three shapes seen in production: fields nested under `data`
+    (the schema), fields flattened to the top level, and `data` handed over as
+    a JSON string. Nested values always win — the fallback only fills blanks.
+    """
+    args = args if isinstance(args, dict) else {}
+    action = str(args.get("action") or "").strip()
+
+    data = args.get("data")
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except (ValueError, TypeError):
+            data = {}
+    data = dict(data) if isinstance(data, dict) else {}
+
+    aliases = _PROFILE_FIELD_ALIASES.get(action, {})
+
+    def _field_name(key):
+        # Action aliases first: on add_skill, "name" is the skill, not a cert.
+        return aliases.get(key) or (key if key in _PROFILE_DATA_FIELDS else None)
+
+    for key, value in args.items():
+        if key in ("action", "data") or value in (None, ""):
+            continue
+        field = _field_name(key)
+        if field and not data.get(field):
+            data[field] = value
+
+    for key in list(data.keys()):
+        field = aliases.get(key)
+        if field and field != key:
+            value = data.pop(key)
+            if value not in (None, "") and not data.get(field):
+                data[field] = value
+
+    return action, data
+
+
+def _multi_value_fields(data):
+    """Fields the model handed a list/tuple instead of one value.
+
+    One call = one profile entry. Answering with the rule (instead of crashing
+    on ``list.strip()``) lets the model fan the entries out itself.
+    """
+    return [k for k, v in data.items() if isinstance(v, (list, tuple))]
+
 
 def _clean_profile_data(data):
     """Trim whitespace and enforce max lengths on profile data fields."""
@@ -3075,8 +3232,16 @@ def _execute_update_user_profile(args, username):
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
 
-    action = args.get("action", "")
-    data = _clean_profile_data(args.get("data", {}))
+    action, raw_data = _normalize_profile_args(args)
+    multi = _multi_value_fields(raw_data)
+    if multi:
+        return json.dumps({
+            "status": "error",
+            "message": (f"Felterne {', '.join(sorted(multi))} indeholder en liste. "
+                        "update_user_profile gemmer ét element ad gangen — "
+                        "kald værktøjet én gang per kompetence/kursus/certificering."),
+        }, ensure_ascii=False)
+    data = _clean_profile_data(raw_data)
 
     try:
         from app1 import user_profile_db as db
@@ -4161,15 +4326,18 @@ def _execute_request_user_input(args, username):
     message = args.get("message", "")
     if not message:
         return json.dumps({"status": "error", "message": "Besked mangler."})
+    # These land in an SSE event the chat client renders directly: a `fields`
+    # that arrived as a JSON string has no .map() and would throw inside the
+    # stream handler, killing the rest of the answer. Coerce before it ships.
     return json.dumps({
         "status": "ui_card",
         "ui_type": ui_type,
         "message": message,
         "section": args.get("section", "summary"),
         "save_action": args.get("save_action", ""),
-        "prefilled": args.get("prefilled", {}),
-        "fields": args.get("fields", []),
-        "choices": args.get("choices", []),
+        "prefilled": _as_object(args.get("prefilled")),
+        "fields": _as_object_list(args.get("fields")),
+        "choices": _as_object_list(args.get("choices")),
     })
 
 
@@ -5506,7 +5674,7 @@ def _execute_open_in_app(args, username=None):
             out["new_tab"] = True
 
     elif action == "open_compare":
-        handles = [h for h in (args.get("handles") or []) if h]
+        handles = _as_list(args.get("handles"))
         if len(handles) < 2:
             return json.dumps({"status": "error", "message": "Mindst 2 handles kræves for sammenligning."}, ensure_ascii=False)
         out["handles"] = handles[:4]
@@ -5934,8 +6102,8 @@ def _execute_save_learning_path(args, username):
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
     title = (args.get("title") or "").strip()
-    steps = args.get("steps") or []
-    if not title or not isinstance(steps, list) or not steps:
+    steps = _as_object_list(args.get("steps"))
+    if not title or not steps:
         return json.dumps({"status": "error", "message": "title og mindst ét trin (steps) kræves."})
     try:
         from app1.user_profile_db import save_learning_path, ensure_tables
@@ -5973,10 +6141,12 @@ def _execute_get_learning_path(args, username):
 
 def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
-    function_name = tool_call.function.name
+    from tool_confirm import tool_call_parts
 
+    # Resolve the name first so a bad-arguments error can still name the tool.
+    function_name = getattr(getattr(tool_call, "function", None), "name", "") or getattr(tool_call, "name", "")
     try:
-        args = json.loads(tool_call.function.arguments)
+        function_name, args = tool_call_parts(tool_call)
     except Exception as e:
         print(f"[Tool ArgError] {function_name} session={session_id}: {e}")
         return json.dumps({"status": "error", "message": f"Kunne ikke parse tool-argumenter: {e}"})

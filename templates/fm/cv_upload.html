@@ -320,6 +320,16 @@
       </div>{% endfor %}
     </section>
     {% endif %}
+    {% if courses %}
+    <section class="cv-review-section"><h2>Kurser</h2>
+      {% for c in courses %}<div class="cv-review-row">
+        <input type="checkbox" name="accept_course" value="{{ c.idx }}" checked />
+        <input name="crs_title_{{ c.idx }}" value="{{ c.title }}" aria-label="Kursus" />
+        <input name="crs_vendor_{{ c.idx }}" value="{{ c.vendor }}" aria-label="Udbyder" />
+        <input name="crs_date_{{ c.idx }}" value="{{ c.completed_date }}" aria-label="Gennemført" />
+      </div>{% endfor %}
+    </section>
+    {% endif %}
     {% if certifications %}
     <section class="cv-review-section"><h2>Certificeringer</h2>
       {% for c in certifications %}<div class="cv-review-row">
@@ -687,6 +697,7 @@ const CATS = [
   { key:'skills',         label:'Kompetencer' },
   { key:'experience',     label:'Erfaring' },
   { key:'education',      label:'Uddannelse' },
+  { key:'courses',        label:'Kurser' },
   { key:'certifications', label:'Certificeringer' },
   { key:'languages',      label:'Sprog' },
 ];
@@ -939,8 +950,8 @@ function showParseError(message){
 function handleResult(p, hint){
   proposal = p || {};
   const total = (p.skills||[]).length + (p.experience||[]).length +
-                (p.education||[]).length + (p.certifications||[]).length +
-                (p.languages||[]).length;
+                (p.education||[]).length + (p.courses||[]).length +
+                (p.certifications||[]).length + (p.languages||[]).length;
   if (!total) {
     $('#arcWrap').style.opacity = 0;
     setStageLabel('');
@@ -1013,6 +1024,17 @@ function buildReviewObjects(){
     card.userData = { kind:'education', data:{...e}, idx:i, accepted:true, home: card.position.clone(), homeRot: card.rotation.clone() };
     accepted.add(card);
     ed.items.add(card); pickables.push(card);
+    card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
+  });
+  const co = nodes.courses;
+  (proposal.courses||[]).forEach((c, i)=>{
+    const tex = cardTex(c.title, c.vendor, c.completed_date, '#'+ACCENT2.getHexString());
+    const card = makeCardMesh(2.7, 1.7, tex, ACCENT2.getHex());
+    card.position.set(i*0.32, -i*0.36, i*0.4);
+    card.rotation.x = 0.05;
+    card.userData = { kind:'courses', data:{...c}, idx:i, accepted:true, home: card.position.clone(), homeRot: card.rotation.clone() };
+    accepted.add(card);
+    co.items.add(card); pickables.push(card);
     card.scale.setScalar(0.001); tween(card.scale).to({x:1,y:1,z:1},700).delay(i*120).easing(EZ.Back.Out).start();
   });
   const ce = nodes.certifications;
@@ -1148,6 +1170,12 @@ function buildAccessibleReview(){
       ['degree','Uddannelse'],['institution','Institution'],['year','År']
     ])));
   }
+  if((proposal.courses||[]).length){
+    const g=group('Kurser');
+    proposal.courses.forEach((item,i)=>g.appendChild(buildReviewItem('courses',item,i,[
+      ['title','Kursus'],['vendor','Udbyder'],['completed_date','Gennemført']
+    ])));
+  }
   if((proposal.certifications||[]).length){
     const g=group('Certificeringer');
     proposal.certifications.forEach((item,i)=>g.appendChild(buildReviewItem('certifications',item,i,[
@@ -1231,7 +1259,7 @@ const LEVELS = ['Begynder','Øvet','Erfaren','Ekspert','Specialist'];
 const PROF = ['Grundlæggende','Professionelt','Flydende','Modersmål'];
 function openEditor(obj){
   const d = obj.userData.data, k = obj.userData.kind;
-  const tag = { skill:'Kompetence', experience:'Erfaring', education:'Uddannelse', certifications:'Certificering', languages:'Sprog' }[k];
+  const tag = { skill:'Kompetence', experience:'Erfaring', education:'Uddannelse', courses:'Kursus', certifications:'Certificering', languages:'Sprog' }[k];
   $('#editorTag').textContent = tag;
   const F = $('#editorFields'); F.innerHTML = '';
   const field = (label, key, value) => {
@@ -1248,6 +1276,7 @@ function openEditor(obj){
   if (k==='skill'){ field('Kompetence','name',d.name); select('Niveau','level',d.level,LEVELS); }
   else if (k==='experience'){ field('Titel','title',d.title); field('Virksomhed','company',d.company); field('Periode','years',d.years); }
   else if (k==='education'){ field('Uddannelse','degree',d.degree); field('Institution','institution',d.institution); field('År','year',d.year); }
+  else if (k==='courses'){ field('Kursus','title',d.title); field('Udbyder','vendor',d.vendor); field('Gennemført','completed_date',d.completed_date); }
   else if (k==='certifications'){ field('Certificering','name',d.name); field('Udsteder','issuer',d.issuer); field('Udstedt','issue_date',d.issue_date); field('Udløber','expiry_date',d.expiry_date); }
   else if (k==='languages'){ field('Sprog','language',d.language); select('Niveau','proficiency',d.proficiency,PROF); }
   $('#acceptBtn').textContent = obj.userData.accepted ? 'Accepteret ✓' : 'Acceptér';

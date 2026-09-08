@@ -504,7 +504,7 @@ class AIRuntimeTests(unittest.TestCase):
         self.assertEqual(events[1]["percent"], 20)
         self.assertEqual(events[0]["status"], "running")
         self.assertEqual(events[1]["label"], "Hent kursus")
-        self.assertEqual(events[1]["results_count"], 1)
+        self.assertEqual(events[2]["results_count"], 1)
 
     def test_responses_defer_final_stream_captures_answer(self):
         """RT-02: the already-generated final answer is captured, not discarded.

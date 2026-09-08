@@ -534,6 +534,63 @@ def parse_profile_from_text(text: str, progress_callback=None) -> dict:
         return {}
 
 
+def improve_cv_section(section: str, content, *, target_role: str = "", gaps=None) -> dict:
+    """Suggest a grounded rewrite for one CV section without mutating data."""
+    try:
+        section = (section or "").strip().lower()
+        if section not in {"summary", "experience"}:
+            return {}
+        if not content:
+            return {}
+        client = _get_openai_client()
+        if client is None:
+            return {}
+        source = json.dumps(content, ensure_ascii=False, default=str)[:5000]
+        gap_names = [str(g.get("skill") or "") for g in (gaps or [])[:5] if g.get("skill")]
+        context = {
+            "target_role": (target_role or "")[:150],
+            "relevant_skill_gaps": gap_names,
+        }
+        fenced = "--- CV-DATA ---\n" + source + "\n--- SLUT CV-DATA ---"
+        prompt = (
+            "Forbedr den angivne CV-sektion på dansk. Brug KUN fakta i CV-DATA. "
+            "Du må gøre formuleringer skarpere, men må aldrig opfinde tal, ansvar, "
+            "resultater, arbejdsgivere eller kompetencer. Hvis vigtig evidens mangler, "
+            "skal den nævnes som et spørgsmål i missing_evidence og IKKE skrives ind i "
+            "forslaget. Svar kun som JSON med: suggestion (tekst), rationale (kort tekst), "
+            "missing_evidence (liste af spørgsmål), inferred (altid false medmindre du "
+            "tydeligt markerer en sproglig inferens).\n"
+            f"Sektion: {section}\nKontekst: {json.dumps(context, ensure_ascii=False)}\n{fenced}"
+        )
+        resp = client.chat.completions.create(
+            model=_model_name(),
+            messages=[
+                {"role": "system", "content": "Du er en faktatro CV-redaktør. Opfind aldrig evidens."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.2,
+            response_format={"type": "json_object"},
+            max_tokens=700,
+            timeout=30,
+        )
+        raw = (resp.choices[0].message.content or "") if resp else ""
+        parsed = _safe_load_json(raw) or {}
+        suggestion = _clean_str(parsed.get("suggestion"), 1800)
+        if not suggestion:
+            return {}
+        return {
+            "suggestion": suggestion,
+            "rationale": _clean_str(parsed.get("rationale"), 500),
+            "missing_evidence": [
+                _clean_str(x, 300) for x in (parsed.get("missing_evidence") or [])[:5]
+                if _clean_str(x, 300)
+            ],
+            "inferred": bool(parsed.get("inferred")),
+        }
+    except Exception:
+        return {}
+
+
 def _safe_load_json(raw: str):
     """Parse JSON from a model response, tolerating code fences / stray text."""
     if not raw:

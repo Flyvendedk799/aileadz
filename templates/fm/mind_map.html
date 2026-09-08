@@ -1950,6 +1950,7 @@ class Component extends DCLogic {
         credentials:'same-origin',body:JSON.stringify(cfg[1])});
       const j=await r.json().catch(()=>({}));
       if(!r.ok||j.success===false)throw new Error(j.error||'Kunne ikke fjerne oplysningen');
+      this._track('mindmap_correct',{action:'delete',section:m.profile_section||''});
       const parent=this._parent[this._selId]||this._rootId;
       this._selId=null;
       await this._loadData({quiet:true,keepSel:true,select:parent});
@@ -2020,6 +2021,10 @@ class Component extends DCLogic {
     try{return new Date(s).toLocaleDateString('da-DK',{day:'numeric',month:'long'});}catch(e){return s;}
   }
   _go(url){try{window.location.href=url;}catch(e){}}
+  _track(event,meta){
+    try{fetch('/api/learner/events',{method:'POST',credentials:'same-origin',
+      headers:{'Content-Type':'application/json'},body:JSON.stringify({event:event,meta:meta||{}})}).catch(()=>{});}catch(e){}
+  }
   _leavesOf(branchId){
     return (this._kids[branchId]||[]).map(id=>this._byId[id]).filter(Boolean);
   }
@@ -2372,11 +2377,13 @@ class Component extends DCLogic {
       onDeleteProfile:this._deleteProfileFact,
       onEditProfile:()=>this._go('/profile#'+encodeURIComponent(meta.profile_section||'')),
       onAddMem:this._openAdd,
-      onFindCourses:()=>this._goAdvisor(
-        isSkill&&gap
+      onFindCourses:()=>{
+        this._track('mindmap_gap_cta',{section:sn&&sn.category||''});
+        this._goAdvisor(isSkill&&gap
           ? 'Find kurser der lukker mit kompetencegab i '+(sn.label||'')+' fra '+(skLab[meta.level]||meta.level||'intet niveau')+' til '+gap.target_label
           : 'Find kurser der passer til '+(sn&&sn.label||'min profil')
-      ),
+        );
+      },
       onOpenProfiler:()=>this._go('/ai-profiler'),
       onOpenCv:()=>this._go('/profil-upload'),
     };

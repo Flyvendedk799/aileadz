@@ -16,6 +16,35 @@ _ALLOWED_CV_EXTS = {
 
 api_bp = Blueprint('api', __name__)
 
+_LEARNER_EVENT_TYPES = frozenset({
+    'cv_start', 'cv_parse_failed', 'cv_review', 'cv_apply',
+    'profiler_start', 'profiler_complete', 'profiler_handoff',
+    'mindmap_correct', 'mindmap_gap_cta', 'recommendation_click',
+    'learning_path_open', 'order_start',
+})
+
+
+@api_bp.route('/api/learner/events', methods=['POST'])
+@login_required
+def learner_event():
+    """Small allowlisted product-funnel event endpoint (no free-text/PII)."""
+    data = request.get_json() or {}
+    event = (data.get('event') or '').strip()
+    if event not in _LEARNER_EVENT_TYPES:
+        return jsonify({'success': False, 'error': 'unknown event'}), 400
+    raw_meta = data.get('meta') if isinstance(data.get('meta'), dict) else {}
+    meta = {
+        str(k)[:50]: v for k, v in raw_meta.items()
+        if isinstance(v, (bool, int, float)) or (isinstance(v, str) and len(v) <= 120)
+    }
+    try:
+        from app1.memory_store import log_event
+        log_event(session.get('sid', 'unknown'), event, extra=meta)
+    except Exception as exc:
+        current_app.logger.warning('learner event %s: %s', event, exc)
+    return jsonify({'success': True})
+
+
 @api_bp.route('/api/credits')
 def get_credits():
     username = session.get('user')
@@ -709,6 +738,39 @@ def _parse_year(val):
     return None
 
 
+@api_bp.route('/api/cv/improve', methods=['POST'])
+@login_required
+def api_cv_improve():
+    """Return a non-destructive, source-grounded CV section suggestion."""
+    data = request.get_json() or {}
+    section = (data.get('section') or '').strip().lower()
+    content = data.get('content')
+    if section not in ('summary', 'experience') or not content:
+        return jsonify({'success': False, 'error': 'section og content kræves'}), 400
+    try:
+        from app1.user_profile_db import get_full_profile, ensure_tables
+        from competency import compute_skill_gaps
+        from cv_ingest import improve_cv_section
+        ensure_tables()
+        username = session.get('user')
+        profile = get_full_profile(username)
+        suggestion = improve_cv_section(
+            section,
+            content,
+            target_role=profile.get('target_role') or '',
+            gaps=compute_skill_gaps(username, profile=profile),
+        )
+        if not suggestion:
+            return jsonify({
+                'success': False,
+                'error': 'CV-coachen kunne ikke lave et sikkert forslag lige nu.',
+            }), 503
+        return jsonify({'success': True, 'section': section, **suggestion})
+    except Exception as exc:
+        current_app.logger.error('cv improve: %s', exc)
+        return jsonify({'success': False, 'error': 'CV-coachen er midlertidigt utilgængelig.'}), 500
+
+
 @api_bp.route('/api/cv/apply', methods=['POST'])
 @login_required
 def api_cv_apply():
@@ -900,12 +962,27 @@ def api_cv_apply():
                 outcomes['failed'] += 1
                 errors.append({'type': kind or 'unknown', 'label': item.get('name') or item.get('title') or item.get('degree') or item.get('language') or '', 'error': 'Kunne ikke gemmes'})
 
+        career_action = {}
+        try:
+            from competency import compute_skill_gaps
+            updated_profile = get_full_profile(username)
+            top_gaps = compute_skill_gaps(username, profile=updated_profile)[:3]
+            career_action = {
+                'target_role': updated_profile.get('target_role') or '',
+                'strongest_evidence': [s.get('name') for s in (updated_profile.get('skills') or [])[:5] if s.get('name')],
+                'top_gaps': top_gaps,
+                'next_action': 'recommend_for_profile' if top_gaps else 'review_profile',
+            }
+        except Exception:
+            career_action = {}
+
         return jsonify({
             'success': outcomes['failed'] == 0,
             'partial_success': outcomes['failed'] > 0 and sum(counts.values()) > 0,
             'saved': counts,
             'outcomes': outcomes,
             'errors': errors,
+            'career_action': career_action,
         }), (207 if outcomes['failed'] else 200)
     except Exception as exc:
         current_app.logger.error('cv apply: %s', exc)

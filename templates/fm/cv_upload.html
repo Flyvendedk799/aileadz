@@ -236,6 +236,10 @@
     width:100%; min-width:0; padding:8px 9px; border-radius:8px; border:1px solid rgba(255,255,255,.12);
     background:rgba(0,0,0,.25); color:#fff; font:inherit; font-size:12px;
   }
+  .coach-result { grid-column:1/-1; padding:10px; border:1px solid rgba(59,130,246,.3); border-radius:10px; background:rgba(59,130,246,.08); color:#dbeafe; font-size:12px; line-height:1.5; }
+  .coach-result .coach-actions { display:flex; gap:7px; margin-top:9px; }
+  .coach-missing { margin:7px 0 0; padding-left:18px; color:rgba(255,255,255,.7); }
+  #careerAction { margin-top:16px; padding:14px; border-radius:12px; background:rgba(255,255,255,.04); text-align:left; font-size:13px; line-height:1.55; }
   #completionPanel {
     position:absolute; inset:0; display:grid; place-items:center; padding:24px;
     background:rgba(10,10,20,.86); opacity:0; pointer-events:none; transition:opacity .3s ease;
@@ -439,6 +443,7 @@
         <div class="completion-card">
           <h2>Din profil er opdateret</h2>
           <p id="completionSummary">Oplysningerne fra dit CV er gemt.</p>
+          <div id="careerAction" hidden></div>
           <div class="completion-actions">
             <a class="cv-btn ghost" href="/profile">Gennemgå profil</a>
             <a class="cv-btn ghost" href="/mind-map?source=cv">Udforsk Mind-Map</a>
@@ -754,6 +759,10 @@ let proposal = null;
 let selected = null;
 let accepted = new Set();
 let clock = new THREE.Clock();
+function track(event,meta={}){
+  fetch('/api/learner/events',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({event,meta})}).catch(()=>{});
+}
 
 // ============================================================
 //  SCENE 1 — UPLOAD interactions
@@ -798,11 +807,13 @@ window.addEventListener('paste', e=>{ if(state!=='upload') return; if(!$('#paste
 
 function stageFile(file){
   staged = { type:'file', file, name:file.name };
+  track('cv_start',{source:'file'});
   flashDocAccept();
   startAnalysis();
 }
 function stageText(text){
   staged = { type:'text', text, name:'Indsat tekst' };
+  track('cv_start',{source:'text'});
   pasteGlyphEffect();
   setTimeout(startAnalysis, 700);
 }
@@ -918,6 +929,7 @@ function showParseError(message){
   setStageLabel('');
   $('#intro').classList.remove('invisible');
   state = 'upload';
+  track('cv_parse_failed');
   showToast('CV’et blev ikke analyseret', message || 'Prøv igen eller indsæt teksten direkte.');
 }
 
@@ -938,6 +950,7 @@ function handleResult(p, hint){
     showToast('Ikke fundet', msg);
     return;
   }
+  track('cv_review',{items:total});
   setArc(1); setStageLabel('<b>Foreslår profil</b> &nbsp;·&nbsp; klar');
   CATS.forEach((c,i)=>{ revealNode(c.key, i*60); lightNode(c.key); });
   setTimeout(enterReview, 700);
@@ -1043,11 +1056,49 @@ function addReviewControl(fields, item, key, label, type='text', wide=false, opt
   fields.appendChild(el);
   return el;
 }
+async function runCoach(kind,item,fields,idx){
+  const old=fields.querySelector('.coach-result');if(old)old.remove();
+  const loading=document.createElement('div');loading.className='coach-result';loading.textContent='CV-coachen læser kun de valgte fakta…';fields.appendChild(loading);
+  try{
+    const response=await fetch('/api/cv/improve',{method:'POST',credentials:'same-origin',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({section:kind,content:kind==='summary'?item.summary:item})});
+    const data=await response.json().catch(()=>({}));
+    if(!response.ok||!data.success)throw new Error(data.error||'CV-coachen kunne ikke svare.');
+    loading.innerHTML='';
+    const text=document.createElement('div');text.textContent=data.suggestion;loading.appendChild(text);
+    if(data.rationale){const why=document.createElement('div');why.style.opacity='.65';why.style.marginTop='6px';why.textContent=data.rationale;loading.appendChild(why);}
+    if((data.missing_evidence||[]).length){
+      const ul=document.createElement('ul');ul.className='coach-missing';
+      data.missing_evidence.forEach(q=>{const li=document.createElement('li');li.textContent=q;ul.appendChild(li);});loading.appendChild(ul);
+    }
+    const actions=document.createElement('div');actions.className='coach-actions';
+    const accept=document.createElement('button');accept.type='button';accept.className='cv-btn primary';accept.textContent='Brug forslag';
+    const reject=document.createElement('button');reject.type='button';reject.className='cv-btn ghost';reject.textContent='Behold min tekst';
+    accept.addEventListener('click',()=>{
+      if(kind==='summary'){
+        item.summary=data.suggestion;proposal.summary=data.suggestion;
+        const area=fields.querySelector('[data-key="summary"]');if(area)area.value=data.suggestion;
+      }else{
+        item.description=data.suggestion;
+        const area=fields.querySelector('[data-key="description"]');if(area)area.value=data.suggestion;
+        const obj=objectFor('experience',idx);if(obj)obj.userData.data.description=data.suggestion;
+      }
+      loading.remove();
+    });
+    reject.addEventListener('click',()=>loading.remove());
+    actions.append(accept,reject);loading.appendChild(actions);
+  }catch(e){loading.textContent=e.message||'CV-coachen er midlertidigt utilgængelig.';}
+}
 function buildReviewItem(kind, item, idx, specs){
   const row=document.createElement('div'); row.className='review-item'; row.dataset.kind=kind; row.dataset.idx=idx;
   const check=document.createElement('input'); check.type='checkbox'; check.checked=true; check.setAttribute('aria-label','Gem dette forslag');
   const fields=document.createElement('div'); fields.className='review-fields';
   specs.forEach(spec=>addReviewControl(fields,item,...spec));
+  if(kind==='summary'||kind==='experience'){
+    const coach=document.createElement('button');coach.type='button';coach.className='cv-btn ghost wide';
+    coach.textContent=kind==='summary'?'Gør profilteksten skarpere med AI':'Gør erfaringen skarpere med AI';
+    coach.addEventListener('click',()=>runCoach(kind,item,fields,idx));fields.appendChild(coach);
+  }
   fields.addEventListener('input',e=>{
     if(!e.target.dataset.key)return;
     const key=e.target.dataset.key;
@@ -1255,11 +1306,21 @@ async function saveProfile(){
     const out=res.outcomes||{};
     const changed=(out.created||0)+(out.updated||0)+(out.merged||0);
     $('#completionSummary').textContent=`${changed} oplysninger blev gemt${out.skipped?`, ${out.skipped} eksisterende blev beholdt`:''}${out.failed?`, og ${out.failed} kunne ikke gemmes`:''}.`;
+    renderCareerAction(res.career_action||{});
+    track('cv_apply',{created:out.created||0,updated:out.updated||0,merged:out.merged||0,failed:out.failed||0});
     animateSaveSuccess();
   } catch (_) {
     saveBtn.disabled=false; saveBtn.textContent='Gem til min profil';
     showToast('Kunne ikke gemme', 'Dine forslag er stadig her. Prøv igen.');
   }
+}
+function renderCareerAction(action){
+  const box=$('#careerAction'),gaps=action.top_gaps||[],strengths=action.strongest_evidence||[];
+  if(!box||(!gaps.length&&!strengths.length))return;
+  const parts=[];
+  if(strengths.length)parts.push(`<b>Stærkeste evidens:</b> ${strengths.map(s=>String(s).replace(/[<>]/g,'')).join(', ')}`);
+  if(gaps.length)parts.push(`<b>Næste udviklingspunkter:</b> ${gaps.map(g=>String(g.skill||'').replace(/[<>]/g,'')).join(', ')}`);
+  box.innerHTML=parts.join('<br>');box.hidden=false;
 }
 function animateSaveSuccess(){
   const iconRect = $('#profileIcon').getBoundingClientRect();

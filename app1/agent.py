@@ -2764,6 +2764,14 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         _raw = resolve_products_for_ui(compact_results=_rec["results"])
                         if _raw:
                             _track_shown_products(sid, _rec["results"])
+                            try:
+                                _get_store().log_event(
+                                    sid, "profiler_handoff",
+                                    results_count=len(_raw),
+                                    extra={"target_role": bool(_profiler_completeness.get("target_role"))},
+                                )
+                            except Exception:
+                                pass
                             _ho_role = (_profiler_completeness.get("target_role") or "").strip()
                             _ho_notice = (
                                 f"Med {_ho_role} som mål er det her kurserne der peger den vej."

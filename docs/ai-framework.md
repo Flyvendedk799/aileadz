@@ -99,6 +99,9 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
   `catalog_search` + (logged-in) profile tools + **`open_in_app`** are an
   always-on, model-driven core; specialised/mutating tools are added by Danish
   keyword gates; at most one is force-chosen (`_resolve_forced_tool`).
+  **Exception:** In `profiler` mode, all 16 profile/gap/recommendation tools
+  are seeded unconditionally and the `chit_chat` fast-path is disabled, so
+  the profiler can always save data and steer without needing keyword triggers.
 - **⚠️ Adding a tool is THREE steps, not one.** A tool is only callable if its
   name is added to the `names` set inside `get_employee_tool_selection` (via the
   core seed, a keyword gate, or a `_TOOL_TRIGGERS` semantic-fallback entry). The
@@ -249,6 +252,19 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 - **Proactive profiler (new):** `ai_profiler.html` auto-asks the first targeted
   question once per browser session (guarded by `sessionStorage` + empty
   thread) instead of waiting for a Start click.
+- **Smart Profiler Resume (new):** The profiler now acknowledges what it already knows
+  and skips to unknowns. `SYSTEM_PLAYBOOK_PROFILER` explicitly forbids re-asking
+  about populated sections, aided by an `ALLEREDE AFDÆKKET` checklist built into
+  the dynamic context. Experience and education descriptions, plus active learning
+  paths, are now included in the AI context so it knows *what* the user did, not
+  just their job titles.
+- **Full Memory Injection:** In `profiler` mode, all user memories (up to 12) are
+  injected on every turn (bypassing keyword filters) so the model always understands
+  career goals, personality, and preferences.
+- **Mode-Aware Conversation Loading:** Switching between `/chat` and `/ai-profiler`
+  detects mismatch between the surface mode and the loaded conversation's mode,
+  auto-starting a fresh session if they differ so the profiler doesn't inherit a
+  `default` chat thread.
 
 ### 3D surfaces — CV portal & Mind-Map
 

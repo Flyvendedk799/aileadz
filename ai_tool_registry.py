@@ -993,6 +993,7 @@ def get_employee_tool_selection(
     user_query: str,
     shown_count: int = 0,
     order_flow_open: bool = False,
+    mode: str = "default",
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Return strict Chat-style tools plus selection metadata for one employee turn.
 
@@ -1001,6 +1002,10 @@ def get_employee_tool_selection(
     ordering tools were keyword-gated per turn, so the user's bare "ja tak" on the
     confirmation turn matched nothing and took them off the menu — leaving the
     model to tell the user to go and order on the course page instead.
+
+    ``mode`` is the chat surface mode ("default" or "profiler").  In profiler mode
+    the full set of profile, learning-path, goal, and gap tools are always on the
+    menu so the model can save data and recommend without waiting for a keyword hit.
     """
     from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS
 
@@ -1024,11 +1029,27 @@ def get_employee_tool_selection(
     if logged_in:
         names.update({"get_user_profile", "request_user_input", "update_user_profile", "remember_about_user"})
 
+    # Profiler mode: seed the full set of profile-related tools so the model
+    # can save data, suggest paths, show gaps, and recommend courses on any turn
+    # without waiting for a keyword match. This is the single biggest lever for
+    # making the profiler "smart" — it can always act on what it learns.
+    if mode == "profiler" and logged_in:
+        names.update({
+            "get_user_profile", "update_user_profile", "request_user_input",
+            "remember_about_user", "recommend_for_profile",
+            "suggest_learning_path", "save_learning_path", "get_learning_path",
+            "update_learning_path", "show_skill_gaps", "show_cv_summary",
+            "set_learning_goal", "get_learning_goals", "update_learning_goal",
+            "analyze_skill_gaps", "catalog_search",
+        })
+
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
     # signal. Anything mentioning the catalog OR the user's own background falls through
     # to the model-driven core above (so "jeg har erhvervserfaring …" is never swallowed
     # here even if it were misclassified as chit_chat).
-    if intent == "chit_chat" and not _has_any(query, (
+    # In profiler mode the fast-path is disabled — even "hej" needs the profile
+    # tools so the AI can resume the interview and save data.
+    if mode != "profiler" and intent == "chit_chat" and not _has_any(query, (
             "kursus", "produkt", "budget", "ordre", "profil", "leverandør", "leverandor",
             "erfaring", "uddannelse", "uddannet", "arbejd", "ansat", "kompetence",
             "baggrund", "stilling", "mit job", "min titel", "lære", "laere", "mål", "maal")):
@@ -1225,6 +1246,9 @@ def get_employee_tool_selection(
                 # AI Tooler 2 (Phase 7): self-scoped, confirm-gated employee writes — reach
                 # the menu on their keyword so the model can surface a confirm card.
                 "manage_my_order", "request_manager_approval",
+                # Learning-path lifecycle: user-scoped writes that modify the user's
+                # own learning plan. Needed in profiler mode on every turn.
+                "save_learning_path", "update_learning_path",
         ) and not _explicit_order_confirmation(query):
             continue
         selected.append(tool)

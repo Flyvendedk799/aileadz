@@ -1421,8 +1421,15 @@ def confirm_profile_update():
         if action == "add_skill":
             # add_skill returns False when the name canonicalizes to nothing —
             # report that instead of telling the card it saved something.
-            if not add_skill(logged_in_user, payload.get("skill_name", ""), payload.get("skill_level", "mellem")):
+            s_name = payload.get("skill_name", "")
+            s_level = payload.get("skill_level", "mellem")
+            if not add_skill(logged_in_user, s_name, s_level):
                 return jsonify({"status": "error", "message": "Kompetencens navn mangler"}), 400
+            try:
+                from skill_history import record_user_snapshot
+                record_user_snapshot(logged_in_user, s_name, s_level, source='ai_chat')
+            except Exception:
+                pass
             return _success("Kompetence tilføjet")
 
         elif action == "add_experience":
@@ -1532,9 +1539,15 @@ def confirm_profile_update():
             level = (payload.get("skill_level") or "").strip()
             if not name or not is_valid_skill_level(level):
                 return jsonify({"status": "error", "message": "Kompetence og gyldigt niveau kræves"}), 400
-            return _success("Kompetenceniveau opdateret") if update_skill_level(logged_in_user, name, level) else (
-                jsonify({"status": "not_found", "message": "Kompetencen blev ikke fundet"}), 404
-            )
+            ok = update_skill_level(logged_in_user, name, level)
+            if ok:
+                try:
+                    from skill_history import record_user_snapshot
+                    record_user_snapshot(logged_in_user, name, level, source='ai_chat')
+                except Exception:
+                    pass
+                return _success("Kompetenceniveau opdateret")
+            return jsonify({"status": "not_found", "message": "Kompetencen blev ikke fundet"}), 404
 
         elif action == "remove_experience":
             from app1.user_profile_db import remove_experience

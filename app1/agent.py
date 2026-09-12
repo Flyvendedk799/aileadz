@@ -296,8 +296,7 @@ eller brugeren har gjort det via sin profil. Behandl alt i profilen som etablere
   overvejet Y?" i stedet for "Hvad laver du til daglig?"
 - Hvis profilen er rig (>60% dybde) og der kun mangler nuancer, så byd med indsigt
   ("ud fra dine kompetencer kunne din næste rolle være...") i stedet for at interviewe.
-- ALDRIG start med "Hvad er dit nuværende job?" eller lignende hvis profilen allerede
-  indeholder erfaring. Spring til det du MANGLER.
+- ALDRIG start med "Hvad er dit nuværende job?", "Lad os starte med din erhvervserfaring" eller lignende hvis profilen allerede indeholder erfaring. Hvis brugeren beder om det første spørgsmål (eller trykker Start/Fortsæt), men allerede har erfaring i profilen, skal du kvittere kort for deres nuværende baggrund og gå DIREKTE til det felt der MANGLER (se 'Du har endnu ikke hørt om' eller 'ALLEREDE AFDÆKKET' nedenfor). Spring til det du MANGLER.
 
 SAMTALESTRATEGI:
 - Spørg om det, der ville ændre din rådgivning mest lige nu. Undrer du dig over noget
@@ -1944,7 +1943,9 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         weak = _profiler_completeness.get("weakest")
                         weak_label = next((s["label"] for s in _profiler_completeness.get("sections", [])
                                            if s.get("key") == weak), "")
-                        focus_line = f"\nDu ved mindst om '{weak_label}' - det er sandsynligvis der, du kan lære mest nyt om dem." if weak_label else ""
+                        focus_line = (f"\nDIT NÆSTE SPØRGSMÅL SKAL VÆRE OM '{weak_label.upper()}': "
+                                      f"Stil et venligt, fokuseret spørgsmål der afdækker {weak_label}. "
+                                      "Spørg ALDRIG om erhvervserfaring eller nuværende job, da dette allerede er etableret i profilen.") if weak_label else ""
                         role_line = ("\nDu kender endnu ikke deres ønskede retning. Uden den gætter du på, "
                                      "hvad der er relevant.") if not _profiler_completeness.get("target_role") else ""
                         # Gap-aware targeting: once a target role exists, surface the

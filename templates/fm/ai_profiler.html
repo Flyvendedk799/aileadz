@@ -166,15 +166,25 @@
         label.textContent = hasMsgs ? 'Fortsæt' : 'Start';
       }
     }
+    var latestCompleteness = null;
     function startProfiler(seedSection) {
       var input = document.getElementById('input');
       var send = document.getElementById('send');
       if (!input || !send) return;
-      track('profiler_start', { source: seedSection ? 'targeted' : 'manual' });
-      var target = seedSection ? formatSeedSection(seedSection) : '';
-      input.value = target
-        ? ('Hjælp mig med at gøre min profil komplet. Start med ' + target + ', og stil mig ét spørgsmål ad gangen.')
-        : 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
+      var c = latestCompleteness;
+      var target = (seedSection || '').trim();
+      if (!target && c && c.missing && c.missing.length) {
+        target = c.missing[0];
+      }
+      track('profiler_start', { source: target ? 'targeted' : 'manual' });
+      var formatted = target ? formatSeedSection(target) : '';
+      if (formatted) {
+        input.value = 'Hjælp mig med at gøre min profil komplet. Start med ' + formatted + ', og stil mig ét spørgsmål ad gangen.';
+      } else if (c && (c.pct || 0) > 0) {
+        input.value = 'Fortsæt profileringen — hvad mangler du at vide om mig for at gøre min profil komplet?';
+      } else {
+        input.value = 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
+      }
       input.dispatchEvent(new Event('input', { bubbles: true }));
       send.click();
     }
@@ -184,6 +194,7 @@
         .then(function (d) {
           setProfilerStats(d);
           var c = d && d.completeness;
+          latestCompleteness = c;
           if (c) window.onProfilerProgress(c);
           updateCtaState();
           return d;

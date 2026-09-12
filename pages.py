@@ -268,5 +268,7 @@ def settings():
 
 
 @pages_bp.route('/profile')
+@pages_bp.route('/profil')
+@login_required
 def profile():
     return render_template('fm/my_profile.html', username=session.get('user'))

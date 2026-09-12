@@ -8,4 +8,7 @@
   <a class="{% if request.endpoint == 'futurematch.mind_map' %}active{% endif %}" href="{{ url_for('futurematch.mind_map') }}">
     <i class="fa-solid fa-brain"></i> Mind-Map
   </a>
+  <a class="{% if request.endpoint in ('futurematch.cv_upload', 'futurematch.cv_upload_parse') %}active{% endif %}" href="{{ url_for('futurematch.cv_upload') }}">
+    <i class="fa-solid fa-file-arrow-up"></i> CV-portal
+  </a>
 </nav>

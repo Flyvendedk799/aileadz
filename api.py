@@ -177,8 +177,18 @@ def manage_skills_api():
                 # Exact set (the edit affordance) — bypasses add_skill's keep-higher
                 # merge so a deliberate downgrade sticks.
                 update_skill_level(username, name, level)
+                try:
+                    from skill_history import record_user_snapshot
+                    record_user_snapshot(username, canon, level, source='profile_manual')
+                except Exception:
+                    pass
                 return jsonify({'success': True, 'skill_name': canon, 'message': f'Kompetence "{canon}" opdateret'})
             add_skill(username, name, level, source)
+            try:
+                from skill_history import record_user_snapshot
+                record_user_snapshot(username, canon, level, source='profile_manual')
+            except Exception:
+                pass
             return jsonify({'success': True, 'skill_name': canon, 'message': f'Kompetence "{canon}" tilføjet'})
 
         if request.method == 'DELETE':
@@ -380,6 +390,66 @@ def get_profile_learning_paths_api():
         return jsonify({'success': True, 'learning_paths': get_learning_paths(username, limit=10)})
     except Exception as e:
         current_app.logger.error("Profile learning-paths API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/learning-paths/<int:path_id>/status', methods=['POST'])
+@login_required
+def update_profile_learning_path_status_api(path_id):
+    """Update learning path status (aktiv, fuldfoert, arkiveret)."""
+    username = session.get('user')
+    data = request.get_json() or {}
+    status = data.get('status')
+    if status not in ('aktiv', 'fuldfoert', 'arkiveret'):
+        return jsonify({'success': False, 'error': 'Ugyldig status. Skal være aktiv, fuldfoert eller arkiveret.'}), 400
+    try:
+        from app1.user_profile_db import update_learning_path_status, ensure_tables
+        ensure_tables()
+        ok = update_learning_path_status(username, path_id, status)
+        if not ok:
+            return jsonify({'success': False, 'error': 'Læringsstien blev ikke fundet'}), 404
+        return jsonify({'success': True, 'path_id': path_id, 'status': status})
+    except Exception as e:
+        current_app.logger.error("Learning-path status API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/learning-paths/<int:path_id>/step', methods=['POST'])
+@login_required
+def toggle_profile_learning_path_step_api(path_id):
+    """Toggle or set completion of a step in a learning path."""
+    username = session.get('user')
+    data = request.get_json() or {}
+    step_order = data.get('step_order') or data.get('step') or data.get('order')
+    if step_order is None:
+        return jsonify({'success': False, 'error': 'step_order kræves'}), 400
+    done = data.get('done')
+    try:
+        from app1.user_profile_db import toggle_learning_path_step, ensure_tables
+        ensure_tables()
+        path = toggle_learning_path_step(username, path_id, step_order, done=done)
+        if not path:
+            return jsonify({'success': False, 'error': 'Læringsstien eller trinnet blev ikke fundet'}), 404
+        return jsonify({'success': True, 'path': path})
+    except Exception as e:
+        current_app.logger.error("Learning-path step toggle API error: %s", e)
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/profile/learning-paths/<int:path_id>', methods=['DELETE'])
+@login_required
+def delete_profile_learning_path_api(path_id):
+    """Archive a learning path."""
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import delete_learning_path, ensure_tables
+        ensure_tables()
+        ok = delete_learning_path(username, path_id)
+        if not ok:
+            return jsonify({'success': False, 'error': 'Læringsstien blev ikke fundet'}), 404
+        return jsonify({'success': True, 'path_id': path_id, 'deleted': True})
+    except Exception as e:
+        current_app.logger.error("Learning-path delete API error: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 
@@ -738,6 +808,67 @@ def _parse_year(val):
     return None
 
 
+@api_bp.route('/api/cv/summary', methods=['GET'])
+@login_required
+def api_cv_summary():
+    """Return applied CV summary, top skills, experience, gaps and completeness."""
+    username = session.get('user')
+    try:
+        from app1.user_profile_db import get_full_profile, profile_completeness, ensure_tables
+        from competency import compute_skill_gaps
+        ensure_tables()
+        profile = get_full_profile(username) or {}
+        completeness = profile_completeness(username, profile=profile)
+
+        skills = profile.get('skills') or []
+        experience = profile.get('experience') or []
+        education = profile.get('education') or []
+        certifications = profile.get('certifications') or []
+        courses = profile.get('completed_courses') or []
+        languages = profile.get('languages') or []
+        bio = profile.get('bio') or ''
+        target_role = profile.get('target_role') or ''
+
+        has_cv = bool(skills or experience or education or certifications or courses or languages or bio)
+        gaps = compute_skill_gaps(username, profile=profile)
+
+        top_skills = [{'name': s.get('name'), 'level': s.get('level')} for s in skills[:8] if s.get('name')]
+        recent_exp = []
+        for e in experience[:5]:
+            recent_exp.append({
+                'title': e.get('title'),
+                'company': e.get('company'),
+                'start_year': e.get('start_year'),
+                'end_year': e.get('end_year'),
+                'is_current': bool(e.get('is_current')),
+                'description': e.get('description'),
+            })
+
+        return jsonify({
+            'success': True,
+            'has_cv': has_cv,
+            'summary': {
+                'target_role': target_role,
+                'bio': bio,
+                'skills_count': len(skills),
+                'experience_count': len(experience),
+                'education_count': len(education),
+                'certifications_count': len(certifications),
+                'courses_count': len(courses),
+                'languages_count': len(languages),
+                'top_skills': top_skills,
+                'recent_experience': recent_exp,
+                'top_gaps': gaps[:5],
+                'completeness_pct': completeness.get('pct', 0),
+                'completeness_weighted_pct': completeness.get('weighted_pct', 0),
+                'sections': completeness.get('sections', []),
+            }
+        })
+    except Exception as exc:
+        current_app.logger.error("api_cv_summary error: %s", exc)
+        return jsonify({'success': False, 'error': str(exc)}), 500
+
+
 @api_bp.route('/api/cv/improve', methods=['POST'])
 @login_required
 def api_cv_improve():
@@ -850,6 +981,11 @@ def api_cv_apply():
                         add_skill(username, name, level, source='cv_upload')
                         outcomes['created'] += 1
                     skills[key] = {'name': canonical_skill(name), 'level': level}
+                    try:
+                        from skill_history import record_user_snapshot
+                        record_user_snapshot(username, canonical_skill(name), level, source='cv_upload')
+                    except Exception:
+                        pass
                     counts['skills'] += 1
                 elif kind == 'experience':
                     title = (item.get('title') or '').strip()

@@ -1389,12 +1389,22 @@ def format_profile_for_ai(profile_data):
         exp_strs = []
         for e in exp[:5]:
             period = f"{e['start_year'] or '?'}-{'nu' if e['is_current'] else (e['end_year'] or '?')}"
-            exp_strs.append(f"{e['title']} @ {e['company']} ({period})")
+            line = f"{e['title']} @ {e['company']} ({period})"
+            desc = (e.get('description') or '').strip()
+            if desc:
+                line += f" — {desc[:120]}"
+            exp_strs.append(line)
         parts.append(f"Erfaring: {'; '.join(exp_strs)}")
 
     edu = profile_data.get("education", [])
     if edu:
-        edu_strs = [f"{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})" for e in edu[:5]]
+        edu_strs = []
+        for e in edu[:5]:
+            line = f"{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})"
+            desc = (e.get('description') or '').strip()
+            if desc:
+                line += f" — {desc[:100]}"
+            edu_strs.append(line)
         parts.append(f"Uddannelse: {'; '.join(edu_strs)}")
 
     courses = profile_data.get("completed_courses", [])
@@ -1418,6 +1428,14 @@ def format_profile_for_ai(profile_data):
     if languages:
         lang_strs = [f"{l['language']} ({l['proficiency']})" for l in languages[:10]]
         parts.append(f"Sprog: {', '.join(lang_strs)}")
+
+    # Active learning paths — so the profiler knows what plans the user is following
+    paths = profile_data.get("learning_paths", [])
+    active_paths = [p for p in paths if p.get("status") != "arkiveret"]
+    if active_paths:
+        path_strs = [p.get("title", "?") + (f" ({p['status']})" if p.get("status") else "")
+                     for p in active_paths[:5]]
+        parts.append(f"Læringsstier: {'; '.join(path_strs)}")
 
     return "\n".join(parts) if parts else ""
 

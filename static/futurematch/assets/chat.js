@@ -492,6 +492,9 @@
     const r = await resp.json();
     if (!r || r.status !== "success") throw new Error((r && r.message) || "save_failed");
     refreshWorkspaceStatus();
+    if (typeof window.refreshProfilerBanner === "function") {
+      window.refreshProfilerBanner();
+    }
     return r;
   }
 
@@ -1426,6 +1429,9 @@
             note.innerHTML = md(data.message || "Profil opdateret");
             body.appendChild(note); down();
             refreshWorkspaceStatus();
+            if (typeof window.refreshProfilerBanner === "function") {
+              window.refreshProfilerBanner();
+            }
           } else if (data.type === "profile_confirm_request") {
             // Proposed profile change -> native confirm card, wired to the real save.
             const conf = data.confirm || {};
@@ -1726,7 +1732,9 @@
 
   async function restoreActiveConversation() {
     try {
-      const resp = await fetch("/app1/load_conversation", {
+      const currentMode = (window.CHAT_MODE || "default").toLowerCase();
+      const endpoint = "/app1/load_conversation" + (currentMode === "profiler" ? "?mode=profiler" : "?mode=chat");
+      const resp = await fetch(endpoint, {
         headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
       });

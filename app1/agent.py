@@ -109,6 +109,7 @@ _SHOWN_ARTIFACTS_MAX = 40  # cap distinct assistant turns kept per session
 
 # 6.3: Anonymous profile cache (in-memory, backed by SQLite)
 ANONYMOUS_PROFILES = {}  # {browser_token: profile_dict}
+PROFILER_HANDOFFS = set()  # {session_id} - tracks profiler sessions that already fired the handoff
 
 
 def _get_prompt_version(sid):
@@ -287,8 +288,10 @@ eller brugeren har gjort det via sin profil. Behandl alt i profilen som etablere
 - SPØRG ALDRIG om noget der allerede står i profilen (titel, erfaring, kompetencer,
   uddannelse, mål, certificeringer osv.) — medmindre du har en KONKRET grund til at
   tro det er forældet eller upræcist.
-- Start med en kort kvittering der viser du kender dem: "Jeg kan se du er [titel] hos
-  [virksomhed]..." og gå DIREKTE til det næste du endnu IKKE ved.
+- VED ÅBNING ELLER EFTER PAUSE: Start med en kort kvittering der viser du kender dem:
+  "Jeg kan se du er [titel] hos [virksomhed]..." og gå DIREKTE til det næste du endnu IKKE ved.
+  I EN LØBENDE SAMTALE skal du IKKE gentage denne hilsen på hvert svar — svar direkte på det,
+  brugeren lige har skrevet.
 - Brug profildataene aktivt i dine spørgsmål: "Du nævnte at du arbejder med X — har du
   overvejet Y?" i stedet for "Hvad laver du til daglig?"
 - Hvis profilen er rig (>60% dybde) og der kun mangler nuancer, så byd med indsigt
@@ -302,7 +305,7 @@ SAMTALESTRATEGI:
   næste felt i rækken.
 - Prioritér at afdække brugerens ønskede fremtidige rolle eller karriereretning (target_role)
   hvis den ikke er sat endnu — det er den vigtigste forudsætning for at beregne kompetencegab og
-  anbefale relevante kurser og læringsstier. Gem altid target_role via update_user_profile.
+  anbefale relevante kurser og læringsstier. Gem altid target_role via update_user_profile(action='set_target_role', target_role='...') eller update_summary.
 - Bind spørgsmålet til noget de allerede har sagt, så det ikke føles som et nyt skema.
 - Når de fortæller dig noget, så gem det med det samme: update_user_profile eller
   request_user_input til det strukturerede (kompetencer, erfaring, uddannelse,
@@ -741,6 +744,7 @@ def _cleanup_stale_sessions():
         LAST_SEARCH_QUERIES.pop(sid, None)
         _SESSION_VERSIONS.pop(sid, None)
         ANONYMOUS_PROFILES.pop(sid, None)
+        PROFILER_HANDOFFS.discard(sid)
     # Also clean persistent store
     try:
         _get_store().cleanup_old_sessions(SESSION_TTL)
@@ -1596,7 +1600,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
             # Restore saved conversation messages for logged-in users
             try:
                 from app1.user_profile_db import load_conversation
-                saved_conv = load_conversation(logged_in_user)
+                saved_conv = load_conversation(logged_in_user, mode=mode)
                 if saved_conv and saved_conv.get("messages"):
                     # Re-inject saved user/assistant messages into memory. Rebuild a
                     # clean {role, content} dict so any persisted UI-only keys
@@ -2781,6 +2785,12 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             pass
                     _payload = [{"id": m["id"], "label": m["label"], "category": m.get("category")} for m in _used]
                     yield f"data: {json.dumps({'type': 'memory_used', 'memories': _payload}, ensure_ascii=False)}\n\n"
+            if mode == "profiler" and logged_in_user:
+                try:
+                    from app1.user_profile_db import profile_completeness
+                    _profiler_completeness = profile_completeness(logged_in_user)
+                except Exception:
+                    pass
             if _profiler_completeness is not None:
                 yield f"data: {json.dumps({'type': 'profiler_progress', 'completeness': _profiler_completeness}, ensure_ascii=False)}\n\n"
 
@@ -2803,13 +2813,15 @@ def handle_agentic_ask(user_query, session, mode="default"):
             # when the profile crosses the handoff threshold (and we didn't
             # already show courses this turn), proactively surface profile-matched
             # course recommendations + a CTA, turning a finished profile into
-            # immediate value. Guarded + best-effort; never breaks the turn.
+            # immediate value. Guarded + best-effort; throttled so it fires
+            # once per session instead of interrupting the interview on every turn.
             if (
                 mode == "profiler"
                 and logged_in_user
                 and _profiler_completeness is not None
                 and not buffered_ui_html
                 and not _did_handoff
+                and sid not in PROFILER_HANDOFFS
                 # A stated direction is enough to be useful. Waiting for a
                 # completeness percentage is what made this feel like a form you
                 # had to finish before the product would do anything for you:
@@ -2821,6 +2833,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     or _profiler_completeness.get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT
                 )
             ):
+                PROFILER_HANDOFFS.add(sid)
                 try:
                     _did_handoff = True
                     _rec_json = execute_tool(
@@ -3026,7 +3039,10 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     # Persist with each assistant turn's UI artifacts reattached on a
                     # copy; CHAT_MEMORY stays clean (artifact keys never hit the API).
                     _persist_messages = _messages_with_artifacts(sid, messages)
-                    save_conversation(logged_in_user, sid, _persist_messages)
+                    save_conversation(
+                        logged_in_user, sid, _persist_messages,
+                        mode=("profiler" if mode == "profiler" else "chat"),
+                    )
                     save_conversation_history(
                         logged_in_user, sid, _persist_messages,
                         mode=("profiler" if mode == "profiler" else "chat"),

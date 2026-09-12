@@ -1211,6 +1211,51 @@ def update_learning_path_status(username, path_id, status):
     return affected > 0
 
 
+def toggle_learning_path_step(username, path_id, step_order, done=None):
+    """Toggle or set the completion status of a specific step in a learning path."""
+    path = get_learning_path(username, path_id)
+    if not path:
+        return None
+    steps = path.get("steps") or []
+    found = False
+    try:
+        step_order = int(step_order)
+    except (TypeError, ValueError):
+        return None
+    all_done = True
+    for idx, s in enumerate(steps):
+        s_order = s.get("order", idx + 1)
+        if s_order == step_order:
+            current_done = bool(s.get("done", False))
+            new_done = (not current_done) if done is None else bool(done)
+            s["done"] = new_done
+            found = True
+        if not s.get("done"):
+            all_done = False
+    if not found:
+        return None
+    new_status = path.get("status")
+    if all_done and len(steps) > 0:
+        new_status = "fuldfoert"
+    elif new_status == "fuldfoert" and not all_done:
+        new_status = "aktiv"
+
+    steps_json = _json_lp.dumps(steps, ensure_ascii=False, default=str)
+    cur = current_app.mysql.connection.cursor()
+    cur.execute(
+        "UPDATE user_learning_paths SET steps = %s, status = %s WHERE username = %s AND id = %s",
+        (steps_json, new_status, username, path_id),
+    )
+    current_app.mysql.connection.commit()
+    cur.close()
+    return get_learning_path(username, path_id)
+
+
+def delete_learning_path(username, path_id):
+    """Archive a learning path for the user."""
+    return update_learning_path_status(username, path_id, "arkiveret")
+
+
 def format_goals_for_ai(goals):
     """Compact text of active goals for the AI system context."""
     active = [g for g in (goals or []) if g.get("status") == "aktiv"]

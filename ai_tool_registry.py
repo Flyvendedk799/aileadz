@@ -149,6 +149,10 @@ _EMPLOYEE_META = {
     "get_learning_path": ToolMeta(
         "get_learning_path", auth_required=True, toolset_tags=("profile", "path"), cache_ttl=20,
     ),
+    "update_learning_path": ToolMeta(
+        "update_learning_path", auth_required=True, side_effect=True, parallel_safe=False,
+        toolset_tags=("profile", "path", "mutation"),
+    ),
     "set_learning_goal": ToolMeta(
         "set_learning_goal", auth_required=True, parallel_safe=False, toolset_tags=("profile", "goals"),
     ),
@@ -360,6 +364,7 @@ _TOOL_LABELS = {
     "get_my_compliance": "Mine krav",
     "save_learning_path": "Gem læringssti",
     "get_learning_path": "Hent læringssti",
+    "update_learning_path": "Opdater læringssti",
     "set_learning_goal": "Opret mål",
     "get_learning_goals": "Hent mål",
     "update_learning_goal": "Opdater mål",
@@ -869,6 +874,10 @@ _TOOL_TRIGGERS = {
         "learning path", "læringssti", "study plan", "studieplan", "roadmap",
         "what should i learn first", "in what order", "i hvilken rækkefølge", "next steps",
     ),
+    "update_learning_path": (
+        "opdater sti", "afkryds trin", "marker trin", "færdig med trin",
+        "fuldført trin", "afslut sti", "update path", "complete step",
+    ),
     "recommend_for_profile": (
         "recommend for me", "anbefal til mig", "recommendations for my profile",
         "what should i take", "personalised recommendation", "personlige anbefalinger",
@@ -1104,7 +1113,8 @@ def get_employee_tool_selection(
             # (a path without surfaced courses isn't actionable). The persisted
             # path tools let the model save/recall a sequence across sessions.
             names.update({"get_user_profile", "recommend_for_profile", "suggest_learning_path",
-                          "save_learning_path", "get_learning_path", "catalog_search", "show_skill_gaps"})
+                          "save_learning_path", "get_learning_path", "update_learning_path",
+                          "catalog_search", "show_skill_gaps"})
         if intent in {"profile_update", "profile_and_search"} or _has_any(query, (
                 "mål", "maal", "udviklingsplan", "udviklingsmål", "udviklingsmaal", "blive bedre til",
                 "vil gerne lære", "vil gerne laere", "vil gerne blive", "karriere", "udvikle mig",

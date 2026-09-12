@@ -69,7 +69,7 @@
 
     <div class="fm-side-scroll">
       {% set page = self.page_id()|trim %}
-      {% set _ai_pages = ['chat', 'profiler', 'mindmap'] %}
+      {% set _ai_pages = ['chat', 'profiler', 'mindmap', 'cvupload'] %}
       {% set _in_ai = page in _ai_pages %}
       {% if _role == 'employee' %}
       <div class="fm-nav-label">Min læring</div>
@@ -88,13 +88,13 @@
           <li><a class="fm-nav-link {{ 'active' if page == 'chat' }}" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comment-dots"></i><span>AI-assistent</span></a></li>
           <li><a class="fm-nav-link {{ 'active' if page == 'profiler' }}" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i><span>AI Profiler</span></a></li>
           <li><a class="fm-nav-link {{ 'active' if page == 'mindmap' }}" href="{{ url_for('futurematch.mind_map') }}"><i class="fa-solid fa-brain"></i><span>Mind-Map</span></a></li>
+          <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>CV-portal</span></a></li>
         </ul>
         {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
       </div>
 
       {% if _role == 'employee' %}
       <ul class="fm-nav-list">
-        <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>Upload CV</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
       </ul>
       {% else %}
@@ -235,7 +235,7 @@
 </div>
 
 <script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=10"></script>
-{% if self.page_id()|trim in ['chat', 'profiler', 'mindmap'] %}
+{% if self.page_id()|trim in ['chat', 'profiler', 'mindmap', 'cvupload'] %}
 <script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v=1"></script>
 {% endif %}
 {% block extra_scripts %}{% endblock %}

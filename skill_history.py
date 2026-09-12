@@ -46,7 +46,7 @@ logger = logging.getLogger(__name__)
 
 # Recognised capture sources. Unknown sources are coerced to 'assign' so a
 # typo in a caller can never write an unbounded VARCHAR.
-VALID_SOURCES = ('assign', 'post_course', 'rollup', 'import')
+VALID_SOURCES = ('assign', 'post_course', 'rollup', 'import', 'profile_manual', 'cv_upload', 'ai_chat')
 _DEFAULT_SOURCE = 'assign'
 
 
@@ -156,3 +156,53 @@ def current_level_for(cur, company_id, employee_id, skill_name):
         return None
     val = row.get('current_level') if isinstance(row, dict) else row[0]
     return _coerce_level(val)
+
+
+def record_user_snapshot(username, skill_name, level, previous_level=None,
+                         source='profile_manual', company_id=None, employee_id=None):
+    """Record a skill history snapshot for a user given their username.
+
+    Resolves company_id and employee_id from company_users if not provided.
+    Converts Danish/string levels to integer scores via competency.level_to_score.
+    Safe and never raises.
+    """
+    if not username or not skill_name:
+        return False
+    try:
+        from flask import current_app, session, has_request_context
+        import MySQLdb.cursors
+        from competency import level_to_score
+
+        cid = company_id
+        eid = employee_id
+        if has_request_context() and session:
+            cid = cid or session.get('company_id')
+            eid = eid or session.get('employee_id')
+
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        if not cid or not eid:
+            cur.execute(
+                "SELECT id, company_id FROM company_users WHERE username = %s AND status = 'active' LIMIT 1",
+                (username,)
+            )
+            row = cur.fetchone()
+            if row:
+                cid = cid or row.get('company_id')
+                eid = eid or row.get('id')
+
+        if not cid or not eid:
+            cur.close()
+            return False
+
+        lvl_score = level_to_score(level)
+        prev_score = level_to_score(previous_level) if previous_level is not None else None
+
+        ok = record_snapshot(cur, cid, eid, skill_name, lvl_score,
+                             previous_level=prev_score, source=source)
+        if ok:
+            current_app.mysql.connection.commit()
+        cur.close()
+        return ok
+    except Exception as exc:
+        logger.warning("skill_history: record_user_snapshot failed for %s: %s", username, exc)
+        return False

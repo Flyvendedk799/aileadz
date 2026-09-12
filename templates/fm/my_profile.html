@@ -179,17 +179,36 @@
   /* Learning paths (AI-built, persisted) */
   .path-card { border: 1px solid var(--fm-line); border-radius: 12px; padding: 12px 14px; margin-bottom: 10px; background: var(--fm-surface-2); }
   .path-card:last-child { margin-bottom: 0; }
-  .path-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--fm-ink); margin-bottom: 8px; }
+  .path-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; color: var(--fm-ink); margin-bottom: 8px; flex-wrap: wrap; }
   .path-head i { color: var(--fm-primary); }
-  .path-totals { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--fm-ink-2); }
-  .path-step { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--fm-line); }
+  .path-totals { margin-left: auto; font-size: 11.5px; font-weight: 600; color: var(--fm-ink-2); display: flex; align-items: center; gap: 8px; }
+  .path-step { display: flex; gap: 10px; padding: 8px 0; border-top: 1px solid var(--fm-line); align-items: flex-start; }
   .path-step:first-of-type { border-top: none; }
-  .path-no { width: 22px; height: 22px; flex: 0 0 22px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .path-step.is-done { opacity: 0.72; }
+  .path-check { width: 24px; height: 24px; flex: 0 0 24px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; color: var(--fm-ink-3); background: var(--fm-surface); border: 1.5px solid var(--fm-line); cursor: pointer; transition: all .15s ease; padding: 0; }
+  .path-check:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .path-check.checked { background: var(--fm-success); border-color: var(--fm-success); color: #fff; }
   .path-topic { font-weight: 650; font-size: 13px; color: var(--fm-ink); }
+  .path-topic.done-text { text-decoration: line-through; color: var(--fm-ink-2); }
   .path-reason { font-size: 12px; color: var(--fm-ink-2); margin-top: 2px; }
   .path-courses { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
   .path-course { font-size: 11.5px; font-weight: 600; color: var(--fm-primary); background: var(--fm-surface); border: 1px solid var(--fm-line); border-radius: 7px; padding: 3px 8px; text-decoration: none; }
   .path-course:hover { border-color: var(--fm-primary); }
+
+  /* CV widget (Phase 3) */
+  .cv-widget-card { margin-top: 18px; border: 1px solid var(--fm-line); border-radius: var(--r-card); background: var(--fm-surface); overflow: hidden; }
+  .cv-widget-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; margin-bottom: 14px; }
+  .cv-widget-kpi { padding: 10px 14px; border-radius: 10px; background: var(--fm-surface-2); border: 1px solid var(--fm-line); }
+  .cv-widget-kpi .val { font-size: 18px; font-weight: 700; color: var(--fm-ink); }
+  .cv-widget-kpi .lbl { font-size: 11.5px; color: var(--fm-ink-2); margin-top: 2px; }
+  .cv-widget-preview { display: flex; flex-direction: column; gap: 8px; padding: 12px 14px; border-radius: 10px; background: var(--fm-surface-2); border: 1px solid var(--fm-line); margin-bottom: 14px; }
+  .cv-widget-preview-title { font-size: 12px; font-weight: 700; color: var(--fm-ink-2); text-transform: uppercase; letter-spacing: .04em; display: flex; align-items: center; gap: 6px; }
+  .cv-widget-exp-item { font-size: 13px; color: var(--fm-ink); line-height: 1.45; }
+  .cv-widget-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+  .cv-widget-chip { font-size: 11.5px; font-weight: 600; padding: 3px 9px; border-radius: 999px; background: var(--fm-primary-tint); color: var(--fm-primary); border: 1px solid color-mix(in srgb, var(--fm-primary) 20%, transparent); }
+  .cv-widget-empty { text-align: center; padding: 20px 16px; }
+  .cv-widget-empty p { font-size: 13.5px; color: var(--fm-ink-2); max-width: 440px; margin: 0 auto 16px; line-height: 1.5; }
+  .cv-widget-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
 </style>
 {% endblock %}
 {% block content %}
@@ -217,7 +236,7 @@
                 <button class="btn btn-soft btn-sm" onclick="openAdd()"><i class="fa-solid fa-plus"></i> Tilføj kompetence</button>
                 <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
                 <a href="{{ url_for('futurematch.mind_map') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-brain"></i> 3D Mind-Map</a>
-                <a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Opdater via AI</a>
+                <a href="{{ url_for('futurematch.ai_profiler') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Opdater via AI</a>
               </div>
             </div>
           </div>
@@ -241,11 +260,23 @@
         <div class="ai-nudge" data-reveal>
           <span class="ai-ic"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
           <div style="flex:1"><div style="font-weight:700;font-size:15px">Få et skarpere kursusmatch</div><div style="font-size:13px;color:var(--fm-ink-2);margin-top:2px">Jo mere udfyldt din profil er, jo bedre finder AI’en relevante kurser til dig.</div></div>
-          <a href="{{ url_for('futurematch.chat') }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
+          <a href="{{ url_for('futurematch.chat') }}?intent={{ 'Hjælp mig med at finde kurser der matcher min profil og mine mål'|urlencode }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
+        </div>
+
+        <!-- CV Summary Widget (Phase 3) -->
+        <div class="fm-card cv-widget-card" data-reveal id="cvWidgetCard">
+          <div class="fm-card-head">
+            <span class="fm-ch-icon"><i class="fa-solid fa-file-lines"></i></span>
+            <h3>Mit CV &amp; Faglig Profil</h3>
+            <span class="fm-badge teal" id="cvStatusBadge" style="margin-left:auto">Indlæser…</span>
+          </div>
+          <div class="fm-card-body" id="cvWidgetContent">
+            <div class="muted" style="font-size:13px">Indlæser CV-oplysninger…</div>
+          </div>
         </div>
 
         <!-- My orders -->
-        <div class="fm-card" data-reveal id="ordersCard">
+        <div class="fm-card" data-reveal id="ordersCard" style="margin-top:18px">
           <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bag-shopping"></i></span><h3>Mine bestillinger</h3><a href="{{ url_for('futurematch.timeline') }}" class="fm-badge teal" style="margin-left:auto">Se tidslinje</a></div>
           <div class="fm-card-body">
             <div class="ord-kpis" id="ordKpis"></div>
@@ -256,14 +287,14 @@
         <!-- Learning paths (AI-built, persisted) -->
         <div class="fm-card" data-reveal id="pathsCard" style="margin-top:18px">
           <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Mine læringsstier</h3>
-            <a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal" style="margin-left:auto">Byg en sti med AI</a></div>
+            <a href="{{ url_for('futurematch.chat') }}?intent={{ 'Byg en sekventiel læringssti til mine mål'|urlencode }}" class="fm-badge teal" style="margin-left:auto">Byg en sti med AI</a></div>
           <div class="fm-card-body"><div id="pathsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
         </div>
 
         <!-- Skill gaps (current → target on the canonical 1-5 scale) -->
         <div class="fm-card" data-reveal id="gapsCard" style="margin-top:18px">
           <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Kompetencegab</h3>
-            <a href="{{ url_for('futurematch.chat') }}" class="fm-badge teal" style="margin-left:auto">Luk gabet med AI</a></div>
+            <a href="{{ url_for('futurematch.chat') }}?intent={{ 'Vis mine største kompetencegab og anbefal konkrete kurser der lukker dem'|urlencode }}" class="fm-badge teal" style="margin-left:auto">Luk gabet med AI</a></div>
           <div class="fm-card-body"><div id="gapsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
         </div>
 
@@ -332,7 +363,7 @@
               </div>
             </div>
             <div class="fm-card" data-reveal data-d="5" id="goals"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
-              <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.chat') }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</a></div>
+              <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.ai_profiler') }}?intent={{ 'Jeg vil gerne definere eller opdatere mine karrieremål'|urlencode }}" class="btn btn-soft btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Rediger mål</a></div>
             </div>
           </div>
         </div>
@@ -365,6 +396,13 @@
     const LEVEL_ORDER = ['ekspert', 'avanceret', 'mellem', 'begynder'];
     const LANG_LABELS = { begynder: 'Begynder', mellem: 'Mellem', flydende: 'Flydende', modersmaal: 'Modersmål' };
     const LANG_ORDER = { begynder: 1, mellem: 2, flydende: 3, modersmaal: 4 };
+
+    const URLS = {
+      cvUpload: "{{ url_for('futurematch.cv_upload') }}",
+      aiProfiler: "{{ url_for('futurematch.ai_profiler') }}",
+      mindMap: "{{ url_for('futurematch.mind_map') }}",
+      chat: "{{ url_for('futurematch.chat') }}"
+    };
 
     function esc(s) {
       const d = document.createElement('div');
@@ -693,22 +731,142 @@
         const totals = [];
         if (p.total_duration_days) totals.push('<i class="fa-solid fa-clock"></i> ' + esc(p.total_duration_days) + ' dage');
         if (p.total_cost != null) totals.push('<i class="fa-solid fa-tag"></i> ca. ' + Number(p.total_cost).toLocaleString('da-DK') + ' kr');
+        const isComplete = p.status === 'fuldfoert';
+        const statusBadge = isComplete
+          ? '<span class="fm-badge success" style="margin-left:6px;font-size:11px"><i class="fa-solid fa-check"></i> Fuldført</span>'
+          : '<span class="fm-badge teal" style="margin-left:6px;font-size:11px">Aktiv</span>';
+        const statusAction = isComplete
+          ? '<button class="btn btn-ghost btn-xs" onclick="setPathStatus(' + p.id + ', \'aktiv\')"><i class="fa-solid fa-rotate-left"></i> Genåbn</button>'
+          : '<button class="btn btn-soft btn-xs" onclick="setPathStatus(' + p.id + ', \'fuldfoert\')"><i class="fa-solid fa-check"></i> Markér fuldført</button>';
+        const deleteAction = '<button class="btn btn-ghost btn-xs" onclick="deletePath(' + p.id + ')" title="Arkivér sti" style="color:var(--fm-ink-3)"><i class="fa-solid fa-trash-can"></i></button>';
+
         const stepHtml = steps.map((s, i) => {
+          const isDone = !!s.done;
+          const order = s.order || (i + 1);
           const courses = (s.courses || []).map(c =>
             '<a class="path-course" href="/products/' + encodeURIComponent(c.handle || '') + '" target="_blank">' + esc(c.title || '') + '</a>').join('');
-          return '<div class="path-step"><span class="path-no">' + (i + 1) + '</span><div><div class="path-topic">' + esc(s.topic || '') + '</div>' +
+          return '<div class="path-step' + (isDone ? ' is-done' : '') + '">' +
+            '<button class="path-check' + (isDone ? ' checked' : '') + '" onclick="togglePathStep(' + p.id + ',' + order + ', ' + (!isDone) + ')" title="' + (isDone ? 'Markér som ikke gennemført' : 'Markér som gennemført') + '">' +
+            '<i class="fa-solid ' + (isDone ? 'fa-check' : 'fa-circle-notch') + '"></i></button>' +
+            '<div style="flex:1"><div class="path-topic' + (isDone ? ' done-text' : '') + '">' + esc(s.topic || '') + '</div>' +
             (s.reason ? '<div class="path-reason">' + esc(s.reason) + '</div>' : '') +
             (courses ? '<div class="path-courses">' + courses + '</div>' : '') + '</div></div>';
         }).join('');
-        return '<div class="path-card"><div class="path-head"><i class="fa-solid fa-route"></i> ' + esc(p.title || 'Læringssti') +
-          (totals.length ? '<span class="path-totals">' + totals.join(' · ') + '</span>' : '') + '</div>' + stepHtml + '</div>';
+        return '<div class="path-card"><div class="path-head">' +
+          '<i class="fa-solid fa-route"></i> ' + esc(p.title || 'Læringssti') + statusBadge +
+          (totals.length ? '<span class="path-totals">' + totals.join(' · ') + '</span>' : '') +
+          '<div style="display:flex;gap:6px;margin-left:auto;align-items:center">' + statusAction + deleteAction + '</div>' +
+          '</div>' + stepHtml + '</div>';
       }).join('');
     }
+
+    window.togglePathStep = function (pathId, stepOrder, done) {
+      api('/api/profile/learning-paths/' + pathId + '/step', {
+        method: 'POST',
+        body: JSON.stringify({ step_order: stepOrder, done: done })
+      }).then(d => {
+        if (d && d.success) {
+          toast(done ? 'Trin markeret som gennemført.' : 'Trin genåbnet.');
+          loadLearningPaths();
+        } else {
+          toast((d && d.error) || 'Kunne ikke opdatere trin.', false);
+        }
+      }).catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.setPathStatus = function (pathId, status) {
+      api('/api/profile/learning-paths/' + pathId + '/status', {
+        method: 'POST',
+        body: JSON.stringify({ status: status })
+      }).then(d => {
+        if (d && d.success) {
+          toast(status === 'fuldfoert' ? 'Læringssti markeret som fuldført!' : 'Læringssti sat som aktiv.');
+          loadLearningPaths();
+        } else {
+          toast((d && d.error) || 'Kunne ikke opdatere status.', false);
+        }
+      }).catch(() => toast('Der opstod en fejl.', false));
+    };
+
+    window.deletePath = function (pathId) {
+      if (!confirm('Vil du arkivere denne læringssti?')) return;
+      api('/api/profile/learning-paths/' + pathId, {
+        method: 'DELETE'
+      }).then(d => {
+        if (d && d.success) {
+          toast('Læringssti arkiveret.');
+          loadLearningPaths();
+        } else {
+          toast((d && d.error) || 'Kunne ikke arkivere stien.', false);
+        }
+      }).catch(() => toast('Der opstod en fejl.', false));
+    };
 
     function loadLearningPaths() {
       api('/api/profile/learning-paths')
         .then(d => renderLearningPaths((d && d.learning_paths) || []))
         .catch(() => { const b = document.getElementById('pathsList'); if (b) b.innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke indlæse læringsstier.</div>'; });
+    }
+
+    function loadCvSummary() {
+      const badge = document.getElementById('cvStatusBadge');
+      const box = document.getElementById('cvWidgetContent');
+      if (!box) return;
+      api('/api/cv/summary')
+        .then(data => {
+          if (!data || !data.success) {
+            if (badge) badge.textContent = 'Fejl';
+            box.innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke hente CV-oversigt.</div>';
+            return;
+          }
+          const hasCv = data.has_cv;
+          const s = data.summary || {};
+          if (badge) {
+            badge.textContent = hasCv ? (s.completeness_pct + '% udfyldt') : 'Intet CV endnu';
+            badge.className = 'fm-badge ' + (hasCv ? 'teal' : 'clay');
+          }
+          if (!hasCv) {
+            box.innerHTML = '<div class="cv-widget-empty">' +
+              '<div style="font-size:32px;color:var(--fm-primary);margin-bottom:10px"><i class="fa-solid fa-file-arrow-up"></i></div>' +
+              '<h4 style="margin:0 0 6px;font-size:15px;font-weight:700">Genskab dit CV som en interaktiv profil</h4>' +
+              '<p>Upload dit eksisterende CV — vi analyserer det automatisk og trækker dine kompetencer, erfaringer og uddannelser direkte ind på din profil og i AI-assistenten.</p>' +
+              '<div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap">' +
+                '<a href="' + URLS.cvUpload + '" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV nu</a>' +
+                '<a href="' + URLS.aiProfiler + '?intent=' + encodeURIComponent('Hjælp mig med at opbygge min profil fra bunden') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Byg profil via AI</a>' +
+              '</div>' +
+            '</div>';
+            return;
+          }
+
+          const chips = (s.top_skills || []).map(sk =>
+            '<span class="cv-widget-chip">' + esc(sk.name) + ' (' + esc(sk.level || 'mellem') + ')</span>'
+          ).join('');
+          const expItems = (s.recent_experience || []).slice(0, 2).map(e =>
+            '<div class="cv-widget-exp-item">' +
+              '<strong>' + esc(e.title || 'Rolle') + '</strong> hos <em>' + esc(e.company || 'Virksomhed') + '</em>' +
+              '<span class="muted" style="font-size:12px;margin-left:6px">' + esc(e.start_year || '') + (e.end_year ? ' – ' + esc(e.end_year) : (e.is_current ? ' – nu' : '')) + '</span>' +
+            '</div>'
+          ).join('');
+
+          box.innerHTML =
+            '<div class="cv-widget-grid">' +
+              '<div class="cv-widget-kpi"><div class="val">' + (s.experience_count || 0) + '</div><div class="lbl">Erfaringer</div></div>' +
+              '<div class="cv-widget-kpi"><div class="val">' + (s.education_count || 0) + '</div><div class="lbl">Uddannelser</div></div>' +
+              '<div class="cv-widget-kpi"><div class="val">' + (s.certifications_count || 0) + '</div><div class="lbl">Certificeringer</div></div>' +
+              '<div class="cv-widget-kpi"><div class="val">' + (s.skills_count || 0) + '</div><div class="lbl">Kompetencer</div></div>' +
+            '</div>' +
+            (expItems ? '<div class="cv-widget-preview"><div class="cv-widget-preview-title"><i class="fa-solid fa-briefcase"></i> Seneste erfaring</div>' + expItems + '</div>' : '') +
+            (chips ? '<div style="margin-bottom:14px"><div class="cv-widget-preview-title" style="margin-bottom:8px"><i class="fa-solid fa-layer-group"></i> Nøglekompetencer</div><div class="cv-widget-chips">' + chips + '</div></div>' : '') +
+            '<div class="cv-widget-actions">' +
+              '<a href="' + URLS.cvUpload + '" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload / Opdater CV</a>' +
+              '<a href="' + URLS.aiProfiler + '?intent=' + encodeURIComponent('Jeg vil gerne gennemgå og forbedre mit CV med AI') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Finpuds med AI</a>' +
+              '<a href="' + URLS.mindMap + '" class="btn btn-ghost btn-sm"><i class="fa-solid fa-brain"></i> Se i 3D Mind-Map</a>' +
+            '</div>';
+        })
+        .catch(() => {
+          if (badge) badge.textContent = 'Fejl';
+          box.innerHTML = '<div class="muted" style="font-size:13px">Kunne ikke indlæse CV-oplysninger.</div>';
+        });
     }
 
     function renderSkillGaps(gaps) {
@@ -937,6 +1095,7 @@
     loadOrders();
     loadLearningPaths();
     loadSkillGaps();
+    loadCvSummary();
   })();
 </script>
 {% endblock %}

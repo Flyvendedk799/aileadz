@@ -281,6 +281,22 @@ Det er en samtale om deres karriere - ikke en profil der skal fyldes ud. Profild
 nedenfor er dit indtryk af, hvad du allerede ved om dem; brug det til at stille bedre
 spørgsmål, ikke som en liste der skal ryddes.
 
+RESUME-BEVIDSTHED:
+Brugerprofilen og hukommelsen nedenfor er hvad du ALLEREDE VED — du har selv gemt det,
+eller brugeren har gjort det via sin profil. Behandl alt i profilen som etableret viden:
+- SPØRG ALDRIG om noget der allerede står i profilen (titel, erfaring, kompetencer,
+  uddannelse, mål, certificeringer osv.) — medmindre du har en KONKRET grund til at
+  tro det er forældet eller upræcist.
+- Start med en kort kvittering der viser du kender dem: "Jeg kan se du er [titel] hos
+  [virksomhed]..." og gå DIREKTE til det næste du endnu IKKE ved.
+- Brug profildataene aktivt i dine spørgsmål: "Du nævnte at du arbejder med X — har du
+  overvejet Y?" i stedet for "Hvad laver du til daglig?"
+- Hvis profilen er rig (>60% dybde) og der kun mangler nuancer, så byd med indsigt
+  ("ud fra dine kompetencer kunne din næste rolle være...") i stedet for at interviewe.
+- ALDRIG start med "Hvad er dit nuværende job?" eller lignende hvis profilen allerede
+  indeholder erfaring. Spring til det du MANGLER.
+
+SAMTALESTRATEGI:
 - Spørg om det, der ville ændre din rådgivning mest lige nu. Undrer du dig over noget
   i det de har fortalt, så spørg ind til det i stedet - det er som regel bedre end det
   næste felt i rækken.
@@ -1386,14 +1402,9 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 returning_profile = get_full_profile(logged_in_user)
                 returning_text = format_profile_for_ai(returning_profile)
                 if returning_text:
-                    # Inject full profile as system context so AI knows what's already saved
-                    # User-authored profile free text — fence as DATA.
-                    CHAT_MEMORY[sid].append({
-                        "role": "system",
-                        "content": "BRUGERENS NUVÆRENDE PROFIL (allerede gemt — tilføj IKKE dubletter):\n"
-                                   + _fence("BRUGERPROFIL", returning_text)
-                                   + "\n\nBrug denne info til personlige anbefalinger. Opdater KUN med NYE oplysninger."
-                    })
+                    # Profile context is injected per-turn in stream_generator()
+                    # so it's always fresh. Don't duplicate it into CHAT_MEMORY
+                    # (stale copy wastes ~300-500 context-window tokens).
 
                     # Build welcome-back context from past activity
                     welcome_parts = []
@@ -1887,8 +1898,17 @@ def handle_agentic_ask(user_query, session, mode="default"):
             # and so the memory_used event reflects what actually informed the turn.
             if logged_in_user:
                 try:
-                    from app1.user_profile_db import select_relevant_memories, format_memories_for_ai
-                    rel_mem = select_relevant_memories(logged_in_user, user_query, limit=6)
+                    from app1.user_profile_db import select_relevant_memories, format_memories_for_ai, get_memories
+                    if mode == "profiler":
+                        # Profiler needs full context — inject all memories so the
+                        # model knows career goals, personality, and preferences even
+                        # when the opening query doesn't contain matching keywords.
+                        _all_mem = get_memories(logged_in_user, limit=12)
+                        rel_mem = [dict(m, _relevant=True)
+                                   for m in _all_mem
+                                   if m.get("confidence") is None or float(m.get("confidence") or 0) >= 0.5]
+                    else:
+                        rel_mem = select_relevant_memories(logged_in_user, user_query, limit=6)
                     mem_text = format_memories_for_ai(rel_mem)
                     if mem_text:
                         ephemeral_messages.insert(insert_idx, {
@@ -1938,6 +1958,44 @@ def handle_agentic_ask(user_query, session, mode="default"):
                                                 " Det er sandsynligvis det der afgør om de kommer videre - og der hvor kataloget kan hjælpe konkret.")
                         except Exception:
                             gap_line = ""
+                        # Build a structured "already covered" summary so the model
+                        # has an explicit checklist of what is settled vs unknown.
+                        _covered_parts = []
+                        try:
+                            if db_profile:
+                                _t_role = (db_profile.get("target_role") or "").strip()
+                                if _t_role:
+                                    _covered_parts.append(f"Ønsket retning: {_t_role}")
+                                _exp = db_profile.get("experience") or []
+                                if _exp:
+                                    _exp_summary = "; ".join(
+                                        f"{e.get('title','')} @ {e.get('company','')}" for e in _exp[:3])
+                                    _covered_parts.append(f"Erfaring ({len(_exp)}): {_exp_summary}")
+                                _sk = db_profile.get("skills") or []
+                                if _sk:
+                                    _sk_summary = ", ".join(
+                                        f"{s['name']} ({s.get('level','?')})" for s in _sk[:6])
+                                    _covered_parts.append(f"Kompetencer ({len(_sk)}): {_sk_summary}")
+                                _edu = db_profile.get("education") or []
+                                if _edu:
+                                    _edu_summary = "; ".join(
+                                        f"{e.get('degree','')} — {e.get('institution','')}" for e in _edu[:3])
+                                    _covered_parts.append(f"Uddannelse ({len(_edu)}): {_edu_summary}")
+                                _certs = db_profile.get("certifications") or []
+                                if _certs:
+                                    _covered_parts.append(f"Certificeringer ({len(_certs)}): {', '.join(c['name'] for c in _certs[:4])}")
+                                _langs = db_profile.get("languages") or []
+                                if _langs:
+                                    _covered_parts.append(f"Sprog ({len(_langs)}): {', '.join(l['language'] for l in _langs[:5])}")
+                                _goals = (db_profile.get("goals") or "").strip()
+                                if _goals:
+                                    _covered_parts.append(f"Karrieremål: {_goals[:100]}")
+                        except Exception:
+                            pass
+                        covered_block = ""
+                        if _covered_parts:
+                            covered_block = ("\n\nALLEREDE AFDÆKKET (spørg IKKE om dette igen):\n- "
+                                             + "\n- ".join(_covered_parts))
                         ephemeral_messages.insert(insert_idx, {
                             "role": "system",
                             "content": SYSTEM_PLAYBOOK_PROFILER
@@ -1947,6 +2005,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
                                          f" ({_profiler_completeness.get('weighted_pct', _profiler_completeness['pct'])}% dybde)."
                                          f" Du har endnu ikke hørt om: {missing}."
                                        + focus_line + role_line + gap_line
+                                       + covered_block
                         })
                         insert_idx += 1
                     except Exception as e:
@@ -2120,6 +2179,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     user_query=user_query,
                     shown_count=len(shown_handles),
                     order_flow_open=_order_open,
+                    mode=mode,
                 )
             else:
                 all_tools = OPENAI_TOOLS + (PROFILE_TOOLS if logged_in_user else [])

@@ -1730,9 +1730,10 @@
         headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
       });
-      if (!resp.ok) { welcome(); return false; }
+      if (!resp.ok) { welcome(); return { restored: false, mode: null }; }
       const data = await resp.json();
       const msgs = data && data.messages;
+      const restoredMode = (data && data.mode) || "chat";
       if (data && data.status === "ok" && Array.isArray(msgs) && msgs.length) {
         renderHistory(msgs);
         if (data.id) {
@@ -1742,11 +1743,11 @@
             window.fmAiSidebar.setActive(data.id);
           }
         }
-        return true;
+        return { restored: true, mode: restoredMode };
       }
     } catch (e) { /* fall through to welcome */ }
     welcome();
-    return false;
+    return { restored: false, mode: null };
   }
 
   /* ---------------- real profile completeness ----------------
@@ -1859,31 +1860,49 @@
 
   /* ---------------- init ----------------
      Restore the active thread when hopping between /chat, /ai-profiler and
-     /mind-map so the three surfaces share one conversation, not a fresh
-     welcome screen on every navigation. ?c= opens a specific history row;
-     ?new=1 forces a blank session. */
+     /mind-map.  Mode-aware: if the active conversation belongs to a different
+     mode (e.g. a "chat" conversation loaded on /ai-profiler) we start a fresh
+     session so the profiler can cold-start properly.
+     ?c= opens a specific history row; ?new=1 forces a blank session. */
   function bootChat() {
     let params;
     try { params = new URLSearchParams(location.search); } catch (e) { params = new URLSearchParams(); }
     if (params.get("new") === "1") {
       return newChat().then(() => false);
     }
+    const currentMode = (window.CHAT_MODE || "default").toLowerCase();
     const intent = (params.get("intent") || "").trim();
     if (intent) {
       try {
         params.delete("intent");
         history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : ""));
       } catch (e) { /* non-critical */ }
-      return restoreActiveConversation().then(() => {
-        input.value = intent;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        setTimeout(() => { if (!sending) send.click(); }, 80);
-        return true;
+      return restoreActiveConversation().then((result) => {
+        // Mode mismatch: start fresh so the intent lands in the right mode
+        const restoredMode = (result && result.mode) || "chat";
+        const mismatch = (currentMode === "profiler" && restoredMode !== "profiler")
+                      || (currentMode !== "profiler" && restoredMode === "profiler");
+        const chain = mismatch ? newChat() : Promise.resolve();
+        return chain.then(() => {
+          input.value = intent;
+          input.dispatchEvent(new Event("input", { bubbles: true }));
+          setTimeout(() => { if (!sending) send.click(); }, 80);
+          return true;
+        });
       });
     }
     const cid = params.get("c");
     if (cid) return openConversation(cid);
-    return restoreActiveConversation();
+    return restoreActiveConversation().then((result) => {
+      // Mode mismatch: clear the wrong-mode conversation and show welcome
+      const restoredMode = (result && result.mode) || "chat";
+      const mismatch = (currentMode === "profiler" && restoredMode !== "profiler")
+                    || (currentMode !== "profiler" && restoredMode === "profiler");
+      if (result && result.restored && mismatch) {
+        return newChat().then(() => false);
+      }
+      return result && result.restored;
+    });
   }
   window.fmChatBoot = bootChat();
   renderRef();

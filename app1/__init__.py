@@ -1160,9 +1160,11 @@ def feedback():
 def new_session():
     """Start a fresh conversation — saves current to history, then clears."""
     from app1.agent import (CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES,
-                            REJECTED_SEARCHES, SHOWN_ARTIFACTS, _messages_with_artifacts)
+                            REJECTED_SEARCHES, SHOWN_ARTIFACTS, _messages_with_artifacts,
+                            PROFILER_HANDOFFS)
     old_sid = session.get("session_id")
     logged_in_user = session.get("user")
+    req_mode = request.args.get("mode") or (request.is_json and request.json and request.json.get("mode"))
 
     # Save current conversation to history before clearing (with UI artifacts so
     # the saved transcript can later replay its cards/chips on resume).
@@ -1172,7 +1174,8 @@ def new_session():
             ensure_tables()
             save_conversation_history(
                 logged_in_user, old_sid,
-                _messages_with_artifacts(old_sid, CHAT_MEMORY[old_sid]))
+                _messages_with_artifacts(old_sid, CHAT_MEMORY[old_sid]),
+                mode=req_mode)
         except Exception as e:
             print(f"[Save History Error] {e}")
 
@@ -1183,6 +1186,7 @@ def new_session():
         CONVERSATION_STAGES.pop(old_sid, None)
         REJECTED_SEARCHES.pop(old_sid, None)
         SHOWN_ARTIFACTS.pop(old_sid, None)
+        PROFILER_HANDOFFS.discard(old_sid)
 
     # Generate new session ID
     new_sid = str(uuid.uuid4())
@@ -1206,10 +1210,11 @@ def load_conversation_endpoint():
     logged_in_user = session.get("user")
     if not logged_in_user:
         return jsonify({"status": "no_user", "messages": []})
+    req_mode = request.args.get("mode")
     try:
         from app1.user_profile_db import load_conversation, find_conversation_by_session, ensure_tables
         ensure_tables()
-        saved = load_conversation(logged_in_user)
+        saved = load_conversation(logged_in_user, mode=req_mode)
         if saved and saved.get("messages"):
             sid = saved.get("session_id")
             if sid:
@@ -1223,9 +1228,9 @@ def load_conversation_endpoint():
                 "status": "ok",
                 "messages": saved["messages"],
                 "session_id": sid,
-                "id": (meta or {}).get("id"),
-                "title": (meta or {}).get("title"),
-                "mode": (meta or {}).get("mode") or "chat",
+                "id": saved.get("id") or (meta or {}).get("id"),
+                "title": saved.get("title") or (meta or {}).get("title"),
+                "mode": saved.get("mode") or (meta or {}).get("mode") or "chat",
             })
         return jsonify({"status": "empty", "messages": []})
     except Exception as e:
@@ -1319,7 +1324,10 @@ def resume_conversation_endpoint(conv_id):
         # Promote this conversation to the user's active conversation so the
         # agent's restore path (load_conversation) rehydrates it next turn.
         try:
-            save_conversation(logged_in_user, target_sid, messages)
+            try:
+                save_conversation(logged_in_user, target_sid, messages, mode=conv.get("mode"))
+            except TypeError:
+                save_conversation(logged_in_user, target_sid, messages)
         except Exception as e:
             print(f"[Resume Save Active Error] {e}")
             try:
@@ -1674,6 +1682,14 @@ def confirm_profile_update():
                 update_profile_summary(logged_in_user, **clean)
                 return _success("Profil opdateret")
             return _success("Ingen ændringer")
+
+        elif action == "set_target_role":
+            from app1.user_profile_db import update_profile_summary
+            role = (payload.get("target_role") or payload.get("role") or payload.get("desired_role") or "").strip()
+            if not role:
+                return jsonify({"status": "error", "message": "target_role mangler"}), 400
+            update_profile_summary(logged_in_user, target_role=role)
+            return _success("Ønsket retning gemt")
 
         else:
             return jsonify({"status": "error", "message": f"Ukendt handling: {action}"}), 400

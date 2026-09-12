@@ -152,13 +152,14 @@
     if (!id) return;
     persistActive(id);
     render();
-    const inChatSurface = page === "chat" || page === "profiler";
-    if (inChatSurface && typeof window.fmOpenConversation === "function") {
+    const conv = CONVS.find((c) => String(c.id) === String(id));
+    const convMode = conv ? modeOf(conv) : (mode === "profiler" ? "profiler" : "chat");
+    const surfaceMatches = (page === "profiler" && convMode === "profiler") || (page === "chat" && convMode === "chat");
+    if (surfaceMatches && typeof window.fmOpenConversation === "function") {
       window.fmOpenConversation(id);
       return;
     }
-    const conv = CONVS.find((c) => String(c.id) === String(id));
-    window.location.href = conv ? hrefFor(conv) : ((mode === "profiler" ? "/ai-profiler?c=" : "/chat?c=") + encodeURIComponent(id));
+    window.location.href = conv ? hrefFor(conv) : ((convMode === "profiler" ? "/ai-profiler?c=" : "/chat?c=") + encodeURIComponent(id));
   }
 
   async function deleteConv(id) {

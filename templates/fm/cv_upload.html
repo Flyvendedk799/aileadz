@@ -20,6 +20,11 @@
   body.cvupload-page .fm-content { padding: 0; min-height: 0; display: flex; flex-direction: column; }
   body.cvupload-page .fm-foot { display: none; }
   .cv-wrap { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  .ai-modebar { display: flex; align-items: center; gap: 8px; padding: 10px 20px; border-bottom: 1px solid var(--fm-line); background: var(--fm-surface); overflow-x: auto; flex-shrink: 0; }
+  .ai-modebar a { display: inline-flex; align-items: center; gap: 7px; min-height: 34px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--fm-line); background: var(--fm-surface-2); color: var(--fm-ink-2); font-size: 12.5px; font-weight: 650; white-space: nowrap; text-decoration: none; }
+  .ai-modebar a:hover { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .ai-modebar a.active { border-color: var(--fm-primary); background: var(--fm-primary-tint); color: var(--fm-primary); }
+  .ai-modebar i { font-size: 13px; }
   .cv3d-stage {
     flex: 1; position: relative; min-height: 0; overflow: hidden;
     /* Dark cinematic background for the stage only */
@@ -274,6 +279,7 @@
 
 {% block content %}
 {% if step == 'review' %}
+{% include 'fm/_ai_modebar.html' %}
 <main class="cv-server-review">
   <h1>Gennemgå dit CV</h1>
   <p>Ret forslagene og fjern markeringen ved det, du ikke vil gemme.</p>
@@ -361,6 +367,7 @@
 </main>
 {% else %}
 <div class="cv-wrap">
+  {% include 'fm/_ai_modebar.html' %}
   <div class="cv3d-stage">
 
     <!-- Fallback for no-JS / no-WebGL browsers -->

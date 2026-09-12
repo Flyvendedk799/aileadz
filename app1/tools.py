@@ -3949,6 +3949,38 @@ PROFILE_TOOLS.append({
 PROFILE_TOOLS.append({
     "type": "function",
     "function": {
+        "name": "update_learning_path",
+        "description": (
+            "Opdater status eller afkryds trin på en eksisterende læringssti på brugerens profil. "
+            "Brug dette når brugeren siger 'marker trin 1 som fuldført', 'jeg er færdig med første kursus i min sti', "
+            "eller 'afslut min læringssti'."
+        ),
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "path_id": {"type": "integer", "description": "ID på læringsstien."},
+                "status": {
+                    "type": "string",
+                    "enum": ["aktiv", "fuldfoert", "arkiveret"],
+                    "description": "Ny overordnet status for stien (valgfri).",
+                },
+                "step_order": {
+                    "type": "integer",
+                    "description": "Trinnummer der skal markeres som fuldført/ugennemført (valgfri).",
+                },
+                "step_done": {
+                    "type": "boolean",
+                    "description": "True hvis trinnet er gennemført, False hvis det skal genåbnes.",
+                },
+            },
+            "required": ["path_id"],
+        },
+    },
+})
+
+PROFILE_TOOLS.append({
+    "type": "function",
+    "function": {
         "name": "recommend_for_profile",
         "description": "Anbefal kurser baseret på brugerens profil: kompetenceniveauer, mål, og gennemførte kurser. Filtrerer automatisk allerede gennemførte kurser fra. Brug dette når brugeren spørger 'hvad bør jeg lære?', 'anbefal noget til mig', eller lignende.",
         "parameters": {
@@ -6139,6 +6171,44 @@ def _execute_get_learning_path(args, username):
         return json.dumps({"status": "error", "message": f"Fejl ved hentning af læringssti: {e}"})
 
 
+def _execute_update_learning_path(args, username):
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    pid = args.get("path_id")
+    if not pid:
+        return json.dumps({"status": "error", "message": "path_id kræves."})
+    try:
+        from app1.user_profile_db import (
+            update_learning_path_status,
+            toggle_learning_path_step,
+            get_learning_path,
+            ensure_tables,
+        )
+        ensure_tables()
+        pid = int(pid)
+        step_order = args.get("step_order")
+        if step_order is not None:
+            done_val = args.get("step_done")
+            if done_val is None:
+                done_val = True
+            toggle_learning_path_step(username, pid, int(step_order), done=done_val)
+        status = args.get("status")
+        if status in ("aktiv", "fuldfoert", "arkiveret"):
+            update_learning_path_status(username, pid, status)
+
+        path = get_learning_path(username, pid)
+        if not path:
+            return json.dumps({"status": "not_found", "message": "Læringsstien blev ikke fundet."})
+        return _model_tool_json(
+            status="success",
+            section="learning_path",
+            message="Læringssti opdateret.",
+            path=path,
+        )
+    except Exception as e:
+        return json.dumps({"status": "error", "message": f"Kunne ikke opdatere læringssti: {e}"})
+
+
 def execute_tool(tool_call, username=None, session_id=None):
     """Router to execute the requested tool and return the output."""
     from tool_confirm import tool_call_parts
@@ -6192,6 +6262,8 @@ def execute_tool(tool_call, username=None, session_id=None):
             return _execute_save_learning_path(args, username)
         elif function_name == "get_learning_path":
             return _execute_get_learning_path(args, username)
+        elif function_name == "update_learning_path":
+            return _execute_update_learning_path(args, username)
         elif function_name == "open_in_app":
             return _execute_open_in_app(args, username)
         elif function_name == "request_user_input":

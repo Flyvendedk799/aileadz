@@ -73,7 +73,7 @@
       <span class="prof-metric"><span class="v" id="profNodes">—</span><span class="l">datapunkter</span></span>
     </div>
   </div>
-  <button class="prof-cta" id="profStart"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> Start</button>
+  <button class="prof-cta" id="profStart"><svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M5 12h14M13 6l6 6-6 6"/></svg> <span id="profStartLabel">Start</span></button>
   <a class="prof-link" href="{{ url_for('futurematch.mind_map') }}">Se min hukommelse →</a>
 </div>
 <div class="chatx">
@@ -146,46 +146,99 @@
         miss.innerHTML = '<span class="prof-tag done">Profilen er komplet 🎉</span>';
       }
     };
+    function formatSeedSection(s) {
+      var raw = (s || '').trim().toLowerCase();
+      if (!raw) return '';
+      if (raw === 'mål' || raw === 'karrieremål' || raw.indexOf('mål') !== -1) return 'mine mål';
+      if (raw === 'sprog' || raw.indexOf('sprog') !== -1) return 'mine sprog';
+      if (raw === 'kompetencer' || raw === 'færdigheder' || raw.indexOf('kompetence') !== -1) return 'mine kompetencer';
+      if (raw === 'uddannelse' || raw.indexOf('uddannelse') !== -1) return 'min uddannelse';
+      if (raw === 'erhvervserfaring' || raw === 'erfaring' || raw.indexOf('erfaring') !== -1) return 'min erhvervserfaring';
+      if (raw === 'interesser' || raw.indexOf('interesse') !== -1) return 'mine interesser';
+      if (raw === 'certifikater' || raw.indexOf('certifikat') !== -1) return 'mine certifikater';
+      return 'min ' + raw;
+    }
+    function updateCtaState() {
+      var thread = document.getElementById('thread');
+      var hasMsgs = !!(thread && thread.querySelector('.msg'));
+      var label = document.getElementById('profStartLabel');
+      if (label) {
+        label.textContent = hasMsgs ? 'Fortsæt' : 'Start';
+      }
+    }
     function startProfiler(seedSection) {
       var input = document.getElementById('input');
       var send = document.getElementById('send');
       if (!input || !send) return;
       track('profiler_start', { source: seedSection ? 'targeted' : 'manual' });
-      input.value = seedSection
-        ? ('Hjælp mig med at gøre min profil komplet. Start med min ' + seedSection + ', og stil mig ét spørgsmål ad gangen.')
+      var target = seedSection ? formatSeedSection(seedSection) : '';
+      input.value = target
+        ? ('Hjælp mig med at gøre min profil komplet. Start med ' + target + ', og stil mig ét spørgsmål ad gangen.')
         : 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
       input.dispatchEvent(new Event('input', { bubbles: true }));
       send.click();
     }
+    function refreshProfilerBanner() {
+      return fetch('/api/profile/mindmap', { credentials: 'same-origin' })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          setProfilerStats(d);
+          var c = d && d.completeness;
+          if (c) window.onProfilerProgress(c);
+          updateCtaState();
+          return d;
+        })
+        .catch(function () {});
+    }
+    window.refreshProfilerBanner = refreshProfilerBanner;
+
+    var threadEl = document.getElementById('thread');
+    if (threadEl && window.MutationObserver) {
+      var mo = new MutationObserver(function () { updateCtaState(); });
+      mo.observe(threadEl, { childList: true, subtree: true });
+    }
+
     // Seed the ring from the current profile, then PROACTIVELY open the
     // interview: if the profile is incomplete and the thread is empty, auto-ask
     // the first targeted question (once per browser session, so a navigation
-    // back doesn't re-fire it). This replaces the old "looks idle until you
-    // click Start" cold-start dead end.
-    fetch('/api/profile/mindmap', { credentials: 'same-origin' })
-      .then(function (r) { return r.json(); })
-      .then(function (d) {
-        setProfilerStats(d);
-        var c = d && d.completeness;
-        if (c) window.onProfilerProgress(c);
-        function maybeStart() {
-          var thread = document.getElementById('thread');
-          var empty = !thread || !thread.querySelector('.msg');
-          var alreadyStarted = sessionStorage.getItem('fmProfilerAutoStarted') === '1';
-          var openingSaved = false;
-          try { openingSaved = !!(new URLSearchParams(location.search).get('c')); } catch (e) {}
-          if (c && (c.pct || 0) < 100 && empty && !alreadyStarted && !openingSaved) {
-            sessionStorage.setItem('fmProfilerAutoStarted', '1');
-            var weak = (c.missing && c.missing.length) ? c.missing[0].toLowerCase() : '';
-            setTimeout(function () { startProfiler(weak); }, 500);
-          }
+    // back doesn't re-fire it).
+    refreshProfilerBanner().then(function (d) {
+      var c = d && d.completeness;
+      function maybeStart() {
+        var thread = document.getElementById('thread');
+        var empty = !thread || !thread.querySelector('.msg');
+        var alreadyStarted = sessionStorage.getItem('fmProfilerAutoStarted') === '1';
+        var openingSaved = false;
+        try { openingSaved = !!(new URLSearchParams(location.search).get('c')); } catch (e) {}
+        if (c && (c.pct || 0) < 100 && empty && !alreadyStarted && !openingSaved) {
+          sessionStorage.setItem('fmProfilerAutoStarted', '1');
+          var weak = (c.missing && c.missing.length) ? c.missing[0].toLowerCase() : '';
+          setTimeout(function () { startProfiler(weak); }, 500);
         }
-        Promise.resolve(window.fmChatBoot).then(maybeStart, maybeStart);
-      })
-      .catch(function () { });
-    // "Start" → ask the profiler to drive the conversation (manual fallback).
+        updateCtaState();
+      }
+      Promise.resolve(window.fmChatBoot).then(maybeStart, maybeStart);
+    });
+
+    // "Start" / "Fortsæt" → ask the profiler to drive or resume the conversation.
     var startBtn = document.getElementById('profStart');
-    if (startBtn) startBtn.addEventListener('click', function () { startProfiler(''); });
+    if (startBtn) {
+      startBtn.addEventListener('click', function () {
+        var thread = document.getElementById('thread');
+        var hasMsgs = !!(thread && thread.querySelector('.msg'));
+        if (hasMsgs) {
+          var input = document.getElementById('input');
+          var send = document.getElementById('send');
+          if (!input || !send) return;
+          track('profiler_continue', { source: 'manual' });
+          input.value = 'Fortsæt hvor vi slap — hvad er det næste du vil vide?';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          send.click();
+        } else {
+          startProfiler('');
+        }
+      });
+    }
   })();
 </script>
 {% endblock %}

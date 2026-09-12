@@ -2948,12 +2948,12 @@ PROFILE_TOOLS = [
                                  "add_certification", "remove_certification", "update_certification",
                                  "add_language", "remove_language", "update_language_level",
                                  "add_link", "remove_link",
-                                 "update_summary"],
+                                 "update_summary", "set_target_role"],
                         "description": "The profile update action to perform."
                     },
                     "data": {
                         "type": "object",
-                        "description": "Fields for the action — include ONLY the relevant ones. add_skill: skill_name (required), skill_level. add_experience: title (required), company, start_year, end_year, is_current, description. add_education: degree (required), institution, year_completed. add_course: course_title (required), vendor, completed_date. add_certification: name (required), issuer, issue_date, expiry_date (tomt = udløber ikke), credential_id, credential_url. add_language: language (required), proficiency. add_link: url (required), label, kind. update_summary: headline, bio, goals, preferred_location, preferred_format, budget_range. remove_*/update_*: include id or the name/title.",
+                        "description": "Fields for the action — include ONLY the relevant ones. add_skill: skill_name (required), skill_level. add_experience: title (required), company, start_year, end_year, is_current, description. add_education: degree (required), institution, year_completed. add_course: course_title (required), vendor, completed_date. add_certification: name (required), issuer, issue_date, expiry_date (tomt = udløber ikke), credential_id, credential_url. add_language: language (required), proficiency. add_link: url (required), label, kind. update_summary / set_target_role: target_role (ønsket karriereretning), headline, bio, goals, preferred_location, preferred_format, budget_range. remove_*/update_*: include id or the name/title.",
                         "properties": {
                             "skill_name": {"type": "string"},
                             "skill_level": {"type": "string", "enum": ["begynder", "mellem", "avanceret", "ekspert"]},
@@ -2983,6 +2983,7 @@ PROFILE_TOOLS = [
                             "url": {"type": "string", "description": "URL for et portfolio-link (add_link)."},
                             "kind": {"type": "string", "enum": ["linkedin", "github", "portfolio", "website", "certificate", "other"], "description": "Linktype (valgfri — udledes ellers af URL'en)."},
                             "id": {"type": "integer"},
+                            "target_role": {"type": "string", "description": "Brugerens ønskede fremtidige rolle eller karriereretning (fx 'Data Analyst', 'Projektleder')."},
                             "headline": {"type": "string"},
                             "bio": {"type": "string"},
                             "goals": {"type": "string"},
@@ -3629,7 +3630,11 @@ def _execute_update_user_profile(args, username):
 
         elif action == "update_summary":
             # Fallback: if AI put fields at top level instead of in data
-            summary_fields = {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range", "summary", "goal", "location", "format"}
+            summary_fields = {
+                "headline", "bio", "goals", "target_role", "preferred_location", "preferred_format",
+                "budget_range", "summary", "goal", "location", "format", "role", "desired_role",
+                "karriereretning", "ønsket_rolle"
+            }
             if not data:
                 data = {k: v for k, v in args.items() if k in summary_fields and v}
             # Also check top-level args as additional fallback
@@ -3645,8 +3650,21 @@ def _execute_update_user_profile(args, username):
                 data["preferred_location"] = data.pop("location")
             if "format" in data and "preferred_format" not in data:
                 data["preferred_format"] = data.pop("format")
+            if "role" in data and "target_role" not in data:
+                data["target_role"] = data.pop("role")
+            if "desired_role" in data and "target_role" not in data:
+                data["target_role"] = data.pop("desired_role")
+            if "karriereretning" in data and "target_role" not in data:
+                data["target_role"] = data.pop("karriereretning")
+            if "ønsket_rolle" in data and "target_role" not in data:
+                data["target_role"] = data.pop("ønsket_rolle")
             # Filter out empty strings so we only update actual changes
-            clean_data = {k: v for k, v in data.items() if v is not None and str(v).strip() and k in {"headline", "bio", "goals", "preferred_location", "preferred_format", "budget_range"}}
+            clean_data = {
+                k: v for k, v in data.items()
+                if v is not None and str(v).strip() and k in {
+                    "headline", "bio", "goals", "target_role", "preferred_location", "preferred_format", "budget_range"
+                }
+            }
             if not clean_data:
                 # Instead of error, return success with no-op — don't confuse the AI
                 return json.dumps({"status": "success", "section": "summary",
@@ -3655,6 +3673,20 @@ def _execute_update_user_profile(args, username):
             fields_updated = ", ".join(clean_data.keys())
             return json.dumps({"status": "success", "section": "summary",
                 "message": f'Profil opdateret: {fields_updated}'})
+
+        elif action == "set_target_role":
+            role = (
+                data.get("target_role") or data.get("role") or data.get("desired_role")
+                or args.get("target_role") or args.get("role") or ""
+            ).strip()
+            if not role:
+                return json.dumps({"status": "error", "message": "target_role mangler."})
+            db.update_profile_summary(username, target_role=role)
+            return json.dumps({
+                "status": "success",
+                "section": "target_role",
+                "message": f'Ønsket retning sat til "{role}".'
+            })
 
         else:
             return json.dumps({"status": "error", "message": f"Ukendt action: {action}"})

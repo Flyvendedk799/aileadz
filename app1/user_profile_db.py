@@ -17,6 +17,7 @@ from db_compat import refresh_flask_mysql_connection
 _USER_CONVERSATIONS_SQL = """CREATE TABLE IF NOT EXISTS user_conversations (
         username VARCHAR(255) PRIMARY KEY,
         session_id VARCHAR(100) NOT NULL,
+        mode VARCHAR(32) DEFAULT 'chat',
         messages LONGTEXT,
         summary TEXT DEFAULT NULL,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
@@ -218,6 +219,21 @@ def ensure_tables():
                 current_app.mysql.connection.commit()
             except Exception as alter_err:
                 print(f"[UserProfileDB] summary column migration skipped: {alter_err}")
+                try:
+                    current_app.mysql.connection.rollback()
+                except Exception:
+                    pass
+
+        # Idempotent migration: add mode column to user_conversations
+        try:
+            cur.execute("SELECT mode FROM user_conversations LIMIT 0")
+        except Exception:
+            current_app.mysql.connection.rollback()
+            try:
+                cur.execute("ALTER TABLE user_conversations ADD COLUMN mode VARCHAR(32) DEFAULT 'chat'")
+                current_app.mysql.connection.commit()
+            except Exception as alter_err:
+                print(f"[UserProfileDB] mode column migration skipped: {alter_err}")
                 try:
                     current_app.mysql.connection.rollback()
                 except Exception:
@@ -1442,36 +1458,76 @@ def format_profile_for_ai(profile_data):
 
 # ── Conversation Persistence (logged-in users) ──
 
-def save_conversation(username, session_id, messages):
+def save_conversation(username, session_id, messages, mode=None):
     """Save conversation messages to MySQL for session persistence."""
     import json as _json
     # Only save user + assistant messages (skip system/tool for size)
     saved = [m for m in messages if m.get("role") in ("user", "assistant") and m.get("content")]
     refresh_flask_mysql_connection(current_app.mysql)
     cur = current_app.mysql.connection.cursor()
-    cur.execute(
-        "INSERT INTO user_conversations (username, session_id, messages) VALUES (%s, %s, %s) "
-        "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), messages = VALUES(messages)",
-        (username, session_id, _json.dumps(saved, ensure_ascii=False))
-    )
+    hist_mode = normalize_conversation_mode(mode) if mode else "chat"
+    try:
+        cur.execute(
+            "INSERT INTO user_conversations (username, session_id, mode, messages) VALUES (%s, %s, %s, %s) "
+            "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), mode = VALUES(mode), messages = VALUES(messages)",
+            (username, session_id, hist_mode, _json.dumps(saved, ensure_ascii=False))
+        )
+    except Exception:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        cur.execute(
+            "INSERT INTO user_conversations (username, session_id, messages) VALUES (%s, %s, %s) "
+            "ON DUPLICATE KEY UPDATE session_id = VALUES(session_id), messages = VALUES(messages)",
+            (username, session_id, _json.dumps(saved, ensure_ascii=False))
+        )
     current_app.mysql.connection.commit()
     cur.close()
 
 
-def load_conversation(username):
-    """Load saved conversation for a logged-in user. Returns dict or None."""
+def load_conversation(username, mode=None):
+    """Load saved conversation for a logged-in user.
+    If mode is specified, ensures the loaded conversation matches the desired mode;
+    otherwise falls back to load_latest_conversation_by_mode().
+    Returns dict or None.
+    """
     import json as _json
+    target_mode = normalize_conversation_mode(mode) if mode else None
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-    cur.execute("SELECT session_id, messages, updated_at FROM user_conversations WHERE username = %s", (username,))
-    row = cur.fetchone()
+    row = None
+    try:
+        cur.execute("SELECT session_id, mode, messages, updated_at FROM user_conversations WHERE username = %s", (username,))
+        row = cur.fetchone()
+    except Exception:
+        try:
+            cur.execute("SELECT session_id, messages, updated_at FROM user_conversations WHERE username = %s", (username,))
+            row = cur.fetchone()
+            if row:
+                row["mode"] = "chat"
+        except Exception:
+            row = None
     cur.close()
+
+    if target_mode:
+        current_mode = normalize_conversation_mode(row.get("mode")) if (row and row.get("mode")) else None
+        if not row or current_mode != target_mode:
+            latest = load_latest_conversation_by_mode(username, target_mode)
+            if latest:
+                return latest
+
     if not row or not row.get("messages"):
         return None
     try:
-        msgs = _json.loads(row["messages"])
+        msgs = _json.loads(row["messages"]) if isinstance(row["messages"], str) else row["messages"]
     except (_json.JSONDecodeError, TypeError):
         return None
-    return {"session_id": row["session_id"], "messages": msgs, "updated_at": row["updated_at"]}
+    return {
+        "session_id": row["session_id"],
+        "mode": normalize_conversation_mode(row.get("mode")),
+        "messages": msgs,
+        "updated_at": row["updated_at"]
+    }
 
 
 def clear_conversation(username):
@@ -1710,6 +1766,48 @@ def find_conversation_by_session(username, session_id):
         return None
     row["mode"] = normalize_conversation_mode(row.get("mode"))
     return row
+
+
+def load_latest_conversation_by_mode(username, mode="chat"):
+    """Load the most recent conversation from conversation_history for a specific mode."""
+    import json as _json
+    if not username:
+        return None
+    norm_mode = normalize_conversation_mode(mode)
+    try:
+        current_app.mysql.connection.ping(True)
+    except Exception:
+        pass
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    row = None
+    try:
+        cur.execute(
+            "SELECT id, session_id, title, mode, messages, updated_at FROM conversation_history "
+            "WHERE username = %s AND mode = %s ORDER BY updated_at DESC LIMIT 1",
+            (username, norm_mode),
+        )
+        row = cur.fetchone()
+    except Exception:
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        row = None
+    cur.close()
+    if not row or not row.get("messages"):
+        return None
+    try:
+        msgs = _json.loads(row["messages"]) if isinstance(row["messages"], str) else row["messages"]
+    except (_json.JSONDecodeError, TypeError):
+        return None
+    return {
+        "id": row.get("id"),
+        "session_id": row["session_id"],
+        "title": row.get("title"),
+        "mode": normalize_conversation_mode(row.get("mode")),
+        "messages": msgs,
+        "updated_at": row.get("updated_at")
+    }
 
 
 def load_conversation_by_id(username, conv_id):

@@ -704,7 +704,9 @@
       api('/api/profile/completeness').then(d => {
         const c = (d && d.completeness) || {};
         const sections = c.sections || [];
-        const pct = c.pct != null ? c.pct : 0;
+        // weighted_pct is the depth-aware number the Mind-Map and the profiler
+        // handoff use; the binary pct is only a fallback for old API responses.
+        const pct = c.weighted_pct != null ? c.weighted_pct : (c.pct != null ? c.pct : 0);
         const ring = document.getElementById('ringBig');
         if (ring) ring.style.setProperty('--p', pct);
         const rp = document.getElementById('ringPct'); if (rp) rp.textContent = pct + '%';

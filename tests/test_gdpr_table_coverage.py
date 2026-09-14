@@ -37,6 +37,9 @@ _NEW_PROFILE_TABLES = (
     "user_languages",
     "user_portfolio_links",
     "user_memories",
+    "user_active_sessions",
+    "user_conversation_summaries",
+    "user_knowledge",
 )
 
 

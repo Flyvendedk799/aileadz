@@ -4,7 +4,7 @@
     "schema": {
       "id": "unique slug",
       "query": "the Danish user message (single-turn cases)",
-      "turns": "optional list of {query, expect?} for multi-turn cases; the case-level 'expect' applies to the final turn",
+      "turns": "optional list of {query, expect?, mode?, kind?} or {action: new_chat} for multi-turn cases; kind=seed sends a UI opener like the profiler Start button; action=new_chat presses Ny samtale. The case-level expect applies to the final turn",
       "intent": "human-readable intent label (course_search | recommend_for_profile | compare | skill_gap | learning_path | profile_add | order | greeting | off_topic | price | prompt_injection | multi_turn)",
       "expect": {
         "tool_any_of": "list of tool names — PASS if at least one fired this turn",
@@ -19,7 +19,8 @@
         "grounded": "true → run the REAL chain-of-custody check (grounding.grounding_disclaimer): no unsupported price/date claim, < 2 unsupported title claims; 'no checkable claims' counts as an applies=True PASS (nothing-to-hallucinate)",
         "expect_profile_event": "true → a profile_confirm_request / ui_card event must fire",
         "expect_confirmation_before_order": "true → must NOT silently place an order; must ask to confirm"
-      }
+      },
+      "mode": "optional surface for every turn: default | profiler (a turn may override with its own mode)"
     }
   },
   "cases": [
@@ -770,6 +771,113 @@
           "catalog_search"
         ],
         "grounded": true
+      }
+    },
+    {
+      "id": "profiler_resume_known_background",
+      "intent": "multi_turn",
+      "mode": "profiler",
+      "turns": [
+        {
+          "query": "Husk at jeg er teamleder hos Novo Nordisk og har ledet et team på 8 i fem år"
+        },
+        {
+          "action": "new_chat"
+        },
+        {
+          "query": "Start profilsamtalen",
+          "kind": "seed"
+        }
+      ],
+      "expect": {
+        "must_not_contain": [
+          "hvad laver du til daglig",
+          "hvad er dit nuværende job",
+          "fortæl om din erhvervserfaring",
+          "hvad arbejder du med"
+        ]
+      }
+    },
+    {
+      "id": "profiler_target_role_saved",
+      "intent": "profile_add",
+      "mode": "profiler",
+      "query": "Jeg vil gerne være projektleder inden for to år",
+      "expect": {
+        "tool_any_of": [
+          "update_user_profile",
+          "request_user_input",
+          "remember_about_user",
+          "show_skill_gaps",
+          "recommend_for_profile"
+        ]
+      }
+    },
+    {
+      "id": "advisor_recall_last_session",
+      "intent": "multi_turn",
+      "turns": [
+        {
+          "query": "Husk at jeg kun kan tage kurser online om aftenen"
+        },
+        {
+          "action": "new_chat"
+        },
+        {
+          "query": "Hvad talte vi om sidste gang?"
+        }
+      ],
+      "expect": {
+        "tool_any_of": [
+          "recall_about_user",
+          "get_user_profile"
+        ]
+      }
+    },
+    {
+      "id": "advisor_memory_survives_new_chat",
+      "intent": "multi_turn",
+      "turns": [
+        {
+          "query": "Husk at jeg kun kan tage kurser online"
+        },
+        {
+          "action": "new_chat"
+        },
+        {
+          "query": "Find et kursus i projektledelse"
+        }
+      ],
+      "expect": {
+        "tool_any_of": [
+          "catalog_search",
+          "search_courses",
+          "filter_courses"
+        ],
+        "retrieval_should_relate_to": "projektledelse",
+        "grounded": true
+      }
+    },
+    {
+      "id": "platform_help_approval",
+      "intent": "platform_help",
+      "query": "Hvordan får jeg godkendt et kursus af min leder?",
+      "expect": {
+        "tool_any_of": [
+          "search_platform_help"
+        ],
+        "grounded": true
+      }
+    },
+    {
+      "id": "platform_help_cv_upload",
+      "intent": "platform_help",
+      "query": "Hvor uploader jeg mit CV?",
+      "expect": {
+        "tool_any_of": [
+          "search_platform_help",
+          "open_in_app"
+        ]
       }
     }
   ]

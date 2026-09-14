@@ -142,6 +142,15 @@ _EMPLOYEE_META = {
         "get_my_compliance", auth_required=True, company_required=True,
         toolset_tags=("compliance", "ui"), cache_ttl=60,
     ),
+    # Knowledge layer: semantic recall over the learner's memories, profile
+    # facts and earlier conversation digests (own rows only), and the curated
+    # platform help base (public product docs — safe for anonymous visitors).
+    "recall_about_user": ToolMeta(
+        "recall_about_user", auth_required=True, toolset_tags=("memory", "profile"),
+    ),
+    "search_platform_help": ToolMeta(
+        "search_platform_help", toolset_tags=("help",), cache_ttl=600,
+    ),
     "save_learning_path": ToolMeta(
         "save_learning_path", auth_required=True, parallel_safe=False,
         toolset_tags=("profile", "path"),
@@ -361,6 +370,8 @@ _TOOL_LABELS = {
     "show_mindmap_preview": "Mind-Map",
     "show_skill_gaps": "Kompetencegab",
     "get_my_agenda": "Min agenda",
+    "recall_about_user": "Husker tilbage",
+    "search_platform_help": "Hjælpeartikler",
     "get_my_compliance": "Mine krav",
     "save_learning_path": "Gem læringssti",
     "get_learning_path": "Hent læringssti",
@@ -920,6 +931,11 @@ _TOOL_TRIGGERS = {
         "hvad skal jeg lære", "what should i learn", "gap til min rolle",
         "manglende kompetencer", "vis mine gap",
     ),
+    "recall_about_user": (
+        "hvad talte vi om sidst", "sidste gang vi talte", "tidligere samtale",
+        "what did we talk about", "last time we talked", "husker du hvad jeg sagde",
+        "do you remember what i said", "vi snakkede om",
+    ),
 }
 
 # Token splitter shared with the fallback scorer.
@@ -1040,7 +1056,7 @@ def get_employee_tool_selection(
             "suggest_learning_path", "save_learning_path", "get_learning_path",
             "update_learning_path", "show_skill_gaps", "show_cv_summary",
             "set_learning_goal", "get_learning_goals", "update_learning_goal",
-            "analyze_skill_gaps", "catalog_search",
+            "analyze_skill_gaps", "catalog_search", "recall_about_user",
         })
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
@@ -1127,6 +1143,12 @@ def get_employee_tool_selection(
                 "what do you remember", "what do you know about me", "min hukommelse",
                 "mine hukommelser", "profiloversigt", "hvor langt er jeg")):
             names.update({"show_mindmap_preview", "get_user_profile"})
+        # Earlier conversations ("hvad talte vi om sidst", "last time") → recall
+        # over the durable per-session digests (app1/user_knowledge.py).
+        if _has_any(query, (
+                "sidst vi talte", "sidste gang", "vi talte om", "talte vi om", "tidligere samtale",
+                "husker du", "vi snakkede om", "snakkede vi om", "last time", "we discussed")):
+            names.add("recall_about_user")
         if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt",
                             "learning path", "min plan", "min sti", "min læringsplan", "min laeringsplan",
                             "gem stien", "gem planen", "vis min sti", "vis min plan", "hvor langt er jeg")):
@@ -1221,6 +1243,16 @@ def get_employee_tool_selection(
                 "bed min leder", "bed om godkendelse", "rykke for godkendelse", "ryk for godkendelse",
                 "send til godkendelse", "bed lederen", "bed min chef")):
             names.add("request_manager_approval")
+    # Platform how-to questions ("hvordan får jeg godkendt et kursus", "hvor
+    # uploader jeg mit CV") → the curated help knowledge base. The gate needs a
+    # how/where phrase AND a platform noun, so "hvordan bliver jeg projektleder"
+    # stays a career question for the catalog.
+    try:
+        from app1.help_kb import help_kb_enabled, looks_like_platform_help
+        if help_kb_enabled() and looks_like_platform_help(query):
+            names.add("search_platform_help")
+    except Exception:
+        pass
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
 

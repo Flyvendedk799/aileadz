@@ -42,6 +42,7 @@ def _fence(label, text):
 import uuid
 import re as _re
 import random as _random
+import ai_context_layers as _ctx
 from typing import Optional
 
 # 5.4: Prompt versioning for A/B testing
@@ -110,6 +111,21 @@ _SHOWN_ARTIFACTS_MAX = 40  # cap distinct assistant turns kept per session
 # 6.3: Anonymous profile cache (in-memory, backed by SQLite)
 ANONYMOUS_PROFILES = {}  # {browser_token: profile_dict}
 PROFILER_HANDOFFS = set()  # {session_id} - tracks profiler sessions that already fired the handoff
+
+# DB-authoritative conversation state (app1/conversation_state.py). CHAT_MEMORY
+# is only a read-through cache now: CHAT_MEMORY_REV holds the stored revision
+# the cached transcript was built from, so a worker whose copy is stale reloads
+# instead of overwriting newer turns another worker saved.
+CHAT_MEMORY_REV = {}      # {session_id: int | None}
+SESSION_STATE = {}        # {session_id: dict} — persisted per-conversation flags (handoff)
+SESSION_SUMMARIES = {}    # {session_id: str} — in-session pruning summary (a context layer)
+SESSION_LAST_SEEN = {}    # {session_id: time.time()} — eviction clock for every session
+_CHAT_MEMORY_MAX = 500
+_MEMORY_RELEVANCE_MIN = 0.35
+_PROFILE_MUTATING_TOOLS = frozenset({
+    "update_user_profile", "request_user_input", "remember_about_user",
+    "set_learning_goal", "update_learning_goal", "save_learning_path",
+})
 
 
 def _get_prompt_version(sid):
@@ -231,7 +247,7 @@ KONTAKTOPLYSNINGER:
 - Står der confirm_fields: navn, så har vi kun brugerens login — bed om én kort
   bekræftelse af navnet i stedet for at bede om alle oplysninger forfra."""
 
-SYSTEM_PLAYBOOK_CV = """CV-INTELLIGENS (automatisk):
+SYSTEM_PLAYBOOK_PROFILE_SAVE = """CV-INTELLIGENS (automatisk):
 Når brugeren fortæller noget om sig selv, brug request_user_input til smart UI-kort.
 
 FORETRUKKEN METODE — request_user_input:
@@ -245,7 +261,7 @@ FORETRUKKEN METODE — request_user_input:
 
 HVORNÅR BRUGE HVAD:
 - request_user_input: Når info mangler detaljer (årstal, institution).
-- update_user_profile: Simple opdateringer + certificeringer + sprog. Hent profil med get_user_profile for id'er. Felterne skal ligge i data, og ét kald gemmer ét element — tre kurser er tre kald.
+- update_user_profile: Simple opdateringer + certificeringer + sprog. Ret eller fjern et eksisterende element med id'et, der står i profilen som [#id]. Felterne skal ligge i data, og ét kald gemmer ét element — tre kurser er tre kald.
 - Skel mellem kursus og certificering: en certificering har en udsteder eller en udløbsdato → brug add_certification, ikke add_course.
 - Kursustitler (AMU-kurser som "Salgsledelse", "Konflikthåndtering", "Den svære samtale", truck-/kørekort m.m.) er KURSER, ikke kompetencer: add_course med vendor (fx "AMU"), eller add_certification hvis der er et bevis med udsteder/udløb.
 - Et kursus giver som regel kompetencer — så gem kurset først, og tilbyd derefter kort at føje de kompetencer, kurset gav dem, til profilen. Gem aldrig selve kursustitlen som kompetence.
@@ -254,11 +270,17 @@ HVORNÅR BRUGE HVAD:
 - show_cv_summary: Vis et profilkort i chatten (kompetencer, erfaring, uddannelse osv.) med et 'Opdater CV'-link til 3D CV-portalen. Brug når brugeren spørger om sin profil/CV eller du vil opsummere det faglige.
 - open_in_app(open_cv_upload): Send brugeren til den interaktive 3D CV-uploadportal (drag-drop, AI-parsing, interaktiv review). Brug når brugeren vil uploade et CV-dokument eller paste CV-tekst.
 - show_mindmap_preview: Vis mind-map-statistik, seneste hukommelser og link til 3D-kuglevisning i chatten. Brug når brugeren spørger hvad AI'en husker om dem.
-- open_in_app(open_mind_map): Åbn den 3D-interaktive mind-map-globus direkte i en ny fane.
+- open_in_app(open_mind_map): Åbn den 3D-interaktive mind-map-globus direkte i en ny fane."""
 
-CV-ONBOARDING (når brugeren beder om CV/profil):
-Guid naturligt: erfaring → uddannelse → skills → kurser → mål. Spring udfyldte trin over.
+# Kursusrådgiver-only. It used to be part of the CV playbook and was injected
+# on every profile-shaped turn — including in the profiler, where its
+# "erfaring → uddannelse → skills" walk competed with the profiler's own
+# resume behaviour and produced the generic "hvad laver du til daglig?" opener.
+SYSTEM_PLAYBOOK_CV_ONBOARDING = """CV-ONBOARDING (når brugeren beder om CV/profil):
+Byg videre på det, profilen allerede rummer, og spørg ind til det, der ville gøre dine anbefalinger bedre.
 Tilbyd open_in_app(open_cv_upload) når brugeren vil uploade et CV-dokument eller paste CV-tekst."""
+
+SYSTEM_PLAYBOOK_CV = SYSTEM_PLAYBOOK_PROFILE_SAVE + "\n\n" + SYSTEM_PLAYBOOK_CV_ONBOARDING
 
 SYSTEM_PLAYBOOK_SEARCH = """SØGE-INTELLIGENS:
 - Søg på BEHOV, ikke jobtitel.
@@ -277,46 +299,40 @@ SYSTEM_PLAYBOOK_SITUATION = """SITUATIONSHÅNDTERING:
 - Vedhæftet kursus [VEDHÆFTET KURSUS: ...]: Besvar specifikt om det kursus."""
 
 SYSTEM_PLAYBOOK_PROFILER = """PROFILER-MODE:
-Du hjælper brugeren med at få styr på, hvor de står fagligt, og hvor de gerne vil hen.
-Det er en samtale om deres karriere - ikke en profil der skal fyldes ud. Profildataene
-nedenfor er dit indtryk af, hvad du allerede ved om dem; brug det til at stille bedre
-spørgsmål, ikke som en liste der skal ryddes.
+Du er brugerens sparringspartner om karrieren: hvor de står fagligt, og hvor de gerne vil hen.
+Det er en samtale — ikke en profil, der skal fyldes ud. Værktøjerne er noget, du bruger
+undervejs til at gemme det, de fortæller dig.
 
-RESUME-BEVIDSTHED:
-Brugerprofilen og hukommelsen nedenfor er hvad du ALLEREDE VED — du har selv gemt det,
-eller brugeren har gjort det via sin profil. Behandl alt i profilen som etableret viden:
-- SPØRG ALDRIG om noget der allerede står i profilen (titel, erfaring, kompetencer,
-  uddannelse, mål, certificeringer osv.) — medmindre du har en KONKRET grund til at
-  tro det er forældet eller upræcist.
-- VED ÅBNING ELLER EFTER PAUSE: Start med en kort kvittering der viser du kender dem:
-  "Jeg kan se du er [titel] hos [virksomhed]..." og gå DIREKTE til det næste du endnu IKKE ved.
-  I EN LØBENDE SAMTALE skal du IKKE gentage denne hilsen på hvert svar — svar direkte på det,
-  brugeren lige har skrevet.
-- Brug profildataene aktivt i dine spørgsmål: "Du nævnte at du arbejder med X — har du
-  overvejet Y?" i stedet for "Hvad laver du til daglig?"
-- Hvis profilen er rig (>60% dybde) og der kun mangler nuancer, så byd med indsigt
-  ("ud fra dine kompetencer kunne din næste rolle være...") i stedet for at interviewe.
-- ALDRIG start med "Hvad er dit nuværende job?", "Lad os starte med din erhvervserfaring" eller lignende hvis profilen allerede indeholder erfaring. Hvis brugeren beder om det første spørgsmål (eller trykker Start/Fortsæt), men allerede har erfaring i profilen, skal du kvittere kort for deres nuværende baggrund og gå DIREKTE til det felt der MANGLER (se 'Du har endnu ikke hørt om' eller 'ALLEREDE AFDÆKKET' nedenfor). Spring til det du MANGLER.
+DET DU ALLEREDE VED:
+Brugerprofilen, hukommelsen og opsummeringen af jeres tidligere samtaler i konteksten er
+etableret viden — du eller brugeren har selv gemt den. Byg videre på den i stedet for at
+spørge om den igen. Spørg kun ind til noget, der allerede står der, når du har en konkret
+grund til at tro, det har ændret sig ("Er du stadig hos X?").
+
+NÅR SAMTALEN ÅBNER ELLER GENOPTAGES:
+Vis med én konkret detalje, at du kender dem, og gå videre med det, der ville gøre din
+rådgivning skarpere. Er profilen tom, så start med det, der fylder for dem lige nu — ikke
+med et CV-felt. I en løbende samtale svarer du direkte på det, brugeren lige skrev.
 
 SAMTALESTRATEGI:
-- Spørg om det, der ville ændre din rådgivning mest lige nu. Undrer du dig over noget
-  i det de har fortalt, så spørg ind til det i stedet - det er som regel bedre end det
-  næste felt i rækken.
-- Prioritér at afdække brugerens ønskede fremtidige rolle eller karriereretning (target_role)
-  hvis den ikke er sat endnu — det er den vigtigste forudsætning for at beregne kompetencegab og
-  anbefale relevante kurser og læringsstier. Gem altid target_role via update_user_profile(action='set_target_role', target_role='...') eller update_summary.
-- Bind spørgsmålet til noget de allerede har sagt, så det ikke føles som et nyt skema.
-- Når de fortæller dig noget, så gem det med det samme: update_user_profile eller
-  request_user_input til det strukturerede (kompetencer, erfaring, uddannelse,
-  certificeringer, sprog, mål), og remember_about_user til det løsere - præferencer,
-  livssituation, interesser, hvad der driver dem.
-- Gem det i den rigtige kasse: en kursustitel (fx et AMU-kursus) er et kursus, ikke en
-  kompetence - og ét kald gemmer ét element, så tre kurser er tre kald. Spørg gerne
-  bagefter hvilke kompetencer kurset gav dem, og gem dem som kompetencer.
-- Kvittér kort for det du har fået med, og lad brugeren mærke at det bliver brugt til
-  noget. Du behøver ikke opremse hvad der mangler.
-- Så snart du ved nok til at sige noget nyttigt om deres retning, så sig det - og vis
-  gerne kurser der peger den vej. Du skal ikke vente på at profilen er "færdig"."""
+- Spørg om det, der ville ændre din rådgivning mest lige nu. Undrer du dig over noget,
+  de har sagt, så følg den tråd — det er som regel bedre end det næste emne på en liste.
+- Kender du ikke deres ønskede retning (target_role), er den som regel det mest værdifulde
+  at finde ud af: den afgør, hvilke kompetencegab og kurser der betyder noget. Gem den med
+  update_user_profile(action='set_target_role').
+- Bind spørgsmålet til noget, de allerede har fortalt, så det føles som en samtale.
+- Er profilen rig, så byd ind med indsigt ("med din baggrund i X ligner næste skridt Y")
+  frem for at interviewe.
+- Så snart du ved nok til at sige noget nyttigt om deres retning, så sig det — og vis gerne
+  kurser, der peger den vej. Profilen behøver ikke være "færdig" først.
+
+GEM UNDERVEJS:
+- Det strukturerede (kompetencer, erfaring, uddannelse, certificeringer, sprog, mål) gemmes
+  med update_user_profile eller request_user_input; det løsere (præferencer, livssituation,
+  hvad der driver dem) med remember_about_user.
+- Ret eller fjern noget eksisterende med id'et fra profilen ([#id]).
+- Kvittér kort for det, du gemmer, og lad brugeren mærke, at det bliver brugt til noget.
+  Du behøver ikke opremse, hvad der mangler."""
 
 SYSTEM_PROMPT = SYSTEM_CORE
 
@@ -353,31 +369,147 @@ class _SimpleToolCall:
 
 
 # Per-mode policy. The two user-facing "AIs" are one engine differentiated by
-# these knobs; centralising them keeps the inline `if mode == ...` branches
-# honest and gives a future agent one place to add a third mode/persona.
+# these knobs, and stream_generator reads them instead of scattering
+# `if mode == ...` branches. A third persona is a new entry here.
+#   core_playbook    — mode instructions, the priority-0 layer (never trimmed)
+#   flow_playbooks   — which situational playbooks may be injected; the
+#                      profiler gets course search only on an explicit request
+#   few_shot         — "advisor" | "profiler" example set
+#   stage_hints      — course-funnel stage/tone hints (advisor only)
+#   memory_limit     — memories injected per turn
+#   prefer_quality   — keep the main model for every turn
 MODE_PROFILES = {
-    "default": {"playbook": None, "handoff_pct": None, "proactive": False, "label": "Kursusrådgiver"},
-    "profiler": {"playbook": SYSTEM_PLAYBOOK_PROFILER, "handoff_pct": _PROFILER_HANDOFF_PCT,
-                 "proactive": True, "label": "AI Profiler"},
+    "default": {
+        "label": "Kursusrådgiver", "core_playbook": None, "playbook": None,
+        "flow_playbooks": ("buying", "profile_save", "cv_onboarding", "search", "situation"),
+        "few_shot": "advisor", "stage_hints": True, "memory_limit": 6,
+        "prefer_quality": False, "handoff": None, "handoff_pct": None, "proactive": False,
+    },
+    "profiler": {
+        "label": "AI Profiler", "core_playbook": SYSTEM_PLAYBOOK_PROFILER, "playbook": SYSTEM_PLAYBOOK_PROFILER,
+        "flow_playbooks": ("buying", "profile_save", "search_on_request"),
+        "few_shot": "profiler", "stage_hints": False, "memory_limit": 12,
+        "prefer_quality": True,
+        "handoff": {"pct": _PROFILER_HANDOFF_PCT, "min_pct_with_role": 40, "max_attempts": 2},
+        "handoff_pct": _PROFILER_HANDOFF_PCT, "proactive": True,
+    },
 }
 
 
-def _build_playbook_messages(stage, intent):
-    """Inject rare flow instructions only when stage/intent needs them."""
+def mode_profile(mode):
+    return MODE_PROFILES.get(mode) or MODE_PROFILES["default"]
+
+
+# A course request inside the profiler: a learning-goal phrase that actually
+# names courses/training, not "jeg vil gerne blive projektleder".
+_COURSE_REQUEST_PATTERNS = _re.compile(
+    r'\b(kursus|kurser|kurset|uddannelse|certificering|forløb|workshop|e-learning)\b', _re.IGNORECASE
+)
+
+
+def _build_playbook_messages(stage, intent, mode="default", user_query=""):
+    """Inject rare flow instructions only when stage/intent needs them — and only
+    those the active mode allows (see MODE_PROFILES)."""
+    allowed = set(mode_profile(mode)["flow_playbooks"])
     blocks = []
-    if stage in ("ready_to_buy", "team_buying") or intent in ("buying", "team_buying"):
-        blocks.append(SYSTEM_PLAYBOOK_BUYING)
-    if stage in ("profile_update", "profile_and_search") or intent in ("profile_update", "profile_and_search"):
-        blocks.append(SYSTEM_PLAYBOOK_CV)
-    if intent in ("discovery", "follow_up", "profile_and_search", "comparison", "detail") or stage in (
-        "searching", "needs_discovery", "correcting",
+    if "buying" in allowed and (
+        stage in ("ready_to_buy", "team_buying") or intent in ("buying", "team_buying")
     ):
+        blocks.append(SYSTEM_PLAYBOOK_BUYING)
+    profile_turn = stage in ("profile_update", "profile_and_search") or intent in (
+        "profile_update", "profile_and_search", "profiler_resume",
+    )
+    if "profile_save" in allowed and (profile_turn or mode == "profiler"):
+        blocks.append(SYSTEM_PLAYBOOK_PROFILE_SAVE)
+        if "cv_onboarding" in allowed and profile_turn:
+            blocks.append(SYSTEM_PLAYBOOK_CV_ONBOARDING)
+    search_turn = intent in ("discovery", "follow_up", "profile_and_search", "comparison", "detail") or stage in (
+        "searching", "needs_discovery", "correcting",
+    )
+    if "search" in allowed and search_turn:
         blocks.append(SYSTEM_PLAYBOOK_SEARCH)
-    if stage in ("correcting", "researching", "team_buying") or intent in ("correction", "team_buying"):
+    elif "search_on_request" in allowed and user_query and _COURSE_REQUEST_PATTERNS.search(user_query):
+        blocks.append(SYSTEM_PLAYBOOK_SEARCH)
+    if "situation" in allowed and (
+        stage in ("correcting", "researching", "team_buying") or intent in ("correction", "team_buying")
+    ):
         blocks.append(SYSTEM_PLAYBOOK_SITUATION)
     if not blocks:
         return []
-    return [{"role": "system", "content": "\n\n".join(blocks)}]
+    return [_ctx.layer("flow_playbooks", "\n\n".join(blocks))]
+
+
+_PROFILER_FEW_SHOT = """EKSEMPLER (tone og form — ikke et manuskript):
+[Profil: Teamleder @ Novo Nordisk siden 2019; ingen ønsket retning]
+Bruger: "Start profilsamtalen"
+Rådgiver: Du har ledet et team hos Novo Nordisk siden 2019, så ledelsesdelen kender du indefra. Det, jeg mangler for at kunne rådgive dig skarpt, er hvor du gerne vil hen: videre op i ledelse, eller dybere ind i fagligheden?
+<suggestions>["Videre op i ledelse", "Mere faglig specialist", "Ved ikke endnu"]</suggestions>
+
+[Brugeren fortæller om et kursus — det gemmes undervejs]
+Bruger: "Jeg tog også Konflikthåndtering hos AMU sidste år"
+Rådgiver: Noteret på din profil. Hvordan har du brugt det siden — er det noget, du står i ofte som teamleder?
+<suggestions>["Ja, ugentligt", "Sjældent", "Find et opfølgende kursus"]</suggestions>"""
+
+
+_SECTION_WHY = {
+    "experience": "hvad de har stået med i praksis — udgangspunktet for næste skridt",
+    "skills": "hvor de står fagligt, så anbefalinger rammer det rigtige niveau",
+    "education": "den formelle baggrund, som nogle roller og kurser forudsætter",
+    "goals": "hvad de gerne vil opnå — det giver rådgivningen en retning",
+    "certifications": "certificeringer, der kan åbne eller lukke døre",
+    "languages": "sprog, der afgør hvilke kurser og roller der er realistiske",
+    "preferred_format": "hvordan og hvor de lærer bedst",
+}
+
+
+def _build_profiler_state(completeness, profile=None, gaps=None):
+    """Need-driven brief for the profiler: what is known, and the few unknowns
+    that would sharpen the advice most — each with the reason it matters.
+
+    Deliberately background, not a directive: the old block ordered "DIT NÆSTE
+    SPØRGSMÅL SKAL VÆRE OM <weakest section>" while also forbidding questions
+    about experience, which contradicted itself whenever experience WAS the
+    weakest section and made the agent read as a form-filler. Sections that
+    already have real depth (strength >= 0.5) are never listed."""
+    c = completeness or {}
+    p = profile or {}
+    counts = []
+    for key, label in (("experience", "erfaring"), ("skills", "kompetencer"), ("education", "uddannelse"),
+                       ("certifications", "certificeringer"), ("languages", "sprog"),
+                       ("learning_goals", "udviklingsmål"), ("completed_courses", "gennemførte kurser")):
+        n = len(p.get(key) or [])
+        if n:
+            counts.append(f"{label} ({n})")
+    depth = f"Profilens dybde: {c.get('weighted_pct', c.get('pct', 0))}%"
+    if counts:
+        depth += " — i profilen: " + ", ".join(counts)
+    lines = ["HVOR SAMTALEN STÅR:", depth + "."]
+
+    target_role = (c.get("target_role") or p.get("target_role") or "").strip()
+    unknowns = []
+    if not target_role:
+        unknowns.append("hvor de gerne vil hen (ønsket rolle) — den afgør, hvilke kompetencegab og kurser der betyder noget")
+    else:
+        lines.append(f"Ønsket retning: {target_role}.")
+        top = [g.get("skill") for g in (gaps or []) if isinstance(g, dict) and g.get("skill")][:2]
+        if top:
+            unknowns.append(f"hvor stærke de reelt er i {' og '.join(top)} — det skiller sig ud mellem profilen og {target_role}")
+    for section in sorted(c.get("sections") or [], key=lambda s: s.get("strength", 0)):
+        if len(unknowns) >= 3:
+            break
+        key = section.get("key")
+        if section.get("strength", 0) >= 0.5 or key == "headline":
+            continue
+        if key == "goals" and not target_role:
+            continue  # the direction line above already covers it
+        why = _SECTION_WHY.get(key)
+        if why:
+            unknowns.append(why)
+    if unknowns:
+        lines.append("Det der ville gøre din rådgivning skarpere:")
+        lines.extend(f"- {u}" for u in unknowns[:3])
+    lines.append("Brug det som baggrund; følg brugerens tråd først.")
+    return "\n".join(lines)
 
 
 def get_system_prompt():
@@ -744,7 +876,17 @@ def _cleanup_stale_sessions():
     """Remove sessions older than SESSION_TTL to prevent memory leaks."""
     now = time.time()
     stale = [sid for sid, data in SHOWN_PRODUCTS.items() if now - data.get("last_active", 0) > SESSION_TTL]
+    # Sessions that never showed a course used to live forever (only
+    # SHOWN_PRODUCTS keys were scanned); SESSION_LAST_SEEN covers every turn.
+    stale += [s for s, seen in list(SESSION_LAST_SEEN.items()) if now - seen > SESSION_TTL and s not in stale]
+    if len(CHAT_MEMORY) > _CHAT_MEMORY_MAX:
+        by_age = sorted(CHAT_MEMORY.keys(), key=lambda s: SESSION_LAST_SEEN.get(s, 0))
+        stale += [s for s in by_age[: len(CHAT_MEMORY) - _CHAT_MEMORY_MAX] if s not in stale]
     for sid in stale:
+        CHAT_MEMORY_REV.pop(sid, None)
+        SESSION_STATE.pop(sid, None)
+        SESSION_SUMMARIES.pop(sid, None)
+        SESSION_LAST_SEEN.pop(sid, None)
         SHOWN_PRODUCTS.pop(sid, None)
         CHAT_MEMORY.pop(sid, None)
         USER_PROFILES.pop(sid, None)
@@ -1375,23 +1517,309 @@ def _iter_agent_with_live_tool_events(agent_kwargs):
     yield from iter_agent_with_live_tool_events(agent_kwargs)
 
 
+# ── Per-turn context helpers ──
+
+_COMPANY_CTX_TTL = 300
+
+
+def _load_company_context(company_id, logged_in_user):
+    """Company chatbot rules, internal courses and the employee's contact info.
+
+    Returns (rules_parts, employee_parts), or None when the lookup failed so a
+    failure is never cached. TENANT ISOLATION: company_id comes from this
+    request only, every query is parameterised on it (the employee row also on
+    username + status), and tenant free text is fenced as DATA."""
+    cur = None
+    try:
+        cur = current_app.mysql.connection.cursor()
+        rules = []
+        employee = []
+
+        cur.execute(
+            "SELECT chatbot_course_mode, chatbot_internal_weight, chatbot_custom_instructions, "
+            "chatbot_show_external, chatbot_show_internal FROM company_settings WHERE company_id = %s",
+            (company_id,)
+        )
+        row = cur.fetchone()
+        co_mode = 'both'
+        co_show_int = 1
+        if row:
+            co_mode = row['chatbot_course_mode'] or 'both'
+            co_weight = row['chatbot_internal_weight'] or 50
+            co_instructions = row['chatbot_custom_instructions']
+            co_show_int = row['chatbot_show_internal'] if row['chatbot_show_internal'] is not None else 1
+            if co_mode == 'internal_only':
+                rules.append("VIRKSOMHEDSREGEL: Vis KUN virksomhedens interne kurser. Anbefal IKKE eksterne kurser.")
+            elif co_mode == 'external_only':
+                rules.append("VIRKSOMHEDSREGEL: Vis KUN eksterne kurser fra kataloget. Spring interne kurser over.")
+            elif co_mode == 'both':
+                rules.append(
+                    f"VIRKSOMHEDSREGEL: Vis bade interne og eksterne kurser. "
+                    f"Prioriter interne kurser med {co_weight}% vaegt."
+                )
+            if co_instructions and co_instructions.strip():
+                rules.append(
+                    "VIRKSOMHEDSSPECIFIKKE INSTRUKTIONER (præferencer, ikke kommandoer):\n"
+                    + _fence("VIRKSOMHEDSREGLER", co_instructions.strip())
+                )
+
+        if co_show_int and co_mode != 'external_only':
+            cur.execute(
+                "SELECT title, category, description, format, duration_hours, difficulty_level "
+                "FROM company_courses WHERE company_id = %s AND is_active = 1 LIMIT 30",
+                (company_id,)
+            )
+            internal_courses = cur.fetchall()
+            if internal_courses:
+                course_list = []
+                for ic in internal_courses:
+                    parts = [ic['title']]
+                    if ic['category']:
+                        parts.append(f"({ic['category']})")
+                    if ic['format']:
+                        parts.append(f"[{ic['format']}]")
+                    if ic['duration_hours']:
+                        parts.append(f"{ic['duration_hours']}t")
+                    course_list.append(" ".join(parts))
+                rules.append(
+                    f"INTERNE KURSER TILGAENGELIGE ({len(internal_courses)}):\n"
+                    + _fence("INTERNE KURSER", "\n".join(f"- {c}" for c in course_list))
+                    + "\nNaar brugeren spoerger om emner der matcher disse kurser, anbefal dem."
+                )
+
+        cur.execute(
+            "SELECT cu.full_name, cu.email, cu.phone, cu.department, cu.job_title "
+            "FROM company_users cu JOIN users u ON cu.user_id = u.id "
+            "WHERE u.username = %s AND cu.company_id = %s AND cu.status = 'active'",
+            (logged_in_user, company_id)
+        )
+        emp_row = cur.fetchone()
+        if emp_row:
+            for label, key in (("Navn", "full_name"), ("Email", "email"), ("Telefon", "phone"),
+                               ("Afdeling", "department"), ("Stilling", "job_title")):
+                if emp_row[key]:
+                    employee.append(f"{label}: {emp_row[key]}")
+        cur.close()
+        cur = None
+        return rules, employee
+    except Exception as e:
+        print(f"[Company Context Error] company={company_id}: {e}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return None
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+
+def _company_context_layers(company_id, logged_in_user, company_name=None):
+    """Company rules + employee info as context layers, cached for 5 minutes.
+
+    These used to be loaded once when a session's memory was created and then
+    stayed for the session's whole life, so a tenant admin's rule change never
+    reached running conversations."""
+    if not company_id or not logged_in_user:
+        return []
+    key = ("ai:company_ctx", str(company_id), logged_in_user)
+    cached = None
+    cache = None
+    try:
+        import perf_cache as cache
+        value, hit = cache.cache_get(key)
+        cached = value if hit else None
+    except Exception:
+        cache = None
+    if cached is None:
+        loaded = _load_company_context(company_id, logged_in_user)
+        if loaded is None:
+            return []
+        cached = {"rules": loaded[0], "employee": loaded[1]}
+        if cache is not None:
+            try:
+                cache.cache_set(key, cached, _COMPANY_CTX_TTL)
+            except Exception:
+                pass
+    layers = []
+    if cached.get("rules"):
+        layers.append(_ctx.layer("company_rules", "\n\n".join(cached["rules"]),
+                                 header=f"VIRKSOMHEDSKONTEKST ({company_name or 'Virksomheden'}):"))
+    if cached.get("employee"):
+        layers.append(_ctx.layer(
+            "employee_info", "\n".join(cached["employee"]),
+            header="MEDARBEJDEROPLYSNINGER (brug ved bestilling — spørg IKKE om navn/email/telefon hvis allerede kendt):",
+        ))
+    return layers
+
+
+def _returning_note(mode):
+    if mode == "profiler":
+        return ("Brugeren vender tilbage til profilsamtalen. Tag udgangspunkt i det, du allerede "
+                "ved om dem (profil og tidligere samtaler) — én konkret detalje er nok til at vise, "
+                "at du kender dem.")
+    return ("Brugeren har brugt rådgiveren før. Brug det, du ved om dem, til en personlig start, "
+            "når det passer til det, de spørger om.")
+
+
+def _knowledge_query(user_query, messages, mode, profile=None):
+    """What to rank memories / past conversations against this turn.
+
+    The advisor ranks against the question. The profiler's openers ("Start
+    profilsamtalen") carry no topic, so it ranks against the recent turns and
+    the target role instead."""
+    if mode != "profiler":
+        return user_query or ""
+    parts = [str(m.get("content") or "") for m in messages if m.get("role") == "user"][-3:]
+    if profile and profile.get("target_role"):
+        parts.append(profile["target_role"])
+    return " ".join(p for p in parts if p)
+
+
+def _select_memories_for_turn(username, query, mode, profile=None):
+    """Memories to inject this turn, each tagged `_relevant`.
+
+    Ranked by the semantic user-knowledge index when available (keyword overlap
+    otherwise). Only memories that actually matched count as `_relevant`, so
+    used_count keeps meaning "informed an answer" — the profiler used to flag
+    all 12 injected memories as used on every turn."""
+    from app1.user_profile_db import get_memories, select_relevant_memories
+    limit = int(mode_profile(mode).get("memory_limit") or 6)
+
+    def _confident(m):
+        return m.get("confidence") is None or float(m.get("confidence") or 0) >= 0.5
+
+    memories = [m for m in get_memories(username, limit=120) if _confident(m)]
+    if not memories:
+        return []
+    scores = {}
+    try:
+        from app1 import user_knowledge as _uk
+        if _uk.knowledge_enabled():
+            _uk.sync_user(username, profile=profile or None, memories=memories)
+            for hit in _uk.search(username, query, types=["memory"], k=40):
+                scores[str(hit.get("source_id"))] = float(hit.get("score") or 0)
+    except Exception as exc:
+        print(f"[Memory ranking] {exc}")
+    if not scores:
+        keyword = select_relevant_memories(username, query, limit=limit)
+        if mode != "profiler":
+            return keyword
+        matched = {m["id"] for m in keyword if m.get("_relevant")}
+        ordered = [m for m in memories if m["id"] in matched] + [m for m in memories if m["id"] not in matched]
+        return [dict(m, _relevant=m["id"] in matched) for m in ordered[:limit]]
+    ranked = sorted(memories, key=lambda m: scores.get(str(m["id"]), 0.0), reverse=True)
+    relevant = [dict(m, _relevant=True) for m in ranked if scores.get(str(m["id"]), 0.0) >= _MEMORY_RELEVANCE_MIN]
+    if mode == "profiler":
+        rest = [dict(m, _relevant=False) for m in ranked if scores.get(str(m["id"]), 0.0) < _MEMORY_RELEVANCE_MIN]
+        return (relevant + rest)[:limit]
+    if relevant:
+        return relevant[:limit]
+    return [dict(m, _relevant=False) for m in memories[: min(limit, 3)]]
+
+
+def _recall_layer(username, query, sid):
+    """The most relevant earlier conversations (their durable digests)."""
+    try:
+        from app1 import user_knowledge as _uk
+        if not _uk.knowledge_enabled() or not (query or "").strip():
+            return None
+        hits = _uk.search(username, query, types=["conversation"], k=2,
+                          exclude_source_ids=[sid], min_score=_MEMORY_RELEVANCE_MIN)
+    except Exception as exc:
+        print(f"[Recall layer] {exc}")
+        return None
+    if not hits:
+        return None
+    body = "\n".join(
+        f"- ({str(h.get('updated_at') or '')[:10]}, {h.get('mode') or 'chat'}) {str(h.get('content') or '')[:700]}"
+        for h in hits
+    )
+    return _ctx.layer("recall", body,
+                      header="RELEVANTE TIDLIGERE SAMTALER (fundet ud fra det brugeren spørger om nu):",
+                      fence="TIDLIGERE SAMTALER")
+
+
+def _hr_learning_layer(username, user_id, company_id):
+    """The learner's own HR-side plan: assigned paths, HR skill targets, goals."""
+    if not username or not company_id:
+        return None
+    try:
+        import learner_context as _lc
+        if not _lc.hr_context_enabled():
+            return None
+        text = _lc.format_learner_hr_context(
+            _lc.build_learner_hr_context(username, user_id=user_id, company_id=company_id)
+        )
+    except Exception as exc:
+        print(f"[HR learner context] {exc}")
+        return None
+    if not text:
+        return None
+    return _ctx.layer("hr_learning", text,
+                      header="FRA ARBEJDSGIVEREN (HR-planer og kompetencemål for brugeren — brug det når det er relevant):",
+                      fence="HR-DATA")
+
+
 # ── Main Agent Loop ──
 
-def handle_agentic_ask(user_query, session, mode="default"):
+def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="message",
+                       sid_override=None, company_override=None):
     """
     Core Agent Loop with all 6 phases integrated.
+
+    ``turn_kind="seed"`` marks a UI-generated opener (the profiler's Start /
+    Fortsæt buttons). It bypasses the regex intent classifier, whose
+    profile/learning patterns used to pull the CV-onboarding and search
+    playbooks into the profiler's very first turn.
+
+    ``sid_override`` / ``company_override`` let the embeddable widget run with
+    its own session id and the embedding company, without touching the
+    visitor's employee chat session.
     """
     _cleanup_stale_sessions()
 
-    if "session_id" not in session:
-        session["session_id"] = str(uuid.uuid4())
+    from app1 import conversation_state as _conv
 
-    sid = session["session_id"]
-    # Get the logged-in username from the main auth system (if available)
-    logged_in_user = session.get("user")  # From auth blueprint
+    surface = _conv.surface_for_mode(mode)
+    # The widget is an anonymous, company-embedded surface: it never reads or
+    # writes a logged-in user's conversations.
+    logged_in_user = None if sid_override else session.get("user")  # From auth blueprint
+    company_id_for_turn = company_override if company_override is not None else session.get("company_id")
+    sid = sid_override or _conv.resolve_sid(session, mode, username=logged_in_user)
 
     # 5.4: Assign prompt version for A/B testing
     _get_prompt_version(sid)
+    SESSION_LAST_SEEN[sid] = time.time()
+
+    stored_conv = None
+    if logged_in_user:
+        try:
+            from app1.user_profile_db import ensure_tables
+            ensure_tables()
+            if sid in CHAT_MEMORY:
+                # Another worker may have saved newer turns: rebuild from the DB
+                # instead of letting this worker's stale copy overwrite them.
+                stored_rev = _conv.current_rev(logged_in_user, sid)
+                if stored_rev is not None and stored_rev != CHAT_MEMORY_REV.get(sid):
+                    CHAT_MEMORY.pop(sid, None)
+            if sid not in CHAT_MEMORY:
+                stored_conv = _conv.load(logged_in_user, sid)
+                if stored_conv and stored_conv.get("mode") != surface:
+                    # This id belongs to the other surface's conversation — the
+                    # profiler must never continue (and overwrite) a chat thread.
+                    sid = _conv.start_new_session(session, mode)
+                    SESSION_LAST_SEEN[sid] = time.time()
+                    stored_conv = None
+        except Exception as e:
+            print(f"[Conversation State Error] {e}")
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
 
     # Initialize or load conversation memory
     if sid not in CHAT_MEMORY:
@@ -1406,231 +1834,40 @@ def handle_agentic_ask(user_query, session, mode="default"):
             print(f"[Session Load Error] {e}")
 
         CHAT_MEMORY[sid] = [{"role": "system", "content": get_system_prompt()}]
+        CHAT_MEMORY_REV[sid] = None
+        SESSION_STATE[sid] = {}
+        SESSION_SUMMARIES.pop(sid, None)
 
-        # 6.1: Cross-session learning — inject returning user context
         if logged_in_user:
-            try:
-                from app1.user_profile_db import get_full_profile, format_profile_for_ai, ensure_tables
-                ensure_tables()
-                returning_profile = get_full_profile(logged_in_user)
-                returning_text = format_profile_for_ai(returning_profile)
-                if returning_text:
-                    # Profile context is injected per-turn in stream_generator()
-                    # so it's always fresh. Don't duplicate it into CHAT_MEMORY
-                    # (stale copy wastes ~300-500 context-window tokens).
-
-                    # Build welcome-back context from past activity
-                    welcome_parts = []
-                    completed = returning_profile.get("completed_courses", [])
-                    if completed:
-                        recent_courses = [c["title"] for c in completed[:3]]
-                        welcome_parts.append(f"Gennemførte kurser: {', '.join(recent_courses)}")
-                    goals = returning_profile.get("goals", "")
-                    if goals:
-                        # User-authored free-text goal — fence as DATA.
-                        welcome_parts.append("Mål: " + _fence("BRUGERMÅL", goals[:150]))
-                    skills = returning_profile.get("skills", [])
-                    if skills:
-                        low_skills = [s["name"] for s in skills if s.get("level") in ("begynder", "mellem")][:3]
-                        if low_skills:
-                            welcome_parts.append(f"Udviklingsområder: {', '.join(low_skills)}")
-
-                    if welcome_parts:
-                        CHAT_MEMORY[sid].append({
-                            "role": "system",
-                            "content": f"TILBAGEVENDENDE BRUGER: {logged_in_user}\n"
-                                       f"Denne bruger har været her før. Brug denne viden til en personlig velkomst.\n"
-                                       + "\n".join(welcome_parts)
-                                       + "\nForeslå at fortsætte hvor de slap, eller spørg hvad de leder efter i dag."
-                        })
-            except Exception as e:
-                print(f"[Cross-Session Load Error] {e}")
-
-            # 7.0: Company-specific chatbot context — inject custom instructions + employee info
-            # TENANT ISOLATION: company_id is taken from THIS session only and every
-            # query below is parameterised on `WHERE company_id = %s` (employee row is
-            # additionally scoped to username + status). No cross-tenant text can enter
-            # the prompt; all untrusted spans loaded here belong to this session's own
-            # company and are fenced via _fence(...) as DATA before injection.
-            company_id = session.get("company_id")
-            if company_id:
-                cur = None
+            # Restore exactly THIS conversation — never "the latest one for the
+            # mode", which is how a fresh session used to inherit an old thread.
+            # Profile, company rules, memories and the cross-session digests are
+            # rebuilt as context layers on every turn (see stream_generator).
+            if stored_conv:
+                for msg in stored_conv.get("messages") or []:
+                    if msg.get("role") in ("user", "assistant") and msg.get("content"):
+                        # Clean {role, content}: persisted UI-only keys (_cards /
+                        # _tools) never reach the model API.
+                        CHAT_MEMORY[sid].append({"role": msg["role"], "content": msg["content"]})
+                seed_artifacts_from_messages(sid, stored_conv.get("messages") or [])
+                CHAT_MEMORY_REV[sid] = stored_conv.get("rev")
+                SESSION_STATE[sid] = dict(stored_conv.get("state") or {})
+                if stored_conv.get("summary"):
+                    SESSION_SUMMARIES[sid] = stored_conv["summary"]
+            else:
+                # A brand-new session: make sure the previous conversation on this
+                # surface reached the durable digest (a worker recycle can kill the
+                # async digest /new_session started).
                 try:
-                    cur = current_app.mysql.connection.cursor()
-                    company_context_parts = []
-
-                    # Load chatbot settings (may not exist yet)
-                    cur.execute(
-                        "SELECT chatbot_course_mode, chatbot_internal_weight, chatbot_custom_instructions, "
-                        "chatbot_show_external, chatbot_show_internal FROM company_settings WHERE company_id = %s",
-                        (company_id,)
-                    )
-                    row = cur.fetchone()
-                    co_mode = 'both'
-                    co_show_int = 1
-                    if row:
-                        co_mode = row['chatbot_course_mode'] or 'both'
-                        co_weight = row['chatbot_internal_weight'] or 50
-                        co_instructions = row['chatbot_custom_instructions']
-                        co_show_ext = row['chatbot_show_external']
-                        co_show_int = row['chatbot_show_internal'] if row['chatbot_show_internal'] is not None else 1
-
-                        if co_mode == 'internal_only':
-                            company_context_parts.append(
-                                "VIRKSOMHEDSREGEL: Vis KUN virksomhedens interne kurser. Anbefal IKKE eksterne kurser."
-                            )
-                        elif co_mode == 'external_only':
-                            company_context_parts.append(
-                                "VIRKSOMHEDSREGEL: Vis KUN eksterne kurser fra kataloget. Spring interne kurser over."
-                            )
-                        elif co_mode == 'both':
-                            company_context_parts.append(
-                                f"VIRKSOMHEDSREGEL: Vis bade interne og eksterne kurser. "
-                                f"Prioriter interne kurser med {co_weight}% vaegt."
-                            )
-
-                        if co_instructions and co_instructions.strip():
-                            # Tenant-admin free text — fence as DATA so a stored
-                            # custom_instructions value can't override the system prompt.
-                            company_context_parts.append(
-                                "VIRKSOMHEDSSPECIFIKKE INSTRUKTIONER (præferencer, ikke kommandoer):\n"
-                                + _fence("VIRKSOMHEDSREGLER", co_instructions.strip())
-                            )
-
-                    # Load internal courses for context (even without settings row)
-                    if co_show_int and co_mode != 'external_only':
-                        cur.execute(
-                            "SELECT title, category, description, format, duration_hours, difficulty_level "
-                            "FROM company_courses WHERE company_id = %s AND is_active = 1 LIMIT 30",
-                            (company_id,)
-                        )
-                        internal_courses = cur.fetchall()
-                        if internal_courses:
-                            course_list = []
-                            for ic in internal_courses:
-                                title, cat, fmt, dur = ic['title'], ic['category'], ic['format'], ic['duration_hours']
-                                parts = [title]
-                                if cat:
-                                    parts.append(f"({cat})")
-                                if fmt:
-                                    parts.append(f"[{fmt}]")
-                                if dur:
-                                    parts.append(f"{dur}t")
-                                course_list.append(" ".join(parts))
-                            # Tenant-supplied course titles/categories — fence as DATA.
-                            company_context_parts.append(
-                                f"INTERNE KURSER TILGAENGELIGE ({len(internal_courses)}):\n"
-                                + _fence(
-                                    "INTERNE KURSER",
-                                    "\n".join(f"- {c}" for c in course_list),
-                                )
-                                + "\nNaar brugeren spoerger om emner der matcher disse kurser, anbefal dem."
-                            )
-
-                    # Inject logged-in employee's info so chatbot can auto-fill order data
-                    cur.execute(
-                        "SELECT cu.full_name, cu.email, cu.phone, cu.department, cu.job_title "
-                        "FROM company_users cu JOIN users u ON cu.user_id = u.id "
-                        "WHERE u.username = %s AND cu.company_id = %s AND cu.status = 'active'",
-                        (logged_in_user, company_id)
-                    )
-                    emp_row = cur.fetchone()
-                    if emp_row:
-                        emp_name = emp_row['full_name']
-                        emp_email = emp_row['email']
-                        emp_phone = emp_row['phone']
-                        emp_dept = emp_row['department']
-                        emp_title = emp_row['job_title']
-                        emp_parts = []
-                        if emp_name:
-                            emp_parts.append(f"Navn: {emp_name}")
-                        if emp_email:
-                            emp_parts.append(f"Email: {emp_email}")
-                        if emp_phone:
-                            emp_parts.append(f"Telefon: {emp_phone}")
-                        if emp_dept:
-                            emp_parts.append(f"Afdeling: {emp_dept}")
-                        if emp_title:
-                            emp_parts.append(f"Stilling: {emp_title}")
-                        if emp_parts:
-                            company_context_parts.append(
-                                "MEDARBEJDEROPLYSNINGER (brug ved bestilling — spørg IKKE om navn/email/telefon hvis allerede kendt):\n"
-                                + "\n".join(emp_parts)
-                            )
-
-                    if company_context_parts:
-                        company_name = session.get('company_name', 'Virksomheden')
-                        CHAT_MEMORY[sid].append({
-                            "role": "system",
-                            "content": f"VIRKSOMHEDSKONTEKST ({company_name}):\n\n"
-                                       + "\n\n".join(company_context_parts)
-                        })
-                    cur.close()
-                    cur = None
+                    pending = _conv.latest_undigested(logged_in_user, surface, exclude_sid=sid)
+                    if pending:
+                        _conv.digest_session_async(logged_in_user, pending["session_id"], surface,
+                                                   pending["messages"])
                 except Exception as e:
-                    print(f"[Company Context Error] {e}")
-                    # Roll back + close so a failed query doesn't corrupt the
-                    # connection for the profile/conversation queries that follow.
-                    try:
-                        current_app.mysql.connection.rollback()
-                    except Exception:
-                        pass
-                finally:
-                    if cur is not None:
-                        try:
-                            cur.close()
-                        except Exception:
-                            pass
-
-            # Item #3: Inject the cross-session ROLLING SUMMARY for logged-in
-            # users — so memory survives session boundaries even after the
-            # verbatim last messages have aged out of the saved conversation.
-            # Marked with the "TILBAGEVENDENDE BRUGER" profile marker so the
-            # pruner protects it from being trimmed. Mirrors the anonymous
-            # "Tidligere samtaleopsummering" path. Fenced as DATA (it is derived
-            # from the user's own prior free text).
-            try:
-                from app1.user_profile_db import load_conversation_summary
-                rolling_summary = load_conversation_summary(logged_in_user)
-                if rolling_summary:
-                    CHAT_MEMORY[sid].append({
-                        "role": "system",
-                        "content": "TILBAGEVENDENDE BRUGER — TIDLIGERE SAMTALER (opsummering på tværs af sessioner):\n"
-                                   + _fence("TIDLIGERE SAMTALER", rolling_summary[:2000])
-                                   + "\nBrug dette til at huske brugerens behov og kontekst fra tidligere besøg."
-                    })
-            except Exception as e:
-                print(f"[Rolling Summary Load Error] {e}")
-                try:
-                    current_app.mysql.connection.rollback()
-                except Exception:
-                    pass
-
-            # Restore saved conversation messages for logged-in users
-            try:
-                from app1.user_profile_db import load_conversation
-                saved_conv = load_conversation(logged_in_user, mode=mode)
-                if saved_conv and saved_conv.get("messages"):
-                    # Re-inject saved user/assistant messages into memory. Rebuild a
-                    # clean {role, content} dict so any persisted UI-only keys
-                    # (_cards/_tools, attached for resume rendering) never reach the
-                    # OpenAI API.
-                    for msg in saved_conv["messages"]:
-                        if msg.get("role") in ("user", "assistant") and msg.get("content"):
-                            CHAT_MEMORY[sid].append({"role": msg["role"], "content": msg["content"]})
-                    # Rehydrate this worker's artifact cache from the persisted
-                    # transcript so a follow-up turn's save preserves earlier turns'
-                    # cards/chips (cross-worker fidelity).
-                    seed_artifacts_from_messages(sid, saved_conv["messages"])
-            except Exception as e:
-                print(f"[Conversation Restore Error] {e}")
-                try:
-                    current_app.mysql.connection.rollback()
-                except Exception:
-                    pass
+                    print(f"[Digest Catch-up Error] {e}")
 
         # 6.3: Anonymous user persistence — load profile from browser token
-        elif not logged_in_user:
+        else:
             browser_token = session.get("browser_token")
             if browser_token:
                 try:
@@ -1647,20 +1884,21 @@ def handle_agentic_ask(user_query, session, mode="default"):
                             context_parts.append(f"Sidst set kurser: {', '.join(titles)}")
                         if anon_profile.get("preferred_location"):
                             context_parts.append(f"Foretrukken lokation: {anon_profile['preferred_location']}")
-                        # Include conversation summary from previous sessions
                         prev_summary = anon_profile.get("conversation_summary", "")
                         if prev_summary:
                             context_parts.append(f"Tidligere samtaleopsummering: {prev_summary[:500]}")
 
                         if context_parts:
-                            # All spans derive from prior user input/searches — fence as DATA.
-                            CHAT_MEMORY[sid].append({
-                                "role": "system",
-                                "content": "TILBAGEVENDENDE ANONYM BRUGER:\n"
-                                           "Baseret på tidligere besøg har vi denne viden:\n"
-                                           + _fence("ANONYM BRUGERHISTORIK", "\n".join(context_parts))
-                                           + "\nBrug dette til at give en personlig start, f.eks. 'Sidst kiggede du på X — vil du fortsætte der?'"
-                            })
+                            # All spans derive from prior user input/searches — fenced as DATA.
+                            # Kept in memory (the pruner protects the marker) as a
+                            # profile-priority layer so it is never cut mid-fence.
+                            CHAT_MEMORY[sid].append(_ctx.layer(
+                                "profile",
+                                "TILBAGEVENDENDE ANONYM BRUGER:\n"
+                                "Baseret på tidligere besøg har vi denne viden:\n"
+                                + _fence("ANONYM BRUGERHISTORIK", "\n".join(context_parts))
+                                + "\nBrug dette til at give en personlig start, f.eks. 'Sidst kiggede du på X — vil du fortsætte der?'"
+                            ))
                 except Exception as e:
                     print(f"[Anon Profile Load Error] {e}")
 
@@ -1683,7 +1921,11 @@ def handle_agentic_ask(user_query, session, mode="default"):
     # Rule-based intent detection (replaces GPT-4o-mini API call). This stays the
     # source of truth for everything it CAN classify, and the fallback whenever the
     # LLM router is disabled, errors, or times out.
-    regex_intent = _classify_intent_local(user_query, messages, shown_count)
+    if turn_kind == "seed":
+        # UI-generated opener: there is no user text to classify.
+        regex_intent = "profiler_resume" if mode == "profiler" else "needs_clarification"
+    else:
+        regex_intent = _classify_intent_local(user_query, messages, shown_count)
     intent = regex_intent
     rewritten_query = ""  # The main model handles query optimization via tools
 
@@ -1777,16 +2019,27 @@ def handle_agentic_ask(user_query, session, mode="default"):
     if not logged_in_user:
         _extract_user_profile(sid, messages)
 
-    # Memory pruning at 18+ messages to keep TPM under control
+    # Memory pruning: long conversations keep recent turns verbatim and fold the
+    # rest into an in-session summary. The summary is a context layer (persisted
+    # on the conversation row), not a system message inside the transcript.
     from ai_context import prune_conversation_memory
-    pruned = prune_conversation_memory(messages)
-    if pruned is not messages:
-        CHAT_MEMORY[sid] = pruned
+    _prune_input = messages
+    if SESSION_SUMMARIES.get(sid):
+        # Carry the previous summary into the next pruning pass.
+        _prune_input = [messages[0], {"role": "system", "content": SESSION_SUMMARIES[sid]}] + messages[1:]
+    pruned = prune_conversation_memory(_prune_input, keep_recent=16, trigger_at=28)
+    if pruned is not _prune_input:
+        summary_text = None
+        kept = []
+        for m in pruned:
+            if m.get("role") == "system" and str(m.get("content", "")).startswith("SAMTALEOVERSIGT"):
+                summary_text = m.get("content")
+                continue
+            kept.append(m)
+        CHAT_MEMORY[sid] = kept
         messages = CHAT_MEMORY[sid]
-        summary_text = next(
-            (m.get("content") for m in messages if m.get("role") == "system" and str(m.get("content", "")).startswith("SAMTALEOVERSIGT")),
-            None,
-        )
+        if summary_text:
+            SESSION_SUMMARIES[sid] = summary_text
 
         try:
             if summary_text:
@@ -1801,23 +2054,11 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     _get_store().update_anonymous_summary(browser_token, summary_text)
                 except Exception:
                     pass
-
-        # Item #3: Persist the rolling summary for LOGGED-IN users too, mirroring
-        # the anonymous summary path above. This is what survives across session
-        # boundaries (the verbatim last messages are restored separately). Reuses
-        # the same heuristic/GPT-gated summary already computed by the pruner — no
-        # extra model call. Guarded so a DB hiccup never breaks the turn.
         elif logged_in_user and summary_text:
-            try:
-                from app1.user_profile_db import save_conversation_summary, ensure_tables
-                ensure_tables()
-                save_conversation_summary(logged_in_user, sid, summary_text)
-            except Exception as e:
-                print(f"[Logged-in Summary Persist Error] {e}")
-                try:
-                    current_app.mysql.connection.rollback()
-                except Exception:
-                    pass
+            _conv.save_session_summary(
+                logged_in_user, sid, summary_text,
+                sum(1 for m in messages if m.get("role") in ("user", "assistant")),
+            )
 
     # Log the query (Phase 4 analytics)
     try:
@@ -1854,82 +2095,104 @@ def handle_agentic_ask(user_query, session, mode="default"):
             _total_results = 0        # Phase 1.1: total search results
             _products_shown_handles = []  # Phase 1.1: product handles shown
 
-            # Build ephemeral messages with all context layers
-            ephemeral_messages = list(messages)
-            insert_idx = 1
-            company_id = session.get("company_id")
+            # Build the turn's context as prioritised layers (ai_context_layers).
+            # Each layer declares a priority and a zone; the runtime fits them into
+            # the input budget instead of cutting one merged blob at 1800 chars —
+            # which is what used to drop the profile and the profiler playbook.
+            company_id = company_id_for_turn
+            profile_cfg = mode_profile(mode)
+            context_layers = []
+            user_turns = sum(1 for m in messages if m.get("role") == "user")
 
-            # Phase 6: Few-shot examples from top-rated interactions
-            pre_turn_estimate = sum(
-                _estimate_tokens(m.get("content", "")) + 4 for m in ephemeral_messages
-            )
-            if len(messages) <= 14 and pre_turn_estimate < 18000:
-                few_shot_msg = _build_few_shot_examples()
-                if few_shot_msg:
-                    ephemeral_messages.insert(insert_idx, few_shot_msg)
-                    insert_idx += 1
+            if profile_cfg.get("core_playbook"):
+                context_layers.append(_ctx.layer("mode_core_playbook", profile_cfg["core_playbook"]))
 
-            # Stage/intent playbooks (compact core prompt + conditional playbooks)
-            for playbook_msg in _build_playbook_messages(stage, intent):
-                ephemeral_messages.insert(insert_idx, playbook_msg)
-                insert_idx += 1
+            # Phase 6: few-shot examples in the active mode's register
+            if len(messages) <= 14:
+                if profile_cfg.get("few_shot") == "profiler":
+                    context_layers.append(_ctx.layer("few_shot", _PROFILER_FEW_SHOT))
+                else:
+                    few_shot_msg = _build_few_shot_examples()
+                    if few_shot_msg:
+                        context_layers.append(_ctx.layer("few_shot", few_shot_msg["content"]))
 
-            # User profile context — prefer MySQL profile if logged in
+            # Stage/intent playbooks — only those the mode allows
+            context_layers.extend(_build_playbook_messages(stage, intent, mode, user_query))
+
+            # User profile — fetched ONCE per turn and shared with completeness,
+            # gaps, preferences, memory ranking and the knowledge index.
+            db_profile = {}
             db_profile_text = ""
             if logged_in_user:
                 try:
-                    from app1.user_profile_db import get_full_profile, format_profile_for_ai, ensure_tables, update_profile_summary
+                    from app1.user_profile_db import get_full_profile, format_profile_for_ai, ensure_tables
                     ensure_tables()
-                    db_profile = get_full_profile(logged_in_user)
-                    db_profile_text = format_profile_for_ai(db_profile)
-
-                    # Phase 2B: Seed DB profile from session profile on first login
-                    if not db_profile_text and not session.get("_profile_seeded"):
-                        session_profile = USER_PROFILES.get(sid, {}).get("summary", "")
-                        if session_profile:
-                            try:
-                                update_profile_summary(logged_in_user, bio=session_profile)
-                                db_profile = get_full_profile(logged_in_user)
-                                db_profile_text = format_profile_for_ai(db_profile)
-                                session["_profile_seeded"] = True
-                            except Exception:
-                                pass
-
+                    db_profile = get_full_profile(logged_in_user) or {}
+                    db_profile_text = format_profile_for_ai(db_profile, include_ids=True)
                     if db_profile_text:
-                        # User-authored profile free text — fence as DATA.
-                        ephemeral_messages.insert(insert_idx, {
-                            "role": "system",
-                            "content": f"BRUGERPROFIL (fra database, logget ind som '{logged_in_user}'):\n"
-                                       + _fence("BRUGERPROFIL", db_profile_text)
-                        })
-                        insert_idx += 1
+                        # User-authored profile free text — fenced as DATA.
+                        context_layers.append(_ctx.layer(
+                            "profile", db_profile_text,
+                            header=f"BRUGERPROFIL (fra database, logget ind som '{logged_in_user}'):",
+                            fence="BRUGERPROFIL",
+                        ))
                 except Exception as e:
                     print(f"[DB Profile Error] {e}")
+                    db_profile = {}
+                    try:
+                        current_app.mysql.connection.rollback()
+                    except Exception:
+                        pass
 
-            # Atomic memories ("what I know about you") + profiler context.
-            # Relevance-filtered so we inject a focused set, not the whole store,
-            # and so the memory_used event reflects what actually informed the turn.
+            _kq = _knowledge_query(user_query, messages, mode, db_profile)
             if logged_in_user:
+                # Company rules + employee info (short TTL cache, not per session)
+                context_layers.extend(
+                    _company_context_layers(company_id, logged_in_user, session.get("company_name"))
+                )
+
+                # Cross-session memory: this surface's digest, plus what the other
+                # surface learned (the profiler's picture helps the advisor too).
+                _digest = ""
                 try:
-                    from app1.user_profile_db import select_relevant_memories, format_memories_for_ai, get_memories
-                    if mode == "profiler":
-                        # Profiler needs full context — inject all memories so the
-                        # model knows career goals, personality, and preferences even
-                        # when the opening query doesn't contain matching keywords.
-                        _all_mem = get_memories(logged_in_user, limit=12)
-                        rel_mem = [dict(m, _relevant=True)
-                                   for m in _all_mem
-                                   if m.get("confidence") is None or float(m.get("confidence") or 0) >= 0.5]
-                    else:
-                        rel_mem = select_relevant_memories(logged_in_user, user_query, limit=6)
+                    _digest = _conv.load_mode_summary(logged_in_user, surface)
+                    if _digest:
+                        context_layers.append(_ctx.layer(
+                            "mode_digest", _digest,
+                            header="TIDLIGERE SAMTALER (din hukommelse på tværs af sessioner — byg videre på den):",
+                            fence="TIDLIGERE SAMTALER",
+                        ))
+                    _other_surface = "chat" if surface == "profiler" else "profiler"
+                    _other_digest = _conv.load_mode_summary(logged_in_user, _other_surface)
+                    if _other_digest:
+                        context_layers.append(_ctx.layer(
+                            "other_mode_digest", _other_digest,
+                            header=("FRA PROFILSAMTALERNE:" if _other_surface == "profiler"
+                                    else "FRA KURSUSRÅDGIVNINGEN:"),
+                            fence="TIDLIGERE SAMTALER",
+                        ))
+                except Exception as e:
+                    print(f"[Digest Load Error] {e}")
+                if user_turns <= 1 and (_digest or db_profile_text):
+                    context_layers.append(_ctx.layer("returning_note", _returning_note(mode)))
+
+                if SESSION_SUMMARIES.get(sid):
+                    context_layers.append(_ctx.layer(
+                        "session_summary", SESSION_SUMMARIES[sid],
+                        header="TIDLIGERE I DENNE SAMTALE:", fence="SAMTALEOVERSIGT",
+                    ))
+
+                # Atomic memories, ranked by relevance to what is happening now
+                try:
+                    from app1.user_profile_db import format_memories_for_ai
+                    rel_mem = _select_memories_for_turn(logged_in_user, _kq, mode, db_profile)
                     mem_text = format_memories_for_ai(rel_mem)
                     if mem_text:
-                        ephemeral_messages.insert(insert_idx, {
-                            "role": "system",
-                            "content": "HVAD JEG VED OM DIG (hukommelse — personalisér ud fra dette, nævn naturligt når relevant):\n"
-                                       + _fence("HUKOMMELSE", mem_text)
-                        })
-                        insert_idx += 1
+                        context_layers.append(_ctx.layer(
+                            "memories", mem_text,
+                            header="HVAD JEG VED OM DIG (hukommelse — personalisér ud fra dette, nævn naturligt når relevant):",
+                            fence="HUKOMMELSE",
+                        ))
                         _memories_injected = [
                             {"id": m["id"], "label": m["label"], "category": m.get("category"),
                              "relevant": bool(m.get("_relevant", True))}
@@ -1942,87 +2205,25 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     except Exception:
                         pass
 
+                _recall = _recall_layer(logged_in_user, _kq, sid)
+                if _recall:
+                    context_layers.append(_recall)
+                _hr_layer = _hr_learning_layer(logged_in_user, session.get("user_id"), company_id)
+                if _hr_layer:
+                    context_layers.append(_hr_layer)
+
                 if mode == "profiler":
                     try:
                         from app1.user_profile_db import profile_completeness
-                        _profiler_completeness = profile_completeness(logged_in_user)
-                        missing = ", ".join(_profiler_completeness["missing"]) or "ingenting — profilen er komplet"
-                        # Depth-aware targeting: point the model at the weakest
-                        # real section first, and prompt for a target role when
-                        # absent (it anchors every downstream recommendation).
-                        weak = _profiler_completeness.get("weakest")
-                        weak_label = next((s["label"] for s in _profiler_completeness.get("sections", [])
-                                           if s.get("key") == weak), "")
-                        focus_line = (f"\nDIT NÆSTE SPØRGSMÅL SKAL VÆRE OM '{weak_label.upper()}': "
-                                      f"Stil et venligt, fokuseret spørgsmål der afdækker {weak_label}. "
-                                      "Spørg ALDRIG om erhvervserfaring eller nuværende job, da dette allerede er etableret i profilen.") if weak_label else ""
-                        role_line = ("\nDu kender endnu ikke deres ønskede retning. Uden den gætter du på, "
-                                     "hvad der er relevant.") if not _profiler_completeness.get("target_role") else ""
-                        # Gap-aware targeting: once a target role exists, surface the
-                        # biggest computed gaps so the profiler asks purposeful
-                        # questions ("du vil være X — hvor stærk er din SQL?") and can
-                        # close the loop with a gap-grounded recommendation.
-                        gap_line = ""
-                        try:
-                            if _profiler_completeness.get("target_role"):
-                                from competency import compute_skill_gaps
-                                _pgaps = compute_skill_gaps(logged_in_user)
-                                if _pgaps:
-                                    _top = ", ".join(g["skill"] for g in _pgaps[:3])
-                                    gap_line = (f"\nMellem deres profil og '{_profiler_completeness['target_role']}' skiller {_top} sig ud."
-                                                " Det er sandsynligvis det der afgør om de kommer videre - og der hvor kataloget kan hjælpe konkret.")
-                        except Exception:
-                            gap_line = ""
-                        # Build a structured "already covered" summary so the model
-                        # has an explicit checklist of what is settled vs unknown.
-                        _covered_parts = []
-                        try:
-                            if db_profile:
-                                _t_role = (db_profile.get("target_role") or "").strip()
-                                if _t_role:
-                                    _covered_parts.append(f"Ønsket retning: {_t_role}")
-                                _exp = db_profile.get("experience") or []
-                                if _exp:
-                                    _exp_summary = "; ".join(
-                                        f"{e.get('title','')} @ {e.get('company','')}" for e in _exp[:3])
-                                    _covered_parts.append(f"Erfaring ({len(_exp)}): {_exp_summary}")
-                                _sk = db_profile.get("skills") or []
-                                if _sk:
-                                    _sk_summary = ", ".join(
-                                        f"{s['name']} ({s.get('level','?')})" for s in _sk[:6])
-                                    _covered_parts.append(f"Kompetencer ({len(_sk)}): {_sk_summary}")
-                                _edu = db_profile.get("education") or []
-                                if _edu:
-                                    _edu_summary = "; ".join(
-                                        f"{e.get('degree','')} — {e.get('institution','')}" for e in _edu[:3])
-                                    _covered_parts.append(f"Uddannelse ({len(_edu)}): {_edu_summary}")
-                                _certs = db_profile.get("certifications") or []
-                                if _certs:
-                                    _covered_parts.append(f"Certificeringer ({len(_certs)}): {', '.join(c['name'] for c in _certs[:4])}")
-                                _langs = db_profile.get("languages") or []
-                                if _langs:
-                                    _covered_parts.append(f"Sprog ({len(_langs)}): {', '.join(l['language'] for l in _langs[:5])}")
-                                _goals = (db_profile.get("goals") or "").strip()
-                                if _goals:
-                                    _covered_parts.append(f"Karrieremål: {_goals[:100]}")
-                        except Exception:
-                            pass
-                        covered_block = ""
-                        if _covered_parts:
-                            covered_block = ("\n\nALLEREDE AFDÆKKET (spørg IKKE om dette igen):\n- "
-                                             + "\n- ".join(_covered_parts))
-                        ephemeral_messages.insert(insert_idx, {
-                            "role": "system",
-                            "content": SYSTEM_PLAYBOOK_PROFILER
-                                       # Framed as what you know about them, not a
-                                       # completion score with a to-do list attached.
-                                       + f"\n\nHVAD DU VED OM DEM: {_profiler_completeness['pct']}% af billedet"
-                                         f" ({_profiler_completeness.get('weighted_pct', _profiler_completeness['pct'])}% dybde)."
-                                         f" Du har endnu ikke hørt om: {missing}."
-                                       + focus_line + role_line + gap_line
-                                       + covered_block
-                        })
-                        insert_idx += 1
+                        _profiler_completeness = profile_completeness(logged_in_user, profile=db_profile or None)
+                        _pgaps = []
+                        if _profiler_completeness.get("target_role"):
+                            from competency import compute_skill_gaps
+                            _pgaps = compute_skill_gaps(logged_in_user, profile=db_profile or None) or []
+                        context_layers.append(_ctx.layer(
+                            "profiler_state",
+                            _build_profiler_state(_profiler_completeness, db_profile, _pgaps),
+                        ))
                     except Exception as e:
                         print(f"[Profiler ctx] {e}")
 
@@ -2030,90 +2231,72 @@ def handle_agentic_ask(user_query, session, mode="default"):
             if not db_profile_text:
                 profile_msg = _build_user_profile_message(sid)
                 if profile_msg:
-                    ephemeral_messages.insert(insert_idx, profile_msg)
-                    insert_idx += 1
+                    context_layers.append(_ctx.layer("profile", profile_msg["content"]))
 
             # Shown products context
             shown_msg = _build_shown_products_message(sid)
             if shown_msg:
-                ephemeral_messages.insert(insert_idx, shown_msg)
-                insert_idx += 1
+                context_layers.append(_ctx.layer("shown_products", shown_msg["content"]))
 
             # 3.3: Rejection context — what the user didn't like
             rejection_msg = _build_rejection_context(sid)
             if rejection_msg:
-                ephemeral_messages.insert(insert_idx, rejection_msg)
-                insert_idx += 1
+                context_layers.append(_ctx.layer("rejections", rejection_msg["content"]))
 
-            # S3: Smart context — situation assessment from conversation history
-            smart_ctx = _build_smart_context(sid, messages, stage, intent)
-            if smart_ctx:
-                ephemeral_messages.insert(insert_idx, smart_ctx)
-                insert_idx += 1
+            # S3: course-funnel situation assessment (advisor surfaces only)
+            if profile_cfg.get("stage_hints"):
+                smart_ctx = _build_smart_context(sid, messages, stage, intent)
+                if smart_ctx:
+                    context_layers.append(_ctx.layer("smart_context", smart_ctx["content"]))
 
-            # Phase 1 + 3 + S4: Inject intent + stage hints + tone as guidance
+            # Phase 1 + 3 + S4: intent + stage hints + tone as guidance
             guidance_parts = []
-            # S4: Dynamic tone hint based on stage
-            tone_hint = _TONE_HINTS.get(stage, "")
-            if tone_hint:
-                guidance_parts.append(tone_hint)
-            if stage_hint:
-                guidance_parts.append(f"SAMTALEFASE: {stage} — {stage_hint}")
+            if profile_cfg.get("stage_hints"):
+                tone_hint = _TONE_HINTS.get(stage, "")
+                if tone_hint:
+                    guidance_parts.append(tone_hint)
+                if stage_hint:
+                    guidance_parts.append(f"SAMTALEFASE: {stage} — {stage_hint}")
             guidance_parts.append(f"INTENT: {intent}")
             if logged_in_user:
                 guidance_parts.append(f"LOGGET IND SOM: {logged_in_user} — du har adgang til profil- og målværktøjer (get_user_profile, update_user_profile, set_learning_goal, get_learning_goals, update_learning_goal, recommend_for_profile). Du KAN oprette, vise, fuldføre og slette brugerens udviklingsmål — gør det når brugeren beder om det, og bekræft kort bagefter.")
 
-                # Phase 5B: Auto-inject profile preferences as search defaults
-                if db_profile_text:
-                    try:
-                        pref_parts = []
-                        if db_profile.get("preferred_location"):
-                            pref_parts.append(f"- Lokation: {db_profile['preferred_location']}")
-                        if db_profile.get("preferred_format"):
-                            pref_parts.append(f"- Format: {db_profile['preferred_format']}")
-                        if db_profile.get("budget_range"):
-                            pref_parts.append(f"- Budget: {db_profile['budget_range']}")
-                        if pref_parts:
-                            guidance_parts.append("BRUGERENS FASTE PRAEFERENCER (brug som standard-filtre medmindre brugeren siger andet):\n" + "\n".join(pref_parts))
-                    except Exception:
-                        pass
+                # Phase 5B: profile preferences as search defaults
+                pref_parts = []
+                if db_profile.get("preferred_location"):
+                    pref_parts.append(f"- Lokation: {db_profile['preferred_location']}")
+                if db_profile.get("preferred_format"):
+                    pref_parts.append(f"- Format: {db_profile['preferred_format']}")
+                if db_profile.get("budget_range"):
+                    pref_parts.append(f"- Budget: {db_profile['budget_range']}")
+                if pref_parts:
+                    guidance_parts.append("BRUGERENS FASTE PRAEFERENCER (brug som standard-filtre medmindre brugeren siger andet):\n" + "\n".join(pref_parts))
 
-                # Phase 5C: Completed course deduplication
-                try:
-                    completed = db_profile.get("completed_courses", [])
-                    if completed:
-                        handles = [c.get("handle") for c in completed if c.get("handle")]
-                        titles = [c.get("title") for c in completed if c.get("title")]
-                        dedup_items = handles[:10] if handles else titles[:10]
-                        if dedup_items:
-                            guidance_parts.append("ALLEREDE GENNEMFORTE (anbefal IKKE disse): " + ", ".join(dedup_items))
-                except Exception:
-                    pass
+                # Phase 5C: completed course deduplication
+                completed = db_profile.get("completed_courses") or []
+                handles = [c.get("handle") for c in completed if c.get("handle")]
+                titles = [c.get("title") for c in completed if c.get("title")]
+                dedup_items = handles[:10] if handles else titles[:10]
+                if dedup_items:
+                    guidance_parts.append("ALLEREDE GENNEMFORTE (anbefal IKKE disse): " + ", ".join(dedup_items))
             else:
                 guidance_parts.append("BRUGER IKKE LOGGET IND — profil-værktøjer er ikke tilgængelige.")
-            if guidance_parts:
-                ephemeral_messages.insert(insert_idx, {
-                    "role": "system",
-                    "content": "\n".join(guidance_parts)
-                })
+            context_layers.append(_ctx.layer("guidance", "\n".join(guidance_parts)))
 
             # 2.6: Set search context — shown handles + user prefs for contextual search
             shown_handles = {p.get("handle") for p in SHOWN_PRODUCTS.get(sid, {}).get("products", []) if p.get("handle")}
             search_user_prefs = {}
-            try:
-                if logged_in_user and db_profile_text:
-                    search_user_prefs = {
-                        "location": db_profile.get("preferred_location", "") if isinstance(db_profile, dict) else "",
-                        "format": db_profile.get("preferred_format", "") if isinstance(db_profile, dict) else "",
-                    }
-            except (NameError, Exception):
-                pass
+            if logged_in_user and db_profile:
+                search_user_prefs = {
+                    "location": db_profile.get("preferred_location", "") or "",
+                    "format": db_profile.get("preferred_format", "") or "",
+                }
             # Load blocked vendors and supplier agreements for company employees
             blocked_vendors = set()
             supplier_agreements = {}
             if company_id:
+                from flask import current_app as _ca
                 try:
-                    from flask import current_app as _ca
                     _vc = _ca.mysql.connection.cursor()
                     _vc.execute(
                         "SELECT vendor_name FROM company_supplier_preferences "
@@ -2164,7 +2347,11 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 logged_in_user, company_id, sid, supplier_agreements
             )
             if learning_ctx:
-                ephemeral_messages.append(learning_ctx)
+                context_layers.append(_ctx.layer("learning_context", learning_ctx["content"]))
+
+            # Static prompt, then the layers, then the transcript. Layers are
+            # placed by zone at prepare time; this order is only a tie-break.
+            ephemeral_messages = messages[:1] + context_layers + messages[1:]
 
             set_search_context(shown_handles=shown_handles, user_prefs=search_user_prefs,
                                blocked_vendors=blocked_vendors, supplier_agreements=supplier_agreements)
@@ -2178,6 +2365,7 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 choose_turn_model,
                 compaction_level_for_messages,
                 estimate_messages_tokens,
+                estimate_tools_tokens,
                 fast_model,
                 in_rate_limit_cooldown,
                 iter_buffered_text_chunks,
@@ -2221,20 +2409,29 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 }
             tool_choice = make_tool_choice(toolset_meta.get("forced_tool"))
             max_iterations = choose_max_iterations(intent, scope="employee")
+            if mode == "profiler":
+                # Profiler turns often chain save → gaps → recommendation.
+                max_iterations = max(max_iterations, 3)
             iteration = 0
             had_tool_calls = False
+            _tools_reserved = estimate_tools_tokens(all_tools)
             token_estimate = estimate_messages_tokens(
-                prepare_messages_for_turn(ephemeral_messages)
-            )
+                prepare_messages_for_turn(ephemeral_messages, reserved_tokens=_tools_reserved)
+            ) + _tools_reserved
             turn_model = choose_turn_model(
                 intent=intent,
                 tool_count=len(all_tools),
                 token_estimate=token_estimate,
-                prefer_quality=intent in {"comparison", "buying", "team_buying", "profile_and_search", "learning_path", "skill_gap"},
+                prefer_quality=(
+                    intent in {"comparison", "buying", "team_buying", "profile_and_search", "learning_path", "skill_gap"}
+                    or bool(profile_cfg.get("prefer_quality"))
+                ),
             )
             run_id = make_run_id()
-            compaction_level = compaction_level_for_messages(ephemeral_messages)
-            allowed, budget_message, compaction_level = check_turn_token_budget(ephemeral_messages)
+            compaction_level = compaction_level_for_messages(ephemeral_messages, reserved_tokens=_tools_reserved)
+            allowed, budget_message, compaction_level = check_turn_token_budget(
+                ephemeral_messages, reserved_tokens=_tools_reserved
+            )
             if not allowed:
                 yield f"data: {json.dumps({'type': 'chunk', 'content': budget_message})}\n\n"
                 yield f"data: {json.dumps({'type': 'done'})}\n\n"
@@ -2243,16 +2440,20 @@ def handle_agentic_ask(user_query, session, mode="default"):
             turn_count = session.get("_ai_turn_count", 0) + 1
             session["_ai_turn_count"] = turn_count
             if turn_count >= 18:
-                ephemeral_messages.append({
-                    "role": "system",
-                    "content": (
-                        "SYSTEMHINT: Samtalen er lang. Overvej kort at foreslå at brugeren "
-                        "starter en ny chat for bedre kvalitet — uden at afbryde flowet unødigt."
-                    ),
-                })
+                ephemeral_messages.append(_ctx.layer(
+                    "turn_hint",
+                    "SYSTEMHINT: Samtalen er lang. Overvej kort at foreslå at brugeren "
+                    "starter en ny chat for bedre kvalitet — uden at afbryde flowet unødigt.",
+                ))
                 yield f"data: {json.dumps({'type': 'notice', 'content': 'Tip: En ny samtale giver ofte skarpere svar, når chatten bliver lang.'})}\n\n"
 
-            compaction_level = compaction_level_for_messages(ephemeral_messages)
+            compaction_level = compaction_level_for_messages(ephemeral_messages, reserved_tokens=_tools_reserved)
+            try:
+                _ctx_report = _ctx.last_report()
+                if _ctx_report:
+                    log_debug(sid, "context_assembly", _ctx_report)
+            except Exception:
+                pass
 
             try:
                 log_debug(sid, "toolset_selection", {
@@ -2813,11 +3014,16 @@ def handle_agentic_ask(user_query, session, mode="default"):
                     _payload = [{"id": m["id"], "label": m["label"], "category": m.get("category")} for m in _used]
                     yield f"data: {json.dumps({'type': 'memory_used', 'memories': _payload}, ensure_ascii=False)}\n\n"
             if mode == "profiler" and logged_in_user:
-                try:
-                    from app1.user_profile_db import profile_completeness
-                    _profiler_completeness = profile_completeness(logged_in_user)
-                except Exception:
-                    pass
+                _profile_mutated = any(
+                    getattr(_tr, "name", "") in _PROFILE_MUTATING_TOOLS
+                    for _tr in (runtime_result.tool_results or [])
+                )
+                if _profile_mutated or _profiler_completeness is None:
+                    try:
+                        from app1.user_profile_db import profile_completeness
+                        _profiler_completeness = profile_completeness(logged_in_user)
+                    except Exception:
+                        pass
             if _profiler_completeness is not None:
                 yield f"data: {json.dumps({'type': 'profiler_progress', 'completeness': _profiler_completeness}, ensure_ascii=False)}\n\n"
 
@@ -2836,33 +3042,35 @@ def handle_agentic_ask(user_query, session, mode="default"):
                 yield f"data: {evt}\n\n"
 
             # ── Deterministic profiler → course-suggester handoff ──
-            # Reaching a high completeness used to only flip a UI tag. Instead,
-            # when the profile crosses the handoff threshold (and we didn't
-            # already show courses this turn), proactively surface profile-matched
-            # course recommendations + a CTA, turning a finished profile into
-            # immediate value. Guarded + best-effort; throttled so it fires
-            # once per session instead of interrupting the interview on every turn.
+            # Once there is a direction to aim at, proactively surface
+            # profile-matched courses + a CTA instead of only flipping a UI tag.
+            # Fires once per conversation (persisted in the conversation state,
+            # so it survives worker hops and restarts) and is only marked as fired
+            # when it actually showed courses — a failed attempt may retry.
+            _handoff_cfg = profile_cfg.get("handoff") or {}
+            _handoff_state = dict((SESSION_STATE.get(sid) or {}).get("handoff") or {})
+            _handoff_pct = (_profiler_completeness or {}).get("weighted_pct", 0) or 0
+            _handoff_role = ((_profiler_completeness or {}).get("target_role") or "").strip()
             if (
-                mode == "profiler"
+                _handoff_cfg
                 and logged_in_user
                 and _profiler_completeness is not None
                 and not buffered_ui_html
                 and not _did_handoff
+                and not _handoff_state.get("fired_at")
                 and sid not in PROFILER_HANDOFFS
-                # A stated direction is enough to be useful. Waiting for a
-                # completeness percentage is what made this feel like a form you
-                # had to finish before the product would do anything for you:
-                # the payoff arrived only after the work, so the work felt
-                # pointless. With a target role we can already show what aiming
-                # at it looks like, and that is usually what unsticks someone.
+                and int(_handoff_state.get("attempts") or 0) < int(_handoff_cfg.get("max_attempts", 2))
                 and (
-                    _profiler_completeness.get("target_role")
-                    or _profiler_completeness.get("weighted_pct", 0) >= _PROFILER_HANDOFF_PCT
+                    _handoff_pct >= _handoff_cfg.get("pct", _PROFILER_HANDOFF_PCT)
+                    # A stated direction is enough to be useful once there is a
+                    # little substance behind it; waiting for a high percentage
+                    # made the profiler feel like a form to finish first.
+                    or (_handoff_role and _handoff_pct >= _handoff_cfg.get("min_pct_with_role", 40))
                 )
             ):
-                PROFILER_HANDOFFS.add(sid)
+                _did_handoff = True
+                _handoff_ok = False
                 try:
-                    _did_handoff = True
                     _rec_json = execute_tool(
                         _SimpleToolCall("recommend_for_profile", "{}"),
                         username=logged_in_user, session_id=sid,
@@ -2878,23 +3086,29 @@ def handle_agentic_ask(user_query, session, mode="default"):
                                 _get_store().log_event(
                                     sid, "profiler_handoff",
                                     results_count=len(_raw),
-                                    extra={"target_role": bool(_profiler_completeness.get("target_role"))},
+                                    extra={"target_role": bool(_handoff_role)},
                                 )
                             except Exception:
                                 pass
-                            _ho_role = (_profiler_completeness.get("target_role") or "").strip()
                             _ho_notice = (
-                                f"Med {_ho_role} som mål er det her kurserne der peger den vej."
-                                if _ho_role else
+                                f"Med {_handoff_role} som mål er det her kurserne der peger den vej."
+                                if _handoff_role else
                                 "Ud fra det du har fortalt indtil nu — her er kurser der passer."
                             )
                             yield f"data: {json.dumps({'type': 'notice', 'content': _ho_notice}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'course_cards', 'items': serialize_course_cards(_raw, reasons=_reasons)}, ensure_ascii=False)}\n\n"
                             yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_catalog', 'target': '/catalog', 'label': 'Find flere kurser til din profil'})}\n\n"
+                            _handoff_ok = True
                 except Exception as _ho_err:
                     print(f"[Profiler Handoff] {_ho_err}")
                     yield f"data: {json.dumps({'type': 'notice', 'content': 'Din profil er gemt, men anbefalingerne kunne ikke hentes lige nu. Du kan prøve igen i Kursusrådgiveren.'}, ensure_ascii=False)}\n\n"
                     yield f"data: {json.dumps({'type': 'ui_action', 'action': 'open_advisor', 'target': '/chat?intent=Anbefal%20kurser%20ud%20fra%20min%20profil', 'label': 'Prøv i Kursusrådgiver', 'new_tab': False}, ensure_ascii=False)}\n\n"
+                if _handoff_ok:
+                    _handoff_state["fired_at"] = int(time.time())
+                    PROFILER_HANDOFFS.add(sid)
+                else:
+                    _handoff_state["attempts"] = int(_handoff_state.get("attempts") or 0) + 1
+                SESSION_STATE.setdefault(sid, {})["handoff"] = _handoff_state
 
             # Phase 6: Quality guardrail
             visible_text = _strip_suggestions_tag(full_text)
@@ -3057,27 +3271,41 @@ def handle_agentic_ask(user_query, session, mode="default"):
             msg_index = len([m for m in messages if m.get("role") == "assistant"])
             yield f"data: {json.dumps({'type': 'meta', 'message_index': msg_index})}\n\n"
 
-            # Persist conversation for logged-in users
+            # Persist the conversation (DB-authoritative, revision-checked)
             if logged_in_user:
                 try:
-                    from app1.user_profile_db import save_conversation, save_conversation_history, ensure_tables
+                    from app1.user_profile_db import ensure_tables
                     refresh_flask_mysql_connection(getattr(current_app, "mysql", None))
                     ensure_tables()
                     # Persist with each assistant turn's UI artifacts reattached on a
                     # copy; CHAT_MEMORY stays clean (artifact keys never hit the API).
                     _persist_messages = _messages_with_artifacts(sid, messages)
-                    save_conversation(
-                        logged_in_user, sid, _persist_messages,
-                        mode=("profiler" if mode == "profiler" else "chat"),
+                    _saved = _conv.save_turn(
+                        logged_in_user, sid, surface, _persist_messages,
+                        expected_rev=CHAT_MEMORY_REV.get(sid),
+                        state=SESSION_STATE.get(sid) or None,
                     )
-                    save_conversation_history(
-                        logged_in_user, sid, _persist_messages,
-                        mode=("profiler" if mode == "profiler" else "chat"),
-                    )
+                    if _saved.get("rev") is not None:
+                        CHAT_MEMORY_REV[sid] = _saved["rev"]
+                        if _saved.get("conflict"):
+                            # Another worker saved in between: continue from the
+                            # merged transcript instead of this worker's copy.
+                            CHAT_MEMORY[sid] = messages[:1] + [
+                                {"role": m["role"], "content": m["content"]} for m in _saved["messages"]
+                            ]
+                            seed_artifacts_from_messages(sid, _saved["messages"])
                 except Exception as e:
                     print(f"[Conversation Save Error] {e}")
                     try:
                         current_app.mysql.connection.rollback()
+                    except Exception:
+                        pass
+                if any(t in _PROFILE_MUTATING_TOOLS for t in _tools_used):
+                    # Re-index what the user just told us, so the next turn can
+                    # find it (the per-turn sync is throttled).
+                    try:
+                        from app1 import user_knowledge as _uk
+                        _uk.sync_user(logged_in_user, force=True)
                     except Exception:
                         pass
 

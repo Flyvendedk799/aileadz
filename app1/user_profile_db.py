@@ -1511,23 +1511,33 @@ def get_full_profile(username):
     }
 
 
-def format_profile_for_ai(profile_data):
-    """Format the full profile into a concise text block for the AI system message."""
+def format_profile_for_ai(profile_data, include_ids=False):
+    """Format the full profile into a concise text block for the AI system message.
+
+    ``include_ids`` prefixes editable rows with ``[#id]`` so the agent can call
+    update_*/remove_* actions (which require an id) without an extra lookup —
+    before this the model had no way to edit or remove an entry it could see.
+    """
     if not profile_data:
         return ""
+
+    def _rid(item):
+        rid = item.get("id") if include_ids and isinstance(item, dict) else None
+        return f"[#{rid}] " if rid not in (None, "") else ""
 
     parts = []
     if profile_data.get("headline"):
         parts.append(f"Overskrift: {profile_data['headline']}")
     if profile_data.get("bio"):
-        parts.append(f"Bio: {profile_data['bio'][:200]}")
+        parts.append(f"Bio: {profile_data['bio'][:400]}")
     if profile_data.get("target_role"):
         parts.append(f"Ønsket rolle/karriereretning: {profile_data['target_role'][:120]}")
     if profile_data.get("goals"):
-        parts.append(f"Mål: {profile_data['goals'][:200]}")
+        parts.append(f"Mål: {profile_data['goals'][:300]}")
     active_goals = [g for g in profile_data.get("learning_goals", []) if g.get("status") == "aktiv"]
     if active_goals:
-        gstrs = [g["title"] + (f" (inden {g['target_date']})" if g.get("target_date") else "") for g in active_goals[:6]]
+        gstrs = [_rid(g) + g["title"] + (f" (inden {g['target_date']})" if g.get("target_date") else "")
+                 for g in active_goals[:6]]
         parts.append("Aktive udviklingsmål: " + "; ".join(gstrs))
     if profile_data.get("preferred_location"):
         parts.append(f"Foretrukken lokation: {profile_data['preferred_location']}")
@@ -1538,15 +1548,15 @@ def format_profile_for_ai(profile_data):
 
     skills = profile_data.get("skills", [])
     if skills:
-        skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:15]]
+        skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:25]]
         parts.append(f"Kompetencer: {', '.join(skill_strs)}")
 
     exp = profile_data.get("experience", [])
     if exp:
         exp_strs = []
-        for e in exp[:5]:
+        for e in exp[:8]:
             period = f"{e['start_year'] or '?'}-{'nu' if e['is_current'] else (e['end_year'] or '?')}"
-            line = f"{e['title']} @ {e['company']} ({period})"
+            line = f"{_rid(e)}{e['title']} @ {e['company']} ({period})"
             desc = (e.get('description') or '').strip()
             if desc:
                 line += f" — {desc[:120]}"
@@ -1557,7 +1567,7 @@ def format_profile_for_ai(profile_data):
     if edu:
         edu_strs = []
         for e in edu[:5]:
-            line = f"{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})"
+            line = f"{_rid(e)}{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})"
             desc = (e.get('description') or '').strip()
             if desc:
                 line += f" — {desc[:100]}"
@@ -1566,14 +1576,14 @@ def format_profile_for_ai(profile_data):
 
     courses = profile_data.get("completed_courses", [])
     if courses:
-        course_strs = [f"{c['title']} ({c['vendor']})" for c in courses[:10]]
+        course_strs = [f"{c['title']} ({c['vendor']})" for c in courses[:15]]
         parts.append(f"Gennemførte kurser: {', '.join(course_strs)}")
 
     certs = profile_data.get("certifications", [])
     if certs:
         cert_strs = []
         for c in certs[:10]:
-            s = c["name"]
+            s = _rid(c) + c["name"]
             if c.get("issuer"):
                 s += f" ({c['issuer']})"
             if c.get("expiry_date"):
@@ -1583,8 +1593,13 @@ def format_profile_for_ai(profile_data):
 
     languages = profile_data.get("languages", [])
     if languages:
-        lang_strs = [f"{l['language']} ({l['proficiency']})" for l in languages[:10]]
+        lang_strs = [f"{_rid(l)}{l['language']} ({l['proficiency']})" for l in languages[:10]]
         parts.append(f"Sprog: {', '.join(lang_strs)}")
+
+    links = profile_data.get("portfolio_links", [])
+    if links:
+        link_strs = [f"{_rid(p)}{p.get('label') or p.get('url')}" for p in links[:6]]
+        parts.append(f"Portfolio/links: {'; '.join(link_strs)}")
 
     # Active learning paths — so the profiler knows what plans the user is following
     paths = profile_data.get("learning_paths", [])
@@ -1736,6 +1751,10 @@ def load_conversation_summary(username):
 _CANNED_TITLE_PREFIXES = (
     "hjælp mig med at gøre min profil komplet",
     "start profiler",
+    "start profilsamtalen",
+    "fortsæt profilsamtalen",
+    "fortsæt profileringen",
+    "fortsæt hvor vi slap",
 )
 
 

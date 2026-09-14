@@ -340,6 +340,17 @@ def split_system(prepared: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], 
     return system_blocks, rest
 
 
+def _leading_system_zones(prepared: List[Dict[str, Any]]) -> List[Optional[str]]:
+    """`_zone` of each non-empty leading system message, aligned with split_system."""
+    zones: List[Optional[str]] = []
+    for msg in prepared or []:
+        if msg.get("role") != "system":
+            break
+        if str(msg.get("content") or "").strip():
+            zones.append(msg.get("_zone"))
+    return zones
+
+
 def _tool_args_to_object(raw: Any) -> Dict[str, Any]:
     """Anthropic wants ``input`` as an object; chat history stores a JSON string."""
     if isinstance(raw, dict):
@@ -602,6 +613,19 @@ def _build_kwargs(
     answer_turn: Optional[bool] = None,
 ) -> Dict[str, Any]:
     system_blocks, rest = split_system(prepared)
+    # ai_context_layers tags the assembled layers with a zone. The knowledge
+    # layer (profile, memories, company rules) only changes when that data
+    # changes, so it stays in `system` behind a second cache breakpoint; only
+    # the steering layer is volatile. Untagged layers count as volatile.
+    zones = _leading_system_zones(prepared)
+    fixed_count = 1
+    if len(system_blocks) > 1 and len(zones) == len(system_blocks):
+        knowledge = [b for b, z in zip(system_blocks[1:], zones[1:]) if z == "knowledge"]
+        volatile_blocks = [b for b, z in zip(system_blocks[1:], zones[1:]) if z != "knowledge"]
+        if knowledge:
+            knowledge[-1]["cache_control"] = {"type": "ephemeral"}
+        system_blocks = system_blocks[:1] + knowledge + volatile_blocks
+        fixed_count = 1 + len(knowledge)
     messages = to_anthropic_messages(rest)
     if not tools:
         messages = flatten_tool_blocks(messages)
@@ -615,14 +639,14 @@ def _build_kwargs(
     # prefix (tools + system[0]) byte-identical. Requires a user-role message
     # last, which is what both a user turn and a tool_result turn produce.
     if (
-        len(system_blocks) > 1
+        len(system_blocks) > fixed_count
         and messages
         and messages[-1].get("role") == "user"
         and _supports_mid_conversation_system(model)
     ):
-        volatile = "\n\n".join(b["text"] for b in system_blocks[1:] if b.get("text"))
+        volatile = "\n\n".join(b["text"] for b in system_blocks[fixed_count:] if b.get("text"))
         if volatile:
-            system_blocks = system_blocks[:1]
+            system_blocks = system_blocks[:fixed_count]
             messages = messages + [{"role": "system", "content": volatile}]
     kwargs: Dict[str, Any] = {
         "model": model,
@@ -660,8 +684,11 @@ def messages_create_with_resilience(
     fast = ai_provider.anthropic_fast_model()
     attempts = [(model, False), (model, True), (fast, True)]
     last_exc: Optional[Exception] = None
+    reserved = ai_runtime.estimate_tools_tokens(tools)
     for attempt_index, (attempt_model, aggressive) in enumerate(attempts):
-        prepared = ai_runtime.prepare_messages_for_turn(source_messages, aggressive=aggressive)
+        prepared = ai_runtime.prepare_messages_for_turn(
+            source_messages, aggressive=aggressive, reserved_tokens=reserved, keep_zones=True,
+        )
         kwargs = _build_kwargs(
             model=attempt_model,
             prepared=prepared,
@@ -756,7 +783,7 @@ def iter_stream(
 
     aggressive = ai_runtime.in_rate_limit_cooldown()
     for model_name in models_to_try:
-        prepared = ai_runtime.prepare_messages_for_turn(messages, aggressive=aggressive)
+        prepared = ai_runtime.prepare_messages_for_turn(messages, aggressive=aggressive, keep_zones=True)
         kwargs = _build_kwargs(
             model=model_name,
             prepared=prepared,

@@ -10,18 +10,25 @@
 ## 1. The big picture: one engine, two "AIs"
 
 aileadz / FutureMatch is a B2B, sales-led learning platform. The user-facing AI
-is **one OpenAI-backed agentic chat engine** (gpt-4o / gpt-4o-mini — NOT
-Anthropic) exposed as **two modes** selected by a client-supplied `mode` string:
+is **one agentic chat engine** — OpenAI (gpt-4o / gpt-4o-mini) **or Claude**,
+switched in admin (see `docs/AI_PROVIDER_TOGGLE.md`) — exposed as **two modes**
+selected by a client-supplied `mode` string:
 
 | Mode | "AI" | Shell route | Difference |
 |------|------|-------------|------------|
 | `default` | **Course suggester** | `/chat` (`futurematch_ui.py:25`) | the advisor/recommender |
-| `profiler` | **AI Profiler** | `/ai-profiler` (`futurematch_ui.py:31`, login-gated) | appends `SYSTEM_PLAYBOOK_PROFILER`, injects a live completeness snapshot, emits `profiler_progress`, and (new) deterministically hands off to course recommendations at high completeness |
+| `profiler` | **AI Profiler** | `/ai-profiler` (`futurematch_ui.py:31`, login-gated) | mode core playbook (never trimmed) + need-driven profiler state, profiler few-shots, main model on every turn, `profiler_progress`, persisted handoff to course recommendations |
 
-There is **one endpoint** (`POST /app1/ask`, `ask()` at `app1/__init__.py:932`),
+There is **one endpoint** (`POST /app1/ask`, `ask()` in `app1/__init__.py`),
 **one frontend** (`static/futurematch/assets/chat.js`), and **one toolset**. The
-mode is the only switch. Per-mode policy is centralised in `MODE_PROFILES`
-(`app1/agent.py:297`, near the system prompts).
+mode is the only switch. Per-mode policy lives in `MODE_PROFILES`
+(`app1/agent.py`, next to the system prompts) and is what `stream_generator`
+reads: core playbook, which flow playbooks may be injected, few-shot set, stage
+hints, memory limit, model preference and handoff thresholds.
+
+`/app1/ask` also accepts `kind: "seed"` for UI-generated openers (the profiler's
+Start/Fortsæt, `window.fmSendSeed`): the regex intent classifier is skipped
+(intent `profiler_resume`), so an opener's wording can never pull in a playbook.
 
 ---
 
@@ -30,11 +37,14 @@ mode is the only switch. Per-mode policy is centralised in `MODE_PROFILES`
 ```
 chat.js run() ─POST {query,mode}─▶ /app1/ask (ask() at app1/__init__.py:932)
    └▶ handle_agentic_ask (app1/agent.py:1298)
-        ├─ resolve session, lazy-load memory, build fenced system context
+        ├─ resolve the surface's session id (conversation_state.resolve_sid);
+        │   rebuild CHAT_MEMORY from conversation_history when missing or stale (rev)
         ├─ _classify_intent_local (agent.py:594)  [+ gpt-4o-mini router only on 'discovery']
         ├─ _detect_conversation_stage (agent.py:341) → reconcile with intent
         ├─ get_employee_tool_selection (ai_tool_registry.py:803) → per-turn tool menu
-        └─ stream_generator() (agent.py:1764)
+        └─ stream_generator() (agent.py)
+             ├─ build tagged context layers (profile, memories, digests, recall, HR,
+             │   company rules, playbooks …) — fitted to the budget at prepare time
              ├─ run_agent_with_fallback (ai_runtime.py) → model loop, tool_choice=auto
              │     └─ execute_tool (app1/tools.py:5237) — flat if/elif dispatch
              ├─ map each tool result → SSE events (the big loop, agent.py ~2181–2400)
@@ -46,6 +56,53 @@ chat.js run() ─POST {query,mode}─▶ /app1/ask (ask() at app1/__init__.py:93
 **Tooling state** is passed via module globals set per-turn:
 `set_search_context(...)` (`tools.py`) injects shown-handles, prefs, blocked
 vendors, supplier agreements before the model loop.
+
+---
+
+## 2b. Context assembly — `ai_context_layers.py`
+
+**Why:** every dynamic system message used to be merged into one
+`[SESSION KONTEKST]` blob and cut to **1800 chars** on every provider path. The
+few-shot + stage playbooks came first, so the profile, memories, the profiler
+playbook and company rules almost never reached the model — the real cause of
+"the profiler doesn't continue from my profile".
+
+**How:** builders emit tagged layers — `_ctx.layer(name, body, header=…, fence=…)`
+— and `ai_runtime.prepare_messages_for_turn` assembles them. Untagged system
+messages count as `legacy` (the HR agent works unchanged).
+
+| layer | prio | cap | zone | source |
+|---|---|---|---|---|
+| `mode_core_playbook` | 0 (never dropped) | 4500 | steering | `MODE_PROFILES[mode]["core_playbook"]` |
+| `company_rules` | 5 | 2500 | knowledge | `_company_context_layers` (5-min cache) |
+| `profile` | 10 | 4500 | knowledge | `format_profile_for_ai(include_ids=True)` |
+| `guidance` / `turn_hint` | 12 / 13 | 1500 / 600 | steering | intent, prefs, completed-course dedup |
+| `profiler_state` | 14 | 1500 | steering | `_build_profiler_state` |
+| `employee_info` / `learning_context` | 15 / 16 | — | knowledge | employee row, supplier agreements |
+| `memories` | 20 | 2000 | knowledge | `_select_memories_for_turn` |
+| `session_summary` | 22 | 2000 | knowledge | in-session pruning summary |
+| `flow_playbooks` | 25 | 3000 | steering | `_build_playbook_messages(stage, intent, mode, query)` |
+| `hr_learning` | 30 | 1800 | knowledge | `learner_context` |
+| `mode_digest` | 32 | 1500 | knowledge | `user_conversation_summaries` |
+| `shown_products` / `rejections` | 35 / 38 | — | steering | session caches |
+| `recall` | 40 | 2000 | knowledge | `user_knowledge.search(types=["conversation"])` |
+| `returning_note` / `smart_context` / `other_mode_digest` | 45 / 50 / 52 | — | mixed | |
+| `legacy` / `few_shot` | 55 / 60 | 4000 / 1200 | steering | |
+
+Over budget: priority ≥30 shrink to floor → dropped → 1–29 shrink to floor →
+≥15 dropped. Bodies are trimmed **before** they are fenced, so an untrusted-data
+fence is never cut open. Output: `[static, knowledge, steering, *history]`.
+Budget = `min(AI_CONTEXT_MAX_TOKENS, 40% of input budget − tool schemas)`; tool
+schemas are counted (`estimate_tools_tokens`). `compact_messages_for_api` never
+re-cuts a budgeted layer and drops old history before context.
+
+**Placement:** OpenAI — steering moves just before the last user message
+(`AI_STEERING_PLACEMENT=trailing|leading`), private keys stripped. Anthropic —
+`prepare_messages_for_turn(keep_zones=True)`; `_build_kwargs` keeps knowledge in
+`system` behind a second cache breakpoint and trails steering as a
+`role:"system"` message on models that support it (`system[2]` otherwise).
+The per-turn report is logged as `context_assembly`. Rollback:
+`AI_CONTEXT_ASSEMBLER=0` (legacy merge + flat cut, fences still rendered).
 
 ---
 
@@ -245,26 +302,33 @@ Producers (`app1/agent.py` et al.) and the consumer (`chat.js` dispatch, ~line
 - **`target_role`** is the career-direction field that anchors gap reasoning;
   edited on the profile page (`editTargetRole`) or by the profiler via
   `update_user_profile`.
-- **Profiler → suggester handoff (new):** when profiler completeness
-  `weighted_pct ≥ AI_PROFILER_HANDOFF_PCT` (default 70), `stream_generator`
-  deterministically calls `recommend_for_profile`, emits `course_cards` + a
-  CTA `ui_action`, instead of only flipping a UI tag.
-- **Proactive profiler (new):** `ai_profiler.html` auto-asks the first targeted
-  question once per browser session (guarded by `sessionStorage` + empty
-  thread) instead of waiting for a Start click.
-- **Smart Profiler Resume (new):** The profiler now acknowledges what it already knows
-  and skips to unknowns. `SYSTEM_PLAYBOOK_PROFILER` explicitly forbids re-asking
-  about populated sections, aided by an `ALLEREDE AFDÆKKET` checklist built into
-  the dynamic context. Experience and education descriptions, plus active learning
-  paths, are now included in the AI context so it knows *what* the user did, not
-  just their job titles.
-- **Full Memory Injection:** In `profiler` mode, all user memories (up to 12) are
-  injected on every turn (bypassing keyword filters) so the model always understands
-  career goals, personality, and preferences.
-- **Mode-Aware Conversation Loading:** Switching between `/chat` and `/ai-profiler`
-  detects mismatch between the surface mode and the loaded conversation's mode,
-  auto-starting a fresh session if they differ so the profiler doesn't inherit a
-  `default` chat thread.
+- **Profiler → suggester handoff:** fires when `weighted_pct ≥
+  AI_PROFILER_HANDOFF_PCT` (70) **or** a target role is set and `weighted_pct ≥
+  40` (`MODE_PROFILES["profiler"]["handoff"]`): `recommend_for_profile` →
+  `course_cards` + CTA. Persisted in `conversation_history.state_json.handoff`
+  (survives worker hops); marked fired only when courses were actually shown,
+  otherwise retried up to 2 attempts.
+- **Proactive profiler:** `ai_profiler.html` auto-sends a neutral **seed**
+  ("Start profilsamtalen" / "Fortsæt profilsamtalen", `kind: "seed"`) once per
+  browser session on an empty thread. The old section-scripted seeds matched
+  `_PROFILE_UPDATE_PATTERNS`, injected the CV-onboarding playbook and produced
+  the generic "hvad laver du til daglig?" opener.
+- **Need-driven profiler context:** the profile layer (with `[#id]`s) is what the
+  model knows; `_build_profiler_state` adds depth, the target role and ≤3
+  unknowns that would sharpen the advice *with the reason each matters*
+  (sections with strength ≥ 0.5 are never listed). No imperatives — a guard test
+  fails on "DIT NÆSTE SPØRGSMÅL / SKAL VÆRE OM / SPØRG ALDRIG / ALLEREDE AFDÆKKET".
+- **Mode-aware playbooks:** `SYSTEM_PLAYBOOK_PROFILE_SAVE` (save rules, both
+  modes) is split from `SYSTEM_PLAYBOOK_CV_ONBOARDING` (advisor only); the
+  profiler gets the search playbook only on an explicit course request.
+- **One profile fetch per turn:** `get_full_profile` runs once in
+  `stream_generator` and is shared with `profile_completeness(profile=…)`,
+  `compute_skill_gaps(profile=…)`, preferences, memory ranking and the index.
+- **Memories:** ranked per turn by the semantic index (`_select_memories_for_turn`,
+  keyword fallback); only memories that actually matched are `_relevant`, so
+  `used_count` means "informed an answer" in both modes.
+- **Surfaces never share a conversation:** each surface has its own session id
+  and active pointer (§6b), so there is no mode-mismatch reset in chat.js.
 
 ### 3D surfaces — CV portal & Mind-Map
 
@@ -363,9 +427,62 @@ profile hero, and (CV) `employee_home`.
   gunicorn worker is resolvable on another (fixes silent multi-worker mutation
   loss). Tokens are session-bound; pop is single-use.
 - **Memory** (`user_profile_db.py` `user_memories`): `remember_about_user`
-  stores free-form facts with near-duplicate supersede. `memory_saved` now
-  carries the row `id` so chat.js renders an inline "Forkert / slet"
-  affordance.
+  stores free-form facts with near-duplicate supersede — token-based and
+  category-scoped (a 4-char substring rule used to let "Java" overwrite a
+  JavaScript memory). `memory_saved` carries the row `id` so chat.js renders an
+  inline "Forkert / slet" affordance.
+- **Tool errors** never carry raw exception text to the model
+  (`tools._internal_tool_error`: Danish message + `error_code`; traceback in logs).
+
+---
+
+## 6b. Conversation state & knowledge layer
+
+**Conversation state — `app1/conversation_state.py`.** Every conversation is a
+`conversation_history` row keyed by `(username, session_id)` with a `rev`
+counter; `user_conversations` is legacy (read-only, still in GDPR).
+- `resolve_sid(session, mode)` → `session["session_ids"][surface]`
+  (`chat` | `profiler`); `session["session_id"]` mirrors the last used one.
+- `load(username, sid)` reads exactly that row — **no "latest" fallback** on
+  `/ask`, which is how a new chat used to inherit the previous transcript.
+- `save_turn(..., expected_rev=CHAT_MEMORY_REV[sid])` updates with
+  `WHERE rev = %s`; a stale worker merges (`merge_transcripts`) instead of
+  overwriting. At turn start a worker whose cached rev differs rebuilds.
+- `user_active_sessions (username, mode)` is the open-conversation pointer used by
+  `/load_conversation`; `/new_session {mode}` saves + digests the old session and
+  points the surface at a fresh id — **nothing is deleted**; `/resume` adopts.
+- Confirm tokens are tried against every session id the browser holds.
+- The widget runs with `sid_override` + the embedding company
+  (`company_override`) and never touches the employee session.
+
+**Cross-session memory.** `ai_context.summarize_session` (fast model,
+`AI_SESSION_SUMMARY_MODE=llm|rules`) writes a per-session summary
+(`conversation_history.summary`) and merges it into the surface digest
+`user_conversation_summaries (username, mode)`, via
+`conversation_state.digest_session_async` on new chat / resume, with a lazy
+catch-up (`latest_undigested`) on the next new session. Injected as
+`mode_digest`; the other surface's digest as `other_mode_digest`.
+
+**Semantic index — `app1/user_knowledge.py`.** `user_knowledge` rows
+(memory / profile_fact / conversation) with normalised float32 embeddings
+(`rag.embed_texts`, same model as the catalogue; keyword fallback offline).
+`sync_user` diffs content hashes (throttled 300 s, forced after a profile write),
+`search` scores 0.8·cosine + 0.2·keyword. Consumers: memory ranking, the
+`recall` layer and the **`recall_about_user`** tool. Embeddings always go to
+OpenAI even when the chat runs on Claude; `AI_USER_KNOWLEDGE_EMBEDDINGS=0` keeps
+it keyword-only.
+
+**HR learner context — `learner_context.py`.** The learner's own assigned
+paths/progress, HR skill-matrix gaps, department targets and (behind
+`AI_LEARNER_HR_GOALS`, default off) HR-written goals, each source degrading
+independently; 120 s cache. `employee_skills_matrix` / `employee_goals` are keyed
+on `users.id` (= `company_users.user_id`).
+
+**Platform help — `app1/help_kb.py` + `app1/help_kb/*.md`.** 13 curated Danish
+articles, each URL pinned by a drift test. **`search_platform_help`** reaches the
+menu only on a how/where phrase **and** a platform noun
+(`looks_like_platform_help`). Optional embedding index:
+`python -m app1.help_kb --build`.
 
 ---
 
@@ -454,6 +571,15 @@ vendor can never reach another vendor's or any buyer's data.
 | `AI_FILTER_PAST_DATES` | on | drop expired variant dates |
 | `AI_GROUNDING_RECALL` | off | pre-stream corrective re-generation on a grounding violation |
 | `AI_LIVE_TOOL_EVENTS` | on | stream tool start/finish chips live from a worker thread |
+| `AI_CONTEXT_ASSEMBLER` | on | priority/budget context assembly (0 = legacy flat 1800-char cut) |
+| `AI_CONTEXT_MAX_TOKENS` | 10000 | ceiling for the dynamic context layers |
+| `AI_STEERING_PLACEMENT` | trailing | OpenAI: steering before the last user turn (`leading` = old layout) |
+| `AI_MAX_INPUT_TOKENS` / `AI_TPM_BUDGET` | 36000 / 42000 | input budget / soft TPM ceiling — **set in the deploy env too** |
+| `AI_TOKEN_CHARS_PER_TOKEN` | 4.0 (examples 3.5) | token estimator divisor (Danish tokenizes worse) |
+| `AI_SESSION_SUMMARY_MODE` | llm | per-session digests: `llm` (fast tier) or `rules` |
+| `AI_USER_KNOWLEDGE` / `AI_USER_KNOWLEDGE_EMBEDDINGS` | on / on | semantic user index / its OpenAI embeddings |
+| `AI_LEARNER_HR_CONTEXT` / `AI_LEARNER_HR_GOALS` | on / **off** | HR learner context / HR-written goals (needs privacy sign-off) |
+| `AI_HELP_KB` | on | platform help tool |
 
 ---
 
@@ -506,6 +632,11 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | Concern | File |
 |---------|------|
 | Agent orchestration, system prompts, SSE stream | `app1/agent.py` |
+| **Context layers + budget assembly** | `ai_context_layers.py` (wired in `ai_runtime.prepare_messages_for_turn`) |
+| **Conversation state (sessions, pointers, rev, digests)** | `app1/conversation_state.py` |
+| **Semantic user knowledge + `recall_about_user`** | `app1/user_knowledge.py` (`rag.embed_texts`) |
+| **HR learner context** | `learner_context.py` |
+| **Platform help KB + `search_platform_help`** | `app1/help_kb.py`, `app1/help_kb/*.md` |
 | Tool definitions + executors + dispatch | `app1/tools.py` |
 | Per-turn tool selection + metadata + reachability fallback | `ai_tool_registry.py` |
 | Shared model loop, tool-call events, model routing | `ai_runtime.py` |

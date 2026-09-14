@@ -1322,7 +1322,7 @@
     body.appendChild(card); down();
   }
 
-  async function streamFromBackend(body, actualQuery) {
+  async function streamFromBackend(body, actualQuery, kind) {
     // Abort plumbing: the Stop button aborts via currentAbort; a no-event
     // watchdog aborts a silently dead connection (backend emits an initial
     // ping and heartbeats far below this threshold).
@@ -1365,7 +1365,7 @@
       const resp = await fetch(ASK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: actualQuery, mode: (window.CHAT_MODE || "default") }),
+        body: JSON.stringify({ query: actualQuery, mode: (window.CHAT_MODE || "default"), kind: kind || "message" }),
         signal: controller.signal,
       });
       if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
@@ -1512,7 +1512,7 @@
       suggestions = cardsSeen > 0
         ? ["Sammenlign de to bedste", "Vis billigere alternativer", "Fortæl mig mere"]
         : (isProfiler
-            ? ["Hvad mangler i min profil?", "Find kurser til min profil"]
+            ? ["Hvor vil jeg gerne hen?", "Find kurser til min profil"]
             : ["Vis populære kurser", "Hjælp mig med at vælge"]);
     }
     if (suggestions && suggestions.length) addChips(body, suggestions);
@@ -1544,7 +1544,7 @@
     let result = null, lastErr = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        result = await streamFromBackend(body, actualQuery);
+        result = await streamFromBackend(body, actualQuery, opts.kind);
         lastErr = null;
         break;
       } catch (e) {
@@ -1575,6 +1575,10 @@
   }
   function ask(text) { run(text); }
   window.fmAsk = ask;
+  // UI-generated openers (the profiler's Start / Fortsæt). The server skips
+  // intent classification for a seed, so the opener's wording can never pull
+  // in a playbook the user didn't ask for.
+  window.fmSendSeed = (text) => run(text, { kind: "seed" });
 
   function setSending(on) {
     send.style.display = on ? "none" : "grid";
@@ -1600,17 +1604,19 @@
         <div class="welcome profiler-welcome">
           <div class="w-logo">${BOT}</div>
           <div class="w-eyebrow">AI Profiler</div>
-          <div class="w-title">Gør din profil komplet</div>
-          <div class="w-sub">Fortæl om dine kompetencer, erfaringer og mål — så bygger jeg en profil, der kan bruges til bedre anbefalinger.</div>
-          <div class="w-hint">Profilmode · svar gemmes som profilforslag</div>
+          <div class="w-title">Hvor vil du gerne hen?</div>
+          <div class="w-sub">Fortæl hvor du står, og hvad du gerne vil — så hjælper jeg dig med at finde vejen og gemmer det vigtige på din profil undervejs.</div>
+          <div class="w-hint">Profilmode · det du fortæller kan gemmes på din profil</div>
           <div class="w-grid">
-            <button class="w-card" data-q="Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål."><span class="ic"><i class="fa-solid fa-user-check"></i></span><span><div class="t">Start profiler</div><div class="h">Svar på målrettede spørgsmål</div></span></button>
+            <button class="w-card" data-seed="Start profilsamtalen"><span class="ic"><i class="fa-solid fa-user-check"></i></span><span><div class="t">Start samtalen</div><div class="h">Jeg tager udgangspunkt i det, jeg ved</div></span></button>
             <button class="w-card" data-q="Jeg vil opdatere mine kompetencer og niveauer"><span class="ic"><i class="fa-solid fa-layer-group"></i></span><span><div class="t">Kompetencer</div><div class="h">Tilføj skills og niveauer</div></span></button>
             <button class="w-card" data-q="Jeg vil fortælle om min erfaring og tidligere roller"><span class="ic"><i class="fa-solid fa-briefcase"></i></span><span><div class="t">Erfaring</div><div class="h">Gem roller og resultater</div></span></button>
             <button class="w-card" data-q="Jeg vil sætte mine læringsmål"><span class="ic"><i class="fa-solid fa-bullseye"></i></span><span><div class="t">Læringsmål</div><div class="h">Definer hvad du vil opnå</div></span></button>
           </div>
         </div>`;
-      thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => ask(c.dataset.q));
+      thread.querySelectorAll(".w-card").forEach((c) => c.onclick = () => (
+        c.dataset.seed ? run(c.dataset.seed, { kind: "seed" }) : ask(c.dataset.q)
+      ));
       return;
     }
     thread.innerHTML = `
@@ -1636,10 +1642,13 @@
     // never silently inherits the previous conversation's context. A failed
     // call still resets the UI — better a fresh screen than a stuck button.
     try {
+      // The chat and the profiler each keep their own open conversation, so
+      // tell the server which one to reset — the other surface stays untouched.
       await fetch("/app1/new_session", {
         method: "POST",
-        headers: { "X-Requested-With": "XMLHttpRequest" },
+        headers: { "Content-Type": "application/json", "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
+        body: JSON.stringify({ mode: (window.CHAT_MODE || "default") }),
       });
     } catch (e) { /* offline / anonymous: still reset the UI */ }
     activeConvId = null;
@@ -1742,7 +1751,10 @@
       const data = await resp.json();
       const msgs = data && data.messages;
       const restoredMode = (data && data.mode) || "chat";
-      if (data && data.status === "ok" && Array.isArray(msgs) && msgs.length) {
+      // The server only restores this surface's own conversation; the check is
+      // a belt-and-braces guard so a wrong-surface thread is never painted.
+      const expectedMode = currentMode === "profiler" ? "profiler" : "chat";
+      if (data && data.status === "ok" && Array.isArray(msgs) && msgs.length && restoredMode === expectedMode) {
         renderHistory(msgs);
         if (data.id) {
           activeConvId = data.id;
@@ -1759,38 +1771,25 @@
   }
 
   /* ---------------- real profile completeness ----------------
-     Drives the ring from GET /api/profile/full instead of a hardcoded number.
-     Completeness = fraction of the five learner-profile sections that have any
-     real content: skills, experience, education, completed courses, goals.
+     Drives the ring from GET /api/profile/completeness — the same depth-aware
+     weighted_pct the profile page, the Mind-Map and the profiler use. (A
+     client-side 5-section formula used to show a different number here.)
      Anonymous / 401 / fetch failure -> ring stays hidden, never a fake %. */
   let profileLoaded = false;
-  function computeCompleteness(p) {
-    if (!p || typeof p !== "object") return 0;
-    const arr = (x) => (Array.isArray(x) ? x.length : 0);
-    const sections = [
-      arr(p.skills) > 0,
-      arr(p.experience) > 0,
-      arr(p.education) > 0,
-      arr(p.completed_courses) > 0,
-      // "Goals" is populated if there are learning goals OR a free-text goal/bio.
-      (arr(p.learning_goals) > 0) || !!(p.goals && String(p.goals).trim()),
-    ];
-    const filled = sections.filter(Boolean).length;
-    return Math.round((filled / sections.length) * 100);
-  }
 
   async function loadProfile() {
     const widget = $(".ring-widget");
     try {
-      const resp = await fetch("/api/profile/full", {
+      const resp = await fetch("/api/profile/completeness", {
         headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
       });
-      if (!resp.ok) throw new Error("profile " + resp.status);
+      if (!resp.ok) throw new Error("completeness " + resp.status);
       const data = await resp.json();
-      if (!data || !data.success || !data.profile) throw new Error("profile_shape");
+      const c = data && data.completeness;
+      if (!c) throw new Error("completeness_shape");
       profileLoaded = true;
-      setRing(computeCompleteness(data.profile));
+      setRing(c.weighted_pct != null ? c.weighted_pct : (c.pct || 0));
       if (widget) widget.style.display = "";
     } catch (e) {
       // Anonymous / failed: hide the ring widget rather than show a fake number.
@@ -1868,9 +1867,11 @@
 
   /* ---------------- init ----------------
      Restore the active thread when hopping between /chat, /ai-profiler and
-     /mind-map.  Mode-aware: if the active conversation belongs to a different
-     mode (e.g. a "chat" conversation loaded on /ai-profiler) we start a fresh
-     session so the profiler can cold-start properly.
+     /mind-map. Each surface has its own open conversation on the server, so
+     /chat never receives the profiler's thread (and vice versa) — there is no
+     "wrong mode" thread to throw away here any more. (The old mismatch path
+     called newChat(), which reset the server session and could wipe the other
+     surface's conversation.)
      ?c= opens a specific history row; ?new=1 forces a blank session. */
   function bootChat() {
     let params;
@@ -1878,39 +1879,22 @@
     if (params.get("new") === "1") {
       return newChat().then(() => false);
     }
-    const currentMode = (window.CHAT_MODE || "default").toLowerCase();
     const intent = (params.get("intent") || "").trim();
     if (intent) {
       try {
         params.delete("intent");
         history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : ""));
       } catch (e) { /* non-critical */ }
-      return restoreActiveConversation().then((result) => {
-        // Mode mismatch: start fresh so the intent lands in the right mode
-        const restoredMode = (result && result.mode) || "chat";
-        const mismatch = (currentMode === "profiler" && restoredMode !== "profiler")
-                      || (currentMode !== "profiler" && restoredMode === "profiler");
-        const chain = mismatch ? newChat() : Promise.resolve();
-        return chain.then(() => {
-          input.value = intent;
-          input.dispatchEvent(new Event("input", { bubbles: true }));
-          setTimeout(() => { if (!sending) send.click(); }, 80);
-          return true;
-        });
+      return restoreActiveConversation().then(() => {
+        input.value = intent;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        setTimeout(() => { if (!sending) send.click(); }, 80);
+        return true;
       });
     }
     const cid = params.get("c");
     if (cid) return openConversation(cid);
-    return restoreActiveConversation().then((result) => {
-      // Mode mismatch: clear the wrong-mode conversation and show welcome
-      const restoredMode = (result && result.mode) || "chat";
-      const mismatch = (currentMode === "profiler" && restoredMode !== "profiler")
-                    || (currentMode !== "profiler" && restoredMode === "profiler");
-      if (result && result.restored && mismatch) {
-        return newChat().then(() => false);
-      }
-      return result && result.restored;
-    });
+    return restoreActiveConversation().then((result) => !!(result && result.restored));
   }
   window.fmChatBoot = bootChat();
   renderRef();

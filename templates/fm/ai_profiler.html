@@ -2,7 +2,7 @@
 {% block page_id %}profiler{% endblock %}
 {% block title %}AI Profiler · Futurematch{% endblock %}
 {% block topbar_title %}AI Profiler{% endblock %}
-{% block topbar_sub %}Samme AI — fokuseret på at gøre din profil 100% komplet{% endblock %}
+{% block topbar_sub %}Samme AI — fokuseret på hvor du står, og hvor du vil hen{% endblock %}
 {% block body_class %}chat-page profiler-page{% endblock %}
 
 {% block extra_head %}
@@ -129,9 +129,11 @@
     }
     window.onProfilerProgress = function (c) {
       if (!c) return;
+      // Depth-aware number, the same one the profile page and Mind-Map show.
+      var shown = c.weighted_pct != null ? c.weighted_pct : c.pct;
       var ring = document.getElementById('profRing');
-      if (ring) ring.style.setProperty('--p', c.pct);
-      var pct = document.getElementById('profPct'); if (pct) pct.textContent = c.pct + '%';
+      if (ring) ring.style.setProperty('--p', shown);
+      var pct = document.getElementById('profPct'); if (pct) pct.textContent = shown + '%';
       if (!profilerCompleteTracked && (c.pct || 0) >= 100) {
         profilerCompleteTracked = true; track('profiler_complete', { pct: c.pct || 0 });
       }
@@ -146,17 +148,21 @@
         miss.innerHTML = '<span class="prof-tag done">Profilen er komplet 🎉</span>';
       }
     };
-    function formatSeedSection(s) {
-      var raw = (s || '').trim().toLowerCase();
-      if (!raw) return '';
-      if (raw === 'mål' || raw === 'karrieremål' || raw.indexOf('mål') !== -1) return 'mine mål';
-      if (raw === 'sprog' || raw.indexOf('sprog') !== -1) return 'mine sprog';
-      if (raw === 'kompetencer' || raw === 'færdigheder' || raw.indexOf('kompetence') !== -1) return 'mine kompetencer';
-      if (raw === 'uddannelse' || raw.indexOf('uddannelse') !== -1) return 'min uddannelse';
-      if (raw === 'erhvervserfaring' || raw === 'erfaring' || raw.indexOf('erfaring') !== -1) return 'min erhvervserfaring';
-      if (raw === 'interesser' || raw.indexOf('interesse') !== -1) return 'mine interesser';
-      if (raw === 'certifikater' || raw.indexOf('certifikat') !== -1) return 'mine certifikater';
-      return 'min ' + raw;
+    // Start / Fortsæt send a neutral SEED turn (kind "seed"). The server then
+    // skips intent classification and the agent picks where to begin from what
+    // it already knows. The old section-scripted seed sentences matched the
+    // profile-update patterns, pulled in the CV-onboarding playbook and produced
+    // the generic "hvad laver du?" opener.
+    var SEED_START = 'Start profilsamtalen';
+    var SEED_CONTINUE = 'Fortsæt profilsamtalen';
+    function sendSeed(text) {
+      if (typeof window.fmSendSeed === 'function') { window.fmSendSeed(text); return; }
+      var input = document.getElementById('input');
+      var send = document.getElementById('send');
+      if (!input || !send) return;
+      input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      send.click();
     }
     function updateCtaState() {
       var thread = document.getElementById('thread');
@@ -167,26 +173,10 @@
       }
     }
     var latestCompleteness = null;
-    function startProfiler(seedSection) {
-      var input = document.getElementById('input');
-      var send = document.getElementById('send');
-      if (!input || !send) return;
+    function startProfiler(source) {
       var c = latestCompleteness;
-      var target = (seedSection || '').trim();
-      if (!target && c && c.missing && c.missing.length) {
-        target = c.missing[0];
-      }
-      track('profiler_start', { source: target ? 'targeted' : 'manual' });
-      var formatted = target ? formatSeedSection(target) : '';
-      if (formatted) {
-        input.value = 'Hjælp mig med at gøre min profil komplet. Start med ' + formatted + ', og stil mig ét spørgsmål ad gangen.';
-      } else if (c && (c.pct || 0) > 0) {
-        input.value = 'Fortsæt profileringen — hvad mangler du at vide om mig for at gøre min profil komplet?';
-      } else {
-        input.value = 'Hjælp mig med at gøre min profil komplet. Stil mig det første spørgsmål.';
-      }
-      input.dispatchEvent(new Event('input', { bubbles: true }));
-      send.click();
+      track('profiler_start', { source: source || 'manual' });
+      sendSeed(c && (c.pct || 0) > 0 ? SEED_CONTINUE : SEED_START);
     }
     function refreshProfilerBanner() {
       return fetch('/api/profile/mindmap', { credentials: 'same-origin' })
@@ -223,8 +213,7 @@
         try { openingSaved = !!(new URLSearchParams(location.search).get('c')); } catch (e) {}
         if (c && (c.pct || 0) < 100 && empty && !alreadyStarted && !openingSaved) {
           sessionStorage.setItem('fmProfilerAutoStarted', '1');
-          var weak = (c.missing && c.missing.length) ? c.missing[0].toLowerCase() : '';
-          setTimeout(function () { startProfiler(weak); }, 500);
+          setTimeout(function () { startProfiler('auto'); }, 500);
         }
         updateCtaState();
       }
@@ -238,15 +227,10 @@
         var thread = document.getElementById('thread');
         var hasMsgs = !!(thread && thread.querySelector('.msg'));
         if (hasMsgs) {
-          var input = document.getElementById('input');
-          var send = document.getElementById('send');
-          if (!input || !send) return;
           track('profiler_continue', { source: 'manual' });
-          input.value = 'Fortsæt hvor vi slap — hvad er det næste du vil vide?';
-          input.dispatchEvent(new Event('input', { bubbles: true }));
-          send.click();
+          sendSeed(SEED_CONTINUE);
         } else {
-          startProfiler('');
+          startProfiler('manual');
         }
       });
     }

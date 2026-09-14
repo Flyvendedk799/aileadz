@@ -153,21 +153,28 @@ class ProfilerContinuationTests(unittest.TestCase):
         PROFILER_HANDOFFS.discard(sid)
 
     def test_ai_profiler_template_contracts(self):
-        """ai_profiler.html has dynamic CTA toggle, Danish grammar helper, and refreshProfilerBanner."""
+        """ai_profiler.html sends neutral SEED turns (no section-scripted
+        sentences that match the profile-update patterns), keeps the dynamic
+        Start/Fortsæt CTA and refreshProfilerBanner."""
         tmpl_path = os.path.join(_REPO_ROOT, "templates", "fm", "ai_profiler.html")
         with open(tmpl_path, encoding="utf-8") as fh:
             content = fh.read()
 
         self.assertIn("window.refreshProfilerBanner", content)
-        self.assertIn("formatSeedSection", content)
-        self.assertIn("mine mål", content)
-        self.assertIn("mine sprog", content)
-        self.assertIn("mine kompetencer", content)
-        self.assertIn("min uddannelse", content)
-        self.assertIn("min erhvervserfaring", content)
+        self.assertIn("window.fmSendSeed", content)
+        self.assertIn("'Start profilsamtalen'", content)
+        self.assertIn("'Fortsæt profilsamtalen'", content)
+        self.assertNotIn("formatSeedSection", content)
+        self.assertNotIn("Start med min", content)
         self.assertIn("profStartLabel", content)
         self.assertIn("updateCtaState", content)
         self.assertIn("Fortsæt", content)
+
+    def test_seed_titles_are_not_used_as_sidebar_titles(self):
+        from app1.user_profile_db import _extract_title
+        msgs = [{"role": "user", "content": "Start profilsamtalen"},
+                {"role": "assistant", "content": "Hej"}]
+        self.assertEqual(_extract_title(msgs, mode="profiler"), "Profilsamtale")
 
     def test_ai_sidebar_cross_surface_redirection(self):
         """ai-sidebar.js checks surfaceMatches to redirect cross-surface when modes differ."""

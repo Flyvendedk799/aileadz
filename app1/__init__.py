@@ -941,8 +941,12 @@ def ask():
         # silently degrades to normal chat rather than getting an empty profiler.
         if mode == "profiler" and not session.get("user"):
             mode = "default"
+        # "seed" = a UI-generated opener (profiler Start/Fortsæt), not user text.
+        turn_kind = (request.json.get("kind") or "message").strip().lower()
+        if turn_kind not in ("message", "seed"):
+            turn_kind = "message"
 
-        return handle_agentic_ask(user_query, session, mode=mode)
+        return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind)
 
     except Exception as ex:
         print(f"Unexpected error: {ex}")
@@ -1158,81 +1162,103 @@ def feedback():
 
 @app1_bp.route("/new_session", methods=["POST"])
 def new_session():
-    """Start a fresh conversation — saves current to history, then clears."""
-    from app1.agent import (CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES,
-                            REJECTED_SEARCHES, SHOWN_ARTIFACTS, _messages_with_artifacts,
-                            PROFILER_HANDOFFS)
-    old_sid = session.get("session_id")
-    logged_in_user = session.get("user")
-    req_mode = request.args.get("mode") or (request.is_json and request.json and request.json.get("mode"))
+    """Start a fresh conversation on one surface (chat | profiler).
 
-    # Save current conversation to history before clearing (with UI artifacts so
-    # the saved transcript can later replay its cards/chips on resume).
-    if logged_in_user and old_sid and old_sid in CHAT_MEMORY:
+    Saves the current conversation, folds it into the durable per-surface
+    digest, and points this surface at a new session id. Nothing is deleted:
+    the old conversation stays in history, cross-session memory survives, and
+    the other surface's open conversation is untouched. (It used to DELETE the
+    user's single active row — rolling summary included — after which the next
+    /ask silently reloaded the previous transcript into the "new" chat.)"""
+    from app1 import agent as _agent
+    from app1 import conversation_state as conv_state
+    logged_in_user = session.get("user")
+    body = request.get_json(silent=True) or {}
+    req_mode = request.args.get("mode") or body.get("mode") or session.get("session_surface") or "chat"
+    surface = conv_state.surface_for_mode(req_mode)
+    old_sid = conv_state.current_sid(session, surface)
+    if not old_sid and session.get("session_surface") in (None, surface):
+        old_sid = session.get("session_id")
+
+    if logged_in_user and old_sid:
         try:
-            from app1.user_profile_db import save_conversation_history, ensure_tables
+            from app1.user_profile_db import ensure_tables
             ensure_tables()
-            save_conversation_history(
-                logged_in_user, old_sid,
-                _messages_with_artifacts(old_sid, CHAT_MEMORY[old_sid]),
-                mode=req_mode)
+            if old_sid in _agent.CHAT_MEMORY:
+                old_messages = _agent._messages_with_artifacts(old_sid, _agent.CHAT_MEMORY[old_sid])
+                conv_state.save_turn(
+                    logged_in_user, old_sid, surface, old_messages,
+                    expected_rev=_agent.CHAT_MEMORY_REV.get(old_sid),
+                    state=_agent.SESSION_STATE.get(old_sid) or None,
+                )
+            else:
+                stored = conv_state.load(logged_in_user, old_sid)
+                old_messages = (stored or {}).get("messages") or []
+            if old_messages:
+                conv_state.digest_session_async(logged_in_user, old_sid, surface, old_messages)
         except Exception as e:
             print(f"[Save History Error] {e}")
+            try:
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
 
-    # Clear in-memory state
     if old_sid:
-        CHAT_MEMORY.pop(old_sid, None)
-        SHOWN_PRODUCTS.pop(old_sid, None)
-        CONVERSATION_STAGES.pop(old_sid, None)
-        REJECTED_SEARCHES.pop(old_sid, None)
-        SHOWN_ARTIFACTS.pop(old_sid, None)
-        PROFILER_HANDOFFS.discard(old_sid)
+        _drop_session_memory(old_sid)
 
-    # Generate new session ID
-    new_sid = str(uuid.uuid4())
-    session["session_id"] = new_sid
-
-    # Clear active conversation in MySQL for logged-in users
+    new_sid = conv_state.start_new_session(session, surface)
     if logged_in_user:
-        try:
-            from app1.user_profile_db import clear_conversation, ensure_tables
-            ensure_tables()
-            clear_conversation(logged_in_user)
-        except Exception as e:
-            print(f"[New Session Error] {e}")
+        conv_state.set_active(logged_in_user, surface, new_sid)
+    return jsonify({"status": "ok", "session_id": new_sid, "mode": surface})
 
-    return jsonify({"status": "ok", "session_id": new_sid})
+
+def _drop_session_memory(sid):
+    """Forget every per-process cache entry for one session id."""
+    from app1 import agent as _agent
+    for store in (_agent.CHAT_MEMORY, _agent.CHAT_MEMORY_REV, _agent.SESSION_STATE,
+                  _agent.SESSION_SUMMARIES, _agent.SHOWN_PRODUCTS, _agent.CONVERSATION_STAGES,
+                  _agent.REJECTED_SEARCHES, _agent.SHOWN_ARTIFACTS):
+        store.pop(sid, None)
+    _agent.PROFILER_HANDOFFS.discard(sid)
 
 
 @app1_bp.route("/load_conversation")
 def load_conversation_endpoint():
-    """Load saved conversation for logged-in user (for frontend restore)."""
+    """Restore the open conversation of one surface (for the frontend).
+
+    Follows the per-surface pointer. A pointer to a session with no stored row
+    means the user started a new chat: that restores empty rather than falling
+    back to an older transcript. Only when no pointer exists yet (pre-migration
+    users) is the latest conversation of the surface adopted."""
     logged_in_user = session.get("user")
     if not logged_in_user:
         return jsonify({"status": "no_user", "messages": []})
-    req_mode = request.args.get("mode")
+    from app1 import conversation_state as conv_state
+    surface = conv_state.surface_for_mode(request.args.get("mode") or "chat")
     try:
-        from app1.user_profile_db import load_conversation, find_conversation_by_session, ensure_tables
+        from app1.user_profile_db import ensure_tables, load_latest_conversation_by_mode
         ensure_tables()
-        saved = load_conversation(logged_in_user, mode=req_mode)
-        if saved and saved.get("messages"):
-            sid = saved.get("session_id")
-            if sid:
-                session["session_id"] = sid
-            meta = None
-            try:
-                meta = find_conversation_by_session(logged_in_user, sid) if sid else None
-            except Exception:
-                meta = None
+        sid = conv_state.get_active(logged_in_user, surface)
+        conv = conv_state.load(logged_in_user, sid) if sid else None
+        if sid and not conv:
+            conv_state.adopt_sid(session, surface, sid)
+            return jsonify({"status": "empty", "messages": [], "session_id": sid, "mode": surface})
+        if not sid:
+            latest = load_latest_conversation_by_mode(logged_in_user, surface)
+            if latest and latest.get("session_id"):
+                conv_state.set_active(logged_in_user, surface, latest["session_id"])
+                conv = conv_state.load(logged_in_user, latest["session_id"]) or latest
+        if conv and conv.get("messages") and conv_state.surface_for_mode(conv.get("mode")) == surface:
+            conv_state.adopt_sid(session, surface, conv["session_id"])
             return jsonify({
                 "status": "ok",
-                "messages": saved["messages"],
-                "session_id": sid,
-                "id": saved.get("id") or (meta or {}).get("id"),
-                "title": saved.get("title") or (meta or {}).get("title"),
-                "mode": saved.get("mode") or (meta or {}).get("mode") or "chat",
+                "messages": conv["messages"],
+                "session_id": conv["session_id"],
+                "id": conv.get("id"),
+                "title": conv.get("title"),
+                "mode": surface,
             })
-        return jsonify({"status": "empty", "messages": []})
+        return jsonify({"status": "empty", "messages": [], "mode": surface})
     except Exception as e:
         print(f"[Load Conversation Error] {e}")
         try:
@@ -1294,72 +1320,48 @@ def load_conversation_history_endpoint(conv_id):
 
 @app1_bp.route("/conversations/<int:conv_id>/resume", methods=["POST"])
 def resume_conversation_endpoint(conv_id):
-    """Reopen a past conversation: make it the active session so the next /ask
-    continues it, and return its messages for the frontend to render.
+    """Reopen a past conversation as the open conversation of its surface.
 
-    Mirrors new_session() in reverse — instead of clearing the active
-    conversation, it promotes the selected history row to active. The agent
-    rebuilds CHAT_MEMORY for the (restored) session id from the active
-    conversation on the next turn (see agent.py load_conversation restore), so
-    we drop any stale in-memory state for that session id here.
-    """
-    from app1.agent import (CHAT_MEMORY, SHOWN_PRODUCTS, CONVERSATION_STAGES,
-                            REJECTED_SEARCHES, SHOWN_ARTIFACTS)
+    Points that surface's session id and active pointer at the conversation;
+    the next /ask rebuilds memory from exactly that row. Nothing is copied or
+    overwritten, and the other surface is untouched."""
+    from app1 import agent as _agent
+    from app1 import conversation_state as conv_state
     logged_in_user = session.get("user")
     if not logged_in_user:
         return jsonify({"status": "error"}), 401
     try:
-        from app1.user_profile_db import (load_conversation_by_id, save_conversation,
-                                           ensure_tables)
+        from app1.user_profile_db import load_conversation_by_id, ensure_tables
         ensure_tables()
         conv = load_conversation_by_id(logged_in_user, conv_id)
         if not conv:
             return jsonify({"status": "not_found"}), 404
 
         messages = conv.get("messages") or []
+        surface = conv_state.surface_for_mode(conv.get("mode"))
         # A stored conversation always has a session_id; fall back to a fresh one
         # so the restore path still has a valid key if the column was ever empty.
         target_sid = conv.get("session_id") or str(uuid.uuid4())
 
-        # Promote this conversation to the user's active conversation so the
-        # agent's restore path (load_conversation) rehydrates it next turn.
-        try:
-            try:
-                save_conversation(logged_in_user, target_sid, messages, mode=conv.get("mode"))
-            except TypeError:
-                save_conversation(logged_in_user, target_sid, messages)
-        except Exception as e:
-            print(f"[Resume Save Active Error] {e}")
-            try:
-                current_app.mysql.connection.rollback()
-            except Exception:
-                pass
-
-        # Point the session at the restored conversation and drop any stale
-        # in-memory state so the next /ask rebuilds memory from the active row.
-        old_sid = session.get("session_id")
+        old_sid = conv_state.current_sid(session, surface)
+        if not old_sid and session.get("session_surface") in (None, surface):
+            old_sid = session.get("session_id")
         if old_sid and old_sid != target_sid:
-            CHAT_MEMORY.pop(old_sid, None)
-            SHOWN_PRODUCTS.pop(old_sid, None)
-            CONVERSATION_STAGES.pop(old_sid, None)
-            REJECTED_SEARCHES.pop(old_sid, None)
-            SHOWN_ARTIFACTS.pop(old_sid, None)
-        CHAT_MEMORY.pop(target_sid, None)
-        SHOWN_PRODUCTS.pop(target_sid, None)
-        CONVERSATION_STAGES.pop(target_sid, None)
-        REJECTED_SEARCHES.pop(target_sid, None)
-        SHOWN_ARTIFACTS.pop(target_sid, None)
-        session["session_id"] = target_sid
+            if old_sid in _agent.CHAT_MEMORY:
+                conv_state.digest_session_async(logged_in_user, old_sid, surface,
+                                                _agent.CHAT_MEMORY[old_sid])
+            _drop_session_memory(old_sid)
+        _drop_session_memory(target_sid)
 
-        # Re-seed the artifact cache from the restored transcript so that when the
-        # user sends a NEW message in this conversation, the next save still
-        # preserves the earlier turns' cards/chips (save rebuilds full history and
-        # reattaches from this cache — without seeding, old turns would lose them).
-        from app1.agent import seed_artifacts_from_messages
-        seed_artifacts_from_messages(target_sid, messages)
+        conv_state.adopt_sid(session, surface, target_sid)
+        conv_state.set_active(logged_in_user, surface, target_sid)
+
+        # Re-seed the artifact cache so a follow-up turn's save preserves the
+        # earlier turns' cards/chips.
+        _agent.seed_artifacts_from_messages(target_sid, messages)
 
         return jsonify({"status": "ok", "session_id": target_sid,
-                        "id": conv.get("id"), "mode": conv.get("mode") or "chat",
+                        "id": conv.get("id"), "mode": surface,
                         "title": conv.get("title"), "messages": messages})
     except Exception as e:
         import traceback
@@ -1769,11 +1771,20 @@ def confirm_tool_action():
     # Resolve the session_id used when the confirm_card was emitted.
     # Employee path uses session["session_id"]; HR path uses hr_chat_session_id.
     # We try both so one route handles both scopes.
-    employee_sid = session.get("session_id", "")
-    hr_sid = session.get("hr_chat_session_id", "")
-
+    # The chat and the profiler each have their own session id, so try every id
+    # this browser session holds.
     from app1 import confirm_store as _cs
-    entry = _cs.pop_pending(employee_sid, token) or _cs.pop_pending(hr_sid, token)
+    from app1 import conversation_state as _conv_state
+    hr_sid = session.get("hr_chat_session_id", "")
+    employee_sid = ""
+    entry = None
+    for _candidate in _conv_state.all_session_ids(session):
+        entry = _cs.pop_pending(_candidate, token)
+        if entry is not None:
+            employee_sid = _candidate
+            break
+    if entry is None:
+        entry = _cs.pop_pending(hr_sid, token)
     if entry is None:
         return jsonify({"status": "already_confirmed"})
 
@@ -2328,13 +2339,18 @@ def widget_ask(token):
         widget_session_id = f"widget_{uuid.uuid4().hex}"
         session['widget_session_id'] = widget_session_id
 
-    session['session_id'] = widget_session_id
-
     from app1.agent import handle_agentic_ask
     # handle_agentic_ask already returns a fully-built streaming Response — do not
     # re-wrap it in Response(stream_with_context(...)) (that double-wrap raises
     # TypeError at WSGI iteration). Just ensure the widget streaming headers are set.
-    response = handle_agentic_ask(user_query, session)
+    # The widget runs on its own session id and the EMBEDDING company's rules; it
+    # used to overwrite session['session_id'] (hijacking the visitor's employee
+    # chat) and ignore the widget's company entirely.
+    response = handle_agentic_ask(
+        user_query, session,
+        sid_override=widget_session_id,
+        company_override=widget.get("company_id") or widget.get("cid"),
+    )
     response.headers['X-Accel-Buffering'] = 'no'
     response.headers['Cache-Control'] = 'no-cache'
     return _widget_cors_headers(response, req_host, allowed_hosts)

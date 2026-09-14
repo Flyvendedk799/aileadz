@@ -332,6 +332,16 @@ except ValueError:
     _PROFILER_HANDOFF_PCT = 70
 
 
+def _row_val(row, key, idx):
+    """Read a DB row column whether the cursor returned a dict or a tuple."""
+    if isinstance(row, dict):
+        return row.get(key)
+    try:
+        return row[idx]
+    except (IndexError, KeyError, TypeError):
+        return None
+
+
 class _SimpleToolCall:
     """Minimal tool_call shim so the agent can invoke execute_tool() directly for
     deterministic server-side calls (e.g. the profiler handoff). Mirrors the
@@ -2109,10 +2119,19 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         "SELECT vendor_name FROM company_supplier_preferences "
                         "WHERE company_id = %s AND is_active = 0", (company_id,)
                     )
-                    blocked_vendors = {r[0] for r in _vc.fetchall()}
+                    # The app connection is a DictCursor (run.py MYSQL_CURSORCLASS);
+                    # positional r[0] raised KeyError on every turn and the bare
+                    # except hid it, so blocked vendors were never applied.
+                    blocked_vendors = {
+                        v for v in (_row_val(r, "vendor_name", 0) for r in _vc.fetchall()) if v
+                    }
                     _vc.close()
-                except Exception:
-                    pass
+                except Exception as _bv_err:
+                    print(f"[Blocked vendors] company={company_id}: {_bv_err}")
+                    try:
+                        _ca.mysql.connection.rollback()
+                    except Exception:
+                        pass
                 # Load active supplier agreements with discounts
                 try:
                     _ac = _ca.mysql.connection.cursor()
@@ -2125,14 +2144,21 @@ def handle_agentic_ask(user_query, session, mode="default"):
                         (company_id,)
                     )
                     for row in _ac.fetchall():
-                        supplier_agreements[row[0]] = {
-                            'discount_type': row[1],
-                            'discount_value': float(row[2]),
-                            'agreement_name': row[3] or '',
+                        _vendor = _row_val(row, "vendor_name", 0)
+                        if not _vendor:
+                            continue
+                        supplier_agreements[_vendor] = {
+                            'discount_type': _row_val(row, "discount_type", 1),
+                            'discount_value': float(_row_val(row, "discount_value", 2) or 0),
+                            'agreement_name': _row_val(row, "agreement_name", 3) or '',
                         }
                     _ac.close()
-                except Exception:
-                    pass
+                except Exception as _sa_err:
+                    print(f"[Supplier agreements] company={company_id}: {_sa_err}")
+                    try:
+                        _ca.mysql.connection.rollback()
+                    except Exception:
+                        pass
 
             learning_ctx = _build_learning_context_message(
                 logged_in_user, company_id, sid, supplier_agreements

@@ -3017,6 +3017,20 @@ PROFILE_TOOLS = [
 ]
 
 
+def _internal_tool_error(function_name, exc, message=None):
+    """Model-facing error for an unexpected tool failure.
+
+    Raw exception text (SQL fragments, column names, stack details) never reaches
+    the model or the SSE stream — the caller logs it server-side. The model gets
+    a short Danish line it can relay honestly plus a stable error_code."""
+    return json.dumps({
+        "status": "error",
+        "error_code": f"{function_name}_failed",
+        "message": message or "Det lykkedes ikke at hente eller gemme det lige nu. Prøv igen om lidt.",
+        "exception_type": type(exc).__name__,
+    })
+
+
 def _execute_get_user_profile(args, username):
     """Fetch the full user profile from MySQL."""
     if not username:
@@ -3031,7 +3045,8 @@ def _execute_get_user_profile(args, username):
             profile_text=formatted if formatted else "Brugeren har endnu ikke udfyldt sin profil.",
         )
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl ved hentning af profil: {e}"})
+        print(f"[Tool Error] get_user_profile: {e}")
+        return _internal_tool_error("get_user_profile", e, "Profilen kunne ikke hentes lige nu.")
 
 
 def _normalize_memory_label(label):
@@ -3040,17 +3055,24 @@ def _normalize_memory_label(label):
     return _re.sub(r"\s+", " ", label.lower().strip())
 
 
-def _find_supersedable_memory(existing_memories, new_label_norm, min_len=4):
+def _find_supersedable_memory(existing_memories, new_label_norm, min_len=4, category=None):
     """Find an existing memory that should be superseded by the new label.
 
+    Token-based, never raw substring: a character-substring rule let "Java"
+    overwrite "JavaScript-udvikler" and a 4-letter label swallow unrelated facts.
     Returns (memory_id, old_label) when:
-    - The existing normalized label is a substring of the new (new is more specific), OR
-    - The new normalized label is a substring of the existing one AND at least 70% as
-      long (new is a slightly shorter variant of the same fact).
+    - the labels are equal after normalisation, OR
+    - the old label's content tokens are a strict subset of the new one's
+      (new is a more specific version of the same fact), OR
+    - both labels have ≥2 content tokens and their Jaccard overlap is ≥ 0.6.
+    When `category` is given, a memory in a different specific category is never
+    superseded ('andet' is uncategorised and may be refined).
     Returns (None, None) when no near-duplicate is found.
     """
+    from app1.user_profile_db import _memory_tokens
     if len(new_label_norm) < min_len:
         return None, None
+    new_tokens = _memory_tokens(new_label_norm)
     for m in existing_memories:
         old_norm = _normalize_memory_label(m.get("label") or "")
         if len(old_norm) < min_len:
@@ -3059,12 +3081,18 @@ def _find_supersedable_memory(existing_memories, new_label_norm, min_len=4):
             # Exact duplicate — add_memory's UNIQUE constraint handles this,
             # return early so we don't supersede with the same text.
             return m["id"], m["label"]
-        # Substring supersede: old is contained in new → new is more specific
-        if old_norm in new_label_norm:
+        old_cat = (m.get("category") or "andet")
+        if category and category != "andet" and old_cat not in ("andet", category):
+            continue
+        old_tokens = _memory_tokens(old_norm)
+        if not old_tokens or not new_tokens:
+            continue
+        if old_tokens < new_tokens:
             return m["id"], m["label"]
-        # Partial supersede: new is contained in old AND new is ≥70% of old's length
-        if new_label_norm in old_norm and len(new_label_norm) >= 0.70 * len(old_norm):
-            return m["id"], m["label"]
+        if len(old_tokens) >= 2 and len(new_tokens) >= 2:
+            jaccard = len(old_tokens & new_tokens) / len(old_tokens | new_tokens)
+            if jaccard >= 0.6:
+                return m["id"], m["label"]
     return None, None
 
 
@@ -3092,7 +3120,7 @@ def _execute_remember_about_user(args, username):
         try:
             existing = db.get_memories(username, limit=200)
             new_norm = _normalize_memory_label(label)
-            sup_id, sup_label = _find_supersedable_memory(existing, new_norm)
+            sup_id, sup_label = _find_supersedable_memory(existing, new_norm, category=category)
             if sup_id is not None and sup_label != label:
                 # Supersede: update category/detail/label in place.
                 db.update_memory(username, sup_id,
@@ -3113,7 +3141,8 @@ def _execute_remember_about_user(args, username):
                            "category": category, "memory_id": mem_id,
                            "message": f"Husket: {label[:200]}"})
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Kunne ikke gemme hukommelse: {e}"})
+        print(f"[Tool Error] remember_about_user: {e}")
+        return _internal_tool_error("remember_about_user", e, "Det lykkedes ikke at gemme det i hukommelsen.")
 
 
 _FIELD_MAX_LENGTHS = {
@@ -3698,7 +3727,7 @@ def _execute_update_user_profile(args, username):
             _app.mysql.connection.rollback()
         except Exception:
             pass
-        return json.dumps({"status": "error", "message": f"Fejl: {e}"})
+        return _internal_tool_error("update_user_profile", e, "Profilændringen kunne ikke gennemføres lige nu.")
 
 
 def _execute_recommend_for_profile(args, username):
@@ -3831,7 +3860,8 @@ def _execute_recommend_for_profile(args, username):
 
         return _model_tool_json(status="success", count=len(compact_results), results=compact_results, gaps=gaps[:6])
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl: {e}"})
+        print(f"[Tool Error] recommend_for_profile: {e}")
+        return _internal_tool_error("recommend_for_profile", e, "Anbefalingerne kunne ikke hentes lige nu.")
 
 
 PROFILE_TOOLS.append({
@@ -4091,7 +4121,8 @@ def _execute_set_learning_goal(args, username):
         return json.dumps({"status": "success", "section": "goals", "goal_id": gid,
                            "message": f"Udviklingsmål oprettet: {title}"}, ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl ved oprettelse af mål: {e}"})
+        print(f"[Tool Error] set_learning_goal: {e}")
+        return _internal_tool_error("set_learning_goal", e, "Målet kunne ikke oprettes lige nu.")
 
 
 def _execute_get_learning_goals(args, username):
@@ -4109,7 +4140,8 @@ def _execute_get_learning_goals(args, username):
                            "message": ("Ingen udviklingsmål oprettet endnu." if not items else f"{len(items)} udviklingsmål.")},
                           ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl ved hentning af mål: {e}"})
+        print(f"[Tool Error] get_learning_goals: {e}")
+        return _internal_tool_error("get_learning_goals", e, "Målene kunne ikke hentes lige nu.")
 
 
 def _execute_update_learning_goal(args, username):
@@ -4137,7 +4169,8 @@ def _execute_update_learning_goal(args, username):
                            "message": "Mål opdateret." if ok else "Målet blev ikke fundet eller ingen ændringer."},
                           ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl ved opdatering af mål: {e}"})
+        print(f"[Tool Error] update_learning_goal: {e}")
+        return _internal_tool_error("update_learning_goal", e, "Målet kunne ikke opdateres lige nu.")
 
 
 def _execute_suggest_learning_path(args, username):
@@ -4317,7 +4350,8 @@ Regler:
         )
 
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl ved opbygning af læringssti: {e}"})
+        print(f"[Tool Error] suggest_learning_path: {e}")
+        return _internal_tool_error("suggest_learning_path", e, "Læringsstien kunne ikke bygges lige nu.")
 
 
 def _execute_get_vendor_info(args):
@@ -5563,7 +5597,8 @@ def _execute_save_course_for_later(args, username):
         return json.dumps({"status": "memory_saved", "label": title[:200], "category": "wishlist",
                            "message": f"Gemt til senere: {title[:200]}"})
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Kunne ikke gemme kurset: {e}"})
+        print(f"[Tool Error] save_course_for_later: {e}")
+        return _internal_tool_error("save_course_for_later", e, "Kurset kunne ikke gemmes lige nu.")
 
 
 def _execute_set_course_reminder(args, username):
@@ -5587,7 +5622,8 @@ def _execute_set_course_reminder(args, username):
         return json.dumps({"status": "memory_saved", "label": f"{title} – {when}", "category": "reminder",
                            "message": f"Påmindelse sat for {title[:160]} den {when}."})
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Kunne ikke sætte påmindelsen: {e}"})
+        print(f"[Tool Error] set_course_reminder: {e}")
+        return _internal_tool_error("set_course_reminder", e, "Påmindelsen kunne ikke sættes lige nu.")
 
 
 def _execute_manage_my_order(args, username):
@@ -5683,7 +5719,8 @@ def _execute_request_manager_approval(args, username):
         from email_service import send_branded_email
         managers = _manager_recipient_emails(company_id) or []
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Kunne ikke finde ledere: {e}"})
+        print(f"[Tool Error] request_manager_approval: {e}")
+        return _internal_tool_error("request_manager_approval", e, "Din leder kunne ikke findes lige nu.")
     if not managers:
         return json.dumps({"status": "error", "message": "Ingen ledere fundet at sende påmindelsen til."})
 
@@ -6176,7 +6213,8 @@ def _execute_save_learning_path(args, username):
         return json.dumps({"status": "success", "section": "learning_path", "path_id": path_id,
                            "message": f"Læringssti gemt: {title}"}, ensure_ascii=False)
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Kunne ikke gemme læringssti: {e}"})
+        print(f"[Tool Error] save_learning_path: {e}")
+        return _internal_tool_error("save_learning_path", e, "Læringsstien kunne ikke gemmes lige nu.")
 
 
 def _execute_get_learning_path(args, username):
@@ -6200,7 +6238,8 @@ def _execute_get_learning_path(args, username):
             message=("Ingen gemte læringsstier endnu." if not paths else f"{len(paths)} gemt(e) læringssti(er)."),
         )
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Fejl ved hentning af læringssti: {e}"})
+        print(f"[Tool Error] get_learning_path: {e}")
+        return _internal_tool_error("get_learning_path", e, "Læringsstien kunne ikke hentes lige nu.")
 
 
 def _execute_update_learning_path(args, username):
@@ -6238,7 +6277,8 @@ def _execute_update_learning_path(args, username):
             path=path,
         )
     except Exception as e:
-        return json.dumps({"status": "error", "message": f"Kunne ikke opdatere læringssti: {e}"})
+        print(f"[Tool Error] update_learning_path: {e}")
+        return _internal_tool_error("update_learning_path", e, "Læringsstien kunne ikke opdateres lige nu.")
 
 
 def execute_tool(tool_call, username=None, session_id=None):
@@ -6355,4 +6395,4 @@ def execute_tool(tool_call, username=None, session_id=None):
         import traceback
         print(f"[Tool Error] {function_name} session={session_id}: {e}")
         print(f"[Tool Traceback] {traceback.format_exc()}")
-        return json.dumps({"status": "error", "message": f"Intern fejl i {function_name}: {str(e)}"})
+        return _internal_tool_error(function_name, e)

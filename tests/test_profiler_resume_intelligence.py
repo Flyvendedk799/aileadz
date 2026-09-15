@@ -202,24 +202,23 @@ def test_profiler_prompt_uses_need_driven_state_not_covered_checklist():
 # ── 6. Chat.js mode-awareness contracts ──
 
 def test_chatjs_has_mode_aware_boot():
-    """Each surface restores only its own conversation (server-side pointer),
-    and "Ny samtale" tells the server which surface to reset."""
+    """Opening a surface starts a NEW conversation on that surface — the server
+    session is reset too (/new_session with the surface's mode), so a blank
+    thread can never be secretly continuing an old one. Only an explicit
+    ?c=<id> reopens a past conversation."""
     source = open("static/futurematch/assets/chat.js", encoding="utf-8").read()
     assert "CHAT_MODE" in source
-    assert "restoredMode" in source
-    # The wrong-surface guard never paints another surface's thread …
-    assert "restoredMode === expectedMode" in source
-    # … and there is no mismatch → newChat() reset that could wipe it server-side.
-    assert "const mismatch" not in source
     assert "body: JSON.stringify({ mode: (window.CHAT_MODE" in source
-    assert "restored:" in source and "mode:" in source
+    assert "const mismatch" not in source
+    assert "restoreActiveConversation" not in source
+    boot = source[source.index("function bootChat()"):source.index("window.fmChatBoot = bootChat();")]
+    assert "openConversation(cid)" in boot
+    assert "newChat()" in boot
 
 
-def test_chatjs_restore_returns_mode():
-    """restoreActiveConversation must return {restored: bool, mode: string}
-    not just a bare boolean."""
+def test_chatjs_intent_link_sends_into_a_fresh_chat():
+    """?intent= deep links (profile page, Mind-Map) land in a new conversation
+    and the param is stripped first, so a reload never re-sends it."""
     source = open("static/futurematch/assets/chat.js", encoding="utf-8").read()
-    # Old pattern (return false / return true) should be replaced
-    # with {restored: ..., mode: ...} returns
-    assert "{ restored: false, mode: null }" in source
-    assert "{ restored: true, mode: restoredMode }" in source
+    boot = source[source.index("function bootChat()"):source.index("window.fmChatBoot = bootChat();")]
+    assert boot.index('params.delete("intent")') < boot.index("return newChat().then(")

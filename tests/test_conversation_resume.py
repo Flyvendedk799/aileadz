@@ -121,24 +121,24 @@ class ConversationResumeTest(unittest.TestCase):
             self.assertEqual(row["mode"], "profiler")
             self.assertEqual(row["session_id"], "stored-sid-7")
 
-    def test_load_active_conversation_restores_session(self):
-        conv = {
-            "id": 7, "session_id": "stored-sid-7", "title": "Ledelseskurser", "mode": "chat",
-            "messages": _CONV["messages"],
-        }
+    def test_page_load_restore_endpoint_opens_a_new_chat(self):
+        """The old page-load restore endpoint no longer resumes: opening the chat
+        starts a new conversation, and past ones are reopened only by id."""
         with patch("app1.user_profile_db.ensure_tables", lambda: None), \
-             patch("app1.conversation_state.get_active", return_value="stored-sid-7"), \
-             patch("app1.conversation_state.load", return_value=conv):
+             patch("app1.conversation_state.load", return_value=None), \
+             patch("app1.conversation_state.set_active", lambda *a, **k: True):
             client = self._client(user="alice")
+            with client.session_transaction() as sess:
+                sess["session_ids"] = {"chat": "stored-sid-7"}
             resp = client.get("/app1/load_conversation")
             self.assertEqual(resp.status_code, 200)
             data = resp.get_json()
-            self.assertEqual(data["status"], "ok")
-            self.assertEqual(data["id"], 7)
+            self.assertEqual(data["status"], "empty")
+            self.assertEqual(data["messages"], [])
             self.assertEqual(data["mode"], "chat")
-            self.assertEqual(data["session_id"], "stored-sid-7")
+            self.assertNotEqual(data["session_id"], "stored-sid-7")
             with client.session_transaction() as sess:
-                self.assertEqual(sess["session_id"], "stored-sid-7")
+                self.assertEqual(sess["session_id"], data["session_id"])
 
     def test_resume_returns_stored_ui_artifacts(self):
         """Cards/tool chips persisted on an assistant turn survive the round-trip

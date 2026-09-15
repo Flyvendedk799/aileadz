@@ -6,7 +6,7 @@
 {% block body_class %}chat-page profiler-page{% endblock %}
 
 {% block extra_head %}
-<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v=8" />
+<link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/chat.css') }}?v={{ asset_version('futurematch/assets/chat.css') }}" />
 <style>
   /* Reuse the chat shell's variable remap (chat.css is a self-contained dark
      theme driven by variables). Identical to fm/chat.html. */
@@ -105,7 +105,7 @@
 {% block extra_scripts %}
 <script>window.CHAT_MODE = 'profiler';</script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
-<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v=14"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v={{ asset_version('futurematch/assets/chat.js') }}"></script>
 <script>
   (function () {
     var profilerCompleteTracked = false;

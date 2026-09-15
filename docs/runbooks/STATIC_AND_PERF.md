@@ -38,10 +38,18 @@ curl -sI https://TobiasMastek.pythonanywhere.com/static/futurematch/assets/fm.cs
 You should see nginx serving it (not the worker) and a long `Cache-Control`.
 PythonAnywhere applies a far-future expiry to mapped static files automatically.
 
-**Cache-busting:** every asset URL is versioned with `?v=N` (e.g. `fm.css?v=13`).
-Long-lived caching is safe **only because of this** — so whenever you edit a file
-under `static/`, **bump its `?v=N`** in the template that references it, or repeat
-visitors keep the old cached copy.
+**Cache-busting:** every asset URL is versioned with `?v=…`. Long-lived caching is
+safe **only because of this** — a changed file under an unchanged URL keeps
+serving the old cached copy to every returning visitor.
+
+- **Preferred:** `?v={{ asset_version('futurematch/assets/chat.js') }}` — a short
+  hash of the file's content (`asset_version.py`, registered in `run.py`). An edit
+  busts the cache by itself; an unchanged file keeps its cache across deploys. The
+  AI chat assets (`chat.js`, `chat.css`, `ai-sidebar.js`) use it — a chat.js change
+  once shipped invisibly because its hand-bumped `?v=14` was never bumped.
+- **Legacy `?v=N`** (most other assets): when you edit such a file, **bump its
+  `?v=N`** in every template that references it — or, better, switch that include
+  to `asset_version`.
 
 ### Code-side caching (already applied, covers the pre-mapping / dev path)
 - `run.py` sets `SEND_FILE_MAX_AGE_DEFAULT` (default 1 year, override with

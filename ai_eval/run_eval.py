@@ -146,9 +146,12 @@ def fresh_client(app, user: str = "test"):
     return c
 
 
-def ask(client, query: str) -> Dict[str, Any]:
-    """POST one turn to /app1/ask and decode the SSE stream into a structured result."""
-    r = client.post("/app1/ask", json={"query": query})
+def ask(client, query: str, *, mode: str = "default", kind: str = "message") -> Dict[str, Any]:
+    """POST one turn to /app1/ask and decode the SSE stream into a structured result.
+
+    ``mode`` selects the surface (default | profiler); ``kind="seed"`` sends a
+    UI-generated opener exactly like the profiler's Start/Fortsæt buttons."""
+    r = client.post("/app1/ask", json={"query": query, "mode": mode, "kind": kind})
     body = r.get_data(as_text=True)
     events = parse_sse(body)
 
@@ -259,8 +262,15 @@ def run_case(app, case: Dict[str, Any]) -> Dict[str, Any]:
 
     wall_start = time.time()
     last = None
+    case_mode = case.get("mode", "default")
     for i, turn in enumerate(turns):
-        last = ask(client, turn["query"])
+        turn_mode = turn.get("mode", case_mode)
+        if turn.get("action") == "new_chat":
+            # Exactly what the "Ny samtale" button does — memory must carry over
+            # through the durable layers, never through the old transcript.
+            client.post("/app1/new_session", json={"mode": turn_mode})
+            continue
+        last = ask(client, turn["query"], mode=turn_mode, kind=turn.get("kind", "message"))
     wall_ms = int((time.time() - wall_start) * 1000)
 
     session_id = _session_id_from_client(client)
@@ -556,7 +566,13 @@ def main(argv: Optional[List[str]] = None) -> int:
     ap.add_argument("--set-baseline", action="store_true", help="write this run's aggregates to baseline.json and exit")
     ap.add_argument("--only", type=str, default="", help="comma-separated case ids to run")
     ap.add_argument("--no-warm", action="store_true", help="skip RAG warmup")
+    ap.add_argument("--provider", choices=["openai", "anthropic"], default="",
+                    help="force AI_PROVIDER for this run (an ai_settings row in the DB still wins); "
+                         "run once per provider and compare")
     args = ap.parse_args(argv)
+    if args.provider:
+        import os as _os
+        _os.environ["AI_PROVIDER"] = args.provider
 
     cases = load_golden()
     if args.only:
@@ -601,6 +617,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     run_record = {
         "version": 1,
         "timestamp": int(time.time()),
+        "provider": args.provider or None,
         "judge": bool(args.judge),
         "metrics": agg["metrics"],
         "latency_p50_ms": agg["latency_p50_ms"],

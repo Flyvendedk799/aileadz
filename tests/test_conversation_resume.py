@@ -71,14 +71,11 @@ class ConversationResumeTest(unittest.TestCase):
         self.assertEqual(resp.status_code, 401)
 
     def test_resume_loads_and_activates_conversation(self):
-        saved = {}
-
-        def fake_save(username, session_id, messages):
-            saved["args"] = (username, session_id, messages)
-
         with patch("app1.user_profile_db.ensure_tables", lambda: None), \
              patch("app1.user_profile_db.load_conversation_by_id", return_value=dict(_CONV)), \
-             patch("app1.user_profile_db.save_conversation", side_effect=fake_save):
+             patch("app1.user_profile_db.save_conversation") as legacy_save, \
+             patch("app1.conversation_state.set_active") as set_active, \
+             patch("app1.conversation_state.digest_session_async") as digest:
             client = self._client(user="alice")
             # Seed a stale in-memory session that resume must clear.
             with client.session_transaction() as sess:
@@ -93,14 +90,15 @@ class ConversationResumeTest(unittest.TestCase):
             self.assertEqual(data.get("mode") or "chat", "chat")
             self.assertEqual(len(data["messages"]), 2)
 
-            # Promoted to active conversation with the stored session id + messages.
-            self.assertIn("args", saved)
-            self.assertEqual(saved["args"][0], "alice")
-            self.assertEqual(saved["args"][1], "stored-sid-7")
+            # Activated via the per-surface pointer — nothing copied/overwritten.
+            set_active.assert_called_once_with("alice", "chat", "stored-sid-7")
+            legacy_save.assert_not_called()
+            digest.assert_called_once()  # the conversation we left is digested
 
             # Session now points at the restored conversation; stale memory dropped.
             with client.session_transaction() as sess:
                 self.assertEqual(sess["session_id"], "stored-sid-7")
+                self.assertEqual(sess["session_ids"]["chat"], "stored-sid-7")
             self.assertNotIn("old-sid", agent.CHAT_MEMORY)
             self.assertNotIn("stored-sid-7", agent.CHAT_MEMORY)
 
@@ -124,14 +122,13 @@ class ConversationResumeTest(unittest.TestCase):
             self.assertEqual(row["session_id"], "stored-sid-7")
 
     def test_load_active_conversation_restores_session(self):
-        saved = {
-            "session_id": "stored-sid-7",
+        conv = {
+            "id": 7, "session_id": "stored-sid-7", "title": "Ledelseskurser", "mode": "chat",
             "messages": _CONV["messages"],
         }
-        meta = {"id": 7, "title": "Ledelseskurser", "mode": "chat"}
         with patch("app1.user_profile_db.ensure_tables", lambda: None), \
-             patch("app1.user_profile_db.load_conversation", return_value=saved), \
-             patch("app1.user_profile_db.find_conversation_by_session", return_value=meta):
+             patch("app1.conversation_state.get_active", return_value="stored-sid-7"), \
+             patch("app1.conversation_state.load", return_value=conv):
             client = self._client(user="alice")
             resp = client.get("/app1/load_conversation")
             self.assertEqual(resp.status_code, 200)
@@ -157,7 +154,7 @@ class ConversationResumeTest(unittest.TestCase):
         agent.SHOWN_ARTIFACTS.pop("stored-sid-7", None)
         with patch("app1.user_profile_db.ensure_tables", lambda: None), \
              patch("app1.user_profile_db.load_conversation_by_id", return_value=conv), \
-             patch("app1.user_profile_db.save_conversation", lambda *a, **k: None):
+             patch("app1.conversation_state.set_active", lambda *a, **k: True):
             resp = self._client(user="alice").post("/app1/conversations/7/resume")
             self.assertEqual(resp.status_code, 200)
             asst = [m for m in resp.get_json()["messages"] if m["role"] == "assistant"][0]

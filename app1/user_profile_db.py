@@ -176,7 +176,126 @@ _TABLES_SQL = [
         INDEX idx_username (username),
         INDEX idx_cat (username, category)
     ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    # Which conversation is "open" per surface. Replaces the single-row-per-user
+    # user_conversations as the resume pointer, so the chat and the profiler can
+    # never overwrite each other and a fresh session never falls back to an old
+    # transcript. `mode` uses the sidebar vocabulary (chat | profiler).
+    """CREATE TABLE IF NOT EXISTS user_active_sessions (
+        username VARCHAR(255) NOT NULL,
+        mode VARCHAR(20) NOT NULL,
+        session_id VARCHAR(100) NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (username, mode)
+    ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    # Durable cross-session memory per surface. Lives apart from any transcript,
+    # so starting a new chat can never erase what earlier sessions taught the AI.
+    """CREATE TABLE IF NOT EXISTS user_conversation_summaries (
+        username VARCHAR(255) NOT NULL,
+        mode VARCHAR(20) NOT NULL,
+        summary TEXT DEFAULT NULL,
+        source_session_id VARCHAR(100) DEFAULT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (username, mode)
+    ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
+    # Semantic index over what the AI knows about the user: memories, structured
+    # profile facts and conversation digests (app1/user_knowledge.py). The
+    # embedding is a normalised float32 blob; rows without one still serve the
+    # keyword fallback.
+    """CREATE TABLE IF NOT EXISTS user_knowledge (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(255) NOT NULL,
+        source_type VARCHAR(32) NOT NULL,
+        source_id VARCHAR(64) NOT NULL,
+        mode VARCHAR(20) DEFAULT NULL,
+        content TEXT NOT NULL,
+        content_hash CHAR(40) NOT NULL,
+        embedding MEDIUMBLOB DEFAULT NULL,
+        embedding_model VARCHAR(64) DEFAULT NULL,
+        dims SMALLINT DEFAULT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        UNIQUE KEY uk_source (username, source_type, source_id),
+        INDEX idx_user_type (username, source_type, updated_at)
+    ) DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci""",
 ]
+
+
+def _column_exists(cur, table, column):
+    cur.execute(
+        "SELECT 1 FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() "
+        "AND TABLE_NAME = %s AND COLUMN_NAME = %s LIMIT 1",
+        (table, column),
+    )
+    return cur.fetchone() is not None
+
+
+def _index_exists(cur, table, index_name):
+    cur.execute(
+        "SELECT 1 FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() "
+        "AND TABLE_NAME = %s AND INDEX_NAME = %s LIMIT 1",
+        (table, index_name),
+    )
+    return cur.fetchone() is not None
+
+
+def _ensure_column(cur, table, column, ddl):
+    """Add a column only when information_schema says it is missing.
+
+    Checking the catalog (instead of probing with SELECT and treating ANY error
+    as "missing") means a lock timeout or dropped connection can never trigger a
+    schema change."""
+    try:
+        if _column_exists(cur, table, column):
+            return
+        cur.execute(f"ALTER TABLE {table} ADD COLUMN {ddl}")
+        current_app.mysql.connection.commit()
+    except Exception as err:
+        print(f"[UserProfileDB] {table}.{column} migration skipped: {err}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+
+
+def _ensure_index(cur, table, index_name, columns_sql):
+    try:
+        if _index_exists(cur, table, index_name):
+            return
+        cur.execute(f"ALTER TABLE {table} ADD INDEX {index_name} ({columns_sql})")
+        current_app.mysql.connection.commit()
+    except Exception as err:
+        print(f"[UserProfileDB] index {table}.{index_name} skipped: {err}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+
+
+_MODE_SQL = "CASE WHEN LOWER(COALESCE(mode, '')) IN ('profiler', 'profile') THEN 'profiler' ELSE 'chat' END"
+
+
+def _backfill_conversation_state(cur):
+    """One-way copy of the legacy single-row user_conversations into the per-mode
+    pointer + durable summary tables. INSERT IGNORE keeps it idempotent and never
+    overwrites state written by the new code."""
+    try:
+        cur.execute(
+            "INSERT IGNORE INTO user_active_sessions (username, mode, session_id) "
+            f"SELECT username, {_MODE_SQL}, session_id FROM user_conversations "
+            "WHERE session_id IS NOT NULL AND session_id <> ''"
+        )
+        cur.execute(
+            "INSERT IGNORE INTO user_conversation_summaries (username, mode, summary, source_session_id) "
+            f"SELECT username, {_MODE_SQL}, summary, session_id FROM user_conversations "
+            "WHERE summary IS NOT NULL AND summary <> ''"
+        )
+        current_app.mysql.connection.commit()
+    except Exception as err:
+        print(f"[UserProfileDB] conversation state backfill skipped: {err}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
 
 
 _tables_ensured = False
@@ -239,18 +358,19 @@ def ensure_tables():
                 except Exception:
                     pass
 
-        # Migration: if user_conversations exists with wrong schema, recreate it
+        # An earlier version dropped and re-created user_conversations whenever
+        # a probe SELECT failed — including on a lock timeout or a dead socket,
+        # which silently destroyed every user's active transcript and rolling
+        # summary. Schema problems are reported, never "healed" by deleting data.
         try:
-            cur.execute("SELECT username, session_id FROM user_conversations LIMIT 0")
-        except Exception:
-            current_app.mysql.connection.rollback()
+            if not _column_exists(cur, "user_conversations", "session_id"):
+                print("[UserProfileDB] WARNING: user_conversations lacks session_id — manual migration required")
+        except Exception as schema_err:
+            print(f"[UserProfileDB] user_conversations schema check skipped: {schema_err}")
             try:
-                cur.execute("DROP TABLE IF EXISTS user_conversations")
-                cur.execute(_USER_CONVERSATIONS_SQL)  # Re-create with correct schema
-                current_app.mysql.connection.commit()
-                print("[UserProfileDB] Recreated user_conversations table with correct schema")
-            except Exception as e2:
-                print(f"[UserProfileDB] Migration error for user_conversations: {e2}")
+                current_app.mysql.connection.rollback()
+            except Exception:
+                pass
 
         # Idempotent migration: add the target_role column to an existing
         # user_profile_summary table (career direction that drives skill-gap and
@@ -321,6 +441,19 @@ def ensure_tables():
                     current_app.mysql.connection.rollback()
                 except Exception:
                     pass
+
+        # DB-authoritative conversation state (app1/conversation_state.py):
+        # optimistic-concurrency revision, the in-session summary, and per-session
+        # flags (profiler handoff) that used to live in per-worker dicts.
+        _ensure_column(cur, "conversation_history", "rev", "rev INT NOT NULL DEFAULT 0")
+        _ensure_column(cur, "conversation_history", "summary", "summary TEXT DEFAULT NULL")
+        _ensure_column(cur, "conversation_history", "summary_msg_count",
+                       "summary_msg_count INT NOT NULL DEFAULT 0")
+        _ensure_column(cur, "conversation_history", "state_json", "state_json TEXT DEFAULT NULL")
+        _ensure_index(cur, "conversation_history", "idx_user_session", "username, session_id")
+        _ensure_index(cur, "conversation_history", "idx_user_mode_updated", "username, mode, updated_at")
+        _ensure_index(cur, "user_memories", "idx_user_updated", "username, updated_at")
+        _backfill_conversation_state(cur)
 
         cur.close()
         _tables_ensured = True
@@ -470,6 +603,9 @@ def update_experience(username, experience_id, **fields):
         return False
     allowed = {"title", "company", "start_year", "end_year", "is_current", "description"}
     updates = {k: v for k, v in fields.items() if k in allowed}
+    for year_key in ("start_year", "end_year"):
+        if year_key in updates:
+            updates[year_key] = _coerce_year(updates[year_key])
     if not updates:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in updates)
@@ -497,7 +633,8 @@ def add_education(username, degree, institution="", year_completed=None, descrip
     cur.execute(
         "INSERT INTO user_education (username, degree, institution, year_completed, description) "
         "VALUES (%s, %s, %s, %s, %s)",
-        (username, degree.strip(), institution.strip(), year_completed, description.strip() if description else None)
+        (username, degree.strip(), (institution or "").strip(), _coerce_year(year_completed),
+         description.strip() if description else None)
     )
     current_app.mysql.connection.commit()
     new_id = cur.lastrowid
@@ -520,6 +657,8 @@ def update_education(username, education_id, **fields):
         return False
     allowed = {"degree", "institution", "year_completed", "description"}
     updates = {k: v for k, v in fields.items() if k in allowed}
+    if "year_completed" in updates:
+        updates["year_completed"] = _coerce_year(updates["year_completed"])
     if not updates:
         return False
     set_clause = ", ".join(f"{k} = %s" for k in updates)
@@ -762,7 +901,8 @@ def remove_portfolio_link(username, link_id):
 # interests that don't fit a structured profile section. Surfaced on the
 # Mind-Map and injected (relevance-filtered) into every chat turn.
 
-_MEMORY_CATEGORIES = ("praeference", "maal", "kontekst", "personlighed", "interesse", "andet")
+_MEMORY_CATEGORIES = ("praeference", "maal", "kontekst", "personlighed", "interesse", "andet",
+                      "wishlist", "reminder")
 
 # Danish + English stopwords for the lightweight relevance scorer. Small on
 # purpose — this is keyword overlap, not NLP.
@@ -916,6 +1056,7 @@ def select_relevant_memories(username, query_text, limit=6, scan_cap=120, min_co
 _MEMORY_CATEGORY_LABELS = {
     "praeference": "Præference", "maal": "Mål", "kontekst": "Kontekst",
     "personlighed": "Personlighed", "interesse": "Interesse", "andet": "Andet",
+    "wishlist": "Gemt til senere", "reminder": "Påmindelse",
 }
 
 
@@ -1347,7 +1488,7 @@ def get_full_profile(username):
             for e in education
         ],
         "completed_courses": [
-            {"title": c["course_title"], "vendor": c["vendor"],
+            {"id": c.get("id"), "title": c["course_title"], "vendor": c["vendor"],
              "completed_date": c.get("completed_date", ""), "handle": c.get("course_handle", ""),
              "certificate_note": c.get("certificate_note", "")}
             for c in courses
@@ -1370,23 +1511,33 @@ def get_full_profile(username):
     }
 
 
-def format_profile_for_ai(profile_data):
-    """Format the full profile into a concise text block for the AI system message."""
+def format_profile_for_ai(profile_data, include_ids=False):
+    """Format the full profile into a concise text block for the AI system message.
+
+    ``include_ids`` prefixes editable rows with ``[#id]`` so the agent can call
+    update_*/remove_* actions (which require an id) without an extra lookup —
+    before this the model had no way to edit or remove an entry it could see.
+    """
     if not profile_data:
         return ""
+
+    def _rid(item):
+        rid = item.get("id") if include_ids and isinstance(item, dict) else None
+        return f"[#{rid}] " if rid not in (None, "") else ""
 
     parts = []
     if profile_data.get("headline"):
         parts.append(f"Overskrift: {profile_data['headline']}")
     if profile_data.get("bio"):
-        parts.append(f"Bio: {profile_data['bio'][:200]}")
+        parts.append(f"Bio: {profile_data['bio'][:400]}")
     if profile_data.get("target_role"):
         parts.append(f"Ønsket rolle/karriereretning: {profile_data['target_role'][:120]}")
     if profile_data.get("goals"):
-        parts.append(f"Mål: {profile_data['goals'][:200]}")
+        parts.append(f"Mål: {profile_data['goals'][:300]}")
     active_goals = [g for g in profile_data.get("learning_goals", []) if g.get("status") == "aktiv"]
     if active_goals:
-        gstrs = [g["title"] + (f" (inden {g['target_date']})" if g.get("target_date") else "") for g in active_goals[:6]]
+        gstrs = [_rid(g) + g["title"] + (f" (inden {g['target_date']})" if g.get("target_date") else "")
+                 for g in active_goals[:6]]
         parts.append("Aktive udviklingsmål: " + "; ".join(gstrs))
     if profile_data.get("preferred_location"):
         parts.append(f"Foretrukken lokation: {profile_data['preferred_location']}")
@@ -1397,15 +1548,15 @@ def format_profile_for_ai(profile_data):
 
     skills = profile_data.get("skills", [])
     if skills:
-        skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:15]]
+        skill_strs = [f"{s['name']} ({s['level']})" for s in skills[:25]]
         parts.append(f"Kompetencer: {', '.join(skill_strs)}")
 
     exp = profile_data.get("experience", [])
     if exp:
         exp_strs = []
-        for e in exp[:5]:
+        for e in exp[:8]:
             period = f"{e['start_year'] or '?'}-{'nu' if e['is_current'] else (e['end_year'] or '?')}"
-            line = f"{e['title']} @ {e['company']} ({period})"
+            line = f"{_rid(e)}{e['title']} @ {e['company']} ({period})"
             desc = (e.get('description') or '').strip()
             if desc:
                 line += f" — {desc[:120]}"
@@ -1416,7 +1567,7 @@ def format_profile_for_ai(profile_data):
     if edu:
         edu_strs = []
         for e in edu[:5]:
-            line = f"{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})"
+            line = f"{_rid(e)}{e['degree']} — {e['institution']} ({e.get('year_completed', '?')})"
             desc = (e.get('description') or '').strip()
             if desc:
                 line += f" — {desc[:100]}"
@@ -1425,14 +1576,14 @@ def format_profile_for_ai(profile_data):
 
     courses = profile_data.get("completed_courses", [])
     if courses:
-        course_strs = [f"{c['title']} ({c['vendor']})" for c in courses[:10]]
+        course_strs = [f"{c['title']} ({c['vendor']})" for c in courses[:15]]
         parts.append(f"Gennemførte kurser: {', '.join(course_strs)}")
 
     certs = profile_data.get("certifications", [])
     if certs:
         cert_strs = []
         for c in certs[:10]:
-            s = c["name"]
+            s = _rid(c) + c["name"]
             if c.get("issuer"):
                 s += f" ({c['issuer']})"
             if c.get("expiry_date"):
@@ -1442,8 +1593,13 @@ def format_profile_for_ai(profile_data):
 
     languages = profile_data.get("languages", [])
     if languages:
-        lang_strs = [f"{l['language']} ({l['proficiency']})" for l in languages[:10]]
+        lang_strs = [f"{_rid(l)}{l['language']} ({l['proficiency']})" for l in languages[:10]]
         parts.append(f"Sprog: {', '.join(lang_strs)}")
+
+    links = profile_data.get("portfolio_links", [])
+    if links:
+        link_strs = [f"{_rid(p)}{p.get('label') or p.get('url')}" for p in links[:6]]
+        parts.append(f"Portfolio/links: {'; '.join(link_strs)}")
 
     # Active learning paths — so the profiler knows what plans the user is following
     paths = profile_data.get("learning_paths", [])
@@ -1595,6 +1751,10 @@ def load_conversation_summary(username):
 _CANNED_TITLE_PREFIXES = (
     "hjælp mig med at gøre min profil komplet",
     "start profiler",
+    "start profilsamtalen",
+    "fortsæt profilsamtalen",
+    "fortsæt profileringen",
+    "fortsæt hvor vi slap",
 )
 
 

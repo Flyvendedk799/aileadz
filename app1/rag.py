@@ -660,6 +660,52 @@ def get_query_embedding(query_text):
         return None
 
 
+def embed_texts(texts, timeout=None):
+    """Embed many texts in ONE batched ``embeddings.create`` call.
+
+    Used by the per-user knowledge index (app1/user_knowledge.py), which must
+    embed up to a few dozen short facts inside a request without paying one
+    round-trip per fact. Same client/model/dimensions as get_query_embedding so
+    stored vectors and query vectors live in the same space. Deliberately NOT
+    cached: callers only embed rows whose content changed.
+
+    Returns a list aligned with ``texts``; an entry is None when that text was
+    empty or the call failed/returned bad dimensions. Never raises — ``timeout``
+    (seconds) bounds the call so a slow API can't stall the caller.
+    """
+    try:
+        items = [str(t or "").strip() for t in (texts or [])]
+    except Exception:
+        return []
+    out = [None] * len(items)
+    idx = [i for i, t in enumerate(items) if t]
+    if not idx:
+        return out
+    try:
+        kwargs = {
+            "input": [items[i][:8000] for i in idx],
+            "model": embedding_model(),
+            "dimensions": embedding_dimensions(),
+        }
+        if timeout is not None:
+            kwargs["timeout"] = float(timeout)
+        response = openai.embeddings.create(**kwargs)
+        expected_dims = embedding_dimensions()
+        for pos, item in enumerate(response.data):
+            # The API echoes an ``index`` per input; fall back to position.
+            j = getattr(item, "index", pos)
+            if not isinstance(j, int) or j < 0 or j >= len(idx):
+                j = pos
+            if j >= len(idx):
+                break
+            emb = getattr(item, "embedding", None)
+            if emb and len(emb) == expected_dims:
+                out[idx[j]] = list(emb)
+    except Exception as e:
+        print(f"[Embedding Warning] batch embed failed ({len(idx)} texts): {e}")
+    return out
+
+
 def _reciprocal_rank_fusion(ranked_lists, k=60, weights=None):
     """
     Merge multiple ranked result lists using weighted RRF.

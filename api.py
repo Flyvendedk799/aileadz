@@ -1188,10 +1188,23 @@ def get_mindmap_api():
             _gap_by_key = {g['skill'].lower(): g for g in compute_skill_gaps(username, profile=profile)}
         except Exception:
             _gap_by_key = {}
+        # Cross-session memory now lives in the per-surface digests
+        # (user_conversation_summaries); the legacy user_conversations.summary is
+        # only a fallback for users who haven't chatted since the migration.
+        summary = ""
         try:
-            summary = load_conversation_summary(username)
+            from app1 import conversation_state as _conv_state
+            summary = "\n\n".join(
+                s for s in (_conv_state.load_mode_summary(username, "profiler"),
+                            _conv_state.load_mode_summary(username, "chat")) if s
+            )
         except Exception:
             summary = ""
+        if not summary:
+            try:
+                summary = load_conversation_summary(username)
+            except Exception:
+                summary = ""
 
         nodes = [{'id': 'root', 'label': username, 'type': 'root', 'category': 'root'}]
         edges = []

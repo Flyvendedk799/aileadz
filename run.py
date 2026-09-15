@@ -304,6 +304,15 @@ def create_app():
     except Exception as e:
         logging.warning("White-label integration skipped: %s", e)
 
+    # Content-hash cache-busting: ?v={{ asset_version('path/under/static') }}.
+    # Assets are cached for a year, so a forgotten hand-bumped ?v=N ships the
+    # old file to every returning visitor.
+    try:
+        from asset_version import register_asset_version
+        register_asset_version(app)
+    except Exception as e:
+        logging.warning("Asset versioning skipped: %s", e)
+
     # Branding schema migration runs every process start (not gated by enterprise sync TTL)
     @app.before_request
     def _warm_ai_subsystems_once():

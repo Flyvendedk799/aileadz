@@ -236,27 +236,28 @@ class RouteTests(unittest.TestCase):
             self.assertEqual(sess["session_ids"]["profiler"], data["session_id"])
             self.assertNotEqual(data["session_id"], "prof-old")
 
-    def test_load_conversation_after_new_chat_is_empty(self):
-        client = self._client(user="eva")
+    def test_legacy_load_conversation_opens_a_new_chat(self):
+        """A browser still running an old cached chat.js calls this on page load.
+        It must get a NEW chat — never the previous conversation's messages, and
+        never a server session that silently continues it."""
+        stored = {"id": 3, "session_id": "prof-open", "title": "t", "mode": "profiler",
+                  "messages": [{"role": "user", "content": "gammel samtale"}]}
+        client = self._client(user="eva", session_ids={"chat": "chat-open", "profiler": "prof-open"},
+                              session_id="prof-open", session_surface="profiler")
         with mock.patch("app1.user_profile_db.ensure_tables", lambda: None), \
-                mock.patch.object(cs, "get_active", return_value="fresh-sid"), \
-                mock.patch.object(cs, "load", return_value=None), \
-                mock.patch("app1.user_profile_db.load_latest_conversation_by_mode") as latest:
+                mock.patch.object(cs, "get_active", return_value="prof-open"), \
+                mock.patch.object(cs, "load", return_value=stored), \
+                mock.patch.object(cs, "digest_session_async") as digest, \
+                mock.patch.object(cs, "set_active") as set_active:
             data = client.get("/app1/load_conversation?mode=profiler").get_json()
         self.assertEqual(data["status"], "empty")
-        latest.assert_not_called()
+        self.assertEqual(data["messages"], [])
+        self.assertNotEqual(data["session_id"], "prof-open")
+        digest.assert_called_once()  # the conversation we left is still digested
+        set_active.assert_called_once_with("eva", "profiler", data["session_id"])
         with client.session_transaction() as sess:
-            self.assertEqual(sess["session_ids"]["profiler"], "fresh-sid")
-
-    def test_load_conversation_restores_only_its_surface(self):
-        conv = {"id": 3, "session_id": "chat-sid", "title": "t", "mode": "chat",
-                "messages": [{"role": "user", "content": "hej"}]}
-        client = self._client(user="eva")
-        with mock.patch("app1.user_profile_db.ensure_tables", lambda: None), \
-                mock.patch.object(cs, "get_active", return_value="chat-sid"), \
-                mock.patch.object(cs, "load", return_value=conv):
-            data = client.get("/app1/load_conversation?mode=profiler").get_json()
-        self.assertEqual(data["status"], "empty")
+            self.assertEqual(sess["session_ids"]["profiler"], data["session_id"])
+            self.assertEqual(sess["session_ids"]["chat"], "chat-open")
 
     def test_confirm_resolves_tokens_from_either_surface(self):
         client = self._client(user="eva", session_ids={"chat": "chat-sid", "profiler": "prof-sid"},

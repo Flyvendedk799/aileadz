@@ -1170,12 +1170,19 @@ def new_session():
     the other surface's open conversation is untouched. (It used to DELETE the
     user's single active row — rolling summary included — after which the next
     /ask silently reloaded the previous transcript into the "new" chat.)"""
-    from app1 import agent as _agent
     from app1 import conversation_state as conv_state
-    logged_in_user = session.get("user")
     body = request.get_json(silent=True) or {}
     req_mode = request.args.get("mode") or body.get("mode") or session.get("session_surface") or "chat"
     surface = conv_state.surface_for_mode(req_mode)
+    new_sid = _start_fresh_session(surface)
+    return jsonify({"status": "ok", "session_id": new_sid, "mode": surface})
+
+
+def _start_fresh_session(surface):
+    """Save + digest this surface's open conversation, then give it a new id."""
+    from app1 import agent as _agent
+    from app1 import conversation_state as conv_state
+    logged_in_user = session.get("user")
     old_sid = conv_state.current_sid(session, surface)
     if not old_sid and session.get("session_surface") in (None, surface):
         old_sid = session.get("session_id")
@@ -1209,7 +1216,7 @@ def new_session():
     new_sid = conv_state.start_new_session(session, surface)
     if logged_in_user:
         conv_state.set_active(logged_in_user, surface, new_sid)
-    return jsonify({"status": "ok", "session_id": new_sid, "mode": surface})
+    return new_sid
 
 
 def _drop_session_memory(sid):
@@ -1224,41 +1231,21 @@ def _drop_session_memory(sid):
 
 @app1_bp.route("/load_conversation")
 def load_conversation_endpoint():
-    """Restore the open conversation of one surface (for the frontend).
+    """Legacy page-load restore — now opens a new chat.
 
-    Follows the per-surface pointer. A pointer to a session with no stored row
-    means the user started a new chat: that restores empty rather than falling
-    back to an older transcript. Only when no pointer exists yet (pre-migration
-    users) is the latest conversation of the surface adopted."""
+    The UI opens a new conversation on every visit and reopens a past one only
+    by id (/conversations/<id>/resume). The only caller left is a browser still
+    running an old, cached chat.js, which calls this on page load. Answer it the
+    new way — start a fresh session for the surface and return empty — so a
+    stale client can neither show nor silently continue the previous chat."""
     logged_in_user = session.get("user")
     if not logged_in_user:
         return jsonify({"status": "no_user", "messages": []})
     from app1 import conversation_state as conv_state
     surface = conv_state.surface_for_mode(request.args.get("mode") or "chat")
     try:
-        from app1.user_profile_db import ensure_tables, load_latest_conversation_by_mode
-        ensure_tables()
-        sid = conv_state.get_active(logged_in_user, surface)
-        conv = conv_state.load(logged_in_user, sid) if sid else None
-        if sid and not conv:
-            conv_state.adopt_sid(session, surface, sid)
-            return jsonify({"status": "empty", "messages": [], "session_id": sid, "mode": surface})
-        if not sid:
-            latest = load_latest_conversation_by_mode(logged_in_user, surface)
-            if latest and latest.get("session_id"):
-                conv_state.set_active(logged_in_user, surface, latest["session_id"])
-                conv = conv_state.load(logged_in_user, latest["session_id"]) or latest
-        if conv and conv.get("messages") and conv_state.surface_for_mode(conv.get("mode")) == surface:
-            conv_state.adopt_sid(session, surface, conv["session_id"])
-            return jsonify({
-                "status": "ok",
-                "messages": conv["messages"],
-                "session_id": conv["session_id"],
-                "id": conv.get("id"),
-                "title": conv.get("title"),
-                "mode": surface,
-            })
-        return jsonify({"status": "empty", "messages": [], "mode": surface})
+        new_sid = _start_fresh_session(surface)
+        return jsonify({"status": "empty", "messages": [], "session_id": new_sid, "mode": surface})
     except Exception as e:
         print(f"[Load Conversation Error] {e}")
         try:

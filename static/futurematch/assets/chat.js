@@ -1655,12 +1655,18 @@
     syncConvUrl(null);
     if (window.fmAiSidebar && typeof window.fmAiSidebar.setActive === "function") {
       window.fmAiSidebar.setActive(null);
+    } else {
+      // Sidebar not mounted yet: clear its remembered selection so that, after
+      // this new chat's first message, it selects the new conversation.
+      try { sessionStorage.removeItem("fm-ai-active-conv"); } catch (e) { /* ignore */ }
     }
     welcome();
     input.focus();
   }
   window.fmNewChat = newChat;
-  window.fmSetActiveConvId = (id) => { activeConvId = id || null; };
+  // The conversation you are in is pinned in the URL (?c=<id>), so a reload or
+  // a shared link reopens it — everything else opens a new chat.
+  window.fmSetActiveConvId = (id) => { activeConvId = id || null; syncConvUrl(activeConvId); };
 
   /* ---------------- conversation restore ---------------- */
 
@@ -1738,37 +1744,6 @@
     return false;
   }
   window.fmOpenConversation = openConversation;
-
-  async function restoreActiveConversation() {
-    try {
-      const currentMode = (window.CHAT_MODE || "default").toLowerCase();
-      const endpoint = "/app1/load_conversation" + (currentMode === "profiler" ? "?mode=profiler" : "?mode=chat");
-      const resp = await fetch(endpoint, {
-        headers: { "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin",
-      });
-      if (!resp.ok) { welcome(); return { restored: false, mode: null }; }
-      const data = await resp.json();
-      const msgs = data && data.messages;
-      const restoredMode = (data && data.mode) || "chat";
-      // The server only restores this surface's own conversation; the check is
-      // a belt-and-braces guard so a wrong-surface thread is never painted.
-      const expectedMode = currentMode === "profiler" ? "profiler" : "chat";
-      if (data && data.status === "ok" && Array.isArray(msgs) && msgs.length && restoredMode === expectedMode) {
-        renderHistory(msgs);
-        if (data.id) {
-          activeConvId = data.id;
-          syncConvUrl(data.id);
-          if (window.fmAiSidebar && typeof window.fmAiSidebar.setActive === "function") {
-            window.fmAiSidebar.setActive(data.id);
-          }
-        }
-        return { restored: true, mode: restoredMode };
-      }
-    } catch (e) { /* fall through to welcome */ }
-    welcome();
-    return { restored: false, mode: null };
-  }
 
   /* ---------------- real profile completeness ----------------
      Drives the ring from GET /api/profile/completeness — the same depth-aware
@@ -1866,35 +1841,32 @@
   };
 
   /* ---------------- init ----------------
-     Restore the active thread when hopping between /chat, /ai-profiler and
-     /mind-map. Each surface has its own open conversation on the server, so
-     /chat never receives the profiler's thread (and vice versa) — there is no
-     "wrong mode" thread to throw away here any more. (The old mismatch path
-     called newChat(), which reset the server session and could wipe the other
-     surface's conversation.)
-     ?c= opens a specific history row; ?new=1 forces a blank session. */
+     Like every mainstream AI chat: opening /chat or /ai-profiler starts a NEW
+     conversation, and past ones live in the sidebar. The server session is
+     reset too (newChat → /new_session for this surface), so a blank thread can
+     never be quietly continuing an old one; what the AI should remember comes
+     from the profile, memories and conversation digests, not the transcript.
+     ?c=<id> reopens a specific conversation (sidebar links, reloads — the open
+     conversation is pinned in the URL); ?intent= sends into a fresh chat. */
   function bootChat() {
     let params;
     try { params = new URLSearchParams(location.search); } catch (e) { params = new URLSearchParams(); }
-    if (params.get("new") === "1") {
-      return newChat().then(() => false);
-    }
+    const cid = params.get("c");
+    if (cid) return openConversation(cid);
     const intent = (params.get("intent") || "").trim();
     if (intent) {
       try {
         params.delete("intent");
         history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : ""));
       } catch (e) { /* non-critical */ }
-      return restoreActiveConversation().then(() => {
-        input.value = intent;
-        input.dispatchEvent(new Event("input", { bubbles: true }));
-        setTimeout(() => { if (!sending) send.click(); }, 80);
-        return true;
-      });
     }
-    const cid = params.get("c");
-    if (cid) return openConversation(cid);
-    return restoreActiveConversation().then((result) => !!(result && result.restored));
+    return newChat().then(() => {
+      if (!intent) return false;
+      input.value = intent;
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      setTimeout(() => { if (!sending) send.click(); }, 80);
+      return true;
+    });
   }
   window.fmChatBoot = bootChat();
   renderRef();

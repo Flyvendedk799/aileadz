@@ -296,12 +296,18 @@ class AiSidebarTemplateTests(unittest.TestCase):
         for needle in ("aiConvSearch", "data-ai-filter", "profiler", "fmOpenConversation", "/ai-profiler?c="):
             self.assertIn(needle, js)
 
-    def test_chat_js_restores_active_thread_instead_of_always_welcoming(self):
+    def test_chat_js_opens_a_new_chat_and_keeps_open_threads_in_the_url(self):
+        """Like every mainstream AI chat: opening /chat or /ai-profiler starts a
+        new conversation; past ones live in the sidebar, and the conversation
+        you are in is pinned in the URL (?c=<id>) so a reload keeps it."""
         path = os.path.join(os.path.dirname(__file__), "..", "static/futurematch/assets/chat.js")
         with open(path, encoding="utf-8") as fh:
             js = fh.read()
-        self.assertIn("restoreActiveConversation", js)
-        self.assertIn("/app1/load_conversation", js)
+        self.assertNotIn("restoreActiveConversation", js)
+        self.assertNotIn("/app1/load_conversation", js)
+        self.assertIn("if (cid) return openConversation(cid);", js)
+        self.assertIn("return newChat().then(", js)
+        self.assertIn("syncConvUrl(activeConvId)", js)
         self.assertIn("fmOpenConversation", js)
         self.assertNotIn("function refreshConv", js)
         self.assertNotIn("function renderConv", js)

@@ -448,9 +448,14 @@ counter; `user_conversations` is legacy (read-only, still in GDPR).
 - `save_turn(..., expected_rev=CHAT_MEMORY_REV[sid])` updates with
   `WHERE rev = %s`; a stale worker merges (`merge_transcripts`) instead of
   overwriting. At turn start a worker whose cached rev differs rebuilds.
-- `user_active_sessions (username, mode)` is the open-conversation pointer used by
-  `/load_conversation`; `/new_session {mode}` saves + digests the old session and
-  points the surface at a fresh id — **nothing is deleted**; `/resume` adopts.
+- **Opening a surface starts a new chat** (like every mainstream AI chat):
+  `chat.js bootChat()` calls `newChat()` → `/new_session {mode}`, which saves +
+  digests the old session and points the surface at a fresh id — **nothing is
+  deleted**. Past conversations live in the sidebar; the open one is pinned in the
+  URL (`?c=<id>`), so a reload reopens it via `/conversations/<id>/resume`.
+  Continuity comes from the profile, memories and digests, not the transcript.
+  `user_active_sessions (username, mode)` + `/load_conversation` remain as an API
+  (no longer used by the UI on boot).
 - Confirm tokens are tried against every session id the browser holds.
 - The widget runs with `sid_override` + the embedding company
   (`company_override`) and never touches the employee session.

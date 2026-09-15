@@ -1,0 +1,26 @@
+---
+title: Min læring og Min tidslinje
+slug: min-laering-og-tidslinje
+url: /min-laering
+keywords: min læring, forside, tidslinje, min tidslinje, status, frist, deadline, overskredet, mine kurser, mine bestillinger, anbefalet til dig, hvor er mit kursus, timeline
+audience: employee
+---
+## Kort fortalt
+"Min læring" (/min-laering) er din forside med dine kurser, anbefalinger og udvikling samlet ét sted. "Min tidslinje" (/min-tidslinje) følger dine kurser fra bestilling til gennemførelse – status, godkendelse og deadlines ét sted.
+
+## Min læring
+- "I gang lige nu": kurser, der er godkendt og endnu ikke gennemført.
+- "Anbefalet til dig": kurser matchet til din profil. Er der ingen anbefalinger, så udfyld din profil.
+- "Mine bestillinger": dine seneste bestillinger med status. Klik "Se alle på tidslinjen" for hele listen.
+- "Kompetenceprofil": hvor udfyldt din profil er, og dine kompetencer grupperet efter niveau.
+- Mangler din profil kompetencer, vises "Kom godt i gang" med "Upload CV" og "Udfyld profil manuelt".
+- Brug "Spørg AI-assistenten" eller "Udforsk kurser" for at komme videre.
+
+## Min tidslinje
+- Vælg "Min tidslinje" i menuen under Konto.
+- Øverst ser du "Kurser i alt", "Afventer", "Aktive" og "Overskredet".
+- For hvert kursus vises status, godkendelse, bestillingsdato, frist, gennemførelsesdato og pris, når de findes.
+- "Fristen er overskredet" vises, hvis et kursus, der ikke er afsluttet, har passeret sin frist.
+
+## Hvad betyder statusserne?
+"Afventer betaling", "Afventer godkendelse", "Godkendt", "Afvist", "Behandler", "Bekræftet", "Annulleret" og "Gennemført".

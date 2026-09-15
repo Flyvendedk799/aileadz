@@ -38,7 +38,16 @@ real values.**
 `AI_OPENAI_TIMEOUT_SECONDS`, `AI_FEW_SHOT`, `AI_SUMMARY_MODE`,
 `AI_EMBEDDING_MODEL`, `AI_EMBEDDING_DIMENSIONS`, `AI_RAG_CROSS_ENCODER`,
 `AI_RAG_CROSS_ENCODER_MAX_CANDIDATES`, `AI_TRACE_SAMPLE_RATE`,
-`AI_WARMUP_ON_IMPORT`.
+`AI_WARMUP_ON_IMPORT`, `AI_CONTEXT_ASSEMBLER`, `AI_CONTEXT_MAX_TOKENS`,
+`AI_STEERING_PLACEMENT`, `AI_TOKEN_CHARS_PER_TOKEN`, `AI_SESSION_SUMMARY_MODE`,
+`AI_USER_KNOWLEDGE`, `AI_USER_KNOWLEDGE_EMBEDDINGS`, `AI_LEARNER_HR_CONTEXT`,
+`AI_LEARNER_HR_GOALS`, `AI_HELP_KB` (see `docs/ai-framework.md` §8).
+
+> **Token budgets (2026-09 AI framework overhaul):** the code defaults rose to
+> `AI_MAX_INPUT_TOKENS=36000` / `AI_TPM_BUDGET=42000`, but a WSGI file that pins
+> the old `20000`/`26000` keeps the old, much tighter context. Update the deploy
+> env deliberately after checking the OpenAI org TPM tier (and Anthropic ITPM if
+> Claude is enabled); watch `ai_agent_runs` for 429s after the change.
 
 > The sandbox uses `SANDBOX=1` plus `MYSQL_*` and the AI/OUTBOX envs; with
 > `SANDBOX=1` the insecure `SECRET_KEY` warning and secure-cookie enforcement are
@@ -67,3 +76,11 @@ real values.**
 7. Confirm the outbox-drain scheduled task exists and returns 200
    (`JOB_RUNNER.md`).
 8. If secrets were ever leaked/rotated, confirm `SECRET_ROTATION.md` is complete.
+9. **One-off (AI framework overhaul):** after the first boot has created the new
+   conversation-state columns, add the unique conversation key in a quiet window
+   — it can rebuild `conversation_history`, which is why it is not done at boot:
+   `python scripts/migrate_conversation_unique.py --dry-run`, then without
+   `--dry-run`. Duplicates are renamed (`…#dup<id>`), never deleted. The app runs
+   correctly before this step; the key only closes a rare double-insert race.
+10. Optional: build the platform-help embedding index with
+    `python -m app1.help_kb --build` (keyword search works without it).

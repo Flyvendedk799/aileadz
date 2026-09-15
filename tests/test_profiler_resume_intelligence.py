@@ -10,15 +10,15 @@ import pytest
 # ── 1. Resume-aware profiler prompt ──
 
 def test_profiler_playbook_contains_resume_awareness():
-    """SYSTEM_PLAYBOOK_PROFILER must include resume-awareness directives that
-    prevent the AI from re-asking about things it already knows."""
+    """SYSTEM_PLAYBOOK_PROFILER treats the profile, memories and earlier
+    conversations as established knowledge to build on — phrased as
+    consultant guidance, not shouted prohibitions (which read as a checklist
+    and, before the context assembler, never reached the model anyway)."""
     from app1.agent import SYSTEM_PLAYBOOK_PROFILER
-    # Must contain the resume-awareness section
-    assert "RESUME-BEVIDSTHED" in SYSTEM_PLAYBOOK_PROFILER
-    # Key directives
-    assert "ALLEREDE VED" in SYSTEM_PLAYBOOK_PROFILER
-    assert "SPØRG ALDRIG" in SYSTEM_PLAYBOOK_PROFILER
-    assert "ALDRIG start" in SYSTEM_PLAYBOOK_PROFILER or "Spring til det du MANGLER" in SYSTEM_PLAYBOOK_PROFILER
+    assert "DET DU ALLEREDE VED" in SYSTEM_PLAYBOOK_PROFILER
+    assert "tidligere samtaler" in SYSTEM_PLAYBOOK_PROFILER
+    assert "NÅR SAMTALEN ÅBNER ELLER GENOPTAGES" in SYSTEM_PLAYBOOK_PROFILER
+    assert "SPØRG ALDRIG" not in SYSTEM_PLAYBOOK_PROFILER
     # Must also retain the career strategy section
     assert "SAMTALESTRATEGI" in SYSTEM_PLAYBOOK_PROFILER
     assert "target_role" in SYSTEM_PLAYBOOK_PROFILER
@@ -186,35 +186,32 @@ def test_session_init_does_not_duplicate_profile():
 
 # ── 5. Profiler context includes "ALLEREDE AFDÆKKET" block ──
 
-def test_profiler_prompt_assembly_includes_covered_block():
-    """The profiler's dynamic system message should include an
-    ALLEREDE AFDÆKKET block when profile data exists, listing what
-    sections are already populated."""
-    # We'll verify by checking that the code path constructs covered_block
-    # from db_profile data. We read agent.py source for the pattern.
+def test_profiler_prompt_uses_need_driven_state_not_covered_checklist():
+    """The duplicated "ALLEREDE AFDÆKKET — spørg IKKE om dette igen" checklist
+    (and the contradictory "DIT NÆSTE SPØRGSMÅL SKAL VÆRE OM …" line) are gone:
+    the profile layer carries what is known, _build_profiler_state says which
+    unknowns would sharpen the advice and why."""
     import inspect
     import app1.agent as agent_mod
     source = inspect.getsource(agent_mod)
-    assert "ALLEREDE AFDÆKKET" in source
-    assert "spørg IKKE om dette igen" in source
-    # Should list specific section types
-    assert "Erfaring" in source or "_exp" in source
-    assert "Kompetencer" in source or "_sk" in source
+    assert "spørg IKKE om dette igen" not in source
+    assert "DIT NÆSTE SPØRGSMÅL SKAL VÆRE OM" not in source
+    assert "_build_profiler_state(_profiler_completeness" in source
 
 
 # ── 6. Chat.js mode-awareness contracts ──
 
 def test_chatjs_has_mode_aware_boot():
-    """chat.js bootChat() must detect mode mismatch between the current
-    surface (window.CHAT_MODE) and the restored conversation's mode."""
+    """Each surface restores only its own conversation (server-side pointer),
+    and "Ny samtale" tells the server which surface to reset."""
     source = open("static/futurematch/assets/chat.js", encoding="utf-8").read()
-    # Must reference CHAT_MODE for mode detection
     assert "CHAT_MODE" in source
-    # Must return mode from restoreActiveConversation
-    assert "result.mode" in source or "restoredMode" in source
-    # Must detect mismatch
-    assert "mismatch" in source
-    # restoreActiveConversation must return object with mode
+    assert "restoredMode" in source
+    # The wrong-surface guard never paints another surface's thread …
+    assert "restoredMode === expectedMode" in source
+    # … and there is no mismatch → newChat() reset that could wipe it server-side.
+    assert "const mismatch" not in source
+    assert "body: JSON.stringify({ mode: (window.CHAT_MODE" in source
     assert "restored:" in source and "mode:" in source
 
 

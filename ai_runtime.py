@@ -525,9 +525,9 @@ def _redact_pii(text: Any) -> str:
 
 def max_api_input_tokens() -> int:
     try:
-        return max(8000, int(os.getenv("AI_MAX_INPUT_TOKENS", "22000")))
+        return max(8000, int(os.getenv("AI_MAX_INPUT_TOKENS", "36000")))
     except ValueError:
-        return 22000
+        return 36000
 
 
 def max_output_tokens() -> int:
@@ -685,9 +685,9 @@ def max_output_tokens_for_turn(has_tools: bool) -> int:
 def tpm_budget() -> int:
     """Soft input-token ceiling with headroom under org TPM limits."""
     try:
-        return max(12000, int(os.getenv("AI_TPM_BUDGET", "28000")))
+        return max(12000, int(os.getenv("AI_TPM_BUDGET", "42000")))
     except ValueError:
-        return 28000
+        return 42000
 
 
 def rate_limit_retry_seconds() -> float:
@@ -884,6 +884,16 @@ def _estimate_text_tokens(text: Any) -> int:
     return max(1, int(len(text) / _chars_per_token()))
 
 
+def estimate_tools_tokens(tools: Optional[List[Dict[str, Any]]]) -> int:
+    """Rough input cost of the tool schemas sent with a request.
+
+    Schemas are billed as input on every call (16 profiler tools are several
+    thousand tokens) but were never counted against the budget."""
+    if not tools:
+        return 0
+    return _estimate_text_tokens(_safe_json(tools))
+
+
 def estimate_messages_tokens(messages: List[Dict[str, Any]]) -> int:
     total = 0
     for msg in messages or []:
@@ -986,16 +996,52 @@ def consolidate_system_layers(messages: List[Dict[str, Any]]) -> List[Dict[str, 
     return consolidated
 
 
-def compaction_level_for_messages(messages: List[Dict[str, Any]]) -> str:
+def _merge_and_compact(
+    messages: List[Dict[str, Any]],
+    *,
+    aggressive: bool = False,
+    reserved_tokens: int = 0,
+) -> List[Dict[str, Any]]:
+    """Budget the system layers, then trim history and tool payloads.
+
+    With the assembler (default) every system layer is fitted by priority into
+    a character budget (see ai_context_layers) and survives compaction intact.
+    AI_CONTEXT_ASSEMBLER=0 restores the legacy merge + flat per-message cut.
+    """
+    import ai_context_layers
+
+    if not ai_context_layers.assembler_enabled():
+        merged = consolidate_system_layers(ai_context_layers.render_tagged(messages))
+        return compact_messages_for_api(merged, aggressive=aggressive)
+    limit = max_api_input_tokens()
+    reserved = max(0, int(reserved_tokens or 0))
+    budget = ai_context_layers.context_budget_chars(
+        limit, reserved, chars_per_token=_chars_per_token(), aggressive=aggressive,
+    )
+    merged, _report = ai_context_layers.assemble(
+        messages,
+        budget_chars=budget,
+        aggressive=aggressive,
+        static_max_chars=8000 if aggressive else 12000,
+    )
+    return compact_messages_for_api(
+        merged,
+        max_tokens=max(8000, limit - reserved),
+        aggressive=aggressive,
+        keep_recent=12 if aggressive else 20,
+    )
+
+
+def compaction_level_for_messages(messages: List[Dict[str, Any]], reserved_tokens: int = 0) -> str:
     """Return normal / aggressive / over_budget / cooldown for observability."""
     if in_rate_limit_cooldown():
         return "cooldown"
-    merged = consolidate_system_layers(messages)
-    normal = compact_messages_for_api(merged, aggressive=False)
-    if estimate_messages_tokens(normal) <= tpm_budget():
+    reserved = max(0, int(reserved_tokens or 0))
+    normal = _merge_and_compact(messages, aggressive=False, reserved_tokens=reserved)
+    if estimate_messages_tokens(normal) + reserved <= tpm_budget():
         return "normal"
-    aggressive = compact_messages_for_api(merged, aggressive=True)
-    if estimate_messages_tokens(aggressive) <= tpm_budget():
+    aggressive = _merge_and_compact(messages, aggressive=True, reserved_tokens=reserved)
+    if estimate_messages_tokens(aggressive) + reserved <= tpm_budget():
         return "aggressive"
     return "over_budget"
 
@@ -1004,19 +1050,33 @@ def prepare_messages_for_turn(
     messages: List[Dict[str, Any]],
     *,
     aggressive: bool = False,
+    reserved_tokens: int = 0,
+    keep_zones: bool = False,
 ) -> List[Dict[str, Any]]:
-    """Normalize, merge dynamic system layers, and enforce token budget."""
-    merged = consolidate_system_layers(messages)
-    compact = compact_messages_for_api(merged, aggressive=aggressive)
-    if estimate_messages_tokens(compact) > tpm_budget():
-        compact = compact_messages_for_api(merged, aggressive=True)
+    """Budget system layers, trim history, repair tool pairing.
+
+    ``reserved_tokens`` is the input the request spends outside the messages
+    (tool schemas — see estimate_tools_tokens). The default return value is
+    OpenAI-ready: private layer keys stripped and the steering layer placed per
+    AI_STEERING_PLACEMENT. ``keep_zones=True`` keeps the ``_zone`` tags for
+    adapters that place knowledge/steering themselves (Anthropic).
+    """
+    import ai_context_layers
+
+    reserved = max(0, int(reserved_tokens or 0))
+    compact = _merge_and_compact(messages, aggressive=aggressive, reserved_tokens=reserved)
+    if not aggressive and estimate_messages_tokens(compact) + reserved > tpm_budget():
+        compact = _merge_and_compact(messages, aggressive=True, reserved_tokens=reserved)
     # Repair any tool/tool_calls pairing broken by trimming before it hits the API.
-    return _sanitize_tool_sequence(compact)
+    compact = _sanitize_tool_sequence(compact)
+    if keep_zones:
+        return compact
+    return ai_context_layers.finalize_for_openai(compact)
 
 
-def check_turn_token_budget(messages: List[Dict[str, Any]]) -> tuple:
+def check_turn_token_budget(messages: List[Dict[str, Any]], reserved_tokens: int = 0) -> tuple:
     """Return (allowed, user_message, compaction_level)."""
-    level = compaction_level_for_messages(messages)
+    level = compaction_level_for_messages(messages, reserved_tokens=reserved_tokens)
     if level != "over_budget":
         return True, "", level
     return (
@@ -1347,6 +1407,7 @@ def compact_messages_for_api(
     *,
     max_tokens: Optional[int] = None,
     aggressive: bool = False,
+    keep_recent: Optional[int] = None,
 ) -> List[Dict[str, Any]]:
     """Keep prompt size under org TPM limits by trimming history and tool payloads."""
     limit = max_tokens or max_api_input_tokens()
@@ -1358,7 +1419,8 @@ def compact_messages_for_api(
     core_system = system_msgs[:1]
     extra_system = system_msgs[1:]
 
-    keep_recent = 10 if aggressive else 14
+    if keep_recent is None:
+        keep_recent = 10 if aggressive else 14
     recent = other_msgs[-keep_recent:]
     dropped = other_msgs[:-keep_recent] if len(other_msgs) > keep_recent else []
 
@@ -1384,6 +1446,11 @@ def compact_messages_for_api(
 
     per_extra = 1200 if aggressive else 1800
     for msg in extra_system:
+        if msg.get("_zone"):
+            # Already fitted to its budget by ai_context_layers.assemble();
+            # cutting it again is exactly what used to drop the profile.
+            compacted.append(dict(msg))
+            continue
         compacted.append({
             **msg,
             "content": _truncate_text(str(msg.get("content") or ""), per_extra),
@@ -1418,17 +1485,23 @@ def compact_messages_for_api(
         compacted.append(copy)
 
     while estimate_messages_tokens(compacted) > limit and len(compacted) > 2:
-        # Drop oldest non-core message first.
-        for idx, msg in enumerate(compacted):
-            if msg.get("role") != "system" or idx > 0:
-                compacted.pop(idx)
-                break
-        else:
+        # Oldest history goes first — never the latest user message or the
+        # tool tail after it. Only when no history is left to give up do the
+        # un-budgeted system notes go; budgeted context layers are kept.
+        last_user = max((i for i, m in enumerate(compacted) if m.get("role") == "user"), default=-1)
+        victim = next((i for i, m in enumerate(compacted)
+                       if m.get("role") != "system" and i < last_user), None)
+        if victim is None:
+            victim = next((i for i, m in enumerate(compacted)
+                           if i > 0 and m.get("role") == "system" and not m.get("_zone")), None)
+        if victim is None:
             break
+        compacted.pop(victim)
 
     if estimate_messages_tokens(compacted) > limit:
         for msg in compacted:
-            if msg.get("role") == "system" and msg is not compacted[0]:
+            if (msg.get("role") == "system" and msg is not compacted[0]
+                    and msg.get("_zone") != "knowledge"):
                 msg["content"] = _truncate_text(str(msg.get("content") or ""), 600)
 
     return compacted
@@ -1559,8 +1632,9 @@ def _chat_completion_with_resilience(
         (ai_provider.openai_fast_model(), True),
     ]
     last_exc: Optional[Exception] = None
+    reserved = estimate_tools_tokens(tools)
     for attempt_index, (attempt_model, aggressive) in enumerate(attempts):
-        working = prepare_messages_for_turn(source_messages, aggressive=aggressive)
+        working = prepare_messages_for_turn(source_messages, aggressive=aggressive, reserved_tokens=reserved)
         kwargs: Dict[str, Any] = {
             "model": attempt_model,
             "messages": working,
@@ -1636,7 +1710,10 @@ def _responses_create_with_resilience(
             working = source_messages
         else:
             aggressive = attempt_model == ai_provider.openai_fast_model() or _max_chars <= 3500
-            working = prepare_messages_for_turn(source_messages, aggressive=aggressive)
+            working = prepare_messages_for_turn(
+                source_messages, aggressive=aggressive,
+                reserved_tokens=estimate_tools_tokens(response_tools),
+            )
             payload = _messages_to_responses_input(working)
         kwargs: Dict[str, Any] = {
             "model": attempt_model,

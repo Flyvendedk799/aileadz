@@ -163,6 +163,13 @@ _EXPORT_QUERIES = [
     # AI'ens fritekst-dossier (præferencer, livskontekst, personlighed) — det
     # mest følsomme lager; SKAL med i både eksport og sletning.
     ("user_memories", "SELECT * FROM user_memories WHERE username=%s"),
+    # AI conversation state + semantic knowledge index (2026-09): per-mode
+    # active-session pointers, durable per-mode conversation digests, and the
+    # embedded snippets of memories/profile facts/conversation summaries.
+    ("user_active_sessions", "SELECT * FROM user_active_sessions WHERE username=%s"),
+    ("user_conversation_summaries", "SELECT * FROM user_conversation_summaries WHERE username=%s"),
+    ("user_knowledge", "SELECT id, username, source_type, source_id, mode, content, "
+                       "embedding_model, created_at, updated_at FROM user_knowledge WHERE username=%s"),
     # notifications.user_id HOLDS the username (platform convention).
     ("notifications", "SELECT * FROM notifications WHERE user_id=%s"),
     ("course_orders", "SELECT * FROM course_orders WHERE username=%s"),
@@ -327,6 +334,10 @@ _DELETE_TABLES = [
     ("user_portfolio_links", "username"),
     # AI'ens fritekst-dossier — ren profil, ingen regnskabs-/revisionsværdi.
     ("user_memories", "username"),
+    # AI conversation state + semantic knowledge index — pure profile data.
+    ("user_active_sessions", "username"),
+    ("user_conversation_summaries", "username"),
+    ("user_knowledge", "username"),
     # notifications.user_id holds the username.
     ("notifications", "user_id"),
 ]

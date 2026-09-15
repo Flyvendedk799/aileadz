@@ -79,6 +79,23 @@ class FindSupersedableTests(unittest.TestCase):
         sup_id, _ = tools._find_supersedable_memory(existing, "ok lidt mere tekst")
         self.assertIsNone(sup_id)
 
+    def test_character_substring_is_not_a_token_match(self):
+        # The old substring rule let "Java" overwrite a JavaScript memory.
+        existing = [self._mem(6, "Java")]
+        sup_id, _ = tools._find_supersedable_memory(existing, "javascript udvikling")
+        self.assertIsNone(sup_id)
+
+    def test_different_specific_category_is_never_superseded(self):
+        existing = [{"id": 8, "label": "Foretrækker online kurser", "category": "praeference"}]
+        sup_id, _ = tools._find_supersedable_memory(
+            existing, "foretrækker online kurser om aftenen", category="maal"
+        )
+        self.assertIsNone(sup_id)
+        sup_id, _ = tools._find_supersedable_memory(
+            existing, "foretrækker online kurser om aftenen", category="praeference"
+        )
+        self.assertEqual(sup_id, 8)
+
 
 class ExecuteRememberDeduplicatesTests(unittest.TestCase):
     def _memories(self, label):

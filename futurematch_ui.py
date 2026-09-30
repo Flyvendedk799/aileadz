@@ -186,6 +186,7 @@ def employee_home():
                     item = {
                         'order_id': r.get('order_id'),
                         'url': url_for('futurematch.my_order', order_id=r.get('order_id')),
+                        'deadline': r.get('completion_deadline'),
                         'handle': r.get('product_handle'),
                         'title': r.get('product_title') or 'Ukendt kursus',
                         'status': raw_status,
@@ -231,8 +232,44 @@ def employee_home():
     # ── Recommendations (cheap catalog fallback; no LLM) ──
     recommendations = _home_recommendations(profile, company_id)
 
+    # ── Goals and deadlines (N-8.5): what the learner is working toward ──
+    goals = []
+    try:
+        from app1.user_profile_db import get_learning_goals
+        goals = [g for g in (get_learning_goals(username) or []) if (g.get('status') or 'aktiv') == 'aktiv'][:3]
+    except Exception as e:
+        current_app.logger.debug("home goals load: %s", e)
+    today = datetime.date.today()
+    deadlines = []
+    for o in orders:
+        d = o.get('deadline')
+        if d and o['status'] in ('approved', 'booked'):
+            try:
+                dd = d.date() if hasattr(d, 'date') else d
+                days = (dd - today).days
+            except Exception:
+                continue
+            deadlines.append({'title': o['title'], 'url': o['url'], 'date': dd, 'days': days,
+                              'overdue': days < 0, 'soon': 0 <= days <= 14})
+    deadlines.sort(key=lambda x: x['date'])
+
+    # ── First-run welcome (N-2.2): shown until dismissed or the profile is alive ──
+    show_welcome = False
+    if username and user_id and not has_skills:
+        try:
+            wc = current_app.mysql.connection.cursor(MySQLdb_cursors_dict())
+            wc.execute("SELECT first_login_completed AS f FROM users WHERE id = %s", (user_id,))
+            wr = wc.fetchone()
+            wc.close()
+            show_welcome = bool(wr) and not int(wr.get('f') or 0)
+        except Exception:
+            show_welcome = False
+
     return render_template(
         'fm/employee_home.html',
+        goals=goals,
+        deadlines=deadlines[:4],
+        show_welcome=show_welcome,
         active=active,
         orders=orders,
         recommendations=recommendations,
@@ -242,6 +279,26 @@ def employee_home():
         completeness_sections=completeness_sections,
         has_skills=has_skills,
     )
+
+
+def MySQLdb_cursors_dict():
+    import MySQLdb.cursors
+    return MySQLdb.cursors.DictCursor
+
+
+@futurematch_bp.route('/min-laering/velkommen/luk', methods=['POST'])
+def dismiss_welcome():
+    """Record first_login_completed so the welcome card stops showing."""
+    if not session.get('user_id'):
+        return redirect(url_for('auth.login'))
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute("UPDATE users SET first_login_completed = 1 WHERE id = %s", (session['user_id'],))
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception as e:
+        current_app.logger.warning("dismiss welcome: %s", e)
+    return redirect(url_for('futurematch.employee_home'))
 
 
 @futurematch_bp.route('/mine-maal')

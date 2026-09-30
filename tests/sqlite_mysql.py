@@ -16,13 +16,36 @@ Usage::
 
 from __future__ import annotations
 
+import datetime
 import re
 import sqlite3
+
+# MySQL hands back datetime/date objects for these columns; SQLite stores text.
+# Templates call .strftime() on them, so convert on the way out.
+_DATETIME_COLUMNS = {
+    "created_at", "updated_at", "timestamp", "requested_at", "decided_at", "booked_at",
+    "completion_date", "completion_deadline", "payment_date", "invoice_date", "invoice_due_date",
+    "started_at", "completed_at", "read_at", "captured_at",
+}
+
+
+def _convert(row):
+    if row is None:
+        return None
+    d = dict(row)
+    for k in _DATETIME_COLUMNS & set(d):
+        v = d[k]
+        if isinstance(v, str) and v:
+            try:
+                d[k] = datetime.datetime.fromisoformat(v)
+            except ValueError:
+                pass
+    return d
 
 SCHEMA = """
 CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT, username TEXT UNIQUE, password TEXT,
   email TEXT, credits INTEGER DEFAULT 0, role TEXT DEFAULT 'user', email_notifications INTEGER DEFAULT 1,
-  created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+  first_login_completed INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE companies (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT, company_slug TEXT,
   status TEXT DEFAULT 'active', settings TEXT);
 CREATE TABLE company_users (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER,
@@ -117,11 +140,10 @@ class _Cursor:
         return self
 
     def fetchone(self):
-        r = self._c.fetchone()
-        return dict(r) if r is not None else None
+        return _convert(self._c.fetchone())
 
     def fetchall(self):
-        return [dict(r) for r in self._c.fetchall()]
+        return [_convert(r) for r in self._c.fetchall()]
 
     def close(self):
         self._c.close()

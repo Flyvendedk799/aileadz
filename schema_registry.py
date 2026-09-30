@@ -39,6 +39,7 @@ REGISTRY_DDL = [
         credits INT NOT NULL DEFAULT 0,
         role VARCHAR(50) NOT NULL DEFAULT 'user',
         email_notifications TINYINT NOT NULL DEFAULT 1,
+        first_login_completed TINYINT NOT NULL DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_users_username (username)
     ) {_ENGINE}""",

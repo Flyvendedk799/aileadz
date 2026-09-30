@@ -52,6 +52,26 @@
 {% block content %}
 <div class="fm-wrap">
 
+        {% if show_welcome %}
+        <section class="fm-card" data-reveal style="margin-bottom:18px;border-color:var(--fm-primary)">
+          <div class="fm-card-body" style="padding:20px 24px">
+            <div class="fm-spread" style="align-items:flex-start;gap:16px;flex-wrap:wrap">
+              <div style="max-width:60ch">
+                <span class="fm-eyebrow"><i class="fa-solid fa-hand-sparkles"></i> Velkommen</span>
+                <h2 style="font-size:20px;margin:6px 0 6px">Vælg, hvor du vil starte</h2>
+                <p class="muted" style="margin:0;font-size:14px">Du behøver ikke udfylde noget for at komme i gang. Jo mere AI'en ved om dig, jo bedre kan den hjælpe, men du bestemmer selv tempoet.</p>
+              </div>
+              <form method="post" action="{{ url_for('futurematch.dismiss_welcome') }}"><button class="btn btn-ghost btn-sm" type="submit">Skjul</button></form>
+            </div>
+            <div class="emp-cta" style="margin-top:14px">
+              <a class="btn btn-primary" href="{{ url_for('futurematch.ai_profiler') }}"><i class="fa-solid fa-user-check"></i> Fortæl AI'en om dig</a>
+              <a class="btn btn-ghost" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV</a>
+              <a class="btn btn-ghost" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Udforsk kataloget</a>
+            </div>
+          </div>
+        </section>
+        {% endif %}
+
         <!-- Hero -->
         <section class="emp-hero" data-reveal>
           <div>
@@ -115,20 +135,34 @@
               {% endfor %}
             </div>
             {% else %}
-            <div class="fm-card" id="recSkel" data-reveal><div class="fm-card-body">
-              <div class="fm-grid" style="grid-template-columns:repeat(3,1fr);gap:14px" aria-hidden="true">
-                {% for _ in range(3) %}
-                <div>
-                  <div class="fm-skel" style="height:80px;border-radius:var(--r-md);margin-bottom:10px"></div>
-                  <div class="fm-skel" style="height:11px;width:45%;margin-bottom:8px"></div>
-                  <div class="fm-skel" style="height:14px;width:85%;margin-bottom:6px"></div>
-                  <div class="fm-skel" style="height:11px;width:70%"></div>
-                </div>
-                {% endfor %}
-              </div>
-              <div class="muted" style="text-align:center;font-size:13px;padding:14px 16px 4px;color:var(--fm-ink-3)">Ingen anbefalinger endnu. Udfyld din profil, så finder AI’en relevante kurser.</div>
+            <div class="fm-card" data-reveal><div class="fm-card-body" style="text-align:center;padding:28px 20px">
+              <i class="fa-solid fa-wand-magic-sparkles" style="font-size:24px;color:var(--fm-primary);opacity:.8"></i>
+              <p style="margin:12px 0 4px;font-weight:700">Vi har ingen anbefalinger til dig endnu</p>
+              <p class="muted" style="margin:0 0 14px;font-size:13.5px">Fortæl AI'en lidt om dig selv, eller se hele kataloget, så finder vi kurser, der passer.</p>
+              <a class="btn btn-primary btn-sm" href="{{ url_for('futurematch.ai_profiler') }}">Fortæl AI'en om dig</a>
+              <a class="btn btn-ghost btn-sm" href="{{ url_for('catalog.catalog_index') }}">Se kataloget</a>
             </div></div>
             {% endif %}
+
+            <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-bullseye"></i> Mod målet</span><h2 class="fm-section-title">Mål og frister</h2></div><a href="{{ url_for('futurematch.learning_goals') }}" class="fm-badge teal">Alle mål</a></div>
+            <div class="split even">
+              <div class="fm-card"><div class="fm-card-body">
+                <div style="font-weight:700;margin-bottom:8px">Mine udviklingsmål</div>
+                {% if goals %}
+                  {% for g in goals %}<div style="padding:7px 0;border-bottom:1px solid var(--fm-line);font-size:13.5px">{{ g.title }}{% if g.target_date %}<span class="muted" style="float:right;font-size:12px">{{ g.target_date }}</span>{% endif %}</div>{% endfor %}
+                {% else %}
+                  <p class="muted" style="margin:0;font-size:13.5px">Du har ikke sat et mål endnu. <a href="{{ url_for('futurematch.learning_goals') }}">Sæt dit første mål</a>, så kan AI'en pege på kurser, der fører derhen.</p>
+                {% endif %}
+              </div></div>
+              <div class="fm-card"><div class="fm-card-body">
+                <div style="font-weight:700;margin-bottom:8px">Kommende frister</div>
+                {% if deadlines %}
+                  {% for d in deadlines %}<a href="{{ d.url }}" style="display:flex;justify-content:space-between;gap:10px;padding:7px 0;border-bottom:1px solid var(--fm-line);font-size:13.5px;text-decoration:none;color:inherit"><span>{{ d.title }}</span><span class="fm-badge {{ 'red' if d.overdue else ('amber' if d.soon else '') }}">{{ d.date.strftime('%d.%m.%Y') }}{% if d.overdue %} · overskredet{% endif %}</span></a>{% endfor %}
+                {% else %}
+                  <p class="muted" style="margin:0;font-size:13.5px">Ingen frister lige nu. Når du bestiller et kursus med dato, dukker fristen op her.</p>
+                {% endif %}
+              </div></div>
+            </div>
 
             <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-receipt"></i> Mine bestillinger</span><h2 class="fm-section-title">Status</h2></div></div>
             <div class="fm-card"><div class="fm-card-body" style="padding-top:8px">

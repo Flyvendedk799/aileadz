@@ -3691,17 +3691,7 @@ def _execute_hr_compare_cohorts(args):
 
 # ── AI Tooler 2 (Phase 5): safe platform-control executors ────────────────────
 
-_REPORT_SCHEDULES_DDL = """CREATE TABLE IF NOT EXISTS company_report_schedules (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    company_id INT NOT NULL,
-    report_type VARCHAR(64) NOT NULL,
-    cadence VARCHAR(16) NOT NULL,
-    department VARCHAR(100) NULL,
-    created_by INT NULL,
-    enabled TINYINT(1) NOT NULL DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_company_report (company_id, report_type, department)
-)"""
+# company_report_schedules has ONE definition: schema_registry.REGISTRY_DDL (N-3.4).
 
 _REPORT_TYPE_LABELS_DA = {
     "training_status": "Træningsstatus",
@@ -3756,7 +3746,6 @@ def _execute_schedule_recurring_report(args):
 
     cur = _get_cursor()
     try:
-        cur.execute(_REPORT_SCHEDULES_DDL)
         cur.execute(
             """
             INSERT INTO company_report_schedules

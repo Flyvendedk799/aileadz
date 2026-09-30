@@ -191,3 +191,22 @@ class SqliteMysql:
 
     def one(self, sql, params=()):
         return self.connection.cursor().execute(sql, params).fetchone()
+
+
+# ── extra tables used by the HR-workspace tests (appended; safe to merge) ──
+SCHEMA_HR = """
+CREATE TABLE employee_goals (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER, company_id INTEGER,
+  goal_title TEXT, goal_description TEXT, target_date TEXT, status TEXT DEFAULT 'active', progress REAL DEFAULT 0,
+  shared_with_employee INTEGER NOT NULL DEFAULT 0, shared_at TEXT, shared_by INTEGER, share_note TEXT,
+  created_at TEXT DEFAULT CURRENT_TIMESTAMP);
+"""
+
+_orig_init = SqliteMysql.__init__
+
+
+def _init_with_hr(self):
+    _orig_init(self)
+    self.raw.executescript(SCHEMA_HR)
+
+
+SqliteMysql.__init__ = _init_with_hr

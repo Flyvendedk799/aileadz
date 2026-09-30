@@ -5,6 +5,7 @@
 {% block topbar_sub %}{{ employee.full_name or employee.username }} · {{ employee.department or 'medarbejder' }}.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
 <div class="crumb"><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>{{ employee.full_name or employee.username }}</span></div>
 <div style="max-width:760px;margin:0 auto">
   <form method="POST" action="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}">

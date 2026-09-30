@@ -42,8 +42,25 @@
 {# Severity -> status-pill colour class. #}
 {% macro sev_class(severity) %}{% if severity in ['critical','danger','high'] %}red{% elif severity in ['warning','medium'] %}amber{% elif severity in ['success','good'] %}green{% else %}teal{% endif %}{% endmacro %}
 
-{# AI insight card. `ins` = dict with title, body, severity, and generated_at|created_at. #}
+{# AI insight card. `ins` = dict with title, body, severity, and generated_at|created_at.
+   Every insight gets a call to action (N-4.5): an explicit `action_url`/`action_label` wins,
+   otherwise it is derived from the insight type. #}
+{% set _insight_cta = {
+  'low_satisfaction': ['/hr/ai-quality', 'Se AI-kvalitet'],
+  'no_conversions': ['/hr/assign-path', 'Tildel kursus'],
+  'engagement_drop': ['/hr/engagement', 'Se engagement'],
+  'popular_unordered': ['/hr/learning-paths', 'Opret forløb'],
+  'trending_topic': ['/hr/skill-gaps', 'Se kompetencegab'],
+  'budget': ['/hr/budgets', 'Justér budget'],
+  'budget_overrun': ['/hr/budgets', 'Justér budget'],
+  'skill_gap': ['/hr/assign-path', 'Tildel kursus'],
+  'compliance': ['/hr/compliance', 'Se compliance'],
+  'ai_summary': ['/hr/learning-analytics', 'Se læringsanalyse']
+} %}
 {% macro insight_card(ins) %}
+{% set _cta = _insight_cta.get(ins.insight_type or ins.type) %}
+{% set _href = ins.action_url or (_cta[0] if _cta else '') %}
+{% set _lbl = ins.action_label or (_cta[1] if _cta else 'Åbn') %}
 <div class="fm-insight">
   <span class="status-pill {{ sev_class(ins.severity) }}">{{ ins.insight_type or ins.type or ins.severity or 'indsigt' }}</span>
   <div class="fm-insight-tx">
@@ -51,6 +68,7 @@
     <div class="fm-insight-b">{{ ins.body }}</div>
     {% set _when = ins.generated_at or ins.created_at %}
     {% if _when %}<div class="fm-insight-m">{{ _when }}</div>{% endif %}
+    {% if _href %}<a class="btn btn-ghost btn-sm fm-insight-cta" href="{{ _href }}" style="margin-top:8px">{{ _lbl }} <i class="fa-solid fa-arrow-right"></i></a>{% endif %}
   </div>
 </div>
 {% endmacro %}

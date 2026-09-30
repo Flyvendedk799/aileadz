@@ -5,6 +5,7 @@
 {% block topbar_sub %}{{ order.product_title }} · {{ order.username }}{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
 <div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('hr_dashboard.billing_overview') }}">Ordrer</a><i class="fa-solid fa-chevron-right"></i><span>#{{ order.order_id[:8] }}</span></div>
 
   <div class="fm-spread" style="margin-bottom:14px;flex-wrap:wrap;gap:10px">

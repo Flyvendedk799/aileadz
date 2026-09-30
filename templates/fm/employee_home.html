@@ -164,6 +164,22 @@
               </div></div>
             </div>
 
+            {% if hr_assignments %}
+            <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-user-tie"></i> Fra HR</span><h2 class="fm-section-title">Tildelt af HR</h2></div></div>
+            <div class="fm-card"><div class="fm-card-body" style="padding-top:8px">
+              {% for a in hr_assignments %}
+              <div style="display:flex;gap:12px;align-items:center;padding:10px 0;border-bottom:1px solid var(--fm-line);flex-wrap:wrap">
+                <div style="flex:1;min-width:200px">
+                  <div style="font-weight:650">{{ a.path_name }}</div>
+                  <div class="muted" style="font-size:12.5px">{{ a.steps|length }} trin{% if a.due_date %} · frist {{ a.due_date }}{% endif %} · <em>Tildelt af HR</em></div>
+                </div>
+                <span class="fm-badge {{ 'green' if a.status == 'completed' else 'teal' }}">{{ 'Gennemført' if a.status == 'completed' else ((a.progress_percentage|int|string) ~ '%') }}</span>
+                <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.timeline') }}">Se bestillinger</a>
+              </div>
+              {% endfor %}
+            </div></div>
+            {% endif %}
+
             <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-receipt"></i> Mine bestillinger</span><h2 class="fm-section-title">Status</h2></div></div>
             <div class="fm-card"><div class="fm-card-body" style="padding-top:8px">
               {% if orders %}

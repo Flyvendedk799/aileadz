@@ -38,6 +38,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 {% include 'fm/_settings_tabs.html' %}
 
   {% with messages = get_flashed_messages(with_categories=true) %}

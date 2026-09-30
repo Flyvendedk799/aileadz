@@ -19,14 +19,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav">
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a>
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
-  <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
-  <a class="pg-tab active" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
-</div>
+{% set active_admin_page = 'notifications' %}{% include 'fm/_admin_subnav.html' %}
 
 <div class="kpi-row" style="grid-template-columns:repeat(4,1fr)">
   <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-bullhorn"></i></span><div><div class="kl">Udsendelser</div><div class="kv tnum">{{ broadcasts_sent|default(0) }}</div><div class="kd">Sendte beskeder</div></div></div>

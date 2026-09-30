@@ -6,6 +6,7 @@
 {% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · samlet rapportoverblik.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = 'reports' %}{% include 'fm/_hr_subnav.html' %}
 
 <div class="kpi-row">
   <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-comments"></i></span><div><div class="kl">Chatbot-forespørgsler</div><div class="kv tnum">{{ total_chatbot_queries }}</div><div class="kd">{{ total_conversations }} samtaler</div></div></div>

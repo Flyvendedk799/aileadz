@@ -15,12 +15,7 @@
 {% from 'fm/_admin_list.html' import search_bar, pager %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
-  </div>
+{% set active_admin_page = 'vendors' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-store"></i></span><div><div class="kl">Leverandører</div><div class="kv tnum">{{ all_vendor_count }}</div></div></div>

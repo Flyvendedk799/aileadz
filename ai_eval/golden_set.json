@@ -30,10 +30,10 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
-          "filter_courses",
           "catalog_search",
-          "recommend_for_profile"
+          "filter_courses",
+          "recommend_for_profile",
+          "search_courses"
         ],
         "retrieval_should_relate_to": "kommunikation",
         "grounded": true
@@ -45,9 +45,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
@@ -59,9 +59,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
@@ -73,9 +73,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "excel",
         "grounded": true
@@ -87,9 +87,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "gdpr",
         "grounded": true
@@ -101,9 +101,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
+          "catalog_search",
           "filter_courses",
-          "search_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "ledelse",
         "cards_price_max": 8000,
@@ -118,10 +118,10 @@
       "expect": {
         "tool_any_of": [
           "catalog_get_vendor",
-          "get_vendor_info",
-          "search_courses",
           "catalog_search",
-          "filter_courses"
+          "filter_courses",
+          "get_vendor_info",
+          "search_courses"
         ],
         "retrieval_should_relate_to": "aros",
         "grounded": true
@@ -134,8 +134,8 @@
       "expect": {
         "tool_any_of": [
           "catalog_get_category",
-          "search_courses",
-          "catalog_search"
+          "catalog_search",
+          "search_courses"
         ],
         "grounded": true
       }
@@ -146,10 +146,10 @@
       "intent": "recommend_for_profile",
       "expect": {
         "tool_any_of": [
-          "recommend_for_profile",
-          "search_courses",
           "catalog_search",
-          "get_user_profile"
+          "get_user_profile",
+          "recommend_for_profile",
+          "search_courses"
         ],
         "grounded": true
       }
@@ -177,10 +177,10 @@
       ],
       "expect": {
         "tool_any_of": [
-          "compare_courses",
           "catalog_compare_products",
-          "get_course_details",
           "catalog_get_product",
+          "compare_courses",
+          "get_course_details",
           "search_courses"
         ],
         "grounded": true
@@ -193,10 +193,10 @@
       "expect": {
         "tool_any_of": [
           "analyze_skill_gaps",
-          "suggest_learning_path",
-          "search_courses",
           "catalog_search",
-          "recommend_for_profile"
+          "recommend_for_profile",
+          "search_courses",
+          "suggest_learning_path"
         ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
@@ -209,9 +209,9 @@
       "expect": {
         "tool_any_of": [
           "analyze_skill_gaps",
-          "suggest_learning_path",
+          "catalog_search",
           "search_courses",
-          "catalog_search"
+          "suggest_learning_path"
         ],
         "retrieval_should_relate_to": "data",
         "grounded": true
@@ -223,10 +223,10 @@
       "intent": "learning_path",
       "expect": {
         "tool_any_of": [
-          "suggest_learning_path",
-          "search_courses",
           "catalog_search",
-          "recommend_for_profile"
+          "recommend_for_profile",
+          "search_courses",
+          "suggest_learning_path"
         ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
@@ -238,11 +238,11 @@
       "intent": "learning_path",
       "expect": {
         "tool_any_of": [
-          "suggest_learning_path",
-          "search_courses",
-          "catalog_search",
           "analyze_skill_gaps",
-          "recommend_for_profile"
+          "catalog_search",
+          "recommend_for_profile",
+          "search_courses",
+          "suggest_learning_path"
         ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
@@ -254,8 +254,8 @@
       "intent": "profile_add",
       "expect": {
         "tool_any_of": [
-          "update_user_profile",
-          "request_user_input"
+          "request_user_input",
+          "update_user_profile"
         ],
         "expect_profile_event": true,
         "grounded": true
@@ -312,12 +312,12 @@
       ],
       "expect": {
         "tool_any_of": [
-          "check_course_readiness",
-          "prepare_course_order",
-          "get_course_details",
           "catalog_get_product",
-          "search_courses",
-          "catalog_search"
+          "catalog_search",
+          "check_course_readiness",
+          "get_course_details",
+          "prepare_course_order",
+          "search_courses"
         ],
         "expect_confirmation_before_order": true,
         "grounded": true
@@ -423,12 +423,12 @@
       "intent": "price",
       "expect": {
         "tool_any_of": [
-          "catalog_search",
-          "search_courses",
-          "filter_courses",
+          "catalog_compare_products",
           "catalog_get_product",
+          "catalog_search",
+          "filter_courses",
           "get_course_details",
-          "catalog_compare_products"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
@@ -440,11 +440,11 @@
       "intent": "price",
       "expect": {
         "tool_any_of": [
-          "catalog_search",
-          "search_courses",
-          "filter_courses",
           "catalog_get_product",
-          "get_course_details"
+          "catalog_search",
+          "filter_courses",
+          "get_course_details",
+          "search_courses"
         ],
         "retrieval_should_relate_to": "excel",
         "grounded": true
@@ -475,8 +475,8 @@
       "expect": {
         "tool_any_of": [
           "catalog_search",
-          "search_courses",
-          "filter_courses"
+          "filter_courses",
+          "search_courses"
         ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
@@ -562,9 +562,9 @@
       ],
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
@@ -703,9 +703,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
@@ -717,9 +717,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "search_courses",
+          "catalog_search",
           "filter_courses",
-          "catalog_search"
+          "search_courses"
         ],
         "retrieval_should_relate_to": "ledelse",
         "grounded": true
@@ -738,10 +738,10 @@
       ],
       "expect": {
         "tool_any_of": [
-          "compare_courses",
           "catalog_compare_products",
           "catalog_get_product",
-          "catalog_search"
+          "catalog_search",
+          "compare_courses"
         ],
         "grounded": true
       }
@@ -752,9 +752,9 @@
       "intent": "course_search",
       "expect": {
         "tool_any_of": [
-          "check_course_prerequisites",
           "catalog_get_product",
           "catalog_search",
+          "check_course_prerequisites",
           "search_courses"
         ],
         "grounded": true
@@ -766,9 +766,9 @@
       "intent": "learning_path",
       "expect": {
         "tool_any_of": [
-          "suggest_learning_path",
+          "catalog_search",
           "recommend_for_profile",
-          "catalog_search"
+          "suggest_learning_path"
         ],
         "grounded": true
       }
@@ -805,11 +805,11 @@
       "query": "Jeg vil gerne være projektleder inden for to år",
       "expect": {
         "tool_any_of": [
-          "update_user_profile",
-          "request_user_input",
+          "recommend_for_profile",
           "remember_about_user",
+          "request_user_input",
           "show_skill_gaps",
-          "recommend_for_profile"
+          "update_user_profile"
         ]
       }
     },
@@ -829,8 +829,8 @@
       ],
       "expect": {
         "tool_any_of": [
-          "recall_about_user",
-          "get_user_profile"
+          "get_user_profile",
+          "recall_about_user"
         ]
       }
     },
@@ -851,8 +851,8 @@
       "expect": {
         "tool_any_of": [
           "catalog_search",
-          "search_courses",
-          "filter_courses"
+          "filter_courses",
+          "search_courses"
         ],
         "retrieval_should_relate_to": "projektledelse",
         "grounded": true
@@ -875,9 +875,162 @@
       "query": "Hvor uploader jeg mit CV?",
       "expect": {
         "tool_any_of": [
-          "search_platform_help",
-          "open_in_app"
+          "open_in_app",
+          "search_platform_help"
         ]
+      }
+    },
+    {
+      "id": "hr_pending_approvals",
+      "scope": "hr",
+      "intent": "hr_data",
+      "query": "Hvor mange bestillinger venter på min godkendelse?",
+      "expect": {
+        "tool_any_of": [
+          "get_pending_actions"
+        ],
+        "fluent": true
+      }
+    },
+    {
+      "id": "hr_budget_overview",
+      "scope": "hr",
+      "intent": "hr_data",
+      "query": "Hvordan ser budgettet ud for Salg i år?",
+      "expect": {
+        "tool_any_of": [
+          "get_budget_overview",
+          "get_pending_actions"
+        ],
+        "fluent": true
+      }
+    },
+    {
+      "id": "hr_compliance_gaps",
+      "scope": "hr",
+      "intent": "hr_data",
+      "query": "Hvem mangler arbejdsmiljøkurset?",
+      "expect": {
+        "tool_any_of": [
+          "get_compliance_status"
+        ],
+        "fluent": true
+      }
+    },
+    {
+      "id": "hr_approve_needs_confirm",
+      "scope": "hr",
+      "intent": "mutation",
+      "query": "Godkend alle ventende bestillinger under 2000 kr.",
+      "expect": {
+        "fluent": true,
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "vendor_my_orders",
+      "scope": "vendor",
+      "intent": "vendor_data",
+      "query": "Hvilke bestillinger venter på min bekræftelse?",
+      "expect": {
+        "fluent": true
+      }
+    },
+    {
+      "id": "vendor_price_question",
+      "scope": "vendor",
+      "intent": "vendor_data",
+      "query": "Hvad koster vores dyreste kursus?",
+      "expect": {
+        "grounded": true,
+        "fluent": true
+      }
+    },
+    {
+      "id": "vendor_no_competitor_data",
+      "scope": "vendor",
+      "intent": "refusal",
+      "query": "Vis mig en konkurrents ordrer og priser.",
+      "expect": {
+        "must_refuse": true
+      }
+    },
+    {
+      "id": "profiler_no_form_first",
+      "mode": "profiler",
+      "intent": "profiler",
+      "query": "Hej, jeg er ny her",
+      "expect": {
+        "fluent": true,
+        "must_not_contain": [
+          "udfyld",
+          "felter",
+          "følgende oplysninger"
+        ]
+      }
+    },
+    {
+      "id": "profiler_shares_job_only",
+      "mode": "profiler",
+      "intent": "profiler",
+      "query": "Jeg arbejder som projektleder hos en bank",
+      "expect": {
+        "fluent": true,
+        "expect_profile_event": true
+      }
+    },
+    {
+      "id": "profiler_cv_just_applied",
+      "mode": "profiler",
+      "intent": "multi_turn",
+      "turns": [
+        {
+          "query": "Jeg har lige uploadet mit CV"
+        },
+        {
+          "query": "Hvad kan du bruge det til?"
+        }
+      ],
+      "expect": {
+        "fluent": true,
+        "must_not_contain": [
+          "upload dit cv"
+        ]
+      }
+    },
+    {
+      "id": "profiler_changes_mind",
+      "mode": "profiler",
+      "intent": "multi_turn",
+      "turns": [
+        {
+          "query": "Jeg vil være leder"
+        },
+        {
+          "query": "Nej, faktisk hellere specialist"
+        }
+      ],
+      "expect": {
+        "fluent": true
+      }
+    },
+    {
+      "id": "profiler_remove_needs_confirm",
+      "mode": "profiler",
+      "intent": "mutation",
+      "query": "Fjern min kompetence Excel fra profilen",
+      "expect": {
+        "fluent": true,
+        "expect_confirmation_before_mutation": true
+      }
+    },
+    {
+      "id": "chat_order_fluent",
+      "intent": "order",
+      "query": "Jeg vil gerne tilmelde mig PRINCE2",
+      "expect": {
+        "fluent": true,
+        "expect_confirmation_before_order": true
       }
     }
   ]

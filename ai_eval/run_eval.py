@@ -140,18 +140,33 @@ def parse_sse(body: str) -> List[Dict[str, Any]]:
     return events
 
 
-def fresh_client(app, user: str = "test"):
+SCOPE_ENDPOINTS = {"employee": "/app1/ask", "hr": "/hr/chatbot/ask", "vendor": "/vendor/ask"}
+
+
+def fresh_client(app, user: str = "test", scope: str = "employee"):
+    """Logged-in test client for one assistant scope.
+
+    ``vendor`` needs a real portal account: set EVAL_VENDOR_EMAIL / EVAL_VENDOR_PASSWORD
+    (returns None otherwise so the case is reported as skipped, not failed)."""
+    if scope == "vendor":
+        email, pw = os.environ.get("EVAL_VENDOR_EMAIL"), os.environ.get("EVAL_VENDOR_PASSWORD")
+        if not (email and pw):
+            return None
+        c = app.test_client()
+        c.post("/vendor/login", data={"email": email, "password": pw})
+        return c
     c = app.test_client()
     c.post("/login", data={"username": user, "password": "test"})
     return c
 
 
-def ask(client, query: str, *, mode: str = "default", kind: str = "message") -> Dict[str, Any]:
+def ask(client, query: str, *, mode: str = "default", kind: str = "message", scope: str = "employee") -> Dict[str, Any]:
     """POST one turn to /app1/ask and decode the SSE stream into a structured result.
 
     ``mode`` selects the surface (default | profiler); ``kind="seed"`` sends a
     UI-generated opener exactly like the profiler's Start/Fortsæt buttons."""
-    r = client.post("/app1/ask", json={"query": query, "mode": mode, "kind": kind})
+    payload = {"query": query, "mode": mode, "kind": kind} if scope == "employee" else {"query": query, "message": query}
+    r = client.post(SCOPE_ENDPOINTS.get(scope, "/app1/ask"), json=payload)
     body = r.get_data(as_text=True)
     events = parse_sse(body)
 
@@ -254,7 +269,13 @@ def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], O
 def run_case(app, case: Dict[str, Any]) -> Dict[str, Any]:
     """Run a case end-to-end. The SCORED turn is the last turn (or the only query).
     Returns a 'collected' dict consumed by scorers.score_case."""
-    client = fresh_client(app)
+    scope = case.get("scope", "employee")
+    client = fresh_client(app, scope=scope)
+    if client is None:
+        return {"events": [], "text": "", "cards": [], "tools": [], "tool_results": [], "error": None,
+                "http": 200, "types": {}, "latency_ms": 0, "latency_source": "none", "tokens": None,
+                "session_id": None,
+                "skipped": "scope %s needs EVAL_VENDOR_EMAIL / EVAL_VENDOR_PASSWORD" % scope}
     # Recover the session_id the app assigned (cookie 'session' is opaque; instead we
     # read it back from the last ai_agent_runs row, but we need a stable key). The app
     # stores session_id in the Flask session; we can fetch it via the cookie jar.
@@ -270,7 +291,7 @@ def run_case(app, case: Dict[str, Any]) -> Dict[str, Any]:
             # through the durable layers, never through the old transcript.
             client.post("/app1/new_session", json={"mode": turn_mode})
             continue
-        last = ask(client, turn["query"], mode=turn_mode, kind=turn.get("kind", "message"))
+        last = ask(client, turn["query"], mode=turn_mode, kind=turn.get("kind", "message"), scope=scope)
     wall_ms = int((time.time() - wall_start) * 1000)
 
     session_id = _session_id_from_client(client)
@@ -420,6 +441,7 @@ def aggregate(per_case: List[Dict[str, Any]]) -> Dict[str, Any]:
         "grounding_pct": _pct(metric_num["grounding"], metric_den["grounding"]),
         "profile_event_pct": _pct(metric_num["profile_event"], metric_den["profile_event"]),
         "order_confirmation_pct": _pct(metric_num["order_confirmation"], metric_den["order_confirmation"]),
+        "fluency_pct": _pct(metric_num["fluency"], metric_den["fluency"]),
         "overall_pass_pct": _pct(passed, len(per_case)),
     }
     if judge_scores:
@@ -444,6 +466,7 @@ _METRIC_LABELS = [
     ("grounding_pct", "Grounding"),
     ("profile_event_pct", "Profile events"),
     ("order_confirmation_pct", "Order confirmation"),
+    ("fluency_pct", "Fluency (no checklist/form)"),
     ("overall_pass_pct", "OVERALL pass"),
 ]
 
@@ -501,7 +524,7 @@ def print_scorecard(per_case: List[Dict[str, Any]], agg: Dict[str, Any], used_ju
 def _short(metric_key: str) -> str:
     return {
         "tool_selection": "tool", "refusal": "refu", "retrieval": "retr",
-        "grounding": "grnd", "profile_event": "prof", "order_confirmation": "ordr",
+        "grounding": "grnd", "profile_event": "prof", "order_confirmation": "ordr", "fluency": "flue",
     }.get(metric_key, metric_key[:4])
 
 
@@ -512,7 +535,7 @@ def _short(metric_key: str) -> str:
 # Metrics that gate (higher = better). Latency is reported but not gated by default.
 _GATED_METRICS = (
     "tool_selection_pct", "refusal_pct", "retrieval_pct", "retrieval_precision_pct",
-    "grounding_pct", "profile_event_pct", "order_confirmation_pct", "overall_pass_pct",
+    "grounding_pct", "profile_event_pct", "order_confirmation_pct", "fluency_pct", "overall_pass_pct",
 )
 
 

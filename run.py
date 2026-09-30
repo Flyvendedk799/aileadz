@@ -294,6 +294,27 @@ def create_app():
     from health import health_bp
     app.register_blueprint(health_bp)
 
+    try:
+        from hr_course_assign import course_assign_bp
+        app.register_blueprint(course_assign_bp)
+    except Exception as e:
+        logging.warning("HR course assign skipped: %s", e)
+
+    # Team-order policy (N-5.2): save route + settings partial state.
+    try:
+        import team_order_policy
+        app.register_blueprint(team_order_policy.team_policy_bp)
+        team_order_policy.register_jinja(app)
+    except Exception as e:
+        logging.warning("Team order policy skipped: %s", e)
+
+    # Admin product browser + search-index controls (N-3.1).
+    try:
+        from catalog_admin_routes import catalog_admin_bp
+        app.register_blueprint(catalog_admin_bp)
+    except Exception as e:
+        logging.warning("Catalog admin routes skipped: %s", e)
+
     # AI-usage credit screens (N-6.4).
     try:
         from credit_routes import credit_bp

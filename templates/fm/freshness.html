@@ -107,6 +107,13 @@
           </tbody>
         </table>
       </div>
+      <div class="fm-flex fm-gap8" style="margin-top:12px;flex-wrap:wrap;align-items:center">
+        <span class="fr-muted" style="font-size:12.5px">Valgte kurser:</span>
+        <button class="btn btn-ghost btn-sm" name="status" value="hidden" type="submit"><i class="fa-solid fa-eye-slash"></i> Skjul</button>
+        <button class="btn btn-ghost btn-sm" name="status" value="archived" type="submit"><i class="fa-solid fa-box-archive"></i> Arkivér</button>
+        <span class="fr-muted" style="font-size:12px">Forældede kurser udelades allerede fra anbefalinger.</span>
+      </div>
+      </form>
       {% else %}
       <div class="fr-sec-empty">
         <i class="fa-solid fa-circle-check fr-muted" style="font-size:20px;display:block;margin-bottom:8px"></i>
@@ -129,10 +136,12 @@
     <div class="fm-card-body" style="padding-top:6px">
       <p class="fr-note">Kurser hvis seneste holddato ligger i fortiden. For at undgå falske alarmer på de mange tvetydige danske datoer i kataloget tælles en dato kun som forældet, når den kan læses med et entydigt årstal.</p>
       {% if courses %}
+      <form method="post" action="{{ url_for('catalog_admin.bulk_status') }}">
       <div class="fm-table-wrap" style="border:0;box-shadow:none;margin-top:8px">
         <table class="fm-table" id="staleTable">
           <thead>
             <tr>
+              <th style="width:28px"></th>
               <th>Kursus</th>
               <th>Leverandør</th>
               <th>Seneste holddato</th>
@@ -143,6 +152,7 @@
           <tbody>
             {% for c in courses %}
             <tr>
+              <td><input type="checkbox" name="handles" value="{{ c.handle }}"></td>
               <td><strong>{{ c.title }}</strong></td>
               <td class="fr-muted">{{ c.vendor }}</td>
               <td class="tnum">

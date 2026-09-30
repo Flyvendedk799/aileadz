@@ -523,6 +523,26 @@ def _job_cert_expiry_reminders(app):
             return {'error': str(e)}
 
 
+def _job_shopify_sync(app):
+    """Daily: refresh the catalog from Shopify (env credentials; skips when unset)."""
+    try:
+        import shopify_sync
+    except Exception as e:
+        return {'error': "shopify_sync import failed: %s" % e}
+    with app.app_context():
+        return shopify_sync.sync()
+
+
+def _job_catalog_embed(app):
+    """Embed catalog products that still have no vector (incremental)."""
+    try:
+        from app1 import rag
+    except Exception as e:
+        return {'error': "rag import failed: %s" % e}
+    with app.app_context():
+        return rag.embed_missing()
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -567,6 +587,18 @@ JOBS = [
         'name': 'company_analytics_rollup',
         'interval_seconds': 86400,        # daily — writes the per-company daily KPI snapshot
         'fn': _job_company_analytics_rollup,
+        'enabled': True,
+    },
+    {
+        'name': 'shopify_sync',
+        'interval_seconds': 86400,        # daily; skips cleanly without Shopify env vars
+        'fn': _job_shopify_sync,
+        'enabled': True,
+    },
+    {
+        'name': 'catalog_embed',
+        'interval_seconds': 21600,        # every 6 h: embed products that have no vector yet
+        'fn': _job_catalog_embed,
         'enabled': True,
     },
     {

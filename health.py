@@ -139,8 +139,14 @@ def _worker_block():
 
 
 def _check_catalog():
-    """Return True if at least one RAG catalog index file exists on disk."""
+    """Return True if the catalog source (or an augmented index file) exists."""
     try:
+        try:
+            import catalog_service
+            if os.path.exists(catalog_service.source_file_path()):
+                return True
+        except Exception:
+            pass
         return any(os.path.exists(path) for path in _CATALOG_FILES)
     except Exception as exc:
         logging.warning("Readiness catalog check failed: %s", exc)

@@ -1,0 +1,50 @@
+{# Team-order policy (N-5.2). Self-contained: loads its own state via the
+   team_order_policy_state() template global, posts to /hr/team-order-policy/save.
+   Included by the company settings hub (tab "Bestillingspolitik") and by the
+   approval-policies page. Renders nothing for roles without company.policies. #}
+{% set _tp = team_order_policy_state() if team_order_policy_state is defined else none %}
+{% if _tp and _tp.allowed %}
+<div class="fm-card" id="teamOrderPolicy" style="margin-top:16px">
+  <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-people-group"></i></span><h3>Teambestilling fra chatten</h3></div>
+  <div class="fm-card-body">
+    <p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 12px">Bestemmer, hvad der sker, når en medarbejder beder AI-assistenten bestille et kursus til flere personer. Du kan sætte en standard og tilføje undtagelser for bestemte udbydere.</p>
+    <form method="post" action="/hr/team-order-policy/save" class="fm-flex fm-gap12" style="flex-wrap:wrap;align-items:flex-end">
+      <label style="display:grid;gap:4px;font-size:12.5px;flex:1;min-width:260px">Standard for virksomheden
+        <select class="fm-input" name="mode">
+          {% for value, label in _tp.modes %}<option value="{{ value }}" {{ 'selected' if value == _tp.default }}>{{ label }}</option>{% endfor %}
+        </select>
+      </label>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-floppy-disk"></i> Gem standard</button>
+    </form>
+
+    <h4 style="font-size:13px;margin:18px 0 8px">Undtagelser pr. udbyder</h4>
+    {% if _tp.vendors %}
+    <table class="fm-table"><tbody>
+      {% for v in _tp.vendors %}
+      <tr>
+        <td>{{ v.vendor_name }}</td><td>{{ v.label }}</td>
+        <td style="text-align:right"><form method="post" action="/hr/team-order-policy/save" style="display:inline">
+          <input type="hidden" name="vendor_id" value="{{ v.vendor_id }}"><input type="hidden" name="remove" value="1">
+          <button class="btn btn-ghost btn-sm" type="submit">Fjern</button></form></td>
+      </tr>
+      {% endfor %}
+    </tbody></table>
+    {% else %}<p class="muted" style="font-size:12.5px;margin:0 0 8px">Ingen undtagelser. Alle udbydere følger standarden.</p>{% endif %}
+
+    {% if _tp.available_vendors %}
+    <form method="post" action="/hr/team-order-policy/save" class="fm-flex fm-gap12" style="flex-wrap:wrap;align-items:flex-end;margin-top:10px">
+      <label style="display:grid;gap:4px;font-size:12.5px">For denne udbyder
+        <select class="fm-input" name="vendor_id" required>
+          <option value="">Vælg udbyder</option>
+          {% for v in _tp.available_vendors %}<option value="{{ v.id }}">{{ v.name }}</option>{% endfor %}
+        </select>
+      </label>
+      <label style="display:grid;gap:4px;font-size:12.5px;min-width:260px">gælder
+        <select class="fm-input" name="mode">{% for value, label in _tp.modes %}<option value="{{ value }}">{{ label }}</option>{% endfor %}</select>
+      </label>
+      <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-plus"></i> Tilføj undtagelse</button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+{% endif %}

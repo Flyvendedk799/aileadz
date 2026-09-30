@@ -72,7 +72,7 @@ class SnapshotTests(unittest.TestCase):
     def _ok_cursor(self):
         # 3 SELECTs: (queries+feedback), (started/completed), (active_users).
         return SeqCursor(fetchone_seq=[
-            {'total_queries': 42, 'avg_feedback': 4.5},
+            {'total_queries': 42, 'avg_feedback': 0.75},
             {'started': 7, 'completed': 3},
             {'active_users': 11},
         ])

@@ -297,6 +297,7 @@ def _load_hr_goals(user_id, company_id):
         FROM employee_goals
         WHERE employee_id = %s AND company_id = %s
           AND status IN ('active', 'in_progress')
+          AND shared_with_employee = 1
         ORDER BY (target_date IS NULL), target_date ASC
         LIMIT %s
         """,

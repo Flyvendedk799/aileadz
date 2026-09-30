@@ -206,11 +206,11 @@ def _build_manager_message(overdue, soon, marker):
     if soon:
         parts.append("%d har frist inden for %d dage" % (soon, _WITHIN_DAYS))
     detail = " og ".join(parts) if parts else "har frister, der nærmer sig"
-    # The marker is embedded in the message so the dedupe LIKE can find it
-    # without an extra column (same trick catalog_freshness / compliance use).
+    # Dedupe runs on the notification's dedupe_key (N-3.2); the marker is no
+    # longer shown to users.
     return (
         "%s. Følg op, så fristerne ikke glider — log ind for at se hvem og "
-        "planlæg de manglende gennemførelser. [%s]" % (detail.capitalize(), marker)
+        "planlæg de manglende gennemførelser." % detail.capitalize()
     )
 
 
@@ -226,10 +226,7 @@ def _build_learner_message(content_name, days_left, is_overdue, marker):
         when = "har frist om %d dag%s" % (days_left, "e" if days_left != 1 else "")
     else:
         when = "nærmer sig sin frist"
-    return (
-        "Påmindelse: “%s” %s. Log ind og fuldfør forløbet i tide. [%s]"
-        % (title, when, marker)
-    )
+    return "Påmindelse: “%s” %s. Log ind og fuldfør forløbet i tide." % (title, when)
 
 
 def _recent_marker_exists(cur, company_id, marker):
@@ -311,25 +308,21 @@ def _insert_manager_card(cur, conn, company_id, overdue, soon):
     if not company_id or (not overdue and not soon):
         return 0
     marker = _company_marker(company_id)
-    if _recent_marker_exists(cur, company_id, marker):
-        return 0  # Already nudged HR recently — don't spam.
 
     is_urgent = 1 if overdue > 0 else 0
     title = ("Læringsfrister forfaldne — handling påkrævet"
              if overdue > 0 else "Læringsfrister nærmer sig")
     message = _build_manager_message(overdue, soon, marker)
     try:
-        cur.execute(
-            """
-            INSERT INTO company_notifications
-                (company_id, recipient_user_id, sender_user_id,
-                 target_roles, title, message, is_urgent, is_read)
-            VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)
-            """,
-            (company_id, json.dumps(_HR_ROLES), title[:255], message, is_urgent),
+        from notification_service import insert_company_notification
+        created = insert_company_notification(
+            cur, company_id, target_roles=_HR_ROLES, title=title[:255],
+            message=message, is_urgent=bool(is_urgent),
+            action_url="/hr/learning-paths", kind="deadline",
+            dedupe_key=marker, dedupe_hours=_NOTIFY_DEDUPE_DAYS * 24,
         )
         conn.commit()
-        return 1
+        return 1 if created else 0
     except Exception as e:
         logger.warning("deadline_service: manager card insert failed for %s: %s",
                        company_id, e)
@@ -360,25 +353,21 @@ def _remind_learners(cur, conn, company_id, rows):
                 continue
             try:
                 marker = _progress_marker(pid)
-                if _recent_marker_exists(cur, company_id, marker):
-                    continue  # Already reminded this learner about this row.
 
                 is_overdue = bool(r.get("is_overdue"))
                 title = ("Forfalden læringsfrist" if is_overdue
                          else "Påmindelse om læringsfrist")
                 message = _build_learner_message(
                     r.get("content_name"), r.get("days_left"), is_overdue, marker)
-                cur.execute(
-                    """
-                    INSERT INTO company_notifications
-                        (company_id, recipient_user_id, sender_user_id,
-                         target_roles, title, message, is_urgent, is_read)
-                    VALUES (%s, %s, NULL, NULL, %s, %s, %s, 0)
-                    """,
-                    (company_id, uid, title[:255], message,
-                     1 if is_overdue else 0),
+                from notification_service import insert_company_notification
+                created = insert_company_notification(
+                    cur, company_id, recipient_user_id=uid, title=title[:255],
+                    message=message, is_urgent=is_overdue,
+                    action_url="/min-laering", kind="deadline",
+                    dedupe_key=marker, dedupe_hours=_NOTIFY_DEDUPE_DAYS * 24,
                 )
-                inserted += 1
+                if created:
+                    inserted += 1
             except Exception as exc:
                 logger.debug("deadline_service: learner reminder skipped: %s", exc)
                 continue

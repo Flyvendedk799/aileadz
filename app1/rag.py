@@ -474,36 +474,173 @@ def _bm25_search(query_tokens, limit=20):
     return ranked[:limit]
 
 
+_index_meta = {"signature": None, "built_at": None, "last_error": None, "embedded_now": 0,
+               "source": "catalog_service"}
+_embed_lock = None
+
+
+def _embeddings_sidecar_path():
+    """Embeddings for products that have none in the augmented file (CSV imports,
+    Shopify sync additions). Kept next to the other instance data."""
+    import catalog_service
+    return catalog_service._instance_path("catalog_embeddings.json")
+
+
+def _load_sidecar():
+    import catalog_service
+    data = catalog_service._read_json(_embeddings_sidecar_path(), {})
+    return data if isinstance(data, dict) else {}
+
+
+def _signature_with_sidecar():
+    import catalog_service
+    return (catalog_service.catalog_signature(),
+            catalog_service._mtime(_embeddings_sidecar_path()))
+
+
 def load_augmented_products():
-    """Load the pre-computed products with embeddings into memory. Builds BM25 index on first load.
-    Auto-rebuilds if the JSON file has been modified since last load."""
+    """The search index's product list - a VIEW over the one catalog (N-3.1).
+
+    Products come from ``catalog_service`` (Shopify export + augmented embeddings
+    + CSV imports + admin edits, published ones only), so vendor/CSV courses and
+    category overrides reach AI search and chat ordering. The BM25 and vector
+    indexes are rebuilt whenever the catalog signature changes. Products that have
+    no embedding yet get one from the sidecar file (see ``embed_missing``).
+    """
     global _augmented_cache, _augmented_mtime
     try:
-        augmented_mtime = os.path.getmtime(AUGMENTED_FILE) if os.path.exists(AUGMENTED_FILE) else 0
-        source_mtime = os.path.getmtime(SOURCE_FILE) if os.path.exists(SOURCE_FILE) else 0
-        current_mtime = max(augmented_mtime, source_mtime)
-    except OSError:
-        current_mtime = 0
+        signature = _signature_with_sidecar()
+    except Exception:
+        signature = None
 
-    if _augmented_cache is None or (current_mtime > _augmented_mtime and current_mtime > 0):
+    if _augmented_cache is None or (signature is not None and signature != _index_meta["signature"]):
         try:
-            load_path = AUGMENTED_FILE if os.path.exists(AUGMENTED_FILE) else SOURCE_FILE
-            with open(load_path, "r", encoding="utf-8") as f:
-                _augmented_cache = json.load(f)
-            # Normalize tags to list at load time (avoids repeated isinstance checks)
-            for p in _augmented_cache:
+            import catalog_service
+            sidecar = _load_sidecar()
+            products = []
+            for normalized in catalog_service.get_products():
+                p = dict(normalized["raw"])
                 tags = p.get("tags", [])
                 if isinstance(tags, str):
                     p["tags"] = [t.strip() for t in tags.split(",") if t.strip()]
-            _augmented_mtime = current_mtime
+                if not p.get("embedding"):
+                    side = sidecar.get(p.get("handle"))
+                    if side and side.get("embedding"):
+                        p["embedding"] = side["embedding"]
+                        p.setdefault("embedding_context", side.get("embedding_context", ""))
+                products.append(p)
+            _augmented_cache = products
+            _index_meta["signature"] = signature
+            _index_meta["built_at"] = time.strftime("%Y-%m-%d %H:%M:%S")
+            _index_meta["last_error"] = None
+            _augmented_mtime = time.time()
             _build_bm25_index(_augmented_cache)
             _build_vector_index(_augmented_cache)
-            print(f"[RAG] Loaded {len(_augmented_cache)} products from {os.path.basename(load_path)}, BM25 index built ({len(_bm25_index)} terms)")
+            print(f"[RAG] Indexed {len(_augmented_cache)} catalog products, BM25 index built ({len(_bm25_index)} terms)")
         except Exception as e:
             print(f"Error loading augmented products: {e}")
+            _index_meta["last_error"] = str(e)
             if _augmented_cache is None:
                 _augmented_cache = []
     return _augmented_cache
+
+
+def index_status():
+    """Status for the admin 'Genopbyg indeks' card."""
+    products = load_augmented_products() or []
+    with_emb = sum(1 for p in products if p.get("embedding"))
+    return {
+        "products": len(products),
+        "with_embeddings": with_emb,
+        "missing_embeddings": len(products) - with_emb,
+        "bm25_terms": len(_bm25_index or {}),
+        "built_at": _index_meta["built_at"],
+        "last_error": _index_meta["last_error"],
+        "embedded_last_run": _index_meta["embedded_now"],
+        "source": _index_meta["source"],
+        "embeddings_available": bool(os.environ.get("OPENAI_API_KEY")),
+    }
+
+
+def _embedding_text(product):
+    parts = [f"Titel: {product.get('title', '')}", f"Udbyder: {product.get('vendor', '')}"]
+    summary = product.get("ai_summary") or re.sub(r"<[^>]+>", " ", product.get("body_html") or "")[:400]
+    if summary.strip():
+        parts.append("Beskrivelse: " + re.sub(r"\s+", " ", summary).strip())
+    tags = product.get("tags") or []
+    if tags:
+        parts.append("Kategorier: " + ", ".join(tags[:10]))
+    return "\n".join(parts)
+
+
+def embed_missing(limit=300, client_embed=None):
+    """Incremental embed (N-3.1): embed ONLY products that have no vector yet and
+    store them in the sidecar. ``client_embed(texts) -> [vector|None]`` is
+    injectable for tests; the default calls the embedding API in batches.
+    Returns ``{"embedded": n, "skipped": n}`` and never raises."""
+    import catalog_service
+    products = load_augmented_products() or []
+    todo = [p for p in products if not p.get("embedding") and p.get("handle")][:max(1, int(limit))]
+    if not todo:
+        return {"embedded": 0, "skipped": 0}
+    if client_embed is None:
+        if not os.environ.get("OPENAI_API_KEY"):
+            return {"embedded": 0, "skipped": len(todo), "reason": "no_api_key"}
+
+        def client_embed(texts):
+            try:
+                resp = openai.embeddings.create(input=texts, model=embedding_model(),
+                                                dimensions=embedding_dimensions())
+                return [item.embedding for item in resp.data]
+            except Exception as exc:
+                print(f"[RAG] embed_missing batch failed: {exc}")
+                return [None] * len(texts)
+    sidecar = _load_sidecar()
+    embedded = 0
+    for i in range(0, len(todo), 100):
+        chunk = todo[i:i + 100]
+        texts = [_embedding_text(p) for p in chunk]
+        for p, text, vec in zip(chunk, texts, client_embed(texts)):
+            if vec:
+                sidecar[p["handle"]] = {"embedding": vec, "embedding_context": text}
+                embedded += 1
+    if embedded:
+        catalog_service._write_json(_embeddings_sidecar_path(), sidecar)
+    _index_meta["embedded_now"] = embedded
+    return {"embedded": embedded, "skipped": len(todo) - embedded}
+
+
+def rebuild_index(embed=True):
+    """Drop the in-memory index, rebuild it from the catalog, embed what is missing."""
+    global _augmented_cache
+    _augmented_cache = None
+    _index_meta["signature"] = None
+    load_augmented_products()
+    result = embed_missing() if embed else {"embedded": 0, "skipped": 0}
+    if result.get("embedded"):
+        _augmented_cache = None
+        _index_meta["signature"] = None
+        load_augmented_products()
+    return {**index_status(), **{"embed_result": result}}
+
+
+def on_catalog_changed():
+    """Hook called after an import / category confirm / admin edit. The index
+    itself rebuilds lazily on the new signature; embedding runs in the background
+    so the admin action returns immediately."""
+    import threading
+    if not os.environ.get("OPENAI_API_KEY"):
+        return
+    if (os.environ.get("CATALOG_AUTO_EMBED", "1") or "1").strip().lower() in ("0", "false", "no", "off"):
+        return  # the scheduled catalog_embed job picks these up instead
+
+    def _work():
+        try:
+            embed_missing()
+        except Exception as exc:  # pragma: no cover - background best effort
+            print(f"[RAG] background embed failed: {exc}")
+
+    threading.Thread(target=_work, daemon=True).start()
 
 
 def cosine_similarity(v1, v2):

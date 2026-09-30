@@ -52,7 +52,8 @@ _SEARCH_TOOLS = (
 # Order statuses that count as a realised conversion (an actual order, not a
 # half-finished/cancelled one). Kept broad on purpose: any row in course_orders
 # attributed to a chatbot session is already a strong intent signal.
-_ORDERED_STATUSES = ('pending', 'approved', 'completed', 'paid', 'confirmed', 'processing')
+_ORDERED_STATUSES = ('pending_approval', 'approved', 'booked', 'completed',
+                     'pending', 'paid', 'confirmed', 'processing')  # legacy names kept for unmigrated rows
 
 
 # ---------------------------------------------------------------------------

@@ -1498,3 +1498,13 @@ body.chat-page.light-mode .md blockquote {
 .cmc-state.ok { color: var(--teal); }
 .cmc-state.warn { color: var(--clay, #cda86a); }
 .cmc-state.bad { color: var(--red, #d9534f); }
+
+/* N-5.1: profile additions saved at once, with inline undo */
+.psaved-row { display: flex; align-items: center; gap: 10px; margin-top: 6px; font-size: 13.5px; }
+.psaved-label i { color: var(--green, #16a34a); margin-right: 6px; font-size: 11px; }
+.psaved-undo { border: 1px solid var(--line); background: var(--card-2); color: var(--ink-2); border-radius: 8px; padding: 2px 10px; font-size: 12px; cursor: pointer; }
+.psaved-undo:hover { border-color: var(--teal); color: var(--teal); }
+.psaved-done { font-size: 12px; color: var(--ink-3); }
+.pbatch { margin: 6px 0 0 16px; padding: 0; font-size: 13.5px; }
+.pcard.choice .pick { cursor: pointer; }
+.pcard.choice .pick.done { background: var(--teal-glow-2); }

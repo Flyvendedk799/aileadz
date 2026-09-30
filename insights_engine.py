@@ -100,7 +100,7 @@ def generate_company_insights(app, company_id):
                 })
 
         # --- 2. Low satisfaction alerts ---
-        low_fb = [i for i in interactions if i.get('feedback_rating') and i['feedback_rating'] > 0 and i['feedback_rating'] <= 2]
+        low_fb = [i for i in interactions if (i.get('feedback_rating') or 0) < 0]
         if len(low_fb) >= 3:
             insights.append({
                 'type': 'low_satisfaction',
@@ -234,13 +234,14 @@ def generate_company_insights(app, company_id):
                 top = alerts[0]
                 title = "Ny AI-indsigt" + (f" (+{len(alerts) - 1} mere)" if len(alerts) > 1 else "")
                 urgent = 1 if any(i.get('severity') in ('critical', 'danger') for i in alerts) else 0
-                cur.execute(
-                    """INSERT INTO company_notifications
-                           (company_id, recipient_user_id, sender_user_id, target_roles,
-                            title, message, is_urgent, is_read)
-                       VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)""",
-                    (company_id, '["company_admin","hr_manager"]', title[:255],
-                     f"{top.get('title', '')} — {top.get('body', '')}", urgent),
+                from notification_service import insert_company_notification
+                insert_company_notification(
+                    cur, company_id, target_roles=["company_admin", "hr_manager"],
+                    title=title[:255],
+                    message=f"{top.get('title', '')} — {top.get('body', '')}",
+                    is_urgent=bool(urgent), action_url="/hr", kind="insight",
+                    dedupe_key="insight:%s" % (top.get('type') or top.get('title') or ''),
+                    dedupe_hours=24,
                 )
         except Exception as e:
             logger.warning(f"Insight notification skipped: {e}")

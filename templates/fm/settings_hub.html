@@ -1,0 +1,82 @@
+{% extends "fm_base.html" %}
+{% block page_id %}csettings{% endblock %}
+{% block title %}Virksomhedsindstillinger{% endblock %}
+{% block topbar_title %}Virksomhedsindstillinger{% endblock %}
+{% block topbar_sub %}{{ company.company_name if company else 'Virksomhed' }} · oplysninger, branding, integrationer og politikker ét sted.{% endblock %}
+{% block extra_head %}
+<style>
+  .plan-badge { display:inline-block; padding:4px 12px; border-radius:999px; font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:.04em; background: var(--fm-primary-tint); color: var(--fm-primary); }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
+<form method="POST" action="{{ url_for('companies.settings') }}">
+<div class="split"><div class="stack">
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Virksomhedsoplysninger</h3>
+    <span class="plan-badge" style="margin-left:auto">{{ company.subscription_plan or 'trial' }}</span>
+  </div><div class="fm-card-body">
+    <div class="form-grid">
+      <div class="fm-field"><label>Virksomhedsnavn *</label><input class="fm-input" name="company_name" value="{{ company.company_name or '' }}" required></div>
+      <div class="fm-field"><label>Branche</label><input class="fm-input" name="industry" value="{{ company.industry or '' }}" placeholder="f.eks. IT, Finans, Sundhed"></div>
+      <div class="fm-field"><label>Kontakt-email</label><input class="fm-input" type="email" name="contact_email" value="{{ settings.contact_email or settings.support_email or '' }}"></div>
+      <div class="fm-field"><label>Hjemmeside</label><input class="fm-input" type="url" name="website" value="{{ settings.company_website or '' }}" placeholder="https://..."></div>
+    </div>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-headset"></i></span><h3>Sprog & support</h3></div><div class="fm-card-body">
+    <div class="form-grid">
+      <div class="fm-field"><label>Sprog</label>
+        <select class="fm-select" name="language">
+          <option value="da" {% if (settings.language or 'da') == 'da' %}selected{% endif %}>Dansk</option>
+          <option value="en" {% if settings.language == 'en' %}selected{% endif %}>English</option>
+        </select>
+      </div>
+      <div class="fm-field"><label>Tidszone</label>
+        <select class="fm-select" name="timezone">
+          {% for tz in ['Europe/Copenhagen', 'Europe/London', 'Europe/Berlin'] %}
+          <option value="{{ tz }}" {% if (settings.timezone or 'Europe/Copenhagen') == tz %}selected{% endif %}>{{ tz }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <div class="fm-field"><label>Support-email</label><input class="fm-input" type="email" name="support_email" value="{{ settings.support_email or '' }}" placeholder="support@virksomhed.dk"><div class="muted" style="font-size:12px;margin-top:4px">Vises for medarbejdere, når de har brug for hjælp.</div></div>
+      <div class="fm-field"><label>Support-telefon</label><input class="fm-input" type="tel" name="support_phone" value="{{ settings.support_phone or '' }}" placeholder="+45 XX XX XX XX"></div>
+    </div>
+  </div></div>
+
+  <div class="fm-flex fm-gap8" style="justify-content:flex-end">
+    <a href="{{ url_for('hr_dashboard.dashboard') }}" class="btn btn-ghost">Annuller</a>
+    <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem indstillinger</button>
+  </div>
+
+  </div>
+  <div class="stack" style="align-self:start">
+    <div class="fm-card"><div class="fm-card-body">
+      <div style="font-weight:700;margin-bottom:4px">Nuværende plan</div>
+      <div style="font-family:var(--ff-display);font-size:24px;font-weight:700;text-transform:capitalize">{{ company.subscription_plan or 'Trial' }}</div>
+      <div style="font-size:12.5px;color:var(--fm-ink-2);margin:4px 0 14px">{{ company.max_employees or 50 }} pladser</div>
+      {% if has_endpoint('enterprise_settings.export_settings') %}
+      <a href="{{ url_for('enterprise_settings.export_settings') }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-file-export"></i> Eksportér indstillinger (JSON)</a>
+      {% endif %}
+    </div></div>
+  </div>
+</div>
+</form>
+
+{% if can('company.sso') %}
+<div class="fm-card" style="margin-top:16px;max-width:560px"><div class="fm-card-body">
+  <div style="font-weight:700;color:var(--fm-danger)">Deaktiver virksomhedskonto</div>
+  {% if open_request %}
+  <p style="font-size:13px;color:var(--fm-ink-2);margin:6px 0 0"><i class="fa-solid fa-hourglass-half"></i> Din anmodning er modtaget og afventer bekræftelse. Kontoen er stadig aktiv.</p>
+  {% else %}
+  <p style="font-size:12.5px;color:var(--fm-ink-2);margin:6px 0 10px">Alle medarbejdere mister adgang, når kontoen er deaktiveret. Data bevares i 90 dage. Vi bekræfter med dig, før noget slukkes.</p>
+  <form method="POST" action="{{ url_for('settings_hub.request_deactivation') }}" onsubmit="return confirm('Send anmodning om at deaktivere virksomhedskontoen?');">
+    <textarea class="fm-input" name="note" rows="2" maxlength="1000" placeholder="Fortæl os gerne hvorfor (valgfrit)" style="width:100%;margin-bottom:8px"></textarea>
+    <button type="submit" class="btn btn-ghost btn-sm">Anmod om deaktivering</button>
+  </form>
+  {% endif %}
+</div></div>
+{% endif %}
+</div>
+{% endblock %}

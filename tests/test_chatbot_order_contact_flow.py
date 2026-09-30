@@ -96,13 +96,14 @@ class ReadinessContactTests(unittest.TestCase):
 
 
 class CreateOrderConfirmGateTests(unittest.TestCase):
+    # Normalized catalog_service product (the chat now reads the ONE catalog).
     PRODUCT = {"handle": "distanceledelse", "title": "Distanceledelse",
-               "vendor": "Udbyder A", "product_type": "Kursus",
-               "variants": [{"price": "9995"}]}
+               "vendor": "Udbyder A", "product_type": "Kursus", "price_min": 9995.0,
+               "variants": [{"price": 9995.0, "date": "", "location": ""}]}
 
     def _create(self, args):
         with _patched_contact({"full_name": "Tobias P", "email": "t@firma.dk", "phone": "12345678"}), \
-                mock.patch("app1.rag.load_augmented_products", return_value=[self.PRODUCT]), \
+                mock.patch.object(tools.catalog, "get_product", return_value=self.PRODUCT), \
                 mock.patch.object(tools, "apply_discount", return_value=(None, None, None)), \
                 mock.patch.object(tools, "mark_order_flow_open"), \
                 mock.patch.object(tools, "clear_order_flow"), \

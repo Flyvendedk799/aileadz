@@ -72,12 +72,7 @@
         <td>{{ o.product_title }}</td>
         <td class="mono">{{ o.price or 0 }} kr</td>
         <td>
-          {% if o.status == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
-          {% elif o.status == 'pending' %}<span class="fm-badge dot">Afventer</span>
-          {% elif o.status == 'pending_approval' %}<span class="fm-badge dot">Afventer godkendelse</span>
-          {% elif o.status == 'approved' %}<span class="fm-badge dot">Godkendt</span>
-          {% elif o.status == 'rejected' %}<span class="fm-badge red dot">Afvist</span>
-          {% else %}<span class="fm-badge dot">{{ o.status }}</span>{% endif %}
+          <span class="fm-badge {{ order_status_tone(o.status) }} dot">{{ order_status_label(o.status, short=True) }}</span>
         </td>
         <td>
           {% if o.completion_status == 'completed' %}<span class="fm-badge green dot">Færdig</span>

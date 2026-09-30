@@ -621,13 +621,13 @@ def require_api_auth(required_permission=None):
             if not api_key:
                 return jsonify({
                     'error': 'API key required',
-                    'message': 'Please provide API key in X-API-Key header or api_key parameter'
+                    'message': 'Angiv API-nøglen i headeren X-API-Key eller som parameteren api_key'
                 }), 401
             
             # Authenticate API key
             api_key_data, error = api_manager.authenticate_api_request(api_key)
             if error:
-                return jsonify({'error': 'Authentication failed', 'message': error}), 401
+                return jsonify({'error': 'Godkendelse mislykkedes', 'message': error}), 401
             
             # Check rate limits
             within_limit, current_count = api_manager.check_rate_limit(
@@ -637,7 +637,7 @@ def require_api_auth(required_permission=None):
             
             if not within_limit:
                 return jsonify({
-                    'error': 'Rate limit exceeded',
+                    'error': 'Grænsen for antal kald er overskredet',
                     'message': f'Rate limit of {api_key_data["rate_limit_per_hour"]} requests per hour exceeded',
                     'current_usage': current_count
                 }), 429
@@ -645,7 +645,7 @@ def require_api_auth(required_permission=None):
             # Check permissions
             if required_permission and not api_manager.check_permissions(api_key_data, required_permission):
                 return jsonify({
-                    'error': 'Insufficient permissions',
+                    'error': 'Utilstrækkelige rettigheder',
                     'message': f'Required permission: {required_permission}'
                 }), 403
             
@@ -685,8 +685,8 @@ def require_api_auth(required_permission=None):
                 )
                 
                 return jsonify({
-                    'error': 'Internal server error',
-                    'message': 'An error occurred processing your request'
+                    'error': 'Intern serverfejl',
+                    'message': 'Der opstod en fejl under behandlingen af din forespørgsel'
                 }), 500
         
         return decorated_function
@@ -749,14 +749,14 @@ def get_company_info():
         cur.close()
         
         if not company:
-            return jsonify({'error': 'Company not found'}), 404
+            return jsonify({'error': 'Virksomheden blev ikke fundet'}), 404
         
         return jsonify({
             'success': True,
             'data': company
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve company information'}), 500
+        return jsonify({'error': 'Virksomhedsoplysningerne kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees')
 @require_api_auth('read:employees')
@@ -825,7 +825,7 @@ def get_employees():
             }
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve employees'}), 500
+        return jsonify({'error': 'Medarbejderne kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees', methods=['POST'])
 @require_api_auth('write:employees')
@@ -849,7 +849,7 @@ def create_employee():
         """, (g.company_id, data['email']))
         
         if cur.fetchone():
-            return jsonify({'error': 'Employee with this email already exists'}), 409
+            return jsonify({'error': 'Der findes allerede en medarbejder med denne e-mailadresse'}), 409
 
         # Seat / trial governance: block the add when the company is out of seats
         # or its trial has expired. Guarded + fail-open inside seat_governance,
@@ -918,11 +918,11 @@ def create_employee():
 
         return jsonify({
             'success': True,
-            'message': 'Employee created successfully',
+            'message': 'Medarbejderen er oprettet',
             'data': employee
         }), 201
     except Exception as e:
-        return jsonify({'error': 'Failed to create employee'}), 500
+        return jsonify({'error': 'Medarbejderen kunne ikke oprettes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees/<int:employee_id>')
 @require_api_auth('read:employees')
@@ -940,14 +940,14 @@ def get_employee(employee_id):
         cur.close()
         
         if not employee:
-            return jsonify({'error': 'Employee not found'}), 404
+            return jsonify({'error': 'Medarbejderen blev ikke fundet'}), 404
 
         return jsonify({
             'success': True,
             'data': employee
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve employee'}), 500
+        return jsonify({'error': 'Medarbejderen kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees/<int:employee_id>', methods=['PUT'])
 @require_api_auth('write:employees')
@@ -971,7 +971,7 @@ def update_employee(employee_id):
         )
         if not cur.fetchone():
             cur.close()
-            return jsonify({'error': 'Employee not found'}), 404
+            return jsonify({'error': 'Medarbejderen blev ikke fundet'}), 404
 
         # Allow-list of updatable columns -> incoming JSON keys. Anything else is
         # ignored (no mass-assignment of company_id / status-by-accident etc.).
@@ -992,7 +992,7 @@ def update_employee(employee_id):
 
         if not set_parts:
             cur.close()
-            return jsonify({'error': 'No updatable fields provided'}), 400
+            return jsonify({'error': 'Ingen felter at opdatere er angivet'}), 400
 
         params.extend([employee_id, g.company_id])
         # set_parts is built ONLY from the fixed allow-list literals above; all
@@ -1021,7 +1021,7 @@ def update_employee(employee_id):
 
         return jsonify({
             'success': True,
-            'message': 'Employee updated successfully',
+            'message': 'Medarbejderen er opdateret',
             'data': employee
         })
     except Exception as e:
@@ -1029,7 +1029,7 @@ def update_employee(employee_id):
             current_app.mysql.connection.rollback()
         except Exception:
             pass
-        return jsonify({'error': 'Failed to update employee'}), 500
+        return jsonify({'error': 'Medarbejderen kunne ikke opdateres'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees/<int:employee_id>/learning-progress')
 @require_api_auth('read:learning')
@@ -1045,7 +1045,7 @@ def get_employee_learning_progress(employee_id):
         """, (employee_id, g.company_id))
         
         if not cur.fetchone():
-            return jsonify({'error': 'Employee not found'}), 404
+            return jsonify({'error': 'Medarbejderen blev ikke fundet'}), 404
         
         # Get learning progress
         cur.execute("""
@@ -1066,7 +1066,7 @@ def get_employee_learning_progress(employee_id):
             'data': progress
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve learning progress'}), 500
+        return jsonify({'error': 'Læringsforløbet kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/analytics/dashboard')
 @require_api_auth('read:analytics')
@@ -1108,7 +1108,7 @@ def get_dashboard_analytics():
             }
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve analytics'}), 500
+        return jsonify({'error': 'Analysen kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/reports/export')
 @require_api_auth('read:reports')
@@ -1140,7 +1140,7 @@ def export_report():
                 ORDER BY cu.full_name, elp.started_at DESC
             """, (g.company_id,))
         else:
-            return jsonify({'error': 'Invalid report type'}), 400
+            return jsonify({'error': 'Ugyldig rapporttype'}), 400
         
         data = cur.fetchall()
         cur.close()
@@ -1170,7 +1170,7 @@ def export_report():
             'format': 'json'
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to export report'}), 500
+        return jsonify({'error': 'Rapporten kunne ikke eksporteres'}), 500
 
 @api_enterprise_bp.route('/api/v1/webhooks')
 @require_api_auth('read:webhooks')
@@ -1196,7 +1196,7 @@ def get_webhooks():
             'data': webhooks
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve webhooks'}), 500
+        return jsonify({'error': 'Webhooks kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/webhooks', methods=['POST'])
 @require_api_auth('write:webhooks')
@@ -1214,7 +1214,7 @@ def create_webhook():
         if not _is_safe_webhook_url(data.get('url')):
             return jsonify({
                 'error': 'Ugyldig webhook-URL',
-                'message': 'Webhook-URL skal vaere en offentlig http(s)-adresse.'
+                'message': 'Webhook-URL skal være en offentlig http(s)-adresse.'
             }), 400
 
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -1249,11 +1249,11 @@ def create_webhook():
         
         return jsonify({
             'success': True,
-            'message': 'Webhook created successfully',
+            'message': 'Webhooken er oprettet',
             'data': webhook
         }), 201
     except Exception as e:
-        return jsonify({'error': 'Failed to create webhook'}), 500
+        return jsonify({'error': 'Webhooken kunne ikke oprettes'}), 500
 
 # API Key Management Endpoints
 @api_enterprise_bp.route('/api/v1/admin/api-keys')
@@ -1279,7 +1279,7 @@ def get_api_keys():
             'data': api_keys
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve API keys'}), 500
+        return jsonify({'error': 'API-nøgler kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/admin/api-keys', methods=['POST'])
 @require_api_auth('admin:all')
@@ -1355,7 +1355,7 @@ def create_api_key():
             }
         }), 201
     except Exception as e:
-        return jsonify({'error': 'Failed to create API key'}), 500
+        return jsonify({'error': 'API-nøglen kunne ikke oprettes'}), 500
 
 # =====================================================
 # PHASE 4.2: ADDITIONAL API ENDPOINTS
@@ -1371,7 +1371,7 @@ def get_employee_training(employee_id):
                      (employee_id, g.company_id))
         if not cur.fetchone():
             cur.close()
-            return jsonify({'error': 'Employee not found'}), 404
+            return jsonify({'error': 'Medarbejderen blev ikke fundet'}), 404
 
         cur.execute("""
             SELECT order_id, product_handle, product_title, price, status,
@@ -1398,7 +1398,7 @@ def get_employee_training(employee_id):
             'data': {'orders': orders, 'learning_progress': progress}
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve training history'}), 500
+        return jsonify({'error': 'Træningshistorikken kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/analytics/overview')
@@ -1430,7 +1430,7 @@ def get_analytics_overview():
         cur.execute("""
             SELECT COUNT(*) AS total_interactions,
                    COUNT(DISTINCT ci.username) AS active_users,
-                   AVG(ci.feedback_rating) AS avg_feedback
+                   AVG(NULLIF(ci.feedback_rating, 0)) AS avg_feedback
             FROM chatbot_interactions ci
             JOIN users u ON ci.username = u.username
             JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = %s
@@ -1458,7 +1458,7 @@ def get_analytics_overview():
                 'engagement': {
                     'interactions_30d': engagement['total_interactions'] or 0,
                     'active_users_30d': engagement['active_users'] or 0,
-                    'avg_feedback': round(float(engagement['avg_feedback'] or 0), 1),
+                    'avg_feedback': __import__("feedback_scale").to_five(engagement['avg_feedback']),
                 },
                 'budget': {
                     'total': float(budget['total_budget'] or 0),
@@ -1469,7 +1469,7 @@ def get_analytics_overview():
             }
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve analytics overview'}), 500
+        return jsonify({'error': 'Analyseoversigten kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/analytics/skills')
@@ -1502,7 +1502,7 @@ def get_skills_matrix():
             'data': {'targets': targets, 'employee_skills': skills}
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve skills data'}), 500
+        return jsonify({'error': 'Kompetencedata kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/orders')
@@ -1545,7 +1545,7 @@ def get_orders():
                            'pages': (total + per_page - 1) // per_page}
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve orders'}), 500
+        return jsonify({'error': 'Ordrer kunne ikke hentes'}), 500
 
 
 @api_enterprise_bp.route('/api/v1/orders', methods=['POST'])
@@ -1580,7 +1580,7 @@ def create_order_api():
         )
 
         if not result.get('success'):
-            return jsonify({'error': 'Failed to create order'}), 500
+            return jsonify({'error': 'Ordren kunne ikke oprettes'}), 500
 
         order_id = result.get('order_id')
 
@@ -1605,11 +1605,11 @@ def create_order_api():
             pass
 
         return jsonify({
-            'success': True, 'message': 'Order created',
+            'success': True, 'message': 'Ordren er oprettet',
             'data': {'order_id': order_id}
         }), 201
     except Exception as e:
-        return jsonify({'error': 'Failed to create order'}), 500
+        return jsonify({'error': 'Ordren kunne ikke oprettes'}), 500
 
 
 # =====================================================
@@ -1730,7 +1730,7 @@ def calendar_ics_feed():
                 eid = int(employee_id)
             except (TypeError, ValueError):
                 cur.close()
-                return jsonify({'error': 'Invalid employee_id'}), 400
+                return jsonify({'error': 'Ugyldigt employee_id'}), 400
             cur.execute(
                 "SELECT user_id FROM company_users WHERE id = %s AND company_id = %s",
                 (eid, g.company_id),
@@ -1738,7 +1738,7 @@ def calendar_ics_feed():
             emp = cur.fetchone()
             if not emp:
                 cur.close()
-                return jsonify({'error': 'Employee not found'}), 404
+                return jsonify({'error': 'Medarbejderen blev ikke fundet'}), 404
             # course_orders link employees by user_id (or by id where no user_id).
             scoped_user_ids = [emp.get('user_id'), eid]
 
@@ -1827,7 +1827,7 @@ def get_audit_log():
         })
     except Exception as e:
         logging.warning("enterprise_api: audit-log export failed: %s", e)
-        return jsonify({'error': 'Failed to retrieve audit log'}), 500
+        return jsonify({'error': 'Auditloggen kunne ikke hentes'}), 500
 
 
 # =====================================================
@@ -1844,9 +1844,9 @@ def bulk_import_employees():
         data = request.get_json()
         employees = data.get('employees', [])
         if not employees:
-            return jsonify({'error': 'No employees provided'}), 400
+            return jsonify({'error': 'Ingen medarbejdere angivet'}), 400
         if len(employees) > 500:
-            return jsonify({'error': 'Maximum 500 employees per request'}), 400
+            return jsonify({'error': 'Højst 500 medarbejdere pr. kald'}), 400
 
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         created = 0
@@ -1969,7 +1969,7 @@ def bulk_enroll():
         if not employee_ids or not product_handle:
             return jsonify({'error': 'employee_ids and product_handle required'}), 400
         if len(employee_ids) > 200:
-            return jsonify({'error': 'Maximum 200 employees per bulk enroll'}), 400
+            return jsonify({'error': 'Højst 200 medarbejdere pr. samlet tilmelding'}), 400
 
         # Route every enrollment through the single authorized order_service so
         # approvals/budgets are no longer skipped. The API actor is manager-
@@ -2966,7 +2966,7 @@ def openapi_spec():
         return jsonify(_build_openapi_spec())
     except Exception as e:
         logging.warning("enterprise_api: failed to build OpenAPI spec: %s", e)
-        return jsonify({'error': 'Failed to build OpenAPI specification'}), 500
+        return jsonify({'error': 'OpenAPI-specifikationen kunne ikke bygges'}), 500
 
 
 # Minimal, self-contained Swagger-UI page. Loads swagger-ui assets from a CDN;

@@ -2,15 +2,11 @@
 {% block page_id %}{% endblock %}
 {% block title %}Futurematch{% endblock %}
 {% block topbar_title %}Virksomheder{% endblock %}
-{% block topbar_sub %}{{ companies|length }} tenants på platformen.{% endblock %}
+{% from 'fm/_admin_list.html' import search_bar, pager %}
+{% block topbar_sub %}{{ pg.total }} tenants på platformen.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav">
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a>
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-  <a class="pg-tab active" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
-  <a class="pg-tab" href="{{ url_for('companies.register_company') }}"><i class="fa-solid fa-plus"></i> Opret virksomhed</a>
-</div>
+{% set active_admin_page = 'companies' %}{% include 'fm/_admin_subnav.html' %}
 
 <div class="fm-spread" style="margin-bottom:14px">
   <div></div>
@@ -18,7 +14,7 @@
 </div>
 
 <div class="fm-table-wrap">
-  <div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line)"><label class="fm-search" style="width:280px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="coSearch" placeholder="Søg virksomhed…" onkeyup="filterCo()"/></label></div>
+  <div style="padding:14px 18px 0">{{ search_bar(q, 'Søg virksomhed, slug eller branche…') }}</div>
   {% if companies %}
   <table class="fm-table">
     <thead><tr><th>Virksomhed</th><th>Slug</th><th>Medarbejdere</th><th>Sundhed</th><th>Ordrer (30d)</th><th>Branding</th><th>White-label</th><th>Plan</th><th></th></tr></thead>
@@ -43,10 +39,13 @@
   </table>
   {% else %}
   <div style="text-align:center;padding:48px 18px;color:var(--fm-ink-3)">
-    <p>Ingen virksomheder endnu.</p>
-    <a href="{{ url_for('companies.register_company') }}" class="btn btn-primary btn-sm">Opret første virksomhed</a>
+    {% if q %}<p>Ingen virksomheder matcher «{{ q }}».</p>
+    <a href="{{ url_for('companies.admin_companies_list') }}" class="btn btn-soft btn-sm">Ryd søgning</a>
+    {% else %}<p>Ingen virksomheder endnu.</p>
+    <a href="{{ url_for('companies.register_company') }}" class="btn btn-primary btn-sm">Opret første virksomhed</a>{% endif %}
   </div>
   {% endif %}
+  <div style="padding:0 18px 10px">{{ pager(pg, 'virksomheder') }}</div>
 </div>
 </div>
 {% endblock %}

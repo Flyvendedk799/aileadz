@@ -23,7 +23,7 @@ def _column_exists(cur, table_name, column_name):
 def require_admin():
     """Check admin access. Returns redirect response or None."""
     if 'user' not in session or session.get('role') != 'admin':
-        flash("Adgang naegtet.", "danger")
+        flash("Adgang nægtet.", "danger")
         return redirect(url_for('auth.login'))
     return None
 
@@ -79,11 +79,23 @@ def _admin_home_data():
 
     total_orders = 0
     total_revenue = 0
+    revenue_invoiced = 0
+    revenue_paid = 0
     try:
-        cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS rev FROM course_orders")
+        # Revenue excludes cancelled/rejected orders and is split invoiced vs paid
+        # (billing is tracked off-platform; N-6.3).
+        cur.execute("""
+            SELECT COUNT(*) AS cnt,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN price END), 0) AS rev,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') AND billing_status = 'invoiced' THEN price END), 0) AS inv,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') AND billing_status = 'paid' THEN price END), 0) AS paid
+            FROM course_orders
+        """)
         row = cur.fetchone()
         total_orders = row['cnt']
         total_revenue = float(row['rev'])
+        revenue_invoiced = float(row.get('inv') or 0)
+        revenue_paid = float(row.get('paid') or 0)
     except Exception:
         pass
 
@@ -92,7 +104,8 @@ def _admin_home_data():
     revenue_this_month = 0
     try:
         cur.execute("""
-            SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS rev
+            SELECT COUNT(*) AS cnt,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN price END), 0) AS rev
             FROM course_orders WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
         """)
         row = cur.fetchone()
@@ -192,6 +205,8 @@ def _admin_home_data():
         total_companies=total_companies,
         total_orders=total_orders,
         total_revenue=total_revenue,
+        revenue_invoiced=revenue_invoiced,
+        revenue_paid=revenue_paid,
         orders_this_month=orders_this_month,
         revenue_this_month=revenue_this_month,
         total_chatbot_queries=total_chatbot_queries,
@@ -216,18 +231,13 @@ def credits():
 
         try:
             granted_by = session.get('user', '') or 'admin'
-            cur = current_app.mysql.connection.cursor()
-            cur.execute("UPDATE users SET credits = credits + %s WHERE username = %s", (credit_amount, target_user))
-            # Log the grant in the same credit_usage ledger the app already uses
-            # for deductions. Grants are recorded with a NEGATIVE credits_used so
-            # they read as "added" vs. positive deductions, and the description
-            # captures who performed the action (by whom).
-            cur.execute(
-                "INSERT INTO credit_usage (username, credits_used, description) VALUES (%s, %s, %s)",
-                (target_user, -credit_amount, f"Admin-tildeling af {granted_by}"),
-            )
-            current_app.mysql.connection.commit()
-            cur.close()
+            import credit_service
+            res = credit_service.grant(
+                current_app.mysql.connection, amount=credit_amount,
+                reason=(request.form.get('reason') or 'Tildeling fra kreditsiden'),
+                actor=granted_by, username=target_user)
+            if not res.get('success'):
+                raise RuntimeError(res.get('message') or 'grant failed')
             flash(f"Kreditter tilfojet til {target_user}!", "success")
         except Exception as e:
             logging.error("Error updating credits: %s", e)
@@ -307,7 +317,7 @@ def user_list():
         total = (row['cnt'] if row else 0) or 0
 
         cur.execute("""
-            SELECT u.id, u.username, u.email, u.role, u.credits, {created_at_select},
+            SELECT u.id, u.username, u.email, u.role, u.credits, COALESCE(u.status, 'active') AS status, {created_at_select},
                    cu.company_id, c.company_name, cu.role AS company_role
             FROM users u
             LEFT JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active'
@@ -344,7 +354,7 @@ def user_list():
 def update_user_role(user_id):
     new_role = request.json.get('role')
     if new_role not in ('user', 'admin'):
-        return jsonify({'success': False, 'message': 'Invalid role'}), 400
+        return jsonify({'success': False, 'message': 'Ugyldig rolle'}), 400
     try:
         cur = current_app.mysql.connection.cursor()
         cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, user_id))
@@ -356,6 +366,174 @@ def update_user_role(user_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+def _ai_quality_snapshot(cur, days):
+    """Platform-wide AI run quality from ai_agent_runs (all tenants, counts only)."""
+    out = {'totals': {}, 'by_scope': [], 'by_runtime': [], 'by_company': [], 'error': None}
+    where = "created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+    try:
+        cur.execute(
+            "SELECT COUNT(*) AS runs, "
+            "SUM(CASE WHEN status <> 'ok' AND status <> 'success' THEN 1 ELSE 0 END) AS not_ok, "
+            "SUM(CASE WHEN COALESCE(fallback_reason, '') <> '' THEN 1 ELSE 0 END) AS fallbacks, "
+            "SUM(CASE WHEN grounding_violation = 1 THEN 1 ELSE 0 END) AS grounding, "
+            "AVG(self_eval_score) AS self_eval, AVG(latency_ms) AS latency_ms "
+            "FROM ai_agent_runs WHERE " + where, (days,))
+        t = cur.fetchone() or {}
+        out['totals'] = {k: (float(v) if v is not None else 0) for k, v in t.items()}
+        cur.execute(
+            "SELECT COALESCE(agent_scope, 'ukendt') AS label, COUNT(*) AS runs, "
+            "SUM(CASE WHEN grounding_violation = 1 THEN 1 ELSE 0 END) AS grounding, AVG(latency_ms) AS latency_ms "
+            "FROM ai_agent_runs WHERE " + where + " GROUP BY COALESCE(agent_scope, 'ukendt') ORDER BY runs DESC", (days,))
+        out['by_scope'] = list(cur.fetchall() or [])
+        cur.execute(
+            "SELECT COALESCE(runtime, 'ukendt') AS label, COUNT(*) AS runs, "
+            "SUM(CASE WHEN COALESCE(fallback_reason, '') <> '' THEN 1 ELSE 0 END) AS fallbacks, AVG(latency_ms) AS latency_ms "
+            "FROM ai_agent_runs WHERE " + where + " GROUP BY COALESCE(runtime, 'ukendt') ORDER BY runs DESC", (days,))
+        out['by_runtime'] = list(cur.fetchall() or [])
+        cur.execute(
+            "SELECT r.company_id, COALESCE(c.company_name, 'Uden virksomhed') AS company_name, COUNT(*) AS runs, "
+            "SUM(CASE WHEN r.grounding_violation = 1 THEN 1 ELSE 0 END) AS grounding, AVG(r.self_eval_score) AS self_eval "
+            "FROM ai_agent_runs r LEFT JOIN companies c ON c.id = r.company_id "
+            "WHERE r." + where + " GROUP BY r.company_id, c.company_name ORDER BY runs DESC LIMIT 15", (days,))
+        out['by_company'] = list(cur.fetchall() or [])
+    except Exception as e:
+        logging.warning("ai quality snapshot failed: %s", e)
+        out['error'] = str(e)
+    return out
+
+
+@admin_dashboard_bp.route('/ai-quality')
+@require_role('admin')
+def admin_ai_quality():
+    """Platform-level AI quality view (N-6.5): grounding violations, fallbacks, latency and
+    self-eval across ALL tenants - the company-level view stays under /hr/ai-quality."""
+    try:
+        days = max(1, min(180, int(request.args.get('days', 30))))
+    except (TypeError, ValueError):
+        days = 30
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    snap = _ai_quality_snapshot(cur, days)
+    cur.close()
+    return render_template('fm/admin_ai_quality.html', snap=snap, days=days)
+
+
+@admin_dashboard_bp.route('/orders/<order_id>')
+@require_role('admin')
+def admin_order_detail(order_id):
+    """Platform-wide order detail (Chatbot BI 'Detaljer' works across tenants).
+
+    Read-only: changes are made in the company's own HR workspace (the page links
+    there through the admin 'act as' flow) so every write still goes through the
+    tenant-scoped order routes and is audited as such."""
+    import order_lifecycle as lc
+    import order_service
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT co.*, u.email, cu.job_title, cu.employee_id, c.company_name
+               FROM course_orders co
+               LEFT JOIN users u ON u.id = co.user_id
+               LEFT JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
+               LEFT JOIN companies c ON c.id = co.company_id
+               WHERE co.order_id = %s""", (order_id,))
+        order = cur.fetchone()
+        cur.close()
+    except Exception as e:
+        logging.warning("admin_order_detail failed: %s", e)
+        order = None
+    if not order:
+        flash("Ordren blev ikke fundet.", "warning")
+        return redirect(url_for('admin_reports.chatbot_dashboard'))
+    ctx = order_service.OrderContext.from_session(source='admin')
+    history = order_service.get_history(ctx, order_id)
+    status = lc.normalize_status(order.get('status'))
+    billing = lc.normalize_billing(order.get('billing_status'))
+    company = {'id': order.get('company_id'), 'company_name': order.get('company_name') or 'Uden virksomhed'}
+    return render_template(
+        'fm/order_details.html', order=order, company=company, history=history,
+        status=status, status_label=lc.status_label(status), status_tone=lc.STATUS_TONES[status],
+        status_labels=lc.STATUS_LABELS_SHORT, billing=billing, billing_label=lc.billing_label(billing),
+        billing_tone=lc.BILLING_TONES[billing], billing_transitions=[], billing_labels=lc.BILLING_LABELS,
+        can_bill=False, can_manage=False, next_statuses=[], admin_view=True,
+    )
+
+
+@admin_dashboard_bp.route('/users/<int:user_id>/deactivate', methods=['POST'])
+@require_role('admin')
+def toggle_user_active(user_id):
+    """Deactivate / reactivate a user. A deactivated user cannot log in and their
+    company membership is switched off too; reactivating restores both."""
+    if user_id == session.get('user_id'):
+        return jsonify({'success': False, 'message': 'Du kan ikke deaktivere dig selv.'}), 400
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, username, COALESCE(status, 'active') AS status FROM users WHERE id = %s", (user_id,))
+        u = cur.fetchone()
+        if not u:
+            cur.close()
+            return jsonify({'success': False, 'message': 'Brugeren blev ikke fundet.'}), 404
+        deactivate = (u.get('status') or 'active') != 'deactivated'
+        cur.execute("UPDATE users SET status = %s WHERE id = %s", ('deactivated' if deactivate else 'active', user_id))
+        cur.execute("UPDATE company_users SET status = %s WHERE user_id = %s",
+                    ('inactive' if deactivate else 'active', user_id))
+        try:
+            cur.execute(
+                "INSERT INTO audit_log (company_id, user_id, action, action_type, resource_type, resource_id, description, details) "
+                "VALUES (NULL, %s, %s, %s, 'user', %s, %s, %s)",
+                (session.get('user_id'), 'user.deactivated' if deactivate else 'user.reactivated',
+                 'user.deactivated' if deactivate else 'user.reactivated', str(user_id),
+                 u.get('username'), u.get('username')),
+            )
+        except Exception:
+            pass
+        conn.commit()
+        cur.close()
+        return jsonify({'success': True, 'deactivated': deactivate,
+                        'message': 'Brugeren er deaktiveret.' if deactivate else 'Brugeren er aktiveret igen.'})
+    except Exception as e:
+        logging.error("toggle_user_active failed: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Kunne ikke ændre brugerens status.'}), 500
+
+
+@admin_dashboard_bp.route('/users/<int:user_id>/send-reset', methods=['POST'])
+@require_role('admin')
+def send_user_reset_link(user_id):
+    """Email a single-use password-reset link (nobody ever handles a plaintext password)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, username, email, COALESCE(status, 'active') AS status FROM users WHERE id = %s", (user_id,))
+        u = cur.fetchone()
+        cur.close()
+        if not u:
+            return jsonify({'success': False, 'message': 'Brugeren blev ikke fundet.'}), 404
+        if not u.get('email'):
+            return jsonify({'success': False, 'message': 'Brugeren har ingen e-mailadresse.'}), 400
+        if u.get('status') == 'deactivated':
+            return jsonify({'success': False, 'message': 'Brugeren er deaktiveret. Aktivér først.'}), 400
+        import auth as _auth
+        if hasattr(_auth, 'send_user_password_link'):
+            # Part A (S-2.4): token issue + email in one call.
+            sent = _auth.send_user_password_link(current_app.mysql.connection, u, purpose='reset')
+        else:
+            import account_tokens
+            raw = account_tokens.create_token('user_reset', user_id, ttl_minutes=60)
+            link = account_tokens.build_url('auth.reset_password', raw, '/reset-password/{token}')
+            from email_service import send_branded_email
+            sent = send_branded_email(u['email'], "Nulstil din adgangskode", 'password_reset', {}, reset_url=link,
+                                      dedupe_key='user_reset:%s:%s' % (user_id, raw[:6]))
+        msg = ('Nulstillingslink sendt til ' + u['email'] + '.') if sent else \
+              'Linket er oprettet, men e-mail er ikke sat op endnu (se Systemstatus).'
+        return jsonify({'success': True, 'emailed': bool(sent), 'message': msg})
+    except Exception as e:
+        logging.error("send_user_reset_link failed: %s", e)
+        return jsonify({'success': False, 'message': 'Linket kunne ikke sendes.'}), 500
+
+
 @admin_dashboard_bp.route('/users/<int:user_id>/credits', methods=['POST'])
 @require_role('admin')
 def update_user_credits(user_id):
@@ -363,13 +541,22 @@ def update_user_credits(user_id):
     try:
         amount = int(amount)
     except (ValueError, TypeError):
-        return jsonify({'success': False, 'message': 'Ugyldigt antal'}), 400
+        return jsonify({'success': False, 'message': 'Ugyldigt antal.'}), 400
     try:
-        cur = current_app.mysql.connection.cursor()
-        cur.execute("UPDATE users SET credits = credits + %s WHERE id = %s", (amount, user_id))
-        current_app.mysql.connection.commit()
+        # N-6.4: every grant goes through the credit ledger (reason + actor).
+        import credit_service
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
         cur.close()
-        return jsonify({'success': True, 'message': f'{amount} kreditter tilfojet'})
+        if not target:
+            return jsonify({'success': False, 'message': 'Brugeren blev ikke fundet'}), 404
+        reason = (request.json.get('reason') or 'Justering fra brugeradministrationen')
+        res = credit_service.grant(current_app.mysql.connection, amount=amount, reason=reason,
+                                   actor=session.get('user') or 'admin', username=target['username'])
+        if not res.get('success'):
+            return jsonify({'success': False, 'message': res.get('message')}), 400
+        return jsonify({'success': True, 'message': f'{amount} kreditter tilføjet', 'balance': res.get('balance')})
     except Exception as e:
         logging.error("Error updating credits: %s", e)
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -383,8 +570,21 @@ def admin_catalog():
     vendors = catalog.get_vendors()[:80]
     import_drafts = catalog.list_import_drafts()[:10]
     ai_jobs = catalog.list_ai_category_jobs()[:10]
+    try:
+        from app1 import rag
+        index = rag.index_status()
+    except Exception as e:
+        logging.warning("index status unavailable: %s", e)
+        index = None
+    try:
+        import shopify_sync
+        shopify_ready = shopify_sync.configured()
+    except Exception:
+        shopify_ready = False
     return render_template(
         'fm/admin_catalog.html',
+        index=index,
+        shopify_ready=shopify_ready,
         stats=stats,
         categories=categories,
         vendors=vendors,
@@ -398,7 +598,7 @@ def admin_catalog():
 def admin_catalog_import():
     upload = request.files.get('catalog_csv')
     if not upload or not upload.filename:
-        flash("Vaelg en CSV-fil.", "danger")
+        flash("Vælg en CSV-fil.", "danger")
         return redirect(url_for('admin_dashboard.admin_catalog'))
     try:
         parsed = catalog.parse_catalog_csv(upload)
@@ -436,6 +636,7 @@ def admin_catalog_import_confirm(job_id):
             _mark_submissions_approved_for_job(cur, job_id)
             current_app.mysql.connection.commit()
             cur.close()
+            _email_vendor_submission_result_for_job(job_id, approved=True)
         except Exception as e:
             logging.warning("Vendor submission approval bookkeeping failed for %s: %s", job_id, e)
         flash("CSV import er bekraeftet og kataloget er opdateret.", "success")
@@ -462,7 +663,7 @@ def admin_catalog_ai_start():
 def admin_catalog_ai_batch(job_id):
     job = catalog.process_ai_category_batch(job_id, batch_size=8)
     if not job:
-        return jsonify({'success': False, 'message': 'Job not found'}), 404
+        return jsonify({'success': False, 'message': 'Jobbet blev ikke fundet'}), 404
     diff = catalog.ai_category_diff(job)
     return jsonify({
         'success': True,
@@ -552,6 +753,83 @@ def _mark_submissions_approved_for_job(cur, job_id):
         logging.warning("Could not auto-approve vendor submissions for job %s: %s", job_id, e)
 
 
+def _email_vendor_submission_result(submission_id, approved, note=None):
+    """Tell the vendor how their catalog submission went. Never raises."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("""SELECT v.contact_email, v.vendor_name, vs.filename, vs.row_count
+                        FROM vendor_submissions vs JOIN vendors v ON v.id = vs.vendor_id
+                        WHERE vs.id = %s""", (submission_id,))
+        row = cur.fetchone()
+        cur.close()
+        _send_submission_mail(row, approved, note)
+    except Exception as e:
+        logging.debug("Vendor submission mail skipped: %s", e)
+
+
+def _email_vendor_submission_result_for_job(job_id, approved, note=None):
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("""SELECT v.contact_email, v.vendor_name, vs.filename, vs.row_count
+                        FROM vendor_submissions vs JOIN vendors v ON v.id = vs.vendor_id
+                        WHERE vs.job_id = %s""", (job_id,))
+        rows = cur.fetchall() or []
+        cur.close()
+        for row in rows:
+            _send_submission_mail(row, approved, note)
+    except Exception as e:
+        logging.debug("Vendor submission mail (job) skipped: %s", e)
+
+
+def _send_submission_mail(row, approved, note):
+    if not row or not row.get('contact_email'):
+        return
+    from email_service import send_branded_email
+    send_branded_email(
+        row['contact_email'],
+        "Dit katalog er godkendt og importeret" if approved else "Dit katalog blev ikke godkendt",
+        'vendor_submission_result', {},
+        vendor_name=row.get('vendor_name') or '', filename=row.get('filename') or '',
+        row_count=row.get('row_count') or 0, approved=bool(approved), note=note or '',
+    )
+
+
+@admin_dashboard_bp.route('/vendors/<int:vendor_id>/resend-invite', methods=['POST'])
+@require_role('admin')
+def admin_vendor_resend_invite(vendor_id):
+    """Send a fresh invite (pending vendors) or a password-reset link (active ones)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, vendor_name, contact_email, status FROM vendors WHERE id = %s", (vendor_id,))
+        v = cur.fetchone()
+        if not v:
+            cur.close()
+            flash("Leverandøren blev ikke fundet.", "warning")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
+        if v.get('status') == 'suspended':
+            cur.close()
+            flash("Leverandøren er suspenderet. Aktivér kontoen, før du sender en invitation.", "warning")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
+        if v.get('status') == 'pending':
+            import secrets
+            token = secrets.token_urlsafe(32)[:80]
+            expires = datetime.now() + timedelta(days=7)
+            cur.execute("UPDATE vendors SET invite_token = %s, invite_expires_at = %s WHERE id = %s",
+                        (token, expires, vendor_id))
+            current_app.mysql.connection.commit()
+            _send_vendor_invite_email(v.get('contact_email'), v.get('vendor_name'), token, expires)
+            flash("Ny invitation er sendt.", "success")
+        else:
+            from vendor_portal import send_vendor_reset_link
+            send_vendor_reset_link(v)
+            flash("Et link til at vælge ny adgangskode er sendt.", "success")
+        cur.close()
+    except Exception as e:
+        logging.error("Resend vendor invite failed: %s", e)
+        flash("Invitationen kunne ikke sendes.", "danger")
+    return redirect(url_for('admin_dashboard.admin_vendors'))
+
+
 @admin_dashboard_bp.route('/vendors')
 @require_role('admin')
 def admin_vendors():
@@ -575,6 +853,13 @@ def admin_vendors():
         name = (vendor.get('vendor_name') or '').strip().lower()
         vendor['course_count'] = course_counts.get(name, 0)
 
+    from admin_lists import filter_rows, list_args, paginate
+    _page, _per, q = list_args(request)
+    all_vendor_count = len(vendors)
+    vendors = filter_rows(vendors, q, ['vendor_name', 'contact_email', 'status', 'website'])
+    pg = paginate(vendors, _page, _per)
+    vendors = pg['items']
+
     submissions = []
     try:
         cur.execute("""
@@ -596,6 +881,9 @@ def admin_vendors():
     return render_template(
         'fm/admin_vendors.html',
         vendors=vendors,
+        pg=pg,
+        q=q,
+        all_vendor_count=all_vendor_count,
         submissions=submissions,
         pending_count=pending_count,
     )
@@ -759,6 +1047,29 @@ def admin_vendor_submission_action(submission_id, action):
         return redirect(url_for('admin_dashboard.admin_vendors'))
     try:
         cur = current_app.mysql.connection.cursor()
+        cur.execute("SELECT id, vendor_id, job_id, status FROM vendor_submissions WHERE id = %s", (submission_id,))
+        sub = cur.fetchone()
+        cur.close()
+        if not sub:
+            flash("Indsendelsen blev ikke fundet.", "warning")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
+        sub = sub if isinstance(sub, dict) else {'id': sub[0], 'vendor_id': sub[1], 'job_id': sub[2], 'status': sub[3]}
+        job_id = sub.get('job_id')
+        draft = None
+        try:
+            draft = catalog.get_import_draft(job_id) if job_id else None
+        except Exception:
+            draft = None
+
+        if action == 'approved' and draft:
+            # "Godkend & importér": the catalog only changes through the preview's
+            # confirm step (which also marks the submission approved and mails the
+            # vendor), so approving never leaves the vendor "approved" with nothing imported.
+            flash("Gennemgå kladden og tryk «Bekræft import» for at godkende og importere kurserne.", "info")
+            return redirect(url_for('admin_dashboard.admin_catalog_import_preview', job_id=job_id))
+
+        note = (request.form.get('note') or '').strip() or None
+        cur = current_app.mysql.connection.cursor()
         cur.execute(
             """UPDATE vendor_submissions
                    SET status = %s, reviewed_by = %s, reviewed_at = NOW()
@@ -767,8 +1078,14 @@ def admin_vendor_submission_action(submission_id, action):
         )
         current_app.mysql.connection.commit()
         cur.close()
+        if action == 'rejected' and job_id and draft:
+            try:
+                catalog.delete_import_draft(job_id)
+            except Exception as e:
+                logging.warning("Could not discard rejected draft %s: %s", job_id, e)
+        _email_vendor_submission_result(submission_id, approved=(action == 'approved'), note=note)
         label = "godkendt" if action == 'approved' else "afvist"
-        flash(f"Indsendelsen er {label}.", "success")
+        flash(f"Indsendelsen er {label}. Leverandøren er underrettet.", "success")
     except Exception as e:
         logging.error("Could not update vendor submission: %s", e)
         try:
@@ -827,9 +1144,16 @@ def admin_agreements():
 
     active_count = sum(1 for a in agreements if a.get('is_active'))
 
+    from admin_lists import filter_rows, list_args, paginate
+    _page, _per, q = list_args(request)
+    agreements = filter_rows(agreements, q, ['company_name', 'vendor_name', 'agreement_name', 'agreement_reference'])
+    pg = paginate(agreements, _page, _per)
+
     return render_template(
         'fm/admin_agreements.html',
-        agreements=agreements,
+        agreements=pg['items'],
+        pg=pg,
+        q=q,
         companies=companies,
         vendors=vendors,
         active_count=active_count,
@@ -867,10 +1191,10 @@ def admin_agreement_save():
     is_active = 1 if request.form.get('is_active') in ('1', 'on', 'true') else 0
 
     if not company_id or not vendor_name:
-        flash("Vaelg en virksomhed og en leverandør.", "danger")
+        flash("Vælg en virksomhed og en leverandør.", "danger")
         return _back()
     if discount_value < 0:
-        flash("Rabatvaerdien kan ikke vaere negativ.", "danger")
+        flash("Rabatvaerdien kan ikke være negativ.", "danger")
         return _back()
 
     try:
@@ -939,7 +1263,7 @@ def make_superadmin(username):
         flash("Log ind foerst.", "danger")
         return redirect(url_for('auth.login'))
     if session.get('role') != 'admin' and session.get('user') != 'Mastek123':
-        flash("Adgang naegtet.", "danger")
+        flash("Adgang nægtet.", "danger")
         return redirect(url_for('auth.login'))
     try:
         cur = current_app.mysql.connection.cursor()
@@ -977,6 +1301,10 @@ def admin_audit_log():
     except (TypeError, ValueError):
         company_id = None
 
+    from admin_lists import list_args
+    page, per_page, q = list_args(request, per_page=50)
+    offset = (page - 1) * per_page
+    total = 0
     rows, action_types = [], []
     try:
         where = ["al.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)"]
@@ -987,16 +1315,22 @@ def admin_audit_log():
         if company_id:
             where.append("al.company_id = %s")
             params.append(company_id)
+        if q:
+            where.append("(al.description LIKE %s OR al.action_type LIKE %s OR u.username LIKE %s "
+                         "OR c.company_name LIKE %s OR al.resource_id LIKE %s)")
+            like = "%" + q + "%"
+            params.extend([like] * 5)
+        base = ("FROM audit_log al LEFT JOIN companies c ON c.id = al.company_id "
+                "LEFT JOIN users u ON u.id = al.user_id WHERE " + " AND ".join(where))
+        cur.execute("SELECT COUNT(*) AS n " + base, tuple(params))
+        r = cur.fetchone() or {}
+        total = int(r.get('n') or 0)
         cur.execute(
             """SELECT al.id, al.company_id, al.user_id, al.action, al.action_type,
                       al.resource_type, al.resource_id, al.description, al.created_at,
-                      c.company_name, u.username
-               FROM audit_log al
-               LEFT JOIN companies c ON c.id = al.company_id
-               LEFT JOIN users u ON u.id = al.user_id
-               WHERE """ + " AND ".join(where) + """
-               ORDER BY al.created_at DESC LIMIT 300""",
-            tuple(params),
+                      c.company_name, u.username """ + base +
+            " ORDER BY al.created_at DESC LIMIT %s OFFSET %s",
+            tuple(params) + (per_page, offset),
         )
         rows = cur.fetchall() or []
         cur.execute(
@@ -1010,7 +1344,11 @@ def admin_audit_log():
     finally:
         cur.close()
 
-    return render_template('fm/adminlog.html', rows=rows, action_types=action_types,
+    pages = max(1, (total + per_page - 1) // per_page)
+    pg = {'items': rows, 'page': page, 'pages': pages, 'total': total, 'per_page': per_page,
+          'has_prev': page > 1, 'has_next': page < pages}
+
+    return render_template('fm/adminlog.html', rows=rows, action_types=action_types, pg=pg, q=q,
                            sel_action_type=action_type, sel_company_id=company_id, days=days)
 
 
@@ -1050,8 +1388,136 @@ def admin_system_health():
             snapshot[label] = None
     cur.close()
 
+    mail = {}
+    try:
+        from email_service import mail_status
+        mail = mail_status()
+    except Exception as e:
+        logging.warning("system-health: mail status unavailable: %s", e)
+
+    jobs = []
+    try:
+        import scheduler
+        jobs = scheduler.job_status_rows(current_app.mysql.connection)
+    except Exception as e:
+        logging.warning("system-health: job status unavailable: %s", e)
+
     return render_template('fm/admin_system_health.html',
-                           features=features, outbox=outbox, snapshot=snapshot)
+                           features=features, outbox=outbox, snapshot=snapshot,
+                           mail=mail, jobs=jobs)
+
+
+# ---------------------------------------------------------------------------
+# N-6.3 - platform billing queue (all companies + solo users). Payment is
+# off-platform; admin only manages invoiced/paid state and exports.
+# ---------------------------------------------------------------------------
+def _admin_billing_ctx():
+    import order_service
+    ctx = order_service.OrderContext.from_session(source='admin')
+    ctx.is_platform_admin = True
+    return ctx
+
+
+@admin_dashboard_bp.route('/billing')
+@require_role('admin')
+def admin_billing():
+    import billing_service
+    f = request.args.get('billing_status', '')
+    scope = request.args.get('scope', '')          # '' = everyone, 'solo' = enkeltbrugere
+    company_id = request.args.get('company_id', type=int)
+    date_from, date_to = request.args.get('from', ''), request.args.get('to', '')
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        orders = billing_service.fetch_orders(
+            cur, company_id=company_id, billing_filter=f, date_from=date_from, date_to=date_to,
+            solo_only=(scope == 'solo'))
+        summary = billing_service.summary(
+            cur, company_id=company_id, date_from=date_from, date_to=date_to, solo_only=(scope == 'solo'))
+    except Exception as e:
+        logging.warning("admin billing failed: %s", e)
+        orders, summary = [], {}
+    cur.close()
+    return render_template(
+        'fm/billing.html', company={'company_name': 'Alle virksomheder'}, orders=orders,
+        summary=summary or {}, departments=[], can_edit=True, scope='admin',
+        billing_filter=f, dept_filter='', date_from=date_from, date_to=date_to,
+        update_url_tmpl=url_for('admin_dashboard.admin_billing_update', order_id='ORDER_ID'),
+        bulk_url=url_for('admin_dashboard.admin_billing_bulk'),
+        csv_url=url_for('admin_dashboard.admin_billing_csv'))
+
+
+@admin_dashboard_bp.route('/billing/order/<order_id>', methods=['POST'])
+@require_role('admin')
+def admin_billing_update(order_id):
+    import order_service
+    data = request.get_json(silent=True) or {}
+    ctx = _admin_billing_ctx()
+    fields = dict(invoice_number=data.get('invoice_number') or None, invoice_date=data.get('invoice_date') or None,
+                  due_date=data.get('due_date') or None, payment_date=data.get('payment_date') or None,
+                  payment_reference=data.get('payment_reference') or None,
+                  note=data.get('billing_note') or data.get('note') or None)
+    if data.get('billing_status'):
+        res = order_service.set_billing_status(ctx, order_id, data['billing_status'], **fields)
+    else:
+        res = order_service.update_billing_details(ctx, order_id, **fields)
+    return jsonify(res), (200 if res.get('success') else 400)
+
+
+@admin_dashboard_bp.route('/billing/bulk', methods=['POST'])
+@require_role('admin')
+def admin_billing_bulk():
+    import order_service
+    data = request.get_json(silent=True) or {}
+    ids = data.get('order_ids') or []
+    if not ids or not data.get('billing_status') or len(ids) > 100:
+        return jsonify({'success': False, 'message': 'Vælg 1-100 ordrer og en status.'}), 400
+    res = order_service.bulk_set_billing_status(
+        _admin_billing_ctx(), ids, data['billing_status'],
+        invoice_number=data.get('invoice_number') or None, due_date=data.get('due_date') or None,
+        payment_reference=data.get('payment_reference') or None)
+    failed = [r for r in res['results'] if not r.get('success')]
+    msg = '%d ordrer opdateret' % res['done'] + (', %d fejlede' % len(failed) if failed else '')
+    return jsonify({'success': res['done'] > 0, 'message': msg})
+
+
+@admin_dashboard_bp.route('/billing/export.csv')
+@require_role('admin')
+def admin_billing_csv():
+    import billing_service
+    from flask import Response
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    orders = billing_service.fetch_orders(
+        cur, company_id=request.args.get('company_id', type=int),
+        billing_filter=request.args.get('billing_status', ''), date_from=request.args.get('from', ''),
+        date_to=request.args.get('to', ''), solo_only=(request.args.get('scope') == 'solo'), limit=5000)
+    names = {}
+    try:
+        cur.execute("SELECT id, company_name FROM companies")
+        names = {r['id']: r['company_name'] for r in cur.fetchall()}
+    except Exception:
+        pass
+    cur.close()
+    return Response(billing_service.to_csv(orders, names), mimetype='text/csv; charset=utf-8', headers={
+        'Content-Disposition': 'attachment; filename="fakturering-alle.csv"'})
+
+
+@admin_dashboard_bp.route('/system-health/test-email', methods=['POST'])
+@require_role('admin')
+def admin_send_test_email():
+    """N-0.2: send a real test mail so ops can verify SMTP from the VPS."""
+    from email_service import send_test_email
+    to_email = (request.form.get('to_email') or '').strip()
+    if not to_email:
+        to_email = (session.get('email') or '').strip()
+    if not to_email or '@' not in to_email:
+        flash("Angiv en gyldig e-mailadresse til testen.", "danger")
+        return redirect(url_for('admin_dashboard.admin_system_health'))
+    result = send_test_email(to_email)
+    if result.get('ok'):
+        flash(f"Test-mail sendt til {to_email}. Tjek indbakken (og spam).", "success")
+    else:
+        flash(f"Test-mail fejlede: {result.get('error')}", "danger")
+    return redirect(url_for('admin_dashboard.admin_system_health'))
 
 
 # ---------------------------------------------------------------------------

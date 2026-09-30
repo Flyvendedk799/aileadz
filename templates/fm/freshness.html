@@ -21,13 +21,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
-    <a class="pg-tab" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter-circle-dollar"></i> Conversion-funnel</a>
-    <a class="pg-tab active" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-check"></i> Katalog-friskhed</a>
-  </div>
+{% set active_admin_page = '' %}{% include 'fm/_admin_subnav.html' %}
 
   <!-- KPI row -->
   <div class="kpi-row" style="grid-template-columns:repeat(3,1fr);margin-top:16px">
@@ -107,6 +101,13 @@
           </tbody>
         </table>
       </div>
+      <div class="fm-flex fm-gap8" style="margin-top:12px;flex-wrap:wrap;align-items:center">
+        <span class="fr-muted" style="font-size:12.5px">Valgte kurser:</span>
+        <button class="btn btn-ghost btn-sm" name="status" value="hidden" type="submit"><i class="fa-solid fa-eye-slash"></i> Skjul</button>
+        <button class="btn btn-ghost btn-sm" name="status" value="archived" type="submit"><i class="fa-solid fa-box-archive"></i> Arkivér</button>
+        <span class="fr-muted" style="font-size:12px">Forældede kurser udelades allerede fra anbefalinger.</span>
+      </div>
+      </form>
       {% else %}
       <div class="fr-sec-empty">
         <i class="fa-solid fa-circle-check fr-muted" style="font-size:20px;display:block;margin-bottom:8px"></i>
@@ -129,10 +130,12 @@
     <div class="fm-card-body" style="padding-top:6px">
       <p class="fr-note">Kurser hvis seneste holddato ligger i fortiden. For at undgå falske alarmer på de mange tvetydige danske datoer i kataloget tælles en dato kun som forældet, når den kan læses med et entydigt årstal.</p>
       {% if courses %}
+      <form method="post" action="{{ url_for('catalog_admin.bulk_status') }}">
       <div class="fm-table-wrap" style="border:0;box-shadow:none;margin-top:8px">
         <table class="fm-table" id="staleTable">
           <thead>
             <tr>
+              <th style="width:28px"></th>
               <th>Kursus</th>
               <th>Leverandør</th>
               <th>Seneste holddato</th>
@@ -143,6 +146,7 @@
           <tbody>
             {% for c in courses %}
             <tr>
+              <td><input type="checkbox" name="handles" value="{{ c.handle }}"></td>
               <td><strong>{{ c.title }}</strong></td>
               <td class="fr-muted">{{ c.vendor }}</td>
               <td class="tnum">

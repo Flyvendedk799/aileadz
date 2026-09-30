@@ -14,6 +14,7 @@ def allowed_file(filename):
 
 def _apply_session_user_context(user):
     """Set session fields after successful authentication."""
+    anon_token = session.get('browser_token')
     session['user'] = user['username']
     session['user_id'] = user['id']
     session['credits'] = user['credits']
@@ -25,10 +26,12 @@ def _apply_session_user_context(user):
     session.pop('company_id', None)
     session.pop('company_role', None)
     session.pop('company_name', None)
+    session.pop('company_department', None)
     try:
         cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur2.execute("""
-            SELECT cu.company_id, cu.role AS company_role, c.company_name, c.company_slug
+            SELECT cu.company_id, cu.role AS company_role, cu.department AS company_department,
+                   c.company_name, c.company_slug
             FROM company_users cu
             JOIN companies c ON c.id = cu.company_id
             WHERE cu.user_id = %s AND cu.status = 'active'
@@ -41,7 +44,16 @@ def _apply_session_user_context(user):
             session['company_role'] = comp['company_role']
             session['company_name'] = comp['company_name']
             session['company_slug'] = comp.get('company_slug', '')
+            # Department drives budget charging for every order path (chat, tools,
+            # web); before this it was never set, so those orders skipped budgets.
+            session['company_department'] = comp.get('company_department') or ''
             session['user_type'] = 'company_user'
+    except Exception:
+        pass
+    # Memory the visitor built as a guest becomes theirs (N-5.8).
+    try:
+        import anon_migration
+        anon_migration.migrate(anon_token, user['username'])
     except Exception:
         pass
 
@@ -54,7 +66,8 @@ def login(slug=None):
         username = request.form.get('username')
         password = request.form.get('password')
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+        cur.execute("SELECT * FROM users WHERE username = %s OR LOWER(email) = LOWER(%s) ORDER BY (username = %s) DESC LIMIT 1",
+                    (username, username, username))
         user = cur.fetchone()
         cur.close()
         # Support both hashed passwords (new) and legacy plaintext (old)
@@ -75,16 +88,44 @@ def login(slug=None):
                         cur_up.close()
                     except Exception:
                         pass
+        if user and password_valid and (user.get('status') or 'active') == 'deactivated':
+            flash('Kontoen er deaktiveret. Kontakt din administrator.', 'danger')
+            return redirect(url_for('auth.login'))
         if user and password_valid:
             _apply_session_user_context(user)
-            flash('Login successful!', 'success')
+            flash('Du er logget ind.', 'success')
             return redirect(url_for('dashboard.dashboard'))
         else:
-            flash('Invalid username or password', 'danger')
+            flash('Forkert brugernavn eller adgangskode.', 'danger')
             if tenant_slug:
                 return redirect(url_for('auth.login', slug=tenant_slug))
             return redirect(url_for('auth.login'))
     return render_template('fm/login.html', tenant_slug=tenant_slug)
+
+
+def _join_tenant(user_id, username, email, slug):
+    """``/register?tenant=<slug>`` joins the company - but only when the e-mail
+    address belongs to the company's verified domain (company_domain), so nobody
+    can join a company by guessing its slug. Returns the company name or None."""
+    if not slug or not user_id or '@' not in (email or ''):
+        return None
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, company_name, company_domain FROM companies "
+                    "WHERE company_slug = %s AND status = 'active' LIMIT 1", (slug,))
+        company = cur.fetchone()
+        domain = ((company or {}).get('company_domain') or '').strip().lower().lstrip('@')
+        if not company or not domain or email.rsplit('@', 1)[1].lower() != domain:
+            cur.close()
+            return None
+        cur.execute("INSERT INTO company_users (company_id, user_id, username, email, role, status) "
+                    "VALUES (%s, %s, %s, %s, 'employee', 'active')", (company['id'], user_id, username, email))
+        current_app.mysql.connection.commit()
+        cur.close()
+        return company['company_name']
+    except Exception as e:
+        current_app.logger.warning("tenant join skipped: %s", e)
+        return None
 
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
@@ -94,20 +135,25 @@ def register():
         password = request.form.get('password')
         email = request.form.get('email')
         if not username or not password or not email:
-            flash('Please fill out all fields.', 'danger')
+            flash('Udfyld alle felter.', 'danger')
             return redirect(url_for('auth.register'))
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur.execute("SELECT * FROM users WHERE username = %s OR email = %s", (username, email))
         existing_user = cur.fetchone()
         if existing_user:
-            flash('Username or email already exists', 'danger')
+            flash('Brugernavnet eller e-mailen er allerede i brug.', 'danger')
             cur.close()
             return redirect(url_for('auth.register'))
         hashed_password = generate_password_hash(password)
         cur.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)", (username, hashed_password, email))
+        new_user_id = cur.lastrowid
         current_app.mysql.connection.commit()
         cur.close()
-        flash('Registration successful! Please log in.', 'success')
+        joined = _join_tenant(new_user_id, username, email, request.args.get('tenant'))
+        if joined:
+            flash('Din konto er oprettet, og du er tilknyttet %s. Log ind for at komme i gang.' % joined, 'success')
+        else:
+            flash('Din konto er oprettet. Log ind for at komme i gang.', 'success')
         if request.args.get('tenant'):
             return redirect(url_for('auth.login', slug=request.args.get('tenant')))
         return redirect(url_for('auth.login'))
@@ -116,13 +162,13 @@ def register():
 @auth_bp.route('/logout')
 def logout():
     session.clear()
-    flash('Logged out successfully.', 'success')
+    flash('Du er logget ud.', 'success')
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/brands')
 def brands():
     if 'user' not in session:
-        flash('Please log in to access your profile.', 'danger')
+        flash('Log ind for at se din profil.', 'danger')
         return redirect(url_for('auth.login'))
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)

@@ -174,23 +174,21 @@ def _probe_rate_limit():
 
 
 def _probe_email():
-    """Outbound email. smtplib is stdlib (always present); ESP config is extra."""
+    """Outbound email: available only when flask_mail is installed AND a server
+    plus a default sender are configured (N-0.2). Importing smtplib proves nothing."""
     try:
-        smtp_ok, smtp_reason = _try_import('smtplib')
-        esp_set, esp_names = _any_env([
-            'SMTP_HOST', 'SMTP_SERVER', 'MAIL_SERVER',
-            'SENDGRID_API_KEY', 'MAILGUN_API_KEY', 'POSTMARK_API_TOKEN',
-            'SES_REGION', 'AWS_SES_REGION', 'EMAIL_API_KEY',
-        ])
-        # smtplib alone is enough to *attempt* delivery, so the subsystem is
-        # considered available whenever the stdlib module imports.
-        if esp_set:
-            detail = 'smtplib available; ESP config detected: ' + ', '.join(esp_names)
-        elif smtp_ok:
-            detail = 'smtplib available; no ESP env configured (using SMTP/defaults)'
-        else:
-            detail = 'smtplib unavailable: ' + smtp_reason
-        return {'available': bool(smtp_ok), 'detail': detail}
+        fm_ok, fm_reason = _try_import('flask_mail')
+        missing = []
+        if not fm_ok:
+            missing.append('flask_mail ({})'.format(fm_reason))
+        if not (os.environ.get('MAIL_SERVER') or os.environ.get('SMTP_HOST') or os.environ.get('SMTP_SERVER')):
+            missing.append('MAIL_SERVER')
+        if not (os.environ.get('MAIL_DEFAULT_SENDER') or os.environ.get('MAIL_USERNAME')):
+            missing.append('MAIL_DEFAULT_SENDER')
+        if missing:
+            return {'available': False, 'detail': 'E-mail mangler: ' + ', '.join(missing)}
+        return {'available': True, 'detail': 'flask_mail + SMTP konfigureret ({})'.format(
+            os.environ.get('MAIL_SERVER') or os.environ.get('SMTP_HOST') or os.environ.get('SMTP_SERVER'))}
     except Exception as exc:  # noqa: BLE001
         return {'available': False, 'detail': 'probe error: {}'.format(exc)}
 

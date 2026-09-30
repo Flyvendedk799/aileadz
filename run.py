@@ -98,7 +98,14 @@ logging.basicConfig(level=logging.INFO)
 
 
 def _enterprise_sync_stamp_path():
-    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured")
+    # Keyed on the DDL fingerprint: a changed table definition invalidates the
+    # stamp, so new columns apply on the next boot instead of after the TTL (N-3.4).
+    try:
+        from enterprise_tables import ddl_fingerprint
+        suffix = "_" + ddl_fingerprint()
+    except Exception:
+        suffix = ""
+    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured" + suffix)
 
 
 def _recent_enterprise_sync_exists():
@@ -214,6 +221,25 @@ def create_app():
 
     mysql = MySQL(app)
     app.mysql = mysql
+    try:  # the AI analytics store (N-3.3) lives in MySQL; threads outside a request need the handle
+        from app1 import memory_store as _ai_store
+        _ai_store.bind_mysql(mysql)
+    except Exception as e:
+        logging.warning("AI store not bound: %s", e)
+
+    # Request ids, structured logs, optional Sentry (N-8.2).
+    try:
+        from observability import register_observability
+        register_observability(app)
+    except Exception as e:
+        logging.warning("Observability skipped: %s", e)
+
+    # MAIL_* env -> app.config so Flask-Mail can actually send (N-0.2).
+    try:
+        from email_service import load_mail_config
+        load_mail_config(app)
+    except Exception as e:
+        logging.warning("Mail config skipped: %s", e)
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(app1_bp, url_prefix='/app1')
@@ -232,9 +258,19 @@ def create_app():
     app.register_blueprint(analytics_bp)
     app.register_blueprint(api_enterprise_bp)
     app.register_blueprint(sso_bp)
+    # Company settings hub + SSO email-domain discovery (N-4.6, N-7.1)
+    from settings_hub import settings_hub_bp, sso_discovery_bp
+    app.register_blueprint(settings_hub_bp)
+    app.register_blueprint(sso_discovery_bp)
     app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
+
+    # Forgot password / reset / invite screens (N-2.1).
+    from account_flows import register_account_flows
+    register_account_flows(app)
+    from bulk_invite import bulk_invite_bp
+    app.register_blueprint(bulk_invite_bp)
 
     # Dashboard-upgrade blueprints: new HR feature pages (Pillar B) sharing the
     # /hr prefix, and the global ⌘K search API. Guarded so a failure here can
@@ -279,6 +315,34 @@ def create_app():
     # Liveness/readiness probes (/healthz, /readyz)
     from health import health_bp
     app.register_blueprint(health_bp)
+
+    try:
+        from hr_course_assign import course_assign_bp
+        app.register_blueprint(course_assign_bp)
+    except Exception as e:
+        logging.warning("HR course assign skipped: %s", e)
+
+    # Team-order policy (N-5.2): save route + settings partial state.
+    try:
+        import team_order_policy
+        app.register_blueprint(team_order_policy.team_policy_bp)
+        team_order_policy.register_jinja(app)
+    except Exception as e:
+        logging.warning("Team order policy skipped: %s", e)
+
+    # Admin product browser + search-index controls (N-3.1).
+    try:
+        from catalog_admin_routes import catalog_admin_bp
+        app.register_blueprint(catalog_admin_bp)
+    except Exception as e:
+        logging.warning("Catalog admin routes skipped: %s", e)
+
+    # AI-usage credit screens (N-6.4).
+    try:
+        from credit_routes import credit_bp
+        app.register_blueprint(credit_bp)
+    except Exception as e:
+        logging.warning("Credit routes skipped: %s", e)
 
     # Defensive HTTP response headers (nosniff, frame options, report-only CSP).
     # Guarded so a failure here can never crash create_app().
@@ -413,9 +477,18 @@ def create_app():
     def home():
         return redirect(url_for('dashboard.dashboard'))
 
-    @app.errorhandler(404)
-    def not_found(error):
-        return redirect(url_for('dashboard.dashboard')), 404
+    # One status vocabulary for every template (N-1.1).
+    import order_lifecycle
+    order_lifecycle.register_jinja(app)
+    # Capability-aware navigation helpers (can(), has_endpoint()).
+    import capabilities
+    capabilities.register_jinja(app)
+    import credit_service
+    credit_service.register_jinja(app)
+
+    # Danish 404/500 pages, JSON for API callers (N-0.3).
+    from error_pages import register_error_handlers
+    register_error_handlers(app)
 
     return app
 

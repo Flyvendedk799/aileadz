@@ -20,10 +20,20 @@
   <div style="text-align:center;margin-bottom:24px">
     <div style="width:72px;height:72px;border-radius:22px;margin:0 auto 18px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-success) 14%,transparent);color:var(--fm-success);font-size:30px"><i class="fa-solid fa-circle-check"></i></div>
     <h1 style="font-size:28px;letter-spacing:-.03em">{{ company_name }} er oprettet</h1>
-    <p style="color:var(--fm-ink-2);font-size:14px;margin:8px 0 0"><strong>{{ hr_name }}</strong> er nu HR-manager.</p>
+    <p style="color:var(--fm-ink-2);font-size:14px;margin:8px 0 0"><strong>{{ hr_name }}</strong> er nu virksomhedens administrator.</p>
   </div>
 
-  {% if is_new_user %}
+  {% if invited %}
+  <div class="fm-card" style="margin-bottom:18px"><div class="fm-card-body">
+    <div class="fm-flex fm-gap8" style="align-items:flex-start">
+      <i class="fa-solid fa-envelope-circle-check" style="color:var(--fm-success);font-size:20px;margin-top:2px"></i>
+      <div>
+        <div style="font-weight:700">Invitation sendt til {{ hr_email }}</div>
+        <p style="color:var(--fm-ink-2);font-size:12.5px;margin:4px 0 0">{{ hr_name }} får en e-mail med et link, der virker i 7 dage, og vælger selv sin adgangskode. Der er ingen adgangskode at give videre. Kommer mailen ikke, kan du sende et nyt link fra medarbejderens side.</p>
+      </div>
+    </div>
+  </div></div>
+  {% elif is_new_user %}
   <div class="fm-card" style="border-color:color-mix(in srgb,var(--fm-warning) 35%,var(--fm-line));margin-bottom:18px"><div class="fm-card-body">
     <div class="fm-flex fm-gap8" style="align-items:center;margin-bottom:10px;color:var(--fm-warning);font-weight:700"><i class="fa-solid fa-triangle-exclamation"></i> Vigtigt: Gem disse login-oplysninger</div>
     <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 14px">Disse oplysninger vises kun denne ene gang. Del dem sikkert med HR-manageren. HR-manageren kan ændre adgangskoden efter første login.</p>

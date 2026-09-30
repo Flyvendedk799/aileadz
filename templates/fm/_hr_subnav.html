@@ -10,7 +10,8 @@
 <nav class="pg-subnav" aria-label="HR-navigation">
   <a class="pg-tab {{ 'active' if _hp == 'dashboard' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-gauge"></i> Oversigt</a>
   <a class="pg-tab {{ 'active' if _hp == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i> Mit team</a>
-  <a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
+  <a class="pg-tab {{ 'active' if _hp == 'employees' }}" href="{{ url_for('companies.employees') }}"><i class="fa-solid fa-users"></i> Medarbejdere</a>
+  <a class="pg-tab {{ 'active' if _hp == 'employee_progress' }}" href="{{ url_for('hr_dashboard.employee_progress') }}"><i class="fa-solid fa-bars-progress"></i> Fremdrift</a>
   <a class="pg-tab {{ 'active' if _hp == 'departments' }}" href="{{ url_for('hr_dashboard.departments') }}"><i class="fa-solid fa-sitemap"></i> Afdelinger</a>
   <a class="pg-tab {{ 'active' if _hp == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i> Godkendelser</a>
   <a class="pg-tab {{ 'active' if _hp == 'approval_policies' }}" href="{{ url_for('hr_dashboard.approval_policies') }}"><i class="fa-solid fa-robot"></i> Auto-godkendelse</a>
@@ -29,7 +30,8 @@
   <a class="pg-tab {{ 'active' if _hp == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i> Indkøb</a>
   <a class="pg-tab {{ 'active' if _hp == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i> Engagement</a>
   <a class="pg-tab {{ 'active' if _hp == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>
-  <a class="pg-tab {{ 'active' if _hp == 'reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i> Rapporter</a>
+  <a class="pg-tab {{ 'active' if _hp == 'reports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-file-arrow-down"></i> Rapporter &amp; eksport</a>
+  {% if can('company.billing') %}<a class="pg-tab {{ 'active' if _hp == 'billing' }}" href="{{ url_for('hr_dashboard.billing_overview') }}"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</a>{% endif %}
 </nav>
 {# Embedded HR AI assistant — included HERE (HR-only subnav) so it lands on every HR
    page with the correct audience scoping, and NEVER in fm_base.html (94 admin/vendor/

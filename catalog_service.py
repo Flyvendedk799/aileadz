@@ -19,6 +19,10 @@ VENDOR_PROFILES_FILE = os.path.join("app1", "vendor_profiles.json")
 
 CATEGORY_OVERRIDES_FILE = "catalog_category_overrides.json"
 IMPORT_PRODUCTS_FILE = "catalog_import_products.json"
+# Admin edits / unpublish state (N-3.1). One overlay for every reader of the catalog.
+CATALOG_OVERLAY_FILE = "catalog_overlay.json"
+PRODUCT_STATUSES = ("active", "hidden", "archived")
+EDITABLE_FIELDS = ("title", "summary", "vendor", "tags", "image_url")
 IMPORT_DRAFT_DIR = os.path.join("catalog_import_drafts")
 AI_CATEGORY_DRAFT_DIR = os.path.join("catalog_ai_category_drafts")
 
@@ -56,6 +60,8 @@ _CACHE = {
     "filter_options": None,
     "related": None,
     "related_signature": None,
+    "all_products": None,
+    "all_signature": None,
 }
 
 # Throttle the file-signature stat. _signature() stat()s four files and is hit on
@@ -68,6 +74,19 @@ try:
     _SIG_TTL_SECONDS = max(0.0, float(os.environ.get("CATALOG_SIGNATURE_TTL_SECONDS", "5")))
 except (TypeError, ValueError):
     _SIG_TTL_SECONDS = 5.0
+
+
+def source_file_path():
+    """Where the raw Shopify export lives.
+
+    ``CATALOG_SOURCE_FILE`` (absolute, or relative to the app root) wins, so the
+    17 MB export can live on a persistent data volume instead of in git (N-3.1).
+    Defaults to the historical ``app1/shopify_products_all_pages.json``.
+    """
+    override = (os.environ.get("CATALOG_SOURCE_FILE") or "").strip()
+    if override:
+        return override if os.path.isabs(override) else _data_path(override)
+    return _data_path(SOURCE_FILE)
 
 
 def _root_path():
@@ -325,10 +344,11 @@ def _signature():
     if _SIG_CACHE["value"] is not None and (now - _SIG_CACHE["checked_at"]) < _SIG_TTL_SECONDS:
         return _SIG_CACHE["value"]
     paths = [
-        _data_path(SOURCE_FILE),
+        source_file_path(),
         _data_path(AUGMENTED_FILE),
         _instance_path(CATEGORY_OVERRIDES_FILE),
         _instance_path(IMPORT_PRODUCTS_FILE),
+        _instance_path(CATALOG_OVERLAY_FILE),
     ]
     signature = tuple((path, _mtime(path)) for path in paths)
     _SIG_CACHE["value"] = signature
@@ -336,12 +356,49 @@ def _signature():
     return signature
 
 
+def _load_overlay():
+    payload = _read_json(_instance_path(CATALOG_OVERLAY_FILE), {"products": {}})
+    if isinstance(payload, dict):
+        return payload.get("products") or {}
+    return {}
+
+
+def _apply_overlay(raw_products):
+    """Admin edits + visibility on top of the merged sources (in place)."""
+    overlay = _load_overlay()
+    for product in raw_products:
+        entry = overlay.get(product.get("handle"))
+        product["_catalog_status"] = "active"
+        if not entry:
+            continue
+        status = entry.get("status")
+        if status in PRODUCT_STATUSES:
+            product["_catalog_status"] = status
+        if entry.get("title"):
+            product["title"] = entry["title"]
+        if entry.get("summary"):
+            product["ai_summary"] = entry["summary"]
+        if entry.get("vendor"):
+            product["vendor"] = entry["vendor"]
+        if isinstance(entry.get("tags"), list):
+            product["tags"] = list(entry["tags"])
+        if entry.get("image_url"):
+            product["image"] = {"src": entry["image_url"]}
+            product["images"] = [{"src": entry["image_url"]}]
+        product["_catalog_edited"] = True
+
+
+def catalog_signature():
+    """Public cache key for everything derived from the catalog (RAG index...)."""
+    return _signature()
+
+
 def load_raw_products():
     signature = _signature()
     if _CACHE["raw"] is not None and _CACHE["signature"] == signature:
         return _CACHE["raw"]
 
-    source_products = _read_json(_data_path(SOURCE_FILE), [])
+    source_products = _read_json(source_file_path(), [])
     if not isinstance(source_products, list):
         source_products = []
 
@@ -378,9 +435,11 @@ def load_raw_products():
             by_handle[handle] = product
 
     raw_products = list(by_handle.values())
+    _apply_overlay(raw_products)
     _CACHE["raw"] = raw_products
     _CACHE["signature"] = signature
     _CACHE["products"] = None
+    _CACHE["all_products"] = None
     _CACHE["by_handle"] = None
     _CACHE["categories"] = None
     _CACHE["vendors"] = None
@@ -475,20 +534,44 @@ def normalize_product(raw_product, overrides=None):
         "dates": dates,
         "metadata": metadata,
         "source": raw_product.get("_catalog_source") or "shopify_json",
+        "status": raw_product.get("_catalog_status") or "active",
+        "edited": bool(raw_product.get("_catalog_edited")),
         "raw": raw_product,
     }
 
 
-def get_products():
+def get_all_products():
+    """Every product including hidden/archived ones (admin product browser only)."""
     signature = _signature()
-    if _CACHE["products"] is not None and _CACHE["signature"] == signature:
-        return _CACHE["products"]
+    if _CACHE.get("all_products") is not None and _CACHE.get("all_signature") == signature:
+        return _CACHE["all_products"]
     overrides = _load_category_overrides()
     products = [normalize_product(product, overrides=overrides) for product in load_raw_products()]
     products.sort(key=lambda p: (p["title"].lower(), p["vendor"].lower()))
+    _CACHE["all_products"] = products
+    _CACHE["all_signature"] = signature
+    return products
+
+
+def get_products():
+    """The ONE catalog: published products for every reader (pages, search, AI,
+    ordering). Hidden and archived products are excluded."""
+    signature = _signature()
+    if _CACHE["products"] is not None and _CACHE["signature"] == signature:
+        return _CACHE["products"]
+    load_raw_products()  # refreshes _CACHE["signature"] when sources changed
+    products = [p for p in get_all_products() if p.get("status") == "active"]
     _CACHE["products"] = products
     _CACHE["by_handle"] = {p["handle"]: p for p in products}
     return products
+
+
+def get_product_any(handle):
+    """Look up a product regardless of its visibility (admin)."""
+    for p in get_all_products():
+        if p["handle"] == handle:
+            return p
+    return None
 
 
 def warm_catalog():
@@ -538,9 +621,101 @@ def get_category(slug):
     return None
 
 
-def _load_vendor_profiles():
+_PROFILE_LIST_FIELDS = ("specializations", "format_strengths", "locations")
+_DB_PROFILE_CACHE = {"at": 0.0, "data": None}
+
+
+def _json_seed_profiles():
     payload = _read_json(_data_path(VENDOR_PROFILES_FILE), {})
     return payload if isinstance(payload, dict) else {}
+
+
+def _db_vendor_profiles():
+    """Vendor profiles from the ``vendor_profiles`` table (N-3.1: the DB is the
+    source; the JSON file is only the seed). None when no database is reachable."""
+    now = time.monotonic()
+    if _DB_PROFILE_CACHE["data"] is not None and now - _DB_PROFILE_CACHE["at"] < 60:
+        return _DB_PROFILE_CACHE["data"]
+    if not has_app_context():
+        return None
+    try:
+        mysql = getattr(current_app, "mysql", None)
+        if mysql is None:
+            return None
+        cur = mysql.connection.cursor()
+        cur.execute("SELECT vendor_name, short_name, price_range, reputation, best_for, specializations, "
+                    "format_strengths, locations, website, logo_url FROM vendor_profiles")
+        rows = cur.fetchall() or []
+        cur.close()
+    except Exception:
+        return None
+    profiles = {}
+    for r in rows:
+        d = r if isinstance(r, dict) else dict(zip(
+            ("vendor_name", "short_name", "price_range", "reputation", "best_for", "specializations",
+             "format_strengths", "locations", "website", "logo_url"), r))
+        prof = {k: v for k, v in d.items() if k != "vendor_name" and v not in (None, "")}
+        for field in _PROFILE_LIST_FIELDS:
+            if isinstance(prof.get(field), str):
+                try:
+                    prof[field] = json.loads(prof[field])
+                except Exception:
+                    prof[field] = [x.strip() for x in prof[field].split(",") if x.strip()]
+        profiles[d["vendor_name"]] = prof
+    _DB_PROFILE_CACHE["at"], _DB_PROFILE_CACHE["data"] = now, profiles
+    return profiles
+
+
+def _load_vendor_profiles():
+    """DB profiles win; the bundled JSON seed fills in vendors that have none."""
+    merged = dict(_json_seed_profiles())
+    db = _db_vendor_profiles()
+    if db:
+        for name, prof in db.items():
+            merged[name] = {**merged.get(name, {}), **prof}
+    return merged
+
+
+def save_vendor_profile(conn, vendor_name, fields, actor=""):
+    """Upsert one vendor profile row (vendor portal + admin use this)."""
+    cols = ("short_name", "price_range", "reputation", "best_for", "website", "logo_url")
+    values = {c: (fields.get(c) or None) for c in cols}
+    for f in _PROFILE_LIST_FIELDS:
+        v = fields.get(f)
+        values[f] = json.dumps(v, ensure_ascii=False) if isinstance(v, list) else (v or None)
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            """INSERT INTO vendor_profiles (vendor_name, short_name, price_range, reputation, best_for,
+                   specializations, format_strengths, locations, website, logo_url, updated_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+               ON DUPLICATE KEY UPDATE short_name = COALESCE(VALUES(short_name), short_name),
+                   price_range = COALESCE(VALUES(price_range), price_range),
+                   reputation = COALESCE(VALUES(reputation), reputation),
+                   best_for = COALESCE(VALUES(best_for), best_for),
+                   specializations = COALESCE(VALUES(specializations), specializations),
+                   format_strengths = COALESCE(VALUES(format_strengths), format_strengths),
+                   locations = COALESCE(VALUES(locations), locations),
+                   website = COALESCE(VALUES(website), website),
+                   logo_url = COALESCE(VALUES(logo_url), logo_url),
+                   updated_by = VALUES(updated_by)""",
+            (vendor_name, values["short_name"], values["price_range"], values["reputation"], values["best_for"],
+             values["specializations"], values["format_strengths"], values["locations"], values["website"],
+             values["logo_url"], actor or None))
+        conn.commit()
+    finally:
+        cur.close()
+    _DB_PROFILE_CACHE["data"] = None
+    clear_catalog_cache()
+
+
+def seed_vendor_profiles(conn):
+    """One-time import of ``app1/vendor_profiles.json`` into the table."""
+    n = 0
+    for name, prof in _json_seed_profiles().items():
+        save_vendor_profile(conn, name, prof, actor="seed")
+        n += 1
+    return n
 
 
 def get_vendors(products=None):
@@ -1138,6 +1313,7 @@ def confirm_import_draft(job_id):
     draft["confirmed_at"] = datetime.datetime.utcnow().isoformat() + "Z"
     _write_json(_instance_path(IMPORT_DRAFT_DIR, f"{job_id}.json"), draft)
     clear_catalog_cache()
+    _notify_catalog_changed()
     return draft
 
 
@@ -1196,9 +1372,7 @@ def _parse_openai_json(raw):
     return json.loads(raw)
 
 
-def _call_openai_category_batch(batch, allowed_categories):
-    import openai
-
+def _category_prompt(batch, allowed_categories):
     lines = []
     for idx, product in enumerate(batch, start=1):
         tags = ", ".join(product.get("tags") or [])
@@ -1213,33 +1387,37 @@ def _call_openai_category_batch(batch, allowed_categories):
             f"Description: {description[:450]}"
         )
 
-    response = openai.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": (
-                    "You categorize Danish course catalog products for Futurematch. "
-                    "Choose 1-3 broad, user-friendly categories per course. Prefer the allowed "
-                    "categories when they fit, but you may create a concise Danish category if none fits. "
-                    "Return JSON only as an array of objects: "
-                    "[{\"handle\":\"...\",\"categories\":[\"...\"],\"reason\":\"short\"}]."
-                ),
-            },
-            {
-                "role": "user",
-                "content": (
-                    "Allowed categories:\n"
-                    + ", ".join(allowed_categories[:80])
-                    + "\n\nCourses:\n"
-                    + "\n\n".join(lines)
-                ),
-            },
-        ],
-        temperature=0.1,
-        max_tokens=1200,
-    )
-    parsed = _parse_openai_json(response.choices[0].message.content)
+    return [
+        {
+            "role": "system",
+            "content": (
+                "You categorize Danish course catalog products for Futurematch. "
+                "Choose 1-3 broad, user-friendly categories per course. Prefer the allowed "
+                "categories when they fit, but you may create a concise Danish category if none fits. "
+                "Return JSON only as an array of objects: "
+                "[{\"handle\":\"...\",\"categories\":[\"...\"],\"reason\":\"short\"}]."
+            ),
+        },
+        {
+            "role": "user",
+            "content": (
+                "Allowed categories:\n"
+                + ", ".join(allowed_categories[:80])
+                + "\n\nCourses:\n"
+                + "\n\n".join(lines)
+            ),
+        },
+    ]
+
+
+def _call_openai_category_batch(batch, allowed_categories):
+    """AI categorisation through the ACTIVE provider (OpenAI or Claude, per the
+    admin toggle) instead of a hard-wired OpenAI call."""
+    import ai_runtime
+
+    messages = _category_prompt(batch, allowed_categories)
+    text = ai_runtime.run_direct_completion(messages, model=ai_runtime.fast_model(), max_tokens=1200)
+    parsed = _parse_openai_json(text)
     if isinstance(parsed, dict):
         parsed = parsed.get("results") or []
     return parsed if isinstance(parsed, list) else []
@@ -1346,6 +1524,7 @@ def confirm_ai_category_job(job_id):
     job["confirmed_changed_count"] = diff["changed_count"]
     _write_json(_instance_path(AI_CATEGORY_DRAFT_DIR, f"{job_id}.json"), job)
     clear_catalog_cache()
+    _notify_catalog_changed()
     return job
 
 
@@ -1356,6 +1535,130 @@ def delete_ai_category_job(job_id):
         return True
     except OSError:
         return False
+
+
+# ── Admin product management (N-3.1) ───────────────────────────────────────
+
+def _save_overlay_entry(handle, updater):
+    payload = _read_json(_instance_path(CATALOG_OVERLAY_FILE), {"products": {}})
+    if not isinstance(payload, dict):
+        payload = {"products": {}}
+    products = payload.setdefault("products", {})
+    entry = products.get(handle) or {}
+    updater(entry)
+    entry["updated_at"] = datetime.datetime.utcnow().isoformat() + "Z"
+    products[handle] = entry
+    payload["updated_at"] = entry["updated_at"]
+    _write_json(_instance_path(CATALOG_OVERLAY_FILE), payload)
+    clear_catalog_cache()
+    _notify_catalog_changed()
+    return entry
+
+
+def set_product_status(handle, status, actor=""):
+    """Publish (active), unpublish (hidden) or archive a product. Returns the
+    overlay entry, or None for an unknown handle / status."""
+    if status not in PRODUCT_STATUSES or not get_product_any(handle):
+        return None
+
+    def _upd(entry):
+        entry["status"] = status
+        entry["status_by"] = actor or ""
+    return _save_overlay_entry(handle, _upd)
+
+
+def set_products_status(handles, status, actor=""):
+    done = 0
+    for h in handles or []:
+        if set_product_status(h, status, actor):
+            done += 1
+    return done
+
+
+def update_product(handle, fields, actor=""):
+    """Edit admin-editable fields (title, summary, vendor, tags, image_url)."""
+    if not get_product_any(handle):
+        return None
+    clean = {}
+    for key in EDITABLE_FIELDS:
+        if key not in fields:
+            continue
+        val = fields[key]
+        if key == "tags":
+            val = split_tags(val) if not isinstance(val, list) else [str(t).strip() for t in val if str(t).strip()]
+        elif isinstance(val, str):
+            val = val.strip()
+        clean[key] = val
+
+    def _upd(entry):
+        entry.update(clean)
+        entry["edited_by"] = actor or ""
+    return _save_overlay_entry(handle, _upd)
+
+
+def reset_product_edits(handle):
+    payload = _read_json(_instance_path(CATALOG_OVERLAY_FILE), {"products": {}})
+    if isinstance(payload, dict) and handle in (payload.get("products") or {}):
+        payload["products"].pop(handle, None)
+        _write_json(_instance_path(CATALOG_OVERLAY_FILE), payload)
+        clear_catalog_cache()
+        _notify_catalog_changed()
+        return True
+    return False
+
+
+def admin_list_products(q="", status="", vendor="", page=1, per_page=30):
+    """Admin product browser: list + search + status filter, paginated."""
+    items = get_all_products()
+    ql = (q or "").strip().lower()
+    if status in PRODUCT_STATUSES:
+        items = [p for p in items if p.get("status") == status]
+    if vendor:
+        items = [p for p in items if p.get("vendor") == vendor]
+    if ql:
+        items = [p for p in items if ql in p["title"].lower() or ql in p["vendor"].lower()
+                 or ql in (p.get("handle") or "").lower()]
+    total = len(items)
+    per_page = max(5, min(int(per_page or 30), 100))
+    pages = max(1, (total + per_page - 1) // per_page)
+    page = max(1, min(int(page or 1), pages))
+    start = (page - 1) * per_page
+    counts = {s: sum(1 for p in get_all_products() if p.get("status") == s) for s in PRODUCT_STATUSES}
+    return {"products": items[start:start + per_page], "total": total, "page": page, "pages": pages,
+            "per_page": per_page, "counts": counts}
+
+
+_STALE_CACHE = {"key": None, "handles": frozenset()}
+
+
+def stale_handles():
+    """Handles whose latest explicit-year session is in the past (catalog_freshness
+    rules). Cached per catalog signature + day."""
+    key = (_signature(), datetime.date.today().isoformat())
+    if _STALE_CACHE["key"] == key:
+        return _STALE_CACHE["handles"]
+    try:
+        import catalog_freshness
+        handles = frozenset(c["handle"] for c in catalog_freshness.stale_courses(limit=100000) if c.get("handle"))
+    except Exception:
+        handles = frozenset()
+    _STALE_CACHE["key"], _STALE_CACHE["handles"] = key, handles
+    return handles
+
+
+def exclude_stale(products):
+    """Drop stale courses from a list of normalized products (recommendations)."""
+    stale = stale_handles()
+    return [p for p in products or [] if p.get("handle") not in stale]
+
+
+def _notify_catalog_changed():
+    """Tell the search index the catalog changed (incremental embed, best effort)."""
+    try:
+        from app1 import rag
+        rag.on_catalog_changed()
+    except Exception:
+        pass
 
 
 def catalog_stats():

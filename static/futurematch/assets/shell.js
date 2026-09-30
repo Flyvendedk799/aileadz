@@ -1,45 +1,6 @@
 /* Futurematch shell — shared sidebar, theme + collapse behaviour.
    Each page sets <body data-page="..."> to mark the active nav item. */
 (function () {
-  const NAV = [
-    { group: "Workspace", roles: ["manager"], items: [
-      { id: "index",     label: "Oversigt",        icon: "fa-house",          href: "index.html" },
-      { id: "chat",      label: "AI-assistent",    icon: "fa-comment-dots",   href: "chat.html" },
-      { id: "catalog",   label: "Kursuskatalog",   icon: "fa-graduation-cap", href: "catalog.html" },
-      { id: "analytics", label: "Analyse",         icon: "fa-chart-line",     href: "analytics.html" },
-      { id: "reports",   label: "Rapporter",       icon: "fa-file-lines",     href: "reports.html" },
-    ]},
-    { group: "Min læring", roles: ["employee"], items: [
-      { id: "emphome",   label: "Min læring",      icon: "fa-house",          href: "employee_home.html" },
-      { id: "chat",      label: "AI-assistent",    icon: "fa-comment-dots",   href: "chat.html" },
-      { id: "catalog",   label: "Kursuskatalog",   icon: "fa-graduation-cap", href: "catalog.html" },
-    ]},
-    { group: "Virksomhed", roles: ["manager"], items: [
-      { id: "hr",        label: "HR-workspace",    icon: "fa-building",       href: "hr.html" },
-      { id: "company",   label: "Virksomheds-BI",  icon: "fa-chart-simple",   href: "company_analytics.html" },
-      { id: "creports",  label: "Virksomhedsrapporter", icon: "fa-folder-open", href: "company_reports.html" },
-    ]},
-    { group: "Konto", items: [
-      { id: "notifications", label: "Notifikationer", icon: "fa-bell",      href: "notifications.html" },
-      { id: "profile",   label: "Profil & CV",     icon: "fa-id-card",       href: "my_profile.html" },
-      { id: "settings",  label: "Indstillinger",   icon: "fa-sliders",       href: "settings.html" },
-    ]},
-    { group: "Admin", roles: ["manager"], items: [
-      { id: "admin",     label: "Adminpanel",      icon: "fa-shield-halved",  href: "admin_dashboard.html" },
-      { id: "acatalog",  label: "Katalogadmin",    icon: "fa-boxes-stacked",  href: "admin_catalog.html" },
-      { id: "abot",      label: "Chatbot BI",      icon: "fa-robot",          href: "admin_chatbot.html" },
-    ]},
-  ];
-
-  // Per-page user identity (server-rendered shell supplies the real user; these
-  // are neutral fallbacks for the legacy client-built sidebar).
-  const USERS = {
-    manager:  { initials: "", name: "", meta: "" },
-    employee: { initials: "", name: "", meta: "" },
-  };
-
-  function el(html) { const t = document.createElement("template"); t.innerHTML = html.trim(); return t.content.firstChild; }
-
   /* ---- White-label brand layer ---- */
   const DEFAULT_BRAND = { name: "Futurematch", tagline: "Læring & HR", mark: "F", primary: "", accent: "", poweredBy: true };
   function getBrand() {
@@ -49,12 +10,17 @@
   function setBrand(cfg) {
     const merged = Object.assign(getBrand(), cfg);
     localStorage.setItem("fm-brand", JSON.stringify(merged));
-    applyBrand();
+    applyBrand(true);
     return merged;
   }
-  function resetBrand() { localStorage.removeItem("fm-brand"); applyBrand(); }
+  function resetBrand() { localStorage.removeItem("fm-brand"); applyBrand(true); }
 
-  function applyBrand() {
+  /* The server renders the real company name, logo and colours (white-label). Those
+     win: applyBrand() only repaints when the branding editor asks for a live preview
+     (force = true). Before, it overwrote the server-rendered name/logo with whatever
+     stale localStorage held. */
+  function applyBrand(force) {
+    if (document.body && document.body.dataset.brandServer === "1" && !force) return;
     const b = getBrand();
     // --- colors ---
     let st = document.getElementById("fm-brand-vars");
@@ -86,82 +52,17 @@
   window.fmResetBrand = resetBrand;
   window.fmApplyBrand = applyBrand;
 
-  function buildSidebar(active, role) {
-    const groups = NAV.filter(g => !g.roles || g.roles.includes(role)).map(g => `
-      <div class="fm-nav-label">${g.group}</div>
-      <ul class="fm-nav-list">
-        ${g.items.map(it => `
-          <li><a class="fm-nav-link ${it.id === active ? "active" : ""}" href="${it.href}">
-            <i class="fa-solid ${it.icon}"></i><span>${it.label}</span>
-            ${it.badge ? `<span class="fm-nav-badge">${it.badge}</span>` : ""}
-          </a></li>`).join("")}
-      </ul>`).join("");
-
-    const u = USERS[role] || USERS.manager;
-    const homeHref = role === "employee" ? "employee_home.html" : "index.html";
-    const b = getBrand();
-
-    return el(`
-      <aside class="fm-side" id="fmSide">
-        <div class="fm-side-head">
-          <a class="fm-brand" href="${homeHref}">
-            <span class="fm-mark">${b.mark}</span>
-            <span class="fm-brand-tx">
-              <span class="fm-brand-name">${b.name}</span>
-              <span class="fm-brand-sub">${b.tagline}</span>
-            </span>
-          </a>
-          <button class="fm-side-toggle" id="fmSideToggle" aria-label="Fold panel"><i class="fa-solid fa-bars"></i></button>
-        </div>
-        <div class="fm-side-scroll">${groups}</div>
-        <div class="fm-side-foot">
-          <a class="fm-userchip" href="my_profile.html" style="text-decoration:none">
-            <span class="fm-avatar">${u.initials}</span>
-            <span class="fm-userchip-tx">
-              <span class="fm-userchip-name">${u.name}</span>
-              <span class="fm-userchip-meta">${u.meta}</span>
-            </span>
-            <i class="fa-solid fa-ellipsis-vertical"></i>
-          </a>
-        </div>
-      </aside>`);
-  }
-
   function init() {
-    const mount = document.getElementById("fm-side-mount");
-    if (mount) {
-      const active = document.body.dataset.page || "";
-      const role = document.body.dataset.role === "employee" ? "employee" : "manager";
-      const side = buildSidebar(active, role);
-      mount.replaceWith(side);
-
-      // staggered entrance
-      if (!window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-        side.classList.add("fm-side-in");
-        const items = side.querySelectorAll(".fm-nav-link, .fm-nav-label, .fm-side-foot");
-        items.forEach((it, i) => { it.style.animationDelay = (0.04 + i * 0.03) + "s"; });
-      }
-
-      // collapse
-      const collapsed = localStorage.getItem("fm-collapsed") === "1";
-      if (collapsed) side.classList.add("collapsed");
-      document.getElementById("fmSideToggle").addEventListener("click", () => {
+    // Server-rendered sidebar (Flask): wire collapse + restore state.
+    const side = document.getElementById("fmSide");
+    const toggle = document.getElementById("fmSideToggle");
+    if (side) {
+      if (localStorage.getItem("fm-collapsed") === "1") side.classList.add("collapsed");
+      if (toggle) toggle.addEventListener("click", () => {
         if (window.innerWidth <= 1080) { side.classList.toggle("open"); return; }
         side.classList.toggle("collapsed");
         localStorage.setItem("fm-collapsed", side.classList.contains("collapsed") ? "1" : "0");
       });
-    } else {
-      // Server-rendered sidebar (Flask): wire collapse + restore state without rebuilding.
-      const side = document.getElementById("fmSide");
-      const toggle = document.getElementById("fmSideToggle");
-      if (side) {
-        if (localStorage.getItem("fm-collapsed") === "1") side.classList.add("collapsed");
-        if (toggle) toggle.addEventListener("click", () => {
-          if (window.innerWidth <= 1080) { side.classList.toggle("open"); return; }
-          side.classList.toggle("collapsed");
-          localStorage.setItem("fm-collapsed", side.classList.contains("collapsed") ? "1" : "0");
-        });
-      }
     }
 
     // theme — smart default: stored pref → else system preference
@@ -325,10 +226,21 @@
 
   /* ---- Command palette (⌘K) ---- */
   function initCmdK() {
-    const role = document.body.dataset.role === "employee" ? "employee" : "manager";
+    // Navigation entries are read from the server-rendered sidebar, so the palette
+    // always matches what this role may actually reach (no second, drifting list).
     const items = [];
-    NAV.filter(g => !g.roles || g.roles.includes(role)).forEach(g => {
-      g.items.forEach(it => items.push({ icon: it.icon, title: it.label, sub: g.group, href: it.href, group: "Naviger" }));
+    let groupLabel = "Naviger";
+    document.querySelectorAll("#fmSide .fm-side-scroll > *").forEach(node => {
+      if (node.classList.contains("fm-nav-label")) { groupLabel = node.textContent.trim(); return; }
+      node.querySelectorAll("a.fm-nav-link").forEach(a => {
+        const t = a.querySelector("span");
+        const icon = a.querySelector("i");
+        items.push({
+          icon: icon ? (icon.className.split(" ").find(c => c.startsWith("fa-") && c !== "fa-solid") || "fa-circle") : "fa-circle",
+          title: t ? t.textContent.trim() : a.textContent.trim(),
+          sub: groupLabel, href: a.getAttribute("href"), group: "Naviger",
+        });
+      });
     });
     // Action hrefs use real Flask paths so they navigate correctly in the
     // server-rendered shell (the legacy *.html paths only ever applied to the

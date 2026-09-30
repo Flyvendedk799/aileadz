@@ -64,7 +64,22 @@
     </form>
   </section>
 
-  <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-list-check"></i> Dine mål</span><h2 class="fm-section-title">Oversigt</h2></div></div>
+  {% if manager_goals %}
+  <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-user-tie"></i> Fra din leder</span><h2 class="fm-section-title">Mål fra din leder</h2></div></div>
+  <section class="goal-grid" style="margin-bottom:26px">
+    {% for g in manager_goals %}
+    <article class="goal-card">
+      <div class="goal-top"><span class="fm-badge indigo">Delt af din leder</span>{% if g.target_date %}<span class="goal-meta"><i class="fa-solid fa-calendar-day"></i> {{ g.target_date }}</span>{% endif %}</div>
+      <div class="goal-title">{{ g.goal_title }}</div>
+      {% if g.goal_description %}<div class="goal-desc">{{ g.goal_description }}</div>{% endif %}
+      {% if g.share_note %}<div class="goal-desc"><em>“{{ g.share_note }}”</em></div>{% endif %}
+      <div class="goal-actions"><a class="gbtn primary" href="{{ url_for('catalog.catalog_index', q=g.goal_title) }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a></div>
+    </article>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-list-check"></i> Dine mål</span><h2 class="fm-section-title">Mine mål</h2></div></div>
 
   {% if goals %}
   <section class="goal-grid">

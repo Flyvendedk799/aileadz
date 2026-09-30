@@ -443,6 +443,20 @@ def create_companies_blueprint():
                 current_app.logger.error(f"Error loading departments: {e}")
                 return []
 
+        # Possible managers (N-2.3): active members of THIS company.
+        def _load_managers():
+            try:
+                mcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                mcur.execute("""SELECT cu.user_id, COALESCE(cu.full_name, u.username) AS name
+                                FROM company_users cu JOIN users u ON u.id = cu.user_id
+                                WHERE cu.company_id = %s AND cu.status = 'active' ORDER BY name""", (company['id'],))
+                rows = mcur.fetchall() or []
+                mcur.close()
+                return rows
+            except Exception as e:
+                current_app.logger.error(f"Error loading managers: {e}")
+                return []
+
         # Seat governance snapshot for the template (informational banner).
         try:
             import seat_governance
@@ -461,7 +475,7 @@ def create_companies_blueprint():
             if not seat_ok:
                 flash(seat_reason or "Du kan ikke tilføje flere medarbejdere lige nu.", "danger")
                 return render_template('fm/add_employee.html', company=company,
-                                       departments=_load_departments(),
+                                       departments=_load_departments(), managers=_load_managers(),
                                        seat_status=seat_status,
                                        active_hr_page='employees')
 
@@ -476,12 +490,16 @@ def create_companies_blueprint():
             employee_id = request.form.get('employee_id', '').strip()
             hire_date = request.form.get('hire_date', '')
             employment_type = request.form.get('employment_type', 'full_time')
+            try:
+                manager_user_id = int(request.form.get('manager_user_id') or 0) or None
+            except (TypeError, ValueError):
+                manager_user_id = None
 
             # Validation
             if not all([full_name, username, email, password, department, job_title]):
-                flash("Udfyld venligst alle paakraevede felter.", "danger")
+                flash("Udfyld venligst alle påkrævede felter.", "danger")
                 return render_template('fm/add_employee.html', company=company,
-                                       departments=_load_departments(),
+                                       departments=_load_departments(), managers=_load_managers(),
                                        seat_status=seat_status,
                                        active_hr_page='employees')
             
@@ -500,10 +518,10 @@ def create_companies_blueprint():
                     cur.execute("SELECT id FROM company_users WHERE company_id = %s AND user_id = %s", 
                               (company['id'], user_id))
                     if cur.fetchone():
-                        flash("This user is already part of your company.", "warning")
+                        flash("Brugeren er allerede medlem af din virksomhed.", "warning")
                         cur.close()
                         return render_template('fm/add_employee.html', company=company,
-                                               departments=_load_departments(),
+                                               departments=_load_departments(), managers=_load_managers(),
                                                seat_status=seat_status,
                                                active_hr_page='employees')
                 else:
@@ -539,17 +557,24 @@ def create_companies_blueprint():
                     }
                 }
                 
+                # The manager must be an active member of THIS company (never another tenant).
+                if manager_user_id:
+                    cur.execute("SELECT 1 FROM company_users WHERE company_id = %s AND user_id = %s AND status = 'active'",
+                                (company['id'], manager_user_id))
+                    if not cur.fetchone():
+                        manager_user_id = None
+
                 # Add to company
                 cur.execute("""
                     INSERT INTO company_users (
                         company_id, user_id, username, full_name, email, role, department, job_title, employee_id,
-                        hire_date, employment_type, status, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                        hire_date, employment_type, status, permissions, added_by, manager_user_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
                 """, (
                     company['id'], user_id, username, full_name, email, role, department, job_title, employee_id,
                     hire_date if hire_date else None, employment_type,
                     json.dumps(permissions.get(role, permissions['employee'])),
-                    session.get('user_id')
+                    session.get('user_id'), manager_user_id
                 ))
                 
                 # Log the action
@@ -592,12 +617,12 @@ def create_companies_blueprint():
                         f"Employee welcome email skipped: {mail_err}"
                     )
 
-                flash(f"Employee '{username}' has been added successfully!", "success")
+                flash(f"Medarbejderen '{username}' er tilføjet.", "success")
                 return redirect(url_for('companies.employees'))
                 
             except Exception as e:
                 current_app.logger.error(f"Error adding employee: {e}")
-                flash("An error occurred while adding the employee.", "danger")
+                flash("Medarbejderen kunne ikke tilføjes. Prøv igen om lidt.", "danger")
                 if 'cur' in locals():
                     cur.close()
         
@@ -605,8 +630,8 @@ def create_companies_blueprint():
         departments = _load_departments()
 
         return render_template('fm/add_employee.html', company=company,
-                               departments=departments, seat_status=seat_status,
-                               active_hr_page='employees')
+                               departments=departments, managers=_load_managers(),
+                               seat_status=seat_status, active_hr_page='employees')
 
     @companies_bp.route('/employees/<int:user_id>/edit', methods=['GET', 'POST'])
     def edit_employee(user_id):

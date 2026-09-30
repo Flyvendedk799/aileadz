@@ -54,14 +54,14 @@ def create_hr_dashboard_blueprint():
         read-only impersonation is tracked separately.)
         """
         if 'user' not in session:
-            flash("Please log in to access HR features.", "danger")
+            flash("Log ind for at bruge HR-funktionerne.", "danger")
             return redirect(url_for('auth.login'))
 
         if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
             return None
 
         if not session.get('company_id') or session.get('company_role') not in ['company_admin', 'hr_manager', 'department_head']:
-            flash("You don't have permission to access HR features.", "danger")
+            flash("Du har ikke adgang til HR-funktionerne.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return None
 
@@ -122,14 +122,14 @@ def create_hr_dashboard_blueprint():
 
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         try:
             ctx = _hr_dashboard_metrics(company)
         except Exception as e:
             current_app.logger.error(f"Error loading HR dashboard: {e}")
-            flash("Error loading HR dashboard data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return render_template('fm/hr.html', company=company,
                                active_hr_page='dashboard', **ctx)
@@ -671,11 +671,11 @@ def create_hr_dashboard_blueprint():
         """Updates the status of a company order"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
         
         if request.is_json:
             new_status = request.json.get('status')
@@ -683,7 +683,7 @@ def create_hr_dashboard_blueprint():
             new_status = request.form.get('status')
         
         if not new_status:
-            return jsonify({'success': False, 'message': 'No status provided'}), 400
+            return jsonify({'success': False, 'message': 'Angiv en status'}), 400
         
         import order_lifecycle as _lc
         import order_service
@@ -726,7 +726,7 @@ def create_hr_dashboard_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         try:
@@ -748,7 +748,7 @@ def create_hr_dashboard_blueprint():
             cur.close()
             
             if not order:
-                flash("Order not found.", "danger")
+                flash("Ordren blev ikke fundet.", "danger")
                 return redirect(url_for('hr_dashboard.dashboard'))
             
             import order_lifecycle as _lc
@@ -779,7 +779,7 @@ def create_hr_dashboard_blueprint():
 
         except Exception as e:
             current_app.logger.error(f"Error loading company order details: {e}")
-            flash("Error loading order details.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     # ── Phase 2.2: Approval Workflow ──
@@ -792,7 +792,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -875,7 +875,7 @@ def create_hr_dashboard_blueprint():
                                    approval_trend=approval_trend)
         except Exception as e:
             current_app.logger.error(f"Error loading approvals: {e}")
-            flash("Error loading approvals.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/approvals/bulk', methods=['POST'])
@@ -908,10 +908,10 @@ def create_hr_dashboard_blueprint():
         """Approve or reject an order"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.get_json() if request.is_json else request.form
         decision = data.get('decision')  # 'approved' or 'rejected'
@@ -952,7 +952,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             import datetime as _dt
@@ -995,7 +995,7 @@ def create_hr_dashboard_blueprint():
                                    unbudgeted_depts=unbudgeted_depts)
         except Exception as e:
             current_app.logger.error(f"Error loading budgets: {e}")
-            flash("Error loading budget data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/budgets/save', methods=['POST'])
@@ -1003,10 +1003,10 @@ def create_hr_dashboard_blueprint():
         """Create or update a department budget"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.get_json() if request.is_json else request.form
         department = data.get('department', '').strip()
@@ -1015,7 +1015,7 @@ def create_hr_dashboard_blueprint():
         fiscal_year = int(data.get('fiscal_year', _dt.datetime.now().year))
 
         if not department or annual_budget < 0:
-            return jsonify({'success': False, 'message': 'Invalid data'}), 400
+            return jsonify({'success': False, 'message': 'Ugyldige data'}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -1038,10 +1038,10 @@ def create_hr_dashboard_blueprint():
         """Generate AI insights for the company (on-demand)"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
         try:
             from insights_engine import generate_company_insights
             insights = generate_company_insights(current_app._get_current_object(), company['id'])
@@ -1060,7 +1060,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             from insights_engine import get_skill_gap_analysis, get_skill_growth_trend
@@ -1217,7 +1217,7 @@ def create_hr_dashboard_blueprint():
                                    active_hr_page='skill_gaps')
         except Exception as e:
             current_app.logger.error(f"Skill gaps error: {e}")
-            flash("Fejl ved indlaesning af kompetencedata.", "danger")
+            flash("Fejl ved indlæsning af kompetencedata.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/skill-targets/save', methods=['POST'])
@@ -1235,7 +1235,7 @@ def create_hr_dashboard_blueprint():
         target = int(data.get('target_level', 3))
         priority = data.get('priority', 'medium')
         if not skill:
-            return jsonify({'success': False, 'message': 'Skill name required'}), 400
+            return jsonify({'success': False, 'message': 'Angiv et kompetencenavn'}), 400
         try:
             cur = current_app.mysql.connection.cursor()
             cur.execute("""
@@ -1245,7 +1245,7 @@ def create_hr_dashboard_blueprint():
             """, (company['id'], dept or None, skill, target, priority, target, priority))
             current_app.mysql.connection.commit()
             cur.close()
-            return jsonify({'success': True, 'message': f'Kompetencemaal for "{skill}" gemt.'})
+            return jsonify({'success': True, 'message': f'Kompetencemål for "{skill}" gemt.'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
 
@@ -1265,7 +1265,7 @@ def create_hr_dashboard_blueprint():
                         (target_id, company['id']))
             current_app.mysql.connection.commit()
             cur.close()
-            flash("Kompetencemaal slettet.", "success")
+            flash("Kompetencemål slettet.", "success")
         except Exception as e:
             current_app.logger.error(f"Error deleting skill target: {e}")
             flash("Fejl ved sletning.", "danger")
@@ -1287,7 +1287,7 @@ def create_hr_dashboard_blueprint():
         department = data.get('department', '').strip()
 
         if not skill_name:
-            return jsonify({'success': False, 'message': 'Kompetencenavn paakraevet'}), 400
+            return jsonify({'success': False, 'message': 'Kompetencenavn påkrævet'}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -1440,7 +1440,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             import datetime as _dt
@@ -1486,7 +1486,7 @@ def create_hr_dashboard_blueprint():
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
-            flash("Error loading ROI data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/funnel')
@@ -1504,7 +1504,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         try:
@@ -1553,7 +1553,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         try:
@@ -1591,7 +1591,7 @@ def create_hr_dashboard_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         # Get filters
@@ -1694,7 +1694,7 @@ def create_hr_dashboard_blueprint():
             
         except Exception as e:
             current_app.logger.error(f"Error loading employee progress: {e}")
-            flash("Error loading employee progress data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/learning-analytics')
@@ -1706,7 +1706,7 @@ def create_hr_dashboard_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         # Get time period filter
@@ -2012,7 +2012,7 @@ def create_hr_dashboard_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         report_summary = {
@@ -2397,7 +2397,7 @@ def create_hr_dashboard_blueprint():
 
         except Exception as e:
             current_app.logger.error(f"Error loading employee details: {e}")
-            flash("Fejl ved indlaesning af medarbejderdetaljer.", "danger")
+            flash("Fejl ved indlæsning af medarbejderdetaljer.", "danger")
             return redirect(url_for('companies.employees'))
 
     # ── Employee goals with per-goal sharing (N-3.5) ──
@@ -2679,10 +2679,10 @@ def create_hr_dashboard_blueprint():
         """Update billing info on an order"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.json or {}
         import order_service
@@ -2713,10 +2713,10 @@ def create_hr_dashboard_blueprint():
         """Bulk update billing status for multiple orders"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.json or {}
         order_ids = data.get('order_ids', [])
@@ -2754,7 +2754,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         return render_template('fm/chatbot.html', company=company)
 
@@ -2763,10 +2763,10 @@ def create_hr_dashboard_blueprint():
         """HR chatbot SSE endpoint"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
         company = get_company_context()
         if not company:
-            return jsonify({"error": "No company"}), 400
+            return jsonify({"error": "Ingen virksomhed"}), 400
 
         data = request.json or {}
         user_query = (data.get('query') or '').strip()
@@ -2797,7 +2797,7 @@ def create_hr_dashboard_blueprint():
         """Reset the HR chatbot session memory"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
         session.pop('hr_chat_session_id', None)
         return jsonify({"success": True})
 
@@ -2886,7 +2886,7 @@ def create_hr_dashboard_blueprint():
         """Get proactive notification alerts for HR"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
         company = get_company_context()
         if not company:
             return jsonify({"alerts": []})
@@ -2995,7 +2995,7 @@ def create_hr_dashboard_blueprint():
         """Dismiss/mark notification as read"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
 
         data = request.json or {}
         notif_id = data.get('notification_id')
@@ -3125,7 +3125,7 @@ def create_hr_dashboard_blueprint():
         budget = request.form.get('learning_budget_per_employee', '0').strip()
 
         if not name:
-            flash("Afdelingsnavn er paakraevet.", "danger")
+            flash("Afdelingsnavn er påkrævet.", "danger")
             return redirect(url_for('hr_dashboard.departments'))
 
         # Auto-generate code if empty (unique constraint requires non-empty)
@@ -3231,7 +3231,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/learning-paths')
     def learning_paths():
         if 'company_id' not in session:
-            flash("Virksomhedsadgang kraevet.", "danger")
+            flash("Virksomhedsadgang krævet.", "danger")
             return redirect(url_for('auth.login'))
         company_id = session['company_id']
         try:
@@ -3300,17 +3300,17 @@ def create_hr_dashboard_blueprint():
                                    active_hr_page='learning_paths')
         except Exception as e:
             current_app.logger.error(f"Learning paths error: {e}")
-            flash("Fejl ved indlaesning af laeringsforloeb.", "danger")
+            flash("Fejl ved indlæsning af læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/learning-paths/create', methods=['POST'])
     def create_learning_path():
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager', 'department_head'):
-            flash("Du har ikke rettigheder til at oprette laeringsforloeb.", "danger")
+            flash("Du har ikke rettigheder til at oprette læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
         path_name = request.form.get('path_name', '').strip()
@@ -3318,7 +3318,7 @@ def create_hr_dashboard_blueprint():
         difficulty_level = request.form.get('difficulty_level', 'beginner')
 
         if not path_name:
-            flash("Navn paa laeringsforloeb er paakraevet.", "warning")
+            flash("Navn paa læringsforløb er påkrævet.", "warning")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
         try:
@@ -3329,20 +3329,20 @@ def create_hr_dashboard_blueprint():
             """, (company_id, path_name, path_category, difficulty_level))
             current_app.mysql.connection.commit()
             cur.close()
-            flash(f"Laeringsforloeb '{path_name}' oprettet.", "success")
+            flash(f"Læringsforløb '{path_name}' oprettet.", "success")
         except Exception as e:
             current_app.logger.error(f"Create learning path error: {e}")
-            flash("Fejl ved oprettelse af laeringsforloeb.", "danger")
+            flash("Fejl ved oprettelse af læringsforløb.", "danger")
         return redirect(url_for('hr_dashboard.learning_paths'))
 
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/assign', methods=['POST'])
     def assign_learning_path(path_id):
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager', 'department_head'):
-            flash("Du har ikke rettigheder til at tildele laeringsforloeb.", "danger")
+            flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
         assign_type = request.form.get('assign_type', 'individual')
@@ -3395,7 +3395,7 @@ def create_hr_dashboard_blueprint():
         """Edit a path's steps. One step per line: ``kursus-handle`` (catalog step,
         ordered on assignment) or free text (guidance). Every save is versioned."""
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         if session.get('company_role') not in ('company_admin', 'hr_manager'):
             flash("Kun HR-ledere kan redigere forløbets trin.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
@@ -3427,7 +3427,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/toggle', methods=['POST'])
     def toggle_learning_path(path_id):
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager'):
@@ -3441,7 +3441,7 @@ def create_hr_dashboard_blueprint():
             """, (path_id, company_id))
             current_app.mysql.connection.commit()
             cur.close()
-            flash("Laeringsforloeb status opdateret.", "success")
+            flash("Læringsforløb status opdateret.", "success")
         except Exception as e:
             current_app.logger.error(f"Toggle learning path error: {e}")
             flash("Fejl ved opdatering.", "danger")
@@ -3450,7 +3450,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/delete', methods=['POST'])
     def delete_learning_path(path_id):
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager'):
@@ -3469,7 +3469,7 @@ def create_hr_dashboard_blueprint():
             """, (path_id, company_id))
             current_app.mysql.connection.commit()
             cur.close()
-            flash("Laeringsforloeb slettet.", "success")
+            flash("Læringsforløb slettet.", "success")
         except Exception as e:
             current_app.logger.error(f"Delete learning path error: {e}")
             flash("Fejl ved sletning.", "danger")
@@ -3640,7 +3640,7 @@ def create_hr_dashboard_blueprint():
                 return redirect(url_for('hr_dashboard.internal_courses'))
         except Exception as e:
             current_app.logger.error(f"Error loading course: {e}")
-            flash("Fejl ved indlaesning af kursus.", "danger")
+            flash("Fejl ved indlæsning af kursus.", "danger")
             return redirect(url_for('hr_dashboard.internal_courses'))
 
         if request.method == 'POST':
@@ -3901,7 +3901,7 @@ def create_hr_dashboard_blueprint():
         is_active = int(data.get('is_active', 1))
 
         if not vendor_name:
-            return jsonify({"success": False, "message": "Vendor name required"}), 400
+            return jsonify({"success": False, "message": "Angiv et leverandørnavn"}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -3931,7 +3931,7 @@ def create_hr_dashboard_blueprint():
         is_active = int(data.get('is_active', 1))
 
         if not vendor_names:
-            return jsonify({"success": False, "message": "No vendors selected"}), 400
+            return jsonify({"success": False, "message": "Vælg mindst én leverandør"}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -4996,7 +4996,7 @@ def create_hr_dashboard_blueprint():
             departments = sorted({(e.get('department') or '') for e in employees if e.get('department')})
         except Exception as e:
             current_app.logger.error(f"Error loading bulk-assign form: {e}")
-            flash("Fejl ved indlaesning af tildelingsformular.", "danger")
+            flash("Fejl ved indlæsning af tildelingsformular.", "danger")
 
         return render_template('fm/bulk_assign.html',
                                company=company,
@@ -5021,7 +5021,7 @@ def create_hr_dashboard_blueprint():
 
         confirm = (request.form.get('confirm') or '').strip().lower()
         if confirm != 'ja':
-            flash("Bekraeft tildelingen ved at skrive 'ja' i bekraeftelsesfeltet.", "warning")
+            flash("Bekræft tildelingen ved at skrive 'ja' i bekræftelsesfeltet.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
         try:
@@ -5029,7 +5029,7 @@ def create_hr_dashboard_blueprint():
         except (ValueError, TypeError):
             path_id = 0
         if not path_id:
-            flash("Vaelg et laeringsforloeb.", "warning")
+            flash("Vælg et læringsforløb.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
         # Parse employee_ids[] (multi-select / checkboxes).
@@ -5043,7 +5043,7 @@ def create_hr_dashboard_blueprint():
         employee_ids = list(dict.fromkeys(employee_ids))  # de-dupe, keep order
 
         if not employee_ids:
-            flash("Vaelg mindst en medarbejder.", "warning")
+            flash("Vælg mindst en medarbejder.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
         due_date = request.form.get('due_date') or None
@@ -5061,7 +5061,7 @@ def create_hr_dashboard_blueprint():
             path = cur.fetchone()
             if not path:
                 cur.close()
-                flash("Laeringsforloeb ikke fundet.", "danger")
+                flash("Læringsforløb ikke fundet.", "danger")
                 return redirect(url_for('hr_dashboard.bulk_assign_form'))
             path_name = path['path_name']
 
@@ -5092,7 +5092,7 @@ def create_hr_dashboard_blueprint():
                 current_app.mysql.connection.rollback()
             except Exception:
                 pass
-            flash("Fejl ved bulk-tildeling af laeringsforloeb.", "danger")
+            flash("Fejl ved bulk-tildeling af læringsforløb.", "danger")
         return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
     return hr_dashboard_bp

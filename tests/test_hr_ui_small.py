@@ -47,6 +47,18 @@ class SubnavTests(unittest.TestCase):
         self.assertIn("admin_billing", src)
 
 
+class DanishCopyTests(unittest.TestCase):
+    def test_hr_dashboard_has_no_english_user_messages(self):
+        src = open(os.path.join(ROOT, "hr_dashboard", "__init__.py"), encoding="utf-8").read()
+        import re
+        # user-visible channels only (flash + JSON messages); log lines may stay English
+        visible = "\n".join(l for l in src.splitlines() if re.search(r"flash\(|'message'|\"message\"|jsonify\(", l))
+        for phrase in ("Company not found", "Company information not found", "Error loading", "Unauthorized",
+                       "Please log in", "You don't have permission", "Order not found", "Invalid data",
+                       "paakraevet", "Vaelg", "laeringsforloeb"):
+            self.assertNotIn(phrase, visible, phrase)
+
+
 class DashboardRenderTests(unittest.TestCase):
     def test_dashboard_renders_with_real_sparklines_and_working_search(self):
         from unittest import mock

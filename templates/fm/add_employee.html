@@ -45,6 +45,7 @@
           </select>
           <div style="font-size:12px;margin-top:3px"><a href="{{ url_for('hr_dashboard.departments') }}">Opret ny afdeling</a></div>
         </div>
+        <div class="fm-field"><label>Nærmeste leder</label><select class="fm-input" name="manager_user_id"><option value="">Ingen leder valgt</option>{% for m in (managers or []) %}<option value="{{ m.user_id }}">{{ m.name }}</option>{% endfor %}</select></div>
         <div class="fm-field"><label>Jobtitel *</label><input type="text" class="fm-input" name="job_title" required placeholder="f.eks. Sælger, Udvikler"></div>
         <div class="fm-field"><label>Systemrolle</label>
           <select class="fm-select" name="role">

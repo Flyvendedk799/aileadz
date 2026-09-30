@@ -1,4 +1,12 @@
-"""HR-written goals with per-goal sharing (N-3.5 UX side of S-4.4).
+"""UI layer for HR-written goals with per-goal sharing (N-3.5, Part B side of S-4.4).
+
+The data rules (``shared_with_employee`` flag, company AI switch, audit) are owned
+by Part A's ``goal_sharing`` module. This module adds what the HR/learner screens
+need: company-scoped employee lookup, the two HR sections, the learner-facing
+shared list and the learner notification. When Part A's module is importable AND
+the caller passes ``conn=``, the flag writes/reads are delegated to it; otherwise
+a minimal, equivalent SQL fallback is used (identical column definitions), so the
+two parts merge without behaviour changes.
 
 Every HR goal (``employee_goals``) has a "Del med medarbejder" toggle, OFF by
 default.  Only shared goals reach the learner: ``/mine-maal`` ("Mål fra din
@@ -19,6 +27,14 @@ logger = logging.getLogger(__name__)
 OPEN_STATUSES = ("active", "in_progress")
 
 
+def _part_a():
+    try:
+        import goal_sharing as part_a  # Part A: S-4.4 data rules
+        return part_a
+    except ImportError:
+        return None
+
+
 def _row(cur):
     return cur.fetchone()
 
@@ -32,8 +48,12 @@ def employee_in_company(cur, company_id, user_id):
     return _row(cur)
 
 
-def list_goals_for_hr(cur, company_id, employee_id):
+def list_goals_for_hr(cur, company_id, employee_id, conn=None):
     """(shared, private) goal lists for the HR view of one employee."""
+    a = _part_a()
+    if a is not None and conn is not None:
+        sections = a.list_goals_for_hr(conn, company_id, employee_id)
+        return sections["shared"], sections["hr_only"]
     cur.execute(
         """SELECT id, goal_title, goal_description, target_date, status, progress,
                   shared_with_employee, shared_at, share_note, created_at
@@ -47,11 +67,14 @@ def list_goals_for_hr(cur, company_id, employee_id):
     return shared, private
 
 
-def shared_goals_for_learner(cur, user_id, company_id):
+def shared_goals_for_learner(cur, user_id, company_id, conn=None):
     """What the learner may see: SHARED goals only. Never raises."""
     if not user_id or not company_id:
         return []
     try:
+        a = _part_a()
+        if a is not None and conn is not None:
+            return a.list_shared_goals_for_learner(conn, user_id, company_id)
         cur.execute(
             """SELECT id, goal_title, goal_description, target_date, status, progress, shared_at, share_note
                FROM employee_goals
@@ -66,10 +89,18 @@ def shared_goals_for_learner(cur, user_id, company_id):
 
 
 def add_goal(cur, *, company_id, employee_id, title, description="", target_date=None, share=False,
-             actor_user_id=None, note=None):
+             actor_user_id=None, note=None, conn=None):
     title = (title or "").strip()[:255]
     if not title:
         return {"success": False, "message": "Angiv en titel til målet."}
+    a = _part_a()
+    if a is not None and conn is not None:
+        gid = a.create_goal(conn, company_id=company_id, employee_user_id=employee_id, title=title,
+                            description=description or "", target_date=target_date or None,
+                            shared=bool(share), actor_user_id=actor_user_id, note=note)
+        if share and gid:
+            _notify_shared(cur, company_id, employee_id, title, gid, actor_user_id, note)
+        return {"success": True, "goal_id": gid, "shared": bool(share)}
     cur.execute(
         """INSERT INTO employee_goals
                (employee_id, company_id, goal_title, goal_description, target_date, status, progress,
@@ -85,8 +116,18 @@ def add_goal(cur, *, company_id, employee_id, title, description="", target_date
     return {"success": True, "goal_id": gid, "shared": False}
 
 
-def set_shared(cur, *, company_id, goal_id, shared, actor_user_id=None, note=None):
+def set_shared(cur, *, company_id, goal_id, shared, actor_user_id=None, note=None, conn=None):
     """Move a goal between "Delt med medarbejderen" and "Kun synligt for HR"."""
+    a = _part_a()
+    if a is not None and conn is not None:
+        row = a.set_shared(conn, goal_id=goal_id, company_id=company_id, shared=bool(shared),
+                           actor_user_id=actor_user_id, note=note)
+        if not row:
+            return {"success": False, "error": "not_found", "message": "Målet blev ikke fundet."}
+        if shared:
+            _notify_shared(cur, company_id, row.get("employee_id"), row.get("goal_title"), goal_id,
+                           actor_user_id, note)
+        return {"success": True, "goal_id": goal_id, "shared": bool(shared)}
     cur.execute(
         "SELECT id, employee_id, goal_title, shared_with_employee FROM employee_goals "
         "WHERE id = %s AND company_id = %s",
@@ -114,17 +155,22 @@ def set_shared(cur, *, company_id, goal_id, shared, actor_user_id=None, note=Non
            "goal.shared" if target else "goal.unshared", goal_id,
            "%s: %s" % ("Delt med medarbejder" if target else "Gjort privat", goal.get("goal_title")))
     if target:
-        try:
-            from notification_service import notify_user
-            msg = "Din leder har delt et udviklingsmål med dig: “%s”." % goal.get("goal_title")
-            if note:
-                msg += " Besked: %s" % note
-            notify_user(cur, user_id=goal["employee_id"], company_id=company_id, sender_user_id=actor_user_id,
-                        title="Nyt mål fra din leder", message=msg, kind="goal", action_url="/mine-maal",
-                        dedupe_key="goal-shared:%s" % goal_id, dedupe_hours=None)
-        except Exception as e:
-            logger.debug("goal_sharing: notification skipped: %s", e)
+        _notify_shared(cur, company_id, goal["employee_id"], goal.get("goal_title"), goal_id, actor_user_id, note)
     return {"success": True, "goal_id": goal_id, "shared": bool(target)}
+
+
+def _notify_shared(cur, company_id, employee_id, title, goal_id, actor_user_id, note):
+    """The learner hears about it when a goal is shared with them."""
+    try:
+        from notification_service import notify_user
+        msg = "Din leder har delt et udviklingsmål med dig: “%s”." % title
+        if note:
+            msg += " Besked: %s" % note
+        notify_user(cur, user_id=employee_id, company_id=company_id, sender_user_id=actor_user_id,
+                    title="Nyt mål fra din leder", message=msg, kind="goal", action_url="/mine-maal",
+                    dedupe_key="goal-shared:%s" % goal_id, dedupe_hours=None)
+    except Exception as e:
+        logger.debug("goal_sharing_ui: notification skipped: %s", e)
 
 
 def _audit(cur, company_id, user_id, action, goal_id, description):

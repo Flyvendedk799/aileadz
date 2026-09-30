@@ -2388,14 +2388,14 @@ def create_hr_dashboard_blueprint():
         company = get_company_context()
         if not company:
             return redirect(url_for('auth.login'))
-        import goal_sharing
+        import goal_sharing_ui as goal_sharing
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         emp = goal_sharing.employee_in_company(cur, company['id'], user_id)
         if not emp:
             cur.close()
             flash("Medarbejderen blev ikke fundet i din virksomhed.", "danger")
             return redirect(url_for('hr_dashboard.employee_progress'))
-        shared, private = goal_sharing.list_goals_for_hr(cur, company['id'], user_id)
+        shared, private = goal_sharing.list_goals_for_hr(cur, company['id'], user_id, conn=current_app.mysql.connection)
         cur.close()
         return render_template('fm/employee_goals_hr.html', company=company, employee=emp,
                                shared=shared, private=private)
@@ -2408,7 +2408,7 @@ def create_hr_dashboard_blueprint():
         company = get_company_context()
         if not company:
             return redirect(url_for('auth.login'))
-        import goal_sharing
+        import goal_sharing_ui as goal_sharing
         conn = current_app.mysql.connection
         cur = conn.cursor(MySQLdb.cursors.DictCursor)
         if not goal_sharing.employee_in_company(cur, company['id'], user_id):
@@ -2419,7 +2419,7 @@ def create_hr_dashboard_blueprint():
             cur, company_id=company['id'], employee_id=user_id, title=request.form.get('title'),
             description=request.form.get('description'), target_date=request.form.get('target_date'),
             share=bool(request.form.get('share')), actor_user_id=session.get('user_id'),
-            note=request.form.get('note'))
+            note=request.form.get('note'), conn=conn)
         conn.commit()
         cur.close()
         flash("Målet er oprettet." if res.get('success') else res.get('message', 'Kunne ikke oprette målet.'),
@@ -2435,13 +2435,13 @@ def create_hr_dashboard_blueprint():
         company = get_company_context()
         if not company:
             return redirect(url_for('auth.login'))
-        import goal_sharing
+        import goal_sharing_ui as goal_sharing
         conn = current_app.mysql.connection
         cur = conn.cursor(MySQLdb.cursors.DictCursor)
         res = goal_sharing.set_shared(
             cur, company_id=company['id'], goal_id=goal_id,
             shared=request.form.get('shared') == '1', actor_user_id=session.get('user_id'),
-            note=(request.form.get('note') or '').strip() or None)
+            note=(request.form.get('note') or '').strip() or None, conn=conn)
         cur.execute("SELECT employee_id FROM employee_goals WHERE id = %s AND company_id = %s",
                     (goal_id, company['id']))
         row = cur.fetchone()
@@ -3261,8 +3261,11 @@ def create_hr_dashboard_blueprint():
             for e in enrollments_raw:
                 enrollments[e['learning_path_id']].append(e)
 
+            import learning_path_service
+            path_steps = {p['id']: learning_path_service.get_steps(cur, company_id, p['id']) for p in paths}
             cur.close()
             return render_template('fm/learning_paths.html',
+                                   path_steps=path_steps,
                                    paths=paths,
                                    employees=employees,
                                    departments=departments,
@@ -3339,28 +3342,59 @@ def create_hr_dashboard_blueprint():
                 flash("Ingen medarbejdere valgt.", "warning")
                 return redirect(url_for('hr_dashboard.learning_paths'))
 
-            assigned = 0
-            for uid in user_ids:
-                # Check if already enrolled
-                cur.execute("""
-                    SELECT id FROM employee_learning_progress
-                    WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
-                """, (uid, company_id, path_id))
-                if cur.fetchone():
-                    continue
-                cur.execute("""
-                    INSERT INTO employee_learning_progress
-                    (user_id, company_id, learning_path_id, status, progress_percentage, due_date, started_at)
-                    VALUES (%s, %s, %s, 'not_started', 0, %s, NOW())
-                """, (uid, company_id, path_id, due_date))
-                assigned += 1
+            import learning_path_service
+            import order_service
+            ctx = order_service.OrderContext.from_session(source='hr')
+            ctx.company_id = company_id
+            res = learning_path_service.assign_path(cur, ctx, company_id, path_id, user_ids,
+                                                    due_date=due_date, sender_id=session.get('user_id'))
+            assigned = res['assigned']
 
             current_app.mysql.connection.commit()
             cur.close()
-            flash(f"{assigned} medarbejder(e) tildelt laeringsforloeb.", "success")
+            msg = f"{assigned} medarbejder(e) tildelt læringsforløbet."
+            if res['orders']:
+                msg += f" {res['orders']} kursusbestillinger er sendt til godkendelse."
+            if res['order_failures']:
+                msg += f" {res['order_failures']} bestillinger kunne ikke oprettes."
+            flash(msg, "success")
         except Exception as e:
             current_app.logger.error(f"Assign learning path error: {e}")
-            flash("Fejl ved tildeling af laeringsforloeb.", "danger")
+            flash("Tildelingen mislykkedes. Prøv igen om lidt.", "danger")
+        return redirect(url_for('hr_dashboard.learning_paths'))
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/steps', methods=['POST'])
+    def save_learning_path_steps(path_id):
+        """Edit a path's steps. One step per line: ``kursus-handle`` (catalog step,
+        ordered on assignment) or free text (guidance). Every save is versioned."""
+        if 'company_id' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        if session.get('company_role') not in ('company_admin', 'hr_manager'):
+            flash("Kun HR-ledere kan redigere forløbets trin.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        import learning_path_service
+        steps = []
+        for line in (request.form.get('steps') or '').splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('#'):
+                steps.append({'title': line.lstrip('# ').strip()})
+            else:
+                handle, _, title = line.partition('|')
+                steps.append({'course_handle': handle.strip(), 'title': title.strip()})
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        res = learning_path_service.save_steps(cur, session['company_id'], path_id, steps,
+                                               actor_user_id=session.get('user_id'),
+                                               note=(request.form.get('note') or None))
+        if res.get('success'):
+            conn.commit()
+            flash(f"Trin gemt (version {res['version']}).", "success")
+        else:
+            conn.rollback()
+            flash(res.get('message', 'Trinene kunne ikke gemmes.'), "danger")
+        cur.close()
         return redirect(url_for('hr_dashboard.learning_paths'))
 
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/toggle', methods=['POST'])
@@ -5013,44 +5047,13 @@ def create_hr_dashboard_blueprint():
             """, tuple([company['id']] + employee_ids))
             valid_ids = [r['user_id'] for r in (cur.fetchall() or [])]
 
-            sender_id = session.get('user_id')
-            for uid in valid_ids:
-                try:
-                    # Skip if already enrolled in this path.
-                    cur.execute("""
-                        SELECT id FROM employee_learning_progress
-                        WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
-                    """, (uid, company['id'], path_id))
-                    if cur.fetchone():
-                        skipped += 1
-                        continue
-                    cur.execute("""
-                        INSERT INTO employee_learning_progress
-                            (user_id, company_id, learning_path_id, status,
-                             progress_percentage, due_date, started_at)
-                        VALUES (%s, %s, %s, 'not_started', 0, %s, NOW())
-                    """, (uid, company['id'], path_id, due_date))
-                    assigned += 1
-
-                    # Nudge: per-employee notification (mirrors notify code shape).
-                    try:
-                        from notification_service import insert_company_notification
-                        if insert_company_notification(
-                                cur, company['id'], recipient_user_id=uid,
-                                sender_user_id=sender_id,
-                                title="Nyt læringsforløb tildelt",
-                                message=(f"Du er blevet tildelt læringsforløbet '{path_name}'. "
-                                         f"Log ind og kom i gang." +
-                                         (f" Frist: {due_date}." if due_date else "")),
-                                action_url="/min-laering", kind="assignment",
-                                dedupe_key=None):
-                            nudged += 1
-                    except Exception as ne:
-                        # Notification failure must not abort the assignment.
-                        current_app.logger.warning(f"Bulk-assign nudge skipped for user {uid}: {ne}")
-                except Exception as ie:
-                    current_app.logger.warning(f"Bulk-assign skipped user {uid}: {ie}")
-                    continue
+            import learning_path_service
+            import order_service
+            ctx = order_service.OrderContext.from_session(source='hr')
+            ctx.company_id = company['id']
+            res = learning_path_service.assign_path(cur, ctx, company['id'], path_id, valid_ids,
+                                                    due_date=due_date, sender_id=session.get('user_id'))
+            assigned, skipped, nudged = res['assigned'], res['skipped'], res['assigned']
 
             current_app.mysql.connection.commit()
             cur.close()

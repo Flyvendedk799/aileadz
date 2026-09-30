@@ -175,7 +175,7 @@ class SqliteMysql:
 SCHEMA_HR = """
 CREATE TABLE employee_goals (id INTEGER PRIMARY KEY AUTOINCREMENT, employee_id INTEGER, company_id INTEGER,
   goal_title TEXT, goal_description TEXT, target_date TEXT, status TEXT DEFAULT 'active', progress REAL DEFAULT 0,
-  shared_with_employee INTEGER NOT NULL DEFAULT 0, shared_at TEXT, share_note TEXT,
+  shared_with_employee INTEGER NOT NULL DEFAULT 0, shared_at TEXT, shared_by INTEGER, share_note TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 """
 

@@ -231,11 +231,24 @@ def employee_home():
     # ── Recommendations (cheap catalog fallback; no LLM) ──
     recommendations = _home_recommendations(profile, company_id)
 
+    # ── "Tildelt af HR": learning paths HR assigned to me, with due dates ──
+    hr_assignments = []
+    if username and user_id and company_id:
+        try:
+            import MySQLdb.cursors
+            import learning_path_service
+            _c = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            hr_assignments = learning_path_service.assignments_for_learner(_c, user_id, company_id)
+            _c.close()
+        except Exception as e:
+            current_app.logger.warning("home hr assignments: %s", e)
+
     return render_template(
         'fm/employee_home.html',
         active=active,
         orders=orders,
         recommendations=recommendations,
+        hr_assignments=hr_assignments,
         skills_groups=skills_groups,
         skills_total=len(profile.get('skills') or []),
         completeness_pct=completeness_pct,
@@ -262,10 +275,10 @@ def learning_goals():
     if session.get('company_id') and session.get('user_id'):
         try:
             import MySQLdb.cursors
-            import goal_sharing
+            import goal_sharing_ui as goal_sharing
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             manager_goals = goal_sharing.shared_goals_for_learner(
-                cur, session['user_id'], session['company_id'])
+                cur, session['user_id'], session['company_id'], conn=current_app.mysql.connection)
             cur.close()
         except Exception as e:
             current_app.logger.warning("manager goals load: %s", e)

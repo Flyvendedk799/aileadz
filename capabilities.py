@@ -98,3 +98,15 @@ def is_manager(session=None) -> bool:
 
 def is_hr(session=None) -> bool:
     return role_rank(effective_role(session)) >= 2
+
+
+def register_jinja(app) -> None:
+    """Template helpers: ``can('company.approvals')`` and ``has_endpoint('x.y')``.
+
+    The sidebar uses these so a link is only rendered for a role that may use it,
+    and only when the target route exists in this deployment.
+    """
+    def has_endpoint(name):
+        return name in app.view_functions
+
+    app.jinja_env.globals.update(can=can, has_endpoint=has_endpoint)

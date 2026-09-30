@@ -105,6 +105,57 @@ Ordered by urgency. S-1 is "this week". The later tiers can interleave with Part
 
 # PART B: FUNCTIONALITY, EXPERIENCE & OPERATIONS
 
+## Part B status (branch `part-b-functionality`)
+
+Legend: [x] done in code and tests, [~] done with a named gap, [ ] not done. Steps that only the owner can perform are listed in `docs/USER_ACTIONS_PART_B.md`; nothing below is ticked on the strength of a production check.
+
+- [x] N-0.1 CI signal (timeout, pytest-timeout, `testpaths`, hang fixed)
+- [~] N-0.2 E-mail: dependency, config loading, honest probe and test button done; **one real delivery from the VPS is an owner action**
+- [x] N-0.3 Danish 404 and JSON 404
+- [x] N-1.1 One order lifecycle (`order_lifecycle.py`, `order_service.py`, `booked` step, history)
+- [x] N-1.2 Learner sees and acts on orders (`/min-ordre/<id>`, cancel, calendar)
+- [x] N-1.3 One completion path
+- [x] N-1.4 Completion grows skills
+- [x] N-2.1 Account lifecycle UX (adapts to Part A tokens when merged)
+- [x] N-2.2 First run per role
+- [x] N-2.3 Capability-based navigation (`capabilities.py` is the seam for the S-2.3 matrix)
+- [~] N-3.1 One catalog: single source, index, admin rebuild, scheduled sync, DB vendor profiles, stale exclusion, provider-aware categorisation done; **the Shopify token and moving the JSON file are owner actions**
+- [x] N-3.2 One notification system
+- [x] N-3.3 One AI analytics store
+- [x] N-3.4 One schema story (single definitions, fingerprint boot stamp, Alembic `b001_part_b_lifecycle`)
+- [x] N-3.5 Goals, budgets and team view (goal sharing delegates to Part A `goal_sharing` when present)
+- [~] N-4.1 Analytics and reports consolidated; Virksomhedsrapporter kept as a drill-down and the personal credit pages are two tabs, not one
+- [x] N-4.2 Scheduled reports
+- [x] N-4.3 Compliance and certifications
+- [x] N-4.4 Learning paths create real work
+- [x] N-4.5 Actionable insights
+- [x] N-4.6 Settings hub
+- [x] N-4.7 Approvals UX
+- [x] N-4.8 Small HR items
+- [x] N-5.1 Profiler: say it and do it
+- [x] N-5.2 Chat UI completeness (team orders follow the company policy)
+- [x] N-5.3 HR assistant parity
+- [x] N-5.4 Vendor assistant parity
+- [x] N-5.5 Runtime correctness
+- [~] N-5.6 Widget: parent origin enforced through a signed iframe-held session token plus `frame-ancestors`, real preview, suggestions event, tests done; **confirm cards are not rendered in the widget** (anonymous visitors have no write tools) and **the browser check on a real embedding site is an owner action**
+- [x] N-5.7 Eval coverage (70 cases, fluency scorer, HR/vendor scopes, nightly on both providers; needs repo secrets)
+- [x] N-5.8 Guest memory migrates on login (`anon_migration.py`); prompt A/B through `AI_PROMPT_VARIANTS`
+- [x] N-6.1 Vendors receive and act on orders
+- [x] N-6.2 Submission flow
+- [x] N-6.3 Billing management (payment off-platform)
+- [x] N-6.4 Credits as AI-usage metering
+- [x] N-6.5 Admin polish
+- [x] N-7.1 OIDC-only SSO screen (SAML hidden)
+- [x] N-7.2 API keys and SCIM groups
+- [x] N-7.3 Webhooks
+- [~] N-8.1 Worker: heartbeat, `/readyz` block, opportunistic switch done; **creating the ServerHoster worker service is an owner action**
+- [x] N-8.2 Observability (request id, JSON logs, Sentry hook, ops alerts, Redis cache)
+- [x] N-8.3 CI (ruff, coverage, bootstrap test, nightly eval)
+- [~] N-8.4 Language: HR, vendor, admin, SSO, settings, API messages Danish; long-tail strings in untouched large files remain
+- [~] N-8.5 Empty/error states on every list page touched; loading skeletons not added (pages are server-rendered)
+- [x] N-8.6 Repo hygiene
+
+
 ## N-0: Unblock the pipeline & silent prod failures · ~3–5 days
 
 | # | Item | Evidence | Done looks like | Size |

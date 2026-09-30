@@ -730,6 +730,23 @@ company (`company_credit_accounts`), solo users use `users.credits`. Grants go t
 keep working, flag it) or **hard** (AI paused with `HARD_LIMIT_MESSAGE`). The `/app1/ask` and HR ask routes call
 `credit_service.guard` before the turn. Ledger integrity: `verify_ledger` (balance == -SUM(credits_used)).
 
-### Not yet done in this round (tracked in the completion plan)
-N-5.4 vendor assistant parity, N-5.6 widget origin/session work, N-5.7 eval scope + fluency scorer, N-5.8
-anonymous-memory migration and prompt A/B. See `docs/COMPLETION_PLAN.md` for their status.
+### Vendor assistant parity (N-5.4)
+`vendor_conversations.py`: durable memory in `conversation_history` (mode `vendor`, owner `vendor:<id>` from the
+session only). The vendor prompt has the same tone examples and `<suggestions>` contract as the HR assistant,
+the vendor name is fenced as data, and figures are checked by the grounding circuit-breaker.
+
+### Widget (N-5.6)
+The iframe document is served only to an allowlisted parent (Referer host) and carries `frame-ancestors`. It
+receives a signed, 12-hour session token (widget token, parent host, conversation id) that it sends as
+`X-Widget-Session`; `/ask` accepts a token instead of trusting `Origin` (which is always our own host inside
+the iframe) and the conversation id lives in the token, so memory works without third-party cookies.
+The stream carries the `suggestions` event like the other surfaces.
+
+### Guest memory and prompt A/B (N-5.8)
+`anon_migration.migrate` turns the anonymous profile into the user's memories (source `anonymous`) on login and
+deletes the guest row only after the copy succeeded. `AI_PROMPT_VARIANTS=v2.0,v2.1` assigns variants
+deterministically by session id (first is control); `AI_PROMPT_ADDENDUM_<V>` adds instructions to a variant.
+
+### Eval (N-5.7)
+70 golden cases with HR/vendor scopes, a `fluency` metric (no form-filler patterns) and a nightly run on both
+providers (`.github/workflows/ai-eval-nightly.yml`).

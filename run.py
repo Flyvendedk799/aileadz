@@ -257,6 +257,10 @@ def create_app():
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
 
+    # Forgot password / reset / invite screens (N-2.1).
+    from account_flows import account_bp
+    app.register_blueprint(account_bp)
+
     # Dashboard-upgrade blueprints: new HR feature pages (Pillar B) sharing the
     # /hr prefix, and the global ⌘K search API. Guarded so a failure here can
     # never crash create_app().

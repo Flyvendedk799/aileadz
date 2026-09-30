@@ -104,7 +104,12 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     <h1 style="color: {{ primary_color }}; font-size: 22px;">Velkommen til {{ company_name }}</h1>
     <p>Hej {{ recipient_name }},</p>
     <p>Du er inviteret til {{ company_name }}s læringsplatform.</p>
+    {% if set_password_url %}
+    <p><a href="{{ set_password_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;">Vælg din adgangskode</a></p>
+    <p style="font-size:12px;color:#64748b;">Linket virker i 7 dage og kun én gang. Bagefter logger du ind <a href="{{ login_url }}">her</a>.</p>
+    {% else %}
     <p><a href="{{ login_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;">Log ind</a></p>
+    {% endif %}
     <p style="font-size:12px;color:#64748b;">Har du spørgsmål? Kontakt {{ support_email or 'support' }}.</p>
   </div>
 </body></html>
@@ -623,7 +628,8 @@ def send_order_confirmation(order: dict, *, branding: Optional[dict] = None,
 
 
 def send_employee_welcome(company: Optional[dict], employee: dict, *,
-                          login_url: str = '', branding: Optional[dict] = None) -> bool:
+                          login_url: str = '', branding: Optional[dict] = None,
+                          set_password_url: str = '') -> bool:
     """Best-effort welcome/invite email to a newly added employee. Never raises.
 
     `company` may be the company row dict (with an 'id'); `employee` carries
@@ -660,6 +666,7 @@ def send_employee_welcome(company: Optional[dict], employee: dict, *,
             company_name=company_name,
             recipient_name=recipient_name,
             login_url=login_url or os.getenv('APP_BASE_URL', ''),
+            set_password_url=set_password_url,
         )
     except Exception as e:  # pragma: no cover - defensive
         try:

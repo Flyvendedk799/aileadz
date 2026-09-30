@@ -353,8 +353,6 @@ def learning_goal_status(goal_id):
 
 # Status vocabulary comes from order_lifecycle (N-1.1): one source for every
 # label map in the app. The names below stay for older imports.
-import order_lifecycle as _lc
-
 _ORDER_STATUS_LABELS = dict(_lc.STATUS_LABELS)
 for _legacy, _canon in _lc.LEGACY_ALIASES.items():
     _ORDER_STATUS_LABELS[_legacy] = _lc.STATUS_LABELS[_canon]

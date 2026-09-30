@@ -222,6 +222,13 @@ def create_app():
     mysql = MySQL(app)
     app.mysql = mysql
 
+    # Request ids, structured logs, optional Sentry (N-8.2).
+    try:
+        from observability import register_observability
+        register_observability(app)
+    except Exception as e:
+        logging.warning("Observability skipped: %s", e)
+
     # MAIL_* env -> app.config so Flask-Mail can actually send (N-0.2).
     try:
         from email_service import load_mail_config

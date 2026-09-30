@@ -169,6 +169,16 @@ def _job_outbox_drain(app):
     return counts if isinstance(counts, dict) else {'result': counts}
 
 
+def _job_ops_alerts(app):
+    """Notify platform admins when emails or integration events keep failing (N-8.2)."""
+    try:
+        from observability import check_ops_alerts
+    except Exception as e:
+        return {'error': "observability import failed: %s" % e}
+    with app.app_context():
+        return check_ops_alerts(app.mysql.connection)
+
+
 def _job_daily_company_insights(app):
     """Generate AI conversation insights for each active company."""
     try:
@@ -531,6 +541,12 @@ JOBS = [
         'name': 'outbox_drain',
         'interval_seconds': 120,          # ~2 min: near-real-time webhook delivery
         'fn': _job_outbox_drain,
+        'enabled': True,
+    },
+    {
+        'name': 'ops_alerts',
+        'interval_seconds': 900,          # 15 min: failed emails / stuck webhooks reach an admin fast
+        'fn': _job_ops_alerts,
         'enabled': True,
     },
     {

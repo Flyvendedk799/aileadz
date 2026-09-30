@@ -23,7 +23,7 @@ def _column_exists(cur, table_name, column_name):
 def require_admin():
     """Check admin access. Returns redirect response or None."""
     if 'user' not in session or session.get('role') != 'admin':
-        flash("Adgang naegtet.", "danger")
+        flash("Adgang nægtet.", "danger")
         return redirect(url_for('auth.login'))
     return None
 
@@ -344,7 +344,7 @@ def user_list():
 def update_user_role(user_id):
     new_role = request.json.get('role')
     if new_role not in ('user', 'admin'):
-        return jsonify({'success': False, 'message': 'Invalid role'}), 400
+        return jsonify({'success': False, 'message': 'Ugyldig rolle'}), 400
     try:
         cur = current_app.mysql.connection.cursor()
         cur.execute("UPDATE users SET role = %s WHERE id = %s", (new_role, user_id))
@@ -531,7 +531,7 @@ def update_user_credits(user_id):
     try:
         amount = int(amount)
     except (ValueError, TypeError):
-        return jsonify({'success': False, 'message': 'Ugyldigt antal'}), 400
+        return jsonify({'success': False, 'message': 'Ugyldigt antal.'}), 400
     try:
         cur = current_app.mysql.connection.cursor()
         cur.execute("UPDATE users SET credits = credits + %s WHERE id = %s", (amount, user_id))
@@ -566,7 +566,7 @@ def admin_catalog():
 def admin_catalog_import():
     upload = request.files.get('catalog_csv')
     if not upload or not upload.filename:
-        flash("Vaelg en CSV-fil.", "danger")
+        flash("Vælg en CSV-fil.", "danger")
         return redirect(url_for('admin_dashboard.admin_catalog'))
     try:
         parsed = catalog.parse_catalog_csv(upload)
@@ -631,7 +631,7 @@ def admin_catalog_ai_start():
 def admin_catalog_ai_batch(job_id):
     job = catalog.process_ai_category_batch(job_id, batch_size=8)
     if not job:
-        return jsonify({'success': False, 'message': 'Job not found'}), 404
+        return jsonify({'success': False, 'message': 'Jobbet blev ikke fundet'}), 404
     diff = catalog.ai_category_diff(job)
     return jsonify({
         'success': True,
@@ -1159,10 +1159,10 @@ def admin_agreement_save():
     is_active = 1 if request.form.get('is_active') in ('1', 'on', 'true') else 0
 
     if not company_id or not vendor_name:
-        flash("Vaelg en virksomhed og en leverandør.", "danger")
+        flash("Vælg en virksomhed og en leverandør.", "danger")
         return _back()
     if discount_value < 0:
-        flash("Rabatvaerdien kan ikke vaere negativ.", "danger")
+        flash("Rabatvaerdien kan ikke være negativ.", "danger")
         return _back()
 
     try:
@@ -1231,7 +1231,7 @@ def make_superadmin(username):
         flash("Log ind foerst.", "danger")
         return redirect(url_for('auth.login'))
     if session.get('role') != 'admin' and session.get('user') != 'Mastek123':
-        flash("Adgang naegtet.", "danger")
+        flash("Adgang nægtet.", "danger")
         return redirect(url_for('auth.login'))
     try:
         cur = current_app.mysql.connection.cursor()

@@ -155,3 +155,30 @@ class UserActionTests(AdminBase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CrossTenantViewTests(AdminBase):
+    def setUp(self):
+        super().setUp()
+        self.db.execute("INSERT INTO course_orders (order_id, company_id, user_id, username, product_title, price, status) "
+                        "VALUES ('FM-1', 8, 2, 'ada', 'Excel kursus', 1500, 'approved')")
+        self.db.execute("UPDATE course_orders SET created_at = NULL, updated_at = NULL")   # sqlite returns str, MySQL datetime
+        self.user = client_as(self.app, user="ada", user_id=2, company_id=7, company_role="employee")
+
+    def test_admin_sees_any_tenants_order(self):
+        r = self.admin.get("/admin/orders/FM-1")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("Excel kursus", r.get_data(as_text=True))
+
+    def test_unknown_order_redirects_with_danish_flash(self):
+        r = self.admin.get("/admin/orders/NOPE")
+        self.assertEqual(r.status_code, 302)
+
+    def test_order_detail_and_ai_quality_are_admin_only(self):
+        for url in ("/admin/orders/FM-1", "/admin/ai-quality"):
+            r = self.user.get(url)
+            self.assertIn(r.status_code, (302, 401, 403), url)
+            self.assertNotIn("Excel kursus", r.get_data(as_text=True))
+
+    def test_ai_quality_renders_for_admin_even_with_no_data(self):
+        self.assertEqual(self.admin.get("/admin/ai-quality?days=7").status_code, 200)

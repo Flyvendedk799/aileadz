@@ -124,12 +124,12 @@ def vendor_login():
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
         if not email or not password:
-            flash("Udfyld bade e-mail og adgangskode.", "danger")
+            flash("Udfyld både e-mail og adgangskode.", "danger")
             return render_template("fm/vendor_login.html", email=email)
 
         auth = _vendor_auth()
         if auth is None or not hasattr(auth, "authenticate_vendor"):
-            flash("Leverandorlogin er midlertidigt utilgaengeligt. Prov igen senere.", "danger")
+            flash("Leverandørlogin er midlertidigt utilgængeligt. Prøv igen senere.", "danger")
             return render_template("fm/vendor_login.html", email=email)
 
         try:
@@ -200,7 +200,7 @@ def vendor_set_password(token):
         confirm = request.form.get("confirm") or ""
 
         if len(password) < 8:
-            flash("Adgangskoden skal vaere mindst 8 tegn.", "danger")
+            flash("Adgangskoden skal være mindst 8 tegn.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
         if password != confirm:
@@ -210,7 +210,7 @@ def vendor_set_password(token):
 
         auth = _vendor_auth()
         if auth is None or not hasattr(auth, "hash_vendor_password"):
-            flash("Leverandorlogin er midlertidigt utilgaengeligt. Prov igen senere.", "danger")
+            flash("Leverandørlogin er midlertidigt utilgængeligt. Prøv igen senere.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
 
@@ -218,7 +218,7 @@ def vendor_set_password(token):
             password_hash = auth.hash_vendor_password(password)
         except Exception as e:
             logger.warning("vendor_set_password: hashing failed: %s", e)
-            flash("Adgangskoden kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Adgangskoden kunne ikke gemmes. Prøv igen senere.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
 
@@ -243,7 +243,7 @@ def vendor_set_password(token):
             except Exception:
                 pass
             logger.warning("vendor_set_password: update failed: %s", e)
-            flash("Adgangskoden kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Adgangskoden kunne ikke gemmes. Prøv igen senere.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
 
@@ -498,11 +498,11 @@ def vendor_submit():
     if request.method == "POST":
         upload = request.files.get("catalog_csv")
         if not upload or not upload.filename:
-            flash("Vaelg en CSV-fil.", "danger")
+            flash("Vælg en CSV-fil.", "danger")
             return redirect(url_for("vendor.vendor_submit"))
 
         if catalog is None:
-            flash("Katalogimport er midlertidigt utilgaengelig. Prov igen senere.", "danger")
+            flash("Katalogimport er midlertidigt utilgængelig. Prøv igen senere.", "danger")
             return redirect(url_for("vendor.vendor_submit"))
 
         filename = upload.filename
@@ -522,7 +522,7 @@ def vendor_submit():
             )
         except Exception as e:
             logger.warning("vendor_portal: save_import_draft failed: %s", e)
-            flash("Importkladden kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Importkladden kunne ikke gemmes. Prøv igen senere.", "danger")
             return redirect(url_for("vendor.vendor_submit"))
 
         job_id = (draft or {}).get("job_id", "")

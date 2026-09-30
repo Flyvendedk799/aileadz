@@ -43,6 +43,7 @@ EXEMPT_ENDPOINTS = (
     "app1.widget_ask",     # embeddable widget: origin-bound, anonymous, third-party iframe
     "app1.demo_ask",       # anonymous public demo chat
     "sso.sso_callback",    # IdP -> us POST; protected by state/signature instead
+    "csp_report",          # browser-generated violation reports carry no token
 )
 
 _FORM_RE = re.compile(r"<form\b([^>]*)>", re.IGNORECASE)

@@ -196,10 +196,11 @@ def locked_message(retry_after):
 
 
 def client_ip():
-    """Best-effort client address (first X-Forwarded-For hop when proxied)."""
+    """The client address. ``wsgi.py`` runs ProxyFix (one trusted hop), so
+    ``remote_addr`` is already the real client behind the tunnel; a raw
+    X-Forwarded-For header is attacker-controlled and deliberately NOT used."""
     try:
         from flask import request
-        fwd = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
-        return fwd or request.remote_addr or ""
+        return request.remote_addr or ""
     except Exception:
         return ""

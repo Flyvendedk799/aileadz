@@ -558,14 +558,12 @@ def update_brand(brand_id):
     file = request.files.get("brand_logo")
     brand_logo_path = None
     if file and file.filename != "" and allowed_file(file.filename):
-        original_filename = secure_filename(file.filename)
-        unique_id = uuid.uuid4().hex
-        new_filename = f"{username}_{brand_id}_{unique_id}_{original_filename}"
-        file_path = os.path.join(upload_folder, new_filename)
         try:
-            file.save(file_path)
-            current_app.logger.info("Uploaded new file: %s", new_filename)
+            import upload_guard   # S-5.5: real image bytes, size cap, random name
+            new_filename = upload_guard.save_image(file, upload_folder, prefix=f"{brand_id}_")
             brand_logo_path = url_for('static', filename=f"uploads/brands/{new_filename}")
+        except upload_guard.UploadRejected as rej:
+            flash(str(rej), "danger")
         except Exception as e:
             current_app.logger.error("File save failed: %s", e)
     else:
@@ -614,14 +612,12 @@ def add_brand():
         file = request.files.get("brand_logo")
         brand_logo_path = None
         if file and file.filename != "" and allowed_file(file.filename):
-            original_filename = secure_filename(file.filename)
-            unique_id = uuid.uuid4().hex
-            new_filename = f"{username}_{unique_id}_{original_filename}"
-            file_path = os.path.join(upload_folder, new_filename)
             try:
-                file.save(file_path)
-                current_app.logger.info("Uploaded new file: %s", new_filename)
+                import upload_guard   # S-5.5: real image bytes, size cap, random name
+                new_filename = upload_guard.save_image(file, upload_folder, prefix="brand_")
                 brand_logo_path = url_for('static', filename=f"uploads/brands/{new_filename}")
+            except upload_guard.UploadRejected as rej:
+                flash(str(rej), "danger")
             except Exception as e:
                 current_app.logger.error("File save failed: %s", e)
         try:

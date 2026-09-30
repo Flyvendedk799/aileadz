@@ -1,0 +1,72 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}csettings{% endblock %}
+{% block title %}API-nøgler{% endblock %}
+{% block topbar_title %}API-nøgler{% endblock %}
+{% block topbar_sub %}Giv jeres egne systemer (HR, økonomi, SCIM) adgang til data. Nøglen vises kun én gang.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
+
+{% if new_key %}
+<div class="fm-card" style="margin-bottom:16px;border-color:var(--fm-success)">
+  <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-key"></i></span><h3>Ny nøgle: {{ new_key.name }}</h3></div>
+  <div class="fm-card-body">
+    <p style="margin:0 0 8px;font-size:13.5px">Kopiér nøglen nu. Af sikkerhedshensyn kan vi ikke vise den igen.</p>
+    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+      <code id="newKey" style="font-family:var(--ff-mono);font-size:13px;background:var(--fm-surface-2);padding:10px 12px;border-radius:8px;word-break:break-all;flex:1 1 360px">{{ new_key.key }}</code>
+      <button class="btn btn-primary btn-sm" type="button" onclick="navigator.clipboard.writeText(document.getElementById('newKey').textContent);this.textContent='Kopieret'">Kopiér</button>
+    </div>
+    <p class="muted" style="font-size:12px;margin:10px 0 0">Send den i headeren <code>X-API-Key</code>. Brug aldrig nøglen i en URL.</p>
+  </div>
+</div>
+{% endif %}
+
+<div class="split"><div class="stack">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-key"></i></span><h3>Jeres nøgler</h3></div>
+  <div class="fm-card-body" style="padding-top:6px">
+    {% if error %}
+    {{ ui.empty('Nøglerne kunne ikke hentes', 'Prøv at genindlæse siden om et øjeblik.', 'fa-triangle-exclamation') }}
+    {% elif keys %}
+    <table class="fm-table">
+      <thead><tr><th>Navn</th><th>Adgang</th><th>Sidst brugt</th><th>Oprettet</th><th style="text-align:right"></th></tr></thead>
+      <tbody>
+      {% for k in keys %}
+        <tr>
+          <td><div style="font-weight:650">{{ k.key_name }}</div><div class="mono muted" style="font-size:11.5px">{{ k.hint }}</div></td>
+          <td>{% if k.full_access %}<span class="fm-badge clay">Fuld adgang</span>{% else %}<span class="fm-badge">{{ k.permission_count }} rettigheder</span>{% endif %}</td>
+          <td class="muted">{{ k.last_used_at.strftime('%d/%m/%Y %H:%M') if k.last_used_at and k.last_used_at.strftime is defined else (k.last_used_at or 'Aldrig') }}</td>
+          <td class="muted">{{ k.created_at.strftime('%d/%m/%Y') if k.created_at and k.created_at.strftime is defined else k.created_at }}</td>
+          <td style="text-align:right">
+            {% if k.is_active %}
+            <form method="POST" action="{{ url_for('settings_hub.revoke_api_key', key_id=k.id) }}" onsubmit="return confirm('Træk nøglen tilbage? Systemer, der bruger den, mister adgang med det samme.');">
+              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Træk tilbage</button>
+            </form>
+            {% else %}<span class="fm-badge">Tilbagetrukket</span>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    {{ ui.empty('Ingen nøgler endnu', 'Opret en nøgle til højre for at forbinde et eksternt system eller en SCIM-provisionering.', 'fa-key') }}
+    {% endif %}
+  </div></div>
+</div>
+<div class="stack" style="align-self:start">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-plus"></i></span><h3>Opret nøgle</h3></div>
+  <div class="fm-card-body">
+    <form method="POST" action="{{ url_for('settings_hub.create_api_key') }}">
+      <div class="fm-field"><label>Navn</label><input class="fm-input" name="name" maxlength="100" required placeholder="F.eks. Lønsystem eller Entra SCIM"></div>
+      <div class="fm-field"><label>Adgang</label>
+        <select class="fm-select" name="preset">
+          {% for key, p in presets.items() %}<option value="{{ key }}">{{ p[0] }}</option>{% endfor %}
+        </select>
+        <div class="muted" style="font-size:12px;margin-top:4px">SCIM-provisionering kræver «Fuld adgang».</div>
+      </div>
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-key"></i> Opret nøgle</button>
+    </form>
+  </div></div>
+</div></div>
+</div>
+{% endblock %}

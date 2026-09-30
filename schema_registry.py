@@ -40,6 +40,7 @@ REGISTRY_DDL = [
         role VARCHAR(50) NOT NULL DEFAULT 'user',
         email_notifications TINYINT NOT NULL DEFAULT 1,
         first_login_completed TINYINT NOT NULL DEFAULT 0,
+        status VARCHAR(20) NOT NULL DEFAULT 'active',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         UNIQUE KEY uk_users_username (username)
     ) {_ENGINE}""",
@@ -134,6 +135,50 @@ REGISTRY_DDL = [
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_osh_order (order_id, created_at),
         INDEX idx_osh_company (company_id, created_at)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS account_tokens (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        kind VARCHAR(40) NOT NULL,
+        subject_id INT NOT NULL,
+        token_hash VARCHAR(64) NOT NULL,
+        expires_at DATETIME NOT NULL,
+        used_at DATETIME NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_account_tokens_hash (token_hash),
+        INDEX idx_account_tokens_subject (kind, subject_id)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS webhook_deliveries (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        outbox_id INT NOT NULL,
+        webhook_id INT NOT NULL,
+        company_id INT NOT NULL,
+        event_type VARCHAR(120) NOT NULL,
+        status VARCHAR(12) NOT NULL DEFAULT 'pending',
+        attempts INT NOT NULL DEFAULT 0,
+        http_status INT NULL,
+        last_error TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        delivered_at DATETIME NULL,
+        INDEX idx_wd_outbox (outbox_id, webhook_id),
+        INDEX idx_wd_company (company_id, created_at),
+        INDEX idx_wd_status (status)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS account_requests (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NULL,
+        kind VARCHAR(40) NOT NULL,
+        requested_by INT NULL,
+        requested_by_name VARCHAR(255) NULL,
+        note TEXT NULL,
+        status VARCHAR(20) NOT NULL DEFAULT 'open',
+        handled_by INT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        handled_at DATETIME NULL,
+        INDEX idx_ar_status (status, created_at),
+        INDEX idx_ar_company (company_id)
     ) {_ENGINE}""",
 
     f"""CREATE TABLE IF NOT EXISTS company_team_order_policy (

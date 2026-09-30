@@ -166,6 +166,21 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'vendor_submission_result': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    <h2 style="color: {{ primary_color }};">{% if approved %}Dit katalog er godkendt{% else %}Dit katalog blev ikke godkendt{% endif %}</h2>
+    <p>Hej {{ vendor_name or 'leverandør' }},</p>
+    {% if approved %}
+    <p>Vi har gennemgået din indsendelse{% if filename %} ({{ filename }}){% endif %} og importeret {{ row_count }} kurser til kataloget.</p>
+    {% else %}
+    <p>Vi kunne desværre ikke godkende din indsendelse{% if filename %} ({{ filename }}){% endif %}.{% if note %} Begrundelse: {{ note }}{% endif %}</p>
+    <p>Ret filen og indsend den igen i leverandørportalen.</p>
+    {% endif %}
+  </div>
+</body></html>
+""",
         'order_booked': """
 <!DOCTYPE html>
 <html><body style="font-family: {{ font_family }}; padding: 24px;">

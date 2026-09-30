@@ -25,6 +25,7 @@
 
 {% block content %}
 <div class="fm-wrap">
+  {% include 'fm/_settings_tabs.html' %}
   <div class="wh-grid">
 
     <!-- ── Webhook list ── -->
@@ -147,5 +148,46 @@
     </section>
 
   </div>
+
+  <section class="fm-card" style="padding:20px 22px;margin-top:18px" id="leveringslog">
+    <div class="fm-eyebrow"><i class="fa-solid fa-list-check"></i> Leveringslog</div>
+    <h2 class="fm-section-title" style="margin:4px 0 12px">Seneste leveringer</h2>
+    {% if deliveries %}
+    <div class="fm-table-wrap" style="border:0;box-shadow:none">
+      <table class="fm-table">
+        <thead><tr><th>Hændelse</th><th>Modtager</th><th>Status</th><th>Forsøg</th><th>Tidspunkt</th><th style="text-align:right"></th></tr></thead>
+        <tbody>
+        {% for d in deliveries %}
+          <tr>
+            <td><span class="fm-badge indigo">{{ d.event_type }}</span></td>
+            <td><div style="font-weight:600">{{ d.webhook_name or '—' }}</div><div class="wh-url muted">{{ d.webhook_url or '' }}</div></td>
+            <td>
+              {% if d.status == 'delivered' %}<span class="fm-badge green">Leveret{% if d.http_status %} ({{ d.http_status }}){% endif %}</span>
+              {% elif d.status == 'failed' %}<span class="fm-badge red" title="{{ d.last_error or '' }}">Fejlet</span>
+              {% else %}<span class="fm-badge amber">I kø</span>{% endif %}
+              {% if d.status == 'failed' and d.last_error %}<div class="muted" style="font-size:11.5px;max-width:280px">{{ d.last_error[:120] }}</div>{% endif %}
+            </td>
+            <td class="tnum">{{ d.attempts }}</td>
+            <td class="muted" style="font-size:12px">{{ d.created_at.strftime('%d/%m %H:%M') if d.created_at and d.created_at.strftime is defined else d.created_at }}</td>
+            <td style="text-align:right">
+              {% if d.status != 'delivered' %}
+              <form method="POST" action="{{ url_for('enterprise_settings.webhooks_resend', delivery_id=d.id) }}" style="display:inline">
+                <button type="submit" class="btn btn-soft btn-sm"><i class="fa-solid fa-rotate-right"></i> Gensend</button>
+              </form>
+              {% endif %}
+            </td>
+          </tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <div class="fm-empty" style="text-align:center;padding:26px 16px;color:var(--fm-ink-3)">
+      <i class="fa-solid fa-list-check" style="font-size:20px;opacity:.6"></i>
+      <p style="margin-top:10px;font-size:14px">Ingen leveringer endnu.</p>
+      <p style="font-size:12.5px">Tryk på «Send test-hændelse» ved en webhook for at se den første levering her.</p>
+    </div>
+    {% endif %}
+  </section>
 </div>
 {% endblock %}

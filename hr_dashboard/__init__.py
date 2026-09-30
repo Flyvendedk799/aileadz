@@ -4112,10 +4112,14 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/chatbot-settings', methods=['GET', 'POST'])
     def chatbot_settings():
-        """Configure chatbot behavior for company employees"""
+        """Configure chatbot behavior for company employees (GET: settings hub, N-4.6)"""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
+        from settings_hub import hub_redirect
+        _hub = hub_redirect('chatbot')
+        if _hub is not None:
+            return _hub
         company = get_company_context()
         if not company:
             flash("Virksomhed ikke fundet.", "danger")
@@ -4177,10 +4181,14 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/widget')
     def widget_creator():
-        """Widget embed code generator with live preview"""
+        """Widget embed code generator with live preview (opened through the settings hub)"""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
+        from settings_hub import hub_redirect
+        _hub = hub_redirect('chatbot', view='widget')
+        if _hub is not None:
+            return _hub
 
         company = get_company_context()
         if not company:

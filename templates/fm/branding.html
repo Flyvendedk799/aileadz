@@ -20,6 +20,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
 
 {% if session.get('role') == 'admin' and company and not features.get('custom_branding') %}
 <div class="callout" style="margin-bottom:16px"><span class="ci"><i class="fa-solid fa-triangle-exclamation"></i></span><div style="flex:1"><div style="font-weight:650">Custom branding er ikke aktiveret</div><div style="font-size:12.5px;color:var(--fm-ink-2)"><a href="{{ url_for('companies.admin_company_detail', company_id=company.id) }}">Aktiver i virksomhedsadmin</a>.</div></div></div>
@@ -122,6 +123,9 @@
 
     {% if branding_enabled %}
     <div class="fm-flex fm-gap8" style="margin-top:14px">
+      {% if has_endpoint('enterprise_settings.preview_theme') %}
+      <button type="button" id="previewTheme" class="btn btn-ghost"><i class="fa-solid fa-eye"></i> Forhåndsvis på siden</button>
+      {% endif %}
       <button type="submit" name="action" value="save_draft" class="btn btn-ghost">Gem kladde</button>
       <button type="submit" name="action" value="publish" class="btn btn-primary">Publicer</button>
     </div>
@@ -184,6 +188,24 @@
   }
   form.querySelectorAll('input, textarea, select').forEach(el => el.addEventListener('input', sync));
   sync();
+
+  // Live preview of the colours on the real page, without saving (enterprise_settings.preview_theme).
+  const pv = document.getElementById('previewTheme');
+  if (pv) pv.addEventListener('click', function () {
+    const body = {};
+    ['primary_color', 'secondary_color', 'accent_color', 'background_color', 'text_color', 'font_family', 'border_radius']
+      .forEach(n => { const el = form.querySelector('[name=' + n + ']'); if (el && el.value) body[n === 'text_color' ? 'text_primary_color' : (n === 'border_radius' ? 'border_radius_md' : (n === 'font_family' ? 'font_family_primary' : n))] = el.value; });
+    fetch({{ url_for('enterprise_settings.preview_theme')|tojson if has_endpoint('enterprise_settings.preview_theme') else '""' }}, {
+      method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body)
+    }).then(r => r.json()).then(d => {
+      if (!d || !d.success) { pv.textContent = 'Forhåndsvisning mislykkedes'; return; }
+      const get = k => ((d.css.match(new RegExp('--' + k + ':\\s*([^;]+);')) || [])[1] || '').trim();
+      let st = document.getElementById('fm-theme-preview');
+      if (!st) { st = document.createElement('style'); st.id = 'fm-theme-preview'; document.head.appendChild(st); }
+      st.textContent = ':root{--fm-primary:' + get('primary-color') + ';--fm-clay:' + get('accent-color') + ';}';
+      pv.innerHTML = '<i class="fa-solid fa-eye"></i> Forhåndsvisning aktiv (genindlæs for at nulstille)';
+    }).catch(() => { pv.textContent = 'Forhåndsvisning mislykkedes'; });
+  });
 })();
 </script>
 {% endblock %}

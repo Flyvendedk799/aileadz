@@ -148,6 +148,42 @@ def register_learner_order_routes(bp):
         return jsonify({"success": out["saved"] > 0, **out,
                         "message": "%d kompetence(r) tilføjet til din profil." % out["saved"]})
 
+    @bp.route("/min-kalender.ics")
+    def my_calendar():
+        """Download the learner's own upcoming courses and deadlines (.ics).
+        Strictly the session user's orders - never a colleague's."""
+        if not session.get("user"):
+            return redirect(url_for("auth.login"))
+        events = []
+        try:
+            import MySQLdb.cursors
+            from calendar_service import build_ics_feed
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute(
+                """SELECT order_id, product_title, variant_date, variant_location, completion_deadline, status
+                   FROM course_orders
+                   WHERE (username = %s OR (user_id IS NOT NULL AND user_id = %s))
+                     AND status IN ('approved', 'booked')
+                   ORDER BY created_at DESC LIMIT 100""",
+                (session.get("user"), session.get("user_id")))
+            for r in cur.fetchall() or []:
+                link = request.url_root.rstrip("/") + url_for("futurematch.my_order", order_id=r["order_id"])
+                if r.get("variant_date"):
+                    events.append({"title": "Kursus: %s" % r["product_title"], "start": r["variant_date"],
+                                   "location": r.get("variant_location") or "", "url": link,
+                                   "uid": "kursus-%s@futurematch" % r["order_id"]})
+                elif r.get("completion_deadline"):
+                    events.append({"title": "Frist: %s" % r["product_title"], "start": r["completion_deadline"],
+                                   "url": link, "uid": "frist-%s@futurematch" % r["order_id"]})
+            cur.close()
+            ics = build_ics_feed(events, cal_name="Min læring")
+        except Exception as e:
+            logger.warning("learner_orders: calendar failed: %s", e)
+            abort(404)
+        resp = Response(ics, mimetype="text/calendar")
+        resp.headers["Content-Disposition"] = 'attachment; filename="min-laering.ics"'
+        return resp
+
     @bp.route("/min-ordre/<order_id>/kalender.ics")
     def my_order_ics(order_id):
         if not session.get("user"):

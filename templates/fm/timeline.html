@@ -5,6 +5,7 @@
 {% block topbar_sub %}Følg dine kurser fra bestilling til gennemførelse — status, godkendelse og deadlines ét sted.{% endblock %}
 
 {% block topbar_actions %}
+<a class="btn btn-ghost" href="{{ url_for('futurematch.my_calendar') }}"><i class="fa-regular fa-calendar-plus"></i> Hent min kalender</a>
 <a class="btn" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i> Find kurser</a>
 {% endblock %}
 

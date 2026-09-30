@@ -48,6 +48,50 @@ def create_hr_dashboard_blueprint():
             return redirect(url_for('dashboard.dashboard'))
         return None
 
+    def require_hr_manager_access(as_json=False):
+        """HR *administration* guard (S-1.6, interim until the S-2.3 matrix).
+
+        Department heads pass require_hr_access (read-only views) but must not
+        reset passwords, deactivate users, edit budgets/suppliers/policies/
+        billing/departments, change the chatbot or the widget token. Those need
+        company_admin or hr_manager (or a platform admin acting on a tenant).
+        Returns None when allowed, otherwise a denial response (JSON 401/403 when
+        ``as_json`` else a flash + redirect).
+        """
+        base = require_hr_access()
+        denied = None
+        if base is not None:
+            denied = base
+            if as_json:
+                logged_in = 'user' in session
+                resp = jsonify({'success': False,
+                                'message': 'Du har ikke adgang til denne handling.' if logged_in else 'Log ind for at fortsætte.'})
+                resp.status_code = 403 if logged_in else 401
+                return resp
+            return denied
+        if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
+            return None
+        if session.get('company_role') in ('company_admin', 'hr_manager'):
+            return None
+        if as_json:
+            resp = jsonify({'success': False,
+                            'message': 'Kun HR-administratorer kan udføre denne handling.'})
+            resp.status_code = 403
+            return resp
+        flash("Kun HR-administratorer kan udføre denne handling.", "danger")
+        return redirect(url_for('hr_dashboard.dashboard'))
+
+    def _dept_scope(company):
+        """Department a *department head* is limited to, else None (no scoping).
+
+        Company admins, HR managers and platform admins see every department.
+        A department head with no department resolves to '' so they match
+        nothing rather than everything (fail closed).
+        """
+        if session.get('role') == 'admin' or session.get('company_role') != 'department_head':
+            return None
+        return (company or {}).get('department') or ''
+
     def get_company_context():
         """Get current user's company context.
 
@@ -652,9 +696,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/order/<order_id>/update', methods=['POST'])
     def update_company_order_status(order_id):
         """Updates the status of a company order"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return auth_check
         
         company = get_company_context()
         if not company:
@@ -855,11 +899,12 @@ def create_hr_dashboard_blueprint():
                 JOIN users u ON oa.requester_user_id = u.id
                 LEFT JOIN company_users cu ON oa.requester_user_id = cu.user_id AND oa.company_id = cu.company_id
                 WHERE oa.company_id = %s
+                  AND (%s IS NULL OR cu.department = %s)
                 ORDER BY
                     CASE oa.status WHEN 'pending' THEN 0 ELSE 1 END,
                     oa.requested_at DESC
                 LIMIT 50
-            """, (company['id'],))
+            """, (company['id'], _dept_scope(company), _dept_scope(company)))
             approvals = cur.fetchall()
 
             pending_count = sum(1 for a in approvals if a['status'] == 'pending')
@@ -942,6 +987,14 @@ def create_hr_dashboard_blueprint():
             if not approval:
                 cur.close()
                 return jsonify({'success': False, 'message': 'Approval not found or already decided'}), 404
+
+            # S-1.6: a department head may only decide requests from their OWN
+            # department (previously any department's).
+            _scope = _dept_scope(company)
+            if _scope is not None and (approval.get('department') or '') != _scope:
+                cur.close()
+                return jsonify({'success': False,
+                                'message': 'Du kan kun behandle anmodninger fra din egen afdeling.'}), 403
 
             # Update approval row (+ record approver on the order for the approve case).
             cur.execute("""
@@ -1046,9 +1099,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/budgets/save', methods=['POST'])
     def save_budget():
         """Create or update a department budget"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({'success': False, 'message': 'Company not found'}), 404
@@ -2425,7 +2478,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/employee/<int:user_id>/reset-password', methods=['POST'])
     def reset_employee_password(user_id):
         """HR manager can reset an employee's password without email confirmation"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
 
@@ -2483,7 +2536,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/employee/<int:user_id>/toggle-status', methods=['POST'])
     def toggle_employee_status(user_id):
         """Activate or deactivate an employee"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
 
@@ -2511,6 +2564,14 @@ def create_hr_dashboard_blueprint():
 
             current_app.mysql.connection.commit()
             cur.close()
+
+            if new_status != 'active':
+                # S-1.10: end the deactivated user's session access right away.
+                try:
+                    from auth_decorators import invalidate_session_cache
+                    invalidate_session_cache(user_id)
+                except Exception:
+                    pass
 
             label = 'aktiveret' if new_status == 'active' else 'deaktiveret'
             flash(f"Medarbejder er {label}.", "success")
@@ -2641,9 +2702,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/order/<order_id>/billing', methods=['POST'])
     def update_billing(order_id):
         """Update billing info on an order"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({'success': False, 'message': 'Company not found'}), 404
@@ -2711,9 +2772,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/billing/bulk', methods=['POST'])
     def bulk_billing_update():
         """Bulk update billing status for multiple orders"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({'success': False, 'message': 'Company not found'}), 404
@@ -3073,7 +3134,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/departments/add', methods=['POST'])
     def add_department():
         """Add a new department"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -3131,7 +3192,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/departments/<int:dept_id>/edit', methods=['POST'])
     def edit_department(dept_id):
         """Edit an existing department"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -3196,7 +3257,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/departments/<int:dept_id>/delete', methods=['POST'])
     def delete_department(dept_id):
         """Delete a department"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -3328,9 +3389,11 @@ def create_hr_dashboard_blueprint():
     # ── Learning Paths Management ──
     @hr_dashboard_bp.route('/learning-paths')
     def learning_paths():
-        if 'company_id' not in session:
-            flash("Virksomhedsadgang kraevet.", "danger")
-            return redirect(url_for('auth.login'))
+        # S-1.5: lists every colleague (names, departments) for the assignment
+        # dropdown, so it is HR-only. Previously any company member got in.
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
         company_id = session['company_id']
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -3953,9 +4016,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/toggle', methods=['POST'])
     def toggle_supplier():
         """Toggle a supplier active/inactive"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({"success": False}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({"success": False}), 400
@@ -3983,9 +4046,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/bulk-toggle', methods=['POST'])
     def bulk_toggle_suppliers():
         """Bulk toggle suppliers"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({"success": False}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({"success": False}), 400
@@ -4049,7 +4112,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/agreements/save', methods=['POST'])
     def save_supplier_agreement():
         """Create or update a supplier discount agreement"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4116,7 +4179,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/agreements/<int:agreement_id>/delete', methods=['POST'])
     def delete_supplier_agreement(agreement_id):
         """Delete a supplier agreement"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4185,7 +4248,7 @@ def create_hr_dashboard_blueprint():
     @require_company_role('company_admin', 'hr_manager')
     def save_approval_policy():
         """Create or update an auto-approval policy (company-wide or per-dept)."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4247,7 +4310,7 @@ def create_hr_dashboard_blueprint():
     @require_company_role('company_admin', 'hr_manager')
     def delete_approval_policy(policy_id):
         """Delete an auto-approval policy (company-scoped)."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4303,7 +4366,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/chatbot-settings', methods=['GET', 'POST'])
     def chatbot_settings():
         """Configure chatbot behavior for company employees"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4389,7 +4452,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/widget/save', methods=['POST'])
     def widget_save():
         """Save widget customization settings"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -4451,7 +4514,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/widget/regenerate-token', methods=['POST'])
     def widget_regenerate_token():
         """Regenerate the widget authentication token"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 

@@ -13,7 +13,7 @@ concurrency:
 jobs:
   # ── Secret scanning ─────────────────────────────────────────────────────────
   # Runs gitleaks with the repo's .gitleaks.toml (which extends the default rules
-  # and narrowly allowlists the known, pending-rotation secrets in run.py).
+  # with no allowlist).
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest

@@ -65,6 +65,11 @@ def _build_app():
 class VoiceInputTests(unittest.TestCase):
     def setUp(self):
         self.client = _build_app().test_client()
+        # S-1.11: /app1/voice now requires a logged-in user and is rate limited.
+        import rate_limit
+        rate_limit.reset()
+        with self.client.session_transaction() as sess:
+            sess["user"] = "tester"
         # Snapshot env / monkeypatched globals so each test is isolated.
         self._orig_client = ai_runtime._openai_client
         self._orig_key = os.environ.get("OPENAI_API_KEY")

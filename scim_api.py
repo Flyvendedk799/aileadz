@@ -167,6 +167,15 @@ def _recalc_employee_count(cur, company_id):
 # SCIM response helpers
 # ---------------------------------------------------------------------------
 
+def _invalidate_sessions():
+    """Drop cached session-liveness results so a deactivation bites at once."""
+    try:
+        from auth_decorators import invalidate_session_cache
+        invalidate_session_cache()
+    except Exception:
+        pass
+
+
 def _scim_response(payload, status=200, extra_headers=None):
     """Serialize a dict to an application/scim+json Response."""
     body = json.dumps(payload, default=str, ensure_ascii=False)
@@ -664,6 +673,7 @@ def put_user(user_id):
         if was_active != active:
             _recalc_employee_count(cur, g.company_id)
         current_app.mysql.connection.commit()
+        _invalidate_sessions()  # S-1.10: deprovisioned users lose access now
 
         cur.execute(
             "SELECT id, company_id, user_id, username, full_name, email, "
@@ -809,6 +819,7 @@ def patch_user(user_id):
         if was_active != new_active:
             _recalc_employee_count(cur, g.company_id)
         current_app.mysql.connection.commit()
+        _invalidate_sessions()  # S-1.10: deprovisioned users lose access now
 
         cur.execute(
             "SELECT id, company_id, user_id, username, full_name, email, "
@@ -871,6 +882,7 @@ def delete_user(user_id):
             )
             _recalc_employee_count(cur, g.company_id)
             current_app.mysql.connection.commit()
+            _invalidate_sessions()  # S-1.10: deprovisioned users lose access now
             _emit("scim.user.deprovisioned",
                   {"user_id": row.get("id"), "email": row.get("email")})
         cur.close()

@@ -1,0 +1,6 @@
+# User actions needed for the HR-workspace items
+
+1. **Email for scheduled reports and overdue-invoice mails** (depends on N-0.2): make sure `MAIL_SERVER`, `MAIL_PORT`, `MAIL_USE_TLS`, `MAIL_USERNAME`, `MAIL_PASSWORD`, `MAIL_DEFAULT_SENDER` are set on the VPS, then use *Admin -> Systemstatus -> Send test-mail*.
+2. **Worker service**: the `scheduled_reports` (hourly) and `billing_overdue` (daily) jobs run in the `drain_worker.py --loop` process. Until that service exists (N-8.1), they only run opportunistically inside web requests.
+3. **Schema**: the new tables/columns (`learning_path_steps`, `learning_path_versions`, `user_learning_path_versions`, `company_report_schedules.last_sent_at`, `employee_goals.shared_*`, `learning_paths.version`, `course_orders` billing columns) are created by the boot-time sync on the next deploy. No manual SQL. Optionally run `python scripts/dump_schema_baseline.py` afterwards to confirm no drift.
+4. **Verify in the browser with a real HR account** (cannot be done without real accounts): `/hr/billing` (mark invoiced -> paid, CSV opens in Excel with correct æøå), `/hr/reports` (schedule a weekly report, confirm the mail with CSV arrives), `/hr/compliance` (Tildel kursus creates approvals), `/hr/employee/<id>/goals` (share a goal, log in as the employee and see it under "Mål fra din leder").

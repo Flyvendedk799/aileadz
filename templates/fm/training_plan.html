@@ -183,7 +183,7 @@
           <h3 style="font-size:15px;font-weight:700;margin:0 0 4px"><i class="fa-solid fa-route"></i> Klar til at rulle planen ud?</h3>
           <div class="tp-cta-tx">Tildel de anbefalede forløb til berørte medarbejdere i én arbejdsgang og send dem direkte i gang.</div>
         </div>
-        <a href="{{ url_for('hr_dashboard.bulk_assign_form') }}" class="btn btn-primary"><i class="fa-solid fa-people-arrows"></i> Bulk-tildel forløb</a>
+        <a href="{{ url_for('hr_dashboard.bulk_assign_form', department=selected_department or None, skill=focus or None) }}" class="btn btn-primary"><i class="fa-solid fa-people-arrows"></i> Bulk-tildel forløb</a>
       </div>
     </div>
   </div>

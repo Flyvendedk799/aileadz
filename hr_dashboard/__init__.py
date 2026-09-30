@@ -383,15 +383,16 @@ def create_hr_dashboard_blueprint():
             # Avg feedback for company
             cur.execute("""
                 SELECT AVG(ci.feedback_rating) AS avg_fb,
-                       COUNT(CASE WHEN ci.feedback_rating > 0 THEN 1 END) AS fb_count
+                       COUNT(CASE WHEN ci.feedback_rating <> 0 THEN 1 END) AS fb_count
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
                 JOIN company_users cu ON u.id = cu.user_id
                 WHERE cu.company_id = %s
-                  AND ci.feedback_rating IS NOT NULL AND ci.feedback_rating > 0
+                  AND ci.feedback_rating IS NOT NULL AND ci.feedback_rating <> 0
             """, (company['id'],))
             fb_row = cur.fetchone()
-            company_avg_feedback = round(fb_row['avg_fb'] or 0, 1)
+            from feedback_scale import to_five
+            company_avg_feedback = to_five(fb_row['avg_fb'])
             company_feedback_count = fb_row['fb_count'] or 0
 
             # Phase 3.2: Recent AI insights

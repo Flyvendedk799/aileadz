@@ -221,22 +221,23 @@ def chatbot_dashboard():
         cur.execute("""
             SELECT AVG(feedback_rating) AS avg_fb
             FROM chatbot_interactions
-            WHERE feedback_rating IS NOT NULL AND feedback_rating > 0
+            WHERE feedback_rating IS NOT NULL AND feedback_rating <> 0
         """)
         row = cur.fetchone()
-        avg_feedback = round(row['avg_fb'] or 0, 1)
+        from feedback_scale import to_five
+        avg_feedback = to_five(row['avg_fb'])
     except Exception:
         pass
     try:
         cur.execute("""
             SELECT feedback_rating AS rating, COUNT(*) AS cnt
             FROM chatbot_interactions
-            WHERE feedback_rating IS NOT NULL AND feedback_rating > 0
+            WHERE feedback_rating IS NOT NULL AND feedback_rating <> 0
             GROUP BY feedback_rating
             ORDER BY feedback_rating
         """)
         for r in cur.fetchall():
-            feedback_distribution[str(r['rating'])] = r['cnt']
+            feedback_distribution["Godt svar" if (r['rating'] or 0) > 0 else "Dårligt svar"] = r['cnt']
     except Exception:
         pass
 

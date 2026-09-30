@@ -3433,8 +3433,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         (company_id, session_id, username, query_text, response_text,
                          query_type, category, user_location, response_time_ms,
                          interaction_quality_score, tools_used, tool_results_count,
-                         products_shown, conversation_depth, is_logged_in, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                         products_shown, conversation_depth, is_logged_in, message_index, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 """, (
                     session.get('company_id'),
                     sid,
@@ -3451,6 +3451,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     json.dumps(_products_shown_handles[:20]) if _products_shown_handles else None,
                     _conv_depth,
                     1 if logged_in_user else 0,
+                    locals().get("msg_index"),
                 ))
 
                 # Update company_users engagement counters (if user belongs to a company)

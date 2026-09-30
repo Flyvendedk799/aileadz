@@ -168,6 +168,70 @@ REGISTRY_DDL = [
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
         INDEX idx_ctop_company (company_id, vendor_id)
     ) {_ENGINE}""",
+
+    # ── One AI analytics store (N-3.3): replaces the per-server SQLite ai_memory.db ──
+    f"""CREATE TABLE IF NOT EXISTS ai_sessions (
+        session_id VARCHAR(255) NOT NULL PRIMARY KEY,
+        user_profile MEDIUMTEXT NULL,
+        conversation_summary MEDIUMTEXT NULL,
+        shown_products MEDIUMTEXT NULL,
+        last_active DOUBLE NOT NULL DEFAULT 0,
+        INDEX idx_ai_sessions_active (last_active)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS ai_analytics_events (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(255) NOT NULL,
+        timestamp DOUBLE NOT NULL,
+        event_type VARCHAR(64) NOT NULL,
+        query_text TEXT NULL,
+        tool_used VARCHAR(255) NULL,
+        results_count INT NOT NULL DEFAULT 0,
+        feedback_rating TINYINT NOT NULL DEFAULT 0,
+        message_index INT NOT NULL DEFAULT 0,
+        company_id INT NULL,
+        username VARCHAR(255) NULL,
+        extra MEDIUMTEXT NULL,
+        INDEX idx_ai_events_session (session_id),
+        INDEX idx_ai_events_type (event_type, timestamp),
+        INDEX idx_ai_events_company (company_id, event_type)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS ai_debug_logs (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(255) NOT NULL,
+        timestamp DOUBLE NOT NULL,
+        step VARCHAR(100) NOT NULL,
+        data MEDIUMTEXT NULL,
+        INDEX idx_ai_debug_session (session_id),
+        INDEX idx_ai_debug_ts (timestamp)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS ai_anonymous_profiles (
+        browser_token VARCHAR(255) NOT NULL PRIMARY KEY,
+        interests TEXT NULL,
+        budget_range VARCHAR(100) NULL,
+        preferred_location VARCHAR(255) NULL,
+        preferred_format VARCHAR(255) NULL,
+        last_viewed TEXT NULL,
+        last_searches TEXT NULL,
+        conversation_summary TEXT NULL,
+        created_at DOUBLE NOT NULL DEFAULT 0,
+        last_active DOUBLE NOT NULL DEFAULT 0,
+        INDEX idx_ai_anon_active (last_active)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS ai_latency_logs (
+        id BIGINT AUTO_INCREMENT PRIMARY KEY,
+        session_id VARCHAR(255) NOT NULL,
+        timestamp DOUBLE NOT NULL,
+        operation VARCHAR(100) NOT NULL,
+        latency_ms DOUBLE NOT NULL,
+        prompt_version VARCHAR(64) NULL,
+        extra TEXT NULL,
+        INDEX idx_ai_latency_op (operation, timestamp),
+        INDEX idx_ai_latency_session (session_id)
+    ) {_ENGINE}""",
 ]
 
 
@@ -296,6 +360,19 @@ def run_data_migrations(conn):
                 _set_flag(cur, "vendor_profiles_seed_v1")
                 conn.commit()
                 ran.append("vendor_profiles_seed_v1")
+            if not _flag_done(cur, "ai_memory_sqlite_import_v1"):
+                # N-3.3: bring the old per-server ai_memory.db across (profiles + feedback).
+                try:
+                    from app1 import memory_store
+                    if memory_store._bound_mysql is None:
+                        memory_store.bind_mysql(type("M", (), {"connection": conn})())
+                    n = memory_store.import_legacy_sqlite()
+                    logger.info("ai_memory.db import: %s rows", n)
+                except Exception as e:
+                    logger.warning("ai_memory.db import skipped: %s", e)
+                _set_flag(cur, "ai_memory_sqlite_import_v1")
+                conn.commit()
+                ran.append("ai_memory_sqlite_import_v1")
             if not _flag_done(cur, "skill_history_user_ids_v1"):
                 try:
                     cur.execute(SKILL_HISTORY_BACKFILL_SQL)

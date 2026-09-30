@@ -100,7 +100,7 @@ def generate_company_insights(app, company_id):
                 })
 
         # --- 2. Low satisfaction alerts ---
-        low_fb = [i for i in interactions if i.get('feedback_rating') and i['feedback_rating'] > 0 and i['feedback_rating'] <= 2]
+        low_fb = [i for i in interactions if (i.get('feedback_rating') or 0) < 0]
         if len(low_fb) >= 3:
             insights.append({
                 'type': 'low_satisfaction',

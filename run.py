@@ -221,6 +221,11 @@ def create_app():
 
     mysql = MySQL(app)
     app.mysql = mysql
+    try:  # the AI analytics store (N-3.3) lives in MySQL; threads outside a request need the handle
+        from app1 import memory_store as _ai_store
+        _ai_store.bind_mysql(mysql)
+    except Exception as e:
+        logging.warning("AI store not bound: %s", e)
 
     # MAIL_* env -> app.config so Flask-Mail can actually send (N-0.2).
     try:

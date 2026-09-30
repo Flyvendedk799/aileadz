@@ -14,6 +14,17 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
+def _attribution():
+    """Chat -> order conversion fields for course_orders (N-3.3)."""
+    try:
+        from app1.tools import chat_attribution
+        return chat_attribution()
+    except Exception:
+        return {'chatbot_session_id': session.get('session_id', ''),
+                'chatbot_queries_before_order': session.get('_chatbot_query_count', 0),
+                'recommended_by_tool': session.get('_last_recommending_tool', '')}
+
 def parse_price(price_str) -> float:
     """Parse a price like ``1.995,00 kr.`` / ``1,995.00`` / ``1995`` / ``1 995``.
 
@@ -144,9 +155,7 @@ class OrderHandler:
                 user_phone=order['user'].get('phone', ''),
                 status=None,
                 extra={
-                    'chatbot_session_id': session.get('session_id', ''),
-                    'chatbot_queries_before_order': session.get('_chatbot_query_count', 0),
-                    'recommended_by_tool': session.get('_last_recommending_tool', ''),
+                    **_attribution(),
                     'department': session.get('company_department', ''),
                     'group_order_id': order.get('group_order_id'),
                     'notes': (order.get('variant') or {}).get('notes') or order.get('notes_text'),

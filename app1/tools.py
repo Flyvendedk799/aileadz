@@ -5258,6 +5258,17 @@ def _pick_variant(product, want_date="", want_location=""):
     return None, True
 
 
+def chat_attribution(default_tool=""):
+    """Chat -> order conversion fields (N-3.3): which conversation led to the order,
+    how many questions it took and which tool surfaced the course."""
+    from flask import session as _s
+    from app1 import conversation_state as _conv
+    sid = _conv.current_sid(_s, "chat") or _s.get("session_id") or ""
+    return {"chatbot_session_id": sid,
+            "chatbot_queries_before_order": _s.get("_chatbot_query_count", 0) or 0,
+            "recommended_by_tool": _s.get("_last_recommending_tool") or default_tool}
+
+
 def _execute_create_order(args, username=None):
     """MUTATION - create a course order for the user (and, per company policy,
     for colleagues). Confirm-gated.
@@ -5522,7 +5533,7 @@ def _create_team_order(args, username, product, product_data, variant_selection,
             user_email=p.get("email") or "", user_name=p.get("full_name") or p["username"], user_phone="",
             extra={"group_order_id": group_id, "department": p.get("department") or "",
                    "notes": f"Bestilt af {requester.username} til teamet via AI-assistenten",
-                   "recommended_by_tool": "create_course_order"})
+                   **chat_attribution(default_tool="create_course_order")})
         results.append({"name": p["full_name"] or p["username"], "success": bool(res.get("success")),
                         "order_id": res.get("order_id"), "status": res.get("status_label"),
                         "needs_approval": bool(res.get("needs_approval")), "duplicate": bool(res.get("duplicate")),

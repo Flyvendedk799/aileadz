@@ -1430,7 +1430,7 @@ def get_analytics_overview():
         cur.execute("""
             SELECT COUNT(*) AS total_interactions,
                    COUNT(DISTINCT ci.username) AS active_users,
-                   AVG(ci.feedback_rating) AS avg_feedback
+                   AVG(NULLIF(ci.feedback_rating, 0)) AS avg_feedback
             FROM chatbot_interactions ci
             JOIN users u ON ci.username = u.username
             JOIN company_users cu ON u.id = cu.user_id AND cu.company_id = %s
@@ -1458,7 +1458,7 @@ def get_analytics_overview():
                 'engagement': {
                     'interactions_30d': engagement['total_interactions'] or 0,
                     'active_users_30d': engagement['active_users'] or 0,
-                    'avg_feedback': round(float(engagement['avg_feedback'] or 0), 1),
+                    'avg_feedback': __import__("feedback_scale").to_five(engagement['avg_feedback']),
                 },
                 'budget': {
                     'total': float(budget['total_budget'] or 0),

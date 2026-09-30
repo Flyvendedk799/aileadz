@@ -10,7 +10,16 @@ owns the token internals (S-2.4); this module only uses
 ``consume_token(kind, raw) -> subject_id | None`` (plus an optional
 ``peek_token`` to validate a link before the form is shown).
 
-Routes (Danish URLs, all public):
+Part A (S-2.4) ships its own token store and basic screens in ``auth`` (routes
+``/forgot-password``, ``/reset-password/<t>``, ``/set-password/<t>``). This module is
+the Part B layer and adapts to whichever is present:
+
+* ``register_account_flows(app)`` only registers the Danish screens below when the
+  ``auth`` blueprint does not already provide a forgot-password flow;
+* ``send_reset_link`` / ``send_invite`` delegate to ``auth.send_user_password_link``
+  when it exists, so HR and admin buttons always use the same tokens as the screens.
+
+Routes (Danish URLs, all public; registered only without Part A's flow):
     GET/POST /glemt-adgangskode
     GET/POST /nulstil-adgangskode/<token>
     GET/POST /invitation/<token>
@@ -94,6 +103,26 @@ def _send_reset_email(user, raw_token: str) -> bool:
     )
 
 
+def register_account_flows(app) -> bool:
+    """Register the fallback screens unless ``auth`` already has a flow. Returns
+    True when this module's routes are active."""
+    if "auth.forgot_password" in app.view_functions:
+        app.config["ACCOUNT_FLOW"] = "auth"
+        return False
+    app.register_blueprint(account_bp)
+    app.config["ACCOUNT_FLOW"] = "account"
+    return True
+
+
+def _auth_helper():
+    """Part A's ``auth.send_user_password_link`` when present."""
+    try:
+        import auth
+        return getattr(auth, "send_user_password_link", None)
+    except Exception:
+        return None
+
+
 def send_reset_link(user_id: int, *, actor: str = "self") -> bool:
     """Create a reset token for ``user_id`` and email the link. Used by the forgot-password
     form, HR ("Send nulstillingslink") and the admin user list. Never reveals whether
@@ -106,6 +135,9 @@ def send_reset_link(user_id: int, *, actor: str = "self") -> bool:
         cur.close()
     if not user or not user.get("email"):
         return False
+    delegate = _auth_helper()
+    if delegate is not None and current_app.config.get("ACCOUNT_FLOW") == "auth":
+        return bool(delegate(current_app.mysql.connection, user, purpose="reset"))
     raw = _tokens().create_token("password_reset", user["id"], RESET_TTL_MINUTES)
     logger.info("password reset link issued for user %s by %s", user["id"], actor)
     return _send_reset_email(user, raw)
@@ -116,6 +148,10 @@ def send_invite(user_id: int, *, email: str, name: str = "", company: dict | Non
     if not email:
         return False
     from email_service import send_employee_welcome
+    delegate = _auth_helper()
+    if delegate is not None and current_app.config.get("ACCOUNT_FLOW") == "auth":
+        return bool(delegate(current_app.mysql.connection,
+                             {"id": int(user_id), "email": email, "username": name}, purpose="invite"))
     raw = _tokens().create_token("invite", int(user_id), INVITE_TTL_MINUTES)
     url = "%s%s" % (_base_url(), url_for("account.accept_invite", token=raw))
     return send_employee_welcome(company or {}, {"email": email, "name": name},

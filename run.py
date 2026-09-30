@@ -341,8 +341,9 @@ def create_app():
 
     # S-1.10: deactivated / SCIM-removed users lose access on the next request
     # (membership status re-checked, cached ~60 s), on every route.
-    from auth_decorators import register_session_liveness
+    from auth_decorators import register_session_liveness, register_capability_context
     register_session_liveness(app)
+    register_capability_context(app)
 
     # Render-time sanitising filters (safe_html / safe_css) replace bare |safe (S-1.9).
     from html_sanitize import register_html_filters
@@ -451,6 +452,12 @@ def create_app():
     @app.errorhandler(404)
     def not_found(error):
         return redirect(url_for('dashboard.dashboard')), 404
+
+    # S-2.1: CSRF protection (token on every unsafe request; key-authenticated
+    # API/SCIM and the anonymous widget are exempt). Registered last so its
+    # HTML-injection after_request runs before response compression.
+    from csrf_protect import init_csrf
+    init_csrf(app)
 
     return app
 

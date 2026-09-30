@@ -109,7 +109,7 @@
     <a href="{{ url_for('vendor.vendor_analytics') }}">Analyser</a>
     <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
     <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
-    <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
+    <form method="post" action="{{ url_for('vendor.vendor_logout') }}" style="margin:0 0 0 auto"><button type="submit" class="logout" style="background:none;border:0;padding:0;font:inherit;color:var(--fm-ink-3);cursor:pointer">Log ud</button></form>
   </nav>
 
   <main class="vp-wrap">

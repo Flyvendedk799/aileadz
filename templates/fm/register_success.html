@@ -25,14 +25,11 @@
 
   {% if is_new_user %}
   <div class="fm-card" style="border-color:color-mix(in srgb,var(--fm-warning) 35%,var(--fm-line));margin-bottom:18px"><div class="fm-card-body">
-    <div class="fm-flex fm-gap8" style="align-items:center;margin-bottom:10px;color:var(--fm-warning);font-weight:700"><i class="fa-solid fa-triangle-exclamation"></i> Vigtigt: Gem disse login-oplysninger</div>
-    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 14px">Disse oplysninger vises kun denne ene gang. Del dem sikkert med HR-manageren. HR-manageren kan ændre adgangskoden efter første login.</p>
+    <div class="fm-flex fm-gap8" style="align-items:center;margin-bottom:10px;color:var(--fm-warning);font-weight:700"><i class="fa-solid fa-envelope"></i> {% if invite_needed and invite_sent %}Invitation sendt{% elif invite_needed %}Invitation kunne ikke sendes{% else %}Adgangskoden er gemt{% endif %}</div>
+    <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0 0 14px">{% if invite_needed and invite_sent %}Vi har sendt et link til <strong>{{ hr_email }}</strong>, hvor HR-manageren selv vælger sin adgangskode. Linket virker kun én gang og udløber efter 7 dage.{% elif invite_needed %}Invitationsmailen kunne ikke sendes. Bed HR-manageren bruge &laquo;Glemt adgangskode&raquo; på login-siden for at vælge en adgangskode.{% else %}Den adgangskode, du valgte, er gemt og vises ikke igen. Del den sikkert med HR-manageren, som kan ændre den under Indstillinger.{% endif %}</p>
     <div class="credentials-box" id="credentialsBox">
-      <button class="copy-btn" onclick="copyCredentials()"><i class="fa-solid fa-copy"></i> Kopier</button>
       <div class="label">E-mail</div>
       <div class="value" id="cred-email">{{ hr_email }}</div>
-      <div class="label">Adgangskode</div>
-      <div class="value" id="cred-password">{{ hr_password }}</div>
       <div class="label">Login-side</div>
       <div class="value">{{ request.host_url.rstrip('/') }}/login/{{ company_slug }}</div>
     </div>

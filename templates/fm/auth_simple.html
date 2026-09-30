@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Sæt adgangskode · Leverandorportal · Futurematch</title>
+  <title>{{ page_title or 'Futurematch' }} · Futurematch</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
@@ -30,23 +30,20 @@
               font-weight: 700; font-size: 14.5px; cursor: pointer; transition: filter .15s; }
     .vp-btn:hover { filter: brightness(1.05); }
     .vp-flash { padding: 10px 13px; border-radius: 10px; font-size: 13px; margin-bottom: 16px; }
-    .vp-flash.danger { background: var(--fm-clay-tint); color: var(--fm-clay); }
-    .vp-flash.warning { background: var(--fm-clay-tint); color: var(--fm-clay); }
-    .vp-flash.success { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
-    .vp-foot { margin-top: 18px; font-size: 12px; color: var(--fm-ink-3); text-align: center; }
-    .vp-foot a { color: var(--fm-primary); text-decoration: none; }
+    .vp-flash.danger, .vp-flash.warning, .vp-flash.error { background: var(--fm-clay-tint); color: var(--fm-clay); }
+    .vp-flash.success, .vp-flash.info { background: var(--fm-primary-tint); color: var(--fm-primary-700); }
+    .vp-foot { margin-top: 18px; font-size: 13px; color: var(--fm-ink-3); text-align: center; }
+    .vp-foot a { color: var(--fm-primary); text-decoration: none; font-weight: 600; }
   </style>
 </head>
-<body data-page="vendor-set-password">
+<body data-page="auth-simple">
   <div class="vp-card">
     <div class="vp-brand">
       <span class="vp-mark">F</span>
       <span class="name">Futurematch</span>
     </div>
-    <div class="vp-title">Sæt din adgangskode</div>
-    <div class="vp-sub">
-      {% if vendor_name %}Velkommen, {{ vendor_name }}. {% endif %}Vælg en adgangskode til leverandørportalen.
-    </div>
+    <div class="vp-title">{{ heading }}</div>
+    {% if subtitle and not invalid %}<div class="vp-sub">{{ subtitle }}</div>{% endif %}
 
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% for category, message in messages %}
@@ -55,24 +52,24 @@
     {% endwith %}
 
     {% if invalid %}
-      <div class="vp-foot"><a href="{{ url_for('vendor.vendor_login') }}">Til login</a></div>
+      <div class="vp-sub">Linket kan ikke bruges længere. Links udløber efter kort tid og virker kun én gang.</div>
     {% else %}
-      <form method="POST" action="{{ url_for('vendor.vendor_set_password', token=token) }}" autocomplete="off">
+      <form method="POST" action="{{ action }}" autocomplete="off">
+        {% for f in fields %}
         <div class="vp-field">
-          <label for="password">Ny adgangskode</label>
-          <input class="vp-input" type="password" id="password" name="password"
-                 placeholder="••••••••" required minlength="10" autofocus />
-          <div class="vp-hint">Mindst 10 tegn. Undgå dit navn, din e-mail og almindelige kodeord.</div>
+          <label for="f-{{ f.name }}">{{ f.label }}</label>
+          <input class="vp-input" type="{{ f.type or 'text' }}" id="f-{{ f.name }}" name="{{ f.name }}"
+                 {% if f.autocomplete %}autocomplete="{{ f.autocomplete }}"{% endif %}
+                 {% if f.required %}required{% endif %}
+                 {% if f.type == 'password' %}minlength="10"{% endif %}
+                 {% if loop.first %}autofocus{% endif %} />
+          {% if f.hint %}<div class="vp-hint">{{ f.hint }}</div>{% endif %}
         </div>
-        <div class="vp-field">
-          <label for="confirm">Gentag adgangskode</label>
-          <input class="vp-input" type="password" id="confirm" name="confirm"
-                 placeholder="••••••••" required minlength="10" />
-        </div>
-        <button class="vp-btn" type="submit">Gem adgangskode</button>
+        {% endfor %}
+        <button class="vp-btn" type="submit">{{ submit_label or 'Gem' }}</button>
       </form>
-      <div class="vp-foot">Har du allerede en adgangskode? <a href="{{ url_for('vendor.vendor_login') }}">Log ind</a></div>
     {% endif %}
+    {% if back_url %}<div class="vp-foot"><a href="{{ back_url }}">{{ back_label or 'Tilbage' }}</a></div>{% endif %}
   </div>
 </body>
 </html>

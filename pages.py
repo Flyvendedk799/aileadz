@@ -238,17 +238,31 @@ def settings():
                 flash("Angiv venligst dit nuvaerende kodeord.", "danger")
                 return redirect(url_for('pages.settings'))
             if new_password != confirm_password:
-                flash("Det nye kodeord og bekraeftelse stemmer ikke overens.", "danger")
+                flash("Det nye kodeord og bekræftelsen stemmer ikke overens.", "danger")
                 return redirect(url_for('pages.settings'))
             from werkzeug.security import check_password_hash, generate_password_hash
-            stored_pw = user_data.get('password', '')
-            if stored_pw.startswith(('pbkdf2:', 'scrypt:')):
-                pw_ok = check_password_hash(stored_pw, current_password)
-            else:
-                pw_ok = (stored_pw == current_password)
-            if not pw_ok:
-                flash("Nuvaerende kodeord er forkert.", "danger")
+            import login_guard
+            from password_policy import validate_password
+            # S-2.2: the current-password check is a guessing oracle for anyone
+            # holding a session, so it shares the login lockout.
+            guard_key = username
+            allowed, retry_after = login_guard.check(guard_key, login_guard.client_ip())
+            if not allowed:
+                flash(login_guard.locked_message(retry_after), "danger")
                 return redirect(url_for('pages.settings'))
+            stored_pw = user_data.get('password', '') or ''
+            # Hashed passwords only: the plaintext fallback is gone (S-2.2).
+            pw_ok = stored_pw.startswith(('pbkdf2:', 'scrypt:')) and check_password_hash(stored_pw, current_password)
+            if not pw_ok:
+                login_guard.record_failure(guard_key, login_guard.client_ip())
+                flash("Nuværende kodeord er forkert.", "danger")
+                return redirect(url_for('pages.settings'))
+            pw_errors = validate_password(new_password, username, user_data.get('email'))
+            if pw_errors:
+                for err in pw_errors:
+                    flash(err, "danger")
+                return redirect(url_for('pages.settings'))
+            login_guard.record_success(guard_key)
             hashed_new = generate_password_hash(new_password)
             try:
                 cur = current_app.mysql.connection.cursor()

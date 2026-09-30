@@ -63,6 +63,27 @@ except Exception as _fernet_err:  # pragma: no cover - depends on deploy env
 
 sso_bp = Blueprint('sso', __name__)
 
+# ---------------------------------------------------------------------------
+# Server-side provider gate (S-1.8).
+#
+# SAML and LDAP/Active Directory are DISABLED server-side until S-D.1 (real
+# signature verification against the stored certificate, escaped LDAP filters).
+# Existing configs are kept in the database but are inert: every route and the
+# SSOManager refuse them. OAuth2/OIDC is also off until S-3.1 fixes user-id and
+# nonce handling; S-3.1 adds 'oauth2' to LIVE_SSO_PROVIDERS.
+# ---------------------------------------------------------------------------
+LIVE_SSO_PROVIDERS = frozenset()
+DEFERRED_SSO_PROVIDERS = frozenset({'saml', 'ldap', 'active_directory'})
+SSO_DISABLED_MESSAGE = (
+    'Denne SSO-metode er ikke aktiveret endnu. Log ind med brugernavn og adgangskode '
+    'eller kontakt din administrator.'
+)
+
+
+def sso_provider_enabled(provider):
+    """True only for providers that are safe to accept logins for right now."""
+    return provider in LIVE_SSO_PROVIDERS
+
 # Marker prefix so we can tell our Fernet ciphertext apart from legacy plaintext.
 _ENC_PREFIX = 'fernet$'
 
@@ -226,6 +247,10 @@ class SSOManager:
     
     def authenticate_user(self, company_id, provider_type, auth_data):
         """Authenticate user through SSO provider"""
+        if not sso_provider_enabled(provider_type):
+            logger.warning("enterprise_sso: refused login via disabled provider %r", provider_type)
+            return None, SSO_DISABLED_MESSAGE
+
         provider = self.get_provider(provider_type)
         if not provider:
             return None, "Unsupported SSO provider"
@@ -392,6 +417,9 @@ class SAMLProvider:
             cryptographic verification is a separate, heavier work item.
         """
         try:
+            if not sso_provider_enabled('saml'):
+                # S-1.8 / S-D.1: presence-only signature checks are forgeable.
+                return None
             if not saml_response:
                 return None
 
@@ -532,7 +560,12 @@ class LDAPProvider:
     def authenticate(self, credentials, config):
         """Authenticate against LDAP"""
         try:
+            if not (sso_provider_enabled('ldap') or sso_provider_enabled('active_directory')):
+                # S-1.8 / S-D.1: disabled server-side until the filter is hardened
+                # and the flow is reviewed.
+                return None
             import ldap3
+            from ldap3.utils.conv import escape_filter_chars
             
             server = ldap3.Server(config.get('server_url'))
             conn = ldap3.Connection(
@@ -546,7 +579,7 @@ class LDAPProvider:
                 # Search for user attributes
                 search_base = config.get('search_base')
                 search_filter = config.get('search_filter', '(uid={username})').format(
-                    username=credentials.get('username')
+                    username=escape_filter_chars(str(credentials.get('username') or ''))
                 )
                 
                 conn.search(search_base, search_filter, attributes=['*'])
@@ -586,6 +619,9 @@ sso_manager = SSOManager()
 @sso_bp.route('/sso/login/<company_slug>/<provider>')
 def sso_login(company_slug, provider):
     """Initiate SSO login"""
+    if not sso_provider_enabled(provider):
+        flash(SSO_DISABLED_MESSAGE, 'error')
+        return redirect(url_for('auth.login'))
     # Get company by slug
     company = get_company_by_slug(company_slug)
     if not company:
@@ -612,6 +648,9 @@ def sso_login(company_slug, provider):
 @sso_bp.route('/sso/callback/<company_slug>/<provider>', methods=['GET', 'POST'])
 def sso_callback(company_slug, provider):
     """Handle SSO callback"""
+    if not sso_provider_enabled(provider):
+        flash(SSO_DISABLED_MESSAGE, 'error')
+        return redirect(url_for('auth.login'))
     company = get_company_by_slug(company_slug)
     if not company:
         flash('Company not found', 'error')
@@ -769,6 +808,13 @@ def save_sso_config(company_id):
     provider = request.form.get('provider')
     provider_name = request.form.get('provider_name')
     is_enabled = request.form.get('is_enabled') == 'on'
+    if provider not in ('saml', 'oauth2', 'ldap', 'active_directory'):
+        flash('Ukendt SSO-udbyder.', 'error')
+        return redirect(url_for('sso.sso_config', company_id=company_id))
+    if is_enabled and not sso_provider_enabled(provider):
+        # Keep the config, but never let a disabled method go live (S-1.8).
+        is_enabled = False
+        flash('Konfigurationen er gemt, men metoden er ikke aktiveret endnu og forbliver inaktiv.', 'info')
     config_data = {
         'sso_url': request.form.get('sso_url'),
         'issuer': request.form.get('issuer'),

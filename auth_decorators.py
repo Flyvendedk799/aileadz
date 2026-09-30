@@ -132,6 +132,147 @@ def _session():
 
 
 # ---------------------------------------------------------------------------
+# Session liveness (S-1.10): deactivated / SCIM-removed users must not stay in.
+#
+# The decorators used to trust the signed session cookie alone, so a user whose
+# ``company_users.status`` was flipped to inactive (HR toggle, SCIM DELETE)
+# kept full access until the cookie expired. We now re-check membership status
+# on every guarded request, cached per worker for ``SESSION_RECHECK_TTL``
+# seconds to keep the DB load negligible. The check FAILS OPEN on database
+# errors (an outage must not lock everybody out) but fails closed on a
+# definitively non-active membership.
+# ---------------------------------------------------------------------------
+
+import threading
+import time
+
+SESSION_RECHECK_TTL = 60  # seconds
+_STATUS_CACHE = {}        # {(user_id, company_id): (checked_at, is_active)}
+_STATUS_LOCK = threading.Lock()
+
+
+def _lookup_membership_status(user_id, company_id):
+    """Return the ``company_users.status`` string for the membership, ``None``
+    if there is no such row, or ``False`` if the lookup could not be made
+    (no app/DB). Separate function so tests can stub it."""
+    try:
+        from flask import current_app
+
+        mysql = getattr(current_app, "mysql", None)
+        if mysql is None:
+            return False
+        try:
+            from db_compat import refresh_flask_mysql_connection
+
+            refresh_flask_mysql_connection(mysql)
+        except Exception:
+            pass
+        cur = mysql.connection.cursor()
+        try:
+            cur.execute(
+                "SELECT status FROM company_users WHERE user_id = %s AND company_id = %s "
+                "ORDER BY (status = 'active') DESC LIMIT 1",
+                (user_id, company_id),
+            )
+            row = cur.fetchone()
+        finally:
+            try:
+                cur.close()
+            except Exception:
+                pass
+        if not row:
+            return None
+        return (row.get("status") if isinstance(row, dict) else row[0]) or ""
+    except Exception as exc:  # pragma: no cover - defensive, fail open
+        logger.warning("session recheck lookup failed: %s", exc)
+        return False
+
+
+def invalidate_session_cache(user_id=None):
+    """Forget cached liveness results (call right after deactivating a user so
+    the change bites immediately on this worker; other workers within the TTL)."""
+    with _STATUS_LOCK:
+        if user_id is None:
+            _STATUS_CACHE.clear()
+        else:
+            for key in [k for k in _STATUS_CACHE if str(k[0]) == str(user_id)]:
+                _STATUS_CACHE.pop(key, None)
+
+
+def session_is_live(sess=None):
+    """True if the session's user is still allowed in. Side-effect free."""
+    sess = _session() if sess is None else sess
+    user_id = sess.get("user_id")
+    company_id = sess.get("company_id")
+    if not user_id or not company_id:
+        return True  # solo user / not bound to a tenant: nothing to re-check
+    if sess.get("role") == SUPER_ADMIN_ROLE:
+        return True  # platform admins act on tenants without being members
+    if sess.get("admin_acting_company_id"):
+        return True
+
+    key = (user_id, company_id)
+    now = time.time()
+    with _STATUS_LOCK:
+        hit = _STATUS_CACHE.get(key)
+    if hit and now - hit[0] < SESSION_RECHECK_TTL:
+        return hit[1]
+
+    status = _lookup_membership_status(user_id, company_id)
+    if status is False:
+        return True  # could not check -> fail open
+    live = (status or "").strip().lower() == "active"
+    with _STATUS_LOCK:
+        if len(_STATUS_CACHE) > 20000:
+            _STATUS_CACHE.clear()
+        _STATUS_CACHE[key] = (now, live)
+    return live
+
+
+def revoke_session():
+    """Drop the signed-in identity from the session."""
+    try:
+        from flask import session
+
+        session.clear()
+    except Exception:
+        pass
+
+
+def _ensure_live_or_deny():
+    """None when the session may proceed, otherwise a denial response."""
+    if session_is_live():
+        return None
+    revoke_session()
+    return _deny(
+        "Din adgang er blevet deaktiveret. Kontakt din administrator.",
+        401,
+        "auth.login",
+    )
+
+
+def register_session_liveness(app):
+    """Install an app-wide ``before_request`` that applies the liveness check to
+    EVERY route, including the many that hand-roll ``'user' in session`` checks
+    instead of using the decorators. Cheap: cached per worker for 60 s."""
+
+    @app.before_request
+    def _session_liveness_gate():  # pragma: no cover - thin wrapper, tested via client
+        try:
+            from flask import request
+
+            if request.endpoint in (None, "static"):
+                return None
+            sess = _session()
+            if not sess.get("user"):
+                return None
+            return _ensure_live_or_deny()
+        except Exception as exc:
+            logger.warning("session liveness gate skipped: %s", exc)
+            return None
+
+
+# ---------------------------------------------------------------------------
 # login_required
 # ---------------------------------------------------------------------------
 
@@ -150,6 +291,9 @@ def login_required(view):
                 401,
                 "auth.login",
             )
+        denied = _ensure_live_or_deny()
+        if denied is not None:
+            return denied
         return view(*args, **kwargs)
 
     return wrapped
@@ -182,6 +326,10 @@ def require_role(*roles):
             sess = _session()
             if not sess.get("user"):
                 return _deny("Log ind for at fortsætte.", 401, "auth.login")
+
+            denied = _ensure_live_or_deny()
+            if denied is not None:
+                return denied
 
             role = sess.get("role")
             if role in allowed or role == SUPER_ADMIN_ROLE:
@@ -221,6 +369,9 @@ def require_company(view):
                 403,
                 "dashboard.dashboard",
             )
+        denied = _ensure_live_or_deny()
+        if denied is not None:
+            return denied
         return view(*args, **kwargs)
 
     return wrapped
@@ -253,6 +404,10 @@ def require_company_role(*roles):
             # Platform super-admin bypass.
             if sess.get("role") == SUPER_ADMIN_ROLE:
                 return view(*args, **kwargs)
+
+            denied = _ensure_live_or_deny()
+            if denied is not None:
+                return denied
 
             if sess.get("company_role") in allowed:
                 return view(*args, **kwargs)
@@ -402,4 +557,8 @@ __all__ = [
     "requires_feature",
     "COMPANY_ROLES",
     "SUPER_ADMIN_ROLE",
+    "session_is_live",
+    "register_session_liveness",
+    "invalidate_session_cache",
+    "revoke_session",
 ]

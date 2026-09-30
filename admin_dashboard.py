@@ -932,14 +932,18 @@ def admin_agreement_delete(agreement_id):
     return redirect(url_for('admin_dashboard.admin_agreements'))
 
 
-@admin_dashboard_bp.route('/make-superadmin/<username>')
+@admin_dashboard_bp.route('/make-superadmin/<username>', methods=['POST'])
+@require_role('admin')
 def make_superadmin(username):
-    """One-time route to promote a user to admin."""
-    if 'user' not in session:
-        flash("Log ind foerst.", "danger")
-        return redirect(url_for('auth.login'))
-    if session.get('role') != 'admin' and session.get('user') != 'Mastek123':
-        flash("Adgang naegtet.", "danger")
+    """Promote a user to platform admin. POST only, real admins only, audited.
+
+    S-1.3: this used to be a GET route that also trusted a hardcoded username,
+    so a crafted link (or that one account) could mint admins.
+    """
+    # require_role lets role == 'admin' through; be explicit about it anyway so
+    # a future change to the decorator cannot silently reopen this.
+    if session.get('role') != 'admin':
+        flash("Adgang nægtet.", "danger")
         return redirect(url_for('auth.login'))
     try:
         cur = current_app.mysql.connection.cursor()
@@ -948,12 +952,15 @@ def make_superadmin(username):
         affected = cur.rowcount
         cur.close()
         if affected:
+            from security_audit import audit
+            audit('admin.make_superadmin', 'user', username,
+                  f"{session.get('user')} gjorde {username} til platformadministrator")
             flash(f"{username} er nu superadmin!", "success")
         else:
-            flash(f"Bruger '{username}' ikke fundet.", "warning")
+            flash(f"Bruger '{username}' blev ikke fundet.", "warning")
     except Exception as e:
         logging.error("Error making superadmin: %s", e)
-        flash("Fejl.", "danger")
+        flash("Noget gik galt. Prøv igen.", "danger")
     return redirect(url_for('admin_dashboard.admin_home'))
 
 

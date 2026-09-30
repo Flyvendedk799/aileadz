@@ -22,7 +22,7 @@
   </style>
   {% endif %}
   {% if white_label_active and company_branding.custom_css %}
-  <style>{{ company_branding.custom_css|safe }}</style>
+  <style>{{ company_branding.custom_css|safe_css }}</style>
   {% endif %}
   {% block extra_head %}{% endblock %}
 </head>

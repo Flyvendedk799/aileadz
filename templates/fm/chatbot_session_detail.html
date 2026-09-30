@@ -46,7 +46,7 @@
         </div>
         <div class="tr-row ai">
           <div class="tr-av"><i class="fa-solid fa-robot"></i></div>
-          <div class="tr-bubble">{{ interaction.response_text|safe }}
+          <div class="tr-bubble">{{ interaction.response_text|safe_html }}
             {% if interaction.tools_used %}<div class="tr-tools"><i class="fa-solid fa-wrench"></i> Kørte værktøjer: {{ interaction.tools_used }}</div>{% endif %}
             <span class="tr-time">{{ interaction.created_at.strftime('%H:%M:%S') if interaction.created_at else '' }}</span>
           </div>

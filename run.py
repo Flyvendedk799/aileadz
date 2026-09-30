@@ -150,17 +150,43 @@ def _mysql_settings_from_database_url(url):
         return {}
 
 
+INSECURE_SECRET_KEYS = frozenset({
+    '', 'your_secret_key_here', 'supersecretkey', 'secret', 'changeme',
+    'change-me', 'dev', 'development', 'test', 'password',
+})
+_SANDBOX_SECRET_KEY = 'REDACTED'
+
+
+def resolve_secret_key(env):
+    """Return the Flask SECRET_KEY from ``env`` or refuse to boot (S-1.4).
+
+    Outside SANDBOX=1 a missing or well-known placeholder key raises
+    RuntimeError so a misconfigured deploy fails loudly instead of running with
+    forgeable sessions.
+    """
+    key = (env.get('SECRET_KEY') or '').strip()
+    sandbox = env.get('SANDBOX') == '1'
+    if key and key.lower() not in INSECURE_SECRET_KEYS:
+        if len(key) < 32:
+            logging.warning("SECRET_KEY is shorter than 32 characters; generate a longer one "
+                            "(python -c \"import secrets; print(secrets.token_hex(32))\").")
+        return key
+    if sandbox:
+        return key or _SANDBOX_SECRET_KEY
+    raise RuntimeError(
+        "SECRET_KEY is not set (or is a known placeholder). Refusing to start: "
+        "sessions could be forged. Set a long random SECRET_KEY in the environment "
+        "(see docs/runbooks/SECRET_ROTATION.md), or SANDBOX=1 for local dev/tests."
+    )
+
+
 def create_app():
     app = Flask(__name__, template_folder='templates')
-    # Secret key is env-overridable. The hardcoded value is kept as a fallback so
-    # production keeps working when SECRET_KEY is unset, but we warn loudly so it
-    # gets set + rotated. The warning is suppressed inside the sandbox.
-    app.secret_key = os.environ.get('SECRET_KEY') or 'your_secret_key_here'
-    if not os.environ.get('SECRET_KEY') and os.environ.get('SANDBOX') != '1':
-        logging.warning(
-            "SECRET_KEY is not set; falling back to an insecure default secret key. "
-            "Set the SECRET_KEY environment variable and rotate it for production."
-        )
+    # S-1.4: SECRET_KEY is mandatory. Sessions, the AI-key encryption key and the
+    # SSO-secret encryption key all derive from it, so an unset or well-known
+    # value would let anyone forge a session (role='admin'). Only SANDBOX=1
+    # (tests/dev) may fall back to a throwaway value.
+    app.secret_key = resolve_secret_key(os.environ)
 
     # Session cookie hardening. These are additive and don't invalidate existing
     # sessions. SESSION_COOKIE_SECURE must stay False under SANDBOX=1 so the test
@@ -312,6 +338,15 @@ def create_app():
         register_asset_version(app)
     except Exception as e:
         logging.warning("Asset versioning skipped: %s", e)
+
+    # S-1.10: deactivated / SCIM-removed users lose access on the next request
+    # (membership status re-checked, cached ~60 s), on every route.
+    from auth_decorators import register_session_liveness
+    register_session_liveness(app)
+
+    # Render-time sanitising filters (safe_html / safe_css) replace bare |safe (S-1.9).
+    from html_sanitize import register_html_filters
+    register_html_filters(app)
 
     # Branding schema migration runs every process start (not gated by enterprise sync TTL)
     @app.before_request

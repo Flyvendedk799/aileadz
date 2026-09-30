@@ -105,6 +105,20 @@ def init_db():
     except Exception:
         pass
 
+    # S-1.7 migration: feedback rows carry the tenant they came from and an
+    # admin-review flag. Only reviewed rows of the SAME company may ever be
+    # reused as few-shot examples in a prompt.
+    try:
+        cursor = conn.execute("PRAGMA table_info(analytics)")
+        acols = {row["name"] for row in cursor.fetchall()}
+        if "company_id" not in acols:
+            conn.execute("ALTER TABLE analytics ADD COLUMN company_id INTEGER DEFAULT NULL")
+        if "reviewed" not in acols:
+            conn.execute("ALTER TABLE analytics ADD COLUMN reviewed INTEGER DEFAULT 0")
+        conn.commit()
+    except Exception:
+        pass
+
 
 # ── Session CRUD ──
 
@@ -195,28 +209,65 @@ def _auto_cleanup():
 # ── Analytics ──
 
 def log_event(session_id, event_type, query_text="", tool_used="", results_count=0,
-              feedback_rating=0, message_index=0, extra=None):
-    """Log an analytics event."""
+              feedback_rating=0, message_index=0, extra=None, company_id=None):
+    """Log an analytics event. ``company_id`` tags the tenant (S-1.7)."""
     conn = _get_conn()
     conn.execute("""
         INSERT INTO analytics (session_id, timestamp, event_type, query_text, tool_used,
-                              results_count, feedback_rating, message_index, extra)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                              results_count, feedback_rating, message_index, extra, company_id)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (session_id, time.time(), event_type, query_text, tool_used,
-          results_count, feedback_rating, message_index, json.dumps(extra or {})))
+          results_count, feedback_rating, message_index, json.dumps(extra or {}),
+          company_id))
     conn.commit()
 
 
-def get_top_rated_interactions(limit=5, min_rating=1):
-    """Get the highest-rated interactions for few-shot examples."""
+def get_top_rated_interactions(limit=5, min_rating=1, company_id=None):
+    """Highest-rated interactions for few-shot examples (S-1.7).
+
+    Tenant-safe: only rows an admin has REVIEWED and that belong to exactly the
+    caller's ``company_id`` (None matches only tenant-less rows) are returned, so
+    one company's thumbs-up'd text can never reach another company's prompt.
+    """
     conn = _get_conn()
     rows = conn.execute("""
         SELECT query_text, extra FROM analytics
         WHERE event_type = 'feedback' AND feedback_rating >= ?
+          AND reviewed = 1 AND company_id IS ?
         ORDER BY feedback_rating DESC, timestamp DESC
         LIMIT ?
-    """, (min_rating, limit)).fetchall()
+    """, (min_rating, company_id, limit)).fetchall()
     return [{"query": r["query_text"], "extra": json.loads(r["extra"])} for r in rows]
+
+
+def list_feedback_for_review(limit=50, only_pending=True):
+    """Positive feedback rows awaiting (or past) admin review (S-1.7)."""
+    conn = _get_conn()
+    rows = conn.execute("""
+        SELECT id, timestamp, company_id, query_text, extra, reviewed FROM analytics
+        WHERE event_type = 'feedback' AND feedback_rating > 0
+          AND (? = 0 OR reviewed = 0)
+        ORDER BY timestamp DESC LIMIT ?
+    """, (1 if only_pending else 0, limit)).fetchall()
+    out = []
+    for r in rows:
+        try:
+            extra = json.loads(r["extra"] or "{}")
+        except Exception:
+            extra = {}
+        out.append({"id": r["id"], "timestamp": r["timestamp"], "company_id": r["company_id"],
+                    "query": r["query_text"], "response": extra.get("assistant_response", ""),
+                    "reviewed": bool(r["reviewed"])})
+    return out
+
+
+def set_feedback_reviewed(feedback_id, approved=True):
+    """Admin gate: mark a feedback row reusable (or not) as a prompt example."""
+    conn = _get_conn()
+    cur = conn.execute("UPDATE analytics SET reviewed = ? WHERE id = ? AND event_type = 'feedback'",
+                       (1 if approved else 0, int(feedback_id)))
+    conn.commit()
+    return cur.rowcount > 0
 
 
 def get_search_analytics(limit=20):

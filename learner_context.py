@@ -89,13 +89,23 @@ def hr_context_enabled() -> bool:
     return _env_flag("AI_LEARNER_HR_CONTEXT", True)
 
 
-def hr_goals_enabled() -> bool:
-    """HR-written goals (env ``AI_LEARNER_HR_GOALS``, default OFF).
+def hr_goals_enabled(company_id=None) -> bool:
+    """May SHARED HR goals be fed to the learner AI? (S-4.4)
 
-    Off by default: learners cannot see ``employee_goals`` anywhere in the UI
-    today, so surfacing them through the chatbot needs product/privacy sign-off.
+    Decided 2026-09-30: this is a COMPANY-level setting
+    (``company_settings.ai_learner_hr_goals``, default ON), with per-goal sharing
+    inside it -- only goals HR toggled "Del med medarbejder" are ever read.
+    ``AI_LEARNER_HR_GOALS=0`` stays as a platform-wide kill switch.
     """
-    return _env_flag("AI_LEARNER_HR_GOALS", False)
+    if not _env_flag("AI_LEARNER_HR_GOALS", True):
+        return False
+    if company_id is None:
+        return True
+    try:
+        import goal_sharing
+        return goal_sharing.company_shares_with_ai(_connection(), company_id)
+    except Exception:
+        return True
 
 
 # ── DB helpers ─────────────────────────────────────────────────────────────
@@ -296,6 +306,7 @@ def _load_hr_goals(user_id, company_id):
         SELECT goal_title, goal_description, target_date, status, progress
         FROM employee_goals
         WHERE employee_id = %s AND company_id = %s
+          AND shared_with_employee = 1
           AND status IN ('active', 'in_progress')
         ORDER BY (target_date IS NULL), target_date ASC
         LIMIT %s
@@ -402,7 +413,7 @@ def build_learner_hr_context(username, *, user_id=None, company_id=None) -> dict
                 logger.debug("learner_context: dept targets failed for %s: %s", username, e)
                 ctx["failed_sources"].append("dept_targets")
 
-            if hr_goals_enabled() and uid and cid:
+            if hr_goals_enabled(cid) and uid and cid:
                 try:
                     ctx["hr_goals"] = _load_hr_goals(uid, cid)
                 except Exception as e:

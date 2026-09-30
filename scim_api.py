@@ -9,7 +9,7 @@ automatically provision and DEPROVISION (auto-offboard) seats into the tenant's
 
 Authentication reuses the EXISTING enterprise API auth (``require_api_auth``
 from ``enterprise_api``): SCIM clients authenticate with the company's API key
-(``X-API-Key`` header or ``api_key`` query param, exactly like the rest of the
+(``X-API-Key`` header only -- query-string keys are rejected -- like the rest of the
 enterprise API). That decorator sets ``g.company_id``, so EVERY operation in
 this module is hard-scoped to the authenticated tenant — there are no foreign
 keys, isolation is application-level, and every query carries
@@ -166,6 +166,46 @@ def _recalc_employee_count(cur, company_id):
 # ---------------------------------------------------------------------------
 # SCIM response helpers
 # ---------------------------------------------------------------------------
+
+def _ensure_identity(cur, email, full_name):
+    """S-3.4: every SCIM-provisioned person gets a real ``users`` login identity
+    (SSO-only: random unusable password) so company_users.user_id is never NULL.
+    Returns the users row; raises identity.IdentityError for unusable e-mails
+    and for platform administrators."""
+    import identity
+    user, _created = identity.ensure_login_identity(cur, email)
+    return user
+
+
+def backfill_identities(conn, company_id=None):
+    """One-off repair for SCIM rows created before S-3.4 (``user_id IS NULL``).
+    Returns the number of rows linked. Safe to re-run."""
+    import identity
+    cur = conn.cursor()
+    linked = 0
+    try:
+        sql = ("SELECT id, company_id, email, full_name FROM company_users "
+               "WHERE user_id IS NULL AND email IS NOT NULL AND email <> ''")
+        params = ()
+        if company_id is not None:
+            sql += " AND company_id = %s"
+            params = (company_id,)
+        cur.execute(sql, params)
+        for row in (cur.fetchall() or []):
+            rid = row["id"] if isinstance(row, dict) else row[0]
+            email = row["email"] if isinstance(row, dict) else row[2]
+            try:
+                user, _ = identity.ensure_login_identity(cur, email)
+            except identity.IdentityError:
+                continue
+            cur.execute("UPDATE company_users SET user_id = %s, username = COALESCE(username, %s) "
+                        "WHERE id = %s AND user_id IS NULL", (user["id"], user.get("username"), rid))
+            linked += 1
+        conn.commit()
+    finally:
+        cur.close()
+    return linked
+
 
 def _invalidate_sessions():
     """Drop cached session-liveness results so a deactivation bites at once."""
@@ -536,10 +576,17 @@ def create_user():
                         reason or "Kan ikke tilføje flere medarbejdere "
                         "(seats opbrugt).",
                     )
+                try:
+                    _uid = _ensure_identity(cur, email, full_name)["id"]
+                except Exception:
+                    cur.close()
+                    return _scim_error(400, "Der skal angives en gyldig e-mail for at oprette et login.",
+                                       scim_type="invalidValue")
                 cur.execute(
                     "UPDATE company_users SET status = 'active', full_name = %s, "
-                    "username = %s, email = %s WHERE id = %s AND company_id = %s",
-                    (full_name, username, email, existing["id"], g.company_id),
+                    "username = %s, email = %s, user_id = COALESCE(user_id, %s) "
+                    "WHERE id = %s AND company_id = %s",
+                    (full_name, username, email, _uid, existing["id"], g.company_id),
                 )
                 _recalc_employee_count(cur, g.company_id)
             current_app.mysql.connection.commit()
@@ -575,14 +622,27 @@ def create_user():
                 "(seats opbrugt).",
             )
 
+        # S-3.4: create (or link) the login identity first, so the membership
+        # points at a real users.id and the person can actually sign in via SSO.
+        try:
+            login_user = _ensure_identity(cur, email, full_name)
+        except Exception as ident_err:
+            cur.close()
+            logger.info("scim_api.create_user: identity refused: %s", ident_err)
+            return _scim_error(
+                400,
+                "Der skal angives en gyldig e-mail (userName eller emails), og kontoen må ikke være en platformadministrator.",
+                scim_type="invalidValue",
+            )
         cur.execute(
             "INSERT INTO company_users "
-            "(company_id, username, full_name, email, role, job_title, "
+            "(company_id, user_id, username, full_name, email, role, job_title, "
             " employee_id, status, added_by) "
-            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+            "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
             (
                 g.company_id,
-                username,
+                login_user["id"],
+                login_user.get("username") or username,
                 full_name,
                 email,
                 "employee",

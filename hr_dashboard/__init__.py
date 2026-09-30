@@ -5110,6 +5110,109 @@ def create_hr_dashboard_blueprint():
             flash("Fejl ved bulk-tildeling af laeringsforloeb.", "danger")
         return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
+    # ── S-4.4: per-goal sharing ("Del med medarbejder") ──────────────────────
+    # JSON endpoints; the two-section HR view ("Delt med medarbejderen" /
+    # "Kun synligt for HR") is the UX side of N-3.5 and builds on these.
+
+    def _employee_in_scope(company, user_id):
+        """The employee row if they belong to this company (and, for a
+        department head, to their own department); else None."""
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute("SELECT user_id, department FROM company_users WHERE company_id = %s AND user_id = %s LIMIT 1",
+                        (company['id'], user_id))
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if not row:
+            return None
+        scope = _dept_scope(company)
+        if scope is not None and (row.get('department') or '') != scope:
+            return None
+        return row
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals', methods=['GET'])
+    def employee_goals_list(user_id):
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.employees.view')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company or not _employee_in_scope(company, user_id):
+            return jsonify({'success': False, 'message': 'Medarbejder ikke fundet.'}), 404
+        import goal_sharing
+        sections = goal_sharing.list_goals_for_hr(current_app.mysql.connection, company['id'], user_id)
+        return jsonify({'success': True,
+                        'delt_med_medarbejderen': sections['shared'],
+                        'kun_synligt_for_hr': sections['hr_only']})
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals', methods=['POST'])
+    def employee_goals_create(user_id):
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.employees.manage')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company or not _employee_in_scope(company, user_id):
+            return jsonify({'success': False, 'message': 'Medarbejder ikke fundet.'}), 404
+        data = request.get_json(silent=True) or request.form
+        title = (data.get('title') or '').strip()
+        if not title:
+            return jsonify({'success': False, 'message': 'Angiv en titel til målet.'}), 400
+        import goal_sharing
+        shared = str(data.get('shared', '')).lower() in ('1', 'true', 'on', 'ja')
+        goal_id = goal_sharing.create_goal(
+            current_app.mysql.connection, company_id=company['id'], employee_user_id=user_id, title=title,
+            description=data.get('description') or '', target_date=data.get('target_date') or None,
+            shared=shared, actor_user_id=session.get('user_id'), note=data.get('note'))
+        if shared:
+            from security_audit import audit
+            audit('hr.goal.share', 'employee_goal', goal_id, 'Mål oprettet og delt med medarbejder %s' % user_id,
+                  company_id=company['id'])
+        return jsonify({'success': True, 'goal_id': goal_id, 'shared': shared}), 201
+
+    @hr_dashboard_bp.route('/goals/<int:goal_id>/share', methods=['POST'])
+    def employee_goal_share(goal_id):
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.employees.manage')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False, 'message': 'Virksomhed ikke fundet.'}), 404
+        data = request.get_json(silent=True) or request.form
+        shared = str(data.get('shared', '')).lower() in ('1', 'true', 'on', 'ja')
+        import goal_sharing
+        row = goal_sharing.set_shared(current_app.mysql.connection, goal_id=goal_id, company_id=company['id'],
+                                      shared=shared, actor_user_id=session.get('user_id'), note=data.get('note'))
+        if not row:
+            return jsonify({'success': False, 'message': 'Målet blev ikke fundet.'}), 404
+        try:
+            import learner_context
+            learner_context.clear_cache()
+        except Exception:
+            pass
+        return jsonify({'success': True, 'goal_id': goal_id, 'shared': shared})
+
+    @hr_dashboard_bp.route('/settings/ai-hr-goals', methods=['POST'])
+    def set_ai_hr_goals():
+        auth_check = require_hr_manager_access(as_json=True, cap='company.settings')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False, 'message': 'Virksomhed ikke fundet.'}), 404
+        data = request.get_json(silent=True) or request.form
+        enabled = str(data.get('enabled', '1')).lower() in ('1', 'true', 'on', 'ja')
+        import goal_sharing
+        goal_sharing.set_company_ai_sharing(current_app.mysql.connection, company['id'], enabled)
+        from security_audit import audit
+        audit('company.ai_hr_goals', 'company_settings', company['id'],
+              'AI-adgang til delte HR-mål %s' % ('slået til' if enabled else 'slået fra'), company_id=company['id'])
+        try:
+            import learner_context
+            learner_context.clear_cache()
+        except Exception:
+            pass
+        return jsonify({'success': True, 'enabled': enabled})
+
     return hr_dashboard_bp
 
 # Create the blueprint instance

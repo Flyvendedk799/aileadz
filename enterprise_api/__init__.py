@@ -103,6 +103,30 @@ def _ensure_security_schema():
                     pass
         except Exception as e:
             logging.warning("enterprise_api: could not add key_hash column: %s", e)
+        # 1b) S-3.2: hash-only API keys. Backfill hash + display prefix from any
+        # legacy plaintext, null the plaintext, then drop the column.
+        try:
+            if not _column_exists(cur, 'company_api_keys', 'key_prefix'):
+                cur.execute("ALTER TABLE company_api_keys ADD COLUMN key_prefix VARCHAR(16) NULL")
+            if _column_exists(cur, 'company_api_keys', 'api_key'):
+                cur.execute("SELECT id, api_key FROM company_api_keys WHERE api_key IS NOT NULL AND api_key <> ''")
+                for legacy in (cur.fetchall() or []):
+                    lid = legacy[0] if not isinstance(legacy, dict) else legacy['id']
+                    lkey = legacy[1] if not isinstance(legacy, dict) else legacy['api_key']
+                    cur.execute(
+                        "UPDATE company_api_keys SET key_hash = COALESCE(NULLIF(key_hash, ''), %s), "
+                        "key_prefix = COALESCE(key_prefix, %s), api_key = NULL WHERE id = %s",
+                        (_hash_api_key(lkey), str(lkey)[:10], lid),
+                    )
+                conn.commit()
+                try:
+                    cur.execute("ALTER TABLE company_api_keys DROP COLUMN api_key")
+                    conn.commit()
+                except Exception as drop_err:
+                    # Values are already scrubbed; a failed DROP is cosmetic.
+                    logging.warning("enterprise_api: could not drop api_key column: %s", drop_err)
+        except Exception as e:
+            logging.warning("enterprise_api: api key hash-only migration failed: %s", e)
         # 2) Durable rate-limit counter table (per key, per window).
         try:
             cur.execute(
@@ -382,10 +406,11 @@ class APIManager:
 
             cur = conn.cursor(MySQLdb.cursors.DictCursor)
             api_key_data = None
-            has_key_hash_col = _column_exists(cur, 'company_api_keys', 'key_hash')
 
-            # Prefer hash-based lookup when the column exists.
-            if has_key_hash_col and key_hash:
+            # S-3.2: keys are stored as SHA-256 only; there is no plaintext
+            # fallback. (Legacy plaintext rows are migrated at schema-ensure time.)
+            backfill_needed = False
+            if key_hash:
                 try:
                     cur.execute("""
                         SELECT ak.*, c.company_name, c.status as company_status
@@ -396,27 +421,7 @@ class APIManager:
                     """, (key_hash,))
                     api_key_data = cur.fetchone()
                 except Exception as e:
-                    logging.warning("enterprise_api: hash lookup failed, falling back: %s", e)
-                    api_key_data = None
-
-            # Legacy / transition path: match on plaintext api_key column.
-            backfill_needed = False
-            if not api_key_data:
-                try:
-                    cur.execute("""
-                        SELECT ak.*, c.company_name, c.status as company_status
-                        FROM company_api_keys ak
-                        JOIN companies c ON ak.company_id = c.id
-                        WHERE ak.api_key = %s AND ak.is_active = 1
-                        AND (ak.expires_at IS NULL OR ak.expires_at > NOW())
-                    """, (api_key,))
-                    api_key_data = cur.fetchone()
-                    if api_key_data and has_key_hash_col:
-                        # Legacy plaintext row with empty hash -> backfill.
-                        if not api_key_data.get('key_hash'):
-                            backfill_needed = True
-                except Exception as e:
-                    logging.warning("enterprise_api: legacy key lookup failed: %s", e)
+                    logging.warning("enterprise_api: hash lookup failed: %s", e)
                     api_key_data = None
 
             try:
@@ -616,12 +621,19 @@ def require_api_auth(required_permission=None):
         def decorated_function(*args, **kwargs):
             start_time = time.time()
             
-            # Get API key from header or query parameter
-            api_key = request.headers.get('X-API-Key') or request.args.get('api_key')
+            # S-3.2: header only. A key in the URL ends up in access logs,
+            # browser history and Referer headers, so it is refused outright.
+            if request.args.get('api_key'):
+                return jsonify({
+                    'error': 'API key in URL not allowed',
+                    'message': 'Send the API key in the X-API-Key header, never in the URL. '
+                               'Rotate any key that has been sent in a URL.'
+                }), 400
+            api_key = request.headers.get('X-API-Key')
             if not api_key:
                 return jsonify({
                     'error': 'API key required',
-                    'message': 'Please provide API key in X-API-Key header or api_key parameter'
+                    'message': 'Please provide your API key in the X-API-Key header'
                 }), 401
             
             # Authenticate API key
@@ -1264,7 +1276,7 @@ def get_api_keys():
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
         cur.execute("""
-            SELECT id, key_name, permissions, rate_limit_per_hour,
+            SELECT id, key_name, key_prefix, permissions, rate_limit_per_hour,
                    total_requests, last_used_at, is_active, created_at
             FROM company_api_keys 
             WHERE company_id = %s
@@ -1299,45 +1311,27 @@ def create_api_key():
 
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-        # Store the sha256 hash when the column is available; keep writing the
-        # plaintext api_key column too so legacy reads stay backward-compatible.
-        store_hash = bool(key_hash) and _column_exists(cur, 'company_api_keys', 'key_hash')
-
-        if store_hash:
-            cur.execute("""
-                INSERT INTO company_api_keys (
-                    company_id, key_name, api_key, key_hash, permissions,
-                    rate_limit_per_hour, expires_at, is_active, created_at, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                g.company_id,
-                data['key_name'],
-                api_key,
-                key_hash,
-                json.dumps(data['permissions']),
-                data.get('rate_limit_per_hour', 1000),
-                data.get('expires_at'),
-                True,
-                datetime.now(),
-                g.api_key_data['created_by']
-            ))
-        else:
-            cur.execute("""
-                INSERT INTO company_api_keys (
-                    company_id, key_name, api_key, permissions,
-                    rate_limit_per_hour, expires_at, is_active, created_at, created_by
-                ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (
-                g.company_id,
-                data['key_name'],
-                api_key,
-                json.dumps(data['permissions']),
-                data.get('rate_limit_per_hour', 1000),
-                data.get('expires_at'),
-                True,
-                datetime.now(),
-                g.api_key_data['created_by']
-            ))
+        # S-3.2: only the SHA-256 is stored (plus a short non-secret prefix for
+        # display). The raw key exists only in this response.
+        if not key_hash:
+            return jsonify({'error': 'Failed to create API key'}), 500
+        cur.execute("""
+            INSERT INTO company_api_keys (
+                company_id, key_name, key_hash, key_prefix, permissions,
+                rate_limit_per_hour, expires_at, is_active, created_at, created_by
+            ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        """, (
+            g.company_id,
+            data['key_name'],
+            key_hash,
+            api_key[:10],
+            json.dumps(data['permissions']),
+            data.get('rate_limit_per_hour', 1000),
+            data.get('expires_at'),
+            True,
+            datetime.now(),
+            g.api_key_data['created_by']
+        ))
 
         api_key_id = cur.lastrowid
         current_app.mysql.connection.commit()
@@ -2296,11 +2290,6 @@ def _build_openapi_spec():
     access, no side effects — safe to call from a public endpoint.
     """
     # Reusable parameter + response fragments.
-    api_key_query_param = {
-        'name': 'api_key', 'in': 'query', 'required': False,
-        'description': 'API key (alternative to the X-API-Key header).',
-        'schema': {'type': 'string'},
-    }
     page_param = {
         'name': 'page', 'in': 'query', 'required': False,
         'description': 'Page number (1-based).',
@@ -2332,7 +2321,7 @@ def _build_openapi_spec():
 
     def _scoped(scope):
         # Every apiKey-protected endpoint accepts the key via header OR query.
-        return [{'ApiKeyHeader': [scope], 'ApiKeyQuery': [scope]}]
+        return [{'ApiKeyHeader': [scope]}]
 
     paths = {
         '/api/v1/company/branding': {
@@ -2767,8 +2756,8 @@ def _build_openapi_spec():
             'version': '1.0.0',
             'description': (
                 'REST API for enterprise learning & development management. '
-                'Authenticate with an API key in the X-API-Key header (or the api_key query '
-                'parameter). Each key is granted one or more scopes; the admin:all scope grants '
+                'Authenticate with an API key in the X-API-Key header (keys in the URL are '
+                'rejected). Each key is granted one or more scopes; the admin:all scope grants '
                 'all of them. All data is scoped to the calling company. '
                 'Default rate limit: 1000 requests/hour, configurable per key.'
             ),
@@ -2780,16 +2769,12 @@ def _build_openapi_spec():
             {'name': 'Calendar'}, {'name': 'Audit'}, {'name': 'Webhooks'},
             {'name': 'Bulk'}, {'name': 'Admin'}, {'name': 'Meta'}, {'name': 'Internal'},
         ],
-        'security': [{'ApiKeyHeader': []}, {'ApiKeyQuery': []}],
+        'security': [{'ApiKeyHeader': []}],
         'components': {
             'securitySchemes': {
                 'ApiKeyHeader': {
                     'type': 'apiKey', 'in': 'header', 'name': 'X-API-Key',
                     'description': 'API key in the X-API-Key request header.',
-                },
-                'ApiKeyQuery': {
-                    'type': 'apiKey', 'in': 'query', 'name': 'api_key',
-                    'description': 'API key as the api_key query parameter (alternative to the header).',
                 },
                 'DrainToken': {
                     'type': 'apiKey', 'in': 'header', 'name': 'X-Drain-Token',
@@ -3042,8 +3027,7 @@ def api_docs():
             'interactive_docs': '/api/v1/docs',
             'authentication': {
                 'type': 'API Key',
-                'header': 'X-API-Key',
-                'parameter': 'api_key'
+                'header': 'X-API-Key'
             },
             'rate_limits': {
                 'default': '1000 requests per hour',

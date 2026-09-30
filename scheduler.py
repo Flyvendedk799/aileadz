@@ -523,6 +523,17 @@ def _job_cert_expiry_reminders(app):
             return {'error': str(e)}
 
 
+def _job_data_retention(app):
+    """Daily: apply the per-table retention policy (S-4.3) -- chat transcripts,
+    AI/API/e-mail logs, expired tokens. See retention_service.POLICIES."""
+    try:
+        from retention_service import run_retention
+    except Exception as e:
+        return {'error': "retention_service import failed: %s" % e}
+    with app.app_context():
+        return run_retention(app.mysql.connection)
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -567,6 +578,12 @@ JOBS = [
         'name': 'company_analytics_rollup',
         'interval_seconds': 86400,        # daily — writes the per-company daily KPI snapshot
         'fn': _job_company_analytics_rollup,
+        'enabled': True,
+    },
+    {
+        'name': 'data_retention',
+        'interval_seconds': 86400,        # daily -- personal data does not live forever
+        'fn': _job_data_retention,
         'enabled': True,
     },
     {

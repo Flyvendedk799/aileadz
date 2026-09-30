@@ -561,6 +561,9 @@ def enterprise_table_ddls():
                     target_date DATE,
                     status VARCHAR(30) DEFAULT 'active',
                     progress DECIMAL(5,2) DEFAULT 0,
+                    shared_with_employee TINYINT NOT NULL DEFAULT 0,
+                    shared_at DATETIME NULL,
+                    share_note VARCHAR(500) NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_employee_company (employee_id, company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",

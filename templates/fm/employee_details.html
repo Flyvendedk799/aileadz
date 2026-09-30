@@ -68,6 +68,7 @@
       <div class="fm-card"><div class="fm-card-body">
         <div style="font-weight:700;margin-bottom:10px">Handlinger</div>
         <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-pen"></i> Rediger medarbejder</a>
+        <a href="{{ url_for('hr_dashboard.employee_goals', user_id=employee.user_id) }}" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-bullseye"></i> Udviklingsmål</a>
         <form method="POST" action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}" onsubmit="return confirm('Nyt password genereres og vises på skærmen. Fortsæt?')" style="margin-bottom:8px">
           <button type="submit" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-key"></i> Nulstil password</button>
         </form>

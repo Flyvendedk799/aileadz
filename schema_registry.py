@@ -97,6 +97,15 @@ REGISTRY_DDL = [
         INDEX idx_credit_usage_company (company_id, `timestamp`)
     ) {_ENGINE}""",
 
+    f"""CREATE TABLE IF NOT EXISTS company_credit_accounts (
+        company_id INT PRIMARY KEY,
+        balance INT NOT NULL DEFAULT 0,
+        low_threshold INT NOT NULL DEFAULT 100,
+        limit_mode VARCHAR(10) NOT NULL DEFAULT 'soft',
+        low_notified TINYINT NOT NULL DEFAULT 0,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) {_ENGINE}""",
+
     f"""CREATE TABLE IF NOT EXISTS app_usage (
         id INT AUTO_INCREMENT PRIMARY KEY,
         username VARCHAR(255),

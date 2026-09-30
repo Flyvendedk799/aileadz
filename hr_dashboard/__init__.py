@@ -2621,6 +2621,12 @@ def create_hr_dashboard_blueprint():
         except Exception:
             page = ''
 
+        import credit_service
+        paused = credit_service.guard(company_id=company['id'], username=session.get('user'))
+        if paused:
+            return jsonify({"error": paused, "answers": [{"type": "text", "content": paused}],
+                            "credits_paused": True}), 402
+
         from hr_agent import handle_hr_ask
         return handle_hr_ask(user_query, session, page=page)
 

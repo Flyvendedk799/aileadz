@@ -946,6 +946,13 @@ def ask():
         if turn_kind not in ("message", "seed"):
             turn_kind = "message"
 
+        # N-6.4: a company on a HARD credit limit pauses the AI with a friendly message.
+        if session.get("company_id"):
+            import credit_service
+            paused = credit_service.guard(company_id=session.get("company_id"), username=session.get("user"))
+            if paused:
+                return jsonify({"answers": [{"type": "text", "content": paused}], "credits_paused": True}), 402
+
         return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind)
 
     except Exception as ex:

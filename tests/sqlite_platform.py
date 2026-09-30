@@ -19,7 +19,10 @@ from tests import sqlite_mysql  # noqa: E402
 
 EXTRA_SCHEMA = """
 ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active';
+ALTER TABLE company_users ADD COLUMN permissions TEXT;
+ALTER TABLE company_users ADD COLUMN job_title TEXT;
 ALTER TABLE companies ADD COLUMN industry TEXT;
+ALTER TABLE companies ADD COLUMN updated_at TEXT;
 ALTER TABLE companies ADD COLUMN subscription_plan TEXT DEFAULT 'trial';
 ALTER TABLE companies ADD COLUMN features TEXT;
 ALTER TABLE companies ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP;

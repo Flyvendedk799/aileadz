@@ -142,34 +142,19 @@ class AccountTokenTests(VendorBase):
             self.assertIsNone(account_tokens.consume_token("vendor_reset", old))
 
 
-class VendorPasswordResetTests(VendorBase):
-    def test_forgot_password_sends_link_for_active_vendor_with_same_answer_for_unknown(self):
-        with mock.patch("email_service.send_branded_email", return_value=True) as mail:
-            c = self.app.test_client()
-            r1 = c.post("/vendor/forgot-password", data={"email": "v@k.dk"})
-            r2 = c.post("/vendor/forgot-password", data={"email": "ukendt@x.dk"})
-            r3 = c.post("/vendor/forgot-password", data={"email": "s@u.dk"})   # suspended
-        self.assertEqual(mail.call_count, 1)
-        self.assertEqual(r1.get_data(), r2.get_data())
-        self.assertEqual(r1.get_data(), r3.get_data())
-        self.assertIn("reset_url", mail.call_args.kwargs)
+class VendorResetLinkTests(VendorBase):
+    """The forgot/reset SCREENS are Part A's (S-2.4); the admin button mints the link."""
 
-    def test_reset_link_sets_a_new_password_once(self):
-        import vendor_auth
-        with self.app.app_context():
-            raw = account_tokens.create_token("vendor_reset", 11)
-        c = self.app.test_client()
-        self.assertEqual(c.get("/vendor/reset-password/" + raw).status_code, 200)
-        bad = c.post("/vendor/reset-password/" + raw, data={"password": "kort", "confirm": "kort"})
-        self.assertEqual(bad.status_code, 200)
-        ok = c.post("/vendor/reset-password/" + raw, data={"password": "langtpassword1", "confirm": "langtpassword1"})
-        self.assertEqual(ok.status_code, 302)
-        h = self.db.one("SELECT password_hash FROM vendors WHERE id=11")["password_hash"]
-        self.assertTrue(vendor_auth.verify_vendor_password("langtpassword1", h))
-        again = c.post("/vendor/reset-password/" + raw, data={"password": "andetpassword1", "confirm": "andetpassword1"})
-        self.assertEqual(again.status_code, 200)      # invalid page, not a redirect
-        self.assertTrue(vendor_auth.verify_vendor_password("langtpassword1",
-                        self.db.one("SELECT password_hash FROM vendors WHERE id=11")["password_hash"]))
+    def test_send_vendor_reset_link_mints_a_token_and_mails_the_link(self):
+        from vendor_portal import send_vendor_reset_link
+        with mock.patch("email_service.send_branded_email", return_value=True) as mail, \
+                self.app.test_request_context("/"):
+            ok = send_vendor_reset_link({"id": 11, "contact_email": "v@k.dk"})
+        self.assertTrue(ok)
+        self.assertEqual(mail.call_args.args[2], "password_reset")
+        self.assertIn("/vendor/reset-password/", mail.call_args.kwargs["reset_url"])
+        token = mail.call_args.kwargs["reset_url"].rsplit("/", 1)[1]
+        self.assertEqual(account_tokens.peek_token("vendor_reset", token), 11)
 
 
 if __name__ == "__main__":

@@ -1,0 +1,10 @@
+# Lint gate for CI (N-8.3). Deliberately narrow: real bugs only (syntax errors,
+# undefined names, invalid comparisons, unused-import-free f-strings). Style rules
+# are NOT enforced - the code base predates the linter. Widen the rule set as the
+# backlog is worked off.
+line-length = 140
+target-version = "py312"
+extend-exclude = ["node_modules", "sandbox", "migrations/versions/0001_baseline.py"]
+
+[lint]
+select = ["E9", "F63", "F7", "F82", "F811"]

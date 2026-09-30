@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect, make_response
 from markupsafe import escape
 import db_compat  # noqa: F401
 import json
@@ -2247,12 +2247,49 @@ def _widget_cors_headers(resp, req_host, allowed_hosts):
             resp.headers['Access-Control-Allow-Origin'] = origin
             resp.headers['Vary'] = 'Origin'
             resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature, X-Widget-Session'
             resp.headers['Access-Control-Allow-Credentials'] = 'true'
             resp.headers['Access-Control-Max-Age'] = '600'
     except Exception:
         pass
     return resp
+
+
+def _widget_serializer():
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(current_app.secret_key, salt="widget-session-v1")
+
+
+def _widget_mint_session(token, parent_host, preview=False):
+    """Session token held by the iframe (N-5.6). It pins the widget token, the
+    PARENT page's host (the only trustworthy origin signal - the iframe's own
+    Origin is always our host) and the conversation id, so memory works even when
+    the browser blocks third-party cookies."""
+    return _widget_serializer().dumps({
+        "t": token, "h": parent_host or "", "p": 1 if preview else 0,
+        "s": "widget_" + uuid.uuid4().hex})
+
+
+def _widget_read_session(token, raw, max_age=12 * 3600):
+    """Payload dict when the token is valid for this widget, else None."""
+    if not raw:
+        return None
+    try:
+        data = _widget_serializer().loads(raw, max_age=max_age)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("t") != token:
+        return None
+    return data
+
+
+def _widget_frame_ancestors(allowed_hosts):
+    if not allowed_hosts:
+        return None
+    parts = ["'self'"]
+    for h in allowed_hosts:
+        parts += ["https://" + h, "https://*." + h]
+    return "frame-ancestors " + " ".join(parts)
 
 
 @app1_bp.route("/widget/<token>")
@@ -2272,21 +2309,26 @@ def widget_embed(token):
     if not widget:
         return "Widget not found or inactive", 404
 
-    # Check allowed domains via Referer header
-    referer = request.headers.get('Referer', '')
-    allowed = widget.get('allowed_domains')
-    if allowed and isinstance(allowed, str):
-        from urllib.parse import urlparse
-        ref_domain = urlparse(referer).netloc
-        allowed_list = [d.strip().lower() for d in allowed.split(',') if d.strip()]
-        if allowed_list and ref_domain and ref_domain.lower() not in allowed_list:
-            return "Domain not allowed", 403
+    # The parent page's host (Referer of the iframe navigation) is checked against
+    # the allowlist; a signed session token carries the verdict to /ask.
+    allowed_hosts = _widget_allowed_hosts(widget)
+    parent_host = _widget_origin_host()
+    own_host = (request.host or '').split(':')[0].lower()
+    preview = bool(request.args.get('preview')) and bool(session.get('username')) and parent_host == own_host
+    if allowed_hosts and not preview and not _widget_host_allowed(parent_host, allowed_hosts):
+        return "Domain not allowed", 403
 
     from branding_service import get_branding
     branding = get_branding(widget['cid'])
     widget['tenant_logo'] = branding.get('logo_url') or branding.get('company_logo')
 
-    return render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
+    resp = make_response(render_template(
+        'widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'),
+        widget_session=_widget_mint_session(token, parent_host, preview)))
+    fa = _widget_frame_ancestors(allowed_hosts)
+    if fa and not preview:
+        resp.headers['Content-Security-Policy'] = fa
+    return resp
 
 
 @app1_bp.route("/widget/<token>/ask", methods=["POST", "OPTIONS"])
@@ -2325,13 +2367,16 @@ def widget_ask(token):
     # allowlist configured stays open (backward-compatible) but is still
     # rate-capped below.
     hmac_result = _widget_hmac_valid(widget, req_host)
+    wsess = _widget_read_session(token, request.headers.get('X-Widget-Session', ''))
     if hmac_result is True:
         pass  # valid signed origin token
     elif hmac_result is False:
         return jsonify({"error": "Ugyldig oprindelse. Anmodningen blev afvist."}), 403
     elif allowed_hosts:
-        # No HMAC configured -> allowlist enforcement.
-        if not _widget_host_allowed(req_host, allowed_hosts):
+        # The session token was only issued to an allowlisted parent page, so a
+        # valid token IS the origin proof (Origin here is always our own host).
+        ok = bool(wsess) and (wsess.get("p") or _widget_host_allowed(wsess.get("h", ""), allowed_hosts))
+        if not ok:
             return jsonify({
                 "error": "Denne widget er ikke tilladt på dette domæne."
             }), 403
@@ -2352,10 +2397,11 @@ def widget_ask(token):
         return jsonify({"error": "No query"}), 400
 
     # Use a widget-specific session ID
-    widget_session_id = session.get('widget_session_id')
+    widget_session_id = (wsess or {}).get("s") or session.get('widget_session_id')
     if not widget_session_id:
         widget_session_id = f"widget_{uuid.uuid4().hex}"
         session['widget_session_id'] = widget_session_id
+    widget_session_id = str(widget_session_id)[:80]
 
     from app1.agent import handle_agentic_ask
     # handle_agentic_ask already returns a fully-built streaming Response — do not
@@ -2466,6 +2512,7 @@ def widget_loader_js(token):
   frame.id='ailead-widget-frame';
   frame.src='{iframe_url}';
   frame.allow='clipboard-write';
+  frame.referrerPolicy='origin';
   document.body.appendChild(frame);
   var open=false;
   btn.addEventListener('click',function(){{

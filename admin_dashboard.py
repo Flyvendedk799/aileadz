@@ -79,11 +79,23 @@ def _admin_home_data():
 
     total_orders = 0
     total_revenue = 0
+    revenue_invoiced = 0
+    revenue_paid = 0
     try:
-        cur.execute("SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS rev FROM course_orders")
+        # Revenue excludes cancelled/rejected orders and is split invoiced vs paid
+        # (billing is tracked off-platform; N-6.3).
+        cur.execute("""
+            SELECT COUNT(*) AS cnt,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN price END), 0) AS rev,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') AND billing_status = 'invoiced' THEN price END), 0) AS inv,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') AND billing_status = 'paid' THEN price END), 0) AS paid
+            FROM course_orders
+        """)
         row = cur.fetchone()
         total_orders = row['cnt']
         total_revenue = float(row['rev'])
+        revenue_invoiced = float(row.get('inv') or 0)
+        revenue_paid = float(row.get('paid') or 0)
     except Exception:
         pass
 
@@ -92,7 +104,8 @@ def _admin_home_data():
     revenue_this_month = 0
     try:
         cur.execute("""
-            SELECT COUNT(*) AS cnt, COALESCE(SUM(price), 0) AS rev
+            SELECT COUNT(*) AS cnt,
+                   COALESCE(SUM(CASE WHEN status NOT IN ('cancelled','rejected') THEN price END), 0) AS rev
             FROM course_orders WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')
         """)
         row = cur.fetchone()
@@ -192,6 +205,8 @@ def _admin_home_data():
         total_companies=total_companies,
         total_orders=total_orders,
         total_revenue=total_revenue,
+        revenue_invoiced=revenue_invoiced,
+        revenue_paid=revenue_paid,
         orders_this_month=orders_this_month,
         revenue_this_month=revenue_this_month,
         total_chatbot_queries=total_chatbot_queries,
@@ -1067,6 +1082,100 @@ def admin_system_health():
     return render_template('fm/admin_system_health.html',
                            features=features, outbox=outbox, snapshot=snapshot,
                            mail=mail, jobs=jobs)
+
+
+# ---------------------------------------------------------------------------
+# N-6.3 - platform billing queue (all companies + solo users). Payment is
+# off-platform; admin only manages invoiced/paid state and exports.
+# ---------------------------------------------------------------------------
+def _admin_billing_ctx():
+    import order_service
+    ctx = order_service.OrderContext.from_session(source='admin')
+    ctx.is_platform_admin = True
+    return ctx
+
+
+@admin_dashboard_bp.route('/billing')
+@require_role('admin')
+def admin_billing():
+    import billing_service
+    f = request.args.get('billing_status', '')
+    scope = request.args.get('scope', '')          # '' = everyone, 'solo' = enkeltbrugere
+    company_id = request.args.get('company_id', type=int)
+    date_from, date_to = request.args.get('from', ''), request.args.get('to', '')
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        orders = billing_service.fetch_orders(
+            cur, company_id=company_id, billing_filter=f, date_from=date_from, date_to=date_to,
+            solo_only=(scope == 'solo'))
+        summary = billing_service.summary(
+            cur, company_id=company_id, date_from=date_from, date_to=date_to, solo_only=(scope == 'solo'))
+    except Exception as e:
+        logging.warning("admin billing failed: %s", e)
+        orders, summary = [], {}
+    cur.close()
+    return render_template(
+        'fm/billing.html', company={'company_name': 'Alle virksomheder'}, orders=orders,
+        summary=summary or {}, departments=[], can_edit=True, scope='admin',
+        billing_filter=f, dept_filter='', date_from=date_from, date_to=date_to,
+        update_url_tmpl=url_for('admin_dashboard.admin_billing_update', order_id='ORDER_ID'),
+        bulk_url=url_for('admin_dashboard.admin_billing_bulk'),
+        csv_url=url_for('admin_dashboard.admin_billing_csv'))
+
+
+@admin_dashboard_bp.route('/billing/order/<order_id>', methods=['POST'])
+@require_role('admin')
+def admin_billing_update(order_id):
+    import order_service
+    data = request.get_json(silent=True) or {}
+    ctx = _admin_billing_ctx()
+    fields = dict(invoice_number=data.get('invoice_number') or None, invoice_date=data.get('invoice_date') or None,
+                  due_date=data.get('due_date') or None, payment_date=data.get('payment_date') or None,
+                  payment_reference=data.get('payment_reference') or None,
+                  note=data.get('billing_note') or data.get('note') or None)
+    if data.get('billing_status'):
+        res = order_service.set_billing_status(ctx, order_id, data['billing_status'], **fields)
+    else:
+        res = order_service.update_billing_details(ctx, order_id, **fields)
+    return jsonify(res), (200 if res.get('success') else 400)
+
+
+@admin_dashboard_bp.route('/billing/bulk', methods=['POST'])
+@require_role('admin')
+def admin_billing_bulk():
+    import order_service
+    data = request.get_json(silent=True) or {}
+    ids = data.get('order_ids') or []
+    if not ids or not data.get('billing_status') or len(ids) > 100:
+        return jsonify({'success': False, 'message': 'Vælg 1-100 ordrer og en status.'}), 400
+    res = order_service.bulk_set_billing_status(
+        _admin_billing_ctx(), ids, data['billing_status'],
+        invoice_number=data.get('invoice_number') or None, due_date=data.get('due_date') or None,
+        payment_reference=data.get('payment_reference') or None)
+    failed = [r for r in res['results'] if not r.get('success')]
+    msg = '%d ordrer opdateret' % res['done'] + (', %d fejlede' % len(failed) if failed else '')
+    return jsonify({'success': res['done'] > 0, 'message': msg})
+
+
+@admin_dashboard_bp.route('/billing/export.csv')
+@require_role('admin')
+def admin_billing_csv():
+    import billing_service
+    from flask import Response
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    orders = billing_service.fetch_orders(
+        cur, company_id=request.args.get('company_id', type=int),
+        billing_filter=request.args.get('billing_status', ''), date_from=request.args.get('from', ''),
+        date_to=request.args.get('to', ''), solo_only=(request.args.get('scope') == 'solo'), limit=5000)
+    names = {}
+    try:
+        cur.execute("SELECT id, company_name FROM companies")
+        names = {r['id']: r['company_name'] for r in cur.fetchall()}
+    except Exception:
+        pass
+    cur.close()
+    return Response(billing_service.to_csv(orders, names), mimetype='text/csv; charset=utf-8', headers={
+        'Content-Disposition': 'attachment; filename="fakturering-alle.csv"'})
 
 
 @admin_dashboard_bp.route('/system-health/test-email', methods=['POST'])

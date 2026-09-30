@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% block page_id %}analytics{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Analyse{% endblock %}
+{% block topbar_title %}Mit forbrug{% endblock %}
 {% block topbar_sub %}Kreditforbrug, aktivitet og trends i et roligt overblik.{% endblock %}
 {% block extra_head %}
 <style>
@@ -20,7 +20,7 @@
         <div class="fm-section-head" style="margin-top:0">
           <div><span class="fm-eyebrow"><i class="fa-solid fa-chart-line"></i> Personlig analyse</span><h2 class="fm-section-title">Kredit- og aktivitetsanalyse</h2></div>
           <div class="fm-flex fm-gap8">
-            <a href="{{ url_for('reports.reports') }}" class="fm-chip" style="text-decoration:none"><i class="fa-solid fa-file-lines"></i> Rapporter</a>
+            <a href="{{ url_for('reports.reports') }}" class="fm-chip" style="text-decoration:none"><i class="fa-solid fa-file-lines"></i> Detaljeret rapport</a>
             <a href="{{ url_for('dashboard.dashboard') }}" class="fm-chip" style="text-decoration:none"><i class="fa-solid fa-arrow-left"></i> Dashboard</a>
           </div>
         </div>

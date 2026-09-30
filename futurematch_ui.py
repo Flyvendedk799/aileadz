@@ -734,6 +734,12 @@ def _require_showcase_admin():
     return None
 
 
+# Mock pages that only exist in the design gallery (N-4.1): clearly labelled there.
+_GALLERY_ONLY_PAGES = frozenset({
+    'admin_chatbot', 'mt_dashboard', 'report_detail', 'profile', 'sso_login', 'widget_chat', 'mt_order_detail',
+})
+
+
 @futurematch_bp.route('/ui')
 def showcase_index():
     """Gallery of every Futurematch design page (for review / navigation)."""
@@ -752,6 +758,9 @@ def showcase(page):
         return guard
     if page not in _fm_pages() or page.startswith('_'):
         abort(404)
+    if page in _GALLERY_ONLY_PAGES:
+        flash('Designgalleri: denne side viser eksempeldata og er ikke koblet til rigtige data. '
+              'Den rigtige version findes i HR-workspace.', 'warning')
     return render_template(f'fm/{page}.html')
 
 

@@ -65,6 +65,12 @@ def _is_hashed(stored):
     return isinstance(stored, str) and stored.startswith(('pbkdf2:', 'scrypt:'))
 
 
+# Values that are NOT plaintext even though they lack the pbkdf2:/scrypt: prefix:
+# other hash schemes and the "account erased" marker. They must never be re-hashed.
+_NOT_PLAINTEXT = re.compile(
+    r"^(!|\$2[abxy]?\$|\$argon2|\$pbkdf2|[a-z0-9_]+\$[^$]+\$[0-9a-f]{32,}$)", re.I)
+
+
 def rehash_plaintext_passwords(conn, limit=5000):
     """One-off migration (S-2.2): hash every remaining plaintext password in
     place, so login can drop its plaintext fallback. Returns rows converted.
@@ -82,6 +88,8 @@ def rehash_plaintext_passwords(conn, limit=5000):
         )
         rows = cur.fetchall() or []
         for row in rows:
+            if _NOT_PLAINTEXT.match(row['password'] or ''):
+                continue   # another hash scheme / erased marker: leave untouched
             cur.execute("UPDATE users SET password = %s WHERE id = %s",
                         (generate_password_hash(row['password']), row['id']))
             converted += 1
@@ -96,13 +104,24 @@ def _migrate_plaintext_passwords_once():
     app = current_app._get_current_object()
     if getattr(app, '_plaintext_pw_migrated', False) or app.config.get('TESTING'):
         return None
-    app._plaintext_pw_migrated = True
+    # A failed attempt (database briefly unreachable) is retried on a later
+    # request, at most once a minute, until it succeeds once per process.
+    now = time.time()
+    if now < getattr(app, '_plaintext_pw_next_try', 0):
+        return None
+    app._plaintext_pw_next_try = now + 60
     try:
-        n = rehash_plaintext_passwords(app.mysql.connection)
-        if n:
-            app.logger.warning("S-2.2: hashed %d legacy plaintext password(s).", n)
+        total = 0
+        while True:
+            n = rehash_plaintext_passwords(app.mysql.connection)
+            total += n
+            if n < 5000:
+                break
+        app._plaintext_pw_migrated = True
+        if total:
+            app.logger.warning("S-2.2: hashed %d legacy plaintext password(s).", total)
     except Exception as exc:
-        app.logger.info("plaintext password migration skipped: %s", exc)
+        app.logger.info("plaintext password migration will be retried: %s", exc)
     return None
 
 

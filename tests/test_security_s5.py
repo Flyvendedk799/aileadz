@@ -6,6 +6,7 @@ API-key auth / CSRF presence, S-5.5 uploads, S-5.6 widget embedding allowlist.
 """
 
 import io
+import json
 import os
 import re
 import unittest
@@ -578,6 +579,107 @@ class S56_WidgetAllowlist(unittest.TestCase):
         csp = r.headers["Content-Security-Policy"]
         self.assertIn("frame-ancestors *", csp)
         self.assertIn("object-src 'none'", csp)
+
+
+# ---------------------------------------------------------------------------
+# S-1.4 follow-up: SECRET_KEY rotation re-encrypts derived-key secrets
+# ---------------------------------------------------------------------------
+class S14_SecretKeyRotation(unittest.TestCase):
+    def _load(self):
+        import importlib.util
+        spec = importlib.util.spec_from_file_location("rotate", os.path.join(REPO, "scripts", "rotate_secret_key.py"))
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    def test_rotation_re_encrypts_and_old_key_no_longer_reads(self):
+        rot = self._load()
+        old_k, new_k = "o" * 40, "n" * 40
+        old_f, new_f = rot.derive(old_k, "derived"), rot.derive(new_k, "derived")
+        old_2fa, new_2fa = rot.derive(old_k, "2fa"), rot.derive(new_k, "2fa")
+        store = {
+            "ai": {"OPENAI_API_KEY": "fernet$" + old_f.encrypt(b"sk-live-123").decode()},
+            "sso": {5: json.dumps({"client_id": "c", "client_secret": "fernet$" + old_f.encrypt(b"idp-secret").decode()})},
+            "tfa": {9: old_2fa.encrypt(b"JBSWY3DPEHPK3PXP").decode()},
+        }
+
+        class Cur:
+            def __init__(s):
+                s.rows = []
+
+            def execute(s, sql, params=None):
+                q = " ".join(sql.split())
+                if q.startswith("SELECT secret_name"):
+                    s.rows = list(store["ai"].items())
+                elif q.startswith("SELECT id, config"):
+                    s.rows = list(store["sso"].items())
+                elif q.startswith("SELECT user_id, secret_enc"):
+                    s.rows = list(store["tfa"].items())
+                elif q.startswith("UPDATE ai_secrets"):
+                    store["ai"][params[1]] = params[0]
+                elif q.startswith("UPDATE company_sso_configs"):
+                    store["sso"][params[1]] = params[0]
+                elif q.startswith("UPDATE user_2fa"):
+                    store["tfa"][params[1]] = params[0]
+
+            def fetchall(s):
+                return s.rows
+
+            def close(s):
+                pass
+
+        class Conn:
+            committed = False
+
+            def cursor(s):
+                return Cur()
+
+            def commit(s):
+                Conn.committed = True
+
+            def rollback(s):
+                pass
+
+        before = json.dumps(store, sort_keys=True)
+        dry = rot.rotate(Conn(), old_k, new_k, apply=False, environ={})
+        self.assertEqual(json.dumps(store, sort_keys=True), before)          # dry run changes nothing
+        self.assertEqual(dry["ai_secrets"]["rotated"], 1)
+        done = rot.rotate(Conn(), old_k, new_k, apply=True, environ={})
+        self.assertEqual([done[k]["rotated"] for k in ("ai_secrets", "sso_client_secrets", "totp_secrets")], [1, 1, 1])
+        self.assertEqual(new_f.decrypt(store["ai"]["OPENAI_API_KEY"][7:].encode()), b"sk-live-123")
+        sso = json.loads(store["sso"][5])
+        self.assertEqual(new_f.decrypt(sso["client_secret"][7:].encode()), b"idp-secret")
+        self.assertEqual(new_2fa.decrypt(store["tfa"][9].encode()), b"JBSWY3DPEHPK3PXP")
+        with self.assertRaises(Exception):
+            old_f.decrypt(store["ai"]["OPENAI_API_KEY"][7:].encode())          # old key is dead
+        again = rot.rotate(Conn(), old_k, new_k, apply=True, environ={})
+        self.assertEqual(again["ai_secrets"]["unreadable"], 1)                   # idempotent: nothing double-encrypted
+
+    def test_dedicated_key_families_are_skipped(self):
+        rot = self._load()
+
+        class Conn:
+            def cursor(s):
+                class C:
+                    def execute(*a, **k):
+                        raise AssertionError("must not query a family with its own key")
+
+                    def fetchall(*a):
+                        return []
+
+                    def close(*a):
+                        pass
+                return C()
+
+            def commit(s):
+                pass
+
+            def rollback(s):
+                pass
+
+        out = rot.rotate(Conn(), "a" * 40, "b" * 40, environ={
+            "AI_SECRET_KEY": "x", "SSO_FERNET_KEY": "y", "TWOFA_FERNET_KEY": "z"})
+        self.assertTrue(all("skipped_reason" in v for v in out.values()))
 
 
 if __name__ == "__main__":

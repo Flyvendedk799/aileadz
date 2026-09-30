@@ -18,6 +18,11 @@ The leaked values include (at minimum):
 - The Flask `SECRET_KEY` literal (`run.py:134` fallback, and the deleted dupes).
 - The MySQL password literal (`run.py:158` fallback).
 - The SSH password literal (`run.py:305`).
+- A Shopify Admin API token (`shpat_...`) that lived in `app1/count.py` and
+  `app1/Pypy` (both deleted from the tree in S-1.1; the token itself must be
+  **rotated in Shopify**). Purge both paths:
+  `git filter-repo --path app1/count.py --path app1/Pypy --invert-paths`,
+  or add the token as another `literal:` rule below.
 
 ## CRITICAL: rotation happens regardless
 

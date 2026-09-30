@@ -13,6 +13,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
 <div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>{{ employee.username }}</span></div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}

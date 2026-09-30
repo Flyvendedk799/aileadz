@@ -23,6 +23,8 @@ def _env():
     # Stub url_for so endpoints don't need an app/url map; return a marker that
     # encodes the endpoint name for assertions.
     env.globals["url_for"] = lambda ep, **kw: "/" + ep
+    from tests.jinja_globals import add_app_globals
+    add_app_globals(env)
     return env
 
 
@@ -39,7 +41,7 @@ CONVERTED_PAGES = [
     ("fm/internal_courses.html", "internal_courses", "hr_dashboard.internal_courses"),
     ("fm/suppliers.html", "suppliers", "hr_dashboard.supplier_management"),
     ("fm/supplier_agreements.html", "suppliers", "hr_dashboard.supplier_management"),
-    ("fm/employee_progress.html", "employees", "hr_dashboard.employee_progress"),
+    ("fm/employee_progress.html", "employee_progress", "hr_dashboard.employee_progress"),
     ("fm/learning_analytics.html", "learning_analytics", "hr_dashboard.learning_analytics"),
 ]
 

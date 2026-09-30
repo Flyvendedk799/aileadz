@@ -47,5 +47,24 @@ class SubnavTests(unittest.TestCase):
         self.assertIn("admin_billing", src)
 
 
+class DashboardRenderTests(unittest.TestCase):
+    def test_dashboard_renders_with_real_sparklines_and_working_search(self):
+        from unittest import mock
+        import run
+        client = run.create_app().test_client()
+        with client.session_transaction() as s:
+            s["user"] = "hr"; s["company_id"] = 7; s["company_role"] = "hr_manager"
+        extras = {"sparks": {"orders": [0, 1, 4, 2, 0, 3, 5]}, "activity": [{"text": "Kursus: Booket", "at": "01.10 10:00"}],
+                  "popular": [{"title": "PRINCE2", "n": 4}]}
+        with mock.patch("white_label_global_integration.get_template_context", return_value={}), \
+                mock.patch("dashboard._fetch_dashboard_extras", return_value=extras):
+            html = client.get("/dashboard").get_data(as_text=True)
+        self.assertIn('id="toolSearch"', html)
+        self.assertIn("Kursus: Booket", html)
+        self.assertIn("PRINCE2", html)
+        self.assertIn("4 bestillinger", html)
+        self.assertNotIn("0,20 12,17 24,18 36,10", html)        # the old hardcoded sparkline is gone
+
+
 if __name__ == "__main__":
     unittest.main()

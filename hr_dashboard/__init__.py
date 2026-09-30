@@ -2393,7 +2393,7 @@ def create_hr_dashboard_blueprint():
                                  employee_education=employee_education,
                                  employee_experience=employee_experience,
                                  employee_completed_courses=employee_completed_courses,
-                                 active_hr_page='employees')
+                                 active_hr_page='employee_progress')
 
         except Exception as e:
             current_app.logger.error(f"Error loading employee details: {e}")

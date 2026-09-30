@@ -488,6 +488,7 @@ def enterprise_table_ddls():
                     path_category VARCHAR(100),
                     difficulty_level VARCHAR(50),
                     is_active TINYINT DEFAULT 1,
+                    version INT NOT NULL DEFAULT 1,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
@@ -563,6 +564,7 @@ def enterprise_table_ddls():
                     progress DECIMAL(5,2) DEFAULT 0,
                     shared_with_employee TINYINT NOT NULL DEFAULT 0,
                     shared_at DATETIME NULL,
+                    shared_by INT NULL,
                     share_note VARCHAR(500) NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_employee_company (employee_id, company_id)

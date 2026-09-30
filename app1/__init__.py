@@ -1114,10 +1114,18 @@ def voice():
 def feedback():
     try:
         from app1.memory_store import log_event
-        data = request.json or {}
-        sid = session.get("session_id", "unknown")
-        rating = data.get("rating", 0)  # 1 = thumbs up, -1 = thumbs down
-        message_index = data.get("message_index", 0)
+        from app1 import conversation_state as _conv
+        data = request.get_json(silent=True) or {}
+        sids = _conv.all_session_ids(session) or ["unknown"]
+        sid = _conv.current_sid(session, data.get("mode") or "chat") or sids[0]
+        try:
+            rating = max(-1, min(1, int(data.get("rating", 0) or 0)))  # +1 up, -1 down, 0 cleared
+        except (TypeError, ValueError):
+            rating = 0
+        try:
+            message_index = int(data.get("message_index", 0) or 0)
+        except (TypeError, ValueError):
+            message_index = 0
         query_text = data.get("query_text", "")
         assistant_response = data.get("assistant_response", "")
         reason = data.get("reason", "")
@@ -1143,16 +1151,26 @@ def feedback():
             }
         )
 
-        # Phase 1.2: Sync feedback to MySQL chatbot_interactions
+        # Sync the rating to the ONE answer it belongs to (message_index), falling
+        # back to the latest answer of the session for rows written before the column.
         try:
             username = session.get('user') or session.get('browser_token', 'anonymous')
             cur = current_app.mysql.connection.cursor()
-            cur.execute("""
-                UPDATE chatbot_interactions
-                SET feedback_rating = %s
-                WHERE session_id = %s AND username = %s
-                ORDER BY created_at DESC LIMIT 1
-            """, (rating, sid, username))
+            marks = ", ".join(["%s"] * len(sids))
+            target = None
+            if message_index:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "AND message_index = %s ORDER BY id DESC LIMIT 1", (*sids, username, message_index))
+                target = cur.fetchone()
+            if not target:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "ORDER BY id DESC LIMIT 1", (*sids, username))
+                target = cur.fetchone()
+            if target:
+                tid = target["id"] if isinstance(target, dict) else target[0]
+                cur.execute("UPDATE chatbot_interactions SET feedback_rating = %s WHERE id = %s", (rating, tid))
             current_app.mysql.connection.commit()
             cur.close()
         except Exception as fb_err:

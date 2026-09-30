@@ -306,7 +306,8 @@ def company_analytics_snapshot(conn, company_id, day=None):
         total_queries = int((row.get('total_queries') if isinstance(row, dict) else row[0]) or 0)
         avg_feedback = (row.get('avg_feedback') if isinstance(row, dict) else row[1])
         try:
-            satisfaction = round(float(avg_feedback), 2) if avg_feedback is not None else None
+            from feedback_scale import to_five
+            satisfaction = to_five(avg_feedback) if avg_feedback is not None else None
         except Exception:
             satisfaction = None
 

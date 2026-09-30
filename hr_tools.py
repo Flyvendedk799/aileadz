@@ -1570,7 +1570,7 @@ def _execute_get_chatbot_usage_stats(args):
     cur.execute("""
         SELECT COUNT(DISTINCT username) as active_users,
                COUNT(*) as total_queries,
-               AVG(feedback_rating) as avg_feedback,
+               AVG(NULLIF(feedback_rating, 0)) as avg_feedback,
                COUNT(DISTINCT session_id) as total_sessions
         FROM chatbot_interactions
         WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
@@ -1604,7 +1604,7 @@ def _execute_get_chatbot_usage_stats(args):
         "period_days": period_days,
         "active_users": stats['active_users'] or 0,
         "total_queries": stats['total_queries'] or 0,
-        "avg_feedback": round(float(stats['avg_feedback'] or 0), 2),
+        "avg_feedback": __import__("feedback_scale").to_five(stats['avg_feedback']),
         "total_sessions": stats['total_sessions'] or 0,
         "popular_searches": [{"query": p['query_text'][:80], "count": p['cnt']} for p in popular],
         "daily_trend": [{"date": d['day'].isoformat(), "queries": d['queries'], "users": d['users']} for d in daily]
@@ -1783,7 +1783,7 @@ def _execute_hr_get_ai_usage_risks(args):
             COUNT(*) AS total_queries,
             COUNT(DISTINCT username) AS active_users,
             AVG(response_time_ms) AS avg_latency,
-            SUM(CASE WHEN feedback_rating IS NOT NULL AND feedback_rating > 0 AND feedback_rating <= 2 THEN 1 ELSE 0 END) AS low_feedback,
+            SUM(CASE WHEN feedback_rating < 0 THEN 1 ELSE 0 END) AS low_feedback,
             SUM(CASE WHEN response_time_ms > 12000 THEN 1 ELSE 0 END) AS slow_turns,
             SUM(CASE WHEN tool_results_count = 0 AND tools_used IS NOT NULL AND tools_used != '' THEN 1 ELSE 0 END) AS zero_result_tool_turns
         FROM chatbot_interactions

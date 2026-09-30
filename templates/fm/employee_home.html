@@ -145,7 +145,7 @@
                     <div style="font-weight:650;font-size:14px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.title }}</div>
                     <div style="font-size:12px;color:var(--fm-ink-3)">{{ o.created_at.strftime('%d.%m.%Y') if o.created_at else '' }}</div>
                   </div>
-                  <span class="fm-badge {{ 'green' if o.state == 'gennemfoert' else ('teal' if o.state == 'godkendt' else ('red' if o.state in ('annulleret','afvist') else 'amber')) }}" style="white-space:nowrap">{{ o.status_label }}</span>
+                  <span class="fm-badge {{ 'green' if o.state == 'gennemfoert' else ('indigo' if o.state == 'booket' else ('teal' if o.state == 'godkendt' else ('red' if o.state in ('annulleret','afvist') else 'amber'))) }}" style="white-space:nowrap">{{ o.status_label }}</span>
                 </div>
                 {% endfor %}
                 <div style="text-align:center;padding-top:12px"><a href="{{ url_for('futurematch.timeline') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-timeline"></i> Se alle på tidslinjen</a></div>

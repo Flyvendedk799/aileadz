@@ -5033,92 +5033,48 @@ def _execute_mark_course_complete(args, username):
         else:
             where += " AND product_handle = %s"
             params.append(handle)
+        # Prefer a still-open order over an older finished one.
         cur.execute(
             f"""
-            SELECT order_id, product_handle, product_title, completion_status
+            SELECT order_id, product_handle, product_title, status, completion_status
             FROM course_orders WHERE {where}
-            ORDER BY created_at DESC LIMIT 1
+            ORDER BY (status IN ('completed','cancelled','rejected')) ASC, created_at DESC LIMIT 1
             """,
             tuple(params),
         )
         row = cur.fetchone()
-        if not row:
-            cur.close()
-            return json.dumps({"status": "not_found", "message": "Jeg fandt ikke et tilmeldt kursus, der matcher det."}, ensure_ascii=False)
-
-        if (row.get("completion_status") or "").lower() == "completed":
-            cur.close()
-            return json.dumps({
-                "status": "already_completed",
-                "product_title": row.get("product_title"),
-                "message": f"{row.get('product_title')} er allerede markeret som gennemført.",
-            }, ensure_ascii=False)
-
-        cur.execute(
-            """
-            UPDATE course_orders
-            SET completion_status = 'completed', completion_date = NOW()
-            WHERE order_id = %s
-            """,
-            (row.get("order_id"),),
-        )
         cur.close()
-        conn.commit()
+        if not row:
+            return json.dumps({"status": "not_found", "message": "Jeg fandt ikke et tilmeldt kursus, der matcher det."}, ensure_ascii=False)
     except Exception as e:
         print(f"[mark_course_complete] DB error: {e}")
-        try:
-            app.mysql.connection.rollback()
-        except Exception:
-            pass
         return json.dumps({"status": "error", "message": "Kunne ikke markere kurset som gennemført lige nu."}, ensure_ascii=False)
 
     course_title = row.get("product_title") or ""
     course_handle = row.get("product_handle") or handle
 
-    # Add to the user's completed-courses profile (best-effort; don't fail the mutation).
-    product = _find_augmented_product(handle=course_handle, title=course_title)
-    vendor = product.get("vendor", "") if product else ""
-    try:
-        from app1 import user_profile_db as db
-        db.ensure_tables()
-        if course_title:
-            db.add_completed_course(
-                username, course_title, course_handle=course_handle,
-                vendor=vendor, completed_date=datetime.date.today().isoformat(),
-            )
-    except Exception as e:
-        print(f"[mark_course_complete] profile add warning: {e}")
-
-    # Suggest a natural next course.
-    next_course = None
-    if product:
-        try:
-            meta = product.get("structured_metadata", {}) or {}
-            src_terms = _meta_topic_terms(meta, product)
-            src_diff = _DIFFICULTY_ORDER.get((meta.get("difficulty") or "").lower(), 1)
-            best = None
-            best_score = 0
-            for p in (load_augmented_products() or []):
-                if p.get("handle") == course_handle:
-                    continue
-                pm = p.get("structured_metadata", {}) or {}
-                overlap = src_terms & _meta_topic_terms(pm, p)
-                if not overlap:
-                    continue
-                p_diff = _DIFFICULTY_ORDER.get((pm.get("difficulty") or "").lower(), 1)
-                if p_diff < src_diff:
-                    continue
-                score = len(overlap) * 10 + (5 if p_diff == src_diff + 1 else 0)
-                if score > best_score:
-                    best_score, best = score, (p, pm)
-            if best:
-                next_course = _course_summary_line(best[0], best[1])
-        except Exception:
-            next_course = None
+    # The ONE completion path (order_service.complete_order): order status,
+    # completed-courses list, learning progress, counters, event and the manager
+    # task all happen there, so the timeline and the profile can never disagree.
+    from order_service import OrderContext, complete_order
+    ctx = OrderContext.from_session(source="chat")
+    outcome = complete_order(ctx, row.get("order_id"))
+    if not outcome.get("success"):
+        return json.dumps({
+            "status": "error",
+            "message": outcome.get("message") or "Kunne ikke markere kurset som gennemført lige nu.",
+        }, ensure_ascii=False)
+    if outcome.get("already_completed"):
+        return json.dumps({
+            "status": "already_completed",
+            "product_title": course_title,
+            "message": f"{course_title} er allerede markeret som gennemført.",
+        }, ensure_ascii=False)
 
     message = f"Godt gået! {course_title} er nu markeret som gennemført."
-    if next_course:
-        message += f" Et oplagt næste skridt kunne være {next_course['title']}."
+    next_steps = outcome.get("next_steps") or []
+    if next_steps:
+        message += f" Et oplagt næste skridt kunne være {next_steps[0].get('title')}."
 
     result = {
         "status": "success",
@@ -5127,9 +5083,14 @@ def _execute_mark_course_complete(args, username):
         "product_title": course_title,
         "product_handle": course_handle,
         "message": message,
+        # Offered conversationally: the AI proposes these skills in its own words and
+        # saves the ones the user agrees to (save_skill / confirm card) - no form.
+        "skill_proposals": outcome.get("skill_proposals") or [],
+        "review_url": outcome.get("review_url"),
     }
-    if next_course:
-        result["suggested_next"] = next_course
+    if next_steps:
+        result["suggested_next"] = next_steps[0]
+        result["next_steps"] = next_steps
     return json.dumps(result, ensure_ascii=False, default=str)
 
 

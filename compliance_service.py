@@ -141,12 +141,12 @@ def _build_message(req, marker):
     statutory = " (lovpligtigt)" if req.get("is_statutory") else ""
     scope = req.get("applies_to_department") or "Alle afdelinger"
 
-    # The marker is embedded in the message so the dedupe LIKE can find it
-    # without needing an extra column (same trick catalog_freshness uses).
+    # The marker is no longer embedded in the text: dedupe runs on the
+    # notification's dedupe_key (N-3.2), so nothing internal is shown to users.
     return (
         "Recertificering for “%s”%s er ved at glide: %s "
         "(%s). Planlæg recertificering, så kravet ikke falder ud af "
-        "overholdelse. [%s]" % (title, statutory, detail, scope, marker)
+        "overholdelse." % (title, statutory, detail, scope)
     )
 
 
@@ -313,22 +313,6 @@ def _insert_cards(company_id, gaps):
         for req in gaps:
             try:
                 marker = _marker(req)
-                cur.execute(
-                    """
-                    SELECT COUNT(*) AS cnt
-                    FROM company_notifications
-                    WHERE company_id = %s
-                      AND message LIKE %s
-                      AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                    """,
-                    (company_id, "%" + marker + "%", _NOTIFY_DEDUPE_DAYS),
-                )
-                row = cur.fetchone()
-                cnt = (row.get("cnt") if isinstance(row, dict)
-                       else (row[0] if row else 0)) or 0
-                if int(cnt) > 0:
-                    continue  # Already nudged recently — don't spam.
-
                 overdue = int(req.get("overdue") or 0)
                 is_statutory = bool(req.get("is_statutory"))
                 is_urgent = 1 if (is_statutory and overdue > 0) else 0
@@ -339,16 +323,20 @@ def _insert_cards(company_id, gaps):
                 )
                 message = _build_message(req, marker)
 
-                cur.execute(
-                    """
-                    INSERT INTO company_notifications
-                        (company_id, recipient_user_id, sender_user_id,
-                         target_roles, title, message, is_urgent, is_read)
-                    VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)
-                    """,
-                    (company_id, roles_json, title[:255], message, is_urgent),
+                from notification_service import insert_company_notification
+                created = insert_company_notification(
+                    cur, company_id,
+                    target_roles=_HR_ROLES,
+                    title=title[:255],
+                    message=message,
+                    is_urgent=bool(is_urgent),
+                    action_url="/hr/compliance",
+                    kind="compliance",
+                    dedupe_key=marker,
+                    dedupe_hours=_NOTIFY_DEDUPE_DAYS * 24,
                 )
-                inserted += 1
+                if created:
+                    inserted += 1
             except Exception as exc:
                 logger.debug("compliance_service: card insert skipped: %s", exc)
                 continue

@@ -178,7 +178,7 @@ def create_hr_dashboard_blueprint():
             total_revenue = 0
             
             for order in company_orders:
-                if order['status'] == 'pending':
+                if order['status'] in ('pending_approval', 'approved', 'pending'):
                     pending_orders_count += 1
                 elif order['status'] == 'completed':
                     completed_orders_count += 1
@@ -668,125 +668,37 @@ def create_hr_dashboard_blueprint():
         if not new_status:
             return jsonify({'success': False, 'message': 'No status provided'}), 400
         
-        valid_statuses = ['pending', 'pending_approval', 'approved', 'rejected', 'processing', 'confirmed', 'cancelled', 'completed', 'invoiced', 'paid']
-        if new_status not in valid_statuses:
-            return jsonify({'success': False, 'message': 'Invalid status'}), 400
-        
+        import order_lifecycle as _lc
+        import order_service
+        raw_status = (new_status or '').strip().lower()
+        if raw_status not in _lc.ORDER_STATUSES and raw_status not in _lc.LEGACY_ALIASES:
+            return jsonify({'success': False, 'message': 'Ugyldig status'}), 400
+
         try:
-            cur = current_app.mysql.connection.cursor()
-            
-            # Check if order exists and belongs to the company
-            cur.execute("""
-                SELECT co.order_id FROM course_orders co
-                WHERE co.order_id = %s AND co.company_id = %s
-            """, (order_id, company['id']))
-            
-            if not cur.fetchone():
-                cur.close()
-                return jsonify({'success': False, 'message': 'Order not found or access denied'}), 404
-
-            # Budget-affecting transitions (approve charges, cancel/reject refunds)
-            # go through the single order_service so the EXACTLY-ONCE budget charge/
-            # refund (keyed on budget_charged + the order's own fiscal year) is the
-            # one source of truth. set_status reads the order's CURRENT status, so it
-            # must run BEFORE the status/payment overlay below. The overlay then just
-            # re-asserts the same status and sets the payment_status columns.
-            if new_status in ('approved', 'cancelled', 'rejected'):
-                try:
-                    import order_service
-                    _ctx = order_service.OrderContext(
-                        company_id=company['id'],
-                        user_id=session.get('user_id'),
-                        username=session.get('user'),
-                        company_role=session.get('company_role') or 'hr_manager',
-                        source='hr',
-                    )
-                    order_service.set_status(_ctx, order_id, new_status)
-                except Exception as _se:
-                    current_app.logger.warning("order_service.set_status (order update) failed: %s", _se)
-
-            # Update the order status + payment tracking
-            if new_status == 'paid':
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, payment_status = 'paid', payment_date = NOW(), updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
-            elif new_status == 'invoiced':
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, payment_status = 'invoiced', updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
-            elif new_status == 'approved':
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, payment_status = 'awaiting_payment', updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
+            _ctx = order_service.OrderContext.from_session(source='hr')
+            _ctx.company_id = company['id']
+            note = (request.json or {}).get('note') if request.is_json else request.form.get('note')
+            reason = (request.json or {}).get('reason') if request.is_json else request.form.get('reason')
+            target = _lc.normalize_status(raw_status)
+            # Every writer goes through the ONE order service: transition rules,
+            # budget charge/refund, history, emails and webhooks all live there.
+            if target == _lc.COMPLETED:
+                result = order_service.complete_order(_ctx, order_id, note=note)
             else:
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
-            
-            if cur.rowcount == 0:
-                cur.close()
-                return jsonify({'success': False, 'message': 'No rows updated'}), 400
-            
-            # When marking completed, also update learning progress + employee counters
-            if new_status == 'completed':
-                try:
-                    cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-                    cur2.execute("""
-                        SELECT user_id, company_id, product_handle, product_title
-                        FROM course_orders WHERE order_id = %s
-                    """, (order_id,))
-                    order_row = cur2.fetchone()
-                    if order_row and order_row['user_id']:
-                        # Update completion status on the order itself
-                        cur2.execute("""
-                            UPDATE course_orders
-                            SET completion_status = 'completed', completion_date = NOW()
-                            WHERE order_id = %s
-                        """, (order_id,))
-                        # Insert/update employee_learning_progress
-                        cur2.execute("""
-                            INSERT INTO employee_learning_progress
-                                (user_id, company_id, course_handle, content_name, status,
-                                 progress_percentage, completed_at, created_at)
-                            VALUES (%s, %s, %s, %s, 'completed', 100, NOW(), NOW())
-                            ON DUPLICATE KEY UPDATE
-                                status = 'completed', progress_percentage = 100, completed_at = NOW()
-                        """, (order_row['user_id'], order_row['company_id'],
-                              order_row.get('product_handle', ''), order_row.get('product_title', '')))
-                        # Increment total_courses_completed on company_users
-                        cur2.execute("""
-                            UPDATE company_users
-                            SET total_courses_completed = COALESCE(total_courses_completed, 0) + 1
-                            WHERE company_id = %s AND user_id = %s
-                        """, (order_row['company_id'], order_row['user_id']))
-                    cur2.close()
-                except Exception as lp_err:
-                    current_app.logger.warning(f"Learning progress update failed: {lp_err}")
-
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            current_app.logger.info(f"Company order {order_id} status updated to {new_status} by HR user {session.get('user')} for company {company['id']}")
-
+                result = order_service.set_status(_ctx, order_id, target, note=note, reason=reason)
+            if not result.get('success'):
+                code = 404 if result.get('error') == 'not_found' else 400
+                return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke opdatere ordren.'}), code
+            current_app.logger.info(f"Company order {order_id} -> {target} by {session.get('user')} (company {company['id']})")
             return jsonify({
                 'success': True,
-                'message': f'Order status updated to {new_status}',
-                'new_status': new_status
+                'message': f"Ordrestatus opdateret til {_lc.status_label(target, short=True)}.",
+                'new_status': target,
+                'status_label': _lc.status_label(target, short=True),
             })
-            
         except Exception as e:
             current_app.logger.error(f"Error updating company order status: {e}")
-            if 'cur' in locals():
-                cur.close()
-            return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+            return jsonify({'success': False, 'message': 'Der opstod en fejl ved opdatering af ordren.'}), 500
 
     @hr_dashboard_bp.route('/order/<order_id>/details')
     def company_order_details(order_id):
@@ -822,10 +734,32 @@ def create_hr_dashboard_blueprint():
                 flash("Order not found.", "danger")
                 return redirect(url_for('hr_dashboard.dashboard'))
             
-            return render_template('fm/order_details.html', 
-                                 order=order, 
-                                 company=company)
-            
+            import order_lifecycle as _lc
+            import order_service
+            _ctx = order_service.OrderContext.from_session(source='hr')
+            _ctx.company_id = company['id']
+            history = order_service.get_history(_ctx, order_id)
+            _status = _lc.normalize_status(order.get('status'))
+            _bill = _lc.normalize_billing(order.get('billing_status'))
+            _is_admin = session.get('role') == 'admin'
+            _role = session.get('company_role')
+            return render_template('fm/order_details.html',
+                                   order=order,
+                                   company=company,
+                                   history=history,
+                                   status=_status,
+                                   status_label=_lc.status_label(_status),
+                                   status_tone=_lc.STATUS_TONES[_status],
+                                   status_labels=_lc.STATUS_LABELS_SHORT,
+                                   billing=_bill,
+                                   billing_label=_lc.billing_label(_bill),
+                                   billing_tone=_lc.BILLING_TONES[_bill],
+                                   billing_transitions=sorted(_lc.BILLING_TRANSITIONS[_bill]),
+                                   billing_labels=_lc.BILLING_LABELS,
+                                   can_bill=_is_admin or _role in ('company_admin', 'hr_manager'),
+                                   can_manage=_is_admin or _role in ('company_admin', 'hr_manager', 'department_head'),
+                                   next_statuses=_lc.allowed_targets(_status, actors={'manager'}))
+
         except Exception as e:
             current_app.logger.error(f"Error loading company order details: {e}")
             flash("Error loading order details.", "danger")
@@ -926,66 +860,29 @@ def create_hr_dashboard_blueprint():
         notes = data.get('notes', '')
 
         if decision not in ('approved', 'rejected'):
-            return jsonify({'success': False, 'message': 'Invalid decision'}), 400
+            return jsonify({'success': False, 'message': 'Ugyldig beslutning'}), 400
 
         try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Verify approval belongs to this company and is pending
-            cur.execute("""
-                SELECT oa.id, oa.order_id, co.price, co.department
-                FROM order_approvals oa
-                JOIN course_orders co ON oa.order_id = co.order_id
-                WHERE oa.id = %s AND oa.company_id = %s AND oa.status = 'pending'
-            """, (approval_id, company['id']))
-            approval = cur.fetchone()
-            if not approval:
-                cur.close()
-                return jsonify({'success': False, 'message': 'Approval not found or already decided'}), 404
-
-            # Update approval row (+ record approver on the order for the approve case).
-            cur.execute("""
-                UPDATE order_approvals
-                SET status = %s, notes = %s, approver_user_id = %s, decided_at = NOW()
-                WHERE id = %s
-            """, (decision, notes, session.get('user_id'), approval_id))
-            if decision == 'approved':
-                cur.execute("""
-                    UPDATE course_orders SET approved_by = %s, updated_at = NOW()
-                    WHERE order_id = %s
-                """, (session.get('user_id'), approval['order_id']))
-
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            # Authoritative order-status transition + EXACTLY-ONCE budget side
-            # effect goes through the single order_service (NOT raw SQL here).
-            # Approve: pending_approval -> 'pending' charges the budget once.
-            # Reject: -> 'rejected' refunds only if previously charged, using the
-            # order's OWN fiscal year (fixes the phantom-refund + wrong-year bug).
-            try:
-                import order_service
-                ctx = order_service.OrderContext(
-                    company_id=company['id'],
-                    user_id=session.get('user_id'),
-                    username=session.get('user'),
-                    company_role=session.get('company_role') or 'hr_manager',
-                    department=approval.get('department'),
-                    source='hr',
-                )
-                target_status = 'pending' if decision == 'approved' else 'rejected'
-                order_service.set_status(ctx, approval['order_id'], target_status)
-            except Exception as se:
-                current_app.logger.warning("order_service.set_status (approval) failed: %s", se)
-
+            import order_service
+            ctx = order_service.OrderContext.from_session(source='hr')
+            ctx.company_id = company['id']
+            # ONE transaction: approval row + order status + budget charge/refund
+            # (before, the approval committed even when the status change failed and
+            # an approved order ended up as "Afventer betaling" with no email).
+            result = order_service.decide_approval(ctx, approval_id, decision, notes)
+            if not result.get('success'):
+                code = 404 if result.get('error') == 'not_found' else 400
+                return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke behandle godkendelsen.'}), code
+            oid = result.get('order_id') or ''
             return jsonify({
                 'success': True,
-                'message': f'Ordre {approval["order_id"][:8]} er {"godkendt" if decision == "approved" else "afvist"}.',
-                'decision': decision
+                'message': f'Ordre {oid[:8]} er {"godkendt" if decision == "approved" else "afvist"}.',
+                'decision': decision,
+                'new_status': result.get('status'),
             })
         except Exception as e:
             current_app.logger.error(f"Error processing approval: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+            return jsonify({'success': False, 'message': 'Der opstod en fejl ved behandling af godkendelsen.'}), 500
 
     # ── Phase 2.3: Department Budget Management ──
 
@@ -2526,39 +2423,10 @@ def create_hr_dashboard_blueprint():
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
-        
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-            # Get all notifications for HR
-            cur.execute("""
-                SELECT cn.*, u.username as sender_name
-                FROM company_notifications cn
-                LEFT JOIN users u ON cn.sender_user_id = u.id
-                WHERE cn.company_id = %s 
-                AND (cn.recipient_user_id = %s OR cn.recipient_user_id IS NULL)
-                AND (cn.target_roles IS NULL OR JSON_CONTAINS(cn.target_roles, %s))
-                ORDER BY cn.is_urgent DESC, cn.created_at DESC
-                LIMIT 50
-            """, (company['id'], session.get('user_id'), json.dumps(session.get('company_role'))))
-            
-            notifications = cur.fetchall()
-            
-            cur.close()
-            
-            return render_template('fm/notifications.html',
-                                 company=company,
-                                 notifications=notifications)
-            
-        except Exception as e:
-            current_app.logger.error(f"Error loading notifications: {e}")
-            flash("Error loading notifications.", "danger")
-            return redirect(url_for('hr_dashboard.dashboard'))
+        # N-3.2: one canonical notification page for everyone. This route used to
+        # pass the wrong variable and always rendered empty; it now redirects.
+        return redirect(url_for('pages.notifications'))
 
     # ── Billing Management (off-platform billing workflow) ──
 
@@ -2649,64 +2517,28 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': False, 'message': 'Company not found'}), 404
 
         data = request.json or {}
-        billing_status = data.get('billing_status', '')
-        valid_billing = ['not_invoiced', 'invoiced', 'paid', 'credited']
-        if billing_status and billing_status not in valid_billing:
-            return jsonify({'success': False, 'message': 'Invalid billing status'}), 400
-
-        try:
-            cur = current_app.mysql.connection.cursor()
-
-            # Verify order belongs to company
-            cur.execute("SELECT id FROM course_orders WHERE order_id = %s AND company_id = %s",
-                        (order_id, company['id']))
-            if not cur.fetchone():
-                cur.close()
-                return jsonify({'success': False, 'message': 'Order not found'}), 404
-
-            updates = []
-            params = []
-
-            if billing_status:
-                updates.append("billing_status = %s")
-                params.append(billing_status)
-            if 'invoice_number' in data:
-                updates.append("invoice_number = %s")
-                params.append(data['invoice_number'] or None)
-            if 'invoice_date' in data:
-                updates.append("invoice_date = %s")
-                params.append(data['invoice_date'] or None)
-            if 'payment_date' in data:
-                updates.append("payment_date = %s")
-                params.append(data['payment_date'] or None)
-            if 'payment_method' in data:
-                updates.append("payment_method = %s")
-                params.append(data['payment_method'] or None)
-            if 'payment_reference' in data:
-                updates.append("payment_reference = %s")
-                params.append(data['payment_reference'] or None)
-            if 'billing_note' in data:
-                updates.append("billing_note = %s")
-                params.append(data['billing_note'] or None)
-
-            if not updates:
-                cur.close()
-                return jsonify({'success': False, 'message': 'No fields to update'}), 400
-
-            params.extend([order_id, company['id']])
-            cur.execute(f"""
-                UPDATE course_orders SET {', '.join(updates)}
-                WHERE order_id = %s AND company_id = %s
-            """, tuple(params))
-
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            return jsonify({'success': True, 'message': f'Fakturering opdateret for {order_id}'})
-
-        except Exception as e:
-            current_app.logger.error(f"Error updating billing: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        ctx.company_id = company['id']
+        billing_status = (data.get('billing_status') or '').strip()
+        fields = dict(
+            invoice_number=data.get('invoice_number') or None,
+            invoice_date=data.get('invoice_date') or None,
+            due_date=data.get('due_date') or None,
+            payment_date=data.get('payment_date') or None,
+            payment_reference=data.get('payment_reference') or None,
+            payment_method=data.get('payment_method') or None,
+            note=(data.get('billing_note') or data.get('note') or None),
+        )
+        if billing_status:
+            result = order_service.set_billing_status(ctx, order_id, billing_status, **fields)
+        else:
+            result = order_service.update_billing_details(ctx, order_id, **fields)
+        if not result.get('success'):
+            code = 404 if result.get('error') == 'not_found' else 400
+            return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke opdatere faktureringen.'}), code
+        return jsonify({'success': True, 'message': 'Fakturering opdateret.',
+                        'billing_status': result.get('billing_status')})
 
     @hr_dashboard_bp.route('/billing/bulk', methods=['POST'])
     def bulk_billing_update():
@@ -2720,47 +2552,29 @@ def create_hr_dashboard_blueprint():
 
         data = request.json or {}
         order_ids = data.get('order_ids', [])
-        billing_status = data.get('billing_status', '')
-        invoice_number = data.get('invoice_number', '')
-
+        billing_status = (data.get('billing_status') or '').strip()
         if not order_ids or not billing_status:
-            return jsonify({'success': False, 'message': 'Missing order_ids or billing_status'}), 400
-        if billing_status not in ['not_invoiced', 'invoiced', 'paid', 'credited']:
-            return jsonify({'success': False, 'message': 'Invalid billing status'}), 400
+            return jsonify({'success': False, 'message': 'Vælg ordrer og en faktureringsstatus.'}), 400
         if len(order_ids) > 100:
-            return jsonify({'success': False, 'message': 'Max 100 orders per batch'}), 400
-
-        try:
-            cur = current_app.mysql.connection.cursor()
-            placeholders = ','.join(['%s'] * len(order_ids))
-
-            update_parts = ["billing_status = %s"]
-            update_params = [billing_status]
-
-            if billing_status == 'invoiced' and invoice_number:
-                update_parts.append("invoice_number = %s")
-                update_params.append(invoice_number)
-                update_parts.append("invoice_date = CURDATE()")
-            elif billing_status == 'paid':
-                update_parts.append("payment_date = CURDATE()")
-
-            update_params.extend(order_ids)
-            update_params.append(company['id'])
-
-            cur.execute(f"""
-                UPDATE course_orders SET {', '.join(update_parts)}
-                WHERE order_id IN ({placeholders}) AND company_id = %s
-            """, tuple(update_params))
-
-            updated = cur.rowcount
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            return jsonify({'success': True, 'message': f'{updated} ordrer opdateret', 'updated': updated})
-
-        except Exception as e:
-            current_app.logger.error(f"Error in bulk billing update: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+            return jsonify({'success': False, 'message': 'Højst 100 ordrer ad gangen.'}), 400
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        ctx.company_id = company['id']
+        result = order_service.bulk_set_billing_status(
+            ctx, order_ids, billing_status,
+            invoice_number=data.get('invoice_number') or None,
+            invoice_date=data.get('invoice_date') or None,
+            due_date=data.get('due_date') or None,
+            payment_date=data.get('payment_date') or None,
+            payment_reference=data.get('payment_reference') or None,
+            note=data.get('note') or None,
+        )
+        failed = [r for r in result['results'] if not r.get('success')]
+        msg = f"{result['done']} ordrer opdateret"
+        if failed:
+            msg += f", {len(failed)} kunne ikke opdateres ({failed[0].get('message') or 'se fejl'})"
+        return jsonify({'success': result['done'] > 0, 'message': msg, 'updated': result['done'],
+                        'failed': len(failed)})
 
     # ── Phase 5: HR Chatbot ──
 
@@ -2969,7 +2783,7 @@ def create_hr_dashboard_blueprint():
             # Upcoming course deadlines (courses starting within 7 days)
             cur.execute("""
                 SELECT COUNT(*) as cnt FROM course_orders
-                WHERE company_id = %s AND status IN ('confirmed', 'processing')
+                WHERE company_id = %s AND status IN ('booked', 'confirmed', 'processing')
                 AND started_at IS NOT NULL AND started_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
             """, (company['id'],))
             upcoming = cur.fetchone()['cnt']
@@ -2985,14 +2799,10 @@ def create_hr_dashboard_blueprint():
                 })
 
             # Unread company notifications
-            user_id = session.get('user_id')
-            if user_id:
-                cur.execute("""
-                    SELECT COUNT(*) as cnt FROM company_notifications
-                    WHERE company_id = %s AND is_read = 0
-                    AND (recipient_user_id = %s OR recipient_user_id IS NULL)
-                """, (company['id'], user_id))
-                unread = cur.fetchone()['cnt']
+            username = session.get('user')
+            if username:
+                from notification_service import unread_count as _unread_count
+                unread = _unread_count(cur, username)
                 if unread > 0:
                     alerts.append({
                         "type": "notification",
@@ -3000,7 +2810,7 @@ def create_hr_dashboard_blueprint():
                         "color": "secondary",
                         "title": f"{unread} ulæste notifikationer",
                         "message": "Du har ulæste beskeder.",
-                        "action_url": url_for('hr_dashboard.notifications'),
+                        "action_url": url_for('pages.notifications'),
                         "priority": 4
                     })
 
@@ -3023,9 +2833,9 @@ def create_hr_dashboard_blueprint():
         notif_id = data.get('notification_id')
         if notif_id:
             try:
+                from notification_service import mark_read as _mark_read
                 cur = current_app.mysql.connection.cursor()
-                cur.execute("UPDATE company_notifications SET is_read = 1 WHERE id = %s AND company_id = %s",
-                            (notif_id, session.get('company_id')))
+                _mark_read(cur, session.get('user'), notif_id)
                 current_app.mysql.connection.commit()
                 cur.close()
             except Exception:
@@ -4999,17 +4809,17 @@ def create_hr_dashboard_blueprint():
 
                     # Nudge: per-employee notification (mirrors notify code shape).
                     try:
-                        cur.execute("""
-                            INSERT INTO company_notifications
-                                (company_id, recipient_user_id, sender_user_id,
-                                 target_roles, title, message, is_urgent, is_read)
-                            VALUES (%s, %s, %s, NULL, %s, %s, 0, 0)
-                        """, (company['id'], uid, sender_id,
-                              "Nyt laeringsforloeb tildelt"[:255],
-                              f"Du er blevet tildelt laeringsforloebet '{path_name}'. "
-                              f"Log ind og kom i gang." +
-                              (f" Frist: {due_date}." if due_date else "")))
-                        nudged += 1
+                        from notification_service import insert_company_notification
+                        if insert_company_notification(
+                                cur, company['id'], recipient_user_id=uid,
+                                sender_user_id=sender_id,
+                                title="Nyt læringsforløb tildelt",
+                                message=(f"Du er blevet tildelt læringsforløbet '{path_name}'. "
+                                         f"Log ind og kom i gang." +
+                                         (f" Frist: {due_date}." if due_date else "")),
+                                action_url="/min-laering", kind="assignment",
+                                dedupe_key=None):
+                            nudged += 1
                     except Exception as ne:
                         # Notification failure must not abort the assignment.
                         current_app.logger.warning(f"Bulk-assign nudge skipped for user {uid}: {ne}")

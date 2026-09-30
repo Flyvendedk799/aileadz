@@ -25,10 +25,12 @@ def _apply_session_user_context(user):
     session.pop('company_id', None)
     session.pop('company_role', None)
     session.pop('company_name', None)
+    session.pop('company_department', None)
     try:
         cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur2.execute("""
-            SELECT cu.company_id, cu.role AS company_role, c.company_name, c.company_slug
+            SELECT cu.company_id, cu.role AS company_role, cu.department AS company_department,
+                   c.company_name, c.company_slug
             FROM company_users cu
             JOIN companies c ON c.id = cu.company_id
             WHERE cu.user_id = %s AND cu.status = 'active'
@@ -41,6 +43,9 @@ def _apply_session_user_context(user):
             session['company_role'] = comp['company_role']
             session['company_name'] = comp['company_name']
             session['company_slug'] = comp.get('company_slug', '')
+            # Department drives budget charging for every order path (chat, tools,
+            # web); before this it was never set, so those orders skipped budgets.
+            session['company_department'] = comp.get('company_department') or ''
             session['user_type'] = 'company_user'
     except Exception:
         pass

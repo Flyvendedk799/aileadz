@@ -59,14 +59,10 @@
         <td><span class="fm-badge">{{ o.department or '—' }}</span></td>
         <td class="mono">{{ o.price }} kr</td>
         <td>
-          {% if o.status == 'completed' or o.completion_status == 'completed' %}<span class="status-pill green" style="height:24px;font-size:11.5px">Gennemført</span>
-          {% elif o.status == 'confirmed' %}<span class="status-pill" style="height:24px;font-size:11.5px">Bekræftet</span>
-          {% elif o.status == 'cancelled' %}<span class="status-pill" style="height:24px;font-size:11.5px;color:var(--fm-danger)">Annulleret</span>
-          {% elif o.status == 'processing' %}<span class="status-pill" style="height:24px;font-size:11.5px">Behandles</span>
-          {% else %}<span class="status-pill amber" style="height:24px;font-size:11.5px">Afventer</span>{% endif %}
+          <span class="fm-badge {{ order_status_tone(o.status) }} dot" style="font-size:11.5px">{{ order_status_label(o.status, short=True) }}</span>
         </td>
         <td class="muted" style="font-size:11.5px">{{ o.created_at }}</td>
-        <td style="text-align:right"><a href="{{ url_for('multitenant_reports.order_detail', order_id=o.order_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i></a></td>
+        <td style="text-align:right"><a href="{{ url_for('hr_dashboard.company_order_details', order_id=o.order_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i></a></td>
       </tr>
       {% endfor %}
     </tbody>

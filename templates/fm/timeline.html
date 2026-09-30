@@ -22,7 +22,11 @@
   .tl-item { position: relative; padding: 0 0 22px 0; }
   .tl-item:last-child { padding-bottom: 0; }
   .tl-dot { position: absolute; left: -30px; top: 4px; width: 20px; height: 20px; border-radius: 999px; background: var(--fm-surface); border: 2px solid var(--fm-line-2); display: flex; align-items: center; justify-content: center; font-size: 9px; color: var(--fm-ink-3); z-index: 1; }
-  .tl-item[data-state="godkendt"] .tl-dot { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .tl-item[data-state="godkendt"] .tl-dot,
+  .tl-item[data-state="booket"] .tl-dot { border-color: var(--fm-primary); color: var(--fm-primary); }
+  .tl-card-link { display: block; color: inherit; text-decoration: none; }
+  .tl-card-link:hover .tl-card { border-color: var(--fm-primary); box-shadow: var(--sh-md, var(--sh-sm)); }
+  .tl-open { margin-top: 10px; font-size: 12.5px; color: var(--fm-primary); font-weight: 600; }
   .tl-item[data-state="gennemfoert"] .tl-dot { border-color: var(--fm-success); color: var(--fm-success); }
   .tl-item[data-state="afventer_godkendelse"] .tl-dot,
   .tl-item[data-state="afventer"] .tl-dot { border-color: var(--fm-warning); color: var(--fm-warning); }
@@ -48,6 +52,7 @@
   {% set state_badge = {
     'gennemfoert': 'green',
     'godkendt': 'teal',
+    'booket': 'indigo',
     'afventer_godkendelse': 'amber',
     'afventer': 'amber',
     'annulleret': 'red',
@@ -56,6 +61,7 @@
   {% set state_icon = {
     'gennemfoert': 'fa-circle-check',
     'godkendt': 'fa-circle-play',
+    'booket': 'fa-calendar-check',
     'afventer_godkendelse': 'fa-hourglass-half',
     'afventer': 'fa-clock',
     'annulleret': 'fa-circle-xmark',
@@ -85,6 +91,7 @@
     {% for it in items %}
     <article class="tl-item{{ ' overdue' if it.overdue }}" data-state="{{ it.state }}">
       <span class="tl-dot"><i class="fa-solid {{ state_icon.get(it.state, 'fa-clock') }}"></i></span>
+      <a class="tl-card-link" href="{{ it.url }}" aria-label="Åbn bestilling: {{ it.title }}">
       <div class="tl-card">
         <div class="tl-head">
           <div class="tl-title">{{ it.title }}</div>
@@ -114,7 +121,9 @@
         {% if it.overdue %}
         <div class="tl-overdue-flag"><i class="fa-solid fa-triangle-exclamation"></i> Fristen er overskredet</div>
         {% endif %}
+        <div class="tl-open">Se detaljer{% if it.state in ['godkendt','booket'] %}, kalender og afslutning{% endif %} <i class="fa-solid fa-arrow-right"></i></div>
       </div>
+      </a>
     </article>
     {% endfor %}
   </div>

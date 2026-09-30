@@ -145,11 +145,7 @@
                   <td>{{ o.product_title }}</td>
                   <td class="mono">{{ o.price }}</td>
                   <td>
-                    {% if st == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
-                    {% elif st in ['pending','pending_approval'] %}<span class="fm-badge amber dot">Afventer</span>
-                    {% elif st == 'approved' %}<span class="fm-badge teal dot">Godkendt</span>
-                    {% elif st == 'rejected' %}<span class="fm-badge red dot">Afvist</span>
-                    {% else %}<span class="fm-badge">{{ st }}</span>{% endif %}
+                    <span class="fm-badge {{ order_status_tone(st) }} dot">{{ order_status_label(st, short=True) }}</span>
                   </td>
                   <td style="text-align:right;white-space:nowrap">
                     {% if o.variant_date and o.order_id and o.order_id != 'N/A' %}{{ ui.addtocal(url_for('hr_ext.order_ics', order_id=o.order_id), 'Kalender') }}{% endif %}

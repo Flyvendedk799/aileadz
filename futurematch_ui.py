@@ -52,7 +52,9 @@ _HOME_REC_LIMIT = 3
 
 # Maps a course_orders.status to a learner-facing "is this still in progress?"
 # bucket. Anything in this set is shown under "I gang lige nu".
-_HOME_ACTIVE_STATUSES = frozenset({'approved', 'processing', 'confirmed'})
+import order_lifecycle as _lc  # noqa: E402  (status vocabulary, N-1.1)
+
+_HOME_ACTIVE_STATUSES = frozenset({'approved', 'booked'})
 
 
 def _home_skill_completeness(profile):
@@ -180,9 +182,10 @@ def employee_home():
                 rows = cur.fetchall() or []
                 cur.close()
                 for r in rows:
-                    raw_status = r.get('status') or 'pending'
+                    raw_status = _lc.normalize_status(r.get('status'))
                     item = {
                         'order_id': r.get('order_id'),
+                        'url': url_for('futurematch.my_order', order_id=r.get('order_id')),
                         'handle': r.get('product_handle'),
                         'title': r.get('product_title') or 'Ukendt kursus',
                         'status': raw_status,
@@ -291,75 +294,24 @@ def learning_goal_status(goal_id):
     return redirect(url_for('futurematch.learning_goals'))
 
 
-# Danish status vocabulary — mirrors OrderHandler.order_statuses in app1/order_handler.py
-_ORDER_STATUS_LABELS = {
-    'pending': 'Afventer betaling',
-    'pending_approval': 'Afventer godkendelse',
-    'approved': 'Godkendt',
-    'rejected': 'Afvist',
-    'processing': 'Behandler',
-    'confirmed': 'Bekræftet',
-    'cancelled': 'Annulleret',
-    'completed': 'Gennemført',
-}
+# Status vocabulary comes from order_lifecycle (N-1.1): one source for every
+# label map in the app. The names below stay for older imports.
+import order_lifecycle as _lc
+
+_ORDER_STATUS_LABELS = dict(_lc.STATUS_LABELS)
+for _legacy, _canon in _lc.LEGACY_ALIASES.items():
+    _ORDER_STATUS_LABELS[_legacy] = _lc.STATUS_LABELS[_canon]
 
 # Coarse state buckets used by the timeline UI for grouping/colouring.
-# Maps a raw course_orders.status to one of:
-#   afventer_godkendelse / godkendt / gennemfoert / annulleret / afvist / afventer
-_ORDER_STATE = {
-    'pending': 'afventer',
-    'pending_approval': 'afventer_godkendelse',
-    'approved': 'godkendt',
-    'processing': 'godkendt',
-    'confirmed': 'godkendt',
-    'completed': 'gennemfoert',
-    'cancelled': 'annulleret',
-    'rejected': 'afvist',
-}
-
-_TIMELINE_TABLES_SQL = (
-    """CREATE TABLE IF NOT EXISTS course_orders (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        order_id VARCHAR(50) UNIQUE,
-        company_id INT,
-        user_id INT,
-        username VARCHAR(255),
-        product_handle VARCHAR(255),
-        product_title VARCHAR(500),
-        price DECIMAL(10,2),
-        status VARCHAR(30) DEFAULT 'pending',
-        completion_status VARCHAR(30),
-        completion_date DATETIME,
-        completion_deadline DATETIME,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_user (user_id),
-        INDEX idx_status (status)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-    """CREATE TABLE IF NOT EXISTS order_approvals (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        order_id VARCHAR(50) NOT NULL,
-        company_id INT NOT NULL,
-        requester_user_id INT NOT NULL,
-        approver_user_id INT,
-        status VARCHAR(30) DEFAULT 'pending',
-        notes TEXT,
-        requested_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        decided_at DATETIME,
-        INDEX idx_order (order_id)
-    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
-)
+_ORDER_STATE = dict(_lc.LEARNER_BUCKETS)
+for _legacy, _canon in _lc.LEGACY_ALIASES.items():
+    _ORDER_STATE[_legacy] = _lc.LEARNER_BUCKETS[_canon]
 
 
 def _ensure_timeline_tables(conn):
-    """Idempotently ensure the two tables the timeline reads exist. Boot-safe."""
-    try:
-        cur = conn.cursor()
-        for ddl in _TIMELINE_TABLES_SQL:
-            cur.execute(ddl)
-        conn.commit()
-        cur.close()
-    except Exception as e:  # pragma: no cover - defensive
-        current_app.logger.warning("timeline ensure tables: %s", e)
+    """Kept for callers: course_orders/order_approvals now have ONE definition in
+    enterprise_tables (N-3.4), created at boot. Nothing to do here."""
+    return None
 
 
 @futurematch_bp.route('/min-tidslinje')
@@ -395,7 +347,7 @@ def timeline():
                 """
                 SELECT co.order_id, co.product_title, co.price, co.status,
                        co.created_at, co.completion_deadline, co.completion_date,
-                       co.completion_status,
+                       co.completion_status, co.variant_date, co.variant_location,
                        oa.status AS approval_status, oa.decided_at AS approval_decided_at
                 FROM course_orders co
                 LEFT JOIN order_approvals oa ON oa.order_id = co.order_id
@@ -409,7 +361,7 @@ def timeline():
 
             now = datetime.datetime.now()
             for r in rows:
-                raw_status = (r.get('status') or 'pending')
+                raw_status = _lc.normalize_status(r.get('status'))
                 deadline = r.get('completion_deadline')
                 completion_date = r.get('completion_date')
                 state = _ORDER_STATE.get(raw_status, 'afventer')
@@ -422,6 +374,9 @@ def timeline():
                 price = r.get('price')
                 items.append({
                     'order_id': r.get('order_id'),
+                    'url': url_for('futurematch.my_order', order_id=r.get('order_id')),
+                    'variant_date': r.get('variant_date'),
+                    'variant_location': r.get('variant_location'),
                     'title': r.get('product_title') or 'Ukendt kursus',
                     'created_at': r.get('created_at'),
                     'status': raw_status,
@@ -444,7 +399,7 @@ def timeline():
     summary = {
         'total': len(items),
         'afventer': sum(1 for i in items if i['state'] in ('afventer', 'afventer_godkendelse')),
-        'aktive': sum(1 for i in items if i['state'] == 'godkendt'),
+        'aktive': sum(1 for i in items if i['state'] in ('godkendt', 'booket')),
         'gennemfoert': sum(1 for i in items if i['state'] == 'gennemfoert'),
         'overdue': sum(1 for i in items if i['overdue']),
     }
@@ -643,112 +598,66 @@ def cv_upload_apply():
     username = session['user']
     added_summary = added_skills = added_exp = added_edu = added_course = added_cert = added_lang = 0
 
+    form = request.form
+    accepted = []
+    for idx in form.getlist('accept_skill'):
+        name = (form.get(f'skill_name_{idx}') or '').strip()
+        if name:
+            accepted.append({'type': 'skill', 'name': name,
+                             'level': (form.get(f'skill_level_{idx}') or 'mellem').strip()})
+    for idx in form.getlist('accept_experience'):
+        title = (form.get(f'exp_title_{idx}') or '').strip()
+        company = (form.get(f'exp_company_{idx}') or '').strip()
+        if title or company:
+            accepted.append({
+                'type': 'experience', 'title': title, 'company': company,
+                'years': form.get(f'exp_years_{idx}') or '',
+                'start_year': form.get(f'exp_start_{idx}') or _parse_years_to_int(form.get(f'exp_years_{idx}') or ''),
+                'end_year': form.get(f'exp_end_{idx}') or None,
+                'is_current': bool(form.get(f'exp_current_{idx}')),
+                'description': (form.get(f'exp_description_{idx}') or '').strip()})
+    for idx in form.getlist('accept_education'):
+        degree = (form.get(f'edu_degree_{idx}') or '').strip()
+        institution = (form.get(f'edu_institution_{idx}') or '').strip()
+        if degree or institution:
+            accepted.append({'type': 'education', 'degree': degree, 'institution': institution,
+                             'year': _parse_years_to_int(form.get(f'edu_year_{idx}') or '')})
+    for idx in form.getlist('accept_course'):
+        title = (form.get(f'crs_title_{idx}') or '').strip()
+        if title:
+            accepted.append({'type': 'courses', 'title': title,
+                             'vendor': (form.get(f'crs_vendor_{idx}') or '').strip(),
+                             'completed_date': (form.get(f'crs_date_{idx}') or '').strip()})
+    for idx in form.getlist('accept_certification'):
+        name = (form.get(f'crt_name_{idx}') or '').strip()
+        if name:
+            accepted.append({'type': 'certifications', 'name': name,
+                             'issuer': (form.get(f'crt_issuer_{idx}') or '').strip(),
+                             'issue_date': (form.get(f'crt_issued_{idx}') or '').strip() or None,
+                             'expiry_date': (form.get(f'crt_expiry_{idx}') or '').strip() or None})
+    for idx in form.getlist('accept_language'):
+        language = (form.get(f'lang_name_{idx}') or '').strip()
+        if language:
+            accepted.append({'type': 'languages', 'language': language,
+                             'proficiency': (form.get(f'lang_level_{idx}') or 'mellem').strip()})
+    summary = ''
+    if form.get('accept_summary'):
+        summary = (form.get('summary') or '').strip()
+
     try:
-        from app1.user_profile_db import (add_skill, add_experience,
-                                          add_education, add_certification,
-                                          add_completed_course, add_language,
-                                          update_profile_summary, ensure_tables)
-        try:
-            ensure_tables()
-        except Exception as e:
-            current_app.logger.warning("cv apply ensure_tables: %s", e)
-
-        if request.form.get('accept_summary'):
-            summary = (request.form.get('summary') or '').strip()
-            if summary:
-                update_profile_summary(username, bio=summary)
-                added_summary = 1
-
-        # Skills — accepted rows arrive as accept_skill = "<idx>" (one per box).
-        for idx in request.form.getlist('accept_skill'):
-            name = (request.form.get(f'skill_name_{idx}') or '').strip()
-            level = (request.form.get(f'skill_level_{idx}') or 'mellem').strip()
-            if level not in ('begynder', 'mellem', 'avanceret', 'ekspert'):
-                level = 'mellem'
-            if name:
-                try:
-                    add_skill(username, name, level, source='cv_upload')
-                    added_skills += 1
-                except Exception as e:
-                    current_app.logger.warning("cv apply skill: %s", e)
-
-        # Experience.
-        for idx in request.form.getlist('accept_experience'):
-            title = (request.form.get(f'exp_title_{idx}') or '').strip()
-            company = (request.form.get(f'exp_company_{idx}') or '').strip()
-            years = request.form.get(f'exp_years_{idx}') or ''
-            start_year = request.form.get(f'exp_start_{idx}') or _parse_years_to_int(years)
-            end_year = request.form.get(f'exp_end_{idx}') or None
-            is_current = bool(request.form.get(f'exp_current_{idx}'))
-            description = (request.form.get(f'exp_description_{idx}') or '').strip()
-            if not title and not company:
-                continue
-            try:
-                add_experience(username, title or company, company=company,
-                               start_year=start_year, end_year=end_year,
-                               is_current=is_current, description=description)
-                added_exp += 1
-            except Exception as e:
-                current_app.logger.warning("cv apply experience: %s", e)
-
-        # Education.
-        for idx in request.form.getlist('accept_education'):
-            degree = (request.form.get(f'edu_degree_{idx}') or '').strip()
-            institution = (request.form.get(f'edu_institution_{idx}') or '').strip()
-            year = request.form.get(f'edu_year_{idx}') or ''
-            if not degree and not institution:
-                continue
-            try:
-                add_education(username, degree or institution, institution=institution,
-                              year_completed=_parse_years_to_int(year))
-                added_edu += 1
-            except Exception as e:
-                current_app.logger.warning("cv apply education: %s", e)
-
-        # Completed courses — a course belongs in the course list, not in skills.
-        for idx in request.form.getlist('accept_course'):
-            title = (request.form.get(f'crs_title_{idx}') or '').strip()
-            if not title:
-                continue
-            try:
-                add_completed_course(
-                    username, course_title=title,
-                    vendor=(request.form.get(f'crs_vendor_{idx}') or '').strip(),
-                    completed_date=(request.form.get(f'crs_date_{idx}') or '').strip() or None,
-                )
-                added_course += 1
-            except Exception as e:
-                current_app.logger.warning("cv apply course: %s", e)
-
-        # Certifications.
-        for idx in request.form.getlist('accept_certification'):
-            name = (request.form.get(f'crt_name_{idx}') or '').strip()
-            issuer = (request.form.get(f'crt_issuer_{idx}') or '').strip()
-            issue_date = (request.form.get(f'crt_issued_{idx}') or '').strip()
-            expiry_date = (request.form.get(f'crt_expiry_{idx}') or '').strip()
-            if not name:
-                continue
-            try:
-                add_certification(username, name, issuer=issuer,
-                                  issue_date=issue_date or None,
-                                  expiry_date=expiry_date or None, source='cv_upload')
-                added_cert += 1
-            except Exception as e:
-                current_app.logger.warning("cv apply certification: %s", e)
-
-        # Languages.
-        for idx in request.form.getlist('accept_language'):
-            language = (request.form.get(f'lang_name_{idx}') or '').strip()
-            proficiency = (request.form.get(f'lang_level_{idx}') or 'mellem').strip()
-            if proficiency not in ('begynder', 'mellem', 'flydende', 'modersmaal'):
-                proficiency = 'mellem'
-            if not language:
-                continue
-            try:
-                add_language(username, language, proficiency=proficiency, source='cv_upload')
-                added_lang += 1
-            except Exception as e:
-                current_app.logger.warning("cv apply language: %s", e)
+        from api import apply_cv_items
+        payload, _status = apply_cv_items(username, {
+            'accepted': accepted, 'summary': summary, 'conflict_mode': 'merge'})
+        if not payload.get('saved') and not payload.get('success'):
+            raise RuntimeError(payload.get('error') or 'cv apply failed')
+        saved = payload.get('saved') or {}
+        added_skills = saved.get('skills', 0)
+        added_exp = saved.get('experience', 0)
+        added_edu = saved.get('education', 0)
+        added_course = saved.get('courses', 0)
+        added_cert = saved.get('certifications', 0)
+        added_lang = saved.get('languages', 0)
+        added_summary = 1 if summary else 0
     except Exception as e:
         current_app.logger.warning("cv apply: %s", e)
         flash('Kunne ikke gemme profilen. Prøv igen.', 'danger')
@@ -819,3 +728,9 @@ def showcase(page):
     if page not in _fm_pages() or page.startswith('_'):
         abort(404)
     return render_template(f'fm/{page}.html')
+
+
+# Learner order detail + completion moment (N-1.2 / N-1.3 / N-1.4).
+from learner_orders import register_learner_order_routes  # noqa: E402
+
+register_learner_order_routes(futurematch_bp)

@@ -25,6 +25,8 @@ import uuid
 import logging
 import datetime
 
+import order_lifecycle as lc
+
 logger = logging.getLogger(__name__)
 
 
@@ -198,22 +200,23 @@ def _send_budget_overrun_emails_safe(company_id, *, department, spent,
         logger.debug("order_service: budget-overrun email skipped: %s", e)
 
 
-def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0):
-    """Insert an in-app notification card for the company's HR/admins. Never raises.
+def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
+                                action_url=None, dedupe_key=None):
+    """In-app card for the company's HR/admins. Never raises.
 
-    Uses the same company_notifications shape as the HR dashboard nudge path.
-    Runs on the caller's cursor so it shares the order transaction's commit.
+    Goes through the unified notification service (one row per recipient with
+    its own read state). Runs on the caller's cursor so it commits atomically
+    with the order transaction.
     """
     if not company_id:
         return
     try:
-        cur.execute(
-            """INSERT INTO company_notifications
-                   (company_id, recipient_user_id, sender_user_id, target_roles,
-                    title, message, is_urgent, is_read)
-               VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)""",
-            (company_id, '["company_admin","hr_manager"]', str(title)[:255],
-             str(message), is_urgent),
+        from notification_service import notify_roles
+        notify_roles(
+            cur, company_id, ("company_admin", "hr_manager"),
+            title=str(title)[:255], message=str(message),
+            kind="order", is_urgent=bool(is_urgent), action_url=action_url,
+            dedupe_key=dedupe_key, dedupe_hours=24 if dedupe_key else None,
         )
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: company notification skipped: %s", e)
@@ -231,8 +234,12 @@ _MANAGER_ROLES = frozenset({
 # Statuses that mean "this order consumes budget right now".
 # An order in pending_approval has NOT yet consumed budget (it is charged on
 # approval). Everything else that is live consumes budget on creation.
-_NON_CHARGING_STATUSES = frozenset({"pending_approval"})
-_CANCELLED_LIKE_STATUSES = frozenset({"cancelled", "rejected"})
+_NON_CHARGING_STATUSES = frozenset({lc.PENDING_APPROVAL})
+_CANCELLED_LIKE_STATUSES = frozenset({lc.CANCELLED, lc.REJECTED})
+
+# Don't create a second open order for the same person + course + date within
+# this many minutes (closes the chat "ja" + stale Bekræft card double-confirm).
+_DUPLICATE_WINDOW_MINUTES = 10
 
 
 # ---------------------------------------------------------------------------
@@ -248,17 +255,25 @@ class OrderContext:
 
     __slots__ = (
         "company_id", "user_id", "username", "company_role",
-        "department", "source",
+        "department", "source", "actor_kind", "vendor_id", "is_platform_admin",
+        "actor_label",
     )
 
     def __init__(self, company_id=None, user_id=None, username=None,
-                 company_role=None, department=None, source="web"):
+                 company_role=None, department=None, source="web",
+                 actor_kind="user", vendor_id=None, is_platform_admin=False,
+                 actor_label=None):
         self.company_id = _int_or_none(company_id)
         self.user_id = _int_or_none(user_id)
         self.username = (username or "").strip() or None
         self.company_role = (company_role or "").strip().lower() or None
         self.department = (department or "").strip() or None
         self.source = source or "web"
+        # actor_kind: 'user' (learner/HR), 'vendor' (portal), 'system' (policy/jobs).
+        self.actor_kind = actor_kind or "user"
+        self.vendor_id = _int_or_none(vendor_id)
+        self.is_platform_admin = bool(is_platform_admin)
+        self.actor_label = (actor_label or self.username or "").strip() or None
 
     # -- builders -----------------------------------------------------------
     @classmethod
@@ -269,6 +284,7 @@ class OrderContext:
         except Exception:
             session = {}
         try:
+            is_admin = session.get("role") == "admin"
             return cls(
                 company_id=session.get("company_id"),
                 user_id=session.get("user_id"),
@@ -276,10 +292,23 @@ class OrderContext:
                 company_role=session.get("company_role", "employee"),
                 department=session.get("company_department", ""),
                 source=source,
+                is_platform_admin=is_admin,
             )
         except Exception:
             # Outside request context / broken session — degrade to anonymous.
             return cls(source=source)
+
+    @classmethod
+    def for_vendor(cls, vendor_id, label=None, source="vendor"):
+        """A vendor acting from the portal on ITS OWN orders only."""
+        return cls(vendor_id=vendor_id, actor_kind="vendor", source=source,
+                   actor_label=label or ("vendor:%s" % vendor_id))
+
+    @classmethod
+    def system(cls, company_id=None, source="system", label="system"):
+        """Automated actor (auto-approval policy, scheduled jobs)."""
+        return cls(company_id=company_id, actor_kind="system", source=source,
+                   company_role="company_admin", actor_label=label)
 
     @classmethod
     def from_api_g(cls, source="api", company_role="company_admin"):
@@ -405,19 +434,54 @@ def _fiscal_year_of(created_at):
 
 
 def _write_audit(cur, *, company_id, user_id, action, resource_id, description=""):
-    """Best-effort audit row. Guarded — never breaks the surrounding tx."""
+    """Best-effort audit row. Guarded — never breaks the surrounding tx.
+
+    Canonical columns are ``action_type`` + ``details``; the legacy duplicates
+    ``action`` + ``description`` are still filled so older readers keep working
+    (N-3.4: one meaning per column pair).
+    """
     try:
         cur.execute(
             """
             INSERT INTO audit_log
                 (company_id, user_id, action, action_type, resource_type,
-                 resource_id, description)
-            VALUES (%s, %s, %s, %s, 'order', %s, %s)
+                 resource_id, description, details)
+            VALUES (%s, %s, %s, %s, 'order', %s, %s, %s)
             """,
-            (company_id, user_id, action, action, str(resource_id), description),
+            (company_id, user_id, action, action, str(resource_id), description,
+             description),
         )
     except Exception as e:  # pragma: no cover - audit must never fail the op
         logger.debug("order_service: audit_log skipped (%s): %s", action, e)
+
+
+def _record_history(cur, row, *, kind, from_value, to_value, ctx, note=None):
+    """Append to order_status_history (who changed what, when). Never raises."""
+    try:
+        cur.execute(
+            """
+            INSERT INTO order_status_history
+                (order_id, company_id, kind, from_value, to_value, actor_user_id,
+                 actor_kind, actor_label, note)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """,
+            (row.get("order_id"), _int_or_none(row.get("company_id")), kind,
+             from_value, to_value, ctx.user_id, _actor_kind_label(ctx),
+             (ctx.actor_label or ctx.username or "")[:255],
+             (note or None) and str(note)[:500]),
+        )
+    except Exception as e:  # pragma: no cover - history must never fail the op
+        logger.debug("order_service: history skipped: %s", e)
+
+
+def _actor_kind_label(ctx):
+    if ctx.actor_kind == "vendor":
+        return "vendor"
+    if ctx.actor_kind == "system":
+        return "system"
+    if ctx.is_platform_admin:
+        return "admin"
+    return "manager" if ctx.is_manager else "user"
 
 
 def _resolve_approval_policy(cur, company_id, department):
@@ -467,38 +531,146 @@ def _resolve_approval_policy(cur, company_id, department):
     }
 
 
-def _ownership_ok(ctx, order_row):
-    """Ownership gate shared by get_order / cancel_order / set_status.
+def actors_for(ctx, order_row):
+    """Which roles ``ctx`` plays on this order: a subset of
+    ``{'owner', 'manager', 'vendor', 'admin', 'system'}``.
 
-    Returns True when ctx may see/act on this order:
-      * ctx is the order's OWNER (username or user_id matches), OR
-      * ctx is a company manager/admin of the SAME company as the order.
-    Cross-tenant / other-user => False (callers should 404, not 403).
+    * ``admin``   – platform admin (any company, any order).
+    * ``system``  – automation (auto-approval policy, scheduled jobs).
+    * ``vendor``  – a vendor, but ONLY for orders carrying its own vendor_id.
+    * ``owner``   – the learner who placed it.
+    * ``manager`` – HR / company admin / department head of the SAME company
+      (a department head only for orders in their own department).
     """
+    actors = set()
     if not order_row:
-        return False
+        return actors
+    if ctx.actor_kind == "system":
+        actors.add("system")
+    if ctx.is_platform_admin:
+        actors.add("admin")
+
+    if ctx.actor_kind == "vendor":
+        row_vendor = _int_or_none(order_row.get("vendor_id"))
+        if ctx.vendor_id is not None and row_vendor is not None and ctx.vendor_id == row_vendor:
+            actors.add("vendor")
+        return actors
 
     row_user_id = _int_or_none(order_row.get("user_id"))
     row_username = (order_row.get("username") or "").strip() or None
     row_company_id = _int_or_none(order_row.get("company_id"))
-
-    # Owner match.
     if ctx.user_id is not None and row_user_id is not None and ctx.user_id == row_user_id:
-        return True
-    if ctx.username and row_username and ctx.username == row_username:
-        return True
+        actors.add("owner")
+    elif ctx.username and row_username and ctx.username == row_username:
+        actors.add("owner")
 
-    # Company manager/admin of the SAME tenant.
     if (ctx.company_id is not None and row_company_id is not None
             and ctx.company_id == row_company_id and ctx.is_manager):
-        return True
+        if ctx.company_role == "department_head" and ctx.department:
+            # Interim department scoping until the S-2.3 matrix lands.
+            if (order_row.get("department") or "").strip().lower() == ctx.department.lower():
+                actors.add("manager")
+        else:
+            actors.add("manager")
+    return actors
 
-    return False
+
+def _ownership_ok(ctx, order_row):
+    """Read/act gate shared by get_order and friends: true when ctx plays any
+    role on the order. Cross-tenant / other-user => False (callers 404)."""
+    return bool(actors_for(ctx, order_row))
 
 
 # ---------------------------------------------------------------------------
 # create_order
 # ---------------------------------------------------------------------------
+ORDER_DETAIL_URL = "/min-ordre/%s"
+
+
+def order_url(order_id, absolute=True):
+    path = ORDER_DETAIL_URL % order_id
+    if absolute:
+        base = _app_base_url()
+        return (base + path) if base else path
+    return path
+
+
+def _parse_deadline(value):
+    """Best-effort ISO date (YYYY-MM-DD) from a variant date / path due date."""
+    if not value:
+        return None
+    if isinstance(value, (datetime.datetime, datetime.date)):
+        return value.strftime("%Y-%m-%d")
+    import re
+    s = str(value).strip()
+    m = re.search(r"(\d{4})-(\d{2})-(\d{2})", s)
+    if m:
+        return "%s-%s-%s" % m.groups()
+    m = re.search(r"(\d{1,2})[./-](\d{1,2})[./-](\d{4})", s)
+    if m:
+        d, mo, y = m.groups()
+        try:
+            return datetime.date(int(y), int(mo), int(d)).strftime("%Y-%m-%d")
+        except ValueError:
+            return None
+    return None
+
+
+def _vendor_id_for_handle(cur, product_handle):
+    """Resolve the vendors.id that supplies a catalog handle (via the catalog's
+    vendor name/slug). None when the vendor has no portal account."""
+    if not product_handle:
+        return None
+    try:
+        import catalog_service
+        product = catalog_service.get_product(product_handle)
+        if not product:
+            return None
+        name = (product.get("vendor") or "").strip()
+        slug = product.get("vendor_slug") or ""
+        cur.execute(
+            "SELECT id FROM vendors WHERE slug = %s OR LOWER(vendor_name) = LOWER(%s) LIMIT 1",
+            (slug, name),
+        )
+        r = cur.fetchone()
+        return _int_or_none(r.get("id") if isinstance(r, dict) else (r[0] if r else None))
+    except Exception as e:
+        logger.debug("order_service: vendor lookup skipped: %s", e)
+        return None
+
+
+def _find_recent_duplicate(cur, ctx, product_handle, variant_date):
+    """An equivalent still-open order for the same person within the window."""
+    if not product_handle or not (ctx.username or ctx.user_id):
+        return None
+    try:
+        cur.execute(
+            """
+            SELECT order_id, status FROM course_orders
+            WHERE product_handle = %s AND COALESCE(variant_date, '') = %s
+              AND (username = %s OR (user_id IS NOT NULL AND user_id = %s))
+              AND status IN ('pending_approval', 'approved', 'booked')
+              AND created_at >= DATE_SUB(NOW(), INTERVAL %s MINUTE)
+            ORDER BY created_at DESC LIMIT 1
+            """,
+            (product_handle, variant_date or "", ctx.username, ctx.user_id,
+             _DUPLICATE_WINDOW_MINUTES),
+        )
+        return cur.fetchone()
+    except Exception as e:
+        logger.debug("order_service: duplicate check skipped: %s", e)
+        return None
+
+
+def _next_step_message(status, needs_approval):
+    """Honest Danish copy about what happens next. No payment details, ever."""
+    if needs_approval or status == lc.PENDING_APPROVAL:
+        return ("Din bestilling er sendt til godkendelse. Du hører fra os, så snart den er "
+                "behandlet, og kan følge status på din tidslinje.")
+    return ("Bestillingen er godkendt. Udbyderen bekræfter din plads, og du får besked, når den er "
+            "booket. Fakturering sker uden for appen.")
+
+
 def create_order(ctx, *, product_handle, product_title, price,
                  variant_date="", variant_location="",
                  user_email="", user_name="", user_phone="",
@@ -506,16 +678,19 @@ def create_order(ctx, *, product_handle, product_title, price,
     """Create an order through the single authorized path.
 
     One transaction (single connection, commit once, rollback on error):
-      1. Resolve needs_approval (employees / unknown role -> approval).
-      2. Budget-aware approval: if company+department+price>0 and the charge
-         would exceed annual_budget, force needs_approval=True (never hard-fail).
-      3. INSERT course_orders with status pending_approval | pending | <status>.
+      1. Idempotency guard: an equivalent open order within the last few minutes
+         is returned instead of creating a duplicate (chat double-confirm).
+      2. Resolve needs_approval (employees / unknown role -> approval), apply the
+         company auto-approval policy, then the budget safety rule (never
+         silently overspend).
+      3. INSERT course_orders with status pending_approval | approved (vendor_id,
+         completion_deadline and group_order_id filled in).
       4. If needs_approval: INSERT order_approvals(status='pending').
-      5. Charge budget EXACTLY ONCE (spent += price, budget_charged=1) only when
-         the order is in a budget-affecting state (NOT pending_approval).
-      6. Audit log action='order.created'.
+      5. Charge budget EXACTLY ONCE when the order is live (not pending_approval).
+      6. History row, audit row, in-app cards, ONE confirmation email.
 
-    Returns dict: {success, order_id, status, needs_approval, budget_warning, ...}
+    Returns dict: {success, order_id, status, needs_approval, budget_warning,
+    status_label, next_step, order_url, duplicate?...}
     """
     extra = extra or {}
     price_f = _to_float(price)
@@ -532,6 +707,27 @@ def create_order(ctx, *, product_handle, product_title, price,
     cur = None
     try:
         cur = _dict_cursor(conn)
+
+        # --- 0. idempotency ------------------------------------------------
+        dup = _find_recent_duplicate(cur, ctx, product_handle, variant_date)
+        if dup:
+            dup_id = dup.get("order_id") if isinstance(dup, dict) else dup[0]
+            dup_status = lc.normalize_status(dup.get("status") if isinstance(dup, dict) else dup[1])
+            return {
+                "success": True,
+                "duplicate": True,
+                "order_id": dup_id,
+                "status": dup_status,
+                "status_label": lc.status_label(dup_status),
+                "needs_approval": dup_status == lc.PENDING_APPROVAL,
+                "auto_approved": False,
+                "budget_warning": None,
+                "budget_charged": False,
+                "price": price_f,
+                "next_step": _next_step_message(dup_status, dup_status == lc.PENDING_APPROVAL),
+                "order_url": order_url(dup_id),
+                "message": "Du har allerede anmodet om dette kursus. Se status på din tidslinje.",
+            }
 
         # --- 1. needs_approval (preserve current behaviour) ---------------
         # Employees (or unknown role) with a company need approval; managers/
@@ -598,13 +794,13 @@ def create_order(ctx, *, product_handle, product_title, price,
 
         # --- 3. resolve status & INSERT course_orders --------------------
         if needs_approval:
-            initial_status = "pending_approval"
-        elif auto_approved_by_policy:
-            # Policy auto-approved (and budget did NOT force approval): land in
-            # an approved status and run the existing charge path below.
-            initial_status = "approved"
+            initial_status = lc.PENDING_APPROVAL
         else:
-            initial_status = status or "pending"
+            # Auto-approved by policy, or a manager/solo order that needs no
+            # approval: the order is APPROVED and waits for the vendor to book.
+            initial_status = lc.normalize_status(status) if status else lc.APPROVED
+            if initial_status == lc.PENDING_APPROVAL:
+                initial_status = lc.APPROVED
 
         # Charge now only if the order is NOT in a non-charging (approval) state
         # AND there is a department budget row to charge against and a price.
@@ -615,6 +811,10 @@ def create_order(ctx, *, product_handle, product_title, price,
         )
         budget_charged = 1 if charge_now else 0
 
+        vendor_id = _int_or_none(extra.get("vendor_id")) or _vendor_id_for_handle(cur, product_handle)
+        deadline = _parse_deadline(extra.get("completion_deadline")) or _parse_deadline(variant_date)
+        group_order_id = (extra.get("group_order_id") or None)
+
         cur.execute(
             """
             INSERT INTO course_orders
@@ -622,9 +822,10 @@ def create_order(ctx, *, product_handle, product_title, price,
                  product_title, price, variant_date, variant_location, status,
                  department, user_email, user_name, user_phone,
                  chatbot_session_id, chatbot_queries_before_order,
-                 recommended_by_tool, budget_charged, created_at)
+                 recommended_by_tool, budget_charged, vendor_id,
+                 completion_deadline, group_order_id, request_notes, billing_status, created_at)
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, NOW())
+                    %s, %s, %s, %s, %s, %s, %s, %s, 'not_invoiced', NOW())
             """,
             (
                 order_id, ctx.company_id, ctx.user_id, ctx.username,
@@ -634,7 +835,8 @@ def create_order(ctx, *, product_handle, product_title, price,
                 extra.get("chatbot_session_id", ""),
                 _int_or_none(extra.get("chatbot_queries_before_order")) or 0,
                 extra.get("recommended_by_tool", ""),
-                budget_charged,
+                budget_charged, vendor_id, deadline, group_order_id,
+                (extra.get("notes") or None) and str(extra.get("notes"))[:2000],
             ),
         )
 
@@ -663,7 +865,10 @@ def create_order(ctx, *, product_handle, product_title, price,
             except Exception as ce:
                 logger.warning("order_service: budget charge failed: %s", ce)
 
-        # --- 6. audit ----------------------------------------------------
+        # --- 6. history + audit -------------------------------------------
+        _new_row = {"order_id": order_id, "company_id": ctx.company_id}
+        _record_history(cur, _new_row, kind="status", from_value=None, to_value=initial_status,
+                        ctx=ctx, note="Auto-godkendt via politik" if auto_approved_by_policy else None)
         _audit_desc = f"{product_title} ({ctx.source})"
         if auto_approved_by_policy:
             _audit_desc += " [auto-godkendt via politik]"
@@ -685,6 +890,8 @@ def create_order(ctx, *, product_handle, product_title, price,
                 f"{product_title} er bestilt af {ctx.username or 'en medarbejder'} "
                 f"og afventer godkendelse.",
                 is_urgent=1,
+                action_url="/hr/approvals",
+                dedupe_key="approval-needed:%s" % order_id,
             )
 
         conn.commit()
@@ -704,12 +911,28 @@ def create_order(ctx, *, product_handle, product_title, price,
              "department": dept, "source": ctx.source,
              "auto_approved": auto_approved_by_policy},
         )
-        if user_email and not needs_approval:
+        if not needs_approval:
+            # An approved order also announces itself as order.approved so
+            # webhook subscribers get the same signal as a manual approval.
+            _emit_event_safe(ctx.company_id, "order.approved", {
+                "order_id": order_id, "product_title": product_title,
+                "status": initial_status, "previous_status": None,
+                "department": dept, "user_email": user_email or None,
+                "auto_approved": auto_approved_by_policy})
+            _notify_vendor_safe({"order_id": order_id, "vendor_id": vendor_id,
+                                 "product_title": product_title,
+                                 "variant_date": variant_date, "variant_location": variant_location,
+                                 "user_name": user_name or ctx.username, "company_id": ctx.company_id})
+        if user_email:
+            # ONE confirmation email (order_handler no longer sends its own).
             _send_email_safe(
                 user_email, f"Ordrebekræftelse — {product_title}",
                 "order_confirmation", ctx.company_id,
                 product_title=product_title, order_id=order_id,
                 recipient_name=user_name or ctx.username or "",
+                status_line=lc.status_label(initial_status),
+                next_step=_next_step_message(initial_status, needs_approval),
+                order_url=order_url(order_id),
             )
         # Approval-needed: email the managers who can act on it, so the decision
         # doesn't sit behind a login. Mirrors the in-app card above; best-effort
@@ -728,11 +951,15 @@ def create_order(ctx, *, product_handle, product_title, price,
             "success": True,
             "order_id": order_id,
             "status": initial_status,
+            "status_label": lc.status_label(initial_status),
             "needs_approval": needs_approval,
             "auto_approved": auto_approved_by_policy,
             "budget_warning": budget_warning,
             "budget_charged": bool(budget_charged),
             "price": price_f,
+            "vendor_id": vendor_id,
+            "next_step": _next_step_message(initial_status, needs_approval),
+            "order_url": order_url(order_id),
         }
     except Exception as e:
         logger.error("order_service.create_order failed: %s", e)
@@ -759,10 +986,11 @@ def create_order(ctx, *, product_handle, product_title, price,
 def get_order(ctx, order_id):
     """Return the order row (dict) ONLY if ctx is authorized; else None.
 
-    Authorized == ownership_ok(ctx, row). For LEGACY anonymous orders where the
-    row has NULL company_id (pre-enterprise chatbot orders), fall back to the
-    PRIOR behaviour and return the row so the existing anonymous-consumer status
-    flow keeps working — enterprise PII (company_id NOT NULL) is never leaked.
+    Authorized == the ctx plays a role on the order (owner / same-company
+    manager / the order's vendor / platform admin). For LEGACY anonymous orders
+    where the row has NULL company_id (pre-enterprise chatbot orders), fall back
+    to the PRIOR behaviour so the anonymous-consumer status flow keeps working
+    — enterprise PII (company_id NOT NULL) is never leaked.
     Cross-tenant / other-user => None (callers should return 404).
     """
     conn = _get_connection()
@@ -800,83 +1028,42 @@ def get_order(ctx, order_id):
             pass
 
 
-# ---------------------------------------------------------------------------
-# cancel_order — ownership-gated, exactly-once refund
-# ---------------------------------------------------------------------------
-def cancel_order(ctx, order_id):
-    """Cancel an order (status -> 'cancelled'), refunding budget exactly once.
-
-    Ownership-gated identically to get_order (owner OR same-company manager).
-    Refund: ONLY when budget_charged == 1 -> spent -= price, budget_charged = 0,
-    using the order's OWN fiscal_year (year(created_at)) — NOT the current year.
-    Idempotent: cancelling an already-cancelled / uncharged order never refunds
-    twice.
-    """
+def get_history(ctx, order_id):
+    """Status + billing history for an order the ctx may see ([] otherwise).
+    Billing rows are only returned to managers/admins, never to the learner."""
+    row = get_order(ctx, order_id)
+    if not row:
+        return []
     conn = _get_connection()
     if conn is None:
-        return {"success": False, "error": "no_db",
-                "message": "Databasen er ikke tilgængelig lige nu."}
-
+        return []
+    actors = actors_for(ctx, row)
     cur = None
     try:
         cur = _dict_cursor(conn)
-        cur.execute("SELECT * FROM course_orders WHERE order_id = %s", (order_id,))
-        row = cur.fetchone()
-        if not row:
-            return {"success": False, "error": "not_found",
-                    "message": "Ordren blev ikke fundet."}
-
-        if not _ownership_ok(ctx, row):
-            # Anti-enumeration: behave like not-found.
-            return {"success": False, "error": "not_found",
-                    "message": "Ordren blev ikke fundet."}
-
-        current_status = (row.get("status") or "").strip()
-        already_cancelled = current_status in _CANCELLED_LIKE_STATUSES
-
-        # Set status -> cancelled (idempotent if already cancelled).
         cur.execute(
-            "UPDATE course_orders SET status = 'cancelled', updated_at = NOW() "
-            "WHERE order_id = %s",
+            "SELECT kind, from_value, to_value, actor_kind, actor_label, note, created_at "
+            "FROM order_status_history WHERE order_id = %s ORDER BY created_at ASC, id ASC",
             (order_id,),
         )
-
-        refunded = _maybe_refund(cur, row)
-
-        _write_audit(
-            cur,
-            company_id=_int_or_none(row.get("company_id")),
-            user_id=ctx.user_id,
-            action="order.cancelled",
-            resource_id=order_id,
-            description=f"refunded={refunded}",
-        )
-
-        conn.commit()
-        return {
-            "success": True,
-            "order_id": order_id,
-            "status": "cancelled",
-            "refunded": refunded,
-            "already_cancelled": already_cancelled,
-            "message": "Ordren er annulleret.",
-        }
+        rows = list(cur.fetchall() or [])
     except Exception as e:
-        logger.error("order_service.cancel_order failed: %s", e)
-        try:
-            conn.rollback()
-        except Exception:
-            pass
-        return {"success": False, "error": str(e),
-                "message": "Der opstod en fejl ved annullering af ordren."}
+        logger.debug("order_service.get_history failed: %s", e)
+        return []
     finally:
         try:
             if cur is not None:
                 cur.close()
         except Exception:
             pass
+    if not ({"manager", "admin"} & actors):
+        rows = [r for r in rows if (r.get("kind") or "status") == "status"]
+    return rows
 
 
+# ---------------------------------------------------------------------------
+# Budget helpers (exactly once)
+# ---------------------------------------------------------------------------
 def _maybe_refund(cur, row):
     """Refund budget exactly once. Returns True iff a refund happened.
 
@@ -979,6 +1166,8 @@ def _maybe_charge(cur, row):
                 f"Afdelingen '{department}' har nu brugt {new_spent:.0f} kr. af "
                 f"{annual:.0f} kr. efter en godkendt bestilling.",
                 is_urgent=1,
+                action_url="/hr/budgets",
+                dedupe_key="budget-overrun:%s:%s" % (company_id, department),
             )
             _emit_event_safe(company_id, "budget.overrun", {
                 "department": department, "spent": new_spent,
@@ -998,20 +1187,219 @@ def _maybe_charge(cur, row):
 
 
 # ---------------------------------------------------------------------------
-# set_status — authorized transitions with exactly-once budget
+# Transition engine — every status writer goes through here
 # ---------------------------------------------------------------------------
-def set_status(ctx, order_id, new_status):
-    """Authorized status transition with exactly-once budget side effects.
+_LEGACY_INPUTS = set(lc.ORDER_STATUSES) | set(lc.LEGACY_ALIASES)
 
-    Ownership-gated (owner OR same-company manager). Side effects:
-      * pending_approval -> approved/pending/confirmed/...  => charge once.
-      * any -> rejected / cancelled                         => refund once.
-    Returns dict {success, order_id, status, charged, refunded, ...}.
+
+def _learner_notice(new, row, reason=None, note=None):
+    """(title, message) for the learner's in-app notification, or None."""
+    title = row.get("product_title") or "dit kursus"
+    if new == lc.APPROVED:
+        return ("Din bestilling er godkendt",
+                f"“{title}” er godkendt. Nu afventer vi udbyderens bekræftelse af din plads.")
+    if new == lc.REJECTED:
+        extra = f" Begrundelse: {note}" if note else ""
+        return ("Din bestilling blev afvist", f"“{title}” blev desværre afvist.{extra}")
+    if new == lc.BOOKED:
+        return ("Din plads er booket", f"Din plads på “{title}” er bekræftet.")
+    if new == lc.CANCELLED:
+        extra = f" Årsag: {reason}" if reason else ""
+        return ("Din bestilling er annulleret", f"“{title}” er annulleret.{extra}")
+    if new == lc.COMPLETED:
+        return ("Kurset er gennemført",
+                f"Tillykke med “{title}”. Tilføj de færdigheder, du har fået, til din profil.")
+    return None
+
+
+def _apply_transition(cur, ctx, row, new, actors, *, note=None, reason=None):
+    """Write one validated transition inside the caller's transaction.
+
+    Returns ``{"charged", "refunded", "old"}``. Raises on SQL failure so the
+    caller rolls the whole transition (status + approval + budget + history)
+    back together.
     """
-    new_status = (new_status or "").strip()
-    if not new_status:
-        return {"success": False, "error": "bad_status",
-                "message": "Ugyldig status."}
+    old = lc.normalize_status(row.get("status"))
+    order_id = row.get("order_id")
+    actor_label = (ctx.actor_label or ctx.username or "")[:255]
+
+    sets = ["status = %s", "updated_at = NOW()"]
+    params = [new]
+    if new == lc.APPROVED and ctx.user_id and ctx.actor_kind != "system":
+        sets.append("approved_by = %s")
+        params.append(ctx.user_id)
+    if new == lc.BOOKED:
+        sets.append("booked_at = NOW()")
+        sets.append("booked_by = %s")
+        params.append(actor_label)
+    if new in (lc.CANCELLED, lc.REJECTED) and (reason or note):
+        sets.append("cancel_reason = %s")
+        params.append(str(reason or note)[:255])
+    if new == lc.COMPLETED:
+        sets.append("completion_status = 'completed'")
+        sets.append("completion_date = COALESCE(completion_date, NOW())")
+    cur.execute(
+        "UPDATE course_orders SET " + ", ".join(sets) + " WHERE order_id = %s",
+        tuple(params) + (order_id,),
+    )
+
+    # The approval row moves with the order — in the SAME transaction (before,
+    # the row could commit while the status change failed).
+    if old == lc.PENDING_APPROVAL and new in (lc.APPROVED, lc.REJECTED, lc.CANCELLED):
+        cur.execute(
+            """
+            UPDATE order_approvals
+            SET status = %s, notes = COALESCE(%s, notes), approver_user_id = %s,
+                decided_at = NOW()
+            WHERE order_id = %s AND status = 'pending'
+            """,
+            (new, (note or None), ctx.user_id, order_id),
+        )
+
+    charged = refunded = False
+    if new in _CANCELLED_LIKE_STATUSES:
+        refunded = _maybe_refund(cur, row)
+    elif old in _NON_CHARGING_STATUSES and new not in _NON_CHARGING_STATUSES:
+        charged = _maybe_charge(cur, row)
+
+    history_note = note or reason
+    if ctx.is_platform_admin and new == lc.BOOKED and "vendor" not in actors:
+        history_note = ("Booket af admin på leverandørens vegne" + (f": {history_note}" if history_note else ""))
+    elif "manager" in actors and new == lc.BOOKED and "vendor" not in actors:
+        history_note = ("Booket af HR på leverandørens vegne" + (f": {history_note}" if history_note else ""))
+    _record_history(cur, row, kind="status", from_value=old, to_value=new, ctx=ctx, note=history_note)
+
+    _write_audit(
+        cur,
+        company_id=_int_or_none(row.get("company_id")),
+        user_id=ctx.user_id,
+        action="order.status_changed",
+        resource_id=order_id,
+        description=f"{old}->{new} charged={charged} refunded={refunded}",
+    )
+
+    # In-app notifications (same transaction).
+    try:
+        from notification_service import notify_user, notify_roles, HR_ROLES
+        notice = _learner_notice(new, row, reason=reason, note=note)
+        owner_acting = "owner" in actors and not ({"manager", "admin", "vendor"} & actors)
+        if notice and row.get("username") and not owner_acting:
+            notify_user(cur, title=notice[0], message=notice[1], username=row.get("username"),
+                        user_id=_int_or_none(row.get("user_id")),
+                        company_id=_int_or_none(row.get("company_id")), kind="order",
+                        action_url=order_url(order_id, absolute=False),
+                        dedupe_key="order:%s:%s" % (order_id, new), dedupe_hours=None)
+        cid = _int_or_none(row.get("company_id"))
+        if cid and new == lc.CANCELLED and ("vendor" in actors or "owner" in actors):
+            who = "Udbyderen" if "vendor" in actors else (row.get("username") or "Medarbejderen")
+            notify_roles(cur, cid, HR_ROLES,
+                         title="Bestilling annulleret",
+                         message=f"{who} har annulleret “{row.get('product_title')}”."
+                                 + (f" Årsag: {reason}" if reason else ""),
+                         kind="order", is_urgent=("vendor" in actors),
+                         action_url="/hr/order/%s/details" % order_id,
+                         dedupe_key="order-cancelled:%s" % order_id, dedupe_hours=None)
+    except Exception as e:  # notifications must never break the transition
+        logger.debug("order_service: transition notifications skipped: %s", e)
+
+    return {"charged": charged, "refunded": refunded, "old": old}
+
+
+def _after_transition(ctx, row, old, new, info, *, note=None, reason=None):
+    """Post-commit side effects: webhook events, emails, vendor notice."""
+    company_id = _int_or_none(row.get("company_id"))
+    order_id = row.get("order_id")
+
+    _overrun = row.get("_budget_overrun")
+    if _overrun:
+        _send_budget_overrun_emails_safe(
+            _overrun.get("company_id"),
+            department=_overrun.get("department"),
+            spent=_overrun.get("spent"),
+            annual_budget=_overrun.get("annual_budget"),
+            order_id=_overrun.get("order_id"),
+        )
+
+    payload = {
+        "order_id": order_id, "status": new, "previous_status": old,
+        "charged": info.get("charged"), "refunded": info.get("refunded"),
+        "product_title": row.get("product_title"),
+        "department": (row.get("department") or "") or None,
+        "user_email": row.get("user_email"),
+    }
+    specific = {lc.APPROVED: "order.approved", lc.REJECTED: "order.rejected",
+                lc.BOOKED: "order.booked", lc.COMPLETED: "order.completed",
+                lc.CANCELLED: "order.cancelled"}.get(new)
+    if specific:
+        _emit_event_safe(company_id, specific, payload)
+    # Generic signal for subscribers of the advertised 'order.updated'.
+    _emit_event_safe(company_id, "order.updated", payload)
+    if new == lc.COMPLETED:
+        _emit_event_safe(company_id, "course.completed", {
+            "order_id": order_id,
+            "product_title": row.get("product_title"),
+            "product_handle": row.get("product_handle"),
+            "department": (row.get("department") or "") or None,
+            "user_id": _int_or_none(row.get("user_id")),
+            "user_email": row.get("user_email"),
+            "completed_at": datetime.datetime.now().isoformat(),
+        })
+
+    to_email = row.get("user_email")
+    if to_email and ctx.actor_kind != "system":
+        link = order_url(order_id)
+        if new in (lc.APPROVED, lc.REJECTED):
+            decision = "afvist" if new == lc.REJECTED else "godkendt"
+            msg = ("Din bestilling blev desværre afvist." if new == lc.REJECTED
+                   else "Din bestilling er godkendt. Udbyderen bekræfter nu din plads, og du får besked, når den er booket.")
+            if new == lc.REJECTED and note:
+                msg += f" Begrundelse fra HR: {note}"
+            _send_email_safe(
+                to_email, f"Din kursusbestilling er {decision}", "order_approved", company_id,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                decision=decision, message=msg, order_url=link,
+            )
+        elif new == lc.BOOKED:
+            _send_email_safe(
+                to_email, f"Din plads er booket — {row.get('product_title', '')}",
+                "order_booked", company_id,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                variant_date=row.get("variant_date") or "",
+                variant_location=row.get("variant_location") or "", order_url=link,
+            )
+        elif new == lc.CANCELLED and "owner" not in actors_for(ctx, row):
+            _send_email_safe(
+                to_email, f"Din bestilling er annulleret — {row.get('product_title', '')}",
+                "order_cancelled", company_id,
+                product_title=row.get("product_title", ""), order_id=order_id,
+                reason=reason or "", order_url=link,
+            )
+
+    if new == lc.APPROVED and old == lc.PENDING_APPROVAL:
+        _notify_vendor_safe(row)
+    if new == lc.CANCELLED and ctx.actor_kind == "vendor":
+        _send_hr_vendor_decline_email_safe(row, reason)
+
+
+def set_status(ctx, order_id, new_status, *, note=None, reason=None):
+    """The ONE authorized status transition (N-1.1).
+
+    * validates the move against the lifecycle map AND the actor's role
+      (learner may cancel/complete own order, HR approves/rejects/books,
+      a vendor books/declines/completes only its own orders, admin anything);
+    * writes status + approval row + budget charge/refund + history + audit in ONE
+      transaction; side effects (webhooks, email, vendor notice) run post-commit;
+    * is idempotent: asking for the status the order already has succeeds with
+      ``unchanged=True`` and does nothing (no double charge, no double email).
+
+    Legacy names (``pending``, ``confirmed``, ...) are mapped onto the canonical
+    statuses. Returns {success, order_id, status, previous_status, charged,
+    refunded, unchanged?, error?, message}.
+    """
+    raw = (new_status or "").strip().lower()
+    if not raw or raw not in _LEGACY_INPUTS:
+        return {"success": False, "error": "bad_status", "message": "Ugyldig status."}
+    new = lc.normalize_status(raw)
 
     conn = _get_connection()
     if conn is None:
@@ -1021,120 +1409,43 @@ def set_status(ctx, order_id, new_status):
     cur = None
     try:
         cur = _dict_cursor(conn)
-        cur.execute("SELECT * FROM course_orders WHERE order_id = %s", (order_id,))
+        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
         row = cur.fetchone()
         if not row:
             return {"success": False, "error": "not_found",
                     "message": "Ordren blev ikke fundet."}
 
-        if not _ownership_ok(ctx, row):
+        actors = actors_for(ctx, row)
+        if not actors:
+            # Anti-enumeration: behave like not-found.
             return {"success": False, "error": "not_found",
                     "message": "Ordren blev ikke fundet."}
 
-        old_status = (row.get("status") or "").strip()
+        old = lc.normalize_status(row.get("status"))
+        ok, code, msg = lc.check_transition(old, new, actors)
+        if code == "no_change":
+            return {"success": True, "unchanged": True, "order_id": order_id, "status": new,
+                    "previous_status": old, "charged": False, "refunded": False,
+                    "already_cancelled": new in _CANCELLED_LIKE_STATUSES,
+                    "message": "Ordren havde allerede denne status."}
+        if not ok:
+            conn.rollback()
+            return {"success": False, "error": code, "message": msg,
+                    "status": old, "order_id": order_id}
 
-        cur.execute(
-            "UPDATE course_orders SET status = %s, updated_at = NOW() "
-            "WHERE order_id = %s",
-            (new_status, order_id),
-        )
-        # If an approver is acting, record approved_by.
-        if new_status in ("approved", "confirmed") and ctx.user_id:
-            try:
-                cur.execute(
-                    "UPDATE course_orders SET approved_by = %s WHERE order_id = %s",
-                    (ctx.user_id, order_id),
-                )
-            except Exception:
-                pass
-
-        charged = False
-        refunded = False
-
-        if new_status in _CANCELLED_LIKE_STATUSES:
-            refunded = _maybe_refund(cur, row)
-        elif old_status in _NON_CHARGING_STATUSES and new_status not in _NON_CHARGING_STATUSES:
-            # Order is leaving pending_approval into a live state -> charge once.
-            charged = _maybe_charge(cur, row)
-
-        _write_audit(
-            cur,
-            company_id=_int_or_none(row.get("company_id")),
-            user_id=ctx.user_id,
-            action="order.status_changed",
-            resource_id=order_id,
-            description=f"{old_status}->{new_status} charged={charged} refunded={refunded}",
-        )
-
+        info = _apply_transition(cur, ctx, row, new, actors, note=note, reason=reason)
         conn.commit()
-
-        # --- cross-integration side effects (post-commit, best-effort) ------
-        company_id = _int_or_none(row.get("company_id"))
-        # Budget overrun email: the charge above flagged a crossing on the row.
-        # Send the branded alert to managers now (post-commit, own connection).
-        _overrun = row.get("_budget_overrun")
-        if _overrun:
-            _send_budget_overrun_emails_safe(
-                _overrun.get("company_id"),
-                department=_overrun.get("department"),
-                spent=_overrun.get("spent"),
-                annual_budget=_overrun.get("annual_budget"),
-                order_id=_overrun.get("order_id"),
-            )
-        if new_status in ("approved", "confirmed"):
-            _event = "order.approved"
-        elif new_status in _CANCELLED_LIKE_STATUSES:
-            _event = "order.rejected"
-        else:
-            _event = "order.status_changed"
-        # Shared payload shape for every order status side-effect event.
-        _order_payload = {
-            "order_id": order_id, "status": new_status,
-            "previous_status": old_status, "charged": charged, "refunded": refunded,
-            "product_title": row.get("product_title"),
-            "department": (row.get("department") or "") or None,
-            "user_email": row.get("user_email"),
-        }
-        _emit_event_safe(company_id, _event, _order_payload)
-        # ALWAYS emit a generic order.updated on a real status transition so the
-        # subscription UI's advertised 'order.updated' event actually fires (in
-        # addition to the approved/rejected specials above). No-op when the
-        # status did not actually change.
-        if old_status != new_status:
-            _emit_event_safe(company_id, "order.updated", _order_payload)
-        # course.completed — when the order/completion transitions to completed.
-        if new_status == "completed" and old_status != "completed":
-            _emit_event_safe(company_id, "course.completed", {
-                "order_id": order_id,
-                "product_title": row.get("product_title"),
-                "product_handle": row.get("product_handle"),
-                "department": (row.get("department") or "") or None,
-                "user_id": _int_or_none(row.get("user_id")),
-                "user_email": row.get("user_email"),
-                "completed_at": datetime.datetime.now().isoformat(),
-            })
-        # Tell the requester their order was decided.
-        _requester_email = row.get("user_email")
-        if _requester_email and new_status in ("approved", "confirmed", "rejected"):
-            _decision = "afvist" if new_status == "rejected" else "godkendt"
-            _send_email_safe(
-                _requester_email,
-                f"Din kursusbestilling er {_decision}",
-                "order_approved", company_id,
-                product_title=row.get("product_title", ""), order_id=order_id,
-                decision=_decision,
-                message=("Din bestilling blev desværre afvist."
-                         if new_status == "rejected"
-                         else "Din bestilling er godkendt — log ind for at komme i gang."),
-            )
+        _after_transition(ctx, row, old, new, info, note=note, reason=reason)
 
         return {
             "success": True,
             "order_id": order_id,
-            "status": new_status,
-            "previous_status": old_status,
-            "charged": charged,
-            "refunded": refunded,
+            "status": new,
+            "status_label": lc.status_label(new),
+            "previous_status": old,
+            "charged": info["charged"],
+            "refunded": info["refunded"],
+            "already_cancelled": False,
         }
     except Exception as e:
         logger.error("order_service.set_status failed: %s", e)
@@ -1150,3 +1461,450 @@ def set_status(ctx, order_id, new_status):
                 cur.close()
         except Exception:
             pass
+
+
+def cancel_order(ctx, order_id, reason=None):
+    """Cancel an order (owner, same-company manager, vendor or admin), refunding
+    budget exactly once. Idempotent: cancelling twice never refunds twice."""
+    res = set_status(ctx, order_id, lc.CANCELLED, reason=reason)
+    if res.get("success"):
+        res.setdefault("message", "Ordren er annulleret.")
+        if not res.get("unchanged"):
+            res["message"] = "Ordren er annulleret."
+        res["already_cancelled"] = bool(res.get("unchanged"))
+    return res
+
+
+def book_order(ctx, order_id, note=None):
+    """Mark an approved order as booked (vendor confirms the seat; HR/admin may do
+    it on behalf of a vendor without portal access — the actor is logged)."""
+    return set_status(ctx, order_id, lc.BOOKED, note=note)
+
+
+def decide_approval(ctx, approval_id, decision, notes=""):
+    """Approve or reject via the approval queue. Resolves the approval row,
+    then runs the single transition (status + approval row + budget) in one
+    transaction. Returns set_status' dict (plus ``order_id``)."""
+    if decision not in ("approved", "rejected"):
+        return {"success": False, "error": "bad_decision", "message": "Ugyldig beslutning."}
+    conn = _get_connection()
+    if conn is None:
+        return {"success": False, "error": "no_db", "message": "Databasen er ikke tilgængelig lige nu."}
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute(
+            "SELECT order_id FROM order_approvals WHERE id = %s AND company_id = %s AND status = 'pending'",
+            (approval_id, ctx.company_id),
+        )
+        a = cur.fetchone()
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+    if not a:
+        return {"success": False, "error": "not_found",
+                "message": "Godkendelsen blev ikke fundet, eller er allerede behandlet."}
+    target = lc.APPROVED if decision == "approved" else lc.REJECTED
+    return set_status(ctx, a["order_id"], target, note=(notes or None))
+
+
+def bulk_decide(ctx, approval_ids, decision, notes=""):
+    """Decide many approvals; per-item results, one failure never blocks the rest."""
+    results = []
+    for aid in approval_ids or []:
+        try:
+            r = decide_approval(ctx, int(aid), decision, notes)
+        except Exception as e:  # pragma: no cover - defensive
+            r = {"success": False, "error": str(e)}
+        r["approval_id"] = aid
+        results.append(r)
+    ok = sum(1 for r in results if r.get("success"))
+    return {"success": ok > 0 or not results, "done": ok, "failed": len(results) - ok, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Completion — the ONE completion path (N-1.3)
+# ---------------------------------------------------------------------------
+def complete_order(ctx, order_id, *, note=None):
+    """Mark a course completed. Used by the learner button, the AI tool, HR
+    "mark complete" and the vendor portal.
+
+    In one transaction: order -> completed (+ completion_status/date), the
+    learner's completed-course list, learning progress, the employee counters.
+    Then: ``course.completed`` event and a manager notification. Returns the
+    completion moment payload (skill proposals, next steps) for the UI/AI.
+    """
+    conn = _get_connection()
+    if conn is None:
+        return {"success": False, "error": "no_db",
+                "message": "Databasen er ikke tilgængelig lige nu."}
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        row = cur.fetchone()
+        if not row:
+            return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
+        actors = actors_for(ctx, row)
+        if not actors:
+            return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
+
+        old = lc.normalize_status(row.get("status"))
+        if old == lc.COMPLETED:
+            moment = _completion_moment(row)
+            return {"success": True, "unchanged": True, "order_id": order_id,
+                    "status": lc.COMPLETED, "status_label": lc.status_label(lc.COMPLETED),
+                    "already_completed": True, **moment}
+        ok, code, msg = lc.check_transition(old, lc.COMPLETED, actors)
+        if not ok:
+            conn.rollback()
+            return {"success": False, "error": code, "message": msg, "status": old}
+
+        info = _apply_transition(cur, ctx, row, lc.COMPLETED, actors, note=note)
+        _record_completion_side_effects(cur, row)
+        conn.commit()
+        _after_transition(ctx, row, old, lc.COMPLETED, info, note=note)
+        _notify_manager_of_completion(row)
+        moment = _completion_moment(row)
+        return {"success": True, "order_id": order_id, "status": lc.COMPLETED,
+                "status_label": lc.status_label(lc.COMPLETED),
+                "previous_status": old, **moment}
+    except Exception as e:
+        logger.error("order_service.complete_order failed: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"success": False, "error": str(e),
+                "message": "Der opstod en fejl, da kurset skulle markeres som gennemført."}
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+
+
+def _record_completion_side_effects(cur, row):
+    """Profile course list + learning progress + counters (inside the tx)."""
+    username = row.get("username")
+    handle = row.get("product_handle") or ""
+    title = row.get("product_title") or ""
+    uid = _int_or_none(row.get("user_id"))
+    cid = _int_or_none(row.get("company_id"))
+    vendor_name = ""
+    try:
+        import catalog_service
+        p = catalog_service.get_product(handle) if handle else None
+        vendor_name = (p or {}).get("vendor") or ""
+    except Exception:
+        pass
+    if username and title:
+        cur.execute(
+            """
+            INSERT INTO user_completed_courses
+                (username, course_title, course_handle, vendor, completed_date)
+            VALUES (%s, %s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE course_handle = VALUES(course_handle),
+                vendor = VALUES(vendor), completed_date = VALUES(completed_date)
+            """,
+            (username, title[:255], handle or None, vendor_name,
+             datetime.date.today().isoformat()),
+        )
+    if uid:
+        cur.execute(
+            "SELECT id FROM employee_learning_progress WHERE user_id = %s AND "
+            "COALESCE(course_handle, '') = %s AND COALESCE(company_id, 0) = %s LIMIT 1",
+            (uid, handle, cid or 0),
+        )
+        existing = cur.fetchone()
+        if existing:
+            cur.execute(
+                "UPDATE employee_learning_progress SET status = 'completed', "
+                "progress_percentage = 100, completed_at = NOW() WHERE id = %s",
+                (existing["id"] if isinstance(existing, dict) else existing[0],),
+            )
+        else:
+            cur.execute(
+                """
+                INSERT INTO employee_learning_progress
+                    (user_id, company_id, course_handle, content_type, content_name,
+                     status, progress_percentage, completed_at, created_at)
+                VALUES (%s, %s, %s, 'course', %s, 'completed', 100, NOW(), NOW())
+                """,
+                (uid, cid, handle, title[:255]),
+            )
+        if cid:
+            cur.execute(
+                "UPDATE company_users SET total_courses_completed = COALESCE(total_courses_completed, 0) + 1, "
+                "courses_completed = COALESCE(courses_completed, 0) + 1 "
+                "WHERE company_id = %s AND user_id = %s",
+                (cid, uid),
+            )
+
+
+def _notify_manager_of_completion(row):
+    """Manager task: "bekræft kompetenceløft" for the learner's manager (else HR)."""
+    cid = _int_or_none(row.get("company_id"))
+    uid = _int_or_none(row.get("user_id"))
+    if not cid or not uid:
+        return
+    conn = _get_connection()
+    if conn is None:
+        return
+    cur = None
+    try:
+        from notification_service import notify_user, notify_roles, HR_ROLES
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT manager_user_id FROM company_users WHERE company_id = %s AND user_id = %s LIMIT 1",
+                    (cid, uid))
+        r = cur.fetchone()
+        mgr = _int_or_none(r.get("manager_user_id") if isinstance(r, dict) else (r[0] if r else None))
+        msg = (f"{row.get('user_name') or row.get('username') or 'En medarbejder'} har gennemført "
+               f"“{row.get('product_title')}”. Bekræft kompetenceløftet, så det tæller i kompetenceoverblikket.")
+        common = dict(title="Bekræft kompetenceløft", message=msg, kind="skill_uplift",
+                      action_url="/hr/employee/%s/details" % uid,
+                      dedupe_key="uplift:%s" % row.get("order_id"), dedupe_hours=None)
+        if mgr:
+            notify_user(cur, user_id=mgr, company_id=cid, **common)
+        else:
+            notify_roles(cur, cid, HR_ROLES, **common)
+        conn.commit()
+    except Exception as e:
+        logger.debug("order_service: manager completion notice skipped: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+
+
+def _completion_moment(row):
+    """Skills proposed from the course metadata, next steps, review prompt."""
+    try:
+        import completion_service
+        return completion_service.completion_moment(row)
+    except Exception as e:
+        logger.debug("order_service: completion moment skipped: %s", e)
+        return {"skill_proposals": [], "next_steps": [], "review_url": None}
+
+
+# ---------------------------------------------------------------------------
+# Billing — a separate dimension; payment happens OFF-platform (N-6.3)
+# ---------------------------------------------------------------------------
+_BILLING_ROLES = frozenset({"hr_manager", "company_admin"})
+
+
+def _billing_allowed(ctx, row):
+    if ctx.is_platform_admin:
+        return True
+    cid = _int_or_none(row.get("company_id"))
+    return (cid is not None and ctx.company_id == cid
+            and (ctx.company_role or "") in _BILLING_ROLES)
+
+
+def set_billing_status(ctx, order_id, new_billing, *, invoice_number=None, invoice_date=None,
+                       due_date=None, payment_date=None, payment_reference=None,
+                       payment_method=None, note=None):
+    """not_invoiced -> invoiced -> paid (+ credited). HR/admin only; every change
+    is recorded in order_status_history(kind='billing'). Solo-user orders (no
+    company) are managed by the platform admin only."""
+    target = (new_billing or "").strip().lower()
+    if target not in lc.BILLING_STATUSES:
+        return {"success": False, "error": "bad_status", "message": "Ugyldig faktureringsstatus."}
+
+    conn = _get_connection()
+    if conn is None:
+        return {"success": False, "error": "no_db", "message": "Databasen er ikke tilgængelig lige nu."}
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        row = cur.fetchone()
+        if not row or not _billing_allowed(ctx, row):
+            return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
+
+        old = lc.normalize_billing(row.get("billing_status"))
+        if old == target:
+            return {"success": True, "unchanged": True, "order_id": order_id, "billing_status": target}
+        if not lc.can_bill_transition(old, target):
+            conn.rollback()
+            return {"success": False, "error": "bad_transition",
+                    "message": "Fakturering kan ikke gå fra ‘%s’ til ‘%s’."
+                               % (lc.billing_label(old), lc.billing_label(target))}
+        if lc.normalize_status(row.get("status")) in (lc.REJECTED, lc.PENDING_APPROVAL) and target != lc.NOT_INVOICED:
+            conn.rollback()
+            return {"success": False, "error": "not_billable",
+                    "message": "Kun godkendte bestillinger kan faktureres."}
+
+        sets = ["billing_status = %s", "updated_at = NOW()"]
+        params = [target]
+        if target == lc.INVOICED:
+            if not (invoice_number or row.get("invoice_number")):
+                conn.rollback()
+                return {"success": False, "error": "invoice_number_required",
+                        "message": "Angiv fakturanummeret fra jeres eksterne system."}
+            if invoice_number:
+                sets.append("invoice_number = %s"); params.append(str(invoice_number)[:100])
+            sets.append("invoice_date = COALESCE(%s, CURDATE())"); params.append(invoice_date or None)
+            if due_date:
+                sets.append("invoice_due_date = %s"); params.append(due_date)
+        if target == lc.PAID:
+            sets.append("payment_date = COALESCE(%s, NOW())"); params.append(payment_date or None)
+            sets.append("payment_status = 'paid'")
+            if payment_reference:
+                sets.append("payment_reference = %s"); params.append(str(payment_reference)[:255])
+            if payment_method:
+                sets.append("payment_method = %s"); params.append(str(payment_method)[:50])
+        if target == lc.CREDITED and not note:
+            conn.rollback()
+            return {"success": False, "error": "note_required",
+                    "message": "Skriv en kort begrundelse for krediteringen."}
+        if target == lc.NOT_INVOICED:
+            sets.append("invoice_date = NULL"); sets.append("invoice_due_date = NULL")
+        if note:
+            sets.append("billing_note = %s"); params.append(str(note)[:2000])
+        cur.execute("UPDATE course_orders SET " + ", ".join(sets) + " WHERE order_id = %s",
+                    tuple(params) + (order_id,))
+        _record_history(cur, row, kind="billing", from_value=old, to_value=target, ctx=ctx,
+                        note=note or invoice_number or payment_reference)
+        _write_audit(cur, company_id=_int_or_none(row.get("company_id")), user_id=ctx.user_id,
+                     action="order.billing_changed", resource_id=order_id,
+                     description=f"{old}->{target} inv={invoice_number or row.get('invoice_number') or ''}")
+        conn.commit()
+        _emit_event_safe(_int_or_none(row.get("company_id")), "order.billing_changed", {
+            "order_id": order_id, "billing_status": target, "previous_billing_status": old,
+            "invoice_number": invoice_number or row.get("invoice_number")})
+        return {"success": True, "order_id": order_id, "billing_status": target,
+                "billing_label": lc.billing_label(target), "previous": old}
+    except Exception as e:
+        logger.error("order_service.set_billing_status failed: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"success": False, "error": str(e), "message": "Kunne ikke opdatere faktureringen."}
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+
+
+def update_billing_details(ctx, order_id, *, invoice_number=None, invoice_date=None, due_date=None,
+                           payment_date=None, payment_reference=None, payment_method=None, note=None):
+    """Edit invoice/payment references without changing the billing status."""
+    sets, params = [], []
+    for col, val in (("invoice_number", invoice_number), ("invoice_date", invoice_date),
+                     ("invoice_due_date", due_date), ("payment_date", payment_date),
+                     ("payment_reference", payment_reference), ("payment_method", payment_method),
+                     ("billing_note", note)):
+        if val is not None:
+            sets.append(col + " = %s")
+            params.append(val)
+    if not sets:
+        return {"success": False, "error": "no_fields", "message": "Ingen felter at opdatere."}
+    conn = _get_connection()
+    if conn is None:
+        return {"success": False, "error": "no_db", "message": "Databasen er ikke tilgængelig lige nu."}
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        row = cur.fetchone()
+        if not row or not _billing_allowed(ctx, row):
+            return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
+        cur.execute("UPDATE course_orders SET " + ", ".join(sets) + ", updated_at = NOW() WHERE order_id = %s",
+                    tuple(params) + (order_id,))
+        billing = lc.normalize_billing(row.get("billing_status"))
+        _record_history(cur, row, kind="billing", from_value=billing, to_value=billing, ctx=ctx,
+                        note="Fakturadetaljer rettet")
+        conn.commit()
+        return {"success": True, "order_id": order_id, "billing_status": billing}
+    except Exception as e:
+        logger.error("order_service.update_billing_details failed: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"success": False, "error": str(e), "message": "Kunne ikke opdatere faktureringen."}
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+
+
+def bulk_set_billing_status(ctx, order_ids, new_billing, **fields):
+    """Apply one billing change to many orders; per-order results."""
+    results = []
+    for oid in order_ids or []:
+        r = set_billing_status(ctx, oid, new_billing, **fields)
+        r["order_id"] = oid
+        results.append(r)
+    done = sum(1 for r in results if r.get("success"))
+    return {"success": done > 0, "done": done, "failed": len(results) - done, "results": results}
+
+
+# ---------------------------------------------------------------------------
+# Vendor notices (N-6.1)
+# ---------------------------------------------------------------------------
+def _notify_vendor_safe(row):
+    """Email the order's vendor that a seat is waiting to be confirmed. The
+    in-app notice is the vendor orders page badge (derived from approved,
+    not-yet-booked orders). Never raises; no-op without a vendor contact."""
+    vid = _int_or_none((row or {}).get("vendor_id"))
+    if not vid:
+        return
+    conn = _get_connection()
+    if conn is None:
+        return
+    cur = None
+    try:
+        cur = _dict_cursor(conn)
+        cur.execute("SELECT vendor_name, contact_email FROM vendors WHERE id = %s", (vid,))
+        v = cur.fetchone()
+        if not v or not v.get("contact_email"):
+            return
+        base = _app_base_url()
+        _send_email_safe(
+            v["contact_email"], "Ny bestilling afventer din bekræftelse", "vendor_new_order", None,
+            dedupe_key="vendor_new_order:%s" % row.get("order_id"),
+            vendor_name=v.get("vendor_name") or "", product_title=row.get("product_title") or "",
+            variant_date=row.get("variant_date") or "", variant_location=row.get("variant_location") or "",
+            participant=row.get("user_name") or row.get("username") or "",
+            orders_url=(base + "/vendor/orders") if base else "",
+        )
+    except Exception as e:
+        logger.debug("order_service: vendor notice skipped: %s", e)
+    finally:
+        try:
+            if cur is not None:
+                cur.close()
+        except Exception:
+            pass
+
+
+def _send_hr_vendor_decline_email_safe(row, reason):
+    """Email company managers that the vendor declined an order."""
+    cid = _int_or_none((row or {}).get("company_id"))
+    if not cid:
+        return
+    base = _app_base_url()
+    for to_email in _manager_recipient_emails(cid):
+        _send_email_safe(
+            to_email, "Udbyderen har afvist en bestilling", "order_cancelled", cid,
+            dedupe_key="vendor_declined:%s:%s" % (row.get("order_id"), to_email),
+            product_title=row.get("product_title", ""), order_id=row.get("order_id"),
+            reason=reason or "", order_url=(base + "/hr/order/%s/details" % row.get("order_id")) if base else "",
+        )

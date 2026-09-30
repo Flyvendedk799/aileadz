@@ -128,6 +128,9 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     <h2 style="color: {{ primary_color }};">Ordrebekræftelse</h2>
     <p>Tak for din bestilling hos {{ company_name }}.</p>
     <p><strong>{{ product_title }}</strong></p>
+    {% if status_line %}<p style="font-size:14px;">Status: <strong>{{ status_line }}</strong></p>{% endif %}
+    {% if next_step %}<p style="font-size:14px;color:#334155;">{{ next_step }}</p>{% endif %}
+    {% if order_url %}<p><a href="{{ order_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Se status</a></p>{% endif %}
     <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
   </div>
 </body></html>
@@ -153,7 +156,51 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     <h2 style="color: {{ primary_color }};">Din kursusbestilling er {{ decision or 'godkendt' }}</h2>
     <p><strong>{{ product_title }}</strong></p>
     <p>{{ message or 'Du kan nu komme i gang. Log ind for at se detaljerne.' }}</p>
+    {% if order_url %}<p><a href="{{ order_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Se din bestilling</a></p>{% endif %}
     <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'order_booked': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">Din plads er booket</h2>
+    <p><strong>{{ product_title }}</strong></p>
+    {% if variant_date %}<p style="font-size:14px;">Dato: {{ variant_date }}</p>{% endif %}
+    {% if variant_location %}<p style="font-size:14px;">Sted: {{ variant_location }}</p>{% endif %}
+    <p>Udbyderen har bekræftet din plads. Du kan tilføje kurset til din kalender fra bestillingen.</p>
+    {% if order_url %}<p><a href="{{ order_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Se din bestilling</a></p>{% endif %}
+    <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'order_cancelled': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color:#b91c1c;">Bestilling annulleret</h2>
+    <p><strong>{{ product_title }}</strong></p>
+    {% if reason %}<p style="font-size:14px;">Årsag: {{ reason }}</p>{% endif %}
+    {% if order_url %}<p><a href="{{ order_url }}" style="color: {{ primary_color }};">Se bestillingen</a></p>{% endif %}
+    <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'vendor_new_order': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    <h2 style="color: {{ primary_color }};">Ny bestilling afventer din bekræftelse</h2>
+    <p>Hej {{ vendor_name or 'leverandør' }},</p>
+    <p>En bestilling er godkendt og venter på, at du bekræfter pladsen.</p>
+    <p><strong>{{ product_title }}</strong></p>
+    {% if participant %}<p style="font-size:14px;">Deltager: {{ participant }}</p>{% endif %}
+    {% if variant_date %}<p style="font-size:14px;">Dato: {{ variant_date }}</p>{% endif %}
+    {% if variant_location %}<p style="font-size:14px;">Sted: {{ variant_location }}</p>{% endif %}
+    {% if orders_url %}<p><a href="{{ orders_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Åbn bestillinger</a></p>{% endif %}
   </div>
 </body></html>
 """,
@@ -390,6 +437,39 @@ def email_recently_sent(dedupe_key: str, *, within_hours: int = 24,
         return False
 
 
+# Templates that respect users.email_notifications. Everything else (order
+# confirmation/decision, password reset, invites, welcome) is transactional.
+NON_TRANSACTIONAL_TEMPLATES = frozenset({
+    'manager_weekly_digest', 'compliance_recert_alert', 'announcement',
+    'budget_overrun_alert', 'order_approval_needed', 'scheduled_report',
+})
+
+
+def recipient_opted_out(to_email: str) -> bool:
+    """True iff a platform user with this address switched email notifications
+    off. Fully guarded: any error means "not opted out"."""
+    try:
+        conn = getattr(current_app, 'mysql', None)
+        conn = getattr(conn, 'connection', None) if conn is not None else None
+        if conn is None or not to_email:
+            return False
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT email_notifications FROM users WHERE email = %s LIMIT 1",
+                (to_email,),
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if not row:
+            return False
+        val = row.get('email_notifications') if isinstance(row, dict) else row[0]
+        return val is not None and int(val) == 0
+    except Exception:
+        return False
+
+
 def send_branded_email(
     to_email: str,
     subject: str,
@@ -431,6 +511,16 @@ def send_branded_email(
         _record_email_attempt(
             to_email, template_name, 'error', company_id=company_id,
             error=f"render: {e}", dedupe_key=dedupe_key,
+        )
+        return False
+
+    # Honour the per-user "email notifications" preference for non-transactional
+    # mail (digests, alerts, announcements). Order/account/invite mail is always
+    # sent (N-3.2).
+    if template_name in NON_TRANSACTIONAL_TEMPLATES and recipient_opted_out(to_email):
+        _record_email_attempt(
+            to_email, template_name, 'skipped_opt_out', company_id=company_id,
+            dedupe_key=dedupe_key,
         )
         return False
 

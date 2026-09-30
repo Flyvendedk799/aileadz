@@ -99,7 +99,7 @@ def chatbot_dashboard():
         pass
 
     try:
-        cur.execute("SELECT COUNT(*) AS cnt FROM course_orders WHERE status = 'pending'")
+        cur.execute("SELECT COUNT(*) AS cnt FROM course_orders WHERE status IN ('pending_approval', 'approved', 'pending')")
         row = cur.fetchone()
         pending_orders_count = row['cnt'] if row else 0
     except Exception:

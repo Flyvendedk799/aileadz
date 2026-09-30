@@ -19,9 +19,9 @@ try:
 except ImportError:
     raise ImportError("Please install fuzzywuzzy (pip install fuzzywuzzy) or consider using RapidFuzz.")
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY') or "supersecretkey"  # Env-overridable; fallback kept so prod doesn't break.
-
+# NOTE: this module used to create its own throwaway ``Flask()`` app (with a
+# hardcoded fallback secret key) next to the blueprint. The real app is built by
+# run.create_app(); the stray instance was removed (N-8.6).
 app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
 # Register order routes as nested blueprint
@@ -2277,7 +2277,7 @@ def widget_ask(token):
     cur.close()
 
     if not widget:
-        return jsonify({"error": "Widget not found"}), 404
+        return jsonify({"error": "Widget'en blev ikke fundet."}), 404
 
     allowed_hosts = _widget_allowed_hosts(widget)
     req_host = _widget_origin_host()
@@ -2454,7 +2454,3 @@ def widget_loader_js(token):
     return resp
 
 
-app.register_blueprint(app1_bp, url_prefix='/app1')
-
-if __name__ == "__main__":
-    app.run(debug=False)

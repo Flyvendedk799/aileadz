@@ -82,10 +82,10 @@ def login(slug=None):
                         pass
         if user and password_valid:
             _apply_session_user_context(user)
-            flash('Login successful!', 'success')
+            flash('Du er logget ind.', 'success')
             return redirect(url_for('dashboard.dashboard'))
         else:
-            flash('Invalid username or password', 'danger')
+            flash('Forkert brugernavn eller adgangskode.', 'danger')
             if tenant_slug:
                 return redirect(url_for('auth.login', slug=tenant_slug))
             return redirect(url_for('auth.login'))
@@ -99,20 +99,20 @@ def register():
         password = request.form.get('password')
         email = request.form.get('email')
         if not username or not password or not email:
-            flash('Please fill out all fields.', 'danger')
+            flash('Udfyld alle felter.', 'danger')
             return redirect(url_for('auth.register'))
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur.execute("SELECT * FROM users WHERE username = %s OR email = %s", (username, email))
         existing_user = cur.fetchone()
         if existing_user:
-            flash('Username or email already exists', 'danger')
+            flash('Brugernavnet eller e-mailen er allerede i brug.', 'danger')
             cur.close()
             return redirect(url_for('auth.register'))
         hashed_password = generate_password_hash(password)
         cur.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)", (username, hashed_password, email))
         current_app.mysql.connection.commit()
         cur.close()
-        flash('Registration successful! Please log in.', 'success')
+        flash('Din konto er oprettet. Log ind for at komme i gang.', 'success')
         if request.args.get('tenant'):
             return redirect(url_for('auth.login', slug=request.args.get('tenant')))
         return redirect(url_for('auth.login'))
@@ -121,13 +121,13 @@ def register():
 @auth_bp.route('/logout')
 def logout():
     session.clear()
-    flash('Logged out successfully.', 'success')
+    flash('Du er logget ud.', 'success')
     return redirect(url_for('auth.login'))
 
 @auth_bp.route('/brands')
 def brands():
     if 'user' not in session:
-        flash('Please log in to access your profile.', 'danger')
+        flash('Log ind for at se din profil.', 'danger')
         return redirect(url_for('auth.login'))
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)

@@ -5265,7 +5265,7 @@ def _execute_analyze_skill_gaps(args):
         return json.dumps({
             "status": "ok",
             "message": "Der er ingen kompetencemaal defineret for din virksomhed endnu. "
-                       "Bed din HR-afdeling om at opsaette kompetencemaal.",
+                       "Bed din HR-afdeling om at opsætte kompetencemål.",
             "gaps": []
         })
 

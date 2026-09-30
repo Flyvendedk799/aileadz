@@ -141,6 +141,38 @@ class ResetAndInviteTests(Base):
         self.assertIn("/invitation/tok-invite-", kw["set_password_url"])
 
 
+class HrResetLinkTests(Base):
+    def setUp(self):
+        super().setUp()
+        self.db.execute("INSERT INTO companies (id, company_name, status) VALUES (7, 'Firma', 'active')")
+        self.db.execute("INSERT INTO users (id, username, password, email) VALUES (2, 'hr', 'x', 'hr@firma.dk')")
+        self.db.execute("INSERT INTO company_users (company_id, user_id, username, role, status) VALUES "
+                        "(7, 1, 'ada', 'employee', 'active'), (7, 2, 'hr', 'hr_manager', 'active')")
+        self.db.raw.executescript("CREATE TABLE IF NOT EXISTS audit_log2 (id INTEGER)")
+
+    def _hr(self):
+        c = self.app.test_client()
+        with c.session_transaction() as s:
+            s.update(user="hr", user_id=2, company_id=7, company_role="hr_manager")
+        return c
+
+    def test_hr_sends_a_link_instead_of_reading_out_a_password(self):
+        with mock.patch("white_label_global_integration.get_template_context", return_value={}):
+            resp = self._hr().post("/hr/employee/1/reset-password", follow_redirects=False)
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.mails[-1][:2], ("ada@firma.dk", "password_reset"))
+        # the stored password is untouched: no plaintext ever handled by a human
+        self.assertTrue(check_password_hash(self.db.one("SELECT password FROM users WHERE id=1")["password"], "gammelt-kodeord"))
+
+    def test_employee_cannot_trigger_it_for_a_colleague(self):
+        c = self.app.test_client()
+        with c.session_transaction() as s:
+            s.update(user="ada", user_id=1, company_id=7, company_role="employee")
+        resp = c.post("/hr/employee/2/reset-password")
+        self.assertEqual(resp.status_code, 302)
+        self.assertEqual(self.mails, [])
+
+
 class PasswordPolicyTests(unittest.TestCase):
     def test_policy(self):
         import account_flows as af

@@ -50,7 +50,7 @@ CREATE TABLE companies (id INTEGER PRIMARY KEY AUTOINCREMENT, company_name TEXT,
   status TEXT DEFAULT 'active', settings TEXT);
 CREATE TABLE company_users (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, user_id INTEGER,
   username TEXT, full_name TEXT, email TEXT, role TEXT DEFAULT 'employee', department TEXT,
-  status TEXT DEFAULT 'active', manager_user_id INTEGER, total_courses_completed INTEGER DEFAULT 0,
+  status TEXT DEFAULT 'active', permissions TEXT, manager_user_id INTEGER, total_courses_completed INTEGER DEFAULT 0,
   courses_completed INTEGER DEFAULT 0);
 CREATE TABLE vendors (id INTEGER PRIMARY KEY AUTOINCREMENT, vendor_name TEXT, slug TEXT, contact_email TEXT,
   status TEXT DEFAULT 'active');

@@ -2492,10 +2492,6 @@ def create_hr_dashboard_blueprint():
             flash("Virksomhed ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
-        import secrets
-        import string
-        from werkzeug.security import generate_password_hash
-
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
@@ -2513,29 +2509,29 @@ def create_hr_dashboard_blueprint():
                 cur.close()
                 return redirect(url_for('companies.employees'))
 
-            # Generate a random password
-            alphabet = string.ascii_letters + string.digits
-            new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
-            hashed = generate_password_hash(new_password)
-
-            cur.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user_id))
-
-            # Audit log
             cur.execute("""
                 INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
-                VALUES (%s, %s, 'password_reset', 'user', %s, %s)
+                VALUES (%s, %s, 'password_reset_link', 'user', %s, %s)
             """, (company['id'], session.get('user_id'), str(user_id),
-                  json.dumps({"target_username": emp['username'], "reset_by": session.get('user')})))
-
+                  json.dumps({"target_username": emp['username'], "sent_by": session.get('user')})))
             current_app.mysql.connection.commit()
             cur.close()
 
-            flash(f"Nyt password for {emp['username']}: {new_password}", "success")
+            # Nobody reads out a password any more: the employee gets a one-time
+            # link by e-mail and chooses their own (N-2.1 / S-2.4).
+            if not emp.get('email'):
+                flash("Medarbejderen har ingen e-mailadresse, så der kan ikke sendes et link.", "warning")
+            else:
+                from account_flows import send_reset_link
+                if send_reset_link(user_id, actor=session.get('user') or 'hr'):
+                    flash(f"Vi har sendt et link til at nulstille adgangskoden til {emp['email']}.", "success")
+                else:
+                    flash("Linket kunne ikke sendes lige nu. Tjek e-mailopsætningen under Systemstatus, og prøv igen.", "danger")
             return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
         except Exception as e:
-            current_app.logger.error(f"Error resetting password: {e}")
-            flash("Fejl ved nulstilling af password.", "danger")
+            current_app.logger.error(f"Error sending reset link: {e}")
+            flash("Fejl ved afsendelse af nulstillingslink.", "danger")
             return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/toggle-status', methods=['POST'])

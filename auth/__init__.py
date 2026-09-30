@@ -59,7 +59,8 @@ def login(slug=None):
         username = request.form.get('username')
         password = request.form.get('password')
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("SELECT * FROM users WHERE username = %s", (username,))
+        cur.execute("SELECT * FROM users WHERE username = %s OR LOWER(email) = LOWER(%s) ORDER BY (username = %s) DESC LIMIT 1",
+                    (username, username, username))
         user = cur.fetchone()
         cur.close()
         # Support both hashed passwords (new) and legacy plaintext (old)
@@ -92,6 +93,31 @@ def login(slug=None):
     return render_template('fm/login.html', tenant_slug=tenant_slug)
 
 
+def _join_tenant(user_id, username, email, slug):
+    """``/register?tenant=<slug>`` joins the company - but only when the e-mail
+    address belongs to the company's verified domain (company_domain), so nobody
+    can join a company by guessing its slug. Returns the company name or None."""
+    if not slug or not user_id or '@' not in (email or ''):
+        return None
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, company_name, company_domain FROM companies "
+                    "WHERE company_slug = %s AND status = 'active' LIMIT 1", (slug,))
+        company = cur.fetchone()
+        domain = ((company or {}).get('company_domain') or '').strip().lower().lstrip('@')
+        if not company or not domain or email.rsplit('@', 1)[1].lower() != domain:
+            cur.close()
+            return None
+        cur.execute("INSERT INTO company_users (company_id, user_id, username, email, role, status) "
+                    "VALUES (%s, %s, %s, %s, 'employee', 'active')", (company['id'], user_id, username, email))
+        current_app.mysql.connection.commit()
+        cur.close()
+        return company['company_name']
+    except Exception as e:
+        current_app.logger.warning("tenant join skipped: %s", e)
+        return None
+
+
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
     if request.method == 'POST':
@@ -110,9 +136,14 @@ def register():
             return redirect(url_for('auth.register'))
         hashed_password = generate_password_hash(password)
         cur.execute("INSERT INTO users (username, password, email) VALUES (%s, %s, %s)", (username, hashed_password, email))
+        new_user_id = cur.lastrowid
         current_app.mysql.connection.commit()
         cur.close()
-        flash('Din konto er oprettet. Log ind for at komme i gang.', 'success')
+        joined = _join_tenant(new_user_id, username, email, request.args.get('tenant'))
+        if joined:
+            flash('Din konto er oprettet, og du er tilknyttet %s. Log ind for at komme i gang.' % joined, 'success')
+        else:
+            flash('Din konto er oprettet. Log ind for at komme i gang.', 'success')
         if request.args.get('tenant'):
             return redirect(url_for('auth.login', slug=request.args.get('tenant')))
         return redirect(url_for('auth.login'))

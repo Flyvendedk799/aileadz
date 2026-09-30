@@ -106,7 +106,7 @@
         </div>
         <div class="form-row">
           <label class="remember"><input type="checkbox" name="remember" checked /> Husk mig</label>
-          <a class="forgot" href="{{ url_for('account.forgot_password') }}">Glemt adgangskode?</a>
+          <a class="forgot" href="{{ url_for('auth.forgot_password') if has_endpoint('auth.forgot_password') else url_for('account.forgot_password') }}">Glemt adgangskode?</a>
         </div>
         <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Log ind <i class="fa-solid fa-arrow-right"></i></button>
       </form>

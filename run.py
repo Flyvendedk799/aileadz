@@ -258,8 +258,8 @@ def create_app():
     app.register_blueprint(futurematch_bp)
 
     # Forgot password / reset / invite screens (N-2.1).
-    from account_flows import account_bp
-    app.register_blueprint(account_bp)
+    from account_flows import register_account_flows
+    register_account_flows(app)
 
     # Dashboard-upgrade blueprints: new HR feature pages (Pillar B) sharing the
     # /hr prefix, and the global ⌘K search API. Guarded so a failure here can

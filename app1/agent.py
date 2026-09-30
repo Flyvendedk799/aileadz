@@ -2503,7 +2503,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             )
             if not allowed:
                 yield f"data: {json.dumps({'type': 'chunk', 'content': budget_message})}\n\n"
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                # Same terminator as every other path: the client stops on [DONE]
+                # (it ignored a {'type': 'done'} object and left the turn "sending").
+                yield "data: [DONE]\n\n"
                 return
 
             turn_count = session.get("_ai_turn_count", 0) + 1

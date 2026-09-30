@@ -430,15 +430,16 @@ def create_hr_dashboard_blueprint():
             # Avg feedback for company
             cur.execute("""
                 SELECT AVG(ci.feedback_rating) AS avg_fb,
-                       COUNT(CASE WHEN ci.feedback_rating > 0 THEN 1 END) AS fb_count
+                       COUNT(CASE WHEN ci.feedback_rating <> 0 THEN 1 END) AS fb_count
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
                 JOIN company_users cu ON u.id = cu.user_id
                 WHERE cu.company_id = %s
-                  AND ci.feedback_rating IS NOT NULL AND ci.feedback_rating > 0
+                  AND ci.feedback_rating IS NOT NULL AND ci.feedback_rating <> 0
             """, (company['id'],))
             fb_row = cur.fetchone()
-            company_avg_feedback = round(fb_row['avg_fb'] or 0, 1)
+            from feedback_scale import to_five
+            company_avg_feedback = to_five(fb_row['avg_fb'])
             company_feedback_count = fb_row['fb_count'] or 0
 
             # Phase 3.2: Recent AI insights
@@ -2815,6 +2816,12 @@ def create_hr_dashboard_blueprint():
         except Exception:
             page = ''
 
+        import credit_service
+        paused = credit_service.guard(company_id=company['id'], username=session.get('user'))
+        if paused:
+            return jsonify({"error": paused, "answers": [{"type": "text", "content": paused}],
+                            "credits_paused": True}), 402
+
         from hr_agent import handle_hr_ask
         return handle_hr_ask(user_query, session, page=page)
 
@@ -2824,8 +2831,38 @@ def create_hr_dashboard_blueprint():
         auth_check = require_hr_access()
         if auth_check:
             return jsonify({"error": "Ikke logget ind"}), 401
-        session.pop('hr_chat_session_id', None)
-        return jsonify({"success": True})
+        import hr_conversations
+        sid = hr_conversations.start_new(session, session.get('user'))
+        return jsonify({"success": True, "session_id": sid})
+
+    @hr_dashboard_bp.route('/chatbot/history')
+    def hr_chatbot_history():
+        """The current HR conversation + the user's past ones (panel restore, full page list)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"error": "Ikke logget ind"}), 401
+        import hr_conversations
+        username = session.get('user')
+        sid = hr_conversations.resolve_sid(session, username)
+        return jsonify({
+            "session_id": sid,
+            "messages": hr_conversations.load(username, sid),
+            "sessions": hr_conversations.list_sessions(username),
+        })
+
+    @hr_dashboard_bp.route('/chatbot/open', methods=['POST'])
+    def hr_chatbot_open():
+        """Continue one of the user's own past HR conversations."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"error": "Ikke logget ind"}), 401
+        import hr_conversations
+        sid = ((request.get_json(silent=True) or {}).get('session_id') or '').strip()
+        messages = hr_conversations.open_session(session.get('user'), sid)
+        if messages is None:
+            return jsonify({"error": "Samtalen blev ikke fundet."}), 404
+        session['hr_chat_session_id'] = sid
+        return jsonify({"session_id": sid, "messages": messages})
 
     @hr_dashboard_bp.route('/chatbot/sessions')
     def chatbot_sessions():

@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=16" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=14" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=15" />
   {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
   <style id="fm-wl-vars">
     :root {
@@ -190,7 +190,7 @@
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {% if session.get('user') %}
-        <span class="fm-chip credits"><i class="fa-solid fa-coins"></i> {{ session.get('credits', 0) }}</span>
+        {% set _cc = credit_chip() %}<a class="fm-chip credits" href="{{ url_for('pages.analytics') }}" title="{{ 'Virksomhedens AI-kreditter' if _cc.scope == 'company' else 'Dine AI-kreditter' }}" style="text-decoration:none"><i class="fa-solid fa-coins"></i> {{ _cc.label }}</a>
         <a class="fm-icon-btn" href="{{ url_for('auth.logout') }}" aria-label="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
         {% else %}
         <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>

@@ -1,0 +1,34 @@
+{% extends "fm_base.html" %}
+{% block page_id %}acatalog{% endblock %}
+{% block title %}Redigér kursus{% endblock %}
+{% block topbar_title %}{{ product.title }}{% endblock %}
+{% block topbar_sub %}Ændringerne ligger ovenpå kildedata, så en ny synkronisering overskriver dem ikke.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="crumb"><a href="{{ url_for('catalog_admin.products') }}">Kursusoversigt</a><i class="fa-solid fa-chevron-right"></i><span>{{ product.handle }}</span></div>
+  <div class="fm-card" style="max-width:760px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-pen"></i></span><h3>Kursusdata</h3>
+      <span class="fm-badge {{ 'green' if product.status == 'active' else 'amber' }} dot" style="margin-left:auto">{{ {'active':'Publiceret','hidden':'Skjult','archived':'Arkiveret'}[product.status] }}</span></div>
+    <div class="fm-card-body">
+      <form method="post" style="display:grid;gap:12px">
+        <label style="display:grid;gap:4px;font-size:13px">Titel<input class="fm-input" name="title" value="{{ product.title }}" required></label>
+        <label style="display:grid;gap:4px;font-size:13px">Udbyder<input class="fm-input" name="vendor" value="{{ product.vendor }}"></label>
+        <label style="display:grid;gap:4px;font-size:13px">Kort beskrivelse<textarea class="fm-input" name="summary" rows="4">{{ product.summary }}</textarea></label>
+        <label style="display:grid;gap:4px;font-size:13px">Emner (kommasepareret)<input class="fm-input" name="tags" value="{{ product.tags|join(', ') }}"></label>
+        <label style="display:grid;gap:4px;font-size:13px">Billede-URL<input class="fm-input" name="image_url" value="{{ product.image_url or '' }}"></label>
+        <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+          <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-floppy-disk"></i> Gem</button>
+          {% if product.edited %}<button class="btn btn-ghost btn-sm" name="reset" value="1" type="submit"><i class="fa-solid fa-rotate-left"></i> Fjern mine ændringer</button>{% endif %}
+        </div>
+      </form>
+      <hr style="margin:18px 0;border:0;border-top:1px solid var(--fm-line)">
+      <form method="post" action="{{ url_for('catalog_admin.product_status', handle=product.handle) }}" class="fm-flex fm-gap8" style="flex-wrap:wrap">
+        {% if product.status != 'active' %}<button class="btn btn-primary btn-sm" name="status" value="active"><i class="fa-solid fa-eye"></i> Publicér</button>{% endif %}
+        {% if product.status == 'active' %}<button class="btn btn-ghost btn-sm" name="status" value="hidden"><i class="fa-solid fa-eye-slash"></i> Skjul fra kataloget</button>{% endif %}
+        {% if product.status != 'archived' %}<button class="btn btn-ghost btn-sm" name="status" value="archived"><i class="fa-solid fa-box-archive"></i> Arkivér</button>{% endif %}
+      </form>
+      <p class="muted" style="font-size:12.5px;margin-top:10px">Skjulte og arkiverede kurser kan hverken ses i kataloget, findes af AI'en eller bestilles.</p>
+    </div>
+  </div>
+</div>
+{% endblock %}

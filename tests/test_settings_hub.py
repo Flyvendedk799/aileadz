@@ -78,10 +78,10 @@ class HubAccessTests(HubBase):
         r = self.admin_c.get("/virksomhed/indstillinger/findes-ikke")
         self.assertEqual(r.status_code, 302)
 
-    def test_bestilling_tab_shows_coming_soon_when_partial_missing(self):
+    def test_bestilling_tab_embeds_the_team_order_policy(self):
         html = self.hr_c.get("/virksomhed/indstillinger/bestilling").get_data(as_text=True)
         self.assertIn("Automatisk godkendelse", html)
-        self.assertIn("Holdbestillinger kommer snart", html)
+        self.assertIn("Teambestilling fra chatten", html)
 
 
 class OldUrlsRedirectIntoTheHubTests(HubBase):

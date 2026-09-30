@@ -471,6 +471,16 @@ def vendor_profile():
             )
             conn.commit()
             cur.close()
+            # N-3.1: the DB is the vendor-profile source; mirror what the vendor edits.
+            try:
+                vrow = _fetch_vendor_row(vendor_id) or {}
+                import catalog_service
+                catalog_service.save_vendor_profile(
+                    conn, vrow.get("vendor_name") or "",
+                    {"reputation": description, "website": website, "logo_url": logo_url},
+                    actor=f"vendor:{vendor_id}")
+            except Exception as pe:
+                logger.debug("vendor_portal: profile mirror skipped: %s", pe)
             flash("Din profil er opdateret.", "success")
         except Exception as e:
             try:

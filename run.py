@@ -221,6 +221,11 @@ def create_app():
 
     mysql = MySQL(app)
     app.mysql = mysql
+    try:  # the AI analytics store (N-3.3) lives in MySQL; threads outside a request need the handle
+        from app1 import memory_store as _ai_store
+        _ai_store.bind_mysql(mysql)
+    except Exception as e:
+        logging.warning("AI store not bound: %s", e)
 
     # Request ids, structured logs, optional Sentry (N-8.2).
     try:
@@ -310,6 +315,34 @@ def create_app():
     # Liveness/readiness probes (/healthz, /readyz)
     from health import health_bp
     app.register_blueprint(health_bp)
+
+    try:
+        from hr_course_assign import course_assign_bp
+        app.register_blueprint(course_assign_bp)
+    except Exception as e:
+        logging.warning("HR course assign skipped: %s", e)
+
+    # Team-order policy (N-5.2): save route + settings partial state.
+    try:
+        import team_order_policy
+        app.register_blueprint(team_order_policy.team_policy_bp)
+        team_order_policy.register_jinja(app)
+    except Exception as e:
+        logging.warning("Team order policy skipped: %s", e)
+
+    # Admin product browser + search-index controls (N-3.1).
+    try:
+        from catalog_admin_routes import catalog_admin_bp
+        app.register_blueprint(catalog_admin_bp)
+    except Exception as e:
+        logging.warning("Catalog admin routes skipped: %s", e)
+
+    # AI-usage credit screens (N-6.4).
+    try:
+        from credit_routes import credit_bp
+        app.register_blueprint(credit_bp)
+    except Exception as e:
+        logging.warning("Credit routes skipped: %s", e)
 
     # Defensive HTTP response headers (nosniff, frame options, report-only CSP).
     # Guarded so a failure here can never crash create_app().
@@ -450,6 +483,8 @@ def create_app():
     # Capability-aware navigation helpers (can(), has_endpoint()).
     import capabilities
     capabilities.register_jinja(app)
+    import credit_service
+    credit_service.register_jinja(app)
 
     # Danish 404/500 pages, JSON for API callers (N-0.3).
     from error_pages import register_error_handlers

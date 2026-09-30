@@ -1,0 +1,50 @@
+{% extends "fm_base.html" %}
+{% block page_id %}ausers{% endblock %}
+{% block title %}Kreditter pr. virksomhed{% endblock %}
+{% block topbar_title %}Kreditter pr. virksomhed{% endblock %}
+{% block topbar_sub %}Saldo, forbrug og hvor længe kreditterne rækker.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Brugerkreditter</a>
+    <a class="pg-tab active" href="{{ url_for('credits.admin_company_credits') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
+  </div>
+  <div class="fm-card">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-plus"></i></span><h3>Tilføj kreditter til en virksomhed</h3></div>
+    <div class="fm-card-body">
+      <form method="post" action="{{ url_for('credits.admin_grant_company_credits') }}" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(200px,1fr))">
+        <select class="fm-input" name="company_id" required>
+          <option value="">Vælg virksomhed</option>
+          {% for c in overview.companies %}<option value="{{ c.id }}">{{ c.name }}</option>{% endfor %}
+        </select>
+        <input class="fm-input" type="number" name="amount" placeholder="Antal kreditter" required>
+        <input class="fm-input" name="reason" placeholder="Begrundelse (f.eks. faktura 2026-114)" required>
+        <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-coins"></i> Tilføj</button>
+      </form>
+    </div>
+  </div>
+  <div class="fm-table-wrap" style="margin-top:16px">
+    {% if overview.companies %}
+    <table class="fm-table">
+      <thead><tr><th>Virksomhed</th><th class="tnum">Saldo</th><th class="tnum">Brugt ({{ overview.days }} d)</th><th class="tnum">Pr. dag</th><th class="tnum">Rækker i</th><th>Grænse</th></tr></thead>
+      <tbody>
+      {% for c in overview.companies %}
+        <tr>
+          <td>{{ c.name }}{% if c.low %} <span class="fm-badge red">Lav saldo</span>{% endif %}</td>
+          <td class="tnum">{{ c.balance }}</td><td class="tnum">{{ c.used }}</td><td class="tnum">{{ c.burn_per_day }}</td>
+          <td class="tnum">{{ (c.runway_days ~ ' dage') if c.runway_days is not none else '-' }}</td>
+          <td>{{ 'Hård' if c.limit_mode == 'hard' else 'Blød' }}</td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}<div class="fm-card-body"><p class="muted" style="margin:0">Der er ingen virksomheder endnu.</p></div>{% endif %}
+  </div>
+  {% if overview.recent_grants %}
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><h3>Seneste tildelinger</h3></div><div class="fm-card-body">
+    <table class="fm-table"><tbody>
+    {% for g in overview.recent_grants %}<tr><td>{{ g.t }}</td><td>{{ g.u or ('Virksomhed ' ~ g.cid) }}</td><td class="tnum">+{{ g.amount }}</td><td>{{ g.d }}</td></tr>{% endfor %}
+    </tbody></table></div></div>
+  {% endif %}
+</div>
+{% endblock %}

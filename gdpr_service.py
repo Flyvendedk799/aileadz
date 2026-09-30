@@ -408,40 +408,20 @@ def _count(conn, table, where_col, username):
                 pass
 
 
-def _erase_ai_memory(browser_token=None, session_id=None):
+def _erase_ai_memory(browser_token=None, session_id=None, username=None):
     """Best-effort erase of the anonymous SQLite rows for this token/session.
 
     Scoped strictly to the supplied browser_token / session_id. No-op (and
     reported as skipped) when nothing is linkable."""
-    if not browser_token and not session_id:
+    if not browser_token and not session_id and not username:
         return {"action": "sprunget over (ingen browser-token/session-id at koble på)", "rows": 0}
-    deleted = 0
     try:
         from app1 import memory_store
 
-        conn = memory_store._get_conn()
         try:
-            if browser_token:
-                cur = conn.execute(
-                    "DELETE FROM anonymous_profiles WHERE browser_token = ?",
-                    (browser_token,),
-                )
-                deleted += cur.rowcount or 0
-            if session_id:
-                for tbl in ("sessions", "analytics", "debug_logs", "latency_logs"):
-                    try:
-                        cur = conn.execute(
-                            f"DELETE FROM {tbl} WHERE session_id = ?", (session_id,)
-                        )
-                        deleted += cur.rowcount or 0
-                    except Exception:
-                        pass
-            conn.commit()
+            deleted = memory_store.erase_subject(browser_token=browser_token, session_id=session_id,
+                                                 username=username)
         except Exception as exc:
-            try:
-                conn.rollback()
-            except Exception:
-                pass
             return {"action": f"fejlede: {exc}", "rows": 0}
         return {"action": "slettet", "rows": deleted}
     except Exception as exc:
@@ -580,7 +560,7 @@ def erase_user_data(username, *, actor, dry_run=False, browser_token=None, sessi
 
     # ---- ai_memory.db (separate store, separate best-effort transaction) ----
     report["ai_memory"] = _erase_ai_memory(
-        browser_token=browser_token, session_id=session_id
+        browser_token=browser_token, session_id=session_id, username=username
     )
 
     return report

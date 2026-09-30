@@ -24,7 +24,30 @@ def _fm_pages():
 @futurematch_bp.route('/chat')
 def chat():
     """AI assistant chat surface (standalone shell with chat.js)."""
-    return render_template('fm/chat.html')
+    return render_template('fm/chat.html', chat_cfg=_chat_cfg())
+
+
+def _chat_cfg():
+    """Role + team-order policy for the course cards (N-5.2): "Bestil til team" is
+    only offered to company members when the company policy allows team orders."""
+    cfg = {'teamOrders': False, 'primaryLabel': 'Anmod om plads'}
+    try:
+        cid = session.get('company_id')
+        if session.get('user') and cid:
+            import MySQLdb.cursors
+            import team_order_policy as tp
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            try:
+                mode = tp.effective_mode(cur, cid, None)
+                pol = tp.get_policies(cur, cid)
+            finally:
+                cur.close()
+            # Allowed when the default allows it, or any vendor override does.
+            allowed = mode != tp.NOT_ALLOWED or any(m != tp.NOT_ALLOWED for m in pol['vendors'].values())
+            cfg['teamOrders'] = bool(allowed)
+    except Exception as e:
+        current_app.logger.debug("chat cfg: %s", e)
+    return cfg
 
 
 @futurematch_bp.route('/ai-profiler')
@@ -112,12 +135,12 @@ def _home_recommendations(profile, company_id, limit=_HOME_REC_LIMIT):
             filters={'q': q} if q else {},
             page=1, per_page=limit, company_id=company_id,
         ) or {}
-        products = result.get('products') or []
+        products = catalog_service.exclude_stale(result.get('products') or [])
         # If a skill query found nothing, fall back to the default catalog page.
         if q and not products:
             result = catalog_service.search_products(
                 filters={}, page=1, per_page=limit, company_id=company_id) or {}
-            products = result.get('products') or []
+            products = catalog_service.exclude_stale(result.get('products') or [])
             why = 'Populært i kataloget lige nu'
     except Exception as e:  # pragma: no cover - defensive
         current_app.logger.warning("home recommendations: %s", e)

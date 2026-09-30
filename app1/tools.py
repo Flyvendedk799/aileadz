@@ -702,6 +702,13 @@ OPENAI_TOOLS = [
                     "variant_location": {
                         "type": "string",
                         "description": "Valgt lokation (f.eks. 'København'). Valgfrit."
+                    },
+                    "participants": {
+                        "type": "array",
+                        "items": {"type": "string"},
+                        "description": ("Kun når brugeren bestiller til kolleger: navne, brugernavne eller emails på de kolleger, "
+                                        "kurset gælder. Udelad til en bestilling til brugeren selv. Virksomhedens politik afgør, "
+                                        "hvad der sker (én ordre pr. person, en opgave til HR, eller at hver person anmoder selv).")
                     }
                 },
                 "required": ["product_handle"]
@@ -3333,10 +3340,123 @@ def _clean_profile_data(data):
         cleaned[k] = v
     return cleaned
 
+_AUTOSAVE_ADDS = ("add_skill", "add_experience", "add_education", "add_course",
+                  "add_certification", "add_language", "add_link")
+
+
+def _autosave_enabled():
+    """Additions save immediately (N-5.1). AI_PROFILE_AUTOSAVE=0 restores the old
+    propose-then-confirm card for additions."""
+    return _os.getenv("AI_PROFILE_AUTOSAVE", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _autosave_profile_add(username, action, data):
+    """Persist one profile ADDITION and return ``(label, undo)`` or ``None``.
+
+    ``undo`` is a ready-made ``confirm_profile_update`` payload (a remove_*) that
+    the chat shows as the inline "Fortryd" button.
+    """
+    from app1 import user_profile_db as db
+    if action == "add_skill":
+        name, level = data.get("skill_name", ""), data.get("skill_level", "mellem")
+        if not db.add_skill(username, name, level, source="ai_chat"):
+            return None
+        try:
+            from skill_history import record_user_snapshot
+            record_user_snapshot(username, name, level, source="ai_chat")
+        except Exception:
+            pass
+        return f"{name} ({level})", {"action": "remove_skill", "data": {"skill_name": name}}
+    if action == "add_experience":
+        title, company = data.get("title", ""), data.get("company", "")
+        db.add_experience(username, title=title, company=company, start_year=data.get("start_year"),
+                          end_year=data.get("end_year"), is_current=data.get("is_current", False),
+                          description=data.get("description", ""))
+        row = next((e for e in reversed(db.get_experience(username))
+                    if e["title"].lower() == title.lower()), None)
+        return (title + (f" @ {company}" if company else ""),
+                {"action": "remove_experience", "data": {"id": row["id"]}} if row else None)
+    if action == "add_education":
+        degree = data.get("degree", "")
+        db.add_education(username, degree=degree, institution=data.get("institution", ""),
+                         year_completed=data.get("year_completed"), description=data.get("description", ""))
+        row = next((e for e in reversed(db.get_education(username))
+                    if e["degree"].lower() == degree.lower()), None)
+        return degree, ({"action": "remove_education", "data": {"id": row["id"]}} if row else None)
+    if action == "add_course":
+        title = data.get("course_title", "")
+        db.add_completed_course(username, course_title=title, course_handle=data.get("course_handle") or None,
+                                vendor=data.get("vendor", ""), completed_date=data.get("completed_date") or None,
+                                certificate_note=data.get("certificate_note", ""))
+        return title, {"action": "remove_course", "data": {"course_title": title}}
+    if action == "add_certification":
+        name = data.get("name", "")
+        db.add_certification(username, name=name, issuer=data.get("issuer", ""), issue_date=data.get("issue_date"),
+                             expiry_date=data.get("expiry_date"), credential_id=data.get("credential_id"),
+                             credential_url=data.get("credential_url"))
+        row = next((c for c in reversed(db.get_certifications(username))
+                    if str(c.get("name") or "").lower() == name.lower()), None)
+        return name, ({"action": "remove_certification", "data": {"id": row["id"]}} if row else None)
+    if action == "add_language":
+        language = data.get("language", "")
+        db.add_language(username, language, proficiency=data.get("proficiency", "mellem"))
+        return language, {"action": "remove_language", "data": {"language": language}}
+    if action == "add_link":
+        db.add_portfolio_link(username, data.get("label", ""), data.get("url", ""), kind=data.get("kind"))
+        row = next((p for p in reversed(db.get_portfolio_links(username))
+                    if str(p.get("url") or "").rstrip("/") == str(data.get("url", "")).rstrip("/")), None)
+        return data.get("label") or data.get("url", ""), (
+            {"action": "remove_link", "data": {"id": row["id"]}} if row else None)
+    return None
+
+
 def _execute_update_user_profile(args, username):
-    """Validate profile update and return proposed action for user confirmation.
-    Add-actions are NOT executed here — they go through frontend confirmation first.
-    Remove/update actions execute immediately."""
+    """Profile writes from the AI (N-5.1: say it, and do it).
+
+    ADDITIONS are saved at once and come back as ``status: "saved"`` with an
+    ``undo`` payload (the chat shows "Noteret ... Fortryd"). Removals, edits and
+    level upgrades stay proposals the user confirms. Incomplete data still yields
+    a ``ui_card`` and errors are passed through unchanged.
+    """
+    raw = _propose_user_profile_update(args, username)
+    if not _autosave_enabled():
+        return raw
+    try:
+        res = json.loads(raw)
+    except Exception:
+        return raw
+    if res.get("status") != "proposed":
+        return raw
+    conf = res.get("confirm") or {}
+    action, data = conf.get("action", ""), conf.get("data") or {}
+    # Level upgrades ("Opgradér ...") are edits, not additions: keep the confirm card.
+    if action not in _AUTOSAVE_ADDS or str(res.get("message", "")).startswith("Opgradér"):
+        return raw
+    try:
+        saved = _autosave_profile_add(username, action, data)
+    except Exception as e:
+        print(f"[ProfileUpdate autosave failed -> proposal] {e}")
+        try:
+            from flask import current_app as _app
+            _app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return raw
+    if not saved:
+        return raw
+    label, undo = saved
+    return json.dumps({
+        "status": "saved", "section": res.get("section", ""), "label": label,
+        "message": f"Noteret på din profil: {label}",
+        "undo": undo,
+        "note_for_assistant": "Det er allerede gemt og brugeren kan fortryde under svaret. Sig det kort og naturligt, bed ikke om bekræftelse.",
+    }, ensure_ascii=False)
+
+
+def _propose_user_profile_update(args, username):
+    """Validate profile update and return a proposed action (nothing executed for
+    additions here - ``_execute_update_user_profile`` saves those).
+    Remove/update actions are proposed for confirmation."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
 
@@ -3691,11 +3811,20 @@ def _execute_recommend_for_profile(args, username):
         completed_titles = {c["title"].lower() for c in profile.get("completed_courses", [])}
         completed_handles = {c.get("handle", "").lower() for c in profile.get("completed_courses", []) if c.get("handle")}
 
+        # Stale courses (latest session in the past) are never RECOMMENDED (N-3.1).
+        try:
+            import catalog_service as _cs
+            _stale = _cs.stale_handles()
+        except Exception:
+            _stale = frozenset()
+
         filtered = []
         for r in (results or []):
             title_lower = r.get("title", "").lower()
             handle_lower = r.get("handle", "").lower()
             if title_lower in completed_titles or handle_lower in completed_handles:
+                continue
+            if r.get("handle") in _stale:
                 continue
             filtered.append(r)
 
@@ -5094,8 +5223,55 @@ def _execute_mark_course_complete(args, username):
     return json.dumps(result, ensure_ascii=False, default=str)
 
 
+def _variant_options(product, limit=8):
+    """Short, sortable list of a product's sessions for "which one?" questions."""
+    out = []
+    for v in (product.get("variants") or [])[:60]:
+        out.append({"date": v.get("date") or "", "location": v.get("location") or v.get("city") or "",
+                    "price": v.get("price"), "price_label": v.get("price_label") or ""})
+    return out[:limit]
+
+
+def _pick_variant(product, want_date="", want_location=""):
+    """The session the user chose (N-3.1: price the CHOSEN variant, not variants[0]).
+
+    Returns ``(variant_or_None, ambiguous)``. ``ambiguous`` is True when several
+    sessions remain with DIFFERENT prices and the user has not narrowed it down, so
+    the assistant should ask which one instead of booking at a guessed price.
+    """
+    variants = [v for v in (product.get("variants") or []) if isinstance(v, dict)]
+    if not variants:
+        return None, False
+    wd, wl = (want_date or "").strip().lower(), (want_location or "").strip().lower()
+    cands = variants
+    if wd:
+        cands = [v for v in cands if wd in (v.get("date") or "").lower() or (v.get("date") or "").lower() in wd] or []
+    if wl:
+        cands = [v for v in cands if wl in (v.get("location") or "").lower() or wl in (v.get("city") or "").lower()] or []
+    if (wd or wl) and not cands:
+        return None, True            # asked for something that does not exist: let the model re-ask
+    if len(cands) == 1:
+        return cands[0], False
+    prices = {v.get("price") for v in cands}
+    if len(prices) <= 1:
+        return cands[0], False       # same price whichever session: safe to book the first/selected
+    return None, True
+
+
+def chat_attribution(default_tool=""):
+    """Chat -> order conversion fields (N-3.3): which conversation led to the order,
+    how many questions it took and which tool surfaced the course."""
+    from flask import session as _s
+    from app1 import conversation_state as _conv
+    sid = _conv.current_sid(_s, "chat") or _s.get("session_id") or ""
+    return {"chatbot_session_id": sid,
+            "chatbot_queries_before_order": _s.get("_chatbot_query_count", 0) or 0,
+            "recommended_by_tool": _s.get("_last_recommending_tool") or default_tool}
+
+
 def _execute_create_order(args, username=None):
-    """MUTATION — create a course order for the user. Confirm-gated.
+    """MUTATION - create a course order for the user (and, per company policy,
+    for colleagues). Confirm-gated.
 
     Contact details are resolved from the user's own record first (see
     ``resolve_user_contact``), so a logged-in user is never asked for a name or an
@@ -5103,9 +5279,12 @@ def _execute_create_order(args, username=None):
     corrects one. The order is only written once the model passes ``confirm=true``,
     which is what lets this tool sit on the menu for the whole ordering
     conversation instead of behind a brittle keyword gate.
+
+    The course comes from the ONE catalog (``catalog_service``), the price is the
+    CHOSEN session's price, and ``participants`` (colleagues) follow the company's
+    team-order policy (linked orders / HR bulk-assign / not allowed).
     """
     from flask import session as flask_session
-    from app1.rag import load_augmented_products
     from app1.order_handler import order_handler, store_user_info_for_order
     from tool_confirm import needs_confirmation_payload
 
@@ -5132,25 +5311,30 @@ def _execute_create_order(args, username=None):
             ).strip(),
         }, ensure_ascii=False)
 
-    # Look up product
-    products = load_augmented_products()
-    product = None
-    for p in products:
-        if p.get("handle") == handle:
-            product = p
-            break
+    # Look up product in the one catalog (published courses only).
+    product = catalog.get_product(handle)
     if not product:
-        return json.dumps({"status": "error", "message": f"Kursus '{handle}' ikke fundet."})
+        return json.dumps({"status": "error", "message": f"Kursus '{handle}' ikke fundet eller ikke længere tilgængeligt."})
 
-    # Build product_data
-    variants = product.get("variants", [])
-    price_str = variants[0].get("price", "0") if variants else "0"
     vendor_name = product.get("vendor", "")
+    variant, ambiguous = _pick_variant(product, args.get("variant_date", ""), args.get("variant_location", ""))
+    if ambiguous:
+        mark_order_flow_open(handle, stage="needs_info")
+        return json.dumps({
+            "status": "needs_info",
+            "missing_fields": ["variant"],
+            "options": _variant_options(product),
+            "message": ("Kurset har flere hold med forskellig pris. Spørg kort, hvilket hold brugeren vil have "
+                        "(dato og sted), og kald så værktøjet igen med variant_date/variant_location."),
+        }, ensure_ascii=False, default=str)
+
+    if variant is not None and variant.get("price") is not None:
+        price_str = str(variant.get("price"))
+    else:
+        price_str = str(product.get("price_min") if product.get("price_min") is not None else 0)
 
     # Apply the negotiated supplier discount AT CAPTURE so the order is charged
-    # at the agreed price, not the list price. Reuse the existing per-request
-    # discount logic; fall back to the company discount map when the in-memory
-    # search context was not populated (e.g. a non-chat-loop entry point).
+    # at the agreed price, not the list price.
     discounted_price, _orig, _agr_name = apply_discount(price_str, vendor_name)
     if discounted_price is None:
         try:
@@ -5175,12 +5359,24 @@ def _execute_create_order(args, username=None):
         "product_type": product.get("product_type", ""),
     }
 
-    # Variant selection
+    # Variant selection: the canonical session fields when we matched one.
     variant_selection = {}
-    if args.get("variant_date"):
-        variant_selection["date"] = args["variant_date"]
-    if args.get("variant_location"):
-        variant_selection["location"] = args["variant_location"]
+    chosen_date = (variant or {}).get("date") or args.get("variant_date") or ""
+    chosen_loc = (variant or {}).get("location") or args.get("variant_location") or ""
+    if chosen_date:
+        variant_selection["date"] = chosen_date
+    if chosen_loc:
+        variant_selection["location"] = chosen_loc
+
+    # ── Team order: follows the company's policy (N-5.2) ───────────────────
+    participants = args.get("participants")
+    if isinstance(participants, str):
+        participants = [p.strip() for p in participants.split(",") if p.strip()]
+    participants = [p for p in (participants or []) if str(p).strip()]
+    if participants:
+        return _create_team_order(
+            args, username, product, product_data, variant_selection, participants,
+            contact=contact, price_str=price_str)
 
     # Confirm gate: the first call previews the order rather than creating it, so
     # the tool can stay available for the whole ordering conversation without a
@@ -5216,9 +5412,14 @@ def _execute_create_order(args, username=None):
 
     if result.get("success"):
         clear_order_flow()
+        order = result.get("order") or {}
         return json.dumps({
             "status": "order_created",
             "order_id": result.get("order_id", ""),
+            "order_status": order.get("status"),
+            "order_status_label": order.get("status_label"),
+            "needs_approval": bool(order.get("needs_approval")),
+            "order_url": order.get("order_url"),
             "message": result.get("message", "Ordre oprettet!"),
         })
     else:
@@ -5228,6 +5429,123 @@ def _execute_create_order(args, username=None):
             "message": result.get("message", "Ordre kunne ikke oprettes."),
             "errors": result.get("errors", []),
         })
+
+
+def _create_team_order(args, username, product, product_data, variant_selection, participants, *, contact, price_str):
+    """Order for colleagues, following the company's team-order policy."""
+    import uuid as _uuid
+    from flask import session as flask_session, current_app as app
+    import MySQLdb.cursors
+    import team_order_policy as tp
+    from tool_confirm import needs_confirmation_payload
+
+    company_id = flask_session.get("company_id")
+    handle = product_data["handle"]
+    if not company_id:
+        return json.dumps({
+            "status": "team_not_available",
+            "message": "Teambestilling kræver en virksomhedskonto. Brugeren kan bestille til sig selv, "
+                       "eller bede sin arbejdsgiver oprette en konto.",
+        }, ensure_ascii=False)
+
+    cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    try:
+        import order_service
+        vendor_id = order_service._vendor_id_for_handle(cur, handle)
+        mode = tp.effective_mode(cur, company_id, vendor_id)
+        guidance = tp.policy_guidance_da(mode)
+        if mode == tp.NOT_ALLOWED:
+            return json.dumps({
+                "status": "team_not_allowed", "policy": mode, "guidance": guidance,
+                "message": ("Teambestilling er slået fra for dette kursus i virksomheden. Forklar venligt, at hver "
+                            "person selv anmoder om pladsen (det tager et minut), og tilbyd at hjælpe brugeren med "
+                            "deres egen anmodning. Recitér ikke reglen."),
+            }, ensure_ascii=False)
+        found = tp.resolve_participants(cur, company_id, participants, requester_username=username)
+    finally:
+        cur.close()
+
+    if found["ambiguous"] or found["unmatched"]:
+        return json.dumps({
+            "status": "needs_info", "missing_fields": ["participants"],
+            "ambiguous": found["ambiguous"], "unmatched": found["unmatched"],
+            "matched": [p["full_name"] or p["username"] for p in found["matched"]],
+            "message": "Nogle deltagere kunne ikke entydigt findes blandt kollegerne. Spørg kort, hvem der menes.",
+        }, ensure_ascii=False)
+    people = found["matched"]
+    if not people:
+        return json.dumps({"status": "needs_info", "missing_fields": ["participants"],
+                           "message": "Jeg fandt ingen deltagere. Spørg, hvem kurset skal bestilles til."})
+
+    names = [p["full_name"] or p["username"] for p in people]
+    price_f = float(price_str) if str(price_str).replace(".", "", 1).isdigit() else 0.0
+    if not bool(args.get("confirm")):
+        mark_order_flow_open(handle, stage="awaiting_confirm")
+        if mode == tp.HR_BULK:
+            summary = (f"Bekræft, at jeg sender en opgave til HR om at tildele '{product_data['title']}' til "
+                       f"{', '.join(names)}.")
+        else:
+            summary = (f"Bekræft bestilling af '{product_data['title']}' til {len(people)} personer "
+                       f"({', '.join(names)}). Der oprettes én ordre pr. person, og hver følger godkendelse og budget.")
+        return json.dumps(needs_confirmation_payload(
+            action="create_course_order", summary_da=summary,
+            details={"product_handle": handle, "product_title": product_data["title"], "price": price_str,
+                     "participants": names, "policy": mode, "total": round(price_f * len(people), 2),
+                     "variant": variant_selection},
+            policy=mode, guidance=guidance,
+        ), ensure_ascii=False, default=str)
+
+    # ── confirmed ──
+    if mode == tp.HR_BULK:
+        from notification_service import notify_roles, HR_ROLES
+        cur = app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            ids = ",".join(str(p["user_id"]) for p in people if p.get("user_id"))
+            notify_roles(
+                cur, company_id, HR_ROLES,
+                title="Ønske om kursus til et hold",
+                message=f"{username} beder om '{product_data['title']}' til: {', '.join(names)}.",
+                kind="team_order", is_urgent=False,
+                action_url=f"/hr/assign-course?course={handle}&users={ids}",
+                dedupe_key=f"team-request:{handle}:{ids}", dedupe_hours=24)
+            app.mysql.connection.commit()
+        finally:
+            cur.close()
+        clear_order_flow()
+        return json.dumps({"status": "handed_off_to_hr", "policy": mode, "participants": names,
+                           "message": "Opgaven er sendt til HR med kursus og deltagere udfyldt. De tildeler holdet."},
+                          ensure_ascii=False)
+
+    from order_service import OrderContext, create_order
+    requester = OrderContext.from_session(source="chat_team")
+    group_id = _uuid.uuid4().hex
+    results = []
+    for p in people:
+        # A non-manager can never get a colleague's order auto-approved: orders for
+        # others always run as an employee request (approval + budget apply).
+        role = requester.company_role if requester.is_manager else "employee"
+        ctx = OrderContext(company_id=company_id, user_id=p["user_id"], username=p["username"],
+                           company_role=role, department=p.get("department") or "",
+                           source="chat_team", actor_label=requester.username)
+        res = create_order(
+            ctx, product_handle=handle, product_title=product_data["title"], price=price_str,
+            variant_date=variant_selection.get("date", ""), variant_location=variant_selection.get("location", ""),
+            user_email=p.get("email") or "", user_name=p.get("full_name") or p["username"], user_phone="",
+            extra={"group_order_id": group_id, "department": p.get("department") or "",
+                   "notes": f"Bestilt af {requester.username} til teamet via AI-assistenten",
+                   **chat_attribution(default_tool="create_course_order")})
+        results.append({"name": p["full_name"] or p["username"], "success": bool(res.get("success")),
+                        "order_id": res.get("order_id"), "status": res.get("status_label"),
+                        "needs_approval": bool(res.get("needs_approval")), "duplicate": bool(res.get("duplicate")),
+                        "error": None if res.get("success") else res.get("message")})
+    clear_order_flow()
+    ok = [r for r in results if r["success"]]
+    return json.dumps({
+        "status": "team_orders_created" if ok else "error", "policy": mode, "group_order_id": group_id,
+        "created": len(ok), "failed": len(results) - len(ok), "orders": results,
+        "message": (f"{len(ok)} af {len(results)} ordrer er oprettet." +
+                    (" De venter på godkendelse, så du kan følge dem på tidslinjen." if any(r["needs_approval"] for r in ok) else "")),
+    }, ensure_ascii=False, default=str)
 
 
 def _execute_analyze_skill_gaps(args):

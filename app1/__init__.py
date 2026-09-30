@@ -77,16 +77,14 @@ DANISH_MONTHS = {
 }
 
 def load_products():
-    global PRODUCTS_CACHE
-    if PRODUCTS_CACHE is None:
-        file_path = os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                PRODUCTS_CACHE = json.load(file)
-        except Exception as e:
-            print(f"Error loading JSON file: {e}")
-            PRODUCTS_CACHE = []
-    return PRODUCTS_CACHE
+    """Raw product dicts from the ONE catalog (catalog_service), not a private,
+    forever-cached copy of the Shopify export (N-3.1)."""
+    try:
+        import catalog_service
+        return [p["raw"] for p in catalog_service.get_products()]
+    except Exception as e:
+        print(f"Error loading catalog: {e}")
+        return []
 
 def extract_location_and_date(product):
     location = ""
@@ -946,6 +944,13 @@ def ask():
         if turn_kind not in ("message", "seed"):
             turn_kind = "message"
 
+        # N-6.4: a company on a HARD credit limit pauses the AI with a friendly message.
+        if session.get("company_id"):
+            import credit_service
+            paused = credit_service.guard(company_id=session.get("company_id"), username=session.get("user"))
+            if paused:
+                return jsonify({"answers": [{"type": "text", "content": paused}], "credits_paused": True}), 402
+
         return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind)
 
     except Exception as ex:
@@ -1109,10 +1114,22 @@ def voice():
 def feedback():
     try:
         from app1.memory_store import log_event
-        data = request.json or {}
-        sid = session.get("session_id", "unknown")
-        rating = data.get("rating", 0)  # 1 = thumbs up, -1 = thumbs down
-        message_index = data.get("message_index", 0)
+        from app1 import conversation_state as _conv
+        data = request.get_json(silent=True) or {}
+        sids = _conv.all_session_ids(session) or ["unknown"]
+        if data.get("mode") == "hr":
+            sids = [session.get("hr_chat_session_id") or "unknown"]
+            sid = sids[0]
+        else:
+            sid = _conv.current_sid(session, data.get("mode") or "chat") or sids[0]
+        try:
+            rating = max(-1, min(1, int(data.get("rating", 0) or 0)))  # +1 up, -1 down, 0 cleared
+        except (TypeError, ValueError):
+            rating = 0
+        try:
+            message_index = int(data.get("message_index", 0) or 0)
+        except (TypeError, ValueError):
+            message_index = 0
         query_text = data.get("query_text", "")
         assistant_response = data.get("assistant_response", "")
         reason = data.get("reason", "")
@@ -1138,16 +1155,26 @@ def feedback():
             }
         )
 
-        # Phase 1.2: Sync feedback to MySQL chatbot_interactions
+        # Sync the rating to the ONE answer it belongs to (message_index), falling
+        # back to the latest answer of the session for rows written before the column.
         try:
             username = session.get('user') or session.get('browser_token', 'anonymous')
             cur = current_app.mysql.connection.cursor()
-            cur.execute("""
-                UPDATE chatbot_interactions
-                SET feedback_rating = %s
-                WHERE session_id = %s AND username = %s
-                ORDER BY created_at DESC LIMIT 1
-            """, (rating, sid, username))
+            marks = ", ".join(["%s"] * len(sids))
+            target = None
+            if message_index:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "AND message_index = %s ORDER BY id DESC LIMIT 1", (*sids, username, message_index))
+                target = cur.fetchone()
+            if not target:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "ORDER BY id DESC LIMIT 1", (*sids, username))
+                target = cur.fetchone()
+            if target:
+                tid = target["id"] if isinstance(target, dict) else target[0]
+                cur.execute("UPDATE chatbot_interactions SET feedback_rating = %s WHERE id = %s", (rating, tid))
             current_app.mysql.connection.commit()
             cur.close()
         except Exception as fb_err:
@@ -1776,6 +1803,10 @@ def confirm_tool_action():
         return jsonify({"status": "already_confirmed"})
 
     scope = entry["scope"]
+    if scope == "hr" and not (session.get("role") == "admin" or (
+            session.get("company_id") and session.get("company_role") in ("company_admin", "hr_manager", "department_head"))):
+        # An HR confirmation is only honoured for someone who still holds an HR role.
+        return jsonify({"status": "error", "message": "Ingen adgang til HR-handlinger."}), 403
     tool_name = entry["tool_name"]
     args = dict(entry["args"])
     args["confirm"] = True  # inject the confirmation flag

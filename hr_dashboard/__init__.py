@@ -25,6 +25,23 @@ try:
 except Exception:  # pragma: no cover - boot-safety guard
     _kanon = None
 
+def _parse_when(value):
+    """datetime from a datetime/date/'YYYY[-MM[-DD]]' string, else None."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    s = str(value).strip()[:10]
+    for fmt in ('%Y-%m-%d', '%Y-%m', '%Y'):
+        try:
+            return datetime.strptime(s[:len(datetime.now().strftime(fmt))], fmt)
+        except ValueError:
+            continue
+    return None
+
+
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
 
@@ -4544,15 +4561,35 @@ def create_hr_dashboard_blueprint():
                     SELECT cu.user_id,
                            LOWER(COALESCE(ucc.course_handle, '')) AS handle,
                            LOWER(COALESCE(ucc.course_title, '')) AS title,
-                           ucc.completed_at AS completed_at
+                           ucc.completed_date AS completed_at
                     FROM user_completed_courses ucc
-                    JOIN company_users cu
-                        ON ucc.user_id = cu.user_id AND cu.company_id = %s
+                    JOIN users uu ON uu.username = ucc.username
+                    JOIN company_users cu ON cu.user_id = uu.id AND cu.company_id = %s
                     WHERE cu.status = 'active'
                 """, (company['id'],))
-                completions += (cur.fetchall() or [])
+                for c in (cur.fetchall() or []):
+                    c['completed_at'] = _parse_when(c.get('completed_at'))
+                    completions.append(c)
             except Exception:
                 # Table may not exist on this tenant; course_orders is sufficient.
+                pass
+            # Certifications count too (N-4.3): a valid certificate satisfies a
+            # requirement whose title/category/handle it matches. An explicit
+            # expiry date wins over the recurrence window.
+            try:
+                cur.execute("""
+                    SELECT cu.user_id, LOWER(COALESCE(uc.name, '')) AS title, '' AS handle,
+                           uc.issue_date AS completed_at, uc.expiry_date AS expiry
+                    FROM user_certifications uc
+                    JOIN users uu ON uu.username = uc.username
+                    JOIN company_users cu ON cu.user_id = uu.id AND cu.company_id = %s
+                    WHERE cu.status = 'active'
+                """, (company['id'],))
+                for c in (cur.fetchall() or []):
+                    c['completed_at'] = _parse_when(c.get('completed_at')) or datetime.now()
+                    c['expiry'] = _parse_when(c.get('expiry'))
+                    completions.append(c)
+            except Exception:
                 pass
             cur.close()
 
@@ -4580,6 +4617,7 @@ def create_hr_dashboard_blueprint():
 
                 # Find the most recent matching completion.
                 best = None
+                explicit_expiry = None
                 for c in comp_by_user.get(emp['user_id'], []):
                     matched = False
                     if handle and (handle == c['handle'] or handle in c['title']):
@@ -4599,9 +4637,14 @@ def create_hr_dashboard_blueprint():
                             continue
                     if best is None or when > best:
                         best = when
+                        explicit_expiry = c.get('expiry')
 
                 if best is None:
                     return 'overdue'  # missing == overdue per the contract
+                if explicit_expiry is not None:
+                    if explicit_expiry < now:
+                        return 'overdue'
+                    return 'expiring' if (explicit_expiry - now).days < 60 else 'compliant'
                 if recurrence <= 0:
                     return 'compliant'  # one-time, never expires
                 expiry = best + timedelta(days=recurrence * 30)
@@ -4640,7 +4683,7 @@ def create_hr_dashboard_blueprint():
             roles = sorted({(e.get('role') or '') for e in employees if e.get('role')})
         except Exception as e:
             current_app.logger.error(f"Error loading compliance matrix: {e}")
-            flash("Fejl ved indlaesning af compliance-matrix.", "danger")
+            flash("Compliance-matricen kunne ikke indlæses. Prøv igen om lidt.", "danger")
             matrix, totals = [], {'requirements': 0, 'compliant': 0, 'expiring': 0, 'overdue': 0}
 
         # ── "Most-at-risk requirements" bar data (k-anon-safe) ───────────────
@@ -4698,6 +4741,23 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error building compliance at-risk chart: {e}")
             at_risk_chart = []
 
+        if request.args.get('format') == 'csv':
+            import report_exports
+            labels = {'compliant': 'Opfyldt', 'expiring': 'Udløber snart', 'overdue': 'Mangler / udløbet'}
+            csv_rows = []
+            for row in matrix:
+                for emp in row['employees']:
+                    csv_rows.append([row['requirement'].get('title'), row['requirement'].get('category') or '',
+                                     'Ja' if row['requirement'].get('is_statutory') else 'Nej',
+                                     emp['name'], emp.get('department') or '', labels.get(emp['status'], emp['status'])])
+            if not csv_rows:
+                flash("Der er ingen compliance-data at eksportere endnu.", "warning")
+                return redirect(url_for('hr_dashboard.compliance_matrix'))
+            return current_app.response_class(
+                report_exports.to_csv(['Krav', 'Kategori', 'Lovpligtigt', 'Medarbejder', 'Afdeling', 'Status'], csv_rows),
+                mimetype='text/csv; charset=utf-8',
+                headers={'Content-Disposition': 'attachment; filename=compliance_%s.csv' % datetime.now().strftime('%Y%m%d')})
+
         return render_template('fm/compliance.html',
                                company=company,
                                matrix=matrix,
@@ -4733,7 +4793,7 @@ def create_hr_dashboard_blueprint():
         is_statutory = 1 if request.form.get('is_statutory') in ('1', 'on', 'true', 'ja') else 0
 
         if not title:
-            flash("Titel paa kravet er paakraevet.", "warning")
+            flash("Titel på kravet er påkrævet.", "warning")
             return redirect(url_for('hr_dashboard.compliance_matrix'))
 
         try:
@@ -4747,10 +4807,91 @@ def create_hr_dashboard_blueprint():
                   dept, role, handle, recurrence, is_statutory))
             current_app.mysql.connection.commit()
             cur.close()
-            flash(f"Compliance-krav '{title}' tilfoejet.", "success")
+            flash(f"Compliance-kravet '{title}' er tilføjet.", "success")
         except Exception as e:
             current_app.logger.error(f"Error adding compliance requirement: {e}")
             flash("Fejl ved oprettelse af compliance-krav.", "danger")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    def _req_form_values():
+        title = (request.form.get('title') or '').strip()
+        try:
+            recurrence = max(0, int(request.form.get('recurrence_months') or 0))
+        except (ValueError, TypeError):
+            recurrence = 0
+        return dict(
+            title=title[:255], category=(request.form.get('category') or '').strip()[:100] or None,
+            dept=(request.form.get('applies_to_department') or '').strip() or None,
+            role=(request.form.get('applies_to_role') or '').strip() or None,
+            handle=(request.form.get('required_course_handle') or '').strip() or None,
+            recurrence=recurrence,
+            statutory=1 if request.form.get('is_statutory') in ('1', 'on', 'true', 'ja') else 0)
+
+    @hr_dashboard_bp.route('/compliance/<int:req_id>/edit', methods=['POST'])
+    def edit_compliance_requirement(req_id):
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        v = _req_form_values()
+        if not v['title']:
+            flash("Titel på kravet er påkrævet.", "warning")
+            return redirect(url_for('hr_dashboard.compliance_matrix'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE compliance_requirements
+            SET title = %s, category = %s, applies_to_department = %s, applies_to_role = %s,
+                required_course_handle = %s, recurrence_months = %s, is_statutory = %s
+            WHERE id = %s AND company_id = %s
+        """, (v['title'], v['category'], v['dept'], v['role'], v['handle'], v['recurrence'],
+              v['statutory'], req_id, company['id']))
+        changed = cur.rowcount
+        conn.commit()
+        cur.close()
+        flash("Kravet er opdateret." if changed else "Kravet blev ikke fundet.", "success" if changed else "warning")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    @hr_dashboard_bp.route('/compliance/<int:req_id>/delete', methods=['POST'])
+    def delete_compliance_requirement(req_id):
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute("DELETE FROM compliance_requirements WHERE id = %s AND company_id = %s", (req_id, company['id']))
+        changed = cur.rowcount
+        conn.commit()
+        cur.close()
+        flash("Kravet er slettet." if changed else "Kravet blev ikke fundet.", "success" if changed else "warning")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    @hr_dashboard_bp.route('/compliance/<int:req_id>/assign', methods=['POST'])
+    def assign_compliance_course(req_id):
+        """"Tildel påkrævet kursus": order the requirement's course for every
+        applicable employee who has no open or completed order for it. The orders
+        go through order_service (pending_approval, budget rules, notifications)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import compliance_assign
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='compliance')
+        ctx.company_id = company['id']
+        result = compliance_assign.assign_required_course(cur, ctx, company['id'], req_id)
+        conn.commit()
+        cur.close()
+        flash(result['message'], 'success' if result.get('created') else 'warning')
         return redirect(url_for('hr_dashboard.compliance_matrix'))
 
     # ══════════════════════════════════════════════════════════════════

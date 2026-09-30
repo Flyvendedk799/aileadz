@@ -120,6 +120,8 @@ def test_page_renders_through_jinja():
     env.globals.update(
         url_for=lambda ep, **kw: "/" + ep,
         asset_version=lambda p: "test",
+        can=__import__("capabilities").can,
+        has_endpoint=lambda n: False,
         session={},
         get_flashed_messages=lambda **kw: [],
         config={},

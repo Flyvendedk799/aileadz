@@ -135,6 +135,8 @@ def _render(**ctx):
     )
     env.globals["url_for"] = lambda ep, **kw: "/" + ep
     env.globals["csrf_token"] = lambda: ""
+    from tests.jinja_globals import add_app_globals
+    add_app_globals(env)
     env.globals["session"] = {}
     env.globals["request"] = jinja2.ChainableUndefined()
     env.globals["get_flashed_messages"] = lambda **kw: []

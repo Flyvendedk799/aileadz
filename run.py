@@ -430,6 +430,9 @@ def create_app():
     # One status vocabulary for every template (N-1.1).
     import order_lifecycle
     order_lifecycle.register_jinja(app)
+    # Capability-aware navigation helpers (can(), has_endpoint()).
+    import capabilities
+    capabilities.register_jinja(app)
 
     # Danish 404/500 pages, JSON for API callers (N-0.3).
     from error_pages import register_error_handlers

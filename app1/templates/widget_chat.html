@@ -374,6 +374,7 @@
         const chatInput = document.getElementById('chatInput');
         const sendBtn = document.getElementById('sendBtn');
         const ASK_URL = '/app1/widget/{{ widget.widget_token }}/ask';
+        const WIDGET_SESSION = {{ (widget_session or '')|tojson }};
         let isSending = false;
 
         // ── Dependency-free HTML sanitizer ──
@@ -586,7 +587,7 @@
             try {
                 const resp = await fetch(ASK_URL, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: { 'Content-Type': 'application/json', 'X-Widget-Session': WIDGET_SESSION },
                     body: JSON.stringify({ query: query })
                 });
 
@@ -663,6 +664,8 @@
                                 const parsed = extractSuggestions(fullText);
                                 textEl.innerHTML = sanitizeHtml(renderMarkdown(parsed.text));
                                 scrollBottom();
+                            } else if (data.type === 'suggestions') {
+                                if (Array.isArray(data.items) && data.items.length) renderSuggestions(data.items, botContent);
                             } else if (data.type === 'product') {
                                 const cardWrap = document.createElement('div');
                                 cardWrap.className = 'product-card-container';

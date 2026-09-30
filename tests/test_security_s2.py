@@ -215,6 +215,36 @@ class S22_LoginHardening(unittest.TestCase):
         self.assertEqual(len(updates), 2)
         self.assertTrue(all(u[1][0].startswith(("scrypt:", "pbkdf2:")) for u in updates))
 
+    def test_rehash_never_touches_other_hash_schemes_or_the_erased_marker(self):
+        from auth import rehash_plaintext_passwords
+        rows = [{"id": 1, "password": "plain-secret"},
+                {"id": 2, "password": "$2b$12$abcdefghijklmnopqrstuuVwXyZ0123456789abcdefghijklmnopq"},
+                {"id": 3, "password": "!erased"},
+                {"id": 4, "password": "sha256$salt$" + "a" * 64},
+                {"id": 5, "password": "$argon2id$v=19$m=65536,t=3,p=4$abc$def"}]
+        updated = []
+
+        class Cur:
+            def execute(self, sql, params=None):
+                if sql.startswith("UPDATE"):
+                    updated.append(params[1])
+
+            def fetchall(self):
+                return rows
+
+            def close(self):
+                pass
+
+        class Conn:
+            def cursor(self, *a, **k):
+                return Cur()
+
+            def commit(self):
+                pass
+
+        self.assertEqual(rehash_plaintext_passwords(Conn()), 1)
+        self.assertEqual(updated, [1])
+
     def test_register_enforces_password_policy_and_is_danish(self):
         app = get_app()
         fake, p = patch_mysql(app)

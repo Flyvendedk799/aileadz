@@ -89,6 +89,13 @@ If the key is unset the app still boots; chat/RAG/CV features degrade and
 > again. Schedule it for a low-traffic window and tell users to expect a
 > re-login.
 >
+> **Re-encrypt the stored secrets in the same maintenance window.** AI provider
+> keys, SSO client secrets and TOTP secrets are encrypted with a key *derived
+> from* `SECRET_KEY` unless a dedicated key is set, so rotating it would orphan
+> them. Run `scripts/rotate_secret_key.py` (dry run first, then `--apply`) with
+> `OLD_SECRET_KEY` and `NEW_SECRET_KEY` **before** starting the app on the new key.
+> Since S-1.4 the app also refuses to boot with an unset or placeholder key.
+>
 > **Also consider `SSO_FERNET_KEY`:** if it is unset, the SSO token encryption
 > key is *derived from* `SECRET_KEY` (`enterprise_sso/__init__.py:115-116`), so
 > rotating `SECRET_KEY` also rotates the derived SSO key and invalidates

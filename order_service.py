@@ -575,6 +575,19 @@ def actors_for(ctx, order_row):
     return actors
 
 
+def _lock_order(cur, ctx, order_id):
+    """``SELECT ... FOR UPDATE`` one order. A company-bound actor (not a platform
+    admin, vendor or system job) only ever locks rows of ITS OWN company (or
+    company-less personal orders), so a guessed order id of another tenant is
+    never even read (S-1.7 tenant isolation)."""
+    if (ctx.company_id is not None and not ctx.is_platform_admin
+            and ctx.actor_kind not in ("vendor", "system")):
+        cur.execute("SELECT * FROM course_orders WHERE order_id = %s "
+                    "AND (company_id = %s OR company_id IS NULL) FOR UPDATE", (order_id, ctx.company_id))
+    else:
+        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+
+
 def _ownership_ok(ctx, order_row):
     """Read/act gate shared by get_order and friends: true when ctx plays any
     role on the order. Cross-tenant / other-user => False (callers 404)."""
@@ -1424,7 +1437,7 @@ def set_status(ctx, order_id, new_status, *, note=None, reason=None):
     cur = None
     try:
         cur = _dict_cursor(conn)
-        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        _lock_order(cur, ctx, order_id)
         row = cur.fetchone()
         if not row:
             return {"success": False, "error": "not_found",
@@ -1496,10 +1509,13 @@ def book_order(ctx, order_id, note=None):
     return set_status(ctx, order_id, lc.BOOKED, note=note)
 
 
-def decide_approval(ctx, approval_id, decision, notes=""):
+def decide_approval(ctx, approval_id, decision, notes="", department_scope=None):
     """Approve or reject via the approval queue. Resolves the approval row,
     then runs the single transition (status + approval row + budget) in one
-    transaction. Returns set_status' dict (plus ``order_id``)."""
+    transaction. Returns set_status' dict (plus ``order_id``).
+
+    ``department_scope`` (S-1.6): a department head may only decide requests
+    from their OWN department; any other department is refused as ``forbidden``."""
     if decision not in ("approved", "rejected"):
         return {"success": False, "error": "bad_decision", "message": "Ugyldig beslutning."}
     conn = _get_connection()
@@ -1509,7 +1525,9 @@ def decide_approval(ctx, approval_id, decision, notes=""):
     try:
         cur = _dict_cursor(conn)
         cur.execute(
-            "SELECT order_id FROM order_approvals WHERE id = %s AND company_id = %s AND status = 'pending'",
+            "SELECT oa.order_id, co.department FROM order_approvals oa "
+            "LEFT JOIN course_orders co ON oa.order_id = co.order_id "
+            "WHERE oa.id = %s AND oa.company_id = %s AND oa.status = 'pending'",
             (approval_id, ctx.company_id),
         )
         a = cur.fetchone()
@@ -1522,16 +1540,19 @@ def decide_approval(ctx, approval_id, decision, notes=""):
     if not a:
         return {"success": False, "error": "not_found",
                 "message": "Godkendelsen blev ikke fundet, eller er allerede behandlet."}
+    if department_scope is not None and (a.get("department") or "") != department_scope:
+        return {"success": False, "error": "forbidden",
+                "message": "Du kan kun behandle anmodninger fra din egen afdeling."}
     target = lc.APPROVED if decision == "approved" else lc.REJECTED
     return set_status(ctx, a["order_id"], target, note=(notes or None))
 
 
-def bulk_decide(ctx, approval_ids, decision, notes=""):
+def bulk_decide(ctx, approval_ids, decision, notes="", department_scope=None):
     """Decide many approvals; per-item results, one failure never blocks the rest."""
     results = []
     for aid in approval_ids or []:
         try:
-            r = decide_approval(ctx, int(aid), decision, notes)
+            r = decide_approval(ctx, int(aid), decision, notes, department_scope=department_scope)
         except Exception as e:  # pragma: no cover - defensive
             r = {"success": False, "error": str(e)}
         r["approval_id"] = aid
@@ -1559,7 +1580,7 @@ def complete_order(ctx, order_id, *, note=None):
     cur = None
     try:
         cur = _dict_cursor(conn)
-        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        _lock_order(cur, ctx, order_id)
         row = cur.fetchone()
         if not row:
             return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
@@ -1742,7 +1763,7 @@ def set_billing_status(ctx, order_id, new_billing, *, invoice_number=None, invoi
     cur = None
     try:
         cur = _dict_cursor(conn)
-        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        _lock_order(cur, ctx, order_id)
         row = cur.fetchone()
         if not row or not _billing_allowed(ctx, row):
             return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}
@@ -1834,7 +1855,7 @@ def update_billing_details(ctx, order_id, *, invoice_number=None, invoice_date=N
     cur = None
     try:
         cur = _dict_cursor(conn)
-        cur.execute("SELECT * FROM course_orders WHERE order_id = %s FOR UPDATE", (order_id,))
+        _lock_order(cur, ctx, order_id)
         row = cur.fetchone()
         if not row or not _billing_allowed(ctx, row):
             return {"success": False, "error": "not_found", "message": "Ordren blev ikke fundet."}

@@ -602,6 +602,17 @@ def _job_catalog_embed(app):
         return rag.embed_missing()
 
 
+def _job_data_retention(app):
+    """Daily: apply the per-table retention policy (S-4.3) -- chat transcripts,
+    AI/API/e-mail logs, expired tokens. See retention_service.POLICIES."""
+    try:
+        from retention_service import run_retention
+    except Exception as e:
+        return {'error': "retention_service import failed: %s" % e}
+    with app.app_context():
+        return run_retention(app.mysql.connection)
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -676,6 +687,12 @@ JOBS = [
         'name': 'catalog_embed',
         'interval_seconds': 21600,        # every 6 h: embed products that have no vector yet
         'fn': _job_catalog_embed,
+        'enabled': True,
+    },
+    {
+        'name': 'data_retention',
+        'interval_seconds': 86400,        # daily -- personal data does not live forever
+        'fn': _job_data_retention,
         'enabled': True,
     },
     {

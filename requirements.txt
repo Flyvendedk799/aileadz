@@ -37,6 +37,10 @@ defusedxml>=0.7,<0.8
 # Fernet encryption-at-rest for SSO client secrets (enterprise_sso).
 cryptography>=42,<49
 
+# TOTP two-factor (two_factor.py) uses only the standard library + cryptography.
+# CSRF tokens for the session-authenticated app (csrf_protect.py).
+Flask-WTF>=1.2,<2
+
 # --- Enterprise subsystem deps (imported by enterprise_* blueprints) ---
 # PyJWT provides the top-level ``import jwt`` in enterprise_api/enterprise_sso;
 # this is boot-critical because those blueprints are registered unguarded in

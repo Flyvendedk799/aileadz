@@ -45,6 +45,27 @@ def learner_event():
     return jsonify({'success': True})
 
 
+@api_bp.route('/api/my/manager-goals')
+@login_required
+def my_manager_goals():
+    """"Mål fra din leder": ONLY the HR goals that were explicitly shared with
+    this learner (S-4.4). Unshared goals never appear here."""
+    user_id, company_id = session.get('user_id'), session.get('company_id')
+    if not user_id or not company_id:
+        return jsonify({'goals': []})
+    try:
+        import goal_sharing
+        rows = goal_sharing.list_shared_goals_for_learner(current_app.mysql.connection, user_id, company_id)
+        goals = [{'id': r['id'], 'title': r.get('goal_title'), 'description': r.get('goal_description'),
+                  'target_date': r['target_date'].isoformat() if r.get('target_date') else None,
+                  'status': r.get('status'), 'progress': float(r['progress']) if r.get('progress') is not None else 0,
+                  'note': r.get('share_note')} for r in rows]
+        return jsonify({'goals': goals})
+    except Exception as e:
+        current_app.logger.warning('my_manager_goals failed: %s', e)
+        return jsonify({'goals': []})
+
+
 @api_bp.route('/api/credits')
 def get_credits():
     username = session.get('user')
@@ -678,9 +699,14 @@ def api_cv_parse():
             file.stream.seek(0)
         except Exception:
             pass
-        raw = file.read() or b''
+        raw = file.read(_MAX_CV_BYTES + 1) or b''
         if len(raw) > _MAX_CV_BYTES:
             return jsonify({'success': False, 'error': 'Filen er for stor (maks 8 MB).'}), 413
+        # S-5.5: the extension is the client's claim; the bytes must agree with it.
+        import upload_guard
+        if not upload_guard.looks_like(raw, ext):
+            return jsonify({'success': False,
+                            'error': 'Filens indhold passer ikke til filtypen. Brug en ægte PDF, et billede eller ren tekst.'}), 400
     elif not text_input.strip():
         return jsonify({'success': False, 'error': 'Ingen fil eller tekst modtaget.'}), 400
 

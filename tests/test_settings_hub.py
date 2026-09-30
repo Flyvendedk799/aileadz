@@ -114,7 +114,7 @@ class OldUrlsRedirectIntoTheHubTests(HubBase):
             self.app.view_functions[endpoint] = stub(tab)
         self.assertIn("STUB-branding", self.hr_c.get("/virksomhed/indstillinger/branding").get_data(as_text=True))
         self.assertIn("STUB-chatbot", self.hr_c.get("/virksomhed/indstillinger/chatbot").get_data(as_text=True))
-        self.assertIn("STUB-webhooks", self.hr_c.get("/virksomhed/indstillinger/webhooks").get_data(as_text=True))
+        self.assertIn("STUB-webhooks", self.admin_c.get("/virksomhed/indstillinger/webhooks").get_data(as_text=True))
         self.assertEqual(seen["branding"], (True, "branding"))
 
 

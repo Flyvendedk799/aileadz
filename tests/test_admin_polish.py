@@ -81,7 +81,7 @@ class ResendInviteTests(AdminBase):
         self.assertEqual(mail.call_args.args[2], "vendor_invite")
 
     def test_active_vendor_gets_a_reset_link_and_suspended_is_refused(self):
-        with self.mails() as mail:
+        with self.mails() as mail, mock.patch("password_tokens.issue_token", return_value="tok123"):
             self.admin.post("/admin/vendors/11/resend-invite")
             self.assertEqual(mail.call_args.args[2], "password_reset")
             mail.reset_mock()
@@ -126,12 +126,13 @@ class ListTests(AdminBase):
 
 class UserActionTests(AdminBase):
     def test_send_reset_creates_single_use_token_and_mails(self):
-        with self.mails() as mail:
+        with self.mails() as mail, mock.patch("password_tokens.issue_token", return_value="tok123") as issue:
             r = self.admin.post("/admin/users/2/send-reset")
         self.assertTrue(r.get_json()["success"])
         self.assertEqual(mail.call_args.args[2], "password_reset")
         self.assertIn("reset_url", mail.call_args.kwargs)
-        self.assertEqual(self.db.one("SELECT COUNT(*) AS n FROM account_tokens WHERE kind='user_reset'")["n"], 1)
+        self.assertEqual(issue.call_args.args[1:3], ("user", 2))           # Part A token store (S-2.4)
+        self.assertEqual(issue.call_args.kwargs["purpose"], "reset")
 
     def test_deactivate_blocks_login_and_reactivate_restores(self):
         r = self.admin.post("/admin/users/2/deactivate")

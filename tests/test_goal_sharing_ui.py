@@ -69,8 +69,9 @@ class GoalRoutePermissionTests(unittest.TestCase):
         client = run.create_app().test_client()
         with client.session_transaction() as s:
             s["user"] = "ada"; s["company_id"] = 7; s["company_role"] = "employee"
-        self.assertEqual(client.get("/hr/employee/1/goals").status_code, 302)
-        self.assertEqual(client.post("/hr/goals/1/share", data={"shared": "1"}).status_code, 302)
+        page = {"Accept": "text/html"}          # browsers get a redirect, JSON callers a 403 (S-1.6)
+        self.assertEqual(client.get("/hr/employee/1/goals", headers=page).status_code, 302)
+        self.assertEqual(client.post("/hr/goals/1/share", data={"shared": "1"}, headers=page).status_code, 302)
 
 
 if __name__ == "__main__":

@@ -12,6 +12,7 @@ import hmac
 import hashlib
 import time
 from urllib.parse import urlparse
+from auth_decorators import login_required as _login_required, require_role as _require_role
 
 # Try to import fuzzywuzzy; if not installed, raise a clear error.
 try:
@@ -906,6 +907,7 @@ def anon_token():
 
 # 5.4: Observability dashboard endpoint
 @app1_bp.route("/dashboard")
+@_require_role("admin")
 def dashboard():
     try:
         from app1.memory_store import get_observability_dashboard
@@ -974,6 +976,10 @@ def ask():
 VOICE_MAX_BYTES = 25 * 1024 * 1024
 
 
+VOICE_RATE_LIMIT = int(os.getenv("VOICE_RATE_LIMIT", "20"))
+VOICE_RATE_WINDOW = int(os.getenv("VOICE_RATE_WINDOW", "300"))
+
+
 def _voice_input_enabled():
     """Feature flag for voice input. Defaults ON; set VOICE_INPUT_ENABLED=0 to disable."""
     val = os.getenv("VOICE_INPUT_ENABLED")
@@ -1015,6 +1021,7 @@ def _voice_audio_from_request():
 
 
 @app1_bp.route("/voice", methods=["POST"])
+@_login_required
 def voice():
     """Transcribe an uploaded audio blob with OpenAI Whisper and return the text.
 
@@ -1030,6 +1037,15 @@ def voice():
             "text": "",
             "error": "Stemmeinput er ikke aktiveret.",
         }), 200
+
+    # S-1.11: per-user rate limit so nobody can drain the Whisper budget.
+    import rate_limit as _rl
+    if not _rl.hit("voice:%s" % session.get("user"), VOICE_RATE_LIMIT, VOICE_RATE_WINDOW):
+        return jsonify({
+            "ok": False,
+            "text": "",
+            "error": "Du sender for mange lydbeskeder. Vent lidt og prøv igen.",
+        }), 429
 
     try:
         filename, data, err = _voice_audio_from_request()
@@ -1109,6 +1125,30 @@ def voice():
         }), 500
 
 
+def _server_side_turn(sid, message_index):
+    """Return (user_query, assistant_answer) for the ``message_index``-th (1-based)
+    assistant message of session ``sid`` from the server-held transcript, or
+    ("", "") when it is not available. Never trusts client-supplied text."""
+    try:
+        from app1.agent import CHAT_MEMORY
+        msgs = CHAT_MEMORY.get(sid) or []
+        idx = int(message_index)
+        seen = 0
+        last_user = ""
+        for m in msgs:
+            role = m.get("role")
+            content = m.get("content")
+            if role == "user" and isinstance(content, str):
+                last_user = content
+            elif role == "assistant" and isinstance(content, str) and content.strip():
+                seen += 1
+                if seen == idx:
+                    return last_user[:300], content[:300]
+    except Exception:
+        pass
+    return "", ""
+
+
 # Phase 6: Feedback endpoint
 @app1_bp.route("/feedback", methods=["POST"])
 def feedback():
@@ -1130,11 +1170,23 @@ def feedback():
             message_index = int(data.get("message_index", 0) or 0)
         except (TypeError, ValueError):
             message_index = 0
-        query_text = data.get("query_text", "")
-        assistant_response = data.get("assistant_response", "")
+        # S-1.7: the rated Q&A text is taken from the SERVER-side transcript,
+        # never from the client. Client-sent text used to be stored, thumbs-up'd
+        # and replayed into other users' prompts (cross-tenant prompt injection).
+        query_text, assistant_response = "", ""
+        for _candidate in [sid] + [s for s in sids if s != sid]:
+            query_text, assistant_response = _server_side_turn(_candidate, message_index)
+            if query_text or assistant_response:
+                break
         reason = data.get("reason", "")
         comment = data.get("comment", "")
         latency_ms = data.get("latency_ms", 0)
+        try:
+            rating = 1 if int(float(rating)) > 0 else (-1 if int(float(rating)) < 0 else 0)
+        except (TypeError, ValueError):
+            rating = 0
+        reason = reason if isinstance(reason, str) else ""
+        comment = comment if isinstance(comment, str) else ""
 
         try:
             latency_val = int(float(latency_ms))
@@ -1147,6 +1199,7 @@ def feedback():
             query_text=query_text,
             feedback_rating=rating,
             message_index=message_index,
+            company_id=session.get("company_id"),
             extra={
                 "assistant_response": assistant_response[:300],
                 "reason": reason[:80],
@@ -1847,6 +1900,7 @@ def confirm_tool_action():
 
 
 @app1_bp.route("/adminlog")
+@_require_role("admin")
 def adminlog():
     from app1.memory_store import get_debug_sessions, get_debug_logs_for_session
     import datetime as _dt
@@ -1901,6 +1955,7 @@ def adminlog():
 
 
 @app1_bp.route("/adminlog/session/<session_id>")
+@_require_role("admin")
 def adminlog_session(session_id):
     from app1.memory_store import get_debug_logs_for_session
     logs = get_debug_logs_for_session(session_id)
@@ -1908,6 +1963,7 @@ def adminlog_session(session_id):
 
 
 @app1_bp.route("/adminlog/sessions_summary")
+@_require_role("admin")
 def adminlog_sessions_summary():
     """Lightweight endpoint for admin log auto-refresh polling."""
     from app1.memory_store import get_debug_sessions
@@ -1918,7 +1974,26 @@ def adminlog_sessions_summary():
     ]})
 
 
+@app1_bp.route("/adminlog/feedback")
+@_require_role("admin")
+def adminlog_feedback():
+    """Positive feedback awaiting review before it may be reused as a prompt
+    example (S-1.7). ?all=1 also lists already-reviewed rows."""
+    from app1.memory_store import list_feedback_for_review
+    return jsonify({"items": list_feedback_for_review(only_pending=request.args.get("all") != "1")})
+
+
+@app1_bp.route("/adminlog/feedback/<int:feedback_id>/review", methods=["POST"])
+@_require_role("admin")
+def adminlog_feedback_review(feedback_id):
+    from app1.memory_store import set_feedback_reviewed
+    approved = bool((request.get_json(silent=True) or {}).get("approved", True))
+    ok = set_feedback_reviewed(feedback_id, approved)
+    return jsonify({"status": "ok" if ok else "not_found"}), (200 if ok else 404)
+
+
 @app1_bp.route("/adminlog/clear", methods=["POST"])
+@_require_role("admin")
 def adminlog_clear():
     from app1.memory_store import clear_debug_logs
     clear_debug_logs()
@@ -2283,13 +2358,10 @@ def _widget_read_session(token, raw, max_age=12 * 3600):
     return data
 
 
-def _widget_frame_ancestors(allowed_hosts):
-    if not allowed_hosts:
-        return None
-    parts = ["'self'"]
-    for h in allowed_hosts:
-        parts += ["https://" + h, "https://*." + h]
-    return "frame-ancestors " + " ".join(parts)
+def _csp_with_frame_ancestors(ancestors):
+    """The app-wide enforced CSP with ``frame-ancestors`` replaced (widget page)."""
+    import security_headers
+    return re.sub(r"frame-ancestors [^;]*", "frame-ancestors " + ancestors, security_headers._CSP)
 
 
 @app1_bp.route("/widget/<token>")
@@ -2325,9 +2397,14 @@ def widget_embed(token):
     resp = make_response(render_template(
         'widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'),
         widget_session=_widget_mint_session(token, parent_host, preview)))
-    fa = _widget_frame_ancestors(allowed_hosts)
-    if fa and not preview:
-        resp.headers['Content-Security-Policy'] = fa
+    # S-5.6: the BROWSER enforces who may frame the widget. With an allowlist, only
+    # those hosts (and their subdomains) can embed it; without one it stays open
+    # (backward compatible) but is still rate capped on /ask.
+    if allowed_hosts:
+        ancestors = " ".join(["'self'"] + ["https://%s https://*.%s" % (h, h) for h in allowed_hosts])
+    else:
+        ancestors = "*"
+    resp.headers['Content-Security-Policy'] = _csp_with_frame_ancestors(ancestors)
     return resp
 
 
@@ -2420,6 +2497,25 @@ def widget_ask(token):
     return _widget_cors_headers(response, req_host, allowed_hosts)
 
 
+_CSS_COLOR_RE = re.compile(r'^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|(rgb|hsl)a?\([0-9 ,.%/]{3,40}\))$')
+
+
+def _safe_css_color(value, default):
+    """Return ``value`` only if it is a plain CSS colour (hex, name, rgb/hsl)."""
+    v = str(value or '').strip()
+    return v if _CSS_COLOR_RE.match(v) else default
+
+
+def _safe_logo_url(value):
+    """Logo URLs must be http(s) or site-relative; anything else is dropped."""
+    v = str(value or '').strip()
+    if v.startswith('/') and not v.startswith('//'):
+        return v
+    if re.match(r'^https?://', v, re.I):
+        return v
+    return ''
+
+
 @app1_bp.route("/widget/<token>/loader.js")
 def widget_loader_js(token):
     """Serve the loader script that creates the chat widget on external sites"""
@@ -2439,14 +2535,21 @@ def widget_loader_js(token):
 
     from branding_service import get_branding
     branding = get_branding(widget['cid'])
-    tenant_logo = branding.get('logo_url') or branding.get('company_logo') or ''
+    tenant_logo = _safe_logo_url(branding.get('logo_url') or branding.get('company_logo') or '')
 
     # Extract settings
-    primary = widget.get('theme_primary_color', '#0f766e')
-    text_color = widget.get('theme_text_color', '#FFFFFF')
+    # S-1.9: every HR-authored value interpolated into the loader is either
+    # whitelisted (colours), position-validated, or JSON-encoded (title/logo).
+    primary = _safe_css_color(widget.get('theme_primary_color'), '#0f766e')
+    text_color = _safe_css_color(widget.get('theme_text_color'), '#FFFFFF')
     position = widget.get('position', 'bottom-right') or 'bottom-right'
     size = widget.get('widget_size', 'medium')
-    title = widget.get('widget_title', 'Kursusrådgiver')
+    title = widget.get('widget_title') or 'Kursusrådgiver'
+    title_js = json.dumps(str(title)[:120]).replace('</', '<\\/')
+    if position not in ('bottom-right', 'bottom-left', 'top-right', 'top-left'):
+        position = 'bottom-right'
+    if size not in ('small', 'medium', 'large'):
+        size = 'medium'
 
     size_map = {'small': 350, 'medium': 400, 'large': 450}
     width = size_map.get(size, 400)
@@ -2461,7 +2564,7 @@ def widget_loader_js(token):
 
     iframe_url = request.url_root.rstrip('/') + url_for('app1.widget_embed', token=token)
     logo_html = (
-        f"<img src='{tenant_logo}' alt='' style='width:26px;height:26px;object-fit:contain;border-radius:50%;'>"
+        f"<img src='{escape(tenant_logo)}' alt='' style='width:26px;height:26px;object-fit:contain;border-radius:50%;'>"
         if tenant_logo else
         "<svg viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z\"/></svg>"
     )
@@ -2505,7 +2608,7 @@ def widget_loader_js(token):
   document.head.appendChild(s);
   var btn=document.createElement('button');
   btn.id='ailead-widget-btn';
-  btn.title='{title}';
+  btn.title={title_js};
   btn.innerHTML={btn_icon_js};
   document.body.appendChild(btn);
   var frame=document.createElement('iframe');

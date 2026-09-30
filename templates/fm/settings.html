@@ -35,6 +35,7 @@
         <nav class="set-nav" data-reveal>
           <a class="active" href="#konto"><i class="fa-solid fa-user"></i> Konto</a>
           <a href="#sikkerhed"><i class="fa-solid fa-lock"></i> Sikkerhed</a>
+          <a href="#privatliv"><i class="fa-solid fa-user-shield"></i> Privatliv</a>
           {% if session.get('role') == 'admin' %}
           <a href="#admin"><i class="fa-solid fa-shield-halved"></i> Admin</a>
           {% endif %}
@@ -77,6 +78,30 @@
                 </div>
                 <div class="fm-mb0" style="margin-top:8px"><button type="submit" class="btn btn-soft btn-sm"><i class="fa-solid fa-key"></i> Ændr kodeord</button></div>
               </form>
+            </div>
+          </div>
+
+          <div class="fm-card" id="privatliv" data-reveal data-d="2">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-user-shield"></i></span><h3>Dine data og privatliv</h3></div>
+            <div class="fm-card-body">
+              <p style="font-size:13px;color:var(--fm-ink-2);margin-top:0">Du har ret til at få en kopi af dine data og til at få dem slettet. <a href="{{ url_for('pages.privacy') }}">Læs vores privatlivspolitik</a>.</p>
+              <div class="fm-flex fm-gap8" style="flex-wrap:wrap;margin-bottom:14px">
+                <a href="{{ url_for('gdpr.my_data') }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-download"></i> Hent mine data (JSON)</a>
+              </div>
+              <form method="post" action="{{ url_for('gdpr.request_erasure') }}" onsubmit="return confirm('Vil du anmode om at få alle dine data slettet? Det kan ikke fortrydes, når sletningen er udført.');">
+                <div class="fm-field"><label>Hvorfor vil du slettes? (valgfrit)</label><input class="fm-input" type="text" name="reason" maxlength="300"></div>
+                <label style="display:flex;gap:8px;align-items:flex-start;font-size:13px;margin:8px 0 12px"><input type="checkbox" name="confirm" value="1" required style="margin-top:3px"> <span>Jeg forstår, at min profil og mine samtaler slettes permanent, og at ordrer og revisionsspor bevares uden mine personoplysninger.</span></label>
+                <button type="submit" class="btn btn-ghost btn-sm"><i class="fa-solid fa-trash"></i> Anmod om sletning</button>
+                <span style="font-size:12px;color:var(--fm-ink-3);margin-left:8px">Vi behandler anmodningen senest 30 dage efter, at du har sendt den.</span>
+              </form>
+            </div>
+          </div>
+
+          <div class="fm-card" id="tofaktor" data-reveal data-d="2">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-mobile-screen"></i></span><h3>Tofaktorgodkendelse</h3></div>
+            <div class="fm-card-body">
+              <p style="font-size:13px;color:var(--fm-ink-2);margin-top:0">Tilføj en ekstra kode fra din telefon, når du logger ind. Anbefales til alle og er påkrævet for platformadministratorer.</p>
+              <a href="{{ url_for('auth.account_2fa') }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-shield-halved"></i> Administrér tofaktorgodkendelse</a>
             </div>
           </div>
 

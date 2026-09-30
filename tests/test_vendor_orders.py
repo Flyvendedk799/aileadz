@@ -1,4 +1,4 @@
-"""N-6.1: vendors receive and act on their own orders; forgot password tokens."""
+"""N-6.1: vendors receive and act on their own orders; vendor reset link."""
 
 import os
 import unittest
@@ -6,7 +6,6 @@ from unittest import mock
 
 os.environ.setdefault("SANDBOX", "1")
 
-import account_tokens  # noqa: E402
 import order_service as svc  # noqa: E402
 from tests.sqlite_platform import PlatformDB, client_as, make_app, render_patches  # noqa: E402
 
@@ -120,41 +119,21 @@ class VendorOrdersTests(VendorBase):
         self.assertIn("Indsend flere kurser", html)
 
 
-class AccountTokenTests(VendorBase):
-    def test_token_is_single_use_and_stored_hashed(self):
-        with self.app.app_context():
-            raw = account_tokens.create_token("vendor_reset", 11)
-            self.assertNotIn(raw, str(self.db.query("SELECT * FROM account_tokens")))
-            self.assertEqual(account_tokens.consume_token("vendor_reset", raw), 11)
-            self.assertIsNone(account_tokens.consume_token("vendor_reset", raw))
-            self.assertIsNone(account_tokens.consume_token("other_kind", raw))
-
-    def test_expired_token_is_rejected(self):
-        with self.app.app_context():
-            raw = account_tokens.create_token("vendor_reset", 11)
-            self.db.execute("UPDATE account_tokens SET expires_at = datetime('now', '-1 minutes')")
-            self.assertIsNone(account_tokens.consume_token("vendor_reset", raw))
-
-    def test_new_token_revokes_the_old_one(self):
-        with self.app.app_context():
-            old = account_tokens.create_token("vendor_reset", 11)
-            account_tokens.create_token("vendor_reset", 11)
-            self.assertIsNone(account_tokens.consume_token("vendor_reset", old))
-
-
 class VendorResetLinkTests(VendorBase):
     """The forgot/reset SCREENS are Part A's (S-2.4); the admin button mints the link."""
 
     def test_send_vendor_reset_link_mints_a_token_and_mails_the_link(self):
         from vendor_portal import send_vendor_reset_link
         with mock.patch("email_service.send_branded_email", return_value=True) as mail, \
+                mock.patch("password_tokens.issue_token", return_value="tok123") as issue, \
                 self.app.test_request_context("/"):
             ok = send_vendor_reset_link({"id": 11, "contact_email": "v@k.dk"})
         self.assertTrue(ok)
         self.assertEqual(mail.call_args.args[2], "password_reset")
         self.assertIn("/vendor/reset-password/", mail.call_args.kwargs["reset_url"])
-        token = mail.call_args.kwargs["reset_url"].rsplit("/", 1)[1]
-        self.assertEqual(account_tokens.peek_token("vendor_reset", token), 11)
+        self.assertTrue(mail.call_args.kwargs["reset_url"].endswith("/vendor/reset-password/tok123"))
+        self.assertEqual(issue.call_args.args[1:3], ("vendor", 11))        # Part A token store (S-2.4)
+        self.assertEqual(issue.call_args.kwargs["purpose"], "reset")
 
 
 if __name__ == "__main__":

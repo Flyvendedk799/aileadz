@@ -127,7 +127,8 @@ def set_shared(cur, *, company_id, goal_id, shared, actor_user_id=None, note=Non
         if shared:
             _notify_shared(cur, company_id, row.get("employee_id"), row.get("goal_title"), goal_id,
                            actor_user_id, note)
-        return {"success": True, "goal_id": goal_id, "shared": bool(shared)}
+        return {"success": True, "goal_id": goal_id, "shared": bool(shared),
+                "employee_id": row.get("employee_id")}
     cur.execute(
         "SELECT id, employee_id, goal_title, shared_with_employee FROM employee_goals "
         "WHERE id = %s AND company_id = %s",
@@ -138,7 +139,8 @@ def set_shared(cur, *, company_id, goal_id, shared, actor_user_id=None, note=Non
         return {"success": False, "error": "not_found", "message": "Målet blev ikke fundet."}
     target = 1 if shared else 0
     if int(goal.get("shared_with_employee") or 0) == target:
-        return {"success": True, "unchanged": True, "goal_id": goal_id, "shared": bool(target)}
+        return {"success": True, "unchanged": True, "goal_id": goal_id, "shared": bool(target),
+                "employee_id": goal.get("employee_id")}
     if target:
         cur.execute(
             "UPDATE employee_goals SET shared_with_employee = 1, shared_at = CURRENT_TIMESTAMP, share_note = %s "
@@ -156,7 +158,7 @@ def set_shared(cur, *, company_id, goal_id, shared, actor_user_id=None, note=Non
            "%s: %s" % ("Delt med medarbejder" if target else "Gjort privat", goal.get("goal_title")))
     if target:
         _notify_shared(cur, company_id, goal["employee_id"], goal.get("goal_title"), goal_id, actor_user_id, note)
-    return {"success": True, "goal_id": goal_id, "shared": bool(target)}
+    return {"success": True, "goal_id": goal_id, "shared": bool(target), "employee_id": goal["employee_id"]}
 
 
 def _notify_shared(cur, company_id, employee_id, title, goal_id, actor_user_id, note):

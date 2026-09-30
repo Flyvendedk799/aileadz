@@ -371,6 +371,74 @@ def current_vendor():
 
 
 # ---------------------------------------------------------------------------
+# Session liveness (S-2.7): a suspended vendor must lose access immediately,
+# not when their cookie expires. Status is re-read per guarded request, cached
+# per worker for VENDOR_RECHECK_TTL seconds. DB trouble fails OPEN (an outage
+# must not lock every vendor out); a definitively non-active vendor fails closed.
+# ---------------------------------------------------------------------------
+
+import threading
+import time
+
+VENDOR_RECHECK_TTL = 60
+_VENDOR_STATUS_CACHE = {}   # {vendor_id: (checked_at, is_active)}
+_VENDOR_STATUS_LOCK = threading.Lock()
+
+
+def _lookup_vendor_status(vendor_id):
+    """Return the vendor's status string, None if the vendor row is gone, or
+    False if the lookup could not be made. Separate so tests can stub it."""
+    row = _fetch_vendor_by_id(vendor_id)
+    if row is None:
+        # _fetch_vendor_by_id returns None both for "no such row" and for DB
+        # errors; distinguish by checking that a cursor can be opened at all.
+        cur = _dict_cursor()
+        if cur is None:
+            return False
+        try:
+            cur.close()
+        except Exception:
+            pass
+        return None
+    return (row.get("status") or "")
+
+
+def invalidate_vendor_cache(vendor_id=None):
+    """Call right after suspending/activating a vendor so it bites at once."""
+    with _VENDOR_STATUS_LOCK:
+        if vendor_id is None:
+            _VENDOR_STATUS_CACHE.clear()
+        else:
+            _VENDOR_STATUS_CACHE.pop(vendor_id, None)
+
+
+def vendor_session_is_live(vendor_id):
+    now = time.time()
+    with _VENDOR_STATUS_LOCK:
+        hit = _VENDOR_STATUS_CACHE.get(vendor_id)
+    if hit and now - hit[0] < VENDOR_RECHECK_TTL:
+        return hit[1]
+    status = _lookup_vendor_status(vendor_id)
+    if status is False:
+        return True  # cannot check -> fail open
+    live = (status or "").strip().lower() == "active"
+    with _VENDOR_STATUS_LOCK:
+        if len(_VENDOR_STATUS_CACHE) > 5000:
+            _VENDOR_STATUS_CACHE.clear()
+        _VENDOR_STATUS_CACHE[vendor_id] = (now, live)
+    return live
+
+
+def _end_vendor_session():
+    sess = _session()
+    for key in ("vendor_id", "vendor_name", "user_type"):
+        try:
+            sess.pop(key, None)
+        except Exception:
+            pass
+
+
+# ---------------------------------------------------------------------------
 # Decorator
 # ---------------------------------------------------------------------------
 
@@ -388,7 +456,13 @@ def vendor_login_required(view):
     def wrapped(*args, **kwargs):
         sess = _session()
         if sess.get("vendor_id") and sess.get("user_type") == "vendor":
-            return view(*args, **kwargs)
+            if vendor_session_is_live(sess.get("vendor_id")):
+                return view(*args, **kwargs)
+            _end_vendor_session()
+            if _wants_json():
+                return _json_error("Din leverandørkonto er ikke længere aktiv.", 401)
+            _flash("Din leverandørkonto er ikke længere aktiv. Kontakt administratoren.", "warning")
+            return _redirect_to_login()
 
         if _wants_json():
             return _json_error("Log ind som leverandør for at fortsætte.", 401)
@@ -405,5 +479,7 @@ __all__ = [
     "current_vendor",
     "set_vendor_session",
     "vendor_login_required",
+    "vendor_session_is_live",
+    "invalidate_vendor_cache",
     "VENDOR_LOGIN_ENDPOINT",
 ]

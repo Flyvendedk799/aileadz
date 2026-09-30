@@ -101,18 +101,15 @@ class WebhookDeliveryTests(Base):
                         "(1,7,'A','https://a.example/h','s','[\"order.approved\"]'),"
                         "(2,7,'B','https://b.example/h','s','[\"order.approved\",\"budget.overrun\"]'),"
                         "(3,8,'Andens','https://c.example/h','s','[\"order.approved\"]')")
-        for p in (mock.patch.object(event_bus, "_safe_webhook_url", return_value=True),):
-            p.start()
-            self.addCleanup(p.stop)
         self.calls = []
 
     def urlopen(self, fail_hosts=()):
-        def _open(req, timeout=None):
-            self.calls.append(req.full_url)
-            if any(h in req.full_url for h in fail_hosts):
+        def _post(url, body, headers=None, timeout=10):
+            self.calls.append(url)
+            if any(h in url for h in fail_hosts):
                 raise OSError("connection refused")
-            return mock.Mock(status=200)
-        return mock.patch("urllib.request.urlopen", side_effect=_open)
+            return True, "HTTP 200"
+        return mock.patch("safe_http.post_json", side_effect=_post)        # S-3.3 transport
 
     def test_one_failing_subscriber_is_retried_alone(self):
         event_bus.emit_event(7, "order.approved", {"order_id": "o1"})
@@ -163,7 +160,8 @@ class WebhookDeliveryTests(Base):
         with self.urlopen(fail_hosts=("b.example",)):
             event_bus.drain_outbox()
         with mock.patch("enterprise_company_settings.get_company_context", return_value={"id": 7, "company_name": "A"}):
-            c = client_as(self.app, user="hr", user_id=1, company_id=7, company_role="hr_manager")
+            # webhooks are company-admin territory in the S-2.3 matrix (company.integrations)
+            c = client_as(self.app, user="hr", user_id=1, company_id=7, company_role="company_admin")
             html = c.get("/virksomhed/indstillinger/webhooks").get_data(as_text=True)
         self.assertIn("Leveringslog", html)
         self.assertIn("Gensend", html)

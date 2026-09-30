@@ -157,17 +157,55 @@ def _mysql_settings_from_database_url(url):
         return {}
 
 
+INSECURE_SECRET_KEYS = frozenset({
+    '', 'your_secret_key_here', 'supersecretkey', 'secret', 'changeme',
+    'change-me', 'dev', 'development', 'test', 'password',
+})
+_SANDBOX_SECRET_KEY = 'sandbox-only-insecure-secret-key'
+
+
+def resolve_secret_key(env):
+    """Return the Flask SECRET_KEY from ``env`` or refuse to boot (S-1.4).
+
+    Outside SANDBOX=1 a missing or well-known placeholder key raises
+    RuntimeError so a misconfigured deploy fails loudly instead of running with
+    forgeable sessions.
+    """
+    key = (env.get('SECRET_KEY') or '').strip()
+    sandbox = env.get('SANDBOX') == '1'
+    if key and key.lower() not in INSECURE_SECRET_KEYS:
+        if len(key) < 32:
+            logging.warning("SECRET_KEY is shorter than 32 characters; generate a longer one "
+                            "(python -c \"import secrets; print(secrets.token_hex(32))\").")
+        return key
+    if sandbox:
+        return key or _SANDBOX_SECRET_KEY
+    raise RuntimeError(
+        "SECRET_KEY is not set (or is a known placeholder). Refusing to start: "
+        "sessions could be forged. Set a long random SECRET_KEY in the environment "
+        "(see docs/runbooks/SECRET_ROTATION.md), or SANDBOX=1 for local dev/tests."
+    )
+
+
 def create_app():
     app = Flask(__name__, template_folder='templates')
-    # Secret key is env-overridable. The hardcoded value is kept as a fallback so
-    # production keeps working when SECRET_KEY is unset, but we warn loudly so it
-    # gets set + rotated. The warning is suppressed inside the sandbox.
-    app.secret_key = os.environ.get('SECRET_KEY') or 'your_secret_key_here'
-    if not os.environ.get('SECRET_KEY') and os.environ.get('SANDBOX') != '1':
-        logging.warning(
-            "SECRET_KEY is not set; falling back to an insecure default secret key. "
-            "Set the SECRET_KEY environment variable and rotate it for production."
-        )
+    # S-1.4: SECRET_KEY is mandatory. Sessions, the AI-key encryption key and the
+    # SSO-secret encryption key all derive from it, so an unset or well-known
+    # value would let anyone forge a session (role='admin'). Only SANDBOX=1
+    # (tests/dev) may fall back to a throwaway value.
+    app.secret_key = resolve_secret_key(os.environ)
+
+    # S-5.5: no request body larger than this is ever read (the biggest legitimate
+    # upload is a 25 MB voice clip). Oversize requests get a 413 before any handler runs.
+    app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH_MB', '26')) * 1024 * 1024
+
+    @app.errorhandler(413)
+    def _too_large(_err):
+        from flask import jsonify as _jsonify, request
+        msg = "Filen eller forespørgslen er for stor."
+        if request.path.startswith(('/api', '/app1')) or request.is_json:
+            return _jsonify({"success": False, "ok": False, "error": msg}), 413
+        return msg, 413
 
     # Session cookie hardening. These are additive and don't invalidate existing
     # sessions. SESSION_COOKIE_SECURE must stay False under SANDBOX=1 so the test
@@ -266,9 +304,6 @@ def create_app():
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
 
-    # Forgot password / reset / invite screens (N-2.1).
-    from account_flows import register_account_flows
-    register_account_flows(app)
     from bulk_invite import bulk_invite_bp
     app.register_blueprint(bulk_invite_bp)
 
@@ -377,6 +412,16 @@ def create_app():
     except Exception as e:
         logging.warning("Asset versioning skipped: %s", e)
 
+    # S-1.10: deactivated / SCIM-removed users lose access on the next request
+    # (membership status re-checked, cached ~60 s), on every route.
+    from auth_decorators import register_session_liveness, register_capability_context
+    register_session_liveness(app)
+    register_capability_context(app)
+
+    # Render-time sanitising filters (safe_html / safe_css) replace bare |safe (S-1.9).
+    from html_sanitize import register_html_filters
+    register_html_filters(app)
+
     # Branding schema migration runs every process start (not gated by enterprise sync TTL)
     @app.before_request
     def _warm_ai_subsystems_once():
@@ -430,6 +475,23 @@ def create_app():
                     logging.warning("Branding migration: %s", mig_err)
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
+
+    # Part A (security/privacy) schema: goal-sharing columns, DSR tickets, 2FA,
+    # reset tokens. Runs once per worker, fully guarded, never blocks a request.
+    @app.before_request
+    def _ensure_security_schema_once():
+        if getattr(app, '_security_schema_ensured', False) or app.config.get('TESTING'):
+            return
+        app._security_schema_ensured = True
+        try:
+            conn = app.mysql.connection
+            import goal_sharing, dsr_service, two_factor, password_tokens
+            goal_sharing.ensure_schema(conn)
+            dsr_service.ensure_table(conn)
+            two_factor.ensure_table(conn)
+            password_tokens.ensure_table(conn)
+        except Exception as e:
+            logging.warning("Security schema init: %s", e)
 
     # Hot-path performance indexes. Runs once per worker process (its own flag,
     # deliberately NOT gated by the enterprise-sync TTL stamp) so a `git pull` +
@@ -489,6 +551,12 @@ def create_app():
     # Danish 404/500 pages, JSON for API callers (N-0.3).
     from error_pages import register_error_handlers
     register_error_handlers(app)
+
+    # S-2.1: CSRF protection (token on every unsafe request; key-authenticated
+    # API/SCIM and the anonymous widget are exempt). Registered last so its
+    # HTML-injection after_request runs before response compression.
+    from csrf_protect import init_csrf
+    init_csrf(app)
 
     return app
 

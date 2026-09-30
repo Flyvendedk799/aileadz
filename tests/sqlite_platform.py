@@ -36,8 +36,6 @@ ALTER TABLE vendors ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP;
 CREATE TABLE vendor_submissions (id INTEGER PRIMARY KEY AUTOINCREMENT, vendor_id INTEGER, job_id TEXT,
   filename TEXT, row_count INTEGER, status TEXT DEFAULT 'pending', reviewed_by INTEGER, reviewed_at TEXT,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP);
-CREATE TABLE account_tokens (id INTEGER PRIMARY KEY AUTOINCREMENT, kind TEXT, subject_id INTEGER,
-  token_hash TEXT, expires_at TEXT, used_at TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP);
 CREATE TABLE account_requests (id INTEGER PRIMARY KEY AUTOINCREMENT, company_id INTEGER, kind TEXT,
   requested_by INTEGER, requested_by_name TEXT, note TEXT, status TEXT DEFAULT 'open', handled_by INTEGER,
   created_at TEXT DEFAULT CURRENT_TIMESTAMP, handled_at TEXT);

@@ -132,6 +132,15 @@ def vendor_login():
             flash("Leverandørlogin er midlertidigt utilgængeligt. Prøv igen senere.", "danger")
             return render_template("fm/vendor_login.html", email=email)
 
+        # S-2.2: same brute-force guard as the main login (separate key space).
+        import login_guard
+        guard_key = "vendor:" + email
+        ip = login_guard.client_ip()
+        allowed, retry_after = login_guard.check(guard_key, ip)
+        if not allowed:
+            flash(login_guard.locked_message(retry_after), "danger")
+            return render_template("fm/vendor_login.html", email=email)
+
         try:
             vendor_row = auth.authenticate_vendor(email, password)
         except Exception as e:  # never 500 on a login attempt
@@ -139,9 +148,11 @@ def vendor_login():
             vendor_row = None
 
         if not vendor_row:
+            login_guard.record_failure(guard_key, ip)
             flash("Forkert e-mail eller adgangskode, eller kontoen er ikke aktiv.", "danger")
             return render_template("fm/vendor_login.html", email=email)
 
+        login_guard.record_success(guard_key, ip)
         set_vendor_session(vendor_row)
         flash("Velkommen tilbage.", "success")
         return redirect(url_for("vendor.vendor_dashboard"))
@@ -149,8 +160,20 @@ def vendor_login():
     return render_template("fm/vendor_login.html", email="")
 
 
-@vendor_bp.route("/logout")
+@vendor_bp.route("/logout", methods=["GET", "POST"])
 def vendor_logout():
+    """POST-only state change (S-2.2); a stray GET only shows a confirm page."""
+    if request.method == "GET":
+        if not session.get("vendor_id"):
+            return redirect(url_for("vendor.vendor_login"))
+        from flask import Response
+        return Response(
+            "<!doctype html><html lang='da'><head><meta charset='utf-8'><title>Log ud</title></head>"
+            "<body style='font-family:system-ui;max-width:26rem;margin:5rem auto;padding:0 1rem;text-align:center'>"
+            "<h1 style='font-size:1.4rem'>Vil du logge ud?</h1>"
+            "<form method='post' action='%s'><button type='submit' style='padding:.7rem 1.4rem;font-size:1rem;"
+            "border-radius:.6rem;border:0;background:#0b6b63;color:#fff;cursor:pointer'>Log ud</button></form>"
+            "</body></html>" % url_for("vendor.vendor_logout"), mimetype="text/html")
     _clear_vendor_session()
     flash("Du er nu logget ud.", "success")
     return redirect(url_for("vendor.vendor_login"))
@@ -199,8 +222,11 @@ def vendor_set_password(token):
         password = request.form.get("password") or ""
         confirm = request.form.get("confirm") or ""
 
-        if len(password) < 8:
-            flash("Adgangskoden skal være mindst 8 tegn.", "danger")
+        from password_policy import validate_password
+        _pw_errors = validate_password(password, vendor_row.get("vendor_name"), vendor_row.get("contact_email"))
+        if _pw_errors:
+            for _err in _pw_errors:
+                flash(_err, "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
         if password != confirm:
@@ -257,6 +283,116 @@ def vendor_set_password(token):
 
     return render_template("fm/vendor_set_password.html", token=token, invalid=False,
                            vendor_name=vendor_row.get("vendor_name") or "")
+
+
+# ---------------------------------------------------------------------------
+# Forgot / reset password for vendors (S-2.4)
+# ---------------------------------------------------------------------------
+_VENDOR_RESET_NOTICE = ("Hvis der findes en leverandørkonto med den e-mail, har vi sendt et link "
+                        "til at vælge en ny adgangskode. Tjek din indbakke.")
+
+
+@vendor_bp.route("/forgot-password", methods=["GET", "POST"])
+def vendor_forgot_password():
+    if request.method == "POST":
+        import login_guard
+        import password_tokens
+        import rate_limit
+        email = (request.form.get("email") or "").strip().lower()
+        ip = login_guard.client_ip()
+        ok = rate_limit.hit("vforgot:ip:" + ip, 10, 900) and rate_limit.hit("vforgot:id:" + email, 3, 900)
+        if ok and email:
+            try:
+                conn = _db()
+                cur = conn.cursor()
+                cur.execute("SELECT id, vendor_name, status FROM vendors WHERE contact_email = %s LIMIT 1", (email,))
+                row = cur.fetchone()
+                cur.close()
+                if row:
+                    vid = row["id"] if isinstance(row, dict) else row[0]
+                    status = (row["status"] if isinstance(row, dict) else row[2]) or ""
+                    # Suspended vendors get no link; pending ones use their invite.
+                    if status.strip().lower() == "active":
+                        raw = password_tokens.issue_token(conn, "vendor", vid, purpose="reset")
+                        from email_service import send_branded_email
+                        send_branded_email(
+                            email, "Nulstil din adgangskode", "password_reset", {},
+                            reset_url=password_tokens.build_url("vendor.vendor_reset_password", raw),
+                            expires_in="60 minutter")
+            except Exception as e:
+                logger.warning("vendor_forgot_password failed: %s", e)
+        flash(_VENDOR_RESET_NOTICE, "success")
+        return redirect(url_for("vendor.vendor_forgot_password"))
+    return render_template("fm/auth_simple.html",
+                           page_title="Glemt adgangskode", heading="Glemt adgangskode",
+                           subtitle="Skriv den e-mail, din leverandørkonto er oprettet med, så sender vi et link.",
+                           action=url_for("vendor.vendor_forgot_password"),
+                           fields=[{"name": "email", "label": "E-mail", "type": "email",
+                                    "autocomplete": "email", "required": True}],
+                           submit_label="Send link", back_url=url_for("vendor.vendor_login"),
+                           back_label="Tilbage til login")
+
+
+@vendor_bp.route("/reset-password/<token>", methods=["GET", "POST"])
+def vendor_reset_password(token):
+    import password_tokens
+    from password_policy import validate_password, POLICY_HINT
+    conn = _db()
+    title = "Vælg ny adgangskode"
+    invalid_page = lambda: render_template(  # noqa: E731
+        "fm/auth_simple.html", page_title=title, heading=title, invalid=True,
+        back_url=url_for("vendor.vendor_forgot_password"), back_label="Send et nyt link")
+    info = None
+    try:
+        info = password_tokens.lookup(conn, token, account_type="vendor")
+    except Exception as e:
+        logger.warning("vendor_reset_password lookup failed: %s", e)
+    if not info:
+        flash("Linket er ugyldigt eller udløbet. Bed om et nyt link.", "danger")
+        return invalid_page()
+    cur = conn.cursor()
+    cur.execute("SELECT id, vendor_name, contact_email, status FROM vendors WHERE id = %s", (info["account_id"],))
+    v = cur.fetchone()
+    cur.close()
+    if not v or ((v["status"] if isinstance(v, dict) else v[3]) or "").strip().lower() != "active":
+        flash("Linket er ugyldigt eller udløbet. Bed om et nyt link.", "danger")
+        return invalid_page()
+    v = v if isinstance(v, dict) else {"id": v[0], "vendor_name": v[1], "contact_email": v[2]}
+
+    fields = [
+        {"name": "password", "label": "Ny adgangskode", "type": "password",
+         "autocomplete": "new-password", "required": True, "hint": POLICY_HINT},
+        {"name": "confirm", "label": "Gentag adgangskode", "type": "password",
+         "autocomplete": "new-password", "required": True},
+    ]
+    page = lambda: render_template(  # noqa: E731
+        "fm/auth_simple.html", page_title=title, heading=title,
+        subtitle="Vælg en adgangskode til leverandørportalen.",
+        action=url_for("vendor.vendor_reset_password", token=token), fields=fields,
+        submit_label="Gem adgangskode", back_url=url_for("vendor.vendor_login"), back_label="Til login")
+
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        confirm = request.form.get("confirm") or ""
+        errors = validate_password(password, v.get("vendor_name"), v.get("contact_email"))
+        if password != confirm:
+            errors.append("De to adgangskoder er ikke ens.")
+        if errors:
+            for err in errors:
+                flash(err, "danger")
+            return page()
+        auth = _vendor_auth()
+        if auth is None or not password_tokens.consume(conn, token):
+            flash("Linket er ugyldigt eller allerede brugt. Bed om et nyt link.", "danger")
+            return invalid_page()
+        cur = conn.cursor()
+        cur.execute("UPDATE vendors SET password_hash = %s WHERE id = %s",
+                    (auth.hash_vendor_password(password), v["id"]))
+        conn.commit()
+        cur.close()
+        flash("Din adgangskode er gemt. Du kan nu logge ind.", "success")
+        return redirect(url_for("vendor.vendor_login"))
+    return page()
 
 
 # ---------------------------------------------------------------------------
@@ -518,7 +654,9 @@ def vendor_submit():
         filename = upload.filename
         # Guard the parse: a bad file becomes a Danish error, never a 500.
         try:
-            parsed = catalog.parse_catalog_csv(upload)
+            # S-2.7: the vendor comes from the SESSION, never from the CSV, and
+            # handles owned by another vendor are refused.
+            parsed = catalog.parse_catalog_csv(upload, force_vendor=session.get("vendor_name") or "")
         except Exception as e:
             logger.warning("vendor_portal: CSV parse failed: %s", e)
             flash("CSV-filen kunne ikke laeses. Tjek formatet og prov igen.", "danger")
@@ -578,9 +716,9 @@ def send_vendor_reset_link(vendor_row):
     """Mint a vendor_reset token and email the link. Returns True when a mail
     was handed to the mail layer. Never raises."""
     try:
-        import account_tokens
-        raw = account_tokens.create_token("vendor_reset", vendor_row["id"], ttl_minutes=60)
-        link = account_tokens.build_url("vendor.vendor_reset_password", raw, "/vendor/reset-password/{token}")
+        import password_tokens
+        raw = password_tokens.issue_token(current_app.mysql.connection, "vendor", vendor_row["id"], purpose="reset")
+        link = password_tokens.build_url("vendor.vendor_reset_password", raw)
         from email_service import send_branded_email
         return bool(send_branded_email(
             vendor_row.get("contact_email"), "Nulstil din adgangskode - Futurematch leverandørportal",

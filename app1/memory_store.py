@@ -65,7 +65,7 @@ CREATE TABLE ai_analytics_events (
     id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, timestamp REAL NOT NULL,
     event_type TEXT NOT NULL, query_text TEXT DEFAULT '', tool_used TEXT DEFAULT '',
     results_count INTEGER DEFAULT 0, feedback_rating INTEGER DEFAULT 0, message_index INTEGER DEFAULT 0,
-    company_id INTEGER, username TEXT, extra TEXT DEFAULT '{}');
+    company_id INTEGER, username TEXT, extra TEXT DEFAULT '{}', reviewed INTEGER DEFAULT 0);
 CREATE TABLE ai_debug_logs (
     id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT NOT NULL, timestamp REAL NOT NULL,
     step TEXT NOT NULL, data TEXT DEFAULT '{}');
@@ -124,6 +124,22 @@ def _ensure_mysql(mysql):
                     pass
         mysql.connection.commit()
         cur.close()
+    except Exception:
+        pass
+
+    # S-1.7: admin-review flag for feedback rows (tables created before it existed).
+    try:
+        cur = mysql.connection.cursor()
+        try:
+            cur.execute("ALTER TABLE ai_analytics_events ADD COLUMN reviewed TINYINT NOT NULL DEFAULT 0")
+            mysql.connection.commit()
+        except Exception:
+            try:
+                mysql.connection.rollback()
+            except Exception:
+                pass                      # column already there
+        finally:
+            cur.close()
     except Exception:
         pass
 
@@ -298,9 +314,12 @@ def _scope():
 
 @_quiet
 def log_event(session_id, event_type, query_text="", tool_used="", results_count=0,
-              feedback_rating=0, message_index=0, extra=None):
-    """Log an analytics event."""
-    company_id, username = _scope()
+              feedback_rating=0, message_index=0, extra=None, company_id=None):
+    """Log an analytics event. ``company_id`` tags the tenant (S-1.7); when not
+    given it is taken from the current request."""
+    scope_company, username = _scope()
+    if company_id is None:
+        company_id = scope_company
     try:
         feedback_rating = int(feedback_rating or 0)
     except (TypeError, ValueError):
@@ -318,12 +337,18 @@ def log_event(session_id, event_type, query_text="", tool_used="", results_count
 
 
 def get_top_rated_interactions(limit=5, min_rating=1, company_id=None):
-    """Highest-rated interactions for few-shot examples. Scoped to one company
-    when ``company_id`` is given (never mixes tenants)."""
+    """Highest-rated interactions for few-shot examples (S-1.7).
+
+    Tenant-safe: only rows an admin has REVIEWED and that belong to exactly the
+    caller's ``company_id`` (None matches only tenant-less rows) are returned, so
+    one company's thumbs-up'd text can never reach another company's prompt.
+    """
     sql = ("SELECT query_text, extra FROM ai_analytics_events "
-           "WHERE event_type = 'feedback' AND feedback_rating >= %s")
+           "WHERE event_type = 'feedback' AND feedback_rating >= %s AND reviewed = 1")
     params = [min_rating]
-    if company_id is not None:
+    if company_id is None:
+        sql += " AND company_id IS NULL"
+    else:
         sql += " AND company_id = %s"
         params.append(company_id)
     sql += " ORDER BY feedback_rating DESC, timestamp DESC LIMIT %s"
@@ -333,6 +358,36 @@ def get_top_rated_interactions(limit=5, min_rating=1, company_id=None):
     except Exception:
         return []
     return [{"query": r["query_text"], "extra": _loads(r["extra"], {})} for r in rows]
+
+
+def list_feedback_for_review(limit=50, only_pending=True):
+    """Positive feedback rows awaiting (or past) admin review (S-1.7)."""
+    sql = ("SELECT id, timestamp, company_id, query_text, extra, reviewed FROM ai_analytics_events "
+           "WHERE event_type = 'feedback' AND feedback_rating > 0")
+    if only_pending:
+        sql += " AND reviewed = 0"
+    sql += " ORDER BY timestamp DESC LIMIT %s"
+    try:
+        rows = _run(sql, (limit,), fetch=True).rows
+    except Exception:
+        return []
+    out = []
+    for r in rows:
+        extra = _loads(r["extra"], {})
+        out.append({"id": r["id"], "timestamp": r["timestamp"], "company_id": r["company_id"],
+                    "query": r["query_text"], "response": extra.get("assistant_response", ""),
+                    "reviewed": bool(r["reviewed"])})
+    return out
+
+
+def set_feedback_reviewed(feedback_id, approved=True):
+    """Admin gate: mark a feedback row reusable (or not) as a prompt example."""
+    try:
+        res = _run("UPDATE ai_analytics_events SET reviewed = %s WHERE id = %s AND event_type = 'feedback'",
+                   (1 if approved else 0, int(feedback_id)))
+    except Exception:
+        return False
+    return (res.rowcount or 0) > 0
 
 
 def get_search_analytics(limit=20):
@@ -596,11 +651,11 @@ def import_legacy_sqlite(path=None):
             d = dict(r)
             rating = int(d.get("feedback_rating") or 0)
             _run("""INSERT INTO ai_analytics_events (session_id, timestamp, event_type, query_text, tool_used,
-                        results_count, feedback_rating, message_index, extra)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)""",
+                        results_count, feedback_rating, message_index, company_id, extra)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)""",
                  (d["session_id"], d["timestamp"], d["event_type"], d.get("query_text") or "",
                   d.get("tool_used") or "", d.get("results_count") or 0, max(-1, min(1, rating)),
-                  d.get("message_index") or 0, d.get("extra") or "{}"))
+                  d.get("message_index") or 0, d.get("company_id"), d.get("extra") or "{}"))
             copied += 1
     except sqlite3.Error:
         pass

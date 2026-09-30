@@ -22,7 +22,7 @@
   </style>
   {% endif %}
   {% if white_label_active and company_branding.custom_css %}
-  <style>{{ company_branding.custom_css|safe }}</style>
+  <style>{{ company_branding.custom_css|safe_css }}</style>
   {% endif %}
   {% block extra_head %}{% endblock %}
 </head>
@@ -191,7 +191,7 @@
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {% if session.get('user') %}
         {% set _cc = credit_chip() %}<a class="fm-chip credits" href="{{ url_for('pages.analytics') }}" title="{{ 'Virksomhedens AI-kreditter' if _cc.scope == 'company' else 'Dine AI-kreditter' }}" style="text-decoration:none"><i class="fa-solid fa-coins"></i> {{ _cc.label }}</a>
-        <a class="fm-icon-btn" href="{{ url_for('auth.logout') }}" aria-label="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
+        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;margin:0"><button type="submit" class="fm-icon-btn" aria-label="Log ud" title="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></form>
         {% else %}
         <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>
         {% endif %}

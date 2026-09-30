@@ -253,6 +253,10 @@ def create_app():
     app.register_blueprint(analytics_bp)
     app.register_blueprint(api_enterprise_bp)
     app.register_blueprint(sso_bp)
+    # Company settings hub + SSO email-domain discovery (N-4.6, N-7.1)
+    from settings_hub import settings_hub_bp, sso_discovery_bp
+    app.register_blueprint(settings_hub_bp)
+    app.register_blueprint(sso_discovery_bp)
     app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)

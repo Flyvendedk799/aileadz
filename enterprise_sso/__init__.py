@@ -228,17 +228,17 @@ class SSOManager:
         """Authenticate user through SSO provider"""
         provider = self.get_provider(provider_type)
         if not provider:
-            return None, "Unsupported SSO provider"
+            return None, "SSO-udbyderen understøttes ikke."
         
         # Get company SSO configuration
         sso_config = self.get_company_sso_config(company_id, provider_type)
         if not sso_config or not sso_config.get('is_enabled'):
-            return None, "SSO not configured for this company"
+            return None, "SSO er ikke sat op for denne virksomhed."
         
         # Authenticate with provider
         user_info = provider.authenticate(auth_data, sso_config['config'])
         if not user_info:
-            return None, "Authentication failed"
+            return None, "Login mislykkedes."
         
         # Auto-provision user if enabled
         if sso_config.get('auto_provision_users', True):
@@ -248,7 +248,7 @@ class SSOManager:
         # Find existing user
         user = self.find_user_by_email(company_id, user_info['email'])
         if not user:
-            return None, "User not found and auto-provisioning is disabled"
+            return None, "Brugeren findes ikke, og automatisk oprettelse er slået fra."
         
         return user, None
     
@@ -589,13 +589,13 @@ def sso_login(company_slug, provider):
     # Get company by slug
     company = get_company_by_slug(company_slug)
     if not company:
-        flash('Company not found', 'error')
+        flash('Virksomheden blev ikke fundet.', 'error')
         return redirect(url_for('auth.login', slug=company_slug))
     
     # Get SSO configuration
     sso_config = sso_manager.get_company_sso_config(company['id'], provider)
     if not sso_config:
-        flash('SSO not configured for this company', 'error')
+        flash('SSO er ikke sat op for denne virksomhed.', 'error')
         return redirect(url_for('auth.login'))
     
     # Generate SSO request based on provider
@@ -614,7 +614,7 @@ def sso_callback(company_slug, provider):
     """Handle SSO callback"""
     company = get_company_by_slug(company_slug)
     if not company:
-        flash('Company not found', 'error')
+        flash('Virksomheden blev ikke fundet.', 'error')
         return redirect(url_for('auth.login', slug=company_slug))
     
     # Extract authentication data based on provider
@@ -730,14 +730,17 @@ def sso_config(company_id):
     """SSO configuration page for company admins"""
     # Check if user is company admin
     if session.get('company_role') != 'company_admin':
-        flash('Access denied', 'error')
+        flash('Du har ikke adgang til denne side.', 'error')
         return redirect(url_for('dashboard.dashboard'))
     # Tenant isolation: admins may only view their own company's SSO config.
     if session.get('company_id') != company_id:
-        flash('Access denied', 'error')
+        flash('Du har ikke adgang til denne side.', 'error')
         return redirect(url_for('dashboard.dashboard'))
 
-    # Get existing SSO configurations
+    # N-7.1: SSO setup lives in the company settings hub (OIDC-only UX).
+    return redirect(url_for('settings_hub.tab', tab='sso'))
+
+    # Get existing SSO configurations (legacy body, kept for reference/rollback)
     try:
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         cur.execute("""
@@ -752,18 +755,18 @@ def sso_config(company_id):
                              company_id=company_id,
                              sso_configs=sso_configs)
     except Exception as e:
-        flash('Error loading SSO configuration', 'error')
+        flash('SSO-opsætningen kunne ikke indlæses.', 'error')
         return redirect(url_for('dashboard.dashboard'))
 
 @sso_bp.route('/admin/sso/config/<int:company_id>', methods=['POST'])
 def save_sso_config(company_id):
     """Save SSO configuration"""
     if session.get('company_role') != 'company_admin':
-        flash('Access denied', 'error')
+        flash('Du har ikke adgang til denne side.', 'error')
         return redirect(url_for('dashboard.dashboard'))
     # Tenant isolation: admins may only modify their own company's SSO config.
     if session.get('company_id') != company_id:
-        flash('Access denied', 'error')
+        flash('Du har ikke adgang til denne side.', 'error')
         return redirect(url_for('dashboard.dashboard'))
 
     provider = request.form.get('provider')
@@ -818,8 +821,8 @@ def save_sso_config(company_id):
         current_app.mysql.connection.commit()
         cur.close()
 
-        flash('SSO configuration saved successfully', 'success')
+        flash('SSO-opsætningen er gemt.', 'success')
     except Exception as e:
-        flash('Error saving SSO configuration', 'error')
+        flash('SSO-opsætningen kunne ikke gemmes.', 'error')
     
     return redirect(url_for('sso.sso_config', company_id=company_id))

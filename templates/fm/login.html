@@ -113,8 +113,8 @@
 
       <div class="divider">ELLER</div>
       <div class="sso">
-        <a class="sso-btn" href="#"><i class="fa-brands fa-microsoft" style="color:#2b7fc4"></i> Microsoft</a>
-        <a class="sso-btn" href="#"><i class="fa-solid fa-key" style="color:var(--fm-clay)"></i> SSO</a>
+        <a class="sso-btn" href="{{ url_for('sso_discovery.discover', hint='microsoft') }}"><i class="fa-brands fa-microsoft" style="color:#2b7fc4"></i> Microsoft</a>
+        <a class="sso-btn" href="{{ url_for('sso_discovery.discover') }}"><i class="fa-solid fa-key" style="color:var(--fm-clay)"></i> SSO</a>
       </div>
 
       <div class="fc-foot">Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></div>

@@ -1,0 +1,105 @@
+{% extends "fm_base.html" %}
+{% block page_id %}sso{% endblock %}
+{% block title %}SSO{% endblock %}
+{% block topbar_title %}Single Sign-On{% endblock %}
+{% block topbar_sub %}Lad medarbejdere logge ind med jeres Microsoft- eller Google-konto (OpenID Connect).{% endblock %}
+{% block extra_head %}
+<style>
+  .sso-grid { display:grid; grid-template-columns: minmax(0,1.3fr) minmax(0,1fr); gap:18px; align-items:start; }
+  @media (max-width: 960px) { .sso-grid { grid-template-columns: 1fr; } }
+  .sso-form .fm-field { margin-bottom: 14px; }
+  .sso-ro { font-family: var(--ff-mono); font-size: 12.5px; word-break: break-all; background: var(--fm-surface-2); padding: 8px 10px; border-radius: 8px; }
+  .sso-presets { display:flex; gap:8px; flex-wrap:wrap; }
+  .sso-presets label { display:inline-flex; align-items:center; gap:8px; padding:8px 14px; border:1px solid var(--fm-line); border-radius:10px; cursor:pointer; font-weight:600; font-size:13.5px; }
+  .sso-presets input:checked + span { color: var(--fm-primary); }
+  .sso-presets label:has(input:checked) { border-color: var(--fm-primary); background: var(--fm-primary-tint); }
+  .sso-step { display:flex; gap:10px; font-size:13.5px; color:var(--fm-ink-2); margin-bottom:8px; }
+  .sso-step b { flex:0 0 24px; height:24px; border-radius:50%; background:var(--fm-primary-tint); color:var(--fm-primary); display:grid; place-items:center; font-size:12px; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
+
+{% if domain_missing %}
+<div class="callout" style="margin-bottom:16px"><span class="ci"><i class="fa-solid fa-triangle-exclamation"></i></span><div style="flex:1"><div style="font-weight:650">Virksomhedens domæne mangler</div><div style="font-size:12.5px;color:var(--fm-ink-2)">Login-siden finder jeres SSO ud fra e-mail-domænet (fx firma.dk). Kontakt Futurematch for at få domænet knyttet til virksomheden, før I slår SSO til.</div></div></div>
+{% endif %}
+
+<div class="sso-grid">
+  <section class="fm-card sso-form" style="padding:20px 22px">
+    <div class="fm-eyebrow clay"><i class="fa-solid fa-plug"></i> OpenID Connect</div>
+    <h2 class="fm-section-title" style="margin:4px 0 14px">{{ 'Opdater SSO' if row else 'Opsæt SSO' }}</h2>
+    <form method="POST" action="{{ url_for('settings_hub.save_sso') }}" id="ssoForm">
+      <div class="fm-field">
+        <label>Udbyder</label>
+        <div class="sso-presets">
+          {% for key, p in presets.items() %}
+          <label><input type="radio" name="preset" value="{{ key }}" {{ 'checked' if (cfg.get('preset') or 'entra') == key }}> <i class="{{ p.icon }}"></i><span>{{ p.label }}</span></label>
+          {% endfor %}
+        </div>
+      </div>
+      <div class="fm-field"><label>Visningsnavn</label><input class="fm-input" name="provider_name" value="{{ row.provider_name if row else '' }}" placeholder="F.eks. Log ind med Microsoft"></div>
+      <div class="fm-field" data-for="entra"><label>Tenant-ID (Directory ID)</label><input class="fm-input" name="tenant" value="{{ cfg.get('tenant', '') }}" placeholder="00000000-0000-0000-0000-000000000000"></div>
+      <div data-for="custom" style="display:none">
+        <div class="fm-field"><label>Autorisations-URL</label><input class="fm-input" name="authorization_url" value="{{ cfg.get('authorization_url', '') if cfg.get('preset') == 'custom' else '' }}" placeholder="https://idp.firma.dk/oauth2/authorize"></div>
+        <div class="fm-field"><label>Token-URL</label><input class="fm-input" name="token_url" value="{{ cfg.get('token_url', '') if cfg.get('preset') == 'custom' else '' }}" placeholder="https://idp.firma.dk/oauth2/token"></div>
+        <div class="fm-field"><label>Userinfo-URL</label><input class="fm-input" name="userinfo_url" value="{{ cfg.get('userinfo_url', '') if cfg.get('preset') == 'custom' else '' }}"></div>
+        <div class="fm-field"><label>Issuer</label><input class="fm-input" name="issuer" value="{{ cfg.get('issuer', '') if cfg.get('preset') == 'custom' else '' }}" placeholder="https://idp.firma.dk"></div>
+      </div>
+      <div class="fm-field"><label>Klient-ID (Application ID)</label><input class="fm-input" name="client_id" value="{{ cfg.get('client_id', '') }}" required></div>
+      <div class="fm-field"><label>Klienthemmelighed (client secret)</label>
+        <input class="fm-input" name="client_secret" type="password" autocomplete="new-password" placeholder="{{ 'Gemt. Lad stå tom for at beholde den' if cfg.get('has_secret') else 'Indsæt hemmeligheden' }}">
+      </div>
+      <div class="fm-field"><label>Scope</label><input class="fm-input" name="scope" value="{{ cfg.get('scope', 'openid email profile') }}"></div>
+      <div class="fm-field"><label class="sso-switch" style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="is_enabled" {{ 'checked' if row and row.is_enabled }}> Aktivér SSO for denne virksomhed</label></div>
+      <div class="fm-field"><label class="sso-switch" style="display:flex;gap:10px;align-items:center"><input type="checkbox" name="auto_provision" {{ 'checked' if row and row.auto_provision_users }}> Opret medarbejdere automatisk ved første login (rolle: medarbejder)</label></div>
+      <button type="submit" class="btn btn-primary"><i class="fa-solid fa-floppy-disk"></i> Gem SSO</button>
+    </form>
+  </section>
+
+  <div class="stack">
+    <section class="fm-card" style="padding:20px 22px">
+      <div class="fm-eyebrow"><i class="fa-solid fa-list-ol"></i> Sådan gør du</div>
+      <h3 style="margin:4px 0 12px;font-size:16px">Registrér Futurematch hos jeres udbyder</h3>
+      <div class="sso-step"><b>1</b><span>Opret en ny applikation (web) i Microsoft Entra eller Google Cloud.</span></div>
+      <div class="sso-step"><b>2</b><span>Indsæt denne <strong>redirect-URI</strong>:</span></div>
+      <div class="sso-ro" style="margin-bottom:10px">{{ redirect_uri }}</div>
+      <div class="sso-step"><b>3</b><span>Kopiér klient-ID og hemmelighed (og tenant-ID for Microsoft) ind i formularen.</span></div>
+      <div class="sso-step"><b>4</b><span>Gem, aktivér og test med dette link i et privat vindue:</span></div>
+      <div class="sso-ro">{{ login_url }}</div>
+    </section>
+
+    <section class="fm-card" style="padding:20px 22px">
+      <div class="fm-eyebrow"><i class="fa-solid fa-circle-info"></i> Status</div>
+      {% if row %}
+      <p style="margin:6px 0 0;font-size:14px"><strong>{{ row.provider_name or 'OpenID Connect' }}</strong> ·
+        <span class="fm-badge {{ 'green' if row.is_enabled else '' }}">{{ 'Aktiv' if row.is_enabled else 'Ikke aktiveret' }}</span></p>
+      {% else %}
+      <p class="muted" style="margin:6px 0 0;font-size:13.5px">SSO er ikke sat op endnu. Medarbejdere logger ind med adgangskode.</p>
+      {% endif %}
+      {% for i in inactive %}
+      <div style="margin-top:12px;padding:10px 12px;border:1px dashed var(--fm-line-2);border-radius:10px;font-size:13px">
+        <span class="fm-badge">Inaktiv</span> <strong>{{ i.name }}</strong> ({{ i.type }})
+        <div class="muted" style="font-size:12px;margin-top:4px">{{ i.type }}-login er slukket, indtil vi tilbyder det igen. Konfigurationen er gemt, men bruges ikke. Brug OpenID Connect via Microsoft eller Google i stedet.</div>
+      </div>
+      {% endfor %}
+    </section>
+  </div>
+</div>
+</div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function () {
+  var radios = document.querySelectorAll('input[name=preset]');
+  function sync() {
+    var v = (document.querySelector('input[name=preset]:checked') || {}).value;
+    document.querySelectorAll('[data-for]').forEach(function (el) {
+      el.style.display = el.dataset.for === v ? '' : 'none';
+    });
+  }
+  radios.forEach(function (r) { r.addEventListener('change', sync); });
+  sync();
+})();
+</script>
+{% endblock %}

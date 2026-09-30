@@ -2295,6 +2295,12 @@ def _widget_cors_headers(resp, req_host, allowed_hosts):
     return resp
 
 
+def _csp_with_frame_ancestors(ancestors):
+    """The app-wide enforced CSP with ``frame-ancestors`` replaced (widget page)."""
+    import security_headers
+    return re.sub(r"frame-ancestors [^;]*", "frame-ancestors " + ancestors, security_headers._CSP)
+
+
 @app1_bp.route("/widget/<token>")
 def widget_embed(token):
     """Serve embeddable chat widget for external websites"""
@@ -2326,7 +2332,18 @@ def widget_embed(token):
     branding = get_branding(widget['cid'])
     widget['tenant_logo'] = branding.get('logo_url') or branding.get('company_logo')
 
-    return render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
+    resp = current_app.make_response(
+        render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo')))
+    # S-5.6: the BROWSER enforces who may frame the widget. With an allowlist, only
+    # those hosts (and their subdomains) can embed it; without one it stays open
+    # (backward compatible) but is still rate capped on /ask.
+    hosts = _widget_allowed_hosts(widget)
+    if hosts:
+        ancestors = " ".join(["'self'"] + ["https://%s https://*.%s" % (h, h) for h in hosts])
+    else:
+        ancestors = "*"
+    resp.headers['Content-Security-Policy'] = _csp_with_frame_ancestors(ancestors)
+    return resp
 
 
 @app1_bp.route("/widget/<token>/ask", methods=["POST", "OPTIONS"])

@@ -698,9 +698,14 @@ def api_cv_parse():
             file.stream.seek(0)
         except Exception:
             pass
-        raw = file.read() or b''
+        raw = file.read(_MAX_CV_BYTES + 1) or b''
         if len(raw) > _MAX_CV_BYTES:
             return jsonify({'success': False, 'error': 'Filen er for stor (maks 8 MB).'}), 413
+        # S-5.5: the extension is the client's claim; the bytes must agree with it.
+        import upload_guard
+        if not upload_guard.looks_like(raw, ext):
+            return jsonify({'success': False,
+                            'error': 'Filens indhold passer ikke til filtypen. Brug en ægte PDF, et billede eller ren tekst.'}), 400
     elif not text_input.strip():
         return jsonify({'success': False, 'error': 'Ingen fil eller tekst modtaget.'}), 400
 

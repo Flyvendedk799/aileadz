@@ -188,6 +188,18 @@ def create_app():
     # (tests/dev) may fall back to a throwaway value.
     app.secret_key = resolve_secret_key(os.environ)
 
+    # S-5.5: no request body larger than this is ever read (the biggest legitimate
+    # upload is a 25 MB voice clip). Oversize requests get a 413 before any handler runs.
+    app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH_MB', '26')) * 1024 * 1024
+
+    @app.errorhandler(413)
+    def _too_large(_err):
+        from flask import jsonify as _jsonify, request
+        msg = "Filen eller forespørgslen er for stor."
+        if request.path.startswith(('/api', '/app1')) or request.is_json:
+            return _jsonify({"success": False, "ok": False, "error": msg}), 413
+        return msg, 413
+
     # Session cookie hardening. These are additive and don't invalidate existing
     # sessions. SESSION_COOKIE_SECURE must stay False under SANDBOX=1 so the test
     # harness (plain HTTP via Werkzeug test client + session_transaction) keeps

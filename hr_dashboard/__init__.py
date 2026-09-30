@@ -2360,6 +2360,86 @@ def create_hr_dashboard_blueprint():
             flash("Fejl ved indlaesning af medarbejderdetaljer.", "danger")
             return redirect(url_for('companies.employees'))
 
+    # ── Employee goals with per-goal sharing (N-3.5) ──
+
+    def _goal_actor_ok():
+        return (session.get('role') == 'admin'
+                or session.get('company_role') in ('company_admin', 'hr_manager', 'department_head'))
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals')
+    def employee_goals(user_id):
+        """Two sections: "Delt med medarbejderen" and "Kun synligt for HR"."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import goal_sharing
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        emp = goal_sharing.employee_in_company(cur, company['id'], user_id)
+        if not emp:
+            cur.close()
+            flash("Medarbejderen blev ikke fundet i din virksomhed.", "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        shared, private = goal_sharing.list_goals_for_hr(cur, company['id'], user_id)
+        cur.close()
+        return render_template('fm/employee_goals_hr.html', company=company, employee=emp,
+                               shared=shared, private=private)
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals/add', methods=['POST'])
+    def employee_goal_add(user_id):
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import goal_sharing
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        if not goal_sharing.employee_in_company(cur, company['id'], user_id):
+            cur.close()
+            flash("Medarbejderen blev ikke fundet i din virksomhed.", "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        res = goal_sharing.add_goal(
+            cur, company_id=company['id'], employee_id=user_id, title=request.form.get('title'),
+            description=request.form.get('description'), target_date=request.form.get('target_date'),
+            share=bool(request.form.get('share')), actor_user_id=session.get('user_id'),
+            note=request.form.get('note'))
+        conn.commit()
+        cur.close()
+        flash("Målet er oprettet." if res.get('success') else res.get('message', 'Kunne ikke oprette målet.'),
+              "success" if res.get('success') else "danger")
+        return redirect(url_for('hr_dashboard.employee_goals', user_id=user_id))
+
+    @hr_dashboard_bp.route('/goals/<int:goal_id>/share', methods=['POST'])
+    def employee_goal_share(goal_id):
+        """Toggle "Del med medarbejder" on one goal (audit-logged, learner notified)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import goal_sharing
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        res = goal_sharing.set_shared(
+            cur, company_id=company['id'], goal_id=goal_id,
+            shared=request.form.get('shared') == '1', actor_user_id=session.get('user_id'),
+            note=(request.form.get('note') or '').strip() or None)
+        cur.execute("SELECT employee_id FROM employee_goals WHERE id = %s AND company_id = %s",
+                    (goal_id, company['id']))
+        row = cur.fetchone()
+        conn.commit()
+        cur.close()
+        if not res.get('success'):
+            flash(res.get('message', 'Kunne ikke ændre deling.'), "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        flash("Målet er nu delt med medarbejderen." if res.get('shared') else "Målet er nu kun synligt for HR.", "success")
+        return redirect(url_for('hr_dashboard.employee_goals', user_id=row['employee_id']))
+
     @hr_dashboard_bp.route('/employee/<int:user_id>/reset-password', methods=['POST'])
     def reset_employee_password(user_id):
         """HR manager can reset an employee's password without email confirmation"""
@@ -2950,7 +3030,7 @@ def create_hr_dashboard_blueprint():
             import hashlib
             code = 'D-' + hashlib.md5(name.encode()).hexdigest()[:6].upper()
         if not name:
-            flash("Afdelingsnavn er paakraevet.", "danger")
+            flash("Afdelingsnavn er påkrævet.", "danger")
             return redirect(url_for('hr_dashboard.departments'))
 
         try:
@@ -2974,6 +3054,8 @@ def create_hr_dashboard_blueprint():
                         (company_id, department_name, department_code, description, learning_budget_per_employee)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (company['id'], name, code, description or None, budget_val))
+                import department_service
+                department_service.sync_budget_from_per_employee(cur, company['id'], name, budget_val)
                 current_app.mysql.connection.commit()
                 flash(f"Afdelingen '{name}' er oprettet.", "success")
             cur.close()
@@ -3035,12 +3117,13 @@ def create_hr_dashboard_blueprint():
                 WHERE id = %s AND company_id = %s
             """, (name, code, description or None, budget_val, dept_id, company['id']))
 
-            # Update employees if name changed
+            # A rename cascades to employees, budgets, policies, skill targets,
+            # compliance requirements and orders (N-3.5); the per-employee budget
+            # feeds department_budgets instead of sitting unused.
+            import department_service
             if old_name != name:
-                cur.execute("""
-                    UPDATE company_users SET department = %s
-                    WHERE company_id = %s AND department = %s
-                """, (name, company['id'], old_name))
+                department_service.rename_department(cur, company['id'], old_name, name)
+            department_service.sync_budget_from_per_employee(cur, company['id'], name, budget_val)
 
             current_app.mysql.connection.commit()
             cur.close()
@@ -3098,90 +3181,11 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/my-department')
     def my_department():
-        """Department head view — see own department's employees, training, budget, approvals."""
+        """Merged into "Mit team" (N-3.5): redirect to the department view."""
         if 'user' not in session:
-            flash("Please log in.", "danger")
+            flash("Log ind for at se din afdeling.", "danger")
             return redirect(url_for('auth.login'))
-
-        if not session.get('company_id') or session.get('company_role') not in ('department_head', 'hr_manager', 'company_admin'):
-            flash("Du har ikke adgang til denne side.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
-
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-
-        user_department = company.get('department', '')
-        if not user_department:
-            flash("Din afdeling er ikke sat op.", "warning")
-            return redirect(url_for('hr_dashboard.dashboard'))
-
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Department employees
-            cur.execute("""
-                SELECT cu.user_id, u.username, u.email, cu.job_title, cu.role, cu.status,
-                       cu.hire_date, cu.last_login, cu.total_chatbot_queries,
-                       cu.total_courses_completed
-                FROM company_users cu
-                JOIN users u ON cu.user_id = u.id
-                WHERE cu.company_id = %s AND cu.department = %s
-                ORDER BY u.username
-            """, (company['id'], user_department))
-            employees = cur.fetchall()
-
-            # Department orders
-            cur.execute("""
-                SELECT co.order_id, co.product_title, co.price, co.status,
-                       co.completion_status, co.created_at, u.username
-                FROM course_orders co
-                JOIN users u ON co.user_id = u.id
-                WHERE co.company_id = %s AND co.department = %s
-                ORDER BY co.created_at DESC
-                LIMIT 20
-            """, (company['id'], user_department))
-            orders = cur.fetchall()
-
-            # Department budget
-            import datetime as _dt
-            fiscal_year = _dt.datetime.now().year
-            cur.execute("""
-                SELECT annual_budget, spent
-                FROM department_budgets
-                WHERE company_id = %s AND department = %s AND fiscal_year = %s
-            """, (company['id'], user_department, fiscal_year))
-            budget_row = cur.fetchone()
-            budget = {
-                'annual_budget': float(budget_row['annual_budget']) if budget_row else 0,
-                'spent': float(budget_row['spent']) if budget_row else 0,
-            }
-            budget['remaining'] = budget['annual_budget'] - budget['spent']
-            budget['utilization'] = round(budget['spent'] / budget['annual_budget'] * 100, 1) if budget['annual_budget'] > 0 else 0
-
-            # Pending approvals for this department
-            cur.execute("""
-                SELECT COUNT(*) AS cnt FROM order_approvals oa
-                JOIN course_orders co ON oa.order_id = co.order_id
-                WHERE oa.company_id = %s AND co.department = %s AND oa.status = 'pending'
-            """, (company['id'], user_department))
-            pending_count = cur.fetchone()['cnt'] or 0
-
-            cur.close()
-
-            return render_template('fm/my_department.html',
-                                   company=company,
-                                   department=user_department,
-                                   employees=employees,
-                                   orders=orders,
-                                   budget=budget,
-                                   pending_count=pending_count,
-                                   fiscal_year=fiscal_year)
-        except Exception as e:
-            current_app.logger.error(f"My department error: {e}")
-            flash("Error loading department data.", "danger")
-            return redirect(url_for('hr_dashboard.dashboard'))
+        return redirect(url_for('hr_dashboard.team_cockpit', scope='department'))
 
     # ── Learning Paths Management ──
     @hr_dashboard_bp.route('/learning-paths')
@@ -4350,6 +4354,19 @@ def create_hr_dashboard_blueprint():
             return redirect(url_for('auth.login'))
 
         manager_id = session.get('user_id')
+        # ONE "Mit team" page (N-3.5): direct reports OR the whole department.
+        # HR roles may look at any department via ?department=; everyone else
+        # only at their own.
+        scope = 'department' if request.args.get('scope') == 'department' else 'reports'
+        my_dept = (company.get('department') or '').strip()
+        dept = my_dept
+        req_dept = (request.args.get('department') or '').strip()
+        if req_dept and (session.get('role') == 'admin'
+                         or session.get('company_role') in ('company_admin', 'hr_manager')):
+            dept, scope = req_dept, 'department'
+        if scope == 'department' and not dept:
+            scope = 'reports'
+        dept_budget, dept_orders = None, []
         reports = []
         pending_for_me = []
         summary = {'team_size': 0, 'avg_progress': 0, 'pending_approvals': 0,
@@ -4374,10 +4391,10 @@ def create_hr_dashboard_blueprint():
                     ON cu.user_id = co.user_id AND cu.company_id = co.company_id
                 LEFT JOIN employee_learning_progress elp
                     ON cu.user_id = elp.user_id AND cu.company_id = elp.company_id
-                WHERE cu.company_id = %s AND cu.manager_user_id = %s
+                WHERE cu.company_id = %s AND """ + ("cu.department = %s" if scope == 'department' else "cu.manager_user_id = %s") + """
                 GROUP BY cu.user_id, name, u.username, cu.department, cu.job_title, cu.status
                 ORDER BY name
-            """, (company['id'], manager_id))
+            """, (company['id'], dept if scope == 'department' else manager_id))
             reports = cur.fetchall() or []
 
             report_ids = [r['user_id'] for r in reports if r.get('user_id')]
@@ -4416,11 +4433,32 @@ def create_hr_dashboard_blueprint():
                 JOIN users requ ON oa.requester_user_id = requ.id
                 WHERE oa.company_id = %s
                   AND oa.status = 'pending'
-                  AND reqcu.manager_user_id = %s
+                  AND """ + ("co.department = %s" if scope == 'department' else "reqcu.manager_user_id = %s") + """
                 ORDER BY oa.requested_at DESC
                 LIMIT 50
-            """, (company['id'], manager_id))
+            """, (company['id'], dept if scope == 'department' else manager_id))
             pending_for_me = cur.fetchall() or []
+
+            if scope == 'department':
+                cur.execute("""
+                    SELECT annual_budget, spent FROM department_budgets
+                    WHERE company_id = %s AND department = %s AND fiscal_year = %s
+                """, (company['id'], dept, date.today().year))
+                b = cur.fetchone()
+                annual = float(b['annual_budget'] or 0) if b else 0
+                spent = float(b['spent'] or 0) if b else 0
+                dept_budget = {'annual': annual, 'spent': spent, 'remaining': annual - spent,
+                               'utilization': round(spent / annual * 100, 1) if annual > 0 else 0,
+                               'has_budget': bool(b)}
+                cur.execute("""
+                    SELECT co.order_id, co.product_title, co.price, co.status, co.created_at,
+                           COALESCE(cu.full_name, co.username) AS name
+                    FROM course_orders co
+                    LEFT JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
+                    WHERE co.company_id = %s AND co.department = %s
+                    ORDER BY co.created_at DESC LIMIT 15
+                """, (company['id'], dept))
+                dept_orders = cur.fetchall() or []
             cur.close()
 
             # Summary KPIs.
@@ -4433,7 +4471,7 @@ def create_hr_dashboard_blueprint():
                     sum(float(r.get('avg_progress') or 0) for r in reports) / len(reports), 1)
         except Exception as e:
             current_app.logger.error(f"Error loading team cockpit: {e}")
-            flash("Fejl ved indlaesning af teamoverblik.", "danger")
+            flash("Teamoverblikket kunne ikke indlæses. Prøv igen om lidt.", "danger")
             reports, pending_for_me = [], []
 
         return render_template('fm/team_cockpit.html',
@@ -4441,6 +4479,8 @@ def create_hr_dashboard_blueprint():
                                reports=reports,
                                pending_for_me=pending_for_me,
                                summary=summary,
+                               scope=scope, department=dept, my_department=my_dept,
+                               dept_budget=dept_budget, dept_orders=dept_orders,
                                active_hr_page='team')
 
     # ══════════════════════════════════════════════════════════════════

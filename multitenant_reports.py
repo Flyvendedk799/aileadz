@@ -704,79 +704,9 @@ def create_multitenant_reports_blueprint():
     @multitenant_reports_bp.route('/department/<department_name>')
     @require_company
     def department_analytics(department_name):
-        """
-        Department-specific analytics within the company
-        """
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        # Check if user can view this department
-        user_role = company['user_role']
-        user_department = company['department']
-        
-        if user_role not in ['company_admin', 'hr_manager'] and user_department != department_name:
-            flash("You don't have permission to view this department's analytics.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
-        
-        conn = current_app.mysql.connection
-        if not conn:
-            flash("Database connection error.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
-
-        try:
-            cur = conn.cursor(MySQLdb.cursors.DictCursor)
-            
-            # Get department-specific metrics
-            cur.execute("""
-                SELECT 
-                    COUNT(DISTINCT cu.user_id) as total_employees,
-                    COUNT(DISTINCT CASE WHEN cu.status = 'active' THEN cu.user_id END) as active_employees,
-                    COUNT(DISTINCT co.id) as total_course_orders,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_courses,
-                    COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as total_investment,
-                    COUNT(DISTINCT ci.id) as total_chatbot_interactions,
-                    COALESCE(AVG(ci.interaction_quality_score), 0) as avg_interaction_quality
-                FROM company_users cu
-                LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                LEFT JOIN chatbot_interactions ci ON ci.company_id = cu.company_id AND ci.username = (
-                    SELECT u.username FROM users u WHERE u.id = cu.user_id
-                )
-                WHERE cu.company_id = %s AND cu.department = %s
-            """, (company['id'], department_name))
-            
-            dept_stats = cur.fetchone()
-            
-            # Get department employees
-            cur.execute("""
-                SELECT 
-                    u.username, cu.job_title, cu.role, cu.hire_date,
-                    COUNT(DISTINCT co.id) as courses_enrolled,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as courses_completed,
-                    cu.total_chatbot_queries, cu.last_chatbot_interaction
-                FROM company_users cu
-                JOIN users u ON cu.user_id = u.id
-                LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                WHERE cu.company_id = %s AND cu.department = %s AND cu.status = 'active'
-                GROUP BY cu.user_id, u.username, cu.job_title, cu.role, cu.hire_date, cu.total_chatbot_queries, cu.last_chatbot_interaction
-                ORDER BY courses_completed DESC, cu.total_chatbot_queries DESC
-            """, (company['id'], department_name))
-            
-            dept_employees = cur.fetchall()
-            
-            cur.close()
-            
-            return render_template('fm/department_analytics.html',
-                                 company=company,
-                                 department_name=department_name,
-                                 dept_stats=dept_stats,
-                                 dept_employees=dept_employees)
-            
-        except Exception as e:
-            current_app.logger.error(f"Error loading department analytics: {e}")
-            flash("Error loading department analytics.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
+        """Merged into the one "Mit team" page (N-3.5). Permission is enforced
+        there: HR roles may open any department, others only their own."""
+        return redirect(url_for('hr_dashboard.team_cockpit', scope='department', department=department_name))
 
     return multitenant_reports_bp
 

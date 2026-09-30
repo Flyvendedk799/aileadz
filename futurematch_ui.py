@@ -251,13 +251,25 @@ def learning_goals():
         flash('Log ind for at se dine udviklingsmål.', 'danger')
         return redirect(url_for('auth.login'))
     goals = []
+    manager_goals = []
     try:
         from app1.user_profile_db import get_learning_goals, ensure_tables
         ensure_tables()
         goals = get_learning_goals(session['user'])
     except Exception as e:
         current_app.logger.warning("learning goals load: %s", e)
-    return render_template('fm/learning_goals.html', goals=goals)
+    # "Mål fra din leder": ONLY goals HR chose to share (N-3.5 / S-4.4).
+    if session.get('company_id') and session.get('user_id'):
+        try:
+            import MySQLdb.cursors
+            import goal_sharing
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            manager_goals = goal_sharing.shared_goals_for_learner(
+                cur, session['user_id'], session['company_id'])
+            cur.close()
+        except Exception as e:
+            current_app.logger.warning("manager goals load: %s", e)
+    return render_template('fm/learning_goals.html', goals=goals, manager_goals=manager_goals)
 
 
 @futurematch_bp.route('/mine-maal/add', methods=['POST'])

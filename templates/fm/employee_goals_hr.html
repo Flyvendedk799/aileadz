@@ -1,0 +1,59 @@
+{% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import empty %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Udviklingsmål · {{ employee.full_name or employee.username }}{% endblock %}
+{% block topbar_title %}Udviklingsmål{% endblock %}
+{% block topbar_sub %}{{ employee.full_name or employee.username }} · du bestemmer pr. mål, om medarbejderen kan se det.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
+  <div class="crumb"><a href="{{ url_for('hr_dashboard.employee_details', user_id=employee.user_id) }}">{{ employee.full_name or employee.username }}</a><i class="fa-solid fa-chevron-right"></i><span>Udviklingsmål</span></div>
+
+  <div class="fm-card" style="margin:14px 0">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-plus"></i></span><h3>Nyt mål</h3></div>
+    <div class="fm-card-body">
+      <form method="post" action="{{ url_for('hr_dashboard.employee_goal_add', user_id=employee.user_id) }}" style="display:grid;gap:10px;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+        <label class="fm-field" style="margin:0"><span>Mål</span><input class="fm-input" name="title" required maxlength="255" placeholder="F.eks. Blive certificeret projektleder"></label>
+        <label class="fm-field" style="margin:0"><span>Måldato (valgfri)</span><input class="fm-input" type="date" name="target_date"></label>
+        <label class="fm-field" style="margin:0;grid-column:1/-1"><span>Beskrivelse (valgfri)</span><input class="fm-input" name="description"></label>
+        <label style="display:flex;align-items:center;gap:8px;font-size:13.5px"><input type="checkbox" name="share" value="1"> Del med medarbejderen med det samme</label>
+        <label class="fm-field" style="margin:0"><span>Besked til medarbejderen (valgfri)</span><input class="fm-input" name="note" maxlength="500"></label>
+        <div><button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-plus"></i> Opret mål</button>
+          <span class="muted" style="font-size:12px;margin-left:8px">Nye mål er kun synlige for HR, medmindre du deler dem.</span></div>
+      </form>
+    </div>
+  </div>
+
+  {% macro goal_list(items, is_shared) %}
+    {% if items %}
+    {% for g in items %}
+    <div class="fm-card" style="padding:14px 18px;margin-bottom:10px;display:flex;gap:14px;flex-wrap:wrap;align-items:center">
+      <div style="flex:1;min-width:220px">
+        <div style="font-weight:650">{{ g.goal_title }}</div>
+        {% if g.goal_description %}<div class="muted" style="font-size:13px">{{ g.goal_description }}</div>{% endif %}
+        <div class="muted" style="font-size:12px;margin-top:4px">{% if g.target_date %}Måldato {{ g.target_date }} · {% endif %}{% if is_shared and g.shared_at %}Delt {{ g.shared_at }}{% endif %}{% if is_shared and g.share_note %} · “{{ g.share_note }}”{% endif %}</div>
+      </div>
+      <form method="post" action="{{ url_for('hr_dashboard.employee_goal_share', goal_id=g.id) }}" class="fm-flex fm-gap8" style="align-items:center;flex-wrap:wrap">
+        {% if is_shared %}
+        <input type="hidden" name="shared" value="0">
+        <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-eye-slash"></i> Gør kun synligt for HR</button>
+        {% else %}
+        <input type="hidden" name="shared" value="1">
+        <input class="fm-input" name="note" placeholder="Besked til medarbejderen (valgfri)" style="min-width:220px" maxlength="500">
+        <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-share-nodes"></i> Del med medarbejder</button>
+        {% endif %}
+      </form>
+    </div>
+    {% endfor %}
+    {% else %}
+    {{ empty('Ingen mål her', ('Mål du deler, vises for medarbejderen under “Mål fra din leder”.' if is_shared else 'Opret et mål ovenfor. Det er privat, til du vælger at dele det.'), 'fa-bullseye') }}
+    {% endif %}
+  {% endmacro %}
+
+  <div class="fm-section-head"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-share-nodes"></i> Synligt for medarbejderen</span><h2 class="fm-section-title">Delt med medarbejderen</h2></div></div>
+  {{ goal_list(shared, true) }}
+
+  <div class="fm-section-head" style="margin-top:22px"><div><span class="fm-eyebrow"><i class="fa-solid fa-lock"></i> Privat</span><h2 class="fm-section-title">Kun synligt for HR</h2></div></div>
+  {{ goal_list(private, false) }}
+</div>
+{% endblock %}

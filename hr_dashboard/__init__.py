@@ -2637,8 +2637,38 @@ def create_hr_dashboard_blueprint():
         auth_check = require_hr_access()
         if auth_check:
             return jsonify({"error": "Unauthorized"}), 401
-        session.pop('hr_chat_session_id', None)
-        return jsonify({"success": True})
+        import hr_conversations
+        sid = hr_conversations.start_new(session, session.get('user'))
+        return jsonify({"success": True, "session_id": sid})
+
+    @hr_dashboard_bp.route('/chatbot/history')
+    def hr_chatbot_history():
+        """The current HR conversation + the user's past ones (panel restore, full page list)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"error": "Unauthorized"}), 401
+        import hr_conversations
+        username = session.get('user')
+        sid = hr_conversations.resolve_sid(session, username)
+        return jsonify({
+            "session_id": sid,
+            "messages": hr_conversations.load(username, sid),
+            "sessions": hr_conversations.list_sessions(username),
+        })
+
+    @hr_dashboard_bp.route('/chatbot/open', methods=['POST'])
+    def hr_chatbot_open():
+        """Continue one of the user's own past HR conversations."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"error": "Unauthorized"}), 401
+        import hr_conversations
+        sid = ((request.get_json(silent=True) or {}).get('session_id') or '').strip()
+        messages = hr_conversations.open_session(session.get('user'), sid)
+        if messages is None:
+            return jsonify({"error": "Samtalen blev ikke fundet."}), 404
+        session['hr_chat_session_id'] = sid
+        return jsonify({"session_id": sid, "messages": messages})
 
     @hr_dashboard_bp.route('/chatbot/sessions')
     def chatbot_sessions():

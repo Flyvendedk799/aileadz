@@ -7,6 +7,12 @@
 <div class="fm-wrap">
   {% set active_hr_page = 'learning_paths' %}{% include 'fm/_hr_subnav.html' %}
 
+  {% if focus_skill or preselect_department %}
+  <div class="fm-card" style="padding:12px 16px;margin-bottom:14px;border-left:3px solid var(--fm-primary)">
+    <i class="fa-solid fa-link" style="color:var(--fm-primary)"></i>
+    Du kom fra kompetencegab{% if focus_skill %}: <strong>{{ focus_skill }}</strong>{% endif %}{% if preselect_department %} i <strong>{{ preselect_department }}</strong>{% endif %}. Vælg det forløb, der lukker gabet, og tildel det til dem, der mangler det.
+  </div>
+  {% endif %}
   {% if not paths %}
   <div class="fm-card" style="padding:48px 24px;text-align:center;margin-top:8px">
     <i class="fa-solid fa-route" style="font-size:34px;color:var(--fm-ink-3);margin-bottom:14px;display:block"></i>
@@ -46,7 +52,7 @@
           <div class="fm-flex fm-gap8">
             <select id="deptFilter" class="fm-input" style="height:32px;padding:2px 8px;font-size:12px" onchange="filterDept()">
               <option value="">Alle afdelinger</option>
-              {% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}
+              {% for d in departments %}<option value="{{ d }}" {{ 'selected' if d == preselect_department }}>{{ d }}</option>{% endfor %}
             </select>
             <button type="button" class="btn btn-ghost btn-sm" onclick="selectAllVisible()">Vælg alle</button>
             <button type="button" class="btn btn-ghost btn-sm" onclick="clearAll()">Ryd</button>
@@ -88,6 +94,7 @@ function filterDept(){
     r.style.display = (!v || r.getAttribute('data-dept') === v) ? '' : 'none';
   });
 }
+if (document.getElementById('deptFilter') && document.getElementById('deptFilter').value) { filterDept(); }
 function selectAllVisible(){ visibleRows().forEach(function(r){ var cb = r.querySelector('.emp-cb'); if(cb){ cb.checked = true; } }); updateCount(); }
 function clearAll(){ document.querySelectorAll('.emp-cb').forEach(function(cb){ cb.checked = false; }); updateCount(); }
 function validateAssign(){

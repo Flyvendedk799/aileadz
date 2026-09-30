@@ -5000,6 +5000,8 @@ def create_hr_dashboard_blueprint():
 
         return render_template('fm/bulk_assign.html',
                                company=company,
+                               preselect_department=(request.args.get('department') or '').strip(),
+                               focus_skill=(request.args.get('skill') or '').strip(),
                                paths=paths,
                                employees=employees,
                                departments=departments,

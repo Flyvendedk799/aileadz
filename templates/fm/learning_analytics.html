@@ -58,6 +58,20 @@
     </div></div>
   </div>
 
+  <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-robot"></i> AI-brug</span><h2 class="fm-section-title">Medarbejdernes brug af AI-assistenten</h2></div>
+    <a class="btn btn-ghost btn-sm" href="{{ url_for('multitenant_reports.reports') }}">Se samtaler i detaljer</a></div>
+  {% if ai_usage and ai_usage.total_interactions %}
+  <div class="kpi-row k4">
+    <div class="kpi-tile"><div class="kl">Samtaler</div><div class="kv tnum">{{ ai_usage.total_interactions }}</div><div class="kd">{{ ai_usage.unique_users }} unikke brugere</div></div>
+    <div class="kpi-tile"><div class="kl">Tilfredshed</div><div class="kv tnum">{{ '%.0f'|format((ai_usage.avg_quality or 0) * 100) }}%</div><div class="kd">gns. kvalitetsscore</div></div>
+    <div class="kpi-tile"><div class="kl">Svartid</div><div class="kv tnum">{{ '%.0f'|format(ai_usage.avg_response_time or 0) }} ms</div><div class="kd">gennemsnit</div></div>
+    <div class="kpi-tile"><div class="kl">Medarbejdere</div><div class="kv tnum">{{ headcount.total or 0 }}</div><div class="kd">{{ headcount.active or 0 }} aktive · {{ headcount.new_hires or 0 }} nye</div></div>
+  </div>
+  <div class="fm-card" style="margin-top:12px"><div class="fm-card-body"><div class="la-chart-wrap"><canvas id="aiDailyChart" role="img" aria-label="Linjediagram: AI-samtaler pr. dag i valgt periode"></canvas></div></div></div>
+  {% else %}
+  {{ empty('Ingen AI-brug i perioden', 'Når medarbejdere bruger AI-assistenten, vises samtaler, tilfredshed og svartid her. Del gerne assistenten i onboardingen for at komme i gang.', 'fa-robot') }}
+  {% endif %}
+
   <div class="fm-table-wrap" style="margin-top:16px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Mest populære kurser</h3></div>
   {% if popular_courses %}
   <table class="fm-table"><thead><tr><th>Kursus</th><th>Tilmeldinger</th><th>Gennemført</th><th>Rate</th></tr></thead><tbody>
@@ -72,6 +86,17 @@
 </div>
 {% endblock %}
 {% block extra_scripts %}{% include 'fm/_charts.html' %}
+<script>
+(function () {
+  if (typeof FMChart === 'undefined') return;
+  var daily = {{ (ai_daily or [])|tojson }};
+  if (document.getElementById('aiDailyChart') && daily.length) {
+    FMChart.line('aiDailyChart', { labels: daily.map(function (d) { return d.day.slice(5); }),
+      series: [{ label: 'AI-samtaler', data: daily.map(function (d) { return d.interactions; }), color: FMChart.cssVar('--fm-primary', '#0b6b63') }],
+      empty: 'Ingen AI-brug i perioden' });
+  }
+})();
+</script>
 <script>
 (function(){
   if (typeof FMChart === 'undefined') return;

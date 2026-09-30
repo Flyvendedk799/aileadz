@@ -1954,7 +1954,34 @@ def create_hr_dashboard_blueprint():
                 current_app.logger.error(f"Error building course-category throughput chart: {e}")
                 category_throughput = []
 
+            # AI usage block (absorbed from Virksomheds-BI, N-4.1)
+            ai_usage, ai_daily, headcount = {}, [], {}
+            try:
+                cur.execute("""
+                    SELECT COUNT(*) AS total_interactions, COUNT(DISTINCT username) AS unique_users,
+                           COALESCE(AVG(response_time_ms), 0) AS avg_response_time,
+                           COALESCE(AVG(interaction_quality_score), 0) AS avg_quality
+                    FROM chatbot_interactions WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                """, (company['id'], period_days))
+                ai_usage = cur.fetchone() or {}
+                cur.execute("""
+                    SELECT DATE(created_at) AS day, COUNT(*) AS interactions FROM chatbot_interactions
+                    WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    GROUP BY DATE(created_at) ORDER BY day
+                """, (company['id'], period_days))
+                ai_daily = [{'day': str(r['day']), 'interactions': int(r['interactions'] or 0)} for r in cur.fetchall()]
+                cur.execute("""
+                    SELECT COUNT(*) AS total,
+                           COUNT(CASE WHEN status = 'active' THEN 1 END) AS active,
+                           COUNT(CASE WHEN added_at >= DATE_SUB(NOW(), INTERVAL %s DAY) THEN 1 END) AS new_hires
+                    FROM company_users WHERE company_id = %s
+                """, (period_days, company['id']))
+                headcount = cur.fetchone() or {}
+            except Exception as ai_err:
+                current_app.logger.warning(f"Learning analytics AI block skipped: {ai_err}")
+
             return render_template('fm/learning_analytics.html',
+                                 ai_usage=ai_usage, ai_daily=ai_daily, headcount=headcount,
                                  company=company,
                                  period=period,
                                  learning_trends=learning_trends,
@@ -1973,7 +2000,7 @@ def create_hr_dashboard_blueprint():
             
         except Exception as e:
             current_app.logger.error(f"Error loading learning analytics: {e}")
-            flash("Error loading learning analytics data.", "danger")
+            flash("Læringsanalysen kunne ikke indlæses. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/reports')

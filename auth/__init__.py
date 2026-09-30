@@ -14,6 +14,7 @@ def allowed_file(filename):
 
 def _apply_session_user_context(user):
     """Set session fields after successful authentication."""
+    anon_token = session.get('browser_token')
     session['user'] = user['username']
     session['user_id'] = user['id']
     session['credits'] = user['credits']
@@ -47,6 +48,12 @@ def _apply_session_user_context(user):
             # web); before this it was never set, so those orders skipped budgets.
             session['company_department'] = comp.get('company_department') or ''
             session['user_type'] = 'company_user'
+    except Exception:
+        pass
+    # Memory the visitor built as a guest becomes theirs (N-5.8).
+    try:
+        import anon_migration
+        anon_migration.migrate(anon_token, user['username'])
     except Exception:
         pass
 

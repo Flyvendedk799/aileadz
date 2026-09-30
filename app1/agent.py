@@ -39,6 +39,7 @@ def _fence(label, text):
     return text if isinstance(text, str) else ("" if text is None else str(text))
 
 
+import os
 import uuid
 import re as _re
 import random as _random
@@ -46,7 +47,16 @@ import ai_context_layers as _ctx
 from typing import Optional
 
 # 5.4: Prompt versioning for A/B testing
-_PROMPT_VERSIONS = ["v2.0"]  # Add variants here for A/B testing, e.g. ["v2.0", "v2.1"]
+def _configured_prompt_versions():
+    """Variants under test (N-5.8): AI_PROMPT_VARIANTS="v2.0,v2.1". The first one is
+    the control. A variant may carry extra instructions in AI_PROMPT_ADDENDUM_<V>
+    (dots as underscores, e.g. AI_PROMPT_ADDENDUM_V2_1); the control never does."""
+    raw = os.environ.get("AI_PROMPT_VARIANTS", "") or ""
+    versions = [v.strip() for v in raw.split(",") if v.strip()]
+    return versions or ["v2.0"]
+
+
+_PROMPT_VERSIONS = _configured_prompt_versions()
 _SESSION_VERSIONS = {}  # {session_id: version_string}
 
 # ── Topic keyword set for stage detection (Improvement #1) ──
@@ -131,8 +141,20 @@ _PROFILE_MUTATING_TOOLS = frozenset({
 def _get_prompt_version(sid):
     """Get or assign a prompt version for A/B testing."""
     if sid not in _SESSION_VERSIONS:
-        _SESSION_VERSIONS[sid] = _random.choice(_PROMPT_VERSIONS)
+        # Deterministic on the session id, so every worker agrees on the variant.
+        import zlib
+        versions = _configured_prompt_versions()
+        _SESSION_VERSIONS[sid] = versions[zlib.crc32(str(sid).encode("utf-8")) % len(versions)]
     return _SESSION_VERSIONS[sid]
+
+
+def prompt_variant_addendum(sid):
+    """Extra system-prompt text for the session's variant ('' for the control)."""
+    version = _get_prompt_version(sid)
+    if version == _configured_prompt_versions()[0]:
+        return ""
+    key = "AI_PROMPT_ADDENDUM_" + "".join(c if c.isalnum() else "_" for c in version).upper()
+    return (os.environ.get(key, "") or "").strip()
 
 
 def _log_latency(sid, operation, start_time):
@@ -1899,7 +1921,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
         except Exception as e:
             print(f"[Session Load Error] {e}")
 
-        CHAT_MEMORY[sid] = [{"role": "system", "content": get_system_prompt()}]
+        _variant_extra = prompt_variant_addendum(sid)
+        CHAT_MEMORY[sid] = [{"role": "system", "content": get_system_prompt()
+                             + (("\n\n" + _variant_extra) if _variant_extra else "")}]
         CHAT_MEMORY_REV[sid] = None
         SESSION_STATE[sid] = {}
         SESSION_SUMMARIES.pop(sid, None)

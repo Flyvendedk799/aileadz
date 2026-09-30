@@ -144,6 +144,21 @@ REGISTRY_DDL = [
         INDEX idx_osh_company (company_id, created_at)
     ) {_ENGINE}""",
 
+    f"""CREATE TABLE IF NOT EXISTS vendor_profiles (
+        vendor_name VARCHAR(255) PRIMARY KEY,
+        short_name VARCHAR(20) NULL,
+        price_range VARCHAR(40) NULL,
+        reputation TEXT NULL,
+        best_for TEXT NULL,
+        specializations TEXT NULL,
+        format_strengths TEXT NULL,
+        locations TEXT NULL,
+        website VARCHAR(255) NULL,
+        logo_url VARCHAR(500) NULL,
+        updated_by VARCHAR(255) NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+    ) {_ENGINE}""",
+
     f"""CREATE TABLE IF NOT EXISTS company_team_order_policy (
         id INT AUTO_INCREMENT PRIMARY KEY,
         company_id INT NOT NULL,
@@ -272,6 +287,15 @@ def run_data_migrations(conn):
                 _set_flag(cur, "order_lifecycle_v1")
                 conn.commit()
                 ran.append("order_lifecycle_v1")
+            if not _flag_done(cur, "vendor_profiles_seed_v1"):
+                try:
+                    import catalog_service
+                    catalog_service.seed_vendor_profiles(conn)
+                except Exception as e:
+                    logger.warning("vendor profile seed skipped: %s", e)
+                _set_flag(cur, "vendor_profiles_seed_v1")
+                conn.commit()
+                ran.append("vendor_profiles_seed_v1")
             if not _flag_done(cur, "skill_history_user_ids_v1"):
                 try:
                     cur.execute(SKILL_HISTORY_BACKFILL_SQL)

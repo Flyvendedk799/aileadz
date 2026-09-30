@@ -77,16 +77,14 @@ DANISH_MONTHS = {
 }
 
 def load_products():
-    global PRODUCTS_CACHE
-    if PRODUCTS_CACHE is None:
-        file_path = os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                PRODUCTS_CACHE = json.load(file)
-        except Exception as e:
-            print(f"Error loading JSON file: {e}")
-            PRODUCTS_CACHE = []
-    return PRODUCTS_CACHE
+    """Raw product dicts from the ONE catalog (catalog_service), not a private,
+    forever-cached copy of the Shopify export (N-3.1)."""
+    try:
+        import catalog_service
+        return [p["raw"] for p in catalog_service.get_products()]
+    except Exception as e:
+        print(f"Error loading catalog: {e}")
+        return []
 
 def extract_location_and_date(product):
     location = ""

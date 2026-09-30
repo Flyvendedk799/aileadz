@@ -387,8 +387,21 @@ def admin_catalog():
     vendors = catalog.get_vendors()[:80]
     import_drafts = catalog.list_import_drafts()[:10]
     ai_jobs = catalog.list_ai_category_jobs()[:10]
+    try:
+        from app1 import rag
+        index = rag.index_status()
+    except Exception as e:
+        logging.warning("index status unavailable: %s", e)
+        index = None
+    try:
+        import shopify_sync
+        shopify_ready = shopify_sync.configured()
+    except Exception:
+        shopify_ready = False
     return render_template(
         'fm/admin_catalog.html',
+        index=index,
+        shopify_ready=shopify_ready,
         stats=stats,
         categories=categories,
         vendors=vendors,

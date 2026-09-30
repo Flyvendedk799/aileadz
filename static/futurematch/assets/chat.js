@@ -290,7 +290,8 @@
         <div class="course-summary">${esc(c.summary)}</div>
         ${variants ? `<div class="variants"><div class="variants-h">Kommende hold</div>${variants}</div>` : ""}
         <div class="course-actions">
-          <button class="c-primary"><i class="fa-solid fa-cart-plus"></i> Bestil til team</button>
+          <button class="c-primary"><i class="fa-solid fa-cart-plus"></i> ${esc(chatCfg().primaryLabel)}</button>
+          ${chatCfg().teamOrders ? '<button class="c-sec team"><i class="fa-solid fa-people-group"></i> Bestil til team</button>' : ""}
           <button class="c-sec attach"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg> Vedhæft</button>
           <button class="c-sec det"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg> Side</button>
         </div>
@@ -316,17 +317,24 @@
     // check_course_readiness → prepare_course_order flow server-side, so no new
     // side-effect surface is opened here.
     let selectedVariant = null;
-    card.querySelector(".c-primary").addEventListener("click", function (e) {
-      e.stopPropagation();
-      if (!isLoggedIn()) { toast("Log ind for at bestille kurser til dit team", "courses"); return; }
+    // Role-aware (N-5.2): "Anmod om plads" is a request for yourself; "Bestil til
+    // team" only exists when the company policy allows team orders.
+    function sendOrderRequest(btn, forTeam) {
+      if (!isLoggedIn()) { toast("Log ind for at bestille kurser", "courses"); return; }
       if (sending) { toast("Vent venligst — assistenten svarer stadig", "courses"); return; }
       const v = selectedVariant;
       const hold = v && v.date ? ` — holdet ${v.date}${v.loc ? " i " + v.loc : ""}` : "";
-      ask(`Jeg vil gerne bestille "${c.title}"${hold} til mit team`);
-      const btn = this;
+      ask(forTeam ? `Jeg vil gerne bestille "${c.title}"${hold} til mit team`
+                  : `Jeg vil gerne anmode om en plads på "${c.title}"${hold}`);
+      const old = btn.innerHTML;
       btn.classList.add("done"); btn.innerHTML = '<i class="fa-solid fa-check"></i> Sendt til rådgiveren';
-      setTimeout(() => { btn.classList.remove("done"); btn.innerHTML = '<i class="fa-solid fa-cart-plus"></i> Bestil til team'; }, 2600);
+      setTimeout(() => { btn.classList.remove("done"); btn.innerHTML = old; }, 2600);
+    }
+    card.querySelector(".c-primary").addEventListener("click", function (e) {
+      e.stopPropagation(); sendOrderRequest(this, false);
     });
+    const teamBtn = card.querySelector(".c-sec.team");
+    if (teamBtn) teamBtn.addEventListener("click", function (e) { e.stopPropagation(); sendOrderRequest(this, true); });
     // "Vælg" stores the chosen variant so "Bestil til team" can compose a
     // precise order message (date + location) for the agent.
     card.querySelectorAll(".vbook").forEach((b, vi) => b.addEventListener("click", function (e) {
@@ -478,6 +486,12 @@
       pill.replaceWith(w2); requestAnimationFrame(() => w2.classList.remove("collapsed"));
       card.classList.remove("dim");
     };
+  }
+
+  // Server-provided chat config (role + team-order policy). Safe defaults when absent.
+  function chatCfg() {
+    const c = window.FM_CHAT_CFG || {};
+    return { teamOrders: !!c.teamOrders, primaryLabel: c.primaryLabel || "Anmod om plads" };
   }
 
   /* ---------------- profile confirm card ---------------- */

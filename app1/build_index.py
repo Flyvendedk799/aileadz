@@ -23,7 +23,7 @@ if not openai.api_key:
     print("Error: OPENAI_API_KEY environment variable not found.")
     exit(1)
 
-INPUT_FILE = os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
+INPUT_FILE = os.environ.get("CATALOG_SOURCE_FILE") or os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
 OUTPUT_FILE = os.path.join(os.path.dirname(__file__), "shopify_products_augmented.json")
 
 # Tags to exclude from embedding context (too generic or region-based)

@@ -106,5 +106,33 @@ class WelcomeCardTests(unittest.TestCase):
         self.assertIn("/login", resp.headers["Location"])
 
 
+class HrOnboardingTests(unittest.TestCase):
+    def setUp(self):
+        self.db = SqliteMysql()
+        self.db.execute("INSERT INTO companies (id, company_name) VALUES (7, 'Firma')")
+        self.db.execute("INSERT INTO users (id, username, email) VALUES (2, 'hr', 'hr@f.dk')")
+        self.db.execute("INSERT INTO company_users (company_id, user_id, username, role, status) VALUES (7, 2, 'hr', 'hr_manager', 'active')")
+
+    def test_hr_can_dismiss_the_checklist_per_company(self):
+        c = _client(self.db, user="hr", user_id=2, company_id=7, company_role="hr_manager")
+        resp = c.post("/hr/onboarding/dismiss")
+        self.assertEqual(resp.status_code, 302)
+        row = self.db.one("SELECT meta_value FROM schema_meta WHERE meta_key = 'hr_onboarding_dismissed:7'")
+        self.assertEqual(row["meta_value"], "dismissed")
+
+    def test_employee_cannot_dismiss_it(self):
+        c = _client(self.db, user="ada", user_id=1, company_id=7, company_role="employee")
+        c.post("/hr/onboarding/dismiss")
+        self.assertIsNone(self.db.one("SELECT 1 FROM schema_meta WHERE meta_key LIKE 'hr_onboarding%'"))
+
+    def test_template_renders_the_checklist_until_dismissed(self):
+        import jinja2, os as _os
+        from tests.jinja_globals import add_app_globals
+        env = jinja2.Environment(loader=jinja2.FileSystemLoader(_os.path.join(_os.path.dirname(__file__), "..", "templates")))
+        src = env.loader.get_source(env, "fm/hr.html")[0]
+        self.assertIn("Kom godt i gang", src)
+        self.assertIn("not onboarding_dismissed", src)
+
+
 if __name__ == "__main__":
     unittest.main()

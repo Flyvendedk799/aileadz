@@ -131,8 +131,38 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error loading HR dashboard: {e}")
             flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('dashboard.dashboard'))
-        return render_template('fm/hr.html', company=company,
+        # The first-run checklist is computed in the (cached) metrics; whether THIS
+        # company dismissed it is read fresh, so dismissing takes effect at once.
+        onboarding_dismissed = False
+        try:
+            mc = current_app.mysql.connection.cursor()
+            mc.execute("SELECT 1 FROM schema_meta WHERE meta_key = %s", ("hr_onboarding_dismissed:%s" % company['id'],))
+            onboarding_dismissed = mc.fetchone() is not None
+            mc.close()
+        except Exception:
+            onboarding_dismissed = False
+        return render_template('fm/hr.html', company=company, onboarding_dismissed=onboarding_dismissed,
                                active_hr_page='dashboard', **ctx)
+
+    @hr_dashboard_bp.route('/onboarding/dismiss', methods=['POST'])
+    def dismiss_onboarding():
+        """Hide the first-run checklist for this company (N-2.2)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if company:
+            try:
+                cur = current_app.mysql.connection.cursor()
+                cur.execute(
+                    "INSERT INTO schema_meta (meta_key, meta_value) VALUES (%s, 'dismissed') "
+                    "ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)",
+                    ("hr_onboarding_dismissed:%s" % company['id'],))
+                current_app.mysql.connection.commit()
+                cur.close()
+            except Exception as e:
+                current_app.logger.warning(f"dismiss onboarding: {e}")
+        return redirect(url_for('hr_dashboard.dashboard'))
 
     @ttl_cache(seconds=120, key=lambda company: company['id'])
     def _hr_dashboard_metrics(company):

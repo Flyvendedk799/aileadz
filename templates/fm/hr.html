@@ -55,6 +55,33 @@
 <div class="fm-wrap">
         {% set active_hr_page = 'dashboard' %}{% include 'fm/_hr_subnav.html' %}
 
+        {% if onboarding and onboarding.completed_count < 5 and not onboarding_dismissed %}
+        <section class="fm-card" style="margin-bottom:18px" data-reveal>
+          <div class="fm-card-body" style="padding:18px 22px">
+            <div class="fm-spread" style="gap:12px;flex-wrap:wrap;align-items:flex-start">
+              <div>
+                <span class="fm-eyebrow"><i class="fa-solid fa-flag-checkered"></i> Kom godt i gang</span>
+                <h2 style="font-size:18px;margin:4px 0 2px">{{ onboarding.completed_count }} af 5 trin er på plads</h2>
+                <p class="muted" style="margin:0;font-size:13px">Tag dem i den rækkefølge, der passer jer. Hvert trin åbner den rigtige side.</p>
+              </div>
+              <form method="post" action="{{ url_for('hr_dashboard.dismiss_onboarding') }}"><button class="btn btn-ghost btn-sm" type="submit">Skjul</button></form>
+            </div>
+            <div class="fm-prog thin" style="margin:12px 0"><span style="width:{{ onboarding.completed_count * 20 }}%"></span></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              {% set steps = [
+                (onboarding.has_employees, 'Inviter medarbejdere', url_for('bulk_invite.bulk_invite'), 'fa-user-plus'),
+                (onboarding.has_departments, 'Opret afdelinger', url_for('hr_dashboard.departments'), 'fa-sitemap'),
+                (onboarding.has_budgets, 'Sæt budgetter', url_for('hr_dashboard.department_budgets'), 'fa-wallet'),
+                (onboarding.has_orders, 'Find det første kursus', url_for('catalog.catalog_index'), 'fa-graduation-cap'),
+                (onboarding.has_used_chatbot, 'Prøv HR-assistenten', url_for('hr_dashboard.hr_chatbot'), 'fa-robot')] %}
+              {% for done, label, href, icon in steps %}
+              <a class="btn {{ 'btn-soft' if done else 'btn-ghost' }} btn-sm" href="{{ href }}"><i class="fa-solid {{ 'fa-circle-check' if done else icon }}"></i> {{ label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+        {% endif %}
+
         {% set m = hr_metrics or {} %}
         {% set lm = learning_metrics or {} %}
         <!-- KPIs -->

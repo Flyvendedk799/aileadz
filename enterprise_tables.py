@@ -269,14 +269,15 @@ def _seed_theme_templates(conn):
         logging.warning("Theme template seed skipped: %s", e)
 
 
-def ensure_enterprise_tables(app):
-    """Create enterprise tables using the app's MySQL connection."""
-    try:
-        with app.app_context():
-            conn = app.mysql.connection
-            cur = conn.cursor()
+def enterprise_table_ddls():
+    """Every CREATE TABLE statement the platform owns, ONE definition per table.
 
-            tables = [
+    Used by ensure_enterprise_tables (create + add missing columns), by the
+    schema fingerprint that invalidates the boot-sync stamp, and by
+    schema_registry.verify_schema. Extra tables that no other module creates
+    live in schema_registry.REGISTRY_DDL and are appended here (N-3.4).
+    """
+    tables = [
                 # ── Companies ──
                 """CREATE TABLE IF NOT EXISTS companies (
                     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -377,6 +378,18 @@ def ensure_enterprise_tables(app):
                     payment_date DATETIME,
                     invoice_number VARCHAR(100),
                     billing_notes TEXT,
+                    billing_note TEXT,
+                    vendor_id INT,
+                    billing_status VARCHAR(20) NOT NULL DEFAULT 'not_invoiced',
+                    invoice_date DATE,
+                    invoice_due_date DATE,
+                    payment_method VARCHAR(50),
+                    payment_reference VARCHAR(255),
+                    booked_at DATETIME,
+                    booked_by VARCHAR(255),
+                    cancel_reason VARCHAR(255),
+                    request_notes TEXT,
+                    group_order_id VARCHAR(50),
                     course_source VARCHAR(30) DEFAULT 'external',
                     internal_course_id INT,
                     user_email VARCHAR(255),
@@ -1083,6 +1096,30 @@ def ensure_enterprise_tables(app):
                     INDEX idx_product_created (product_handle, created_at)
                 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4""",
             ]
+    try:
+        from schema_registry import REGISTRY_DDL
+        tables = tables + list(REGISTRY_DDL)
+    except Exception as e:  # registry must never stop the core tables
+        logging.warning("schema_registry unavailable: %s", e)
+    return tables
+
+
+def ddl_fingerprint():
+    """Short stable hash of all DDL; changes whenever a table definition does."""
+    import hashlib
+    h = hashlib.sha1()
+    for sql in enterprise_table_ddls():
+        h.update(re.sub(r"\s+", " ", sql).strip().encode("utf-8"))
+    return h.hexdigest()[:12]
+
+
+def ensure_enterprise_tables(app):
+    """Create enterprise tables using the app's MySQL connection."""
+    try:
+        with app.app_context():
+            conn = app.mysql.connection
+            cur = conn.cursor()
+            tables = enterprise_table_ddls()
 
             for sql in tables:
                 try:
@@ -1096,6 +1133,13 @@ def ensure_enterprise_tables(app):
             cur.close()
             _auto_sync_columns(conn, tables)
             _seed_theme_templates(conn)
+            try:
+                from schema_registry import run_data_migrations
+                ran = run_data_migrations(conn)
+                if ran:
+                    logging.info("Schema data migrations applied: %s", ran)
+            except Exception as e:
+                logging.warning("Schema data migrations skipped: %s", e)
             logging.info("Enterprise tables ensured (%d tables)", len(tables))
 
     except Exception as e:

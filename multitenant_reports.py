@@ -344,7 +344,7 @@ def create_multitenant_reports_blueprint():
                 orders = cur.fetchall()
                 
                 for od in orders:
-                    if od['status'] == 'pending':
+                    if od['status'] in ('pending_approval', 'approved', 'pending'):
                         pending_orders_count += 1
                     elif od['status'] == 'completed' or od['completion_status'] == 'completed':
                         completed_orders_count += 1
@@ -533,122 +533,51 @@ def create_multitenant_reports_blueprint():
     @multitenant_reports_bp.route('/order/<order_id>')
     @require_company
     def order_detail(order_id):
-        """
-        Company-scoped order details
-        """
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        conn = current_app.mysql.connection
-        if not conn:
-            flash("Database connection not available.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
-
-        try:
-            cur = conn.cursor(MySQLdb.cursors.DictCursor)
-            cur.execute("""
-                SELECT co.*, u.username, cu.department, cu.job_title
-                FROM course_orders co
-                LEFT JOIN users u ON co.user_id = u.id
-                LEFT JOIN company_users cu ON co.user_id = cu.user_id AND co.company_id = cu.company_id
-                WHERE co.order_id = %s AND co.company_id = %s
-            """, (order_id, company['id']))
-            order = cur.fetchone()
-            cur.close()
-            
-            if not order:
-                flash("Order not found or not accessible.", "danger")
-                return redirect(url_for('multitenant_reports.reports'))
-            
-            return render_template('fm/mt_order_detail.html',
-                                 company=company, order=order)
-        except Exception as e:
-            current_app.logger.error(f"Error fetching order details: {e}")
-            flash("Error loading order details.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
+        """Canonical order detail lives in the HR workspace (N-4.1); this copy
+        redirects there so old links keep working."""
+        return redirect(url_for('hr_dashboard.company_order_details', order_id=order_id))
 
     @multitenant_reports_bp.route('/order/<order_id>/update', methods=['POST'])
     @require_company
     def update_order_status(order_id):
-        """
-        Update order status (company-scoped)
-        Only HR managers and company admins can update orders
-        """
+        """Update order status (company-scoped). Only HR managers and company
+        admins. Goes through the ONE order service (transition rules, budget
+        charge/refund, history, emails, webhooks) - no raw SQL here."""
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
-        
-        # Check permissions
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
+
         if company['user_role'] not in ['company_admin', 'hr_manager']:
-            return jsonify({'success': False, 'message': 'Insufficient permissions'}), 403
-        
+            return jsonify({'success': False, 'message': 'Du har ikke rettigheder til at ændre ordrer.'}), 403
+
         if request.is_json:
             new_status = request.json.get('status')
         else:
             new_status = request.form.get('status')
-        
         if not new_status:
-            return jsonify({'success': False, 'message': 'No status provided'}), 400
-        
-        valid_statuses = ['pending', 'processing', 'confirmed', 'cancelled', 'completed']
-        if new_status not in valid_statuses:
-            return jsonify({'success': False, 'message': 'Invalid status'}), 400
-        
-        conn = current_app.mysql.connection
-        if not conn:
-            return jsonify({'success': False, 'message': 'Database connection error'}), 500
+            return jsonify({'success': False, 'message': 'Angiv en status.'}), 400
 
+        import order_lifecycle as lc
+        import order_service
+        raw = (new_status or '').strip().lower()
+        if raw not in lc.ORDER_STATUSES and raw not in lc.LEGACY_ALIASES:
+            return jsonify({'success': False, 'message': 'Ugyldig status.'}), 400
+        target = lc.normalize_status(raw)
         try:
-            cur = conn.cursor()
-            
-            # Verify order belongs to company
-            cur.execute("""
-                SELECT order_id FROM course_orders
-                WHERE order_id = %s AND company_id = %s
-            """, (order_id, company['id']))
-            
-            if not cur.fetchone():
-                cur.close()
-                return jsonify({'success': False, 'message': 'Order not found'}), 404
-            
-            # Update order status
-            cur.execute("""
-                UPDATE course_orders
-                SET status = %s, updated_at = NOW()
-                WHERE order_id = %s AND company_id = %s
-            """, (new_status, order_id, company['id']))
-            
-            if cur.rowcount == 0:
-                cur.close()
-                return jsonify({'success': False, 'message': 'No rows updated'}), 400
-            
-            # Log the action
-            cur.execute("""
-                INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
-                VALUES (%s, %s, 'order_status_updated', 'order', %s, %s)
-            """, (
-                company['id'], session.get('user_id'), order_id,
-                json.dumps({'old_status': 'unknown', 'new_status': new_status, 'updated_by': session.get('user')})
-            ))
-            
-            conn.commit()
-            cur.close()
-
-            current_app.logger.info(f"Order {order_id} status updated to {new_status} by {session.get('user')} in company {company['company_name']}")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Order status updated to {new_status}',
-                'new_status': new_status
-            })
-            
+            ctx = order_service.OrderContext.from_session(source='hr_reports')
+            ctx.company_id = company['id']
+            if target == lc.COMPLETED:
+                result = order_service.complete_order(ctx, order_id)
+            else:
+                result = order_service.set_status(ctx, order_id, target)
+            if not result.get('success'):
+                code = 404 if result.get('error') == 'not_found' else 400
+                return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke opdatere ordren.'}), code
+            return jsonify({'success': True, 'new_status': target,
+                            'message': 'Ordrestatus opdateret til %s.' % lc.status_label(target, short=True)})
         except Exception as e:
             current_app.logger.error(f"Error updating order status: {e}")
-            if 'cur' in locals():
-                cur.close()
-            return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+            return jsonify({'success': False, 'message': 'Der opstod en fejl ved opdatering af ordren.'}), 500
 
     @multitenant_reports_bp.route('/analytics/export')
     @require_company

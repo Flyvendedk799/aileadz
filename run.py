@@ -98,7 +98,14 @@ logging.basicConfig(level=logging.INFO)
 
 
 def _enterprise_sync_stamp_path():
-    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured")
+    # Keyed on the DDL fingerprint: a changed table definition invalidates the
+    # stamp, so new columns apply on the next boot instead of after the TTL (N-3.4).
+    try:
+        from enterprise_tables import ddl_fingerprint
+        suffix = "_" + ddl_fingerprint()
+    except Exception:
+        suffix = ""
+    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured" + suffix)
 
 
 def _recent_enterprise_sync_exists():
@@ -419,6 +426,10 @@ def create_app():
     @app.route('/')
     def home():
         return redirect(url_for('dashboard.dashboard'))
+
+    # One status vocabulary for every template (N-1.1).
+    import order_lifecycle
+    order_lifecycle.register_jinja(app)
 
     # Danish 404/500 pages, JSON for API callers (N-0.3).
     from error_pages import register_error_handlers

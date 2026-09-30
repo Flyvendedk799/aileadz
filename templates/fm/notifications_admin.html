@@ -63,11 +63,18 @@
               <option value="all">Alle brugere</option>
               <option value="specific">Specifik bruger</option>
               <option value="role">Rolle</option>
+              <option value="company">Én virksomhed</option>
             </select>
           </div>
           <div class="fm-field nt-target-extra" id="specific-user-group" style="margin-bottom:0">
             <label for="username">Brugernavn</label>
             <input type="text" id="username" name="username" class="fm-input" placeholder="Brugernavn">
+          </div>
+          <div class="fm-field nt-target-extra" id="company-group" style="margin-bottom:0">
+            <label for="company_id">Virksomhed</label>
+            <select id="company_id" name="company_id" class="fm-select">
+              {% for c in companies|default([]) %}<option value="{{ c.id }}">{{ c.company_name }}</option>{% endfor %}
+            </select>
           </div>
           <div class="fm-field nt-target-extra" id="role-group" style="margin-bottom:0">
             <label for="role">Rolle</label>
@@ -139,6 +146,7 @@
     function updateTargetFields() {
       specificGroup.style.display = targetSelect.value === 'specific' ? 'flex' : 'none';
       roleGroup.style.display = targetSelect.value === 'role' ? 'flex' : 'none';
+      document.getElementById('company-group').style.display = targetSelect.value === 'company' ? 'flex' : 'none';
     }
 
     function updatePreview() {

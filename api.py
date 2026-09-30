@@ -116,7 +116,8 @@ def mark_notification_read(notification_id):
     try:
          mysql = current_app.mysql
          cur = mysql.connection.cursor()
-         cur.execute("UPDATE notifications SET `read` = 1 WHERE id = %s AND user_id = %s", (notification_id, user_id))
+         from notification_service import mark_read
+         mark_read(cur, user_id, notification_id)
          mysql.connection.commit()
          cur.close()
          return jsonify({'success': True})
@@ -906,12 +907,22 @@ def api_cv_improve():
 @login_required
 def api_cv_apply():
     """Apply reviewed CV items and report created/merged/skipped/failed rows."""
-    username = session.get('user')
-    data = request.get_json() or {}
+    payload, status = apply_cv_items(session.get('user'), request.get_json() or {})
+    return jsonify(payload), status
+
+
+def apply_cv_items(username, data):
+    """THE one CV-apply path (N-1.4). The JSON endpoint and the no-JS form
+    fallback (``/profil-upload/apply``) both call this, so skill-history
+    snapshots, conflict handling and outcomes are identical.
+
+    ``data`` = {accepted: [{type, ...}], summary, conflict_mode}. Returns
+    ``(payload_dict, http_status)``.
+    """
     accepted = data.get('accepted', [])
     conflict_mode = data.get('conflict_mode', 'merge')
     if conflict_mode not in ('merge', 'replace', 'keep'):
-        return jsonify({'success': False, 'error': 'conflict_mode must be merge, replace, or keep'}), 400
+        return {'success': False, 'error': 'conflict_mode must be merge, replace, or keep'}, 400
 
     try:
         from app1.user_profile_db import (
@@ -1143,17 +1154,17 @@ def api_cv_apply():
         except Exception:
             career_action = {}
 
-        return jsonify({
+        return {
             'success': outcomes['failed'] == 0,
             'partial_success': outcomes['failed'] > 0 and sum(counts.values()) > 0,
             'saved': counts,
             'outcomes': outcomes,
             'errors': errors,
             'career_action': career_action,
-        }), (207 if outcomes['failed'] else 200)
+        }, (207 if outcomes['failed'] else 200)
     except Exception as exc:
         current_app.logger.error('cv apply: %s', exc)
-        return jsonify({'success': False, 'error': str(exc)}), 500
+        return {'success': False, 'error': str(exc)}, 500
 
 
 @api_bp.route('/api/profile/mindmap')
@@ -1478,122 +1489,86 @@ def get_profile_orders_api():
 # legacy `notifications` table above, which other surfaces still use. All routes
 # degrade to a safe empty/zero result so the shell never breaks.
 
-def _company_notif_scope():
-    """(company_id, user_id, company_role_json) or None if not in a company."""
-    company_id = session.get('company_id')
-    if not company_id:
-        return None
-    return (company_id, session.get('user_id'),
-            json.dumps(session.get('company_role')))
-
-
 @api_bp.route('/api/notifications/company')
 @login_required
 def company_notifications_list():
-    """Recent company notifications + unread count for the session user."""
-    scope = _company_notif_scope()
-    if not scope:
-        return jsonify({'notifications': [], 'unread_count': 0})
-    company_id, user_id, role_json = scope
+    """Recent notifications + unread count for the session user (unified table)."""
     try:
         import MySQLdb.cursors
+        from notification_service import list_for_user, unread_count
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute(
-            """
-            SELECT id, title, message, is_urgent, is_read, created_at
-            FROM company_notifications
-            WHERE company_id = %s
-              AND (recipient_user_id = %s OR recipient_user_id IS NULL)
-              AND (target_roles IS NULL OR JSON_CONTAINS(target_roles, %s))
-            ORDER BY is_read ASC, is_urgent DESC, created_at DESC
-            LIMIT 20
-            """,
-            (company_id, user_id, role_json),
-        )
-        rows = cur.fetchall() or []
+        rows = list_for_user(cur, session.get('user'), limit=20)
+        unread = unread_count(cur, session.get('user'))
         cur.close()
         notifs = []
-        unread = 0
         for r in rows:
-            is_read = int(r.get('is_read') or 0)
-            if not is_read:
-                unread += 1
             created = r.get('created_at')
             notifs.append({
                 'id': r.get('id'),
                 'title': r.get('title'),
                 'message': r.get('message'),
+                'action_url': r.get('action_url'),
                 'is_urgent': int(r.get('is_urgent') or 0),
-                'is_read': is_read,
+                'is_read': int(r.get('is_read') or 0),
                 'created_at': created.strftime('%d.%m %H:%M') if hasattr(created, 'strftime') else str(created or ''),
             })
         return jsonify({'notifications': notifs, 'unread_count': unread})
     except Exception as e:
-        current_app.logger.warning("company notifications list: %s", e)
+        current_app.logger.warning("notifications list: %s", e)
         return jsonify({'notifications': [], 'unread_count': 0})
 
 
 @api_bp.route('/api/notifications/company/unread_count')
 @login_required
 def company_notifications_unread_count():
-    """Unread company-notification count — drives the bell badge poll."""
-    scope = _company_notif_scope()
-    if not scope:
-        return jsonify({'unread_count': 0})
-    company_id, user_id, role_json = scope
+    """Unread count for the bell badge poll — same source as the page (N-3.2)."""
     try:
         import MySQLdb.cursors
+        from notification_service import unread_count
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute(
-            """
-            SELECT COUNT(*) AS unread_count
-            FROM company_notifications
-            WHERE company_id = %s AND is_read = 0
-              AND (recipient_user_id = %s OR recipient_user_id IS NULL)
-              AND (target_roles IS NULL OR JSON_CONTAINS(target_roles, %s))
-            """,
-            (company_id, user_id, role_json),
-        )
-        row = cur.fetchone()
+        n = unread_count(cur, session.get('user'))
         cur.close()
-        return jsonify({'unread_count': int(row['unread_count']) if row else 0})
+        return jsonify({'unread_count': n})
     except Exception as e:
-        current_app.logger.warning("company notifications unread count: %s", e)
+        current_app.logger.warning("notifications unread count: %s", e)
         return jsonify({'unread_count': 0})
 
 
 @api_bp.route('/api/notifications/<int:notification_id>/read', methods=['POST'])
 @login_required
 def company_notification_mark_read(notification_id):
-    """Mark a single company notification read — strictly company-scoped.
-
-    Only rows belonging to the session user's company and addressed to them (or
-    broadcast) can be marked. This is the only write here, so it commits.
-    """
-    company_id = session.get('company_id')
-    user_id = session.get('user_id')
-    if not company_id:
-        return jsonify({'success': False, 'error': 'No company context'}), 403
+    """Mark ONE of the caller's own notifications read (per-user read state)."""
     try:
+        from notification_service import mark_read
         mysql = current_app.mysql
         cur = mysql.connection.cursor()
-        cur.execute(
-            """
-            UPDATE company_notifications SET is_read = 1
-            WHERE id = %s AND company_id = %s
-              AND (recipient_user_id = %s OR recipient_user_id IS NULL)
-            """,
-            (notification_id, company_id, user_id),
-        )
+        mark_read(cur, session.get('user'), notification_id)
         mysql.connection.commit()
         cur.close()
         return jsonify({'success': True})
     except Exception as e:
-        current_app.logger.error("company notification mark read: %s", e)
+        current_app.logger.error("notification mark read: %s", e)
         try:
             current_app.mysql.connection.rollback()
         except Exception:
             pass
+        return jsonify({'success': False, 'error': str(e)}), 500
+
+
+@api_bp.route('/api/notifications/mark_all_read', methods=['POST'])
+@login_required
+def notifications_mark_all_read():
+    """Mark all of the caller's own notifications read."""
+    try:
+        from notification_service import mark_read
+        mysql = current_app.mysql
+        cur = mysql.connection.cursor()
+        mark_read(cur, session.get('user'), None)
+        mysql.connection.commit()
+        cur.close()
+        return jsonify({'success': True})
+    except Exception as e:
+        current_app.logger.error("notifications mark all: %s", e)
         return jsonify({'success': False, 'error': str(e)}), 500
 
 

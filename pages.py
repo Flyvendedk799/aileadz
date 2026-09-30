@@ -10,37 +10,20 @@ pages_bp = Blueprint('pages', __name__, template_folder='templates')
 
 
 def _fetch_company_notifications(limit=60):
-    """Recipient-scoped company_notifications for the session user.
+    """The session user's notifications from the ONE unified table (N-3.2).
 
-    Scoping mirrors hr_dashboard.notifications: same company, addressed to this
-    user directly OR broadcast (recipient_user_id IS NULL), and either untargeted
-    or targeted at this user's company_role. Read-only; returns [] on any failure
-    so the page never breaks for users without notifications.
+    Every row belongs to exactly one recipient, so read state is per user. Returns
+    [] on any failure so the page never breaks for users without notifications.
     """
-    company_id = session.get('company_id')
-    user_id = session.get('user_id')
-    company_role = session.get('company_role')
-    if not company_id:
+    username = session.get('user')
+    if not username:
         return []
     try:
+        from notification_service import list_for_user
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute(
-            """
-            SELECT cn.id, cn.title, cn.message, cn.is_urgent, cn.is_read,
-                   cn.created_at, u.username AS sender_name
-            FROM company_notifications cn
-            LEFT JOIN users u ON cn.sender_user_id = u.id
-            WHERE cn.company_id = %s
-              AND (cn.recipient_user_id = %s OR cn.recipient_user_id IS NULL)
-              AND (cn.target_roles IS NULL OR JSON_CONTAINS(cn.target_roles, %s))
-            ORDER BY cn.is_read ASC, cn.is_urgent DESC, cn.created_at DESC
-            LIMIT %s
-            """,
-            (company_id, user_id, json.dumps(company_role), int(limit)),
-        )
-        rows = cur.fetchall() or []
+        rows = list_for_user(cur, username, limit=limit)
         cur.close()
-        return list(rows)
+        return rows
     except Exception as e:
         current_app.logger.warning("notifications fetch: %s", e)
         return []

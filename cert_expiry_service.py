@@ -145,12 +145,12 @@ def remind_expiring_certifications(within_days=DEFAULT_WITHIN_DAYS,
 
 def _notify(username, title, message):
     """Insert one learner notification. ``user_id`` HOLDS the username."""
+    from notification_service import notify_user
     conn = current_app.mysql.connection
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO notifications (user_id, title, message, image_url) VALUES (%s, %s, %s, %s)",
-        (username, (title or "")[:255], (message or "")[:1000], ""),
-    )
+    notify_user(cur, title=(title or "")[:255], message=(message or "")[:1000],
+                username=username, kind="certification", action_url="/profile",
+                dedupe_key=None)
     conn.commit()
     cur.close()
 

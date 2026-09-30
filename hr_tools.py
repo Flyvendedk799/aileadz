@@ -1132,7 +1132,7 @@ def _execute_get_team_training_status(args):
     cur.execute(f"""
         SELECT cu.department, u.username,
                COUNT(DISTINCT CASE WHEN co.status = 'completed' THEN co.id END) as completed,
-               COUNT(DISTINCT CASE WHEN co.status IN ('confirmed','processing') THEN co.id END) as in_progress,
+               COUNT(DISTINCT CASE WHEN co.status IN ('booked','confirmed','processing') THEN co.id END) as in_progress,
                COUNT(DISTINCT CASE WHEN co.status = 'pending_approval' THEN co.id END) as pending,
                MAX(co.created_at) as last_order_date
         FROM company_users cu
@@ -1428,7 +1428,7 @@ def _execute_get_training_report(args):
             COUNT(*) as total_orders,
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
             COUNT(CASE WHEN status = 'pending_approval' THEN 1 END) as pending_approval,
-            COUNT(CASE WHEN status IN ('confirmed','processing') THEN 1 END) as in_progress,
+            COUNT(CASE WHEN status IN ('booked','confirmed','processing') THEN 1 END) as in_progress,
             COALESCE(SUM(CASE WHEN status != 'cancelled' THEN price ELSE 0 END), 0) as total_spend,
             COUNT(DISTINCT username) as unique_employees,
             AVG(CASE WHEN status = 'completed' AND completion_date IS NOT NULL
@@ -2273,7 +2273,7 @@ def _execute_get_team_non_starters(args):
             JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
             WHERE co.company_id = %s
               AND cu.status = 'active'
-              AND co.status IN ('approved', 'pending', 'confirmed', 'processing')
+              AND co.status IN ('approved', 'booked', 'pending', 'confirmed', 'processing')
               AND (co.completion_status IS NULL OR co.completion_status = ''
                    OR co.completion_status = 'not_started')
               AND co.started_at IS NULL
@@ -2591,11 +2591,11 @@ def _execute_hr_trial_and_seat_status(args):
 def _execute_approve_order_from_chat(args):
     """MUTATION — approve/reject a pending course order from the HR chat.
 
-    Routes the budget side effects through order_service.set_status (approved ->
-    'pending' charges the budget once; rejected refunds once) and records the
-    decision on order_approvals. Requires (a) confirm=true and (b) the HR actor be
-    a company manager. Strictly company-scoped: the resolved order must belong to
-    the session company.
+    Routes everything through order_service.set_status (approved charges the
+    budget once and updates the approval row in the SAME transaction; rejected
+    refunds once). Requires (a) confirm=true and (b) the HR actor be a company
+    manager. Strictly company-scoped: the resolved order must belong to the
+    session company.
     """
     company_id = session.get('company_id')
     if not company_id:
@@ -2673,10 +2673,11 @@ def _execute_approve_order_from_chat(args):
         }, default=str)
     cur.close()
 
-    # approved -> 'pending' (charges budget once); rejected -> 'rejected' (refunds).
-    new_status = 'pending' if decision == 'approved' else 'rejected'
+    # approved -> 'approved' (charges budget once, learner gets "Godkendt – afventer
+    # booking", email + webhook fire); rejected -> 'rejected' (refunds).
+    new_status = 'approved' if decision == 'approved' else 'rejected'
     try:
-        result = _set_status(ctx, order_id, new_status)
+        result = _set_status(ctx, order_id, new_status, note=(args.get('notes') or None))
     except Exception as exc:
         print(f"[HR_TOOLS][approve_order] set_status raised: {exc}")
         return json.dumps({"error": "Statusændring fejlede."})
@@ -2687,18 +2688,7 @@ def _execute_approve_order_from_chat(args):
             "message": (result or {}).get('message', 'Statusændring fejlede.') if isinstance(result, dict) else "Statusændring fejlede.",
         })
 
-    # ── Record the decision on order_approvals (best-effort, same company). ──
-    try:
-        cur2 = _get_cursor()
-        cur2.execute("""
-            UPDATE order_approvals
-            SET status = %s, approver_user_id = %s, decided_at = NOW()
-            WHERE order_id = %s AND company_id = %s
-        """, (decision, ctx.user_id, order_id, company_id))
-        current_app.mysql.connection.commit()
-        cur2.close()
-    except Exception as exc:
-        print(f"[HR_TOOLS][approve_order] order_approvals update skipped: {exc}")
+    # The approval row was updated inside set_status (same transaction).
 
     return json.dumps({
         "success": True,
@@ -2842,16 +2832,14 @@ def _execute_assign_learning_path_to_team(args):
 
         # Nudge notification per employee (best-effort).
         try:
-            cur.execute("""
-                INSERT INTO company_notifications
-                    (company_id, recipient_user_id, sender_user_id, title, message, is_urgent, created_at)
-                VALUES (%s, %s, %s, %s, %s, 0, NOW())
-            """, (
-                company_id, uid, session.get('user_id'),
-                "Ny læring tildelt",
-                f"Du er blevet tildelt '{content_name}'. Gå i gang når du er klar.",
-            ))
-            nudged += 1
+            from notification_service import insert_company_notification
+            if insert_company_notification(
+                    cur, company_id, recipient_user_id=uid,
+                    sender_user_id=session.get('user_id'),
+                    title="Ny læring tildelt",
+                    message=f"Du er blevet tildelt '{content_name}'. Gå i gang når du er klar.",
+                    action_url="/min-laering", kind="assignment", dedupe_key=None):
+                nudged += 1
         except Exception as exc:
             print(f"[HR_TOOLS][assign_path] nudge skipped for user {uid}: {exc}")
 

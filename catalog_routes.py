@@ -309,6 +309,49 @@ def _completed_count(handle):
         return 0
 
 
+def _user_open_order(handle):
+    """The logged-in user's still-open order for this course (or None), so the
+    page can say "Du har allerede anmodet om dette kursus" instead of inviting a
+    duplicate request."""
+    username = session.get("user")
+    user_id = session.get("user_id")
+    if not handle or (not username and not user_id):
+        return None
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT order_id, status, created_at FROM course_orders
+               WHERE product_handle = %s
+                 AND status IN ('pending_approval', 'approved', 'booked', 'pending', 'confirmed', 'processing')
+                 AND ( (%s IS NOT NULL AND user_id = %s) OR (%s <> '' AND username = %s) )
+               ORDER BY created_at DESC LIMIT 1""",
+            (handle, user_id, user_id, username or "", username or ""),
+        )
+        row = cur.fetchone()
+        cur.close()
+        if not row:
+            return None
+        import order_lifecycle as lc
+        status = lc.normalize_status(row.get("status"))
+        return {"order_id": row["order_id"], "status": status, "label": lc.status_label(status)}
+    except Exception as exc:
+        try:
+            current_app.logger.debug("open-order lookup skipped for %s: %s", handle, exc)
+        except Exception:
+            pass
+        return None
+
+
+def _request_flow():
+    """How a request from THIS user is handled, so the copy never lies:
+    ``approval`` (employee in a company: goes to HR), ``direct`` (manager/HR:
+    approved at once), ``solo`` (no company: no approval step)."""
+    if not session.get("company_id"):
+        return "solo"
+    from capabilities import is_manager
+    return "direct" if is_manager() else "approval"
+
+
 def _company_profile():
     """The logged-in user's own company_users row (department + contact details).
 
@@ -414,8 +457,11 @@ def product_detail(handle):
     except Exception:
         vendor = None
     profile = _company_profile()
+    existing_order = _user_open_order(handle)
     return render_template(
         "fm/product_detail.html",
+        existing_order=existing_order,
+        request_flow=_request_flow(),
         product=product,
         related_products=related_products,
         supplier_state=supplier_state,
@@ -553,13 +599,18 @@ def request_product(handle):
         result = {"success": False, "error": str(exc)}
 
     if not result.get("success"):
-        flash("Tilmeldingsanmodningen kunne ikke oprettes. Prov igen eller kontakt support.", "danger")
+        flash(result.get("message") or "Tilmeldingsanmodningen kunne ikke oprettes. Prøv igen eller kontakt support.", "danger")
         return redirect(url_for("catalog.product_detail", handle=handle))
 
     order = result.get("order", {})
     order_id = order.get("order_id") or result.get("order_id", "")
-    flash("Tilmeldingsanmodning oprettet. Vi har gemt den i Futurematch.", "success")
-    return redirect(url_for("catalog.product_detail", handle=handle, order=order_id[:8]))
+    if result.get("duplicate"):
+        flash("Du har allerede anmodet om dette kursus. Se status på din tidslinje.", "info")
+    elif order.get("needs_approval") or order.get("status") == "pending_approval":
+        flash("Anmodningen er sendt til godkendelse. Du hører fra os, så snart den er behandlet.", "success")
+    else:
+        flash("Anmodningen er godkendt. Udbyderen bekræfter din plads.", "success")
+    return redirect(url_for("catalog.product_detail", handle=handle, order=order_id))
 
 
 @catalog_bp.route("/categories")

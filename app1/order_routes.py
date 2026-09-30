@@ -298,11 +298,8 @@ def format_order_confirmation_for_chat(order):
 **Dine oplysninger:**
 Navn: {order['user']['name']}
 Email: {order['user']['email']}
-Telefon: {order['user']['phone']}
 
-Du vil modtage en bekræftelse på email inden for få minutter.
-
-Har du spørgsmål? Ring til os på 12 34 56 78.
+Du modtager en bekræftelse på email. Du kan følge status på din tidslinje.
 """
     
     return confirmation

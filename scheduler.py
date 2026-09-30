@@ -840,6 +840,96 @@ def run_due_jobs(app, only=None, force=False):
     return out
 
 
+# ── Worker heartbeat + status view (N-8.1) ───────────────────────────────────
+# The dedicated worker (``drain_worker.py --loop``) stamps a heartbeat row each
+# pass so /readyz and the admin system page can tell "worker is alive" from
+# "jobs only run when somebody happens to browse".
+HEARTBEAT_JOB = '_worker_heartbeat'
+HEARTBEAT_STALE_SECONDS = 300
+
+
+def stamp_worker_heartbeat(app):
+    """Record that the dedicated worker process is alive. Never raises."""
+    try:
+        with app.app_context():
+            conn = app.mysql.connection
+            _ensure_table(conn=conn)
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    "INSERT INTO scheduled_job_runs (job_name, last_run_at, last_status) "
+                    "VALUES (%s, NOW(), 'ok') "
+                    "ON DUPLICATE KEY UPDATE last_run_at = NOW(), last_status = 'ok'",
+                    (HEARTBEAT_JOB,),
+                )
+                conn.commit()
+            finally:
+                cur.close()
+    except Exception as e:
+        logger.warning("scheduler: heartbeat failed: %s", e)
+
+
+def in_request_runner_enabled():
+    """True when the legacy ``after_request`` runner should drive jobs.
+
+    Prod runs the dedicated worker and sets ``SCHEDULER_OPPORTUNISTIC=0`` so
+    visitors never pay for background work; the runner stays the default so a
+    fresh deploy without a worker still sends emails and webhooks.
+    """
+    import os
+    return os.getenv("SCHEDULER_OPPORTUNISTIC", "1").lower() not in {"0", "false", "no", "off"}
+
+
+def job_status_rows(conn):
+    """Per-job last-run info for the admin page and /readyz. Never raises.
+
+    Each row: name, interval_seconds, last_run_at (str|None), last_status,
+    last_summary, overdue (bool: last run older than 2x the interval or never).
+    """
+    rows = []
+    try:
+        _ensure_table(conn=conn)
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT job_name, last_run_at, UNIX_TIMESTAMP(last_run_at) AS ts, "
+                "last_status, last_summary FROM scheduled_job_runs"
+            )
+            found = {}
+            for r in (cur.fetchall() or []):
+                d = r if isinstance(r, dict) else dict(zip(
+                    ('job_name', 'last_run_at', 'ts', 'last_status', 'last_summary'), r))
+                found[d['job_name']] = d
+        finally:
+            cur.close()
+        now = time.time()
+        for job in JOBS:
+            d = found.get(job['name']) or {}
+            ts = d.get('ts')
+            overdue = (ts is None) or (now - float(ts) > 2 * job['interval_seconds'] + 120)
+            rows.append({
+                'name': job['name'],
+                'interval_seconds': job['interval_seconds'],
+                'last_run_at': str(d.get('last_run_at')) if d.get('last_run_at') else None,
+                'last_status': d.get('last_status'),
+                'last_summary': d.get('last_summary'),
+                'overdue': bool(overdue),
+            })
+        hb = found.get(HEARTBEAT_JOB) or {}
+        hb_ts = hb.get('ts')
+        rows.append({
+            'name': HEARTBEAT_JOB,
+            'interval_seconds': HEARTBEAT_STALE_SECONDS,
+            'last_run_at': str(hb.get('last_run_at')) if hb.get('last_run_at') else None,
+            'last_status': hb.get('last_status'),
+            'last_summary': None,
+            'overdue': (hb_ts is None) or (now - float(hb_ts) > HEARTBEAT_STALE_SECONDS),
+        })
+    except Exception as e:
+        logger.warning("scheduler: job_status_rows failed: %s", e)
+    return rows
+
+
 def run_due_jobs_safe(app, only=None, force=False):
     """Outermost guard wrapper — guarantees NO exception escapes (for the request
     hook / worker). Returns the same dict as ``run_due_jobs`` (empty on failure).

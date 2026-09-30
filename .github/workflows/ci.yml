@@ -37,6 +37,8 @@ jobs:
   # ── Tests + boot smoke ──────────────────────────────────────────────────────
   test:
     name: Boot smoke + pytest
+    # A hung test must fail the job in minutes, not burn the 6 h default (N-0.1).
+    timeout-minutes: 20
     runs-on: ubuntu-latest
 
     services:
@@ -85,7 +87,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           # Test runner (not a runtime dependency, so keep it out of requirements.txt).
-          pip install pytest
+          pip install pytest pytest-timeout
 
       - name: Wait for MySQL
         run: |
@@ -104,7 +106,7 @@ jobs:
         run: python -c "from run import create_app; create_app()"
 
       - name: Run pytest suite
-        run: python -m pytest tests/ -q
+        run: python -m pytest -q --timeout=120
 
       - name: Readiness capability check (/readyz, best-effort)
         continue-on-error: true

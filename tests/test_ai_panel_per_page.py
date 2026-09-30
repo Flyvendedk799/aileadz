@@ -39,7 +39,7 @@ def _env():
 
 
 def _render_panel(session=None, active_hr_page="compliance"):
-    src = open(f"{TEMPLATES}/fm/_ai_panel.html").read()
+    src = open(f"{TEMPLATES}/fm/_ai_panel.html", encoding="utf-8").read()
     ctx = {"active_hr_page": active_hr_page}
     if session is not None:
         ctx["session"] = session
@@ -49,7 +49,7 @@ def _render_panel(session=None, active_hr_page="compliance"):
 # ---- inclusion topology / audience scoping --------------------------------
 
 def test_panel_is_autoincluded_from_canonical_subnav():
-    subnav = open(f"{TEMPLATES}/fm/_hr_subnav.html").read()
+    subnav = open(f"{TEMPLATES}/fm/_hr_subnav.html", encoding="utf-8").read()
     assert "fm/_ai_panel.html" in subnav, (
         "the HR AI panel must be auto-included from the canonical HR-only subnav "
         "so it reaches every HR page from a single site"
@@ -66,9 +66,9 @@ def test_subnav_is_the_only_panel_include_site():
     for path in glob.glob(f"{TEMPLATES}/**/*.html", recursive=True):
         if path.endswith("_ai_panel.html"):
             continue
-        if "fm/_ai_panel.html" in open(path).read():
-            sites.append(path)
-    assert sites == [f"{TEMPLATES}/fm/_hr_subnav.html"], (
+        if "fm/_ai_panel.html" in open(path, encoding="utf-8").read():
+            sites.append(path.replace("\\", "/"))
+    assert sites == [f"{TEMPLATES}/fm/_hr_subnav.html".replace("\\", "/")], (
         f"the AI panel must be included only via the HR subnav; found: {sites}"
     )
 
@@ -76,7 +76,7 @@ def test_subnav_is_the_only_panel_include_site():
 def test_panel_never_in_fm_base():
     # HARD CONSTRAINT: fm_base.html is extended by 94 admin/vendor/public/employee
     # templates. The HR advisor panel must never live there.
-    base = open(f"{TEMPLATES}/fm_base.html").read()
+    base = open(f"{TEMPLATES}/fm_base.html", encoding="utf-8").read()
     assert "_ai_panel" not in base, (
         "the HR AI panel must NOT be in fm_base.html (would leak onto admin/"
         "vendor/public/employee surfaces)"
@@ -131,7 +131,7 @@ def test_panel_sends_query_to_sse_endpoint():
 # ---- token-bound chart tooltip -------------------------------------------
 
 def test_chart_tooltip_no_hardcoded_color():
-    js = open(CHARTS_JS).read()
+    js = open(CHARTS_JS, encoding="utf-8").read()
     assert "rgba(15,23,42" not in js, (
         "fm-charts.js must not hardcode the tooltip background (breaks dark-mode/"
         "white-label); read a --fm-* token instead"
@@ -139,7 +139,7 @@ def test_chart_tooltip_no_hardcoded_color():
 
 
 def test_chart_tooltip_reads_tokens():
-    js = open(CHARTS_JS).read()
+    js = open(CHARTS_JS, encoding="utf-8").read()
     assert "--fm-tooltip-bg" in js
     assert "--fm-tooltip-ink" in js
     # The tooltip must also set text colours so the inverted surface stays legible.
@@ -147,7 +147,7 @@ def test_chart_tooltip_reads_tokens():
 
 
 def test_tooltip_tokens_defined_light_and_dark():
-    css = open(FM_CSS).read()
+    css = open(FM_CSS, encoding="utf-8").read()
     # token defined in :root (light)
     assert re.search(r":root\b.*?--fm-tooltip-bg", css, re.S), "missing light tooltip token"
     # and overridden in the dark theme block

@@ -101,6 +101,51 @@
     {% endif %}
   </div>
 
+  {# --- E-mail: real config status + send a test mail (N-0.2) --- #}
+  <div class="fm-card" style="margin-top:20px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-envelope"></i></span><h3>E-mail</h3>
+      <span class="status-pill {{ 'green' if mail and mail.configured else 'red' }}" style="margin-left:auto">{{ 'Sat op' if mail and mail.configured else 'Ikke sat op' }}</span>
+    </div>
+    <div class="fm-card-body">
+      {% if mail and mail.configured %}
+      <p style="font-size:13px;color:var(--fm-ink-2)">Server <strong>{{ mail.server }}:{{ mail.port }}</strong>{% if mail.tls %} (TLS){% elif mail.ssl %} (SSL){% endif %}, afsender <strong>{{ mail.sender }}</strong>{% if not mail.has_credentials %}. Ingen login angivet.{% endif %}</p>
+      {% else %}
+      <p style="font-size:13px;color:var(--fm-ink-2)">Platformen kan ikke sende e-mail endnu. Mangler: <strong>{{ (mail.missing if mail else ['ukendt'])|join(', ') }}</strong>. Sæt variablerne på serveren (se USER_ACTIONS_PART_B) og genstart.</p>
+      {% endif %}
+      <form method="post" action="{{ url_for('admin_dashboard.admin_send_test_email') }}" class="fm-flex fm-gap12" style="margin-top:12px;align-items:flex-end;flex-wrap:wrap">
+        <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--fm-ink-3)">Send test-mail til
+          <input type="email" name="to_email" value="{{ session.get('email','') }}" placeholder="din@mail.dk" class="fm-input" style="min-width:260px" required>
+        </label>
+        <button class="fm-btn primary" type="submit"><i class="fa-solid fa-paper-plane"></i> Send test-mail</button>
+      </form>
+    </div>
+  </div>
+
+  {# --- Baggrundsjobs (N-8.1) --- #}
+  <div class="fm-table-wrap" style="margin-top:20px">
+    <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
+      <div class="fm-flex fm-ac fm-gap12"><h3 style="font-size:15px;font-weight:700">Baggrundsjobs</h3></div>
+      {% set hb = (jobs|selectattr('name','equalto','_worker_heartbeat')|list|first) if jobs else none %}
+      <span class="status-pill {{ 'green' if hb and not hb.overdue else 'amber' }}">{{ 'Worker kører' if hb and not hb.overdue else 'Ingen worker-puls' }}</span>
+    </div>
+    {% if jobs %}
+    <table class="fm-table">
+      <thead><tr><th>Job</th><th>Sidst kørt</th><th>Status</th></tr></thead>
+      <tbody>
+      {% for j in jobs if j.name != '_worker_heartbeat' %}
+        <tr>
+          <td style="font-family:var(--fm-mono,monospace);font-size:12.5px">{{ j.name }}</td>
+          <td>{{ j.last_run_at or 'Aldrig' }}</td>
+          <td><span class="status-pill {{ 'red' if j.last_status == 'error' else ('amber' if j.overdue else 'green') }}">{{ 'Fejl' if j.last_status == 'error' else ('Forsinket' if j.overdue else 'OK') }}</span></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="fm-card-body">{{ ui.empty('Ingen jobdata', 'Jobstatus kunne ikke læses. Tjek databaseforbindelsen.', 'fa-gears') }}</div>
+    {% endif %}
+  </div>
+
   {# --- Event-outbox detail (only if we actually have rows) --- #}
   {% if ob and ob_total|int > 0 %}
   <div class="split even" style="margin-top:20px">

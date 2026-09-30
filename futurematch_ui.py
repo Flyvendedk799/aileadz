@@ -265,6 +265,18 @@ def employee_home():
         except Exception:
             show_welcome = False
 
+    # ── "Tildelt af HR": learning paths HR assigned to me, with due dates ──
+    hr_assignments = []
+    if username and user_id and company_id:
+        try:
+            import MySQLdb.cursors
+            import learning_path_service
+            _c = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            hr_assignments = learning_path_service.assignments_for_learner(_c, user_id, company_id)
+            _c.close()
+        except Exception as e:
+            current_app.logger.warning("home hr assignments: %s", e)
+
     return render_template(
         'fm/employee_home.html',
         goals=goals,
@@ -273,6 +285,7 @@ def employee_home():
         active=active,
         orders=orders,
         recommendations=recommendations,
+        hr_assignments=hr_assignments,
         skills_groups=skills_groups,
         skills_total=len(profile.get('skills') or []),
         completeness_pct=completeness_pct,
@@ -308,13 +321,25 @@ def learning_goals():
         flash('Log ind for at se dine udviklingsmål.', 'danger')
         return redirect(url_for('auth.login'))
     goals = []
+    manager_goals = []
     try:
         from app1.user_profile_db import get_learning_goals, ensure_tables
         ensure_tables()
         goals = get_learning_goals(session['user'])
     except Exception as e:
         current_app.logger.warning("learning goals load: %s", e)
-    return render_template('fm/learning_goals.html', goals=goals)
+    # "Mål fra din leder": ONLY goals HR chose to share (N-3.5 / S-4.4).
+    if session.get('company_id') and session.get('user_id'):
+        try:
+            import MySQLdb.cursors
+            import goal_sharing_ui as goal_sharing
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            manager_goals = goal_sharing.shared_goals_for_learner(
+                cur, session['user_id'], session['company_id'], conn=current_app.mysql.connection)
+            cur.close()
+        except Exception as e:
+            current_app.logger.warning("manager goals load: %s", e)
+    return render_template('fm/learning_goals.html', goals=goals, manager_goals=manager_goals)
 
 
 @futurematch_bp.route('/mine-maal/add', methods=['POST'])
@@ -764,6 +789,12 @@ def _require_showcase_admin():
     return None
 
 
+# Mock pages that only exist in the design gallery (N-4.1): clearly labelled there.
+_GALLERY_ONLY_PAGES = frozenset({
+    'admin_chatbot', 'mt_dashboard', 'report_detail', 'profile', 'sso_login', 'widget_chat', 'mt_order_detail',
+})
+
+
 @futurematch_bp.route('/ui')
 def showcase_index():
     """Gallery of every Futurematch design page (for review / navigation)."""
@@ -782,6 +813,9 @@ def showcase(page):
         return guard
     if page not in _fm_pages() or page.startswith('_'):
         abort(404)
+    if page in _GALLERY_ONLY_PAGES:
+        flash('Designgalleri: denne side viser eksempeldata og er ikke koblet til rigtige data. '
+              'Den rigtige version findes i HR-workspace.', 'warning')
     return render_template(f'fm/{page}.html')
 
 

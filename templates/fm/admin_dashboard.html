@@ -18,23 +18,13 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-    <a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
-    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
-    <a class="pg-tab" href="{{ url_for('admin_reports.cohort_retention_dashboard') }}"><i class="fa-solid fa-people-group"></i> Fastholdelse</a>
-  </div>
+{% set active_admin_page = 'home' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-users"></i></span><div><div class="kl">Brugere i alt</div><div class="kv tnum">{{ total_users }}</div><div class="kd">{{ new_users_month }} nye denne måned · {{ total_admins }} admins</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-building"></i></span><div><div class="kl">Virksomheder</div><div class="kv tnum">{{ total_companies }}</div><div class="kd">{{ active_users_7d }} aktive brugere (7d)</div></div></div>
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-receipt"></i></span><div><div class="kl">Ordrer</div><div class="kv tnum">{{ total_orders }}</div><div class="kd">{{ orders_this_month }} denne måned</div></div></div>
-    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ "{:,.0f}".format(total_revenue).replace(",", ".") }} kr</div><div class="kd">{{ "{:,.0f}".format(revenue_this_month).replace(",", ".") }} kr denne måned</div></div></div>
+    <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Omsætning</div><div class="kv tnum">{{ "{:,.0f}".format(total_revenue).replace(",", ".") }} kr</div><div class="kd">{{ "{:,.0f}".format(revenue_this_month).replace(",", ".") }} kr denne måned · {{ "{:,.0f}".format(revenue_invoiced|default(0)).replace(",", ".") }} faktureret · {{ "{:,.0f}".format(revenue_paid|default(0)).replace(",", ".") }} betalt</div></div></div>
   </div>
 
   <div class="kpi-row" style="grid-template-columns:repeat(2,1fr)">

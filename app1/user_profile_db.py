@@ -1297,6 +1297,15 @@ def save_learning_path(username, title, steps, *, goal="", source="ai",
     row = cur.fetchone()
     existing_id = (row[0] if not isinstance(row, dict) else row.get("id")) if row else None
     if existing_id:
+        # Versioned saves (N-4.4): keep the state being replaced instead of losing it.
+        try:
+            cur.execute(
+                "INSERT INTO user_learning_path_versions (path_id, username, goal, steps) "
+                "SELECT id, username, goal, steps FROM user_learning_paths WHERE id = %s AND username = %s",
+                (existing_id, username),
+            )
+        except Exception as _ve:  # table missing on a not-yet-migrated DB: never block the save
+            current_app.logger.debug("learning path version skipped: %s", _ve)
         cur.execute(
             "UPDATE user_learning_paths SET goal = %s, steps = %s, total_cost = %s, "
             "total_duration_days = %s, source = %s WHERE username = %s AND id = %s",

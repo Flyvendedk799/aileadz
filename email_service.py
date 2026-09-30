@@ -224,6 +224,17 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
   </div>
 </body></html>
 """,
+        'scheduled_report': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">{{ report_title }}</h2>
+    <p>Her er din {{ cadence }} rapport for {{ scope }}. Den ligger som CSV-fil i vedhæftningen ({{ row_count }} rækker).</p>
+    <p style="font-size:13px;color:#64748b;">Du kan sætte rapporten på pause eller slette den under Rapporter &amp; eksport i HR-workspace.</p>
+  </div>
+</body></html>
+""",
         'budget_overrun_alert': """
 <!DOCTYPE html>
 <html><body style="font-family: {{ font_family }}; padding: 24px;">
@@ -499,6 +510,7 @@ def send_branded_email(
     reply_to: Optional[str] = None,
     company_id=None,
     dedupe_key: Optional[str] = None,
+    attachments: Optional[list] = None,
     **context,
 ) -> bool:
     """Send a branded email. Returns True on success, False on no-op/failure.
@@ -570,6 +582,8 @@ def send_branded_email(
             sender=(from_name, default_sender),
             reply_to=reply,
         )
+        for fname, data, mimetype in (attachments or []):
+            msg.attach(fname, mimetype, data)
         mail.send(msg)
         _record_email_attempt(
             to_email, template_name, 'sent', company_id=company_id,

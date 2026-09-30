@@ -181,6 +181,54 @@ REGISTRY_DDL = [
         INDEX idx_ar_company (company_id)
     ) {_ENGINE}""",
 
+    f"""CREATE TABLE IF NOT EXISTS company_report_schedules (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL,
+        report_type VARCHAR(64) NOT NULL,
+        cadence VARCHAR(16) NOT NULL,
+        department VARCHAR(100) NULL,
+        created_by INT NULL,
+        enabled TINYINT(1) NOT NULL DEFAULT 1,
+        last_sent_at DATETIME NULL,
+        last_status VARCHAR(40) NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_company_report (company_id, report_type, department)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS learning_path_steps (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        path_id INT NOT NULL,
+        company_id INT NOT NULL,
+        position INT NOT NULL DEFAULT 1,
+        step_type VARCHAR(12) NOT NULL DEFAULT 'catalog',
+        course_handle VARCHAR(255) NULL,
+        title VARCHAR(255) NULL,
+        INDEX idx_lps_path (path_id, position)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS user_learning_path_versions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        path_id INT NOT NULL,
+        username VARCHAR(255) NOT NULL,
+        goal VARCHAR(500) DEFAULT '',
+        steps LONGTEXT,
+        saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_ulpv_path (path_id, saved_at),
+        INDEX idx_ulpv_user (username)
+    ) {_ENGINE}""",
+
+    f"""CREATE TABLE IF NOT EXISTS learning_path_versions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        path_id INT NOT NULL,
+        company_id INT NOT NULL,
+        version INT NOT NULL,
+        steps_json LONGTEXT,
+        saved_by INT NULL,
+        note VARCHAR(500) NULL,
+        saved_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        INDEX idx_lpv_path (path_id, version)
+    ) {_ENGINE}""",
+
     f"""CREATE TABLE IF NOT EXISTS company_team_order_policy (
         id INT AUTO_INCREMENT PRIMARY KEY,
         company_id INT NOT NULL,

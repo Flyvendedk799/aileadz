@@ -20,6 +20,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
 {% include 'fm/_settings_tabs.html' %}
 
 {% if session.get('role') == 'admin' and company and not features.get('custom_branding') %}

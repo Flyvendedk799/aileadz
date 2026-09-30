@@ -26,10 +26,7 @@
   {% set _overall_tone = 'green' if (ob_failed|int == 0 and feat_down|length == 0) else ('amber' if (ob_failed|int == 0 or feat_down|length <= 1) else 'red') %}
   {% set _overall_lbl = 'Alt kører' if _overall_tone == 'green' else ('Mindre afvigelser' if _overall_tone == 'amber' else 'Kræver opmærksomhed') %}
 
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i> Systemstatus</a>
-  </div>
+{% set active_admin_page = 'health' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="fm-spread" style="margin:6px 0 14px;align-items:center">
     <span class="fm-eyebrow"><i class="fa-solid fa-heart-pulse"></i> Driftsoverblik</span>

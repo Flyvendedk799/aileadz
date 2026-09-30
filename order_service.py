@@ -696,6 +696,21 @@ def create_order(ctx, *, product_handle, product_title, price,
     price_f = _to_float(price)
     order_id = str(uuid.uuid4())
 
+    # HR assigns a course to an employee (compliance, learning paths): the order
+    # is placed as that employee and follows the normal approval + budget rules,
+    # with a visible "Tildelt af HR" note (N-4.3/N-4.4).
+    assign = extra.get("assign_to")
+    if assign:
+        assigner = ctx.actor_label or ctx.username or "HR"
+        ctx = OrderContext(company_id=ctx.company_id, user_id=assign.get("user_id"),
+                           username=assign.get("username"), company_role="employee",
+                           department=assign.get("department"), source=ctx.source,
+                           actor_label=assigner)
+        user_email = user_email or assign.get("email") or ""
+        user_name = user_name or assign.get("name") or assign.get("username") or ""
+        extra = dict(extra)
+        extra.setdefault("notes", "Tildelt af HR (%s)" % assigner)
+
     conn = _get_connection()
     if conn is None:
         return {

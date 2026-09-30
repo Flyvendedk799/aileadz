@@ -146,28 +146,28 @@
             <div class="kpi-val tnum">{{ kpis.unread_notifications if kpis else 0 }}</div>
             <div class="kpi-lab">Ulæste notifikationer</div>
             <div class="kpi-foot">
-              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,20 12,17 24,18 36,10 48,12 60,6 74,8" stroke="var(--fm-clay)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('notifications') if extras and extras.sparks else None)) }}" stroke="var(--fm-clay)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
           <article class="kpi" data-reveal data-d="2">
             <div class="kpi-top"><span class="kpi-ic teal"><i class="fa-solid fa-clipboard-check"></i></span><span class="fm-badge amber dot">Afventer</span></div>
             <div class="kpi-val tnum">{{ (kpis.pending_approvals if kpis and kpis.pending_approvals is not none else 0) }}</div>
             <div class="kpi-lab">Ordrer afventer godkendelse</div>
             <div class="kpi-foot">
-              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,8 12,12 24,9 36,14 48,16 60,15 74,18" stroke="var(--fm-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('approvals') if extras and extras.sparks else None)) }}" stroke="var(--fm-primary)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
           <article class="kpi" data-reveal data-d="3">
             <div class="kpi-top"><span class="kpi-ic indigo"><i class="fa-solid fa-graduation-cap"></i></span><span class="fm-badge indigo">Læring</span></div>
             <div class="kpi-val tnum">{{ (kpis.catalog_tools if kpis and kpis.catalog_tools is not none else 0) }}</div>
             <div class="kpi-lab">Kursusordrer i alt</div>
             <div class="kpi-foot">
-              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,18 12,16 24,14 36,15 48,10 60,9 74,5" stroke="var(--fm-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('orders') if extras and extras.sparks else None)) }}" stroke="var(--fm-indigo)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
           <article class="kpi" data-reveal data-d="4">
             <div class="kpi-top"><span class="kpi-ic gold"><i class="fa-solid fa-coins"></i></span><span class="fm-badge">Forbrug</span></div>
             <div class="kpi-val tnum">{{ session.get('credits', 0) }}</div>
             <div class="kpi-lab">Tilgængelige kreditter</div>
             <div class="kpi-foot">
-              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none"><polyline points="0,16 12,14 24,15 36,11 48,12 60,8 74,6" stroke="var(--fm-gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+              <svg class="spark" width="74" height="26" viewBox="0 0 74 26" fill="none" role="img" aria-label="Udvikling seneste 7 dage"><polyline points="{{ spark_poly((extras.sparks.get('credits') if extras and extras.sparks else None)) }}" stroke="var(--fm-gold)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
           </article>
         </section>
 
@@ -179,7 +179,7 @@
           </div>
           <label class="fm-search" style="width:280px">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" placeholder="Søg i værktøjer og rapporter" />
+            <input type="search" id="toolSearch" placeholder="Søg i værktøjer og rapporter" aria-label="Søg i værktøjer" />
           </label>
         </div>
         <section class="tool-grid">
@@ -210,21 +210,49 @@
         <section class="side-col">
           <div class="fm-card" data-reveal data-d="1">
             <div class="fm-card-body">
+              {% if extras and extras.activity %}
+              {% for a in extras.activity %}
+              <div class="act-item"><span class="act-ic" style="background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-clipboard-check"></i></span>
+                <div><div class="act-tx">{{ a.text }}</div><div class="act-time">{{ a.at }}</div></div></div>
+              {% endfor %}
+              {% else %}
               <div class="fm-empty" style="text-align:center;padding:28px 16px;color:var(--fm-ink-3)">
                 <i class="fa-solid fa-wave-square" style="font-size:20px;opacity:.6"></i>
-                <p style="margin-top:10px;font-size:13.5px">Ingen aktivitet endnu</p>
+                <p style="margin-top:10px;font-size:13.5px">Ingen aktivitet endnu. Når der sker noget med dine bestillinger, dukker det op her.</p>
+                <a class="btn btn-ghost btn-sm" href="{{ url_for('catalog.catalog_index') }}">Find et kursus</a>
               </div>
+              {% endif %}
             </div>
           </div>
           <div class="fm-card" data-reveal data-d="2">
             <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-fire"></i></span><h3>Populære kurser</h3></div>
             <div class="fm-card-body" style="padding-top:6px">
+              {% if extras and extras.popular %}
+              {% for c in extras.popular %}
+              <div class="mini-row"><span class="nm">{{ c.title }}</span><span class="vv">{{ c.n }} bestillinger</span></div>
+              {% endfor %}
+              {% else %}
               <div class="fm-empty" style="text-align:center;padding:24px 16px;color:var(--fm-ink-3)">
-                <p style="font-size:13.5px">Ingen data tilgængelig endnu</p>
+                <p style="font-size:13.5px">Ingen bestillinger de seneste 90 dage endnu.</p>
+                <a class="btn btn-ghost btn-sm" href="{{ url_for('catalog.catalog_index') }}">Udforsk kataloget</a>
               </div>
+              {% endif %}
             </div>
           </div>
         </section>
 
       </div>
+{% endblock %}
+{% block extra_scripts %}
+<script>
+(function () {
+  var box = document.getElementById('toolSearch');
+  if (!box) return;
+  var tools = Array.from(document.querySelectorAll('.tool-grid .tool'));
+  box.addEventListener('input', function () {
+    var q = box.value.trim().toLowerCase();
+    tools.forEach(function (t) { t.style.display = (!q || t.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none'; });
+  });
+})();
+</script>
 {% endblock %}

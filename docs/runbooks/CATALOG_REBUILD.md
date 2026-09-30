@@ -10,7 +10,7 @@ it.
 ## What it is
 
 - **Builder:** `app1/build_index.py`.
-- **Input:** `app1/shopify_products_all_pages.json` (raw Shopify export) —
+- **Input:** the raw Shopify export. It is NOT in git any more: it lives at `$CATALOG_SOURCE_FILE` (default `app1/shopify_products_all_pages.json`) and is refreshed daily by the `shopify_sync` job (needs `SHOPIFY_STORE` + `SHOPIFY_ADMIN_TOKEN`). Admin > Katalogadmin > "Genopbyg indeks" rebuilds the search index and embeds only new products —
   `app1/build_index.py:17`.
 - **Output:** `app1/shopify_products_augmented.json` —
   `app1/build_index.py:18`.

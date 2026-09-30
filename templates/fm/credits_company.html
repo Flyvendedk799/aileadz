@@ -1,0 +1,32 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}AI-kreditter{% endblock %}
+{% block topbar_title %}AI-kreditter{% endblock %}
+{% block topbar_sub %}Forbrug pr. bruger og assistent. Kreditter bruges hver gang en AI-assistent svarer.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
+  {% include 'fm/_credit_usage.html' %}
+
+  {% if summary and summary.account %}
+  <div class="fm-card" style="margin-top:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-sliders"></i></span><h3>Grænser og advarsler</h3></div>
+    <div class="fm-card-body">
+      <form method="post" action="{{ url_for('credits.company_credit_settings') }}" style="display:grid;gap:12px;max-width:520px">
+        <label style="display:grid;gap:4px;font-size:13px">Når kreditterne er brugt op
+          <select class="fm-input" name="limit_mode">
+            <option value="soft" {{ 'selected' if summary.account.limit_mode == 'soft' }}>Blød grænse: AI'en kører videre, men jeg får besked</option>
+            <option value="hard" {{ 'selected' if summary.account.limit_mode == 'hard' }}>Hård grænse: AI'en sættes på pause med en venlig besked</option>
+          </select>
+        </label>
+        <label style="display:grid;gap:4px;font-size:13px">Advar HR, når saldoen når
+          <input class="fm-input" type="number" min="0" name="low_threshold" value="{{ summary.account.low_threshold }}">
+        </label>
+        <div><button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-floppy-disk"></i> Gem</button></div>
+      </form>
+      <p class="muted" style="font-size:12.5px;margin-top:12px">Kreditter tilføjes af en administrator. Der er ingen betaling i appen.</p>
+    </div>
+  </div>
+  {% endif %}
+</div>
+{% endblock %}

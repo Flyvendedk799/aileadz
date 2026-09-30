@@ -17,6 +17,8 @@ import pytest
 os.environ.setdefault("SANDBOX", "1")
 os.environ.setdefault("AI_WARMUP_ON_IMPORT", "0")
 os.environ.setdefault("SCHEDULER_OPPORTUNISTIC", "0")
+os.environ.setdefault("AI_MEMORY_BACKEND", "sqlite")  # AI store tests opt in to MySQL explicitly
+os.environ.setdefault("CATALOG_AUTO_EMBED", "0")  # never call the embedding API from tests
 
 
 def _mysql_reachable() -> bool:

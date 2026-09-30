@@ -316,7 +316,8 @@ def company_analytics_snapshot(conn, company_id, day=None):
         total_queries = int((row.get('total_queries') if isinstance(row, dict) else row[0]) or 0)
         avg_feedback = (row.get('avg_feedback') if isinstance(row, dict) else row[1])
         try:
-            satisfaction = round(float(avg_feedback), 2) if avg_feedback is not None else None
+            from feedback_scale import to_five
+            satisfaction = to_five(avg_feedback) if avg_feedback is not None else None
         except Exception:
             satisfaction = None
 
@@ -581,6 +582,25 @@ def _job_scheduled_reports(app):
         finally:
             cur.close()
 
+def _job_shopify_sync(app):
+    """Daily: refresh the catalog from Shopify (env credentials; skips when unset)."""
+    try:
+        import shopify_sync
+    except Exception as e:
+        return {'error': "shopify_sync import failed: %s" % e}
+    with app.app_context():
+        return shopify_sync.sync()
+
+
+def _job_catalog_embed(app):
+    """Embed catalog products that still have no vector (incremental)."""
+    try:
+        from app1 import rag
+    except Exception as e:
+        return {'error': "rag import failed: %s" % e}
+    with app.app_context():
+        return rag.embed_missing()
+
 
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
@@ -644,6 +664,18 @@ JOBS = [
         'name': 'billing_overdue',
         'interval_seconds': 86400,        # daily - flag invoices past their due date
         'fn': _job_billing_overdue,
+        'enabled': True,
+    },
+    {
+        'name': 'shopify_sync',
+        'interval_seconds': 86400,        # daily; skips cleanly without Shopify env vars
+        'fn': _job_shopify_sync,
+        'enabled': True,
+    },
+    {
+        'name': 'catalog_embed',
+        'interval_seconds': 21600,        # every 6 h: embed products that have no vector yet
+        'fn': _job_catalog_embed,
         'enabled': True,
     },
     {

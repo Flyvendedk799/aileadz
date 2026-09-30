@@ -231,18 +231,13 @@ def credits():
 
         try:
             granted_by = session.get('user', '') or 'admin'
-            cur = current_app.mysql.connection.cursor()
-            cur.execute("UPDATE users SET credits = credits + %s WHERE username = %s", (credit_amount, target_user))
-            # Log the grant in the same credit_usage ledger the app already uses
-            # for deductions. Grants are recorded with a NEGATIVE credits_used so
-            # they read as "added" vs. positive deductions, and the description
-            # captures who performed the action (by whom).
-            cur.execute(
-                "INSERT INTO credit_usage (username, credits_used, description) VALUES (%s, %s, %s)",
-                (target_user, -credit_amount, f"Admin-tildeling af {granted_by}"),
-            )
-            current_app.mysql.connection.commit()
-            cur.close()
+            import credit_service
+            res = credit_service.grant(
+                current_app.mysql.connection, amount=credit_amount,
+                reason=(request.form.get('reason') or 'Tildeling fra kreditsiden'),
+                actor=granted_by, username=target_user)
+            if not res.get('success'):
+                raise RuntimeError(res.get('message') or 'grant failed')
             flash(f"Kreditter tilfojet til {target_user}!", "success")
         except Exception as e:
             logging.error("Error updating credits: %s", e)
@@ -548,11 +543,20 @@ def update_user_credits(user_id):
     except (ValueError, TypeError):
         return jsonify({'success': False, 'message': 'Ugyldigt antal.'}), 400
     try:
-        cur = current_app.mysql.connection.cursor()
-        cur.execute("UPDATE users SET credits = credits + %s WHERE id = %s", (amount, user_id))
-        current_app.mysql.connection.commit()
+        # N-6.4: every grant goes through the credit ledger (reason + actor).
+        import credit_service
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT username FROM users WHERE id = %s", (user_id,))
+        target = cur.fetchone()
         cur.close()
-        return jsonify({'success': True, 'message': f'{amount} kreditter tilfojet'})
+        if not target:
+            return jsonify({'success': False, 'message': 'Brugeren blev ikke fundet'}), 404
+        reason = (request.json.get('reason') or 'Justering fra brugeradministrationen')
+        res = credit_service.grant(current_app.mysql.connection, amount=amount, reason=reason,
+                                   actor=session.get('user') or 'admin', username=target['username'])
+        if not res.get('success'):
+            return jsonify({'success': False, 'message': res.get('message')}), 400
+        return jsonify({'success': True, 'message': f'{amount} kreditter tilføjet', 'balance': res.get('balance')})
     except Exception as e:
         logging.error("Error updating credits: %s", e)
         return jsonify({'success': False, 'message': str(e)}), 500
@@ -566,8 +570,21 @@ def admin_catalog():
     vendors = catalog.get_vendors()[:80]
     import_drafts = catalog.list_import_drafts()[:10]
     ai_jobs = catalog.list_ai_category_jobs()[:10]
+    try:
+        from app1 import rag
+        index = rag.index_status()
+    except Exception as e:
+        logging.warning("index status unavailable: %s", e)
+        index = None
+    try:
+        import shopify_sync
+        shopify_ready = shopify_sync.configured()
+    except Exception:
+        shopify_ready = False
     return render_template(
         'fm/admin_catalog.html',
+        index=index,
+        shopify_ready=shopify_ready,
         stats=stats,
         categories=categories,
         vendors=vendors,

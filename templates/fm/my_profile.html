@@ -25,6 +25,10 @@
   .ring-big > div { width: 102px; height: 102px; border-radius: 999px; background: var(--fm-surface); display: grid; place-items: center; text-align: center; }
   .ring-big .pct { font-family: var(--ff-display); font-size: 30px; font-weight: 700; letter-spacing: -.03em; line-height: 1; }
   .ring-big .lab { font-size: 10px; color: var(--fm-ink-3); margin-top: 3px; text-transform: uppercase; letter-spacing: .05em; font-family: var(--ff-mono); }
+  .ps-title { font-size: 12px; font-weight: 700; color: var(--fm-ink-2); margin-bottom: 4px; }
+  .ps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; color: var(--fm-ink-2); }
+  .ps-list i { color: var(--fm-success); font-size: 10px; margin-right: 4px; }
+  .ps-next { margin-top: 6px; font-size: 12.5px; color: var(--fm-primary); font-weight: 600; }
   .breakdown { display: flex; flex-direction: column; gap: 9px; min-width: 190px; }
   .bd-row { display: grid; grid-template-columns: 16px 1fr auto; gap: 9px; align-items: center; font-size: 12.5px; }
   .bd-row i { font-size: 11px; }
@@ -241,7 +245,7 @@
             </div>
           </div>
           <div class="cv-complete">
-            <div class="ring-big" id="ringBig" style="--p:0"><div><div><span class="pct" id="ringPct">0%</span><div class="lab">Udfyldt</div></div></div></div>
+            <div class="ring-big" id="ringBig" style="--p:0"><div><div><span class="pct" id="ringPct">0%</span><div class="lab">Profilstyrke</div></div></div></div>
             <div class="breakdown" id="cvBreakdown"></div>
           </div>
         </section>
@@ -389,6 +393,7 @@
       </div>
 {% endblock %}
 {% block extra_scripts %}
+<script src="{{ url_for('static', filename='futurematch/assets/profile-strength.js') }}?v={{ asset_version('futurematch/assets/profile-strength.js') }}"></script>
 <script>
   (function () {
     const LEVEL_LABELS = { begynder: 'Begynder', mellem: 'Mellem', avanceret: 'Avanceret', ekspert: 'Ekspert' };
@@ -711,13 +716,8 @@
         if (ring) ring.style.setProperty('--p', pct);
         const rp = document.getElementById('ringPct'); if (rp) rp.textContent = pct + '%';
         const bd = document.getElementById('cvBreakdown');
-        if (bd) bd.innerHTML = sections.map(s => {
-          const w = s.done ? 100 : Math.max(8, Math.round((s.strength || 0) * 100));
-          return '<div class="bd-row ' + (s.done ? 'ok' : '') + '">' +
-            '<i class="fa-' + (s.done ? 'solid fa-circle-check' : 'regular fa-circle') + '"' + (s.done ? '' : ' style="color:var(--fm-ink-3)"') + '></i>' +
-            '<div class="bd-bar"><span style="width:' + w + '%"></span></div>' +
-            '<span class="bd-v">' + esc(s.label || s.key || '') + '</span></div>';
-        }).join('');
+        // Same need-driven component as the AI Profiler (what the AI can do now).
+        if (bd && window.fmProfileStrength) bd.innerHTML = window.fmProfileStrength.html(c);
       }).catch(() => { });
     }
 

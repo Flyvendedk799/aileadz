@@ -1,0 +1,61 @@
+{% extends "fm_base.html" %}
+{% block page_id %}acatalog{% endblock %}
+{% block title %}Kursusoversigt{% endblock %}
+{% block topbar_title %}Kursusoversigt{% endblock %}
+{% block topbar_sub %}Søg, redigér, skjul eller arkivér kurser. Ændringer gælder hele platformen, også AI'en.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalogadmin</a>
+    <a class="pg-tab active" href="{{ url_for('catalog_admin.products') }}"><i class="fa-solid fa-list"></i> Kursusoversigt</a>
+    <a class="pg-tab" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-xmark"></i> Friskhed</a>
+  </div>
+
+  <form method="get" class="fm-card" style="padding:14px 16px;margin-bottom:14px">
+    <div class="fm-flex fm-gap12" style="flex-wrap:wrap;align-items:center">
+      <input class="fm-input" style="flex:1;min-width:220px" type="search" name="q" value="{{ q }}" placeholder="Søg på titel, udbyder eller handle">
+      <select class="fm-input" style="width:auto" name="status" onchange="this.form.submit()">
+        <option value="">Alle ({{ result.counts.active + result.counts.hidden + result.counts.archived }})</option>
+        <option value="active" {{ 'selected' if status == 'active' }}>Publiceret ({{ result.counts.active }})</option>
+        <option value="hidden" {{ 'selected' if status == 'hidden' }}>Skjult ({{ result.counts.hidden }})</option>
+        <option value="archived" {{ 'selected' if status == 'archived' }}>Arkiveret ({{ result.counts.archived }})</option>
+      </select>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-magnifying-glass"></i> Søg</button>
+    </div>
+  </form>
+
+  <form method="post" action="{{ url_for('catalog_admin.bulk_status') }}">
+  <div class="fm-table-wrap">
+    {% if result.products %}
+    <table class="fm-table">
+      <thead><tr><th style="width:30px"></th><th>Kursus</th><th>Udbyder</th><th>Status</th><th></th></tr></thead>
+      <tbody>
+      {% for p in result.products %}
+        <tr>
+          <td><input type="checkbox" name="handles" value="{{ p.handle }}"></td>
+          <td><div style="font-weight:650">{{ p.title }}</div><div class="muted mono" style="font-size:11.5px">{{ p.handle }}{% if p.edited %} · redigeret{% endif %}{% if p.handle in stale %} · forældet{% endif %}</div></td>
+          <td>{{ p.vendor }}</td>
+          <td><span class="fm-badge {{ 'green' if p.status == 'active' else ('amber' if p.status == 'hidden' else '') }} dot">{{ {'active':'Publiceret','hidden':'Skjult','archived':'Arkiveret'}[p.status] }}</span></td>
+          <td style="text-align:right"><a class="btn btn-ghost btn-sm" href="{{ url_for('catalog_admin.edit_product', handle=p.handle) }}"><i class="fa-solid fa-pen"></i> Redigér</a></td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <div class="fm-card-body"><p class="muted" style="margin:0">Ingen kurser matcher din søgning. Prøv et andet søgeord, eller fjern filteret.</p></div>
+    {% endif %}
+  </div>
+  {% if result.products %}
+  <div class="fm-flex fm-gap8" style="margin-top:12px;flex-wrap:wrap;align-items:center">
+    <span class="muted" style="font-size:12.5px">Valgte kurser:</span>
+    <button class="btn btn-ghost btn-sm" name="status" value="hidden" type="submit"><i class="fa-solid fa-eye-slash"></i> Skjul</button>
+    <button class="btn btn-ghost btn-sm" name="status" value="archived" type="submit"><i class="fa-solid fa-box-archive"></i> Arkivér</button>
+    <button class="btn btn-ghost btn-sm" name="status" value="active" type="submit"><i class="fa-solid fa-eye"></i> Publicér</button>
+    <span style="margin-left:auto;font-size:12.5px" class="muted">Side {{ result.page }} af {{ result.pages }}
+      {% if result.page > 1 %}<a href="?q={{ q }}&status={{ status }}&page={{ result.page - 1 }}">« forrige</a>{% endif %}
+      {% if result.page < result.pages %}<a href="?q={{ q }}&status={{ status }}&page={{ result.page + 1 }}">næste »</a>{% endif %}</span>
+  </div>
+  {% endif %}
+  </form>
+</div>
+{% endblock %}

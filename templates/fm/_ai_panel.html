@@ -1,9 +1,11 @@
 {# Embedded, collapsible HR AI assistant. Auto-included on every HR page via
    fm/_hr_subnav.html (the canonical HR-only inclusion point) — it is deliberately
    NOT placed in fm_base.html, which 94 admin/vendor/public/employee templates extend.
-   Reuses the existing SSE endpoint (hr_dashboard.hr_chatbot_ask) so users can ask
-   questions without leaving the dashboard. Only renders for HR-capable users.
-   The JS self-guards against a duplicate #fmAip if a page somehow includes it twice. #}
+   Talks to the same SSE endpoint as the full page (hr_dashboard.hr_chatbot_ask) and renders
+   the full event vocabulary through the shared kit (ai-stream.js): markdown, suggestion chips,
+   confirm cards (Bekræft/Afvis), navigation buttons and thumbs feedback. The conversation is
+   durable (MySQL) and shared with /hr/chatbot, so the panel resumes where the page left off.
+   Only renders for HR-capable users. The JS self-guards against a duplicate #fmAip. #}
 {% if session is defined and (session.get('company_role') in ['company_admin','hr_manager','department_head'] or session.get('role') == 'admin') %}
 <div class="fm-aip" id="fmAip" aria-live="polite" data-aip-page="{{ active_hr_page | default('') }}">
   <button type="button" class="fm-aip-fab" id="fmAipFab" aria-label="HR AI-assistent">
@@ -12,7 +14,11 @@
   <section class="fm-aip-panel" id="fmAipPanel" hidden>
     <header class="fm-aip-head">
       <span><i class="fa-solid fa-robot"></i> HR AI-assistent</span>
-      <button type="button" class="fm-aip-x" id="fmAipClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
+      <span class="fm-aip-hist">
+        <button type="button" id="fmAipNew" title="Ny samtale" aria-label="Ny samtale"><i class="fa-solid fa-rotate-right"></i></button>
+        <a href="{{ url_for('hr_dashboard.hr_chatbot') }}" title="Åbn i fuld skærm" aria-label="Åbn i fuld skærm" style="color:#fff"><i class="fa-solid fa-up-right-and-down-left-from-center"></i></a>
+        <button type="button" class="fm-aip-x" id="fmAipClose" aria-label="Luk"><i class="fa-solid fa-xmark"></i></button>
+      </span>
     </header>
     <div class="fm-aip-body" id="fmAipBody">
       <div class="fm-aip-hint">Spørg om budgetter, kompetencegap, compliance, ROI eller leverandører.</div>
@@ -28,6 +34,8 @@
     </form>
   </section>
 </div>
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}?v={{ asset_version('futurematch/assets/ai-stream.js') if asset_version is defined else 1 }}"></script>
 <script>
 (function () {
   var root = document.getElementById('fmAip');
@@ -37,103 +45,102 @@
   var fab = document.getElementById('fmAipFab'),
       panel = document.getElementById('fmAipPanel'),
       closeb = document.getElementById('fmAipClose'),
+      newb = document.getElementById('fmAipNew'),
       form = document.getElementById('fmAipForm'),
       input = document.getElementById('fmAipInput'),
       body = document.getElementById('fmAipBody'),
       chipWrap = body ? body.querySelector('.fm-aip-chips') : null;
-  if (!fab) return;
-  var ASK = "{{ url_for('hr_dashboard.hr_chatbot_ask') }}";
+  if (!fab || !window.FMAI) return;
+  var ASK = "{{ url_for('hr_dashboard.hr_chatbot_ask') }}",
+      HISTORY = "{{ url_for('hr_dashboard.hr_chatbot_history') }}",
+      RESET = "{{ url_for('hr_dashboard.hr_chatbot_reset') }}";
   var page = root.getAttribute('data-aip-page') || '';
+  var busy = false, restored = false;
 
-  // Page-aware context: a short Danish phrase prepended to each question so the
-  // advisor knows which HR view the user is standing on, plus tailored quick chips.
+  // Page-aware quick chips. The page id itself travels to the server (it is whitelisted there and
+  // becomes context), so the question text stays exactly what the user typed.
   var PAGES = {
-    budgets:    { ctx: 'budgetterne',           chips: ['Hvilke afdelinger er tæt på budgettet?', 'Hvor meget er der tilbage i år?'] },
-    roi:        { ctx: 'ROI',                    chips: ['Hvad er vores ROI på læring?', 'Hvilke kurser giver mest værdi?'] },
-    compliance: { ctx: 'compliance',            chips: ['Hvem mangler compliance?', 'Hvilke krav udløber snart?'] },
-    skill_gaps: { ctx: 'kompetencer',           chips: ['Største kompetencegap lige nu?', 'Hvilke afdelinger har størst gap?'] },
-    suppliers:  { ctx: 'leverandører',          chips: ['Hvilke leverandører bruger vi mest?', 'Hvilke aftaler udløber snart?'] },
-    learning_paths: { ctx: 'læringsforløb',     chips: ['Hvilke forløb halter?', 'Hvem er bagud på deadlines?'] },
-    learning_analytics: { ctx: 'læringsanalyse', chips: ['Hvornår lærer folk mest?', 'Hvilke kurser er mest populære?'] },
-    approvals:  { ctx: 'godkendelser',          chips: ['Hvilke ordrer afventer godkendelse?', 'Hvad bør jeg prioritere?'] },
-    team:       { ctx: 'mit team',              chips: ['Hvordan klarer mit team sig?', 'Hvem har brug for opmærksomhed?'] },
-    employees:  { ctx: 'medarbejdere',          chips: ['Hvem er inaktive på læring?', 'Hvem er længst med deres forløb?'] },
-    departments:{ ctx: 'afdelinger',            chips: ['Hvilken afdeling klarer sig bedst?', 'Hvor er der flest gap?'] }
+    budgets:    ['Hvilke afdelinger er tæt på budgettet?', 'Hvor meget er der tilbage i år?'],
+    roi:        ['Hvad er vores ROI på læring?', 'Hvilke kurser giver mest værdi?'],
+    compliance: ['Hvem mangler compliance?', 'Hvilke krav udløber snart?'],
+    skill_gaps: ['Største kompetencegap lige nu?', 'Hvilke afdelinger har størst gap?'],
+    suppliers:  ['Hvilke leverandører bruger vi mest?', 'Hvilke aftaler udløber snart?'],
+    learning_paths: ['Hvilke forløb halter?', 'Hvem er bagud på deadlines?'],
+    learning_analytics: ['Hvornår lærer folk mest?', 'Hvilke kurser er mest populære?'],
+    approvals:  ['Hvilke ordrer afventer godkendelse?', 'Hvad bør jeg prioritere?'],
+    team:       ['Hvordan klarer mit team sig?', 'Hvem har brug for opmærksomhed?'],
+    employees:  ['Hvem er inaktive på læring?', 'Hvem er længst med deres forløb?'],
+    departments:['Hvilken afdeling klarer sig bedst?', 'Hvor er der flest gap?']
   };
-  var info = PAGES[page];
-
-  // Swap in page-tailored quick chips when we have them for this view.
-  if (info && info.chips && chipWrap) {
+  if (PAGES[page] && chipWrap) {
     chipWrap.innerHTML = '';
-    info.chips.forEach(function (label) {
+    PAGES[page].forEach(function (label) {
       var b = document.createElement('button');
       b.type = 'button'; b.className = 'fm-aip-chip'; b.textContent = label;
       chipWrap.appendChild(b);
     });
   }
 
-  function withContext(q) {
-    // Soft, non-overriding hint — the user's actual question stays primary.
-    if (info && info.ctx) { return '(Jeg ser på ' + info.ctx + '-siden.) ' + q; }
-    return q;
+  function down() { body.scrollTop = body.scrollHeight; }
+  function addMsg(role, text) {
+    var d = document.createElement('div');
+    d.className = 'fm-aip-msg ' + role + (role === 'bot' ? ' fm-md' : '');
+    if (role === 'bot') d.innerHTML = FMAI.md(text); else d.textContent = text;
+    body.appendChild(d); down();
+    return d;
   }
-
-  function toggle(open) { panel.hidden = !open; if (open) setTimeout(function(){ input.focus(); }, 50); }
+  function clearIntro() {
+    var hint = body.querySelector('.fm-aip-hint'); if (hint) hint.remove();
+    if (chipWrap && chipWrap.parentNode) chipWrap.remove();
+  }
+  function restore() {
+    if (restored) return; restored = true;
+    fetch(HISTORY, { credentials: 'same-origin' }).then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+      if (!j || !j.messages || !j.messages.length || body.querySelector('.fm-aip-msg')) return;
+      clearIntro();
+      j.messages.forEach(function (m) { addMsg(m.role === 'user' ? 'user' : 'bot', m.content); });
+    }).catch(function () {});
+  }
+  function toggle(open) { panel.hidden = !open; if (open) { restore(); setTimeout(function () { input.focus(); }, 50); } }
   fab.addEventListener('click', function () { toggle(panel.hidden); });
   closeb.addEventListener('click', function () { toggle(false); });
+  newb.addEventListener('click', function () {
+    if (busy) return;
+    fetch(RESET, { method: 'POST', credentials: 'same-origin' }).then(function () {
+      Array.prototype.slice.call(body.querySelectorAll('.fm-aip-msg,.fm-chips,.fm-confirm-card,.fm-action-link,.fm-feedback')).forEach(function (n) { n.remove(); });
+      addMsg('bot', 'Ny samtale. Hvad vil du vide?');
+    });
+  });
   body.addEventListener('click', function (e) {
     var c = e.target.closest('.fm-aip-chip'); if (c) { input.value = c.textContent; form.requestSubmit(); }
   });
-  function addMsg(role, text) {
-    var d = document.createElement('div');
-    d.className = 'fm-aip-msg ' + role;
-    d.textContent = text;
-    body.appendChild(d); body.scrollTop = body.scrollHeight;
-    return d;
-  }
-  // Navigation directive from hr_open_in_app: render the destination as a real
-  // button so "det ligger på compliance-siden" becomes one click. Targets are
-  // resolved server-side from the canonical endpoint map; anything that is not a
-  // same-origin absolute path is dropped rather than navigated to.
-  function addAction(d) {
-    var target = String(d.target || '');
-    if (!/^\/[^\/]/.test(target)) return;
-    var a = document.createElement('a');
-    a.className = 'fm-aip-action';
-    a.href = target;
-    if (d.new_tab) { a.target = '_blank'; a.rel = 'noopener'; }
-    a.textContent = d.label || 'Åbn';
-    body.appendChild(a); body.scrollTop = body.scrollHeight;
+
+  function send(q) {
+    if (busy || !q) return;
+    busy = true; clearIntro();
+    addMsg('user', q);
+    var out = addMsg('bot', '…'), acc = '', msgIndex = null;
+    FMAI.ask(ASK, { query: q, page: page }, {
+      text: function (d) { acc += d.content || ''; out.innerHTML = FMAI.md(acc); down(); },
+      suggestions: function (d) { FMAI.chips(body, d.items, function (label) { send(label); }); down(); },
+      confirm_card: function (d) { FMAI.confirmCard(body, d); down(); },
+      ui_action: function (d) { var a = FMAI.action(body, d); if (a) a.classList.add('fm-aip-action'); down(); },
+      meta: function (d) { msgIndex = d.message_index; },
+      error: function (d) { out.innerHTML = FMAI.md(d.content || 'Der opstod en fejl.'); },
+      done: function () {
+        busy = false;
+        if (!acc && out.textContent === '…') out.textContent = 'Intet svar.';
+        if (acc && msgIndex != null) {
+          FMAI.feedback(body, { mode: 'hr', message_index: msgIndex, query_text: q, assistant_response: acc.slice(0, 300) });
+        }
+        down();
+      }
+    });
   }
   form.addEventListener('submit', function (e) {
     e.preventDefault();
     var q = (input.value || '').trim(); if (!q) return;
-    addMsg('user', q); input.value = '';
-    var out = addMsg('bot', '…');
-    var acc = '';
-    fetch(ASK, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: withContext(q), page: page }) })
-      .then(function (r) {
-        if (!r.body) { out.textContent = 'Kunne ikke hente svar.'; return; }
-        var reader = r.body.getReader(), dec = new TextDecoder(), buf = '';
-        (function pump() {
-          return reader.read().then(function (res) {
-            if (res.done) { if (!acc) out.textContent = 'Intet svar.'; return; }
-            buf += dec.decode(res.value, { stream: true });
-            var lines = buf.split('\n'); buf = lines.pop();
-            lines.forEach(function (line) {
-              if (!line.startsWith('data: ')) return;
-              try {
-                var d = JSON.parse(line.substring(6));
-                if (d.type === 'text' && d.content) { acc += d.content; out.textContent = acc; body.scrollTop = body.scrollHeight; }
-                else if (d.type === 'ui_action' && d.target) { addAction(d); }
-                else if (d.type === 'error') { out.textContent = d.content || 'Der opstod en fejl.'; }
-              } catch (err) {}
-            });
-            return pump();
-          });
-        })();
-      })
-      .catch(function () { out.textContent = 'Netværksfejl.'; });
+    input.value = ''; send(q);
   });
 })();
 </script>

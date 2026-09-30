@@ -80,7 +80,10 @@ class ModePlaybookTests(unittest.TestCase):
     def test_profiler_seed_gets_save_rules_but_no_cv_onboarding_or_search(self):
         text = self._text(agent._build_playbook_messages("greeting", "profiler_resume", "profiler",
                                                          "Start profilsamtalen"))
-        self.assertIn("CV-INTELLIGENS", text)
+        self.assertIn("NÅR BRUGEREN FORTÆLLER OM SIG SELV", text)
+        # N-5.1: no form-first wording survives in the playbook.
+        self.assertNotIn("FORETRUKKEN METODE", text)
+        self.assertNotIn("ui_type=form", text)
         self.assertNotIn("CV-ONBOARDING", text)
         self.assertNotIn("SØGE-INTELLIGENS", text)
 

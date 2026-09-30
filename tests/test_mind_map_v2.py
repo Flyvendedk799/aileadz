@@ -122,6 +122,7 @@ def test_page_renders_through_jinja():
         asset_version=lambda p: "test",
         can=__import__("capabilities").can,
         has_endpoint=lambda n: False,
+        credit_chip=lambda: {"scope": "personal", "balance": 0, "label": "0"},
         session={},
         get_flashed_messages=lambda **kw: [],
         config={},

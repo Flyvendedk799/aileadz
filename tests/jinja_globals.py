@@ -8,6 +8,7 @@ import order_lifecycle
 def add_app_globals(env):
     env.globals.setdefault("can", capabilities.can)
     env.globals.setdefault("has_endpoint", lambda name: False)
+    env.globals.setdefault("credit_chip", lambda: {"scope": "personal", "balance": 0, "label": "0"})
     env.globals.setdefault("order_status_label", order_lifecycle.status_label)
     env.globals.setdefault("order_status_tone", order_lifecycle.status_tone)
     env.globals.setdefault("order_billing_label", order_lifecycle.billing_label)

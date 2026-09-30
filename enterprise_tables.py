@@ -528,6 +528,7 @@ def enterprise_table_ddls():
                     conversation_depth INT DEFAULT 1,
                     is_logged_in TINYINT DEFAULT 0,
                     feedback_rating TINYINT DEFAULT 0,
+                    message_index INT DEFAULT NULL,
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     INDEX idx_company (company_id),
                     INDEX idx_username (username),

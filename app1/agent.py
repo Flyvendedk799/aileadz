@@ -247,30 +247,25 @@ KONTAKTOPLYSNINGER:
 - Står der confirm_fields: navn, så har vi kun brugerens login — bed om én kort
   bekræftelse af navnet i stedet for at bede om alle oplysninger forfra."""
 
-SYSTEM_PLAYBOOK_PROFILE_SAVE = """CV-INTELLIGENS (automatisk):
-Når brugeren fortæller noget om sig selv, brug request_user_input til smart UI-kort.
+SYSTEM_PLAYBOOK_PROFILE_SAVE = """NÅR BRUGEREN FORTÆLLER OM SIG SELV:
+Du er en hjælper med en værktøjskasse, ikke en formular. Lyt, svar naturligt, og gem det, brugeren fortæller, som en del af samtalen.
 
-FORETRUKKEN METODE — request_user_input:
-- Job/erfaring → ui_type=form, section=experience, save_action=add_experience
-- Uddannelse → section=education, save_action=add_education
-- Kompetencer → ui_type=confirm, section=skills, save_action=add_skill
-- Gennemført kursus (uden bevis) → section=courses, save_action=add_course
-- Certificering/bevis (PRINCE2, AWS, Google Ads, kørekort m.m.) → update_user_profile action=add_certification (name + evt. issuer/issue_date/expiry_date/credential_id/credential_url)
-- Sprog → update_user_profile action=add_language (language + proficiency: begynder/mellem/flydende/modersmaal)
-- Simple mål → update_user_profile
+TILFØJELSER gemmes med det samme (update_user_profile). Sig det kort og naturligt ("Noteret, så kan jeg ...") og gå videre, brugeren kan fortryde direkte under svaret. Spørg ikke om lov til at gemme det, brugeren selv har sagt.
+RETTELSER OG SLETNING foreslås først: værktøjet viser et kort, brugeren bekræfter. Ret eller fjern et eksisterende element med id'et, der står i profilen som [#id].
+Flere ting i én besked: gem dem alle i samme tur (ét kald pr. element), så samles de på ét kort.
 
-HVORNÅR BRUGE HVAD:
-- request_user_input: Når info mangler detaljer (årstal, institution).
-- update_user_profile: Simple opdateringer + certificeringer + sprog. Ret eller fjern et eksisterende element med id'et, der står i profilen som [#id]. Felterne skal ligge i data, og ét kald gemmer ét element — tre kurser er tre kald.
-- Skel mellem kursus og certificering: en certificering har en udsteder eller en udløbsdato → brug add_certification, ikke add_course.
-- Kursustitler (AMU-kurser som "Salgsledelse", "Konflikthåndtering", "Den svære samtale", truck-/kørekort m.m.) er KURSER, ikke kompetencer: add_course med vendor (fx "AMU"), eller add_certification hvis der er et bevis med udsteder/udløb.
-- Et kursus giver som regel kompetencer — så gem kurset først, og tilbyd derefter kort at føje de kompetencer, kurset gav dem, til profilen. Gem aldrig selve kursustitlen som kompetence.
-- Kald tingene det samme i chatten som det du gemmer: siger du "kompetence", så gem en kompetence, ikke et kursus.
-- Et løsrevet årstal i næste besked hører til det, I lige talte om (fx completed_date på kurset) — brug det, spørg ikke forfra.
-- show_cv_summary: Vis et profilkort i chatten (kompetencer, erfaring, uddannelse osv.) med et 'Opdater CV'-link til 3D CV-portalen. Brug når brugeren spørger om sin profil/CV eller du vil opsummere det faglige.
-- open_in_app(open_cv_upload): Send brugeren til den interaktive 3D CV-uploadportal (drag-drop, AI-parsing, interaktiv review). Brug når brugeren vil uploade et CV-dokument eller paste CV-tekst.
-- show_mindmap_preview: Vis mind-map-statistik, seneste hukommelser og link til 3D-kuglevisning i chatten. Brug når brugeren spørger hvad AI'en husker om dem.
-- open_in_app(open_mind_map): Åbn den 3D-interaktive mind-map-globus direkte i en ny fane."""
+Værktøjer, brug dem efter behov:
+- update_user_profile: erfaring, uddannelse, kompetencer, kurser, certificeringer, sprog, links og ønsket retning. Felterne ligger i data; ét kald gemmer ét element.
+- request_user_input: kun når der mangler noget, du ikke kan udlede (fx årstal eller institution), eller når brugeren skal vælge mellem to reelle muligheder. Aldrig som standard.
+- Kursus vs. certificering: en certificering har en udsteder eller en udløbsdato (add_certification). Kursustitler (AMU, "Salgsledelse", "Konflikthåndtering") er kurser (add_course), ikke kompetencer.
+- Et kursus giver som regel kompetencer: gem kurset, og tilbyd derefter kort at føje de kompetencer til, kurset gav. Gem aldrig selve kursustitlen som kompetence.
+- Kald tingene det samme i chatten som det, du gemmer: siger du "kompetence", så gem en kompetence.
+- Et løsrevet årstal i næste besked hører til det, I lige talte om. Brug det, spørg ikke forfra.
+- show_cv_summary: vis et profilkort, når brugeren spørger om sin profil/CV.
+- open_in_app(open_cv_upload): send brugeren til CV-portalen, hvis de vil uploade et dokument.
+- show_mindmap_preview / open_in_app(open_mind_map): vis eller åbn det, AI'en husker om dem.
+
+FRAMING: Forklar hvad den nye viden gør muligt ("nu kan jeg finde kurser, der passer til dit mål"), ikke hvor mange felter der mangler. Profilen er kontekst for hjælpen, ikke et mål i sig selv."""
 
 # Kursusrådgiver-only. It used to be part of the CV playbook and was injected
 # on every profile-shaped turn — including in the profiler, where its
@@ -602,8 +597,8 @@ _STAGE_HINTS = {
     "browsing": "Brugeren orienterer sig og er ikke klar til at vælge. Inspirer med karriereværdi og læringsudbytte frem for at presse mod en beslutning.",
     "correcting": "Dit forrige svar ramte ved siden af. Find ud af hvad der ikke passede, før du leder igen.",
     "team_buying": "Det handler om flere personer: antal, fælles datoer, grupperabat, in-house.",
-    "profile_update": "Brugeren fortæller noget om sig selv. request_user_input viser et UI-kort der samler oplysningerne, så de bliver gemt frem for at forsvinde i samtalen.",
-    "profile_and_search": "Brugeren fortæller både om sin baggrund og om et læringsbehov. Begge dele kan bruges i samme tur — baggrunden gemt med request_user_input, behovet omsat til en catalog_search.",
+    "profile_update": "Brugeren fortæller noget om sig selv. Gem det med update_user_profile (tilføjelser gemmes med det samme, og brugeren kan fortryde), og svar naturligt, så det ikke forsvinder i samtalen.",
+    "profile_and_search": "Brugeren fortæller både om sin baggrund og om et læringsbehov. Begge dele kan bruges i samme tur: baggrunden gemmes med update_user_profile, behovet omsættes til en catalog_search.",
 }
 
 
@@ -1434,15 +1429,15 @@ def _fallback_suggestions(*, mode="default", had_cards=False, completeness=None,
         # through on the one surface the user actually clicks — they described
         # an empty box instead of what the user would get out of filling it.
         info = completeness or {}
-        missing = info.get("missing") or []
         target_role = (info.get("target_role") or "").strip()
         chips = []
         if target_role:
             chips.append("Kurser mod mit mål")
         else:
             chips.append("Hvor vil jeg gerne hen?")
-        if missing:
-            chips.append(f"Fortæl om min {missing[0].lower()}")
+        # Need-driven (N-5.1): never "Fortæl om min {felt}". Offer what the AI can
+        # do with what it already knows.
+        chips.append("Hvad kan du hjælpe mig med nu?")
         # Offer the courses as soon as there is a direction to aim at. Gating
         # this purely on a completeness threshold is what made the profiler feel
         # like a form you had to finish before it would help you.
@@ -1458,6 +1453,77 @@ def _fallback_suggestions(*, mode="default", had_cards=False, completeness=None,
     base = ["Vis populære kurser", "Find kurser til en bestemt rolle"]
     base.append("Lav en læringssti til mig" if logged_in else "Hjælp mig med at vælge")
     return base[:3]
+
+
+def cv_applied_note(sess, now=None, window_seconds=3600):
+    """One trusted line when the user applied a CV within the last hour (N-5.1).
+
+    The profiler then acknowledges it and builds on it instead of asking for
+    what the CV already put on the profile.
+    """
+    try:
+        info = sess.get("cv_applied")
+        if not info:
+            return ""
+        import time as _time
+        if (now if now is not None else _time.time()) - int(info.get("t", 0)) > window_seconds:
+            return ""
+        c = info.get("counts") or {}
+        parts = []
+        for key, label in (("skills", "kompetencer"), ("experience", "erfaringer"), ("education", "uddannelser"),
+                           ("courses", "kurser"), ("certifications", "certificeringer"), ("languages", "sprog")):
+            if c.get(key):
+                parts.append(f"{c[key]} {label}")
+        if not parts:
+            return ""
+        return ("Brugeren har netop anvendt sit CV på profilen (" + ", ".join(parts) + "). "
+                "Anerkend det kort og byg videre på det. Spørg ikke efter noget, som står på profilen nu.")
+    except Exception:
+        return ""
+
+
+def merge_profile_events(events):
+    """Put several profile changes from one turn on ONE card (N-5.1).
+
+    ``profile_saved`` items collapse into a single "Noteret ..." card with one
+    Fortryd per item; several ``profile_confirm_request`` proposals collapse into
+    one ``profile_confirm_batch`` the user can accept in one go. Other events keep
+    their order. Input and output are JSON strings.
+    """
+    saved_items, confirms, parsed = [], [], []
+    for raw in events or []:
+        try:
+            obj = json.loads(raw)
+        except Exception:
+            parsed.append(("raw", raw))
+            continue
+        kind = obj.get("type")
+        if kind == "profile_saved":
+            saved_items.extend(obj.get("items") or [])
+            parsed.append(("saved", None))
+        elif kind == "profile_confirm_request":
+            confirms.append(obj)
+            parsed.append(("confirm", None))
+        else:
+            parsed.append(("raw", raw))
+    out, saved_done, confirm_done = [], False, False
+    for kind, raw in parsed:
+        if kind == "raw":
+            out.append(raw)
+        elif kind == "saved" and not saved_done:
+            saved_done = True
+            out.append(json.dumps({"type": "profile_saved", "items": saved_items}, ensure_ascii=False))
+        elif kind == "confirm" and not confirm_done:
+            confirm_done = True
+            if len(confirms) == 1:
+                out.append(json.dumps(confirms[0], ensure_ascii=False))
+            else:
+                out.append(json.dumps({
+                    "type": "profile_confirm_batch",
+                    "items": [{"message": c.get("message", ""), "section": c.get("section", ""),
+                               "confirm": c.get("confirm", {})} for c in confirms],
+                }, ensure_ascii=False))
+    return out
 
 
 def _strip_suggestions_tag(text):
@@ -2211,6 +2277,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 _hr_layer = _hr_learning_layer(logged_in_user, session.get("user_id"), company_id)
                 if _hr_layer:
                     context_layers.append(_hr_layer)
+                _cv_note = cv_applied_note(session)
+                if _cv_note:
+                    context_layers.append(_ctx.layer("cv_just_applied", _cv_note))
 
                 if mode == "profiler":
                     try:
@@ -2434,7 +2503,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             )
             if not allowed:
                 yield f"data: {json.dumps({'type': 'chunk', 'content': budget_message})}\n\n"
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                # Same terminator as every other path: the client stops on [DONE]
+                # (it ignored a {'type': 'done'} object and left the turn "sending").
+                yield "data: [DONE]\n\n"
                 return
 
             turn_count = session.get("_ai_turn_count", 0) + 1
@@ -2668,6 +2739,17 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                             'section': tool_result_dict.get('section', ''),
                             'confirm': tool_result_dict.get('confirm', {})
                         }))
+                    elif tool_status == "saved":
+                        # N-5.1: additions are already saved; the chat shows
+                        # "Noteret ..." with an inline Fortryd.
+                        buffered_profile_events.append(json.dumps({
+                            'type': 'profile_saved',
+                            'items': [{
+                                'label': tool_result_dict.get('label', ''),
+                                'section': tool_result_dict.get('section', ''),
+                                'undo': tool_result_dict.get('undo'),
+                            }],
+                        }, ensure_ascii=False))
                     elif tool_status in ("success", "already_exists"):
                         buffered_profile_events.append(json.dumps({
                             'type': 'profile_update',
@@ -2991,7 +3073,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 print(f"[Turn Artifacts Error] {_art_err}")
 
             # ── Stream profile events AFTER text (natural reading order) ──
-            for evt in buffered_profile_events:
+            for evt in merge_profile_events(buffered_profile_events):
                 yield f"data: {evt}\n\n"
 
             # ── Memory transparency: which stored memories informed this turn ──
@@ -3351,8 +3433,8 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         (company_id, session_id, username, query_text, response_text,
                          query_type, category, user_location, response_time_ms,
                          interaction_quality_score, tools_used, tool_results_count,
-                         products_shown, conversation_depth, is_logged_in, created_at)
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
+                         products_shown, conversation_depth, is_logged_in, message_index, created_at)
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NOW())
                 """, (
                     session.get('company_id'),
                     sid,
@@ -3369,6 +3451,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     json.dumps(_products_shown_handles[:20]) if _products_shown_handles else None,
                     _conv_depth,
                     1 if logged_in_user else 0,
+                    locals().get("msg_index"),
                 ))
 
                 # Update company_users engagement counters (if user belongs to a company)

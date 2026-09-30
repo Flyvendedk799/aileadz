@@ -193,8 +193,8 @@ def create_companies_blueprint():
                 flash("Virksomhedsnavn er påkrævet.", "danger")
                 return render_template('fm/company_register.html')
 
-            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email, hr_password]):
-                flash("Udfyld venligst alle felter for HR-manageren (navn, brugernavn, e-mail, password).", "danger")
+            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email]):
+                flash("Udfyld venligst navn, brugernavn og e-mail for kontaktpersonen.", "danger")
                 return render_template('fm/company_register.html')
 
             if hr_mode == 'existing' and not existing_user_id:
@@ -261,8 +261,13 @@ def create_companies_blueprint():
                         cur.close()
                         return render_template('fm/company_register.html')
 
-                    # Use the password provided by admin
-                    generated_password = hr_password
+                    # No password typed = invite mode (N-2.1): the contact person gets a
+                    # link by e-mail and chooses their own. A typed password still works.
+                    invite_hr = not hr_password
+                    if invite_hr:
+                        hr_password = secrets.token_urlsafe(24)
+                    else:
+                        generated_password = hr_password
                     hashed_password = generate_password_hash(hr_password)
 
                     cur.execute("""
@@ -271,20 +276,22 @@ def create_companies_blueprint():
                     """, (hr_username, hr_email, hashed_password))
                     user_id = cur.lastrowid
 
-                # Add user to company as hr_manager
+                # The first user of a new company is its company_admin (superset of
+                # hr_manager). Before, only hr_manager existed, so the admin-only
+                # settings (SSO, API keys, billing policy) were unreachable.
                 hr_permissions = json.dumps({
                     "manage_users": True,
                     "view_analytics": True,
                     "export_data": True,
-                    "manage_billing": False,
-                    "manage_integrations": False,
+                    "manage_billing": True,
+                    "manage_integrations": True,
                     "manage_branding": True,
                 })
                 cur.execute("""
                     INSERT INTO company_users (
                         company_id, user_id, username, full_name, email, role, department, job_title,
                         status, phone, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, %s, 'hr_manager', 'Human Resources', %s, 'active', %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, 'company_admin', 'Human Resources', %s, 'active', %s, %s, %s)
                 """, (
                     company_id, user_id, hr_username or hr_name, hr_name, hr_email,
                     hr_job_title, hr_phone, hr_permissions, session.get('user_id')
@@ -322,6 +329,15 @@ def create_companies_blueprint():
                 current_app.mysql.connection.commit()
                 cur.close()
 
+                # Welcome + set-password link for the new company's first admin.
+                if hr_mode == 'new' and 'invite_hr' in locals() and invite_hr:
+                    try:
+                        from account_flows import send_invite
+                        send_invite(user_id, email=hr_email, name=hr_name,
+                                    company={'id': company_id, 'company_name': company_name})
+                    except Exception as mail_err:
+                        current_app.logger.warning(f"Registration invite skipped: {mail_err}")
+
                 # Show success with credentials if new user was created
                 if generated_password:
                     return render_template('fm/register_success.html',
@@ -331,6 +347,15 @@ def create_companies_blueprint():
                         hr_email=hr_email,
                         hr_password=generated_password,
                         is_new_user=True
+                    )
+                elif hr_mode == 'new':
+                    return render_template('fm/register_success.html',
+                        company_name=company_name,
+                        company_slug=company_slug,
+                        hr_name=hr_name,
+                        hr_email=hr_email,
+                        is_new_user=True,
+                        invited=True
                     )
                 else:
                     return render_template('fm/register_success.html',
@@ -484,6 +509,12 @@ def create_companies_blueprint():
             username = request.form.get('username', '').strip()
             email = request.form.get('email', '').strip()
             password = request.form.get('password', '').strip()
+            # No password typed = invite mode: the employee gets a link and picks
+            # their own (HR never has to know or pass on a password).
+            invite_mode = not password
+            if invite_mode:
+                import secrets as _secrets
+                password = _secrets.token_urlsafe(24)
             role = request.form.get('role', 'employee')
             department = request.form.get('department', '').strip()
             job_title = request.form.get('job_title', '').strip()
@@ -496,7 +527,7 @@ def create_companies_blueprint():
                 manager_user_id = None
 
             # Validation
-            if not all([full_name, username, email, password, department, job_title]):
+            if not all([full_name, username, email, department, job_title]):
                 flash("Udfyld venligst alle påkrævede felter.", "danger")
                 return render_template('fm/add_employee.html', company=company,
                                        departments=_load_departments(), managers=_load_managers(),
@@ -613,6 +644,10 @@ def create_companies_blueprint():
                         login_url = url_for('auth.login', _external=True)
                     except Exception:
                         login_url = ''
+                    if invite_mode and not existing_user:
+                        from account_flows import send_invite
+                        send_invite(user_id, email=email, name=full_name, company=company)
+                        raise StopIteration  # invite sent; skip the plain welcome mail
                     send_employee_welcome(
                         company,
                         {
@@ -622,6 +657,8 @@ def create_companies_blueprint():
                         },
                         login_url=login_url,
                     )
+                except StopIteration:
+                    pass
                 except Exception as mail_err:
                     current_app.logger.debug(
                         f"Employee welcome email skipped: {mail_err}"

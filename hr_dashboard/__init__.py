@@ -2033,141 +2033,137 @@ def create_hr_dashboard_blueprint():
         except Exception as e:
             current_app.logger.warning(f"HR reports summary error: {e}")
 
+        import report_exports
         report_cards = [
-            {
-                'type': 'employee_progress',
-                'title': 'Medarbejderfremdrift',
-                'description': 'Status, afdeling, kurser, fremdrift og chatbot-engagement pr. medarbejder.',
-                'icon': 'fa-users',
-            },
-            {
-                'type': 'course_completions',
-                'title': 'Kursusgennemfoersel',
-                'description': 'Alle kursusordrer med status, dato, pris, lokation og gennemfoersel.',
-                'icon': 'fa-graduation-cap',
-            },
-            {
-                'type': 'department_summary',
-                'title': 'Afdelingsresume',
-                'description': 'Afdelingernes medarbejdere, tilmeldinger, completion rate og investering.',
-                'icon': 'fa-sitemap',
-            },
+            {'type': k, 'title': v[0], 'description': v[1], 'icon': v[2]}
+            for k, v in report_exports.REPORTS.items()
         ]
+        schedules, departments = [], []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""SELECT id, report_type, cadence, department, enabled, last_sent_at
+                           FROM company_report_schedules WHERE company_id = %s ORDER BY id""", (company['id'],))
+            schedules = cur.fetchall() or []
+            cur.execute("SELECT DISTINCT department FROM company_users WHERE company_id = %s "
+                        "AND department IS NOT NULL ORDER BY department", (company['id'],))
+            departments = [r['department'] for r in cur.fetchall()]
+            cur.close()
+        except Exception as e:
+            current_app.logger.warning(f"HR report schedules skipped: {e}")
+        for s in schedules:
+            meta = report_exports.REPORTS.get(report_exports.resolve(s['report_type']) or '')
+            s['title'] = meta[0] if meta else s['report_type']
+            s['cadence_label'] = {'daily': 'dagligt', 'weekly': 'ugentligt', 'monthly': 'månedligt'}.get(s['cadence'], s['cadence'])
 
         return render_template('fm/hr_reports.html',
                                company=company,
                                report_summary=report_summary,
                                department_rows=department_rows,
                                report_cards=report_cards,
+                               schedules=schedules, departments=departments,
+                               can_schedule=(session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')),
+                               filt_department=request.args.get('department', ''),
+                               filt_from=request.args.get('from', ''), filt_to=request.args.get('to', ''),
                                active_hr_page='reports')
 
     @hr_dashboard_bp.route('/export/<report_type>')
     def export_report(report_type):
-        """Export HR reports as CSV"""
+        """Export an HR report as Excel-friendly CSV (UTF-8 BOM, filters)."""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
-        
+
         company = get_company_context()
         if not company:
-            return jsonify({'error': 'Company not found'}), 404
-        
+            flash("Virksomheden blev ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        import report_exports
+        key = report_exports.resolve(report_type)
+        if not key:
+            flash("Ukendt rapporttype.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            if report_type == 'employee_progress':
-                cur.execute("""
-                    SELECT 
-                        u.username as 'Employee Name',
-                        u.email as 'Email',
-                        cu.department as 'Department',
-                        cu.job_title as 'Job Title',
-                        cu.employee_id as 'Employee ID',
-                        cu.hire_date as 'Hire Date',
-                        COUNT(DISTINCT co.id) as 'Courses Enrolled',
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as 'Courses Completed',
-                        COALESCE(AVG(elp.progress_percentage), 0) as 'Average Progress %',
-                        cu.total_chatbot_queries as 'Chatbot Interactions',
-                        cu.last_login as 'Last Login'
-                    FROM company_users cu
-                    JOIN users u ON cu.user_id = u.id
-                    LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                    LEFT JOIN employee_learning_progress elp ON cu.user_id = elp.user_id AND cu.company_id = elp.company_id
-                    WHERE cu.company_id = %s
-                    GROUP BY cu.user_id, u.username, u.email, cu.department, cu.job_title, 
-                             cu.employee_id, cu.hire_date, cu.total_chatbot_queries, cu.last_login
-                    ORDER BY u.username
-                """, (company['id'],))
-                
-            elif report_type == 'course_completions':
-                cur.execute("""
-                    SELECT 
-                        u.username as 'Employee Name',
-                        cu.department as 'Department',
-                        co.product_title as 'Course Title',
-                        co.created_at as 'Enrollment Date',
-                        co.completion_status as 'Status',
-                        co.completion_date as 'Completion Date',
-                        co.price as 'Course Price',
-                        co.variant_location as 'Location',
-                        co.variant_date as 'Course Date'
-                    FROM course_orders co
-                    JOIN users u ON co.user_id = u.id
-                    JOIN company_users cu ON co.user_id = cu.user_id AND co.company_id = cu.company_id
-                    WHERE co.company_id = %s
-                    ORDER BY co.created_at DESC
-                """, (company['id'],))
-                
-            elif report_type == 'department_summary':
-                cur.execute("""
-                    SELECT 
-                        cu.department as 'Department',
-                        COUNT(DISTINCT cu.user_id) as 'Total Employees',
-                        COUNT(DISTINCT CASE WHEN cu.status = 'active' THEN cu.user_id END) as 'Active Employees',
-                        COUNT(DISTINCT co.id) as 'Total Enrollments',
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as 'Completed Courses',
-                        ROUND(
-                            COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0 / 
-                            NULLIF(COUNT(DISTINCT co.id), 0), 1
-                        ) as 'Completion Rate %',
-                        COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as 'Training Investment'
-                    FROM company_users cu
-                    LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                    WHERE cu.company_id = %s
-                    GROUP BY cu.department
-                    ORDER BY cu.department
-                """, (company['id'],))
-                
-            else:
-                return jsonify({'error': 'Invalid report type'}), 400
-            
-            data = cur.fetchall()
+            headers, rows = report_exports.build(
+                cur, company['id'], key, department=request.args.get('department') or None,
+                date_from=request.args.get('from') or None, date_to=request.args.get('to') or None)
             cur.close()
-            
-            if not data:
-                return jsonify({'error': 'No data found'}), 404
-            
-            # Create CSV
-            output = io.StringIO()
-            if data:
-                writer = csv.DictWriter(output, fieldnames=data[0].keys())
-                writer.writeheader()
-                writer.writerows(data)
-            
-            # Create response
-            response = current_app.response_class(
-                output.getvalue(),
-                mimetype='text/csv',
-                headers={
-                    'Content-Disposition': f'attachment; filename={report_type}_{company["company_slug"]}_{datetime.now().strftime("%Y%m%d")}.csv'
-                }
-            )
-            
-            return response
-            
         except Exception as e:
             current_app.logger.error(f"Error exporting report: {e}")
-            return jsonify({'error': 'Export failed'}), 500
+            flash("Rapporten kunne ikke hentes lige nu. Prøv igen om lidt.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+
+        if not rows:
+            flash("Ingen data matcher dine valg endnu. Justér filtrene, eller prøv igen, når der er aktivitet.", "warning")
+            return redirect(url_for('hr_dashboard.reports'))
+
+        return current_app.response_class(
+            report_exports.to_csv(headers, rows),
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition':
+                     f'attachment; filename={key}_{company["company_slug"]}_{datetime.now().strftime("%Y%m%d")}.csv'})
+
+    # ── Scheduled reports (N-4.2) ──
+    @hr_dashboard_bp.route('/reports/schedules/<int:schedule_id>/<action>', methods=['POST'])
+    def report_schedule_action(schedule_id, action):
+        """Pause, resume or cancel a scheduled report (company-scoped)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        if action not in ('pause', 'resume', 'cancel'):
+            flash("Ukendt handling.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+            flash("Kun HR-ledere kan ændre planlagte rapporter.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        if action == 'cancel':
+            cur.execute("DELETE FROM company_report_schedules WHERE id = %s AND company_id = %s",
+                        (schedule_id, company['id']))
+        else:
+            cur.execute("UPDATE company_report_schedules SET enabled = %s WHERE id = %s AND company_id = %s",
+                        (1 if action == 'resume' else 0, schedule_id, company['id']))
+        changed = cur.rowcount
+        conn.commit()
+        cur.close()
+        flash({'pause': "Rapportplanen er sat på pause.", 'resume': "Rapportplanen er genoptaget.",
+               'cancel': "Rapportplanen er slettet."}[action] if changed else "Planen blev ikke fundet.",
+              "success" if changed else "warning")
+        return redirect(url_for('hr_dashboard.reports'))
+
+    @hr_dashboard_bp.route('/reports/schedules/add', methods=['POST'])
+    def report_schedule_add():
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+            flash("Kun HR-ledere kan planlægge rapporter.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        import report_exports
+        key = report_exports.resolve(request.form.get('report_type', ''))
+        cadence = request.form.get('cadence', '')
+        if not key or cadence not in ('daily', 'weekly', 'monthly'):
+            flash("Vælg en rapport og en hyppighed.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO company_report_schedules (company_id, report_type, cadence, department, created_by, enabled)
+            VALUES (%s, %s, %s, %s, %s, 1)
+            ON DUPLICATE KEY UPDATE cadence = VALUES(cadence), enabled = 1
+        """, (company['id'], key, cadence, (request.form.get('department') or None), session.get('user_id')))
+        conn.commit()
+        cur.close()
+        flash("Rapporten er planlagt. Den sendes til HR-ledere på e-mail.", "success")
+        return redirect(url_for('hr_dashboard.reports'))
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/details')
     def employee_details(user_id):

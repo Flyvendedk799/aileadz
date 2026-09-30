@@ -1,8 +1,9 @@
 {% extends "fm_base.html" %}
 {% from 'fm/_macros.html' import empty %}
+{% import 'fm/_macros.html' as ui %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}HR-rapporter{% endblock %}
+{% block title %}Rapporter &amp; eksport{% endblock %}
+{% block topbar_title %}Rapporter &amp; eksport{% endblock %}
 {% block topbar_sub %}Genererede rapporter for {{ company.company_name if company else 'virksomheden' }}.{% endblock %}
 {% block extra_head %}
 <style>
@@ -26,15 +27,49 @@
   </div>
 
   <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-download"></i> Eksport</span><h2 class="fm-section-title">Hent rapporter som CSV</h2></div></div>
-  <div class="fm-grid" style="grid-template-columns:repeat(3,1fr)">
+  <form method="get" class="fm-card" style="padding:12px 16px;margin-bottom:14px;display:flex;gap:12px;flex-wrap:wrap;align-items:flex-end">
+    <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Afdeling</span>
+      <select name="department" class="fm-input" style="width:auto"><option value="">Alle</option>{% for d in departments %}<option value="{{ d }}" {{ 'selected' if filt_department == d }}>{{ d }}</option>{% endfor %}</select></label>
+    <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Fra</span><input class="fm-input" type="date" name="from" value="{{ filt_from }}" style="width:auto"></label>
+    <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Til</span><input class="fm-input" type="date" name="to" value="{{ filt_to }}" style="width:auto"></label>
+    <button class="btn btn-ghost btn-sm" type="submit">Anvend på eksport</button>
+    <span style="margin-left:auto">{{ ui.export_buttons() }}</span>
+  </form>
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(250px,1fr))">
     {% for report in (report_cards or []) %}
-    <a href="{{ url_for('hr_dashboard.export_report', report_type=report.type) }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px">
+    <a href="{{ url_for('hr_dashboard.export_report', report_type=report.type, department=filt_department or None, **{'from': filt_from or None, 'to': filt_to or None}) }}" class="fm-card" style="text-decoration:none;padding:18px;display:flex;flex-direction:column;gap:12px">
       <div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid {{ report.icon|replace('fa-','fa-') }}"></i></span><span class="fm-badge green dot">Klar</span></div>
       <h3 style="font-size:15px;font-weight:700">{{ report.title }}</h3>
       <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0">{{ report.description }}</p>
       <div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span><i class="fa-solid fa-file-csv"></i> Download CSV</span><i class="fa-solid fa-arrow-right"></i></div>
     </a>
     {% endfor %}
+  </div>
+
+  <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-clock"></i> Automatik</span><h2 class="fm-section-title">Planlagte rapporter</h2></div></div>
+  <div class="fm-card" style="padding:14px 18px">
+    {% if schedules %}
+    <table class="fm-table"><thead><tr><th>Rapport</th><th>Hyppighed</th><th>Afdeling</th><th>Sidst sendt</th><th>Status</th><th></th></tr></thead><tbody>
+      {% for s in schedules %}<tr>
+        <td style="font-weight:650">{{ s.title }}</td><td>{{ s.cadence_label }}</td><td>{{ s.department or 'Alle' }}</td>
+        <td>{{ s.last_sent_at or 'Endnu ikke' }}</td>
+        <td>{% if s.enabled %}<span class="fm-badge green dot">Aktiv</span>{% else %}<span class="fm-badge amber dot">På pause</span>{% endif %}</td>
+        <td style="text-align:right">{% if can_schedule %}<form method="post" style="display:inline-flex;gap:6px">
+          <button class="btn btn-ghost btn-sm" formaction="{{ url_for('hr_dashboard.report_schedule_action', schedule_id=s.id, action=('pause' if s.enabled else 'resume')) }}">{{ 'Pause' if s.enabled else 'Genoptag' }}</button>
+          <button class="btn btn-ghost btn-sm" formaction="{{ url_for('hr_dashboard.report_schedule_action', schedule_id=s.id, action='cancel') }}" onclick="return confirm('Slet denne rapportplan?')">Slet</button>
+        </form>{% endif %}</td></tr>{% endfor %}
+    </tbody></table>
+    {% else %}
+    <p class="muted" style="margin:0 0 10px;font-size:13.5px">Ingen planlagte rapporter endnu. Planlæg en rapport, så HR-ledere får den på mail automatisk. Du kan også bede HR-assistenten om det.</p>
+    {% endif %}
+    {% if can_schedule %}
+    <form method="post" action="{{ url_for('hr_dashboard.report_schedule_add') }}" style="display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-top:12px">
+      <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Rapport</span><select name="report_type" class="fm-input" style="width:auto">{% for r in report_cards %}<option value="{{ r.type }}">{{ r.title }}</option>{% endfor %}</select></label>
+      <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Hyppighed</span><select name="cadence" class="fm-input" style="width:auto"><option value="weekly">Ugentligt</option><option value="monthly">Månedligt</option><option value="daily">Dagligt</option></select></label>
+      <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Afdeling</span><select name="department" class="fm-input" style="width:auto"><option value="">Alle</option>{% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></label>
+      <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-calendar-plus"></i> Planlæg</button>
+    </form>
+    {% endif %}
   </div>
 
   <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Afdelingspreview</h3><span class="fm-badge">Live data</span></div>

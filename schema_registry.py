@@ -135,6 +135,20 @@ REGISTRY_DDL = [
         INDEX idx_osh_company (company_id, created_at)
     ) {_ENGINE}""",
 
+    f"""CREATE TABLE IF NOT EXISTS company_report_schedules (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        company_id INT NOT NULL,
+        report_type VARCHAR(64) NOT NULL,
+        cadence VARCHAR(16) NOT NULL,
+        department VARCHAR(100) NULL,
+        created_by INT NULL,
+        enabled TINYINT(1) NOT NULL DEFAULT 1,
+        last_sent_at DATETIME NULL,
+        last_status VARCHAR(40) NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE KEY uniq_company_report (company_id, report_type, department)
+    ) {_ENGINE}""",
+
     f"""CREATE TABLE IF NOT EXISTS company_team_order_policy (
         id INT AUTO_INCREMENT PRIMARY KEY,
         company_id INT NOT NULL,

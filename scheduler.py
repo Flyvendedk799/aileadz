@@ -548,6 +548,30 @@ def _job_billing_overdue(app):
     return {'notifications': total}
 
 
+def _job_scheduled_reports(app):
+    """Hourly: e-mail the reports HR has scheduled (company_report_schedules)."""
+    try:
+        import scheduled_reports
+    except Exception as e:
+        return {'error': "scheduled_reports import failed: %s" % e}
+    with app.app_context():
+        conn = app.mysql.connection
+        cur = conn.cursor()
+        try:
+            summary = scheduled_reports.run_due_schedules(cur)
+            conn.commit()
+            return summary
+        except Exception as e:
+            logger.warning("scheduler: scheduled reports failed: %s", e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return {'error': str(e)}
+        finally:
+            cur.close()
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -592,6 +616,12 @@ JOBS = [
         'name': 'company_analytics_rollup',
         'interval_seconds': 86400,        # daily — writes the per-company daily KPI snapshot
         'fn': _job_company_analytics_rollup,
+        'enabled': True,
+    },
+    {
+        'name': 'scheduled_reports',
+        'interval_seconds': 3600,         # hourly check; each schedule has its own cadence
+        'fn': _job_scheduled_reports,
         'enabled': True,
     },
     {

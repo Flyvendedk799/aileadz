@@ -1393,8 +1393,9 @@ Rådgiver: Forstået — her er fysiske kurser der passer til det du leder efter
 <suggestions>["Vis kun i København", "Under 10.000 kr", "Sammenlign de to første"]</suggestions>"""
 
 
-def _build_few_shot_examples():
-    """Build few-shot examples: compact gold standard + optional top-rated interactions."""
+def _build_few_shot_examples(company_id=None):
+    """Build few-shot examples: compact gold standard + optional top-rated interactions
+    (admin-reviewed and from the caller's own company only, S-1.7)."""
     from ai_context import build_few_shot_message
     base = build_few_shot_message(_GOLD_STANDARD_EXAMPLES)
     if not base:
@@ -1403,7 +1404,7 @@ def _build_few_shot_examples():
     # Augment with real high-rated interactions if available
     try:
         store = _get_store()
-        top = store.get_top_rated_interactions(limit=2, min_rating=1)
+        top = store.get_top_rated_interactions(limit=2, min_rating=1, company_id=company_id)
         if top:
             real_examples = []
             for item in top:
@@ -2202,7 +2203,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 if profile_cfg.get("few_shot") == "profiler":
                     context_layers.append(_ctx.layer("few_shot", _PROFILER_FEW_SHOT))
                 else:
-                    few_shot_msg = _build_few_shot_examples()
+                    few_shot_msg = _build_few_shot_examples(company_id=company_id_for_turn)
                     if few_shot_msg:
                         context_layers.append(_ctx.layer("few_shot", few_shot_msg["content"]))
 

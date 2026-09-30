@@ -1481,7 +1481,7 @@
           <div class="sb-user-avatar">{{ session.get('user', '?')[0] | upper }}</div>
           <div class="sb-user-info">
             <div class="sb-user-name">{{ session.get('user') | e }}</div>
-            <div class="sb-user-meta"><a href="/logout" style="color:var(--text-muted);">Log ud</a></div>
+            <div class="sb-user-meta"><form method="post" action="/logout" style="display:inline;margin:0"><button type="submit" style="color:var(--text-muted);background:none;border:0;padding:0;font:inherit;cursor:pointer">Log ud</button></form></div>
           </div>
         </div>
         {% else %}

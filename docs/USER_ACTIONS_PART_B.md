@@ -59,7 +59,7 @@ Please click through once on the VPS with an employee, an HR manager and a platf
 3. Learner: "Markér som gennemført" -> skill chips appear; add one; HR/manager gets a "Bekræft kompetenceløft" notification.
 4. White-label tenant: the company name and logo in the sidebar must stay (the old localStorage overwrite is gone).
 5. "Glemt adgangskode?" on the login page sends an e-mail and the link works once.
-6. Account links (reset/invite) use Part A's token storage when that branch is merged, otherwise the built-in `account_tokens` fallback.
+6. Account links (reset/invite) use Part A's `password_tokens` store and the `/forgot-password`, `/reset-password/<token>`, `/set-password/<token>` screens (the Part B `account_tokens` fallback was removed in the merge).
 
 ### F. CI
 
@@ -74,7 +74,7 @@ Nothing to do; the workflow now has a lint job, coverage upload and a 20-minute 
 
 # Platform (vendor, SSO, API, webhooks)
 
-1. **Database**: run the normal schema sync on deploy (`schema_registry` / `enterprise_tables` create `account_tokens`, `webhook_deliveries`, `account_requests` and add `users.status`). No manual SQL.
+1. **Database**: run the normal schema sync on deploy (`schema_registry` / `enterprise_tables` create `webhook_deliveries`, `account_requests` and add `users.status`). No manual SQL.
 2. **Email**: make sure the branded email sender is configured in production (same SMTP settings already used for order mails). The new `vendor_submission_result` template is sent through it.
 3. **SSO (optional, per customer)**: for each customer using SSO, register this redirect URI with their identity provider (shown on the SSO tab): `https://<your-domain>/sso/callback/<company-slug>/oauth2`, and set the company's email domain under Virksomhed so `/sso/discover` can find it.
 4. **Existing API keys**: keys created before Part A remain valid; new keys are shown once and cannot be recovered. Customers who lost a key must create a new one.

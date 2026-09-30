@@ -27,26 +27,34 @@ def _html(role=None, company_role=None, admin=False, company=True):
             s["company_role"] = company_role
         if admin:
             s["role"] = "admin"
+            s["twofa_ok"] = True
     # The white-label context processor reads the tenant's branding from MySQL;
     # there is no database in a unit test, so feed it "no custom branding".
     with mock.patch("white_label_global_integration.get_template_context", return_value={}):
         return client.get("/privacy").get_data(as_text=True)   # public page, renders the shared shell
 
 
+def _s(**kw):
+    """A signed-in session dict (the capability matrix needs a user and a tenant)."""
+    base = {"user": "tester", "user_id": 1, "company_id": 7}
+    base.update(kw)
+    return base
+
+
 class CapabilityHelperTests(unittest.TestCase):
     def test_role_hierarchy(self):
-        self.assertFalse(capabilities.can("company.workspace", {"company_role": "employee"}))
-        self.assertTrue(capabilities.can("company.workspace", {"company_role": "department_head"}))
-        self.assertFalse(capabilities.can("company.billing", {"company_role": "department_head"}))
-        self.assertTrue(capabilities.can("company.billing", {"company_role": "hr_manager"}))
-        self.assertTrue(capabilities.can("company.sso", {"company_role": "company_admin"}))
-        self.assertFalse(capabilities.can("company.sso", {"company_role": "hr_manager"}))
-        self.assertTrue(capabilities.can("company.sso", {"role": "admin"}))
+        self.assertFalse(capabilities.can("company.workspace", _s(company_role="employee")))
+        self.assertTrue(capabilities.can("company.workspace", _s(company_role="department_head")))
+        self.assertFalse(capabilities.can("company.billing", _s(company_role="department_head")))
+        self.assertTrue(capabilities.can("company.billing", _s(company_role="hr_manager")))
+        self.assertTrue(capabilities.can("company.sso", _s(company_role="company_admin")))
+        self.assertFalse(capabilities.can("company.sso", _s(company_role="hr_manager")))
+        self.assertTrue(capabilities.can("company.sso", _s(role="admin")))
 
     def test_unknown_capability_and_roles_fail_closed(self):
-        self.assertFalse(capabilities.can("company.nonsense", {"company_role": "company_admin"}))
+        self.assertFalse(capabilities.can("company.nonsense", _s(company_role="company_admin")))
         self.assertEqual(capabilities.effective_role({"company_role": "intern"}), "employee")
-        self.assertFalse(capabilities.can("platform.admin", {"company_role": "company_admin"}))
+        self.assertFalse(capabilities.can("platform.admin", _s(company_role="company_admin")))
 
 
 class SidebarTests(unittest.TestCase):

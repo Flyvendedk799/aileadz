@@ -1,8 +1,6 @@
 """N-2.1: forgot password, reset, invite, login by e-mail, tenant join."""
 
 import os
-import sys
-import types
 import unittest
 from unittest import mock
 
@@ -16,36 +14,12 @@ import run  # noqa: E402
 from tests.sqlite_mysql import SqliteMysql  # noqa: E402
 
 
-class FakeTokens(types.ModuleType):
-    """In-memory stand-in for account_tokens (same public API)."""
-
-    def __init__(self):
-        super().__init__("account_tokens")
-        self.store = {}
-        self.n = 0
-
-    def create_token(self, kind, subject_id, ttl_minutes=60):
-        self.n += 1
-        raw = "tok-%s-%d" % (kind, self.n)
-        self.store[raw] = (kind, subject_id)
-        return raw
-
-    def consume_token(self, kind, raw):
-        item = self.store.get(raw)
-        if not item or item[0] != kind:
-            return None
-        del self.store[raw]
-        return item[1]
-
-    def peek_token(self, kind, raw):
-        item = self.store.get(raw)
-        return item[1] if item and item[0] == kind else None
-
-
 class Base(unittest.TestCase):
     def setUp(self):
-        self.tokens = FakeTokens()
-        patcher = mock.patch.dict(sys.modules, {"account_tokens": self.tokens})
+        self.issued = []
+        patcher = mock.patch("password_tokens.issue_token",
+                             side_effect=lambda conn, typ, aid, purpose="reset", ttl_minutes=None:
+                             self.issued.append((typ, aid, purpose)) or "tok-%s-%s" % (purpose, aid))
         patcher.start()
         self.addCleanup(patcher.stop)
         self.db = SqliteMysql()
@@ -63,82 +37,40 @@ class Base(unittest.TestCase):
         self.addCleanup(p.stop)
 
 
-class ForgotPasswordTests(Base):
-    def test_known_address_gets_a_link(self):
-        resp = self.client.post("/glemt-adgangskode", data={"email": "ada@firma.dk"})
-        self.assertIn("har vi sendt et link", resp.get_data(as_text=True))
-        self.assertEqual(len(self.mails), 1)
+class LinkHelperTests(Base):
+    """Reset/invite links are sent through Part A's token store (S-2.4)."""
+
+    def test_reset_link_uses_part_a_token_and_route(self):
+        import account_flows
+        with self.app.test_request_context("/"):
+            ok = account_flows.send_reset_link(1, actor="hr")
+        self.assertTrue(ok)
+        self.assertEqual(self.issued, [("user", 1, "reset")])
         to, tpl, kw = self.mails[0]
         self.assertEqual((to, tpl), ("ada@firma.dk", "password_reset"))
-        self.assertIn("/nulstil-adgangskode/tok-password_reset-1", kw["reset_url"])
+        self.assertIn("/reset-password/tok-reset-1", kw["reset_url"])
 
-    def test_unknown_address_gets_the_same_answer_and_no_mail(self):
-        resp = self.client.post("/glemt-adgangskode", data={"email": "ingen@firma.dk"})
-        self.assertIn("har vi sendt et link", resp.get_data(as_text=True))
+    def test_reset_link_for_unknown_user_or_missing_email_sends_nothing(self):
+        import account_flows
+        self.db.execute("INSERT INTO users (id, username, password, email) VALUES (5, 'noemail', 'x', '')")
+        with self.app.test_request_context("/"):
+            self.assertFalse(account_flows.send_reset_link(999))
+            self.assertFalse(account_flows.send_reset_link(5))
         self.assertEqual(self.mails, [])
-
-    def test_bad_input_is_rejected_politely(self):
-        resp = self.client.post("/glemt-adgangskode", data={"email": "ikke-en-mail"})
-        self.assertIn("e-mailadresse", resp.get_data(as_text=True))
-        self.assertNotIn("har vi sendt", resp.get_data(as_text=True))
-
-    def test_login_page_links_to_the_flow(self):
-        self.assertIn("/glemt-adgangskode", self.client.get("/login").get_data(as_text=True))
-
-
-class ResetAndInviteTests(Base):
-    def _token(self, kind="password_reset"):
-        return self.tokens.create_token(kind, 1)
-
-    def test_valid_reset_sets_a_hashed_password_and_is_single_use(self):
-        t = self._token()
-        self.assertEqual(self.client.get("/nulstil-adgangskode/" + t).status_code, 200)
-        resp = self.client.post("/nulstil-adgangskode/" + t, data={"password": "et-langt-nyt-kodeord", "password2": "et-langt-nyt-kodeord"})
-        self.assertEqual(resp.status_code, 302)
-        stored = self.db.one("SELECT password FROM users WHERE id=1")["password"]
-        self.assertTrue(check_password_hash(stored, "et-langt-nyt-kodeord"))
-        again = self.client.post("/nulstil-adgangskode/" + t, data={"password": "endnu-et-langt-et", "password2": "endnu-et-langt-et"})
-        self.assertEqual(again.status_code, 400)
-        self.assertIn("Linket virker ikke", again.get_data(as_text=True))
-
-    def test_expired_or_unknown_link_shows_a_friendly_page(self):
-        resp = self.client.get("/nulstil-adgangskode/findes-ikke")
-        self.assertIn("Linket virker ikke", resp.get_data(as_text=True))
-        self.assertIn("Få et nyt link", resp.get_data(as_text=True))
-
-    def test_policy_and_mismatch_are_enforced_without_consuming_the_token(self):
-        t = self._token()
-        short = self.client.post("/nulstil-adgangskode/" + t, data={"password": "kort", "password2": "kort"})
-        self.assertEqual(short.status_code, 400)
-        self.assertIn("mindst 10 tegn", short.get_data(as_text=True))
-        diff = self.client.post("/nulstil-adgangskode/" + t, data={"password": "et-langt-kodeord", "password2": "et-andet-kodeord"})
-        self.assertIn("ikke ens", diff.get_data(as_text=True))
-        ok = self.client.post("/nulstil-adgangskode/" + t, data={"password": "et-langt-kodeord", "password2": "et-langt-kodeord"})
-        self.assertEqual(ok.status_code, 302)       # the token survived the two failed attempts
-
-    def test_a_reset_token_cannot_be_used_as_an_invite_and_vice_versa(self):
-        t = self._token("password_reset")
-        resp = self.client.post("/invitation/" + t, data={"password": "et-langt-kodeord", "password2": "et-langt-kodeord"})
-        self.assertEqual(resp.status_code, 400)
-        self.assertTrue(check_password_hash(self.db.one("SELECT password FROM users WHERE id=1")["password"], "gammelt-kodeord"))
-
-    def test_invite_lets_the_employee_choose_their_own_password(self):
-        t = self._token("invite")
-        page = self.client.get("/invitation/" + t).get_data(as_text=True)
-        self.assertIn("Vælg din adgangskode", page)
-        resp = self.client.post("/invitation/" + t, data={"password": "min-egen-adgangskode", "password2": "min-egen-adgangskode"})
-        self.assertEqual(resp.status_code, 302)
-        self.assertTrue(check_password_hash(self.db.one("SELECT password FROM users WHERE id=1")["password"], "min-egen-adgangskode"))
 
     def test_send_invite_emails_a_set_password_link(self):
         import account_flows
         with self.app.test_request_context("/"):
-            ok = account_flows.send_invite(1, email="ny@firma.dk", name="Ny", company={"id": 7, "company_name": "Firma"})
+            ok = account_flows.send_invite(1, email="ada@firma.dk", name="Ada", username="ada",
+                                           company={"id": 7, "company_name": "Firma"})
         self.assertTrue(ok)
-        self.assertEqual([k for k in self.tokens.store.values()][-1][0], "invite")
+        self.assertEqual(self.issued, [("user", 1, "invite")])
         to, tpl, kw = self.mails[-1]
-        self.assertEqual((to, tpl), ("ny@firma.dk", "welcome"))
-        self.assertIn("/invitation/tok-invite-", kw["set_password_url"])
+        self.assertEqual((to, tpl), ("ada@firma.dk", "password_invite"))
+        self.assertIn("/set-password/tok-invite-1", kw["set_password_url"])
+
+    def test_login_page_links_to_forgot_password(self):
+        self.assertIn("/forgot-password", self.client.get("/login").get_data(as_text=True))
 
 
 class HrResetLinkTests(Base):
@@ -173,18 +105,10 @@ class HrResetLinkTests(Base):
         self.assertEqual(self.mails, [])
 
 
-class PasswordPolicyTests(unittest.TestCase):
-    def test_policy(self):
-        import account_flows as af
-        self.assertIsNotNone(af.password_problem("kort"))
-        self.assertIsNotNone(af.password_problem("aaaaaaaaaaaa"))
-        self.assertIsNotNone(af.password_problem("ada@firma.dk", email="ada@firma.dk"))
-        self.assertIsNone(af.password_problem("et-helt-fint-kodeord"))
-
-
 class LoginAndTenantTests(Base):
     def test_login_accepts_email_as_the_form_promises(self):
-        resp = self.client.post("/login", data={"username": "ADA@firma.dk", "password": "gammelt-kodeord"})
+        with mock.patch("two_factor.is_enabled", return_value=False):
+            resp = self.client.post("/login", data={"username": "ADA@firma.dk", "password": "gammelt-kodeord"})
         self.assertEqual(resp.status_code, 302)
         with self.client.session_transaction() as s:
             self.assertEqual(s.get("user"), "ada")

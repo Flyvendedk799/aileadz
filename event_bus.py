@@ -181,18 +181,6 @@ def emit_event(company_id, event_type, payload):
         return None
 
 
-def _safe_webhook_url(url):
-    """Reuse enterprise_api's SSRF guard. Imported lazily to avoid a circular
-    import (enterprise_api imports event_bus for the drain endpoint). Fails
-    CLOSED (returns False) if the guard cannot be imported."""
-    try:
-        from enterprise_api import _is_safe_webhook_url
-        return bool(_is_safe_webhook_url(url))
-    except Exception as e:
-        logger.warning("event_bus: SSRF guard unavailable, rejecting url: %s", e)
-        return False
-
-
 def _parse_events(raw):
     """Normalise a company_webhooks.events value to a list of event names."""
     if raw is None:
@@ -298,7 +286,6 @@ def _deliver_to_subscribers(conn, row, company_slug):
     errors = []
     import hashlib
     import hmac
-    import urllib.request
     from datetime import datetime
 
     for wh in webhooks:
@@ -319,31 +306,36 @@ def _deliver_to_subscribers(conn, row, company_slug):
         if state and state.get('status') == 'delivered':
             continue  # this subscriber already has the event
 
-        if not _safe_webhook_url(url):
-            errors.append("webhook %s: blocked unsafe url" % wh_id)
-            _bump_webhook_stats(conn, wh_id, ok=False)
-            _record_delivery(conn, row, wh_id, state, False, "blokeret: usikker URL")
-            continue
-
+        # S-3.3: SSRF-safe delivery (an unsafe URL raises UnsafeURL and is recorded as a failed delivery). The hostname is resolved once, every
+        # address must be public, the socket connects to that exact IP, and
+        # redirects are NEVER followed (a 3xx is a failed delivery).
         try:
+            import safe_http
+            import webhook_signing
             body = json.dumps({
                 'event': event_type,
                 'data': data,
                 'timestamp': datetime.now().isoformat(),
                 'company_slug': company_slug,
             }).encode()
-            sig = hmac.new(str(secret).encode(), body, hashlib.sha256).hexdigest()
-            req = urllib.request.Request(
-                url, data=body,
+            signature, ts = webhook_signing.sign(secret, body)
+            ok, detail = safe_http.post_json(
+                url, body,
                 headers={
-                    'Content-Type': 'application/json',
-                    'X-Webhook-Signature': sig,
+                    'X-Webhook-Signature': signature,
+                    'X-Webhook-Timestamp': str(ts),
+                    'X-Webhook-Id': str(row.get('id') or ''),
                     'X-Company-Slug': company_slug or '',
                     'X-Event-Type': event_type,
                 },
+                timeout=DELIVERY_TIMEOUT_SECONDS,
             )
-            resp = urllib.request.urlopen(req, timeout=DELIVERY_TIMEOUT_SECONDS)
-            code = getattr(resp, 'status', None) or getattr(resp, 'code', None)
+            if not ok:
+                raise RuntimeError(detail)
+            try:
+                code = int(str(detail).rsplit(' ', 1)[-1])
+            except (TypeError, ValueError):
+                code = None
             _bump_webhook_stats(conn, wh_id, ok=True)
             _record_delivery(conn, row, wh_id, state, True, None, code)
         except Exception as e:

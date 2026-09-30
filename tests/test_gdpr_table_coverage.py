@@ -132,5 +132,96 @@ class TestGdprTableCoverage(unittest.TestCase):
         self.assertEqual(overlap, [], f"Tabeller i begge planer: {overlap}")
 
 
+# ---------------------------------------------------------------------------
+# S-4.1  Whole-repo coverage: ANY table holding personal data must be registered
+# ---------------------------------------------------------------------------
+_PERSON_COLUMNS = re.compile(
+    r"\b(username|user_id|user_email|email|full_name|user_name|phone|requester_user_id|"
+    r"approver_user_id|employee_id|manager_user_id|ip_address|browser_token|session_id|to_email|account_id)\b",
+    re.IGNORECASE,
+)
+_SKIP_DIRS = {".git", "node_modules", "__pycache__", ".claude", "sandbox", "tests", "migrations"}
+
+
+def _repo_tables_with_personal_columns():
+    """{table: source file} for every CREATE TABLE in the code base that has at
+    least one column that identifies a natural person."""
+    found = {}
+    for root, dirs, files in os.walk(REPO_ROOT):
+        dirs[:] = [d for d in dirs if d not in _SKIP_DIRS]
+        for fn in files:
+            if not fn.endswith(".py"):
+                continue
+            path = os.path.join(root, fn)
+            with open(path, encoding="utf-8", errors="ignore") as fh:
+                text = fh.read()
+            for m in re.finditer(r"CREATE TABLE(?:\s+IF NOT EXISTS)?\s+`?(\w+)`?\s*\(", text, re.IGNORECASE):
+                body = text[m.end(): m.end() + 2500]
+                end = re.search(r"\)\s*(ENGINE|;|\"\"\")", body)
+                body = body[: end.start()] if end else body[:1500]
+                if _PERSON_COLUMNS.search(body):
+                    found.setdefault(m.group(1), os.path.relpath(path, REPO_ROOT))
+    return found
+
+
+def _erasable_tables():
+    """Every table some code path in gdpr_service actually deletes/anonymises."""
+    tables = _delete_tables() | _anonymise_tables()
+    tables |= {gdpr_service._spec_table(spec) for spec in gdpr_service.EXTRA_SPECS}
+    tables |= {"ai_sessions", "ai_analytics_events", "ai_debug_logs", "ai_latency_logs", "ai_anonymous_profiles"}  # AI store
+    return tables
+
+
+class TestGdprWholeRepoCoverage(unittest.TestCase):
+    def test_scanner_sees_the_known_schema(self):
+        found = _repo_tables_with_personal_columns()
+        self.assertGreaterEqual(len(found), 40, sorted(found))
+        for must in ("course_orders", "audit_log", "email_log", "employee_goals", "user_memories"):
+            self.assertIn(must, found)
+
+    def test_every_table_with_personal_data_has_a_disposition(self):
+        """A NEW table with personal columns that is not registered in
+        gdpr_service.COVERAGE (and therefore not exported/erased/retained on
+        purpose) fails the build."""
+        missing = {t: f for t, f in _repo_tables_with_personal_columns().items()
+                   if t not in gdpr_service.COVERAGE}
+        self.assertEqual(
+            missing, {},
+            "Tabeller med personoplysninger mangler i gdpr_service.COVERAGE "
+            "(tilføj dem til eksport/sletning eller angiv en begrundet 'retain'): %s" % missing,
+        )
+
+    def test_retained_tables_carry_a_reason(self):
+        for table, (disposition, note) in gdpr_service.COVERAGE.items():
+            self.assertIn(disposition, ("delete", "anonymise", "pseudonymise", "retain"), table)
+            if disposition == "retain":
+                self.assertTrue(note.strip(), "%s er 'retain' uden begrundelse" % table)
+
+    def test_delete_anonymise_pseudonymise_entries_are_really_implemented(self):
+        erasable = _erasable_tables()
+        unimplemented = sorted(
+            t for t, (d, _n) in gdpr_service.COVERAGE.items()
+            if d in ("delete", "anonymise", "pseudonymise") and t not in erasable)
+        self.assertEqual(unimplemented, [], "COVERAGE lover sletning, men ingen kode udfører den: %s" % unimplemented)
+
+    def test_audit_log_is_pseudonymised_never_deleted(self):
+        self.assertEqual(gdpr_service.COVERAGE["audit_log"][0], "pseudonymise")
+        self.assertNotIn("audit_log", _delete_tables())
+        kinds = {s["kind"] for s in gdpr_service.EXTRA_SPECS if gdpr_service._spec_table(s) == "audit_log"}
+        self.assertEqual(kinds, {"pseudonymise"})
+
+    def test_sqlite_ai_store_is_not_called_orphaned_any_more(self):
+        with open(os.path.join(REPO_ROOT, "gdpr_service.py"), encoding="utf-8") as fh:
+            src = fh.read()
+        self.assertNotIn("(SQLite, orphaned)", src)
+        self.assertIn("_sqlite_ai_store_erase", src)
+
+    def test_no_extra_spec_uses_an_unknown_subject_field(self):
+        allowed = {"username", "user_id", "user_id_or_member", "email", "session_id"}
+        for spec in gdpr_service.EXTRA_SPECS:
+            for _col, field in spec["match"]:
+                self.assertIn(field, allowed, spec["table"])
+
+
 if __name__ == "__main__":
     unittest.main()

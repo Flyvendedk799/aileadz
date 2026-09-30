@@ -17,7 +17,7 @@ CREATE TABLE ai_sessions (session_id TEXT PRIMARY KEY, user_profile TEXT, conver
   shown_products TEXT, last_active REAL DEFAULT 0);
 CREATE TABLE ai_analytics_events (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp REAL,
   event_type TEXT, query_text TEXT, tool_used TEXT, results_count INTEGER DEFAULT 0,
-  feedback_rating INTEGER DEFAULT 0, message_index INTEGER DEFAULT 0, company_id INTEGER, username TEXT, extra TEXT);
+  feedback_rating INTEGER DEFAULT 0, message_index INTEGER DEFAULT 0, company_id INTEGER, username TEXT, extra TEXT, reviewed INTEGER DEFAULT 0);
 CREATE TABLE ai_debug_logs (id INTEGER PRIMARY KEY AUTOINCREMENT, session_id TEXT, timestamp REAL, step TEXT, data TEXT);
 CREATE TABLE ai_anonymous_profiles (browser_token TEXT PRIMARY KEY, interests TEXT, budget_range TEXT,
   preferred_location TEXT, preferred_format TEXT, last_viewed TEXT, last_searches TEXT,
@@ -64,6 +64,8 @@ class StoreTests(StoreBase):
         ms.log_event("a", "feedback", query_text="for 7", feedback_rating=1)
         session["company_id"] = 8
         ms.log_event("b", "feedback", query_text="for 8", feedback_rating=1)
+        self.assertEqual(ms.get_top_rated_interactions(company_id=7), [])      # S-1.7: unreviewed is not reusable
+        self.db.raw.execute("UPDATE ai_analytics_events SET reviewed = 1")
         self.assertEqual([r["query"] for r in ms.get_top_rated_interactions(company_id=7)], ["for 7"])
 
     def test_debug_and_latency_round_trip(self):

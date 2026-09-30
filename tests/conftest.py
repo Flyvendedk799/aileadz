@@ -51,3 +51,17 @@ def _fail_fast_without_mysql():
         yield
     finally:
         pymysql.connect = original
+
+
+@pytest.fixture(autouse=True)
+def _session_liveness_isolated(monkeypatch):
+    """Tests build signed-in sessions by hand, without matching ``company_users``
+    rows. Treat every membership as active (role taken from the session) and start
+    each test with an empty liveness cache, so results never depend on test order.
+    Tests of the liveness gate itself patch ``_lookup_membership_status`` again."""
+    import auth_decorators
+
+    monkeypatch.setattr(auth_decorators, "_lookup_membership_status", lambda *a, **k: "active")
+    auth_decorators.invalidate_session_cache()
+    yield
+    auth_decorators.invalidate_session_cache()

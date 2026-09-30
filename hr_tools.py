@@ -3918,13 +3918,14 @@ def _resolve_company_recipients(cur, company_id, *, audience, department=None):
     rows for the session company are ever returned (cross-tenant guard).
     """
     base = (
-        "SELECT user_id, full_name, username AS email, role "
+        "SELECT user_id, full_name, COALESCE(NULLIF(email, ''), username) AS email, role "
         "FROM company_users WHERE company_id = %s AND status = 'active'"
     )
     params = [company_id]
     aud = (audience or "all").strip().lower()
     if aud == "managers":
-        base += " AND role IN ('manager', 'admin', 'hr')"
+        # S-2.3: the real role names (the old 'manager'/'admin'/'hr' never matched).
+        base += " AND role IN ('company_admin', 'hr_manager', 'department_head')"
     elif aud == "department" and department:
         base += " AND department = %s"
         params.append(department)

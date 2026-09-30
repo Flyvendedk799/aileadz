@@ -153,6 +153,27 @@ def _check_catalog():
         return False
 
 
+def _detail_allowed():
+    """Who may see the readiness DETAILS (feature matrix, provider, key presence)?
+
+    S-5.2: the public answer is just ``{"status": ...}`` (enough for a load
+    balancer). Details are for a logged-in platform admin, or for a monitor that
+    sends the shared secret in ``X-Health-Token`` (env ``HEALTH_TOKEN``).
+    """
+    try:
+        from flask import request, session
+        if session.get('user') and session.get('role') == 'admin':
+            return True
+        expected = os.environ.get('HEALTH_TOKEN')
+        provided = request.headers.get('X-Health-Token', '')
+        if expected and provided:
+            import hmac
+            return hmac.compare_digest(str(provided), str(expected))
+    except Exception:
+        return False
+    return False
+
+
 @health_bp.route('/healthz')
 def healthz():
     """Liveness probe — cheap, never touches the DB."""
@@ -188,13 +209,10 @@ def readyz():
         worker = _worker_block() if db_ok else None
         if worker is not None:
             body['worker'] = worker
+        if not _detail_allowed():
+            body = {'status': status}   # S-5.2: no feature matrix for the public
         return jsonify(body), (200 if db_ok else 503)
     except Exception as exc:
         # A probe must never raise — degrade gracefully.
         logging.warning("Readiness probe error: %s", exc)
-        return jsonify({
-            'db': False,
-            'catalog': False,
-            'openai': _openai_configured(),
-            'status': 'degraded',
-        }), 503
+        return jsonify({'status': 'degraded'}), 503

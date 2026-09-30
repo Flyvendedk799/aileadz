@@ -3,8 +3,8 @@ owned, plus boot-time verification and one-shot data migrations (N-3.4).
 
 How the schema story works now
 ------------------------------
-* ``enterprise_tables.enterprise_table_ddls()`` is the ONE list of CREATE TABLE
-  statements (core enterprise tables + ``REGISTRY_DDL`` below). Every table has
+* ``enterprise_tables.enterprise_table_ddls()`` is the ONE list of table
+  definitions (core enterprise tables + ``REGISTRY_DDL`` below). Every table has
   exactly one definition; a test fails if a second ``CREATE TABLE`` for the same
   name appears anywhere in the code base.
 * ``ensure_enterprise_tables`` still creates missing tables and adds missing
@@ -146,18 +146,6 @@ REGISTRY_DDL = [
         INDEX idx_osh_company (company_id, created_at)
     ) {_ENGINE}""",
 
-    f"""CREATE TABLE IF NOT EXISTS account_tokens (
-        id INT AUTO_INCREMENT PRIMARY KEY,
-        kind VARCHAR(40) NOT NULL,
-        subject_id INT NOT NULL,
-        token_hash VARCHAR(64) NOT NULL,
-        expires_at DATETIME NOT NULL,
-        used_at DATETIME NULL,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        INDEX idx_account_tokens_hash (token_hash),
-        INDEX idx_account_tokens_subject (kind, subject_id)
-    ) {_ENGINE}""",
-
     f"""CREATE TABLE IF NOT EXISTS webhook_deliveries (
         id INT AUTO_INCREMENT PRIMARY KEY,
         outbox_id INT NOT NULL,
@@ -286,6 +274,7 @@ REGISTRY_DDL = [
         company_id INT NULL,
         username VARCHAR(255) NULL,
         extra MEDIUMTEXT NULL,
+        reviewed TINYINT NOT NULL DEFAULT 0,
         INDEX idx_ai_events_session (session_id),
         INDEX idx_ai_events_type (event_type, timestamp),
         INDEX idx_ai_events_company (company_id, event_type)

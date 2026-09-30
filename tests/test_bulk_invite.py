@@ -39,8 +39,8 @@ class ScreenTests(unittest.TestCase):
     def setUp(self):
         self.db = SqliteMysql()
         self.db.execute("INSERT INTO companies (id, company_name) VALUES (7, 'Firma')")
-        self.db.execute("INSERT INTO users (id, username, email) VALUES (2, 'hr', 'hr@firma.dk'), (3, 'gammel', 'gammel@firma.dk')")
-        self.db.execute("INSERT INTO company_users (company_id, user_id, username, role, status) VALUES (7, 2, 'hr', 'hr_manager', 'active')")
+        self.db.execute("INSERT INTO users (id, username, email) VALUES (2, 'hr', 'hr@firma.dk'), (3, 'gammel', 'gammel@firma.dk'), (4, 'emp', 'emp@firma.dk')")
+        self.db.execute("INSERT INTO company_users (company_id, user_id, username, role, status) VALUES (7, 2, 'hr', 'hr_manager', 'active'), (7, 4, 'emp', 'employee', 'active')")
         app = run.create_app()
         app.config["TESTING"] = True
         app.mysql = self.db
@@ -54,7 +54,8 @@ class ScreenTests(unittest.TestCase):
     def client(self, role="hr_manager"):
         c = self.app.test_client()
         with c.session_transaction() as s:
-            s.update(user="hr", user_id=2, company_id=7, company_role=role, company_name="Firma")
+            s.update(user="hr" if role == "hr_manager" else "emp", user_id=2 if role == "hr_manager" else 4,
+                     company_id=7, company_role=role, company_name="Firma")
         return c
 
     def test_preview_changes_nothing_then_confirm_creates_and_invites(self):

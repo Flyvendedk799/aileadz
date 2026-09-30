@@ -5,7 +5,12 @@ Replaces the single-tenant reports.py with company-scoped analytics
 """
 
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
-from auth_decorators import require_company
+from auth_decorators import require_company, require_company_role
+
+# S-1.5: these pages expose colleagues' orders and PII (names, emails). Employees
+# must not reach them; department heads only get their own department view.
+_hr_only = require_company_role('company_admin', 'hr_manager')
+_hr_or_dept_head = require_company_role('company_admin', 'hr_manager', 'department_head')
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
@@ -101,7 +106,9 @@ def create_multitenant_reports_blueprint():
                 JOIN company_users cu ON c.id = cu.company_id
                 JOIN users u ON cu.user_id = u.id
                 WHERE u.username = %s AND cu.status = 'active'
-            """, (session['user'],))
+                  AND (%s IS NULL OR c.id = %s)
+                ORDER BY cu.added_at DESC
+            """, (session['user'], session.get('company_id'), session.get('company_id')))
             result = cur.fetchone()
             cur.close()
             return result
@@ -111,7 +118,7 @@ def create_multitenant_reports_blueprint():
 
     @multitenant_reports_bp.route('')
     @multitenant_reports_bp.route('/')
-    @require_company
+    @_hr_only
     def reports():
         """
         Company-specific reports dashboard
@@ -531,14 +538,14 @@ def create_multitenant_reports_blueprint():
         )
 
     @multitenant_reports_bp.route('/order/<order_id>')
-    @require_company
+    @_hr_only
     def order_detail(order_id):
         """Canonical order detail lives in the HR workspace (N-4.1); this copy
         redirects there so old links keep working."""
         return redirect(url_for('hr_dashboard.company_order_details', order_id=order_id))
 
     @multitenant_reports_bp.route('/order/<order_id>/update', methods=['POST'])
-    @require_company
+    @_hr_only
     def update_order_status(order_id):
         """Update order status (company-scoped). Only HR managers and company
         admins. Goes through the ONE order service (transition rules, budget
@@ -580,7 +587,7 @@ def create_multitenant_reports_blueprint():
             return jsonify({'success': False, 'message': 'Der opstod en fejl ved opdatering af ordren.'}), 500
 
     @multitenant_reports_bp.route('/analytics/export')
-    @require_company
+    @_hr_only
     def export_analytics():
         """
         Export company-specific analytics data as JSON
@@ -702,7 +709,7 @@ def create_multitenant_reports_blueprint():
         return response
 
     @multitenant_reports_bp.route('/department/<department_name>')
-    @require_company
+    @_hr_or_dept_head
     def department_analytics(department_name):
         """Merged into the one "Mit team" page (N-3.5). Permission is enforced
         there: HR roles may open any department, others only their own."""

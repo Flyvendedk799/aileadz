@@ -478,10 +478,17 @@ OpenAI even when the chat runs on Claude; `AI_USER_KNOWLEDGE_EMBEDDINGS=0` keeps
 it keyword-only.
 
 **HR learner context — `learner_context.py`.** The learner's own assigned
-paths/progress, HR skill-matrix gaps, department targets and (behind
-`AI_LEARNER_HR_GOALS`, default off) HR-written goals, each source degrading
-independently; 120 s cache. `employee_skills_matrix` / `employee_goals` are keyed
-on `users.id` (= `company_users.user_id`).
+paths/progress, HR skill-matrix gaps, department targets and HR-written goals,
+each source degrading independently; 120 s cache. `employee_skills_matrix` /
+`employee_goals` are keyed on `users.id` (= `company_users.user_id`).
+
+*HR-written goals are opt-in per goal (S-4.4).* Only goals HR toggled **"Del med
+medarbejder"** (`employee_goals.shared_with_employee = 1`) are ever read here; the
+predicate lives in `goal_sharing.SHARED_PREDICATE` and every learner-facing query
+carries it (a test scans the repo for unfiltered reads). On top of that sits a
+company-level switch, `company_settings.ai_learner_hr_goals` (default on), and
+`AI_LEARNER_HR_GOALS=0` as a platform-wide kill switch. Unshared goals never reach
+the learner UI, the AI context or the learner's own data export.
 
 **Platform help — `app1/help_kb.py` + `app1/help_kb/*.md`.** 13 curated Danish
 articles, each URL pinned by a drift test. **`search_platform_help`** reaches the
@@ -583,7 +590,7 @@ vendor can never reach another vendor's or any buyer's data.
 | `AI_TOKEN_CHARS_PER_TOKEN` | 4.0 (examples 3.5) | token estimator divisor (Danish tokenizes worse) |
 | `AI_SESSION_SUMMARY_MODE` | llm | per-session digests: `llm` (fast tier) or `rules` |
 | `AI_USER_KNOWLEDGE` / `AI_USER_KNOWLEDGE_EMBEDDINGS` | on / on | semantic user index / its OpenAI embeddings |
-| `AI_LEARNER_HR_CONTEXT` / `AI_LEARNER_HR_GOALS` | on / **off** | HR learner context / HR-written goals (needs privacy sign-off) |
+| `AI_LEARNER_HR_CONTEXT` / `AI_LEARNER_HR_GOALS` | on / on | HR learner context / kill switch for SHARED HR goals (per-goal sharing + a company setting decide what is actually read) |
 | `AI_HELP_KB` | on | platform help tool |
 
 ---

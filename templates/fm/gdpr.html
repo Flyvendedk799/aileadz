@@ -6,6 +6,40 @@
 {% block content %}
 <div class="fm-wrap" style="max-width:920px">
 
+  <!-- ── Åbne anmodninger (DSR, frist 30 dage) ── -->
+  <div class="fm-card" style="padding:22px;margin-bottom:18px" id="dsr-queue">
+    <div class="fm-spread" style="margin-bottom:10px">
+      <h3 style="font-size:16px;font-weight:700"><i class="fa-solid fa-inbox"></i> Anmodninger fra brugere</h3>
+      <span class="fm-badge {{ 'amber' if dsr_requests else '' }}">{{ (dsr_requests or [])|length }} åbne</span>
+    </div>
+    {% if dsr_requests %}
+    <table class="fm-table">
+      <thead><tr><th>Bruger</th><th>Type</th><th>Modtaget</th><th>Frist</th><th></th></tr></thead>
+      <tbody>
+        {% for r in dsr_requests %}
+        <tr>
+          <td>{{ r.username or 'ukendt' }}<div style="font-size:11.5px;color:var(--fm-ink-3)">{{ r.email or '' }}</div></td>
+          <td>{{ 'Sletning' if r.request_type == 'erasure' else 'Eksport' }}</td>
+          <td class="tnum">{{ r.requested_at.strftime('%d.%m.%Y') if r.requested_at else '' }}</td>
+          <td class="tnum">{{ r.due_at.strftime('%d.%m.%Y') if r.due_at else '' }}
+            {% if r.overdue %}<span class="fm-badge red">Overskredet</span>{% endif %}</td>
+          <td style="text-align:right;white-space:nowrap">
+            <a class="btn btn-soft btn-sm" href="{{ url_for('gdpr.admin_console', username=r.username) }}"><i class="fa-solid fa-magnifying-glass"></i> Åbn</a>
+            <form method="post" action="{{ url_for('gdpr.dsr_reject', request_id=r.id) }}" style="display:inline"
+                  onsubmit="return confirm('Afvis og luk anmodningen?');">
+              <input type="hidden" name="note" value="Afvist af administrator">
+              <button type="submit" class="btn btn-ghost btn-sm"><i class="fa-solid fa-ban"></i> Afvis</button>
+            </form>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p style="color:var(--fm-ink-3);font-size:13px;margin:0">Ingen åbne anmodninger. Nye anmodninger fra brugere vises her med en frist på 30 dage.</p>
+    {% endif %}
+  </div>
+
   <!-- ── Lookup + export ── -->
   <div class="fm-card" style="padding:22px;margin-bottom:18px">
     <h3 style="font-size:16px;font-weight:700;margin-bottom:4px"><i class="fa-solid fa-magnifying-glass"></i> Slå datasubjekt op</h3>

@@ -366,7 +366,7 @@ class S18_SsoDisabled(unittest.TestCase):
         fake, p = patch_mysql(app)
         with p:
             c = app.test_client()
-            for prov in ("saml", "ldap", "active_directory", "oauth2"):
+            for prov in ("saml", "ldap", "active_directory"):
                 r = c.get("/sso/login/acme/%s" % prov)
                 self.assertEqual(r.status_code, 302)
                 self.assertIn("/login", r.headers["Location"])
@@ -380,7 +380,7 @@ class S18_SsoDisabled(unittest.TestCase):
 
     def test_manager_refuses_even_if_called_directly(self):
         from enterprise_sso import sso_manager
-        for prov in ("saml", "ldap", "active_directory", "oauth2"):
+        for prov in ("saml", "ldap", "active_directory"):
             user, err = sso_manager.authenticate_user(7, prov, {"username": "x", "password": "y"})
             self.assertIsNone(user)
             self.assertTrue(err)

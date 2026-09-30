@@ -5,7 +5,7 @@ Two capabilities for a Danish HR-SaaS procurement gate:
 
   1. EXPORT  — gather *all* PII the platform holds about one data subject
               (keyed by username) into a JSON-serialisable structure, plus a
-              best-effort pull from the orphaned ai_memory.db (browser-token
+              best-effort pull from the SQLite ai_memory.db AI store (browser-token
               anonymous profiles) when a token is linkable.
 
   2. ERASE   — the GDPR "right to be forgotten". DESTRUCTIVE. Two classes:
@@ -181,7 +181,8 @@ _EXPORT_QUERIES = [
 ]
 
 # Columns scrubbed from any exported row so we never hand a password hash back.
-_REDACT_COLUMNS = {"password", "password_hash", "pwd", "hashed_password"}
+_REDACT_COLUMNS = {"password", "password_hash", "pwd", "hashed_password",
+                   "secret_enc", "backup_codes", "token_hash"}
 
 
 def _redact(rows):
@@ -195,7 +196,7 @@ def _redact(rows):
 
 
 # ---------------------------------------------------------------------------
-# ai_memory.db (SQLite, orphaned) — best-effort, browser-token keyed
+# ai_memory.db (SQLite AI store) — best-effort, browser-token / session-id keyed
 # ---------------------------------------------------------------------------
 
 def _collect_ai_memory(username, browser_token=None, session_id=None):
@@ -245,7 +246,7 @@ def _collect_ai_memory(username, browser_token=None, session_id=None):
 # COLLECT  /  EXPORT
 # ---------------------------------------------------------------------------
 
-def collect_user_data(username, *, browser_token=None, session_id=None):
+def collect_user_data(username, *, browser_token=None, session_id=None, learner_view=False):
     """Gather ALL PII the platform holds about `username` into one dict.
 
     Returns a JSON-serialisable dict. Never raises — on a hard failure it
@@ -276,6 +277,17 @@ def collect_user_data(username, *, browser_token=None, session_id=None):
                 if table == "users":
                     rows = _redact(rows)
                 report["tables"][table] = rows
+            # S-4.1: everything keyed by users.id / e-mail / session ids as well.
+            subject = resolve_subject(conn, username)
+            report["subject"] = {
+                "user_id": subject.get("user_id"),
+                "emails": subject.get("emails"),
+                "company_user_ids": subject.get("member_ids"),
+                "ai_session_count": len(subject.get("session_ids") or []),
+            }
+            report["tables"].update(_extra_export_rows(conn, subject, learner_view=learner_view))
+            # The SQLite AI store (feedback, debug log, latency) for the subject's sessions.
+            report["ai_store"] = _sqlite_ai_store_plan(subject, browser_token)
         except Exception as exc:  # pragma: no cover - defensive
             logger.warning("gdpr_service.collect_user_data fejlede: %s", exc)
             report["errors"].append(f"Delvis eksport: {exc}")
@@ -295,12 +307,12 @@ def collect_user_data(username, *, browser_token=None, session_id=None):
     return report
 
 
-def export_user_data(username, *, browser_token=None, session_id=None, indent=2):
+def export_user_data(username, *, browser_token=None, session_id=None, indent=2, learner_view=False):
     """Collect + serialise to a downloadable JSON string (UTF-8, Danish-safe).
 
     Returns a `str`. Use .encode('utf-8') for a bytes download body."""
     data = collect_user_data(
-        username, browser_token=browser_token, session_id=session_id
+        username, browser_token=browser_token, session_id=session_id, learner_view=learner_view
     )
     try:
         return json.dumps(data, ensure_ascii=False, indent=indent, default=_json_safe)
@@ -408,6 +420,29 @@ def _count(conn, table, where_col, username):
                 pass
 
 
+def _count_where(conn, table, where, params):
+    """COUNT rows matching an already-built WHERE (S-4.1). 0 on any error."""
+    cur = None
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT COUNT(*) FROM `%s` WHERE %s" % (table, where), tuple(params))
+        row = cur.fetchone()
+        if row is None:
+            return 0
+        if isinstance(row, dict):
+            return int(list(row.values())[0] or 0)
+        return int(row[0] or 0)
+    except Exception as exc:
+        logger.warning("gdpr_service: COUNT %s fejlede: %s", table, exc)
+        return 0
+    finally:
+        if cur is not None:
+            try:
+                cur.close()
+            except Exception:
+                pass
+
+
 def _erase_ai_memory(browser_token=None, session_id=None):
     """Best-effort erase of the anonymous SQLite rows for this token/session.
 
@@ -496,6 +531,13 @@ def erase_user_data(username, *, actor, dry_run=False, browser_token=None, sessi
         return report
     conn = mysql.connection
 
+    # S-4.1: resolve the full identity FIRST (the anonymise steps below blank
+    # the e-mail / username that the lookups need).
+    subject = resolve_subject(conn, username)
+    report["subject"] = {"user_id": subject.get("user_id"), "emails": subject.get("emails"),
+                         "company_user_ids": subject.get("member_ids"),
+                         "ai_session_count": len(subject.get("session_ids") or [])}
+
     # ---- Plan (always computed; this is the whole dry-run output) ----
     for table, where_col in _DELETE_TABLES:
         n = _count(conn, table, where_col, username)
@@ -503,6 +545,20 @@ def erase_user_data(username, *, actor, dry_run=False, browser_token=None, sessi
     for table, where_col, _set, note, _extra in _ANONYMISE_TABLES:
         n = _count(conn, table, where_col, username)
         report["anonymised"][table] = {"action": note, "rows": n}
+    _ACTION_NOTE = {"delete": "slet (hard delete)", "anonymise": "anonymiseret (identitet fjernet, posten bevares)",
+                    "pseudonymise": "pseudonymiseret (revisionsspor bevares uden personen)"}
+    legacy_rows = {t: v.get("rows", 0) for b in (report["deleted"], report["anonymised"]) for t, v in b.items()}
+    extra_rows = {}
+    for spec in EXTRA_SPECS:
+        where, wparams = _build_where(spec, subject)
+        n = _count_where(conn, _spec_table(spec), where, wparams) if where else 0
+        key = _spec_table(spec)
+        extra_rows[key] = extra_rows.get(key, 0) + n   # twin specs (same table) add up
+        bucket = report["deleted"] if spec["kind"] == "delete" else report["anonymised"]
+        bucket[key] = {"action": _ACTION_NOTE[spec["kind"]],
+                       # legacy + identity-keyed specs can match the SAME rows: show the larger
+                       "rows": max(legacy_rows.get(key, 0), extra_rows[key])}
+    report["ai_store"] = _sqlite_ai_store_plan(subject, browser_token)
 
     if dry_run:
         report["ok"] = True
@@ -554,6 +610,29 @@ def erase_user_data(username, *, actor, dry_run=False, browser_token=None, sessi
                     "rows": 0, "error": str(exc),
                 }
                 report["errors"].append(f"{table}: {exc}")
+        # S-4.1: identity-keyed tables (users.id / e-mail / AI session ids).
+        exec_rows = {}
+        for spec in EXTRA_SPECS:
+            table = _spec_table(spec)
+            where, wparams = _build_where(spec, subject)
+            bucket = report["deleted"] if spec["kind"] == "delete" else report["anonymised"]
+            if not where:
+                bucket.setdefault(table, {"action": _ACTION_NOTE[spec["kind"]], "rows": 0})
+                continue
+            try:
+                if spec["kind"] == "delete":
+                    cur.execute("DELETE FROM `%s` WHERE %s" % (table, where), tuple(wparams))
+                else:
+                    set_sql, set_params = _set_clause(spec, subject)
+                    cur.execute("UPDATE `%s` SET %s WHERE %s" % (table, set_sql, where),
+                                tuple(set_params) + tuple(wparams))
+                exec_rows[table] = exec_rows.get(table, 0) + int(cur.rowcount or 0)
+                before = legacy_rows.get(table, 0)
+                bucket[table] = {"action": _ACTION_NOTE[spec["kind"]].replace("slet (hard delete)", "slettet"),
+                                 "rows": max(before, exec_rows[table])}
+            except Exception as exc:
+                bucket[table] = {"action": "sprunget over (tabel/kolonne mangler)", "rows": 0, "error": str(exc)}
+                report["errors"].append(f"{table}: {exc}")
         conn.commit()
         # ok = the erasure ran; errors[] lists any tables skipped for schema drift.
         report["ok"] = True
@@ -582,5 +661,349 @@ def erase_user_data(username, *, actor, dry_run=False, browser_token=None, sessi
     report["ai_memory"] = _erase_ai_memory(
         browser_token=browser_token, session_id=session_id
     )
+    # S-4.1: the SQLite AI store is linked to the subject through the session ids
+    # collected above (it is written on every turn, so it is NOT orphaned).
+    report["ai_store"] = _sqlite_ai_store_erase(subject, browser_token)
 
     return report
+
+# ===========================================================================
+# S-4.1  Identity-based coverage
+#
+# The original lists above are keyed by USERNAME only. That misses:
+#   * people created by SSO / SCIM, whose company_users rows carry an e-mail
+#     and (now) a users.id but may not match on username;
+#   * every table keyed by users.id or e-mail instead of username (the
+#     employee_* tables, email_log, order_approvals, reviews, 2FA, reset tokens,
+#     AI run logs, HR chatbot history);
+#   * audit_log (must be PSEUDONYMISED, never deleted);
+#   * the SQLite AI store (feedback, debug logs, latency, anonymous profiles),
+#     which used to be written to on every turn yet called "orphaned".
+#
+# Everything below is driven by ``resolve_subject`` (username + users.id + all
+# e-mail addresses + company_users ids + AI session ids) and by the declarative
+# ``EXTRA_SPECS``. ``COVERAGE`` is the registry that tests/test_gdpr_table_coverage
+# checks against every CREATE TABLE in the code base: a new table with personal
+# data that is not listed here fails the build.
+# ===========================================================================
+
+import hashlib
+
+
+def _pseudonym(subject):
+    seed = "%s|%s" % (subject.get("user_id") or "", subject.get("username") or "")
+    return "slettet-bruger-" + hashlib.sha256(seed.encode("utf-8")).hexdigest()[:8]
+
+
+def resolve_subject(conn, username=None, *, user_id=None, email=None):
+    """Everything that identifies one data subject across the schema.
+
+    Returns ``{username, user_id, emails, member_ids, company_ids, session_ids}``.
+    Each lookup is best effort and read-only."""
+    subject = {
+        "username": (username or "").strip() or None,
+        "user_id": user_id,
+        "emails": [],
+        "member_ids": [],
+        "company_ids": [],
+        "session_ids": [],
+    }
+    emails = set()
+    if email:
+        emails.add(email.strip().lower())
+
+    rows = []
+    if subject["username"]:
+        rows = _fetch_all(conn, "SELECT id, username, email FROM users WHERE username=%s", (subject["username"],))
+    elif user_id:
+        rows = _fetch_all(conn, "SELECT id, username, email FROM users WHERE id=%s", (user_id,))
+    elif email:
+        rows = _fetch_all(conn, "SELECT id, username, email FROM users WHERE LOWER(email)=%s", (email.strip().lower(),))
+    if rows and isinstance(rows[0], dict):
+        subject["user_id"] = rows[0].get("id")
+        subject["username"] = subject["username"] or rows[0].get("username")
+        if rows[0].get("email"):
+            emails.add(str(rows[0]["email"]).strip().lower())
+
+    # company_users: match on users.id, username OR e-mail (SCIM/SSO rows).
+    member_rows = []
+    conds, params = [], []
+    if subject["user_id"]:
+        conds.append("user_id=%s")
+        params.append(subject["user_id"])
+    if subject["username"]:
+        conds.append("username=%s")
+        params.append(subject["username"])
+    for e in sorted(emails):
+        conds.append("LOWER(email)=%s")
+        params.append(e)
+    if conds:
+        member_rows = _fetch_all(conn, "SELECT id, company_id, email FROM company_users WHERE " + " OR ".join(conds), tuple(params))
+    for r in member_rows:
+        if not isinstance(r, dict):
+            continue
+        subject["member_ids"].append(r.get("id"))
+        if r.get("company_id") is not None:
+            subject["company_ids"].append(r.get("company_id"))
+        if r.get("email"):
+            emails.add(str(r["email"]).strip().lower())
+    subject["emails"] = sorted(emails)
+    subject["company_ids"] = sorted(set(subject["company_ids"]))
+
+    sessions = set()
+    if subject["username"]:
+        for table in ("conversation_history", "user_conversations", "user_active_sessions",
+                      "chatbot_interactions", "hr_chatbot_interactions", "ai_agent_runs"):
+            for r in _fetch_all(conn, "SELECT DISTINCT session_id FROM `%s` WHERE username=%%s" % table,
+                                (subject["username"],)):
+                if isinstance(r, dict) and r.get("session_id"):
+                    sessions.add(str(r["session_id"]))
+    subject["session_ids"] = sorted(sessions)
+    return subject
+
+
+def _in_clause(values):
+    return "(" + ",".join(["%s"] * len(values)) + ")"
+
+
+def _build_where(spec, subject):
+    """(sql, params) for a spec's OR-ed ``match`` terms AND-ed with ``extra``.
+    Returns (None, None) when the subject has no value for any term."""
+    parts, params = [], []
+    for col, field in spec["match"]:
+        if field == "username":
+            vals = [subject["username"]] if subject.get("username") else []
+        elif field == "user_id":
+            vals = [subject["user_id"]] if subject.get("user_id") is not None else []
+        elif field == "user_id_or_member":
+            vals = ([subject["user_id"]] if subject.get("user_id") is not None else []) + list(subject.get("member_ids") or [])
+        elif field == "email":
+            vals = list(subject.get("emails") or [])
+        elif field == "session_id":
+            vals = list(subject.get("session_ids") or [])
+        else:  # pragma: no cover - programming error
+            raise ValueError("unknown subject field %r" % field)
+        vals = [v for v in vals if v is not None]
+        if not vals:
+            continue
+        if len(vals) == 1:
+            parts.append("LOWER(`%s`)=%%s" % col if field == "email" else "`%s`=%%s" % col)
+        else:
+            parts.append("LOWER(`%s`) IN %s" % (col, _in_clause(vals)) if field == "email"
+                         else "`%s` IN %s" % (col, _in_clause(vals)))
+        params.extend(vals)
+    if not parts:
+        return None, None
+    sql = "(" + " OR ".join(parts) + ")"
+    extra = spec.get("extra")
+    if extra:
+        if extra == "company_scope":
+            cids = subject.get("company_ids") or []
+            if not cids:
+                return None, None
+            sql += " AND `company_id` IN " + _in_clause(cids)
+            params.extend(cids)
+        else:
+            sql += " AND " + extra
+    return sql, params
+
+
+# kind: delete | anonymise | pseudonymise.  set: SQL SET fragment ('%s' params
+# from ``set_params(subject)``); match: [(column, subject-field)], OR-ed.
+EXTRA_SPECS = [
+    # --- hard deletes (personal, no audit/financial value) ---------------
+    dict(kind="delete", table="ai_agent_runs", match=[("username", "username")]),
+    dict(kind="delete", table="ai_tool_runs", match=[("username", "username")]),
+    dict(kind="delete", table="hr_chatbot_interactions", match=[("username", "username")]),
+    dict(kind="delete", table="ai_cv_parse_jobs", match=[("session_id", "session_id")]),
+    dict(kind="delete", table="ai_confirm_tokens", match=[("session_id", "session_id")]),
+    dict(kind="delete", table="employee_learning_progress", match=[("user_id", "user_id")]),
+    dict(kind="delete", table="employee_skills_matrix", match=[("employee_id", "user_id")], extra="company_scope"),
+    dict(kind="delete", table="employee_goals", match=[("employee_id", "user_id")], extra="company_scope"),
+    dict(kind="delete", table="employee_performance_reviews", match=[("employee_id", "user_id")], extra="company_scope"),
+    # skill history is written with users.id by HR screens and company_users.id by the profile path.
+    dict(kind="delete", table="employee_skill_history", match=[("employee_id", "user_id_or_member")], extra="company_scope"),
+    dict(kind="delete", table="user_2fa", match=[("user_id", "user_id")]),
+    dict(kind="delete", table="password_reset_tokens", match=[("account_id", "user_id")], extra="`account_type`='user'"),
+    dict(kind="delete", table="email_log", match=[("to_email", "email")]),
+    # --- anonymise in place (business / accounting records survive) -------
+    dict(kind="anonymise", table="course_orders", match=[("user_id", "user_id"), ("user_email", "email")],
+         set="user_email=NULL, user_name=NULL, user_phone=NULL, user_id=NULL"),
+    dict(kind="anonymise", table="course_reviews", match=[("user_id", "user_id"), ("username", "username")],
+         set="username=NULL, user_id=NULL"),
+    dict(kind="anonymise", table="order_approvals", match=[("requester_user_id", "user_id")], set="requester_user_id=0"),
+    dict(kind="anonymise", table="order_approvals#approver", match=[("approver_user_id", "user_id")],
+         set="approver_user_id=NULL", real_table="order_approvals"),
+    dict(kind="anonymise", table="company_users", match=[("user_id", "user_id"), ("email", "email")],
+         set="status='inactive', full_name=NULL, email=NULL, phone=NULL, username=NULL, employee_id=NULL"),
+    dict(kind="anonymise", table="users", match=[("id", "user_id")], set="password='!erased'"),
+    # The DSR ticket is proof the request was handled; it keeps status/dates, not the person.
+    dict(kind="anonymise", table="dsr_requests", match=[("user_id", "user_id"), ("email", "email")],
+         set="user_id=NULL, username=NULL, email=NULL, reason=NULL"),
+    # --- pseudonymise: audit trail stays, the person does not -------------
+    dict(kind="pseudonymise", table="audit_log", match=[("user_id", "user_id")],
+         set="user_id=NULL, ip_address=NULL, user_agent=NULL"),
+    dict(kind="pseudonymise", table="audit_log#subject", match=[("resource_id", "username")],
+         extra="`resource_type` IN ('gdpr','user')", set="ip_address=NULL", real_table="audit_log"),
+]
+
+_AUDIT_TEXT_COLUMNS = ("description", "details")
+
+EXTRA_EXPORT_REDACT = {
+    "user_2fa": "SELECT user_id, enabled, enabled_at, created_at FROM user_2fa WHERE user_id=%s",
+    "password_reset_tokens": "SELECT id, account_type, account_id, purpose, created_at, expires_at, used_at "
+                             "FROM password_reset_tokens WHERE account_type='user' AND account_id=%s",
+}
+
+
+def _spec_table(spec):
+    return spec.get("real_table") or spec["table"]
+
+
+def _set_clause(spec, subject):
+    """(sql fragment, params). audit_log rows also get usernames / e-mails
+    replaced in their free text by a stable pseudonym."""
+    sql, params = spec.get("set", ""), []
+    if spec["kind"] == "pseudonymise":
+        ident = [v for v in [subject.get("username")] + list(subject.get("emails") or []) if v]
+        pseudo = _pseudonym(subject)
+        fragments = []
+        for col in _AUDIT_TEXT_COLUMNS:
+            expr = "`%s`" % col
+            for v in ident:
+                expr = "REPLACE(%s, %%s, %%s)" % expr
+                params.extend([v, pseudo])
+            fragments.append("`%s`=%s" % (col, expr))
+        # params order: each column's REPLACE chain in sequence
+        sql = (sql + ", " if sql else "") + ", ".join(fragments)
+    return sql, params
+
+
+def _extra_export_rows(conn, subject, learner_view=False):
+    """Rows for the export. ``learner_view`` (the person's OWN download) leaves out
+    HR-only goals -- unshared goals never reach learner-facing output (S-4.4)."""
+    out = {}
+    for spec in EXTRA_SPECS:
+        table = _spec_table(spec)
+        if spec["table"] != table:
+            continue  # the "#variant" twins export as their base table
+        if table in ("users", "company_users", "course_orders"):
+            continue  # already exported by the legacy queries
+        if table in EXTRA_EXPORT_REDACT and subject.get("user_id") is not None:
+            out[table] = _fetch_all(conn, EXTRA_EXPORT_REDACT[table], (subject["user_id"],))
+            continue
+        where, params = _build_where(spec, subject)
+        if not where:
+            out[table] = []
+            continue
+        if learner_view and table == "employee_goals":
+            where += " AND shared_with_employee = 1"
+        out[table] = _fetch_all(conn, "SELECT * FROM `%s` WHERE %s" % (table, where), tuple(params))
+    return out
+
+
+def _sqlite_ai_store_plan(subject, browser_token=None):
+    """Counts of SQLite AI-store rows tied to this subject (by session id /
+    browser token). Read-only; empty when there is nothing to link."""
+    plan = {}
+    sessions = list(subject.get("session_ids") or [])
+    try:
+        from app1 import memory_store
+        conn = memory_store._get_conn()
+    except Exception as exc:
+        return {"error": str(exc)}
+    if sessions:
+        marks = ",".join("?" * len(sessions))
+        for tbl in ("sessions", "analytics", "debug_logs", "latency_logs"):
+            try:
+                row = conn.execute("SELECT COUNT(*) FROM %s WHERE session_id IN (%s)" % (tbl, marks), sessions).fetchone()
+                plan[tbl] = int(row[0] if row else 0)
+            except Exception:
+                plan[tbl] = 0
+    if browser_token:
+        try:
+            row = conn.execute("SELECT COUNT(*) FROM anonymous_profiles WHERE browser_token = ?", (browser_token,)).fetchone()
+            plan["anonymous_profiles"] = int(row[0] if row else 0)
+        except Exception:
+            plan["anonymous_profiles"] = 0
+    return plan
+
+
+def _sqlite_ai_store_erase(subject, browser_token=None):
+    sessions = list(subject.get("session_ids") or [])
+    deleted = {}
+    try:
+        from app1 import memory_store
+        conn = memory_store._get_conn()
+    except Exception as exc:
+        return {"error": str(exc)}
+    try:
+        if sessions:
+            marks = ",".join("?" * len(sessions))
+            for tbl in ("sessions", "analytics", "debug_logs", "latency_logs"):
+                try:
+                    cur = conn.execute("DELETE FROM %s WHERE session_id IN (%s)" % (tbl, marks), sessions)
+                    deleted[tbl] = int(cur.rowcount or 0)
+                except Exception:
+                    deleted[tbl] = 0
+        if browser_token:
+            cur = conn.execute("DELETE FROM anonymous_profiles WHERE browser_token = ?", (browser_token,))
+            deleted["anonymous_profiles"] = int(cur.rowcount or 0)
+        conn.commit()
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return {"error": str(exc)}
+    return deleted
+
+
+# Registry checked by tests/test_gdpr_table_coverage.py against every CREATE TABLE.
+# disposition: delete | anonymise | pseudonymise | retain.  ``retain`` needs a reason.
+def _cov(disposition, note=""):
+    return (disposition, note)
+
+
+COVERAGE = {
+    # --- profile / AI state: hard delete (legacy username lists) ---------
+    **{t: _cov("delete") for t in (
+        "user_skills", "user_experience", "user_education", "user_completed_courses",
+        "user_profile_summary", "user_conversations", "conversation_history", "user_learning_goals",
+        "user_learning_paths", "user_certifications", "user_languages", "user_portfolio_links",
+        "user_memories", "user_active_sessions", "user_conversation_summaries", "user_knowledge",
+        "notifications",
+        "ai_agent_runs", "ai_tool_runs", "hr_chatbot_interactions", "ai_cv_parse_jobs", "ai_confirm_tokens",
+        "employee_learning_progress", "employee_skills_matrix", "employee_goals",
+        "employee_performance_reviews", "employee_skill_history", "user_2fa", "password_reset_tokens",
+        "email_log",
+        # SQLite AI store: erased through the subject's session ids / browser token
+        "sessions", "analytics", "debug_logs", "latency_logs", "anonymous_profiles",
+    )},
+    # --- survive for accounting / audit, identity removed ----------------
+    "course_orders": _cov("anonymise"),
+    "course_reviews": _cov("anonymise"),
+    "order_approvals": _cov("anonymise"),
+    "company_users": _cov("anonymise"),
+    "chatbot_interactions": _cov("anonymise"),
+    "users": _cov("anonymise"),
+    "dsr_requests": _cov("anonymise", "ticket kept as proof of handling; identity removed on completion"),
+    "audit_log": _cov("pseudonymise", "actor id nulled, usernames/e-mails in free text replaced by a stable pseudonym"),
+    # --- no natural person inside (company/system configuration & counters)
+    **{t: _cov("retain", "company or system data; no natural-person identifier") for t in (
+        "companies", "company_analytics", "company_api_keys", "company_approval_policies", "company_brand_assets",
+        "company_course_activations", "company_courses", "company_custom_code", "company_departments",
+        "company_insights", "company_report_schedules", "company_settings", "company_skill_targets",
+        "company_sso_configs", "company_supplier_agreements", "company_supplier_preferences",
+        "company_theme_templates", "company_webhooks", "company_widget_settings", "compliance_requirements",
+        "department_budgets", "learning_paths", "vendor_submissions", "vendors", "ai_secrets", "ai_settings",
+        "api_auth_attempts", "api_rate_limit_counters", "auth_login_attempts", "scheduled_job_runs",
+        "widget_ask_rate_counters",
+    )},
+    # --- short-lived operational data: purged by the retention job (S-4.3) ---
+    "api_request_logs": _cov("retain", "system caller (API key), purged by retention_service"),
+    "company_settings_history": _cov("retain", "company admin change history (ip), purged by retention_service"),
+    "company_notifications": _cov("retain", "company broadcasts; purged by retention_service"),
+    "event_outbox": _cov("retain", "delivery queue; delivered rows purged by retention_service"),
+    "hr_notification_queue": _cov("retain", "transient queue; purged by retention_service"),
+}

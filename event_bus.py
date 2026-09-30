@@ -277,31 +277,32 @@ def _deliver_to_subscribers(conn, row, company_slug):
             continue
         matched += 1
 
-        # SSRF guard: never fetch a tenant-supplied URL that is not a public
-        # http/https endpoint. A rejected URL is a delivery failure.
-        if not _safe_webhook_url(url):
-            errors.append("webhook %s: blocked unsafe url" % wh_id)
-            _bump_webhook_stats(conn, wh_id, ok=False)
-            continue
-
+        # S-3.3: SSRF-safe delivery. The hostname is resolved once, every
+        # address must be public, the socket connects to that exact IP, and
+        # redirects are NEVER followed (a 3xx is a failed delivery).
         try:
+            import safe_http
+            import webhook_signing
             body = json.dumps({
                 'event': event_type,
                 'data': data,
                 'timestamp': datetime.now().isoformat(),
                 'company_slug': company_slug,
             }).encode()
-            sig = hmac.new(str(secret).encode(), body, hashlib.sha256).hexdigest()
-            req = urllib.request.Request(
-                url, data=body,
+            signature, ts = webhook_signing.sign(secret, body)
+            ok, detail = safe_http.post_json(
+                url, body,
                 headers={
-                    'Content-Type': 'application/json',
-                    'X-Webhook-Signature': sig,
+                    'X-Webhook-Signature': signature,
+                    'X-Webhook-Timestamp': str(ts),
+                    'X-Webhook-Id': str(row.get('id') or ''),
                     'X-Company-Slug': company_slug or '',
                     'X-Event-Type': event_type,
                 },
+                timeout=DELIVERY_TIMEOUT_SECONDS,
             )
-            urllib.request.urlopen(req, timeout=DELIVERY_TIMEOUT_SECONDS)
+            if not ok:
+                raise RuntimeError(detail)
             _bump_webhook_stats(conn, wh_id, ok=True)
         except Exception as e:
             errors.append("webhook %s: %s" % (wh_id, e))

@@ -403,6 +403,23 @@ def create_app():
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
 
+    # Part A (security/privacy) schema: goal-sharing columns, DSR tickets, 2FA,
+    # reset tokens. Runs once per worker, fully guarded, never blocks a request.
+    @app.before_request
+    def _ensure_security_schema_once():
+        if getattr(app, '_security_schema_ensured', False) or app.config.get('TESTING'):
+            return
+        app._security_schema_ensured = True
+        try:
+            conn = app.mysql.connection
+            import goal_sharing, dsr_service, two_factor, password_tokens
+            goal_sharing.ensure_schema(conn)
+            dsr_service.ensure_table(conn)
+            two_factor.ensure_table(conn)
+            password_tokens.ensure_table(conn)
+        except Exception as e:
+            logging.warning("Security schema init: %s", e)
+
     # Hot-path performance indexes. Runs once per worker process (its own flag,
     # deliberately NOT gated by the enterprise-sync TTL stamp) so a `git pull` +
     # web-app reload applies the indexes on the next request without a manual

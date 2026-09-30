@@ -294,6 +294,13 @@ def create_app():
     from health import health_bp
     app.register_blueprint(health_bp)
 
+    # AI-usage credit screens (N-6.4).
+    try:
+        from credit_routes import credit_bp
+        app.register_blueprint(credit_bp)
+    except Exception as e:
+        logging.warning("Credit routes skipped: %s", e)
+
     # Defensive HTTP response headers (nosniff, frame options, report-only CSP).
     # Guarded so a failure here can never crash create_app().
     try:
@@ -433,6 +440,8 @@ def create_app():
     # Capability-aware navigation helpers (can(), has_endpoint()).
     import capabilities
     capabilities.register_jinja(app)
+    import credit_service
+    credit_service.register_jinja(app)
 
     # Danish 404/500 pages, JSON for API callers (N-0.3).
     from error_pages import register_error_handlers

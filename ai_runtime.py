@@ -1890,6 +1890,15 @@ def log_agent_run(
     self_eval_score: Optional[float] = None,
     grounding_violation: Optional[bool] = None,
 ) -> None:
+    # N-6.4: every AI turn is metered through the credit ledger, independent of
+    # the trace sampling rate below (shadow calls are not billed).
+    try:
+        import credit_service
+        credit_service.charge_from_usage(
+            mysql, username=username, company_id=company_id, agent_scope=agent_scope,
+            model=model, usage=usage, runtime=runtime)
+    except Exception:
+        pass
     if not mysql or trace_sample_rate() <= 0:
         return
     try:

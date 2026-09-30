@@ -1,0 +1,32 @@
+{# Reusable usage block (N-6.4). Expects `summary` from credit_service.usage_summary().
+   Used by /hr/credits and includable on "Mit forbrug". #}
+{% if summary %}
+<div class="kpi-row k4" style="margin-bottom:16px">
+  <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Forbrugt ({{ summary.days }} dage)</div><div class="kv tnum">{{ summary.total }}</div><div class="kd">kreditter</div></div></div>
+  <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-comments"></i></span><div><div class="kl">AI-svar</div><div class="kv tnum">{{ summary.turns }}</div><div class="kd">i perioden</div></div></div>
+  {% if summary.account is defined %}
+  <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-wallet"></i></span><div><div class="kl">Saldo</div><div class="kv tnum">{{ summary.account.balance }}</div><div class="kd">{{ 'Hård grænse' if summary.account.limit_mode == 'hard' else 'Blød grænse' }}</div></div></div>
+  {% endif %}
+</div>
+<div class="split even">
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Pr. assistent</h3></div>
+    <div class="fm-card-body">
+      {% if summary.by_assistant %}
+      <table class="fm-table"><thead><tr><th>Assistent</th><th class="tnum">Svar</th><th class="tnum">Kreditter</th></tr></thead><tbody>
+        {% set names = {'advisor':'Rådgiver','profiler':'Profiler','hr':'HR-assistent','vendor':'Leverandørassistent','widget':'Widget'} %}
+        {% for a in summary.by_assistant %}<tr><td>{{ names.get(a.assistant, a.assistant) }}</td><td class="tnum">{{ a.turns }}</td><td class="tnum">{{ a.credits }}</td></tr>{% endfor %}
+      </tbody></table>
+      {% else %}<p class="muted" style="margin:0">Ingen AI-brug i perioden endnu. Forbrug dukker op her, så snart assistenterne bruges.</p>{% endif %}
+    </div></div>
+  {% if summary.by_user %}
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-users"></i></span><h3>Pr. bruger</h3></div>
+    <div class="fm-card-body">
+      <table class="fm-table"><thead><tr><th>Bruger</th><th class="tnum">Svar</th><th class="tnum">Kreditter</th></tr></thead><tbody>
+        {% for u in summary.by_user %}<tr><td>{{ u.username }}</td><td class="tnum">{{ u.turns }}</td><td class="tnum">{{ u.credits }}</td></tr>{% endfor %}
+      </tbody></table>
+    </div></div>
+  {% endif %}
+</div>
+{% else %}
+<div class="fm-card"><div class="fm-card-body"><p class="muted" style="margin:0">Forbrugsdata kunne ikke hentes lige nu. Prøv igen om lidt.</p></div></div>
+{% endif %}

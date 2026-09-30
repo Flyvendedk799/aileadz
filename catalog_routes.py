@@ -491,7 +491,7 @@ def submit_review(handle):
     except (TypeError, ValueError):
         rating = 0
     if rating < 1 or rating > 5:
-        flash("Vaelg en bedommelse mellem 1 og 5 stjerner.", "danger")
+        flash("Vælg en bedømmelse mellem 1 og 5 stjerner.", "danger")
         return redirect(url_for("catalog.product_detail", handle=handle))
 
     body = (request.form.get("body") or "").strip()[:4000]
@@ -500,7 +500,7 @@ def submit_review(handle):
     # not-yet-reviewed order. If none, the user may not review.
     reviewable = _user_reviewable_orders(handle)
     if not reviewable:
-        flash("Du kan kun anmelde et kursus, du har gennemfort.", "warning")
+        flash("Du kan kun anmelde et kursus, du har gennemført.", "warning")
         return redirect(url_for("catalog.product_detail", handle=handle))
     order_id = reviewable[0]
 
@@ -530,7 +530,7 @@ def submit_review(handle):
             # Race: the order was reviewed between the gate check and insert.
             flash("Denne ordre er allerede anmeldt.", "warning")
         else:
-            flash("Anmeldelsen kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Anmeldelsen kunne ikke gemmes. Prøv igen senere.", "danger")
     return redirect(url_for("catalog.product_detail", handle=handle))
 
 
@@ -544,7 +544,7 @@ def request_product(handle):
 
     supplier_state = _supplier_state(product["vendor"])
     if not supplier_state.get("is_active", True):
-        flash("Denne leverandor er deaktiveret for din virksomhed.", "warning")
+        flash("Denne leverandør er deaktiveret for din virksomhed.", "warning")
         return redirect(url_for("catalog.product_detail", handle=handle))
 
     name = request.form.get("name", "").strip() or session.get("user", "")
@@ -552,7 +552,7 @@ def request_product(handle):
     phone = request.form.get("phone", "").strip()
     notes = request.form.get("notes", "").strip()
     if not name or not email:
-        flash("Navn og email er pakraevet for at anmode om tilmelding.", "danger")
+        flash("Navn og e-mail er påkrævet for at anmode om tilmelding.", "danger")
         return redirect(url_for("catalog.product_detail", handle=handle))
 
     try:
@@ -563,7 +563,7 @@ def request_product(handle):
     variant = variants[variant_index] if 0 <= variant_index < len(variants) else {}
     # The UI disables sold-out dates; re-check server side (never trust the post).
     if variant.get("seats") is not None and int(variant.get("seats")) <= 0:
-        flash("Det valgte hold er udsolgt. Vaelg en anden dato.", "warning")
+        flash("Det valgte hold er udsolgt. Vælg en anden dato.", "warning")
         return redirect(url_for("catalog.product_detail", handle=handle))
     price = variant.get("price") if variant.get("price") is not None else product.get("price_min") or 0
 

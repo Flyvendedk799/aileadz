@@ -9,15 +9,14 @@ audience: employee
 Kan du ikke finde svaret, så kontakt Futurematch support. Siden "Support" (/support) finder du via linket nederst på siden.
 
 ## Sådan kontakter du os
-- Skriv til support@futurematch.dk – svar inden for 4 timer.
-- Ring på +45 70 20 30 40 – hverdage 9–16.
+- Skriv til support@futurematch.dk. Support-siden (/support) viser også telefon og åbningstider, hvis de er sat op.
 
 ## Hvem hjælper med hvad?
 - AI-assistenten kan forklare, hvordan platformen virker, og hjælpe med kurser, bestillinger og din profil.
 - Godkendelse af bestillinger, afdelingsbudget og obligatoriske kurser afgøres af din HR-afdeling.
-- Har du glemt din adgangskode, kan din HR-afdeling nulstille den.
+- Har du glemt din adgangskode, så brug "Glemt adgangskode" på log ind-siden.
 - Vil du have dine data slettet, så skriv til support@futurematch.dk.
 
 ## Ofte stillede spørgsmål
 - Hvordan bestiller jeg et kursus? Brug AI-assistenten eller kataloget – find et kursus og anmod om tilmelding. Kræver din ordre godkendelse, sendes den automatisk til HR.
-- Hvordan virker kreditter? Kreditter bruges til AI-match og rapporter. De fornyes automatisk hver måned afhængigt af din plan.
+- Hvordan virker kreditter? Kreditter dækker brugen af AI-assistenterne. Din saldo vises øverst, og forbruget kan ses under "Mit forbrug".

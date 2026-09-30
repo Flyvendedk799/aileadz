@@ -73,7 +73,7 @@ def mark_notifications_read():
         except Exception as e:
             current_app.logger.error("Error updating notifications: %s", e)
             return jsonify({'success': False, 'error': str(e)}), 500
-    return jsonify({'success': False, 'error': 'Invalid data'}), 400
+    return jsonify({'success': False, 'error': 'Ugyldige data.'}), 400
 
 @api_bp.route('/api/notifications')
 def get_notifications():
@@ -167,7 +167,7 @@ def manage_skills_api():
             level = data.get('skill_level', 'mellem')
             source = data.get('source', 'manual')
             if not name:
-                return jsonify({'success': False, 'error': 'skill_name required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et kompetencenavn.'}), 400
             # Validate the level up front so the caller gets a real error instead
             # of a silently-rejected ENUM insert that still returned success.
             if not is_valid_skill_level(level):
@@ -195,7 +195,7 @@ def manage_skills_api():
         if request.method == 'DELETE':
             name = (data.get('skill_name') or '').strip()
             if not name:
-                return jsonify({'success': False, 'error': 'skill_name required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et kompetencenavn.'}), 400
             removed = remove_skill(username, name)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -235,7 +235,7 @@ def manage_experience_api():
         if request.method == 'POST':
             title = data.get('title', '').strip()
             if not title:
-                return jsonify({'success': False, 'error': 'title required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv en titel.'}), 400
             new_id = add_experience(
                 username, title,
                 company=data.get('company', ''),
@@ -249,7 +249,7 @@ def manage_experience_api():
         if request.method == 'PUT':
             exp_id = data.get('id')
             if not exp_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             fields = {k: v for k, v in data.items() if k != 'id'}
             updated = update_experience(username, exp_id, **fields)
             return jsonify({'success': True, 'updated': updated})
@@ -257,7 +257,7 @@ def manage_experience_api():
         if request.method == 'DELETE':
             exp_id = data.get('id')
             if not exp_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             removed = remove_experience(username, exp_id)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -280,7 +280,7 @@ def manage_education_api():
         if request.method == 'POST':
             degree = data.get('degree', '').strip()
             if not degree:
-                return jsonify({'success': False, 'error': 'degree required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv en uddannelse.'}), 400
             new_id = add_education(
                 username, degree,
                 institution=data.get('institution', ''),
@@ -292,7 +292,7 @@ def manage_education_api():
         if request.method == 'PUT':
             edu_id = data.get('id')
             if not edu_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             fields = {k: v for k, v in data.items() if k != 'id'}
             updated = update_education(username, edu_id, **fields)
             return jsonify({'success': True, 'updated': updated})
@@ -300,7 +300,7 @@ def manage_education_api():
         if request.method == 'DELETE':
             edu_id = data.get('id')
             if not edu_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             removed = remove_education(username, edu_id)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -323,7 +323,7 @@ def manage_completed_courses_api():
         if request.method == 'POST':
             title = data.get('course_title', '').strip()
             if not title:
-                return jsonify({'success': False, 'error': 'course_title required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et kursusnavn.'}), 400
             add_completed_course(
                 username, title,
                 course_handle=data.get('course_handle'),
@@ -336,7 +336,7 @@ def manage_completed_courses_api():
         if request.method == 'DELETE':
             title = data.get('course_title', '').strip()
             if not title:
-                return jsonify({'success': False, 'error': 'course_title required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et kursusnavn.'}), 400
             removed = remove_completed_course(username, title)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -472,7 +472,7 @@ def manage_certifications_api():
         if request.method == 'POST':
             name = (data.get('name') or '').strip()
             if not name:
-                return jsonify({'success': False, 'error': 'name required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et navn.'}), 400
             new_id = add_certification(
                 username, name,
                 issuer=data.get('issuer', ''),
@@ -487,7 +487,7 @@ def manage_certifications_api():
         if request.method == 'PUT':
             cert_id = data.get('id')
             if not cert_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             fields = {k: v for k, v in data.items() if k != 'id'}
             updated = update_certification(username, cert_id, **fields)
             return jsonify({'success': True, 'updated': updated})
@@ -495,7 +495,7 @@ def manage_certifications_api():
         if request.method == 'DELETE':
             cert_id = data.get('id')
             if not cert_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             removed = remove_certification(username, cert_id)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -520,7 +520,7 @@ def manage_languages_api():
         if request.method == 'POST':
             language = (data.get('language') or '').strip()
             if not language:
-                return jsonify({'success': False, 'error': 'language required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et sprog.'}), 400
             add_language(username, language,
                          proficiency=data.get('proficiency', 'mellem'),
                          source=data.get('source', 'manual'))
@@ -530,14 +530,14 @@ def manage_languages_api():
             language = (data.get('language') or '').strip()
             level = (data.get('proficiency') or '').strip()
             if not language or not level:
-                return jsonify({'success': False, 'error': 'language and proficiency required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv sprog og niveau.'}), 400
             updated = update_language_level(username, language, level)
             return jsonify({'success': True, 'updated': updated})
 
         if request.method == 'DELETE':
             language = (data.get('language') or '').strip()
             if not language:
-                return jsonify({'success': False, 'error': 'language required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et sprog.'}), 400
             removed = remove_language(username, language)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -563,14 +563,14 @@ def manage_portfolio_links_api():
         if request.method == 'POST':
             url = (data.get('url') or '').strip()
             if not url:
-                return jsonify({'success': False, 'error': 'url required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv et link.'}), 400
             new_id = add_portfolio_link(username, data.get('label', ''), url, kind=data.get('kind'))
             return jsonify({'success': True, 'id': new_id})
 
         if request.method == 'PUT':
             link_id = data.get('id')
             if not link_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             updated = update_portfolio_link(username, link_id, label=data.get('label'),
                                             url=data.get('url'), kind=data.get('kind'))
             return jsonify({'success': True, 'updated': updated})
@@ -578,7 +578,7 @@ def manage_portfolio_links_api():
         if request.method == 'DELETE':
             link_id = data.get('id')
             if not link_id:
-                return jsonify({'success': False, 'error': 'id required'}), 400
+                return jsonify({'success': False, 'error': 'Et id mangler.'}), 400
             removed = remove_portfolio_link(username, link_id)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -603,7 +603,7 @@ def manage_memories_api():
         if request.method == 'POST':
             label = (data.get('label') or '').strip()
             if not label:
-                return jsonify({'success': False, 'error': 'label required'}), 400
+                return jsonify({'success': False, 'error': 'Angiv en betegnelse.'}), 400
             new_id = add_memory(
                 username, label,
                 category=data.get('category', 'andet'),
@@ -617,7 +617,7 @@ def manage_memories_api():
             try:
                 mem_id = int(data.get('id'))
             except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': 'valid integer id required'}), 400
+                return jsonify({'success': False, 'error': 'Et gyldigt id mangler.'}), 400
             fields = {k: v for k, v in data.items() if k != 'id'}
             updated = update_memory(username, mem_id, **fields)
             return jsonify({'success': True, 'updated': updated})
@@ -626,7 +626,7 @@ def manage_memories_api():
             try:
                 mem_id = int(data.get('id'))
             except (TypeError, ValueError):
-                return jsonify({'success': False, 'error': 'valid integer id required'}), 400
+                return jsonify({'success': False, 'error': 'Et gyldigt id mangler.'}), 400
             removed = remove_memory(username, mem_id)
             return jsonify({'success': True, 'removed': removed})
     except Exception as e:
@@ -661,7 +661,7 @@ def api_cv_parse():
 
     session_id = request.form.get('session_id', '')
     if not session_id:
-        return jsonify({'success': False, 'error': 'session_id required'}), 400
+        return jsonify({'success': False, 'error': 'Samtalen mangler et id.'}), 400
     username = session.get('user')
     job_key = _cv_job_key(username, session_id)
     file = request.files.get('cv')
@@ -728,7 +728,7 @@ def api_cv_parse_stream():
     import cv_parse_store
     session_id = request.args.get('session_id', '')
     if not session_id:
-        return jsonify({'success': False, 'error': 'session_id required'}), 400
+        return jsonify({'success': False, 'error': 'Samtalen mangler et id.'}), 400
     job_key = _cv_job_key(session.get('user'), session_id)
     stage_labels = {
         'extracting': 'Udtrækker tekst',

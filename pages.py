@@ -63,7 +63,15 @@ def contact():
 
 @pages_bp.route('/support')
 def support():
-    return render_template('fm/support.html')
+    """Support page. Contact details come from the environment so the page never
+    promises a phone line or a response time the operator has not configured."""
+    return render_template(
+        'fm/support.html',
+        support_email=os.environ.get('SUPPORT_EMAIL', 'support@futurematch.dk'),
+        support_phone=os.environ.get('SUPPORT_PHONE', '').strip(),
+        support_hours=os.environ.get('SUPPORT_HOURS', '').strip(),
+        support_sla=os.environ.get('SUPPORT_SLA', '').strip(),
+    )
 
 @pages_bp.route('/privacy')
 def privacy():
@@ -218,10 +226,10 @@ def settings():
             confirm_password = request.form.get('confirm_password')
             
             if not current_password:
-                flash("Angiv venligst dit nuvaerende kodeord.", "danger")
+                flash("Angiv venligst din nuværende adgangskode.", "danger")
                 return redirect(url_for('pages.settings'))
             if new_password != confirm_password:
-                flash("Det nye kodeord og bekraeftelse stemmer ikke overens.", "danger")
+                flash("Den nye adgangskode og bekræftelsen stemmer ikke overens.", "danger")
                 return redirect(url_for('pages.settings'))
             from werkzeug.security import check_password_hash, generate_password_hash
             stored_pw = user_data.get('password', '')
@@ -230,7 +238,7 @@ def settings():
             else:
                 pw_ok = (stored_pw == current_password)
             if not pw_ok:
-                flash("Nuvaerende kodeord er forkert.", "danger")
+                flash("Den nuværende adgangskode er forkert.", "danger")
                 return redirect(url_for('pages.settings'))
             hashed_new = generate_password_hash(new_password)
             try:
@@ -238,7 +246,7 @@ def settings():
                 cur.execute("UPDATE users SET password = %s WHERE username = %s", (hashed_new, username))
                 current_app.mysql.connection.commit()
                 cur.close()
-                flash("Kodeord opdateret!", "success")
+                flash("Adgangskoden er opdateret.", "success")
             except Exception as e:
                 current_app.logger.error("Error updating password: %s", e)
                 flash("Fejl ved opdatering af kodeord.", "danger")

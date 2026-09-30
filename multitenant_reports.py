@@ -76,11 +76,11 @@ def create_multitenant_reports_blueprint():
     def require_company_access():
         """Ensure user has access to company reports"""
         if 'user' not in session:
-            flash("Please log in to view reports.", "danger")
+            flash("Log ind for at se rapporter.", "danger")
             return redirect(url_for('auth.login'))
         
         if not session.get('company_id'):
-            flash("You must be part of a company to view reports.", "danger")
+            flash("Du skal være tilknyttet en virksomhed for at se rapporter.", "danger")
             return redirect(url_for('auth.login'))
         return None
 
@@ -119,12 +119,12 @@ def create_multitenant_reports_blueprint():
         """
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         conn = current_app.mysql.connection
         if not conn:
-            flash("Database connection not available.", "danger")
+            flash("Databasen er ikke tilgængelig lige nu.", "danger")
             return redirect(url_for('auth.login'))
 
         # Initialize analytics variables
@@ -587,7 +587,7 @@ def create_multitenant_reports_blueprint():
         """
         company = get_company_context()
         if not company:
-            return jsonify({'error': 'Company not found'}), 404
+            return jsonify({'error': 'Virksomheden blev ikke fundet.'}), 404
         
         # Check permissions
         if company['user_role'] not in ['company_admin', 'hr_manager', 'department_head']:
@@ -709,7 +709,7 @@ def create_multitenant_reports_blueprint():
         """
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         # Check if user can view this department
@@ -722,7 +722,7 @@ def create_multitenant_reports_blueprint():
         
         conn = current_app.mysql.connection
         if not conn:
-            flash("Database connection error.", "danger")
+            flash("Databasen er ikke tilgængelig lige nu.", "danger")
             return redirect(url_for('multitenant_reports.reports'))
 
         try:
@@ -775,7 +775,7 @@ def create_multitenant_reports_blueprint():
             
         except Exception as e:
             current_app.logger.error(f"Error loading department analytics: {e}")
-            flash("Error loading department analytics.", "danger")
+            flash("Afdelingsanalysen kunne ikke indlæses.", "danger")
             return redirect(url_for('multitenant_reports.reports'))
 
     return multitenant_reports_bp

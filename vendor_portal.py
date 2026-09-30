@@ -779,7 +779,20 @@ ABSOLUTTE REGLER:
 
 STIL:
 - Kort, præcist og på dansk. Brug bullet points til tal. Fremhæv den vigtigste indsigt først.
+- Tal som en kollega, ikke som en formular: stil højst ét opklarende spørgsmål ad gangen.
+- Afslut hvert svar med 2-3 korte forslag til næste skridt i formen
+  <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggestions> (tagget vises ikke for brugeren).
+
+EKSEMPLER PÅ TONEN:
+Leverandør: Hvordan går det med mine kurser?
+Dig: (henter tallene først) Dine ordrer er steget 12 % de seneste 30 dage, og det er især PRINCE2, der trækker. Gennemførelsesraten er solid, men to kurser har ingen kommende datoer, og dem ser kunderne ikke. Skal jeg pege på de to?
+
+Leverandør: Hvem har købt mit dyreste kursus?
+Dig: Det kan jeg ikke se, og jeg nævner aldrig købere. Jeg kan til gengæld vise, hvordan kurset klarer sig på pris og efterspørgsel i forhold til lignende kurser.
 """
+
+# Suggestion chips shown when the model forgets its <suggestions> tag.
+VENDOR_FALLBACK_SUGGESTIONS = ["Vis mine topkurser", "Hvad efterspørges lige nu?", "Tjek mine kursusopslag"]
 
 
 def _cleanup_vendor_sessions():
@@ -826,16 +839,24 @@ def vendor_ask():
 
     # Per-vendor conversation memory, keyed by an isolated session id.
     _cleanup_vendor_sessions()
-    sid = session.get("vendor_chat_session_id")
-    if not sid:
-        sid = f"vendor_{vendor_id}_{uuid.uuid4()}"
-        session["vendor_chat_session_id"] = sid
+    # Durable memory (N-5.4): the transcript lives in MySQL, the in-process dict is
+    # only a cache, so a deploy / second worker / new tab keeps the conversation.
+    import vendor_conversations
+    who = vendor_conversations.owner(vendor_id)
+    sid = vendor_conversations.resolve_sid(session, vendor_id)
     if sid not in VENDOR_CHAT_MEMORY:
-        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}]
+        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}] + [
+            dict(m, _ts=time.time()) for m in vendor_conversations.load(who, sid)]
 
     messages = VENDOR_CHAT_MEMORY[sid]
-    # Inject/refresh a small vendor-context system line (which vendor we are).
-    context_line = {"role": "system", "content": f"LEVERANDØR: {vendor_name}"}
+    # Inject/refresh a small vendor-context system line (which vendor we are). The
+    # name is vendor-controlled free text, so it is fenced as DATA (prompt injection).
+    try:
+        import grounding as _g
+        fenced_name = _g.delimit_untrusted("leverandørnavn", vendor_name) or vendor_name
+    except Exception:
+        fenced_name = vendor_name
+    context_line = {"role": "system", "content": f"LEVERANDØR: {fenced_name}"}
     if len(messages) > 1 and messages[1].get("role") == "system" \
             and (messages[1].get("content") or "").startswith("LEVERANDØR:"):
         messages[1] = context_line
@@ -958,19 +979,46 @@ def vendor_ask():
             final_messages = list(
                 runtime_result.stream_messages or runtime_result.messages or clean_messages
             )
-            full_text = runtime_result.text or ""
-            if runtime_result.needs_final_stream or not full_text.strip():
-                full_text = ""
+            import ai_reply
+            raw_text = runtime_result.text or ""
+            flt = ai_reply.SuggestionFilter()
+            if runtime_result.needs_final_stream or not raw_text.strip():
+                raw_text = ""
                 for token in iter_completion_stream(final_messages):
-                    full_text += token
-                    yield _vendor_sse({"type": "text", "content": token})
+                    raw_text += token
+                    shown = flt.feed(token)
+                    if shown:
+                        yield _vendor_sse({"type": "text", "content": shown})
+                tail = flt.flush()
+                if tail:
+                    yield _vendor_sse({"type": "text", "content": tail})
             else:
-                yield _vendor_sse({"type": "text", "content": full_text})
+                yield _vendor_sse({"type": "text", "content": ai_reply.strip_suggestions(raw_text)})
+            full_text = ai_reply.strip_suggestions(raw_text)
+
+            # Grounding check (same circuit-breaker the HR assistant uses): figures the
+            # answer quotes must be backed by THIS turn's tool results.
+            try:
+                import grounding as _grounding
+                evidence = [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])]
+                evidence = [e for e in evidence if e]
+                if evidence and full_text.strip():
+                    verdict = _grounding.grounding_disclaimer(full_text, evidence)
+                    if verdict.get("violation") and verdict.get("disclaimer"):
+                        note = "\n\n" + verdict["disclaimer"]
+                        full_text += note
+                        yield _vendor_sse({"type": "text", "content": note})
+            except Exception as _ge:
+                logger.debug("vendor grounding check skipped: %s", _ge)
+
+            suggestions = ai_reply.extract_suggestions(raw_text) or VENDOR_FALLBACK_SUGGESTIONS
+            yield _vendor_sse({"type": "suggestions", "items": suggestions})
 
             messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
             # Bound memory growth.
             if len(messages) > 30:
                 VENDOR_CHAT_MEMORY[sid] = [messages[0]] + messages[-16:]
+            vendor_conversations.save(who, sid, [m for m in VENDOR_CHAT_MEMORY[sid] if m.get("role") in ("user", "assistant")])
 
             yield _vendor_sse({"type": "done"})
         except Exception as e:

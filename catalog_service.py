@@ -1004,7 +1004,31 @@ def _csv_handle(title, handle):
     return slugify(handle or title)
 
 
-def parse_catalog_csv(file_storage):
+def _same_vendor(a, b):
+    return (a or "").strip().lower() == (b or "").strip().lower()
+
+
+def _existing_vendor_by_handle():
+    """{handle: vendor name} for every product currently in the catalog."""
+    out = {}
+    try:
+        for product in load_raw_products():
+            handle = product.get("handle")
+            if handle:
+                out[handle] = (product.get("vendor") or "").strip()
+    except Exception:
+        pass
+    return out
+
+
+def parse_catalog_csv(file_storage, force_vendor=None):
+    """Parse a catalog CSV into an import draft payload.
+
+    ``force_vendor`` (S-2.7) is set for vendor-portal uploads: the vendor is
+    taken from the logged-in session, NEVER from the CSV's vendor column, and any
+    row whose handle already belongs to a DIFFERENT vendor is dropped with an
+    issue instead of being allowed to overwrite that vendor's course.
+    """
     raw = file_storage.read()
     if isinstance(raw, bytes):
         text = raw.decode("utf-8-sig", errors="replace")
@@ -1020,6 +1044,8 @@ def parse_catalog_csv(file_storage):
     reader = csv.DictReader(io.StringIO(text), dialect=dialect)
     by_handle = {}
     issues = []
+    existing_vendors = _existing_vendor_by_handle() if force_vendor else {}
+    blocked_handles = set()
 
     for line_no, row in enumerate(reader, start=2):
         title = _header_value(row, "title", "titel", "course_title", "kursus")
@@ -1027,7 +1053,19 @@ def parse_catalog_csv(file_storage):
             issues.append({"line": line_no, "message": "Mangler titel"})
             continue
         handle = _csv_handle(title, _header_value(row, "handle", "slug"))
-        vendor = _header_value(row, "vendor", "leverandor", "leverandoer", "udbyder") or "Ukendt"
+        if force_vendor:
+            vendor = str(force_vendor).strip()
+            owner = existing_vendors.get(handle)
+            if owner and not _same_vendor(owner, vendor):
+                if handle not in blocked_handles:
+                    blocked_handles.add(handle)
+                    issues.append({
+                        "line": line_no,
+                        "message": "Handlen '%s' tilhører en anden leverandør og blev sprunget over" % handle,
+                    })
+                continue
+        else:
+            vendor = _header_value(row, "vendor", "leverandor", "leverandoer", "udbyder") or "Ukendt"
         description = _header_value(row, "description", "beskrivelse", "body_html")
         summary = _header_value(row, "summary", "ai_summary", "kort_beskrivelse")
         categories = split_multi_value(_header_value(row, "categories", "category", "kategori", "kategorier"))
@@ -1079,6 +1117,7 @@ def parse_catalog_csv(file_storage):
     return {
         "products": products,
         "issues": issues,
+        "forced_vendor": str(force_vendor).strip() if force_vendor else None,
         "summary": {
             "created": created,
             "updated": updated,
@@ -1126,9 +1165,31 @@ def confirm_import_draft(job_id):
         return None
     payload = _read_json(_instance_path(IMPORT_PRODUCTS_FILE), {"products": []})
     existing = {product.get("handle"): product for product in payload.get("products", []) if product.get("handle")}
+    # S-2.7: enforced again at confirm time, because the draft is a file on disk.
+    # A vendor-uploaded draft can only (re)write products of THAT vendor or new
+    # handles; it can never take over a handle another vendor already owns, and
+    # its vendor field is pinned to the uploader regardless of what the file says.
+    uploader = str(draft.get("uploaded_by") or "")
+    pinned_vendor = draft.get("forced_vendor") if uploader.startswith("vendor:") else None
+    owners = _existing_vendor_by_handle() if uploader.startswith("vendor:") else {}
+    skipped_handles = []
     for product in draft.get("products", []):
-        if product.get("handle"):
-            existing[product["handle"]] = product
+        handle = product.get("handle")
+        if not handle:
+            continue
+        if uploader.startswith("vendor:"):
+            if not pinned_vendor:
+                skipped_handles.append(handle)
+                continue
+            owner = owners.get(handle)
+            if owner and not _same_vendor(owner, pinned_vendor):
+                skipped_handles.append(handle)
+                continue
+            product = dict(product)
+            product["vendor"] = pinned_vendor
+        existing[handle] = product
+    if skipped_handles:
+        draft["skipped_handles"] = skipped_handles
     payload = {
         "updated_at": datetime.datetime.utcnow().isoformat() + "Z",
         "products": list(existing.values()),

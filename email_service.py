@@ -39,7 +39,22 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
     <h2 style="color: {{ primary_color }};">Nulstil adgangskode</h2>
     <p>Brug linket herunder for at nulstille din adgangskode hos {{ company_name }}.</p>
-    <p><a href="{{ reset_url }}" style="color: {{ primary_color }};">Nulstil adgangskode</a></p>
+    <p><a href="{{ reset_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">Nulstil adgangskode</a></p>
+    <p style="font-size:12px;color:#64748b;">Linket kan kun bruges én gang og udløber om {{ expires_in or '60 minutter' }}. Virker knappen ikke, så kopiér dette link ind i din browser:<br><span style="word-break:break-all;">{{ reset_url }}</span></p>
+    <p style="font-size:12px;color:#64748b;">Har du ikke bedt om at nulstille din adgangskode, kan du roligt ignorere denne mail. Din adgangskode er uændret.</p>
+  </div>
+</body></html>
+""",
+        'password_invite': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; color:#1f2937; background: {{ background_color }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:40px;margin-bottom:20px;">{% endif %}
+    <h1 style="color: {{ primary_color }}; font-size: 22px;">Velkommen til {{ company_name }}</h1>
+    <p>Hej {{ recipient_name or '' }},</p>
+    <p>Du er blevet oprettet som bruger på {{ company_name }}s læringsplatform{% if username %} med brugernavnet <strong>{{ username }}</strong>{% endif %}. Vælg din egen adgangskode for at komme i gang.</p>
+    <p><a href="{{ set_password_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 22px;border-radius:8px;text-decoration:none;font-weight:600;">Vælg din adgangskode</a></p>
+    <p style="font-size:12px;color:#64748b;">Linket kan kun bruges én gang og udløber om {{ expires_in or '7 dage' }}. Virker knappen ikke, så kopiér dette link ind i din browser:<br><span style="word-break:break-all;">{{ set_password_url }}</span></p>
   </div>
 </body></html>
 """,

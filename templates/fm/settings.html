@@ -80,6 +80,14 @@
             </div>
           </div>
 
+          <div class="fm-card" id="tofaktor" data-reveal data-d="2">
+            <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-mobile-screen"></i></span><h3>Tofaktorgodkendelse</h3></div>
+            <div class="fm-card-body">
+              <p style="font-size:13px;color:var(--fm-ink-2);margin-top:0">Tilføj en ekstra kode fra din telefon, når du logger ind. Anbefales til alle og er påkrævet for platformadministratorer.</p>
+              <a href="{{ url_for('auth.account_2fa') }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-shield-halved"></i> Administrér tofaktorgodkendelse</a>
+            </div>
+          </div>
+
           {% if session.get('role') == 'admin' %}
           <div class="fm-card" id="admin" data-reveal data-d="3">
             <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-shield-halved"></i></span><h3>Admin</h3></div>

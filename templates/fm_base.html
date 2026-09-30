@@ -188,7 +188,7 @@
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {% if session.get('user') %}
         <span class="fm-chip credits"><i class="fa-solid fa-coins"></i> {{ session.get('credits', 0) }}</span>
-        <a class="fm-icon-btn" href="{{ url_for('auth.logout') }}" aria-label="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
+        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;margin:0"><button type="submit" class="fm-icon-btn" aria-label="Log ud" title="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></form>
         {% else %}
         <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>
         {% endif %}

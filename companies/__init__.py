@@ -82,13 +82,13 @@ def create_companies_blueprint():
             return None
 
     def _resolve_branding_company_id(explicit_id=None):
+        # S-2.5: resolving a company for one request must NOT change which
+        # company the admin is "acting as" (that is an explicit POST, audited).
         if explicit_id is not None and session.get('role') == 'admin':
-            session['admin_acting_company_id'] = explicit_id
             return explicit_id
         if session.get('role') == 'admin':
             acting = request.args.get('company_id', type=int) or session.get('admin_acting_company_id')
             if acting:
-                session['admin_acting_company_id'] = acting
                 return acting
         company = get_company_context()
         if company:
@@ -193,9 +193,19 @@ def create_companies_blueprint():
                 flash("Virksomhedsnavn er påkrævet.", "danger")
                 return render_template('fm/company_register.html')
 
-            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email, hr_password]):
-                flash("Udfyld venligst alle felter for HR-manageren (navn, brugernavn, e-mail, password).", "danger")
+            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email]):
+                flash("Udfyld venligst alle felter for HR-manageren (navn, brugernavn og e-mail).", "danger")
                 return render_template('fm/company_register.html')
+
+            # S-2.4: the password is optional. Without one, the HR manager gets a
+            # one-time set-password link by e-mail (no password is handled by a human).
+            if hr_mode == 'new' and hr_password:
+                from password_policy import validate_password
+                _pw_errors = validate_password(hr_password, hr_username, hr_email)
+                if _pw_errors:
+                    for _e in _pw_errors:
+                        flash(_e, "danger")
+                    return render_template('fm/company_register.html')
 
             if hr_mode == 'existing' and not existing_user_id:
                 flash("Vælg venligst en eksisterende bruger.", "danger")
@@ -206,6 +216,7 @@ def create_companies_blueprint():
             company_slug = company_slug.strip('-')
 
             generated_password = None
+            invite_needed = False
 
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -261,9 +272,12 @@ def create_companies_blueprint():
                         cur.close()
                         return render_template('fm/company_register.html')
 
-                    # Use the password provided by admin
-                    generated_password = hr_password
-                    hashed_password = generate_password_hash(hr_password)
+                    # Password provided by the admin (policy-checked above), or an
+                    # unusable random one until the invite link is used.
+                    import secrets as _secrets
+                    invite_needed = not hr_password
+                    generated_password = hr_password or None
+                    hashed_password = generate_password_hash(hr_password or _secrets.token_urlsafe(48))
 
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
@@ -322,15 +336,26 @@ def create_companies_blueprint():
                 current_app.mysql.connection.commit()
                 cur.close()
 
-                # Show success with credentials if new user was created
-                if generated_password:
+                invite_sent = False
+                if invite_needed:
+                    try:
+                        from auth import send_user_password_link
+                        invite_sent = send_user_password_link(
+                            current_app.mysql.connection,
+                            {'id': user_id, 'email': hr_email, 'username': hr_username}, 'invite')
+                    except Exception as _mail_err:
+                        current_app.logger.warning("HR invite e-mail failed: %s", _mail_err)
+
+                # Never echo a password back (S-2.4); say how the HR manager gets in.
+                if hr_mode == 'new':
                     return render_template('fm/register_success.html',
                         company_name=company_name,
                         company_slug=company_slug,
                         hr_name=hr_name,
                         hr_email=hr_email,
-                        hr_password=generated_password,
-                        is_new_user=True
+                        is_new_user=True,
+                        invite_needed=invite_needed,
+                        invite_sent=invite_sent
                     )
                 else:
                     return render_template('fm/register_success.html',
@@ -478,12 +503,26 @@ def create_companies_blueprint():
             employment_type = request.form.get('employment_type', 'full_time')
 
             # Validation
-            if not all([full_name, username, email, password, department, job_title]):
-                flash("Udfyld venligst alle paakraevede felter.", "danger")
+            if not all([full_name, username, email, department, job_title]):
+                flash("Udfyld venligst alle påkrævede felter.", "danger")
                 return render_template('fm/add_employee.html', company=company,
                                        departments=_load_departments(),
                                        seat_status=seat_status,
                                        active_hr_page='employees')
+
+            # S-2.4: a typed password must satisfy the policy; a blank one means
+            # "invite": the employee gets a set-password link instead.
+            if password:
+                from password_policy import validate_password
+                _pw_errors = validate_password(password, username, email)
+                if _pw_errors:
+                    for _e in _pw_errors:
+                        flash(_e, "danger")
+                    return render_template('fm/add_employee.html', company=company,
+                                           departments=_load_departments(),
+                                           seat_status=seat_status,
+                                           active_hr_page='employees')
+            invite_new_user = False
             
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -507,8 +546,10 @@ def create_companies_blueprint():
                                                seat_status=seat_status,
                                                active_hr_page='employees')
                 else:
-                    # Create new user
-                    hashed_password = generate_password_hash(password)
+                    # Create new user (unusable random password until the invite is used)
+                    import secrets as _secrets
+                    invite_new_user = not password
+                    hashed_password = generate_password_hash(password or _secrets.token_urlsafe(48))
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
                         VALUES (%s, %s, %s, 100, 'employee')
@@ -572,6 +613,12 @@ def create_companies_blueprint():
                 # the add — no-ops cleanly when MAIL_SERVER/MAIL_DEFAULT_SENDER
                 # are not configured (ops-gated).
                 try:
+                    if invite_new_user:
+                        from auth import send_user_password_link
+                        send_user_password_link(
+                            current_app.mysql.connection,
+                            {'id': user_id, 'email': email, 'username': username}, 'invite')
+                        raise RuntimeError("invite sent instead of welcome")  # skip plain welcome
                     from email_service import send_employee_welcome
                     login_url = ''
                     try:
@@ -978,7 +1025,9 @@ def create_companies_blueprint():
             flash("Virksomhed ikke fundet.", "danger")
             return redirect(url_for('companies.admin_companies_list'))
 
-        session['admin_acting_company_id'] = company_id
+        # Viewing a tenant's detail page is read context only; it must not
+        # silently switch the admin into that company (S-2.5). Use the explicit
+        # "act as" button (POST /admin/impersonate/<id>) for that.
 
         if request.method == 'POST':
             action = request.form.get('action', 'save')

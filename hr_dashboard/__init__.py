@@ -13,7 +13,7 @@ import csv
 import io
 
 from perf_cache import ttl_cache
-from auth_decorators import require_company_role
+from auth_decorators import require_company_role, can, department_scope
 
 # k-anon helpers for small-cohort suppression on per-requirement breakdowns.
 # Guarded import: a missing k-anon module must NEVER crash an HR dashboard render
@@ -43,42 +43,41 @@ def create_hr_dashboard_blueprint():
         if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
             return None
 
-        if not session.get('company_id') or session.get('company_role') not in ['company_admin', 'hr_manager', 'department_head']:
-            flash("You don't have permission to access HR features.", "danger")
+        if not session.get('company_id') or not can('hr.view'):
+            flash("Du har ikke adgang til HR-funktionerne.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return None
 
-    def require_hr_manager_access(as_json=False):
-        """HR *administration* guard (S-1.6, interim until the S-2.3 matrix).
+    def require_hr_manager_access(as_json=False, cap='hr.manage'):
+        """Capability guard for HR *administration* (S-1.6 / S-2.3).
 
-        Department heads pass require_hr_access (read-only views) but must not
-        reset passwords, deactivate users, edit budgets/suppliers/policies/
-        billing/departments, change the chatbot or the widget token. Those need
-        company_admin or hr_manager (or a platform admin acting on a tenant).
-        Returns None when allowed, otherwise a denial response (JSON 401/403 when
-        ``as_json`` else a flash + redirect).
+        Department heads pass require_hr_access (department-scoped views) but
+        may not reset passwords, deactivate users, edit budgets/suppliers/
+        policies/billing/departments, change the chatbot or the widget token,
+        or read company-wide analytics. Each route names the capability it
+        needs (default ``hr.manage``); the role matrix in auth_decorators
+        decides. Returns None when allowed, otherwise a denial response (JSON
+        401/403 when ``as_json`` else a flash + redirect).
         """
         base = require_hr_access()
-        denied = None
         if base is not None:
-            denied = base
             if as_json:
                 logged_in = 'user' in session
                 resp = jsonify({'success': False,
                                 'message': 'Du har ikke adgang til denne handling.' if logged_in else 'Log ind for at fortsætte.'})
                 resp.status_code = 403 if logged_in else 401
                 return resp
-            return denied
+            return base
         if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
             return None
-        if session.get('company_role') in ('company_admin', 'hr_manager'):
+        if can(cap):
             return None
         if as_json:
             resp = jsonify({'success': False,
-                            'message': 'Kun HR-administratorer kan udføre denne handling.'})
+                            'message': 'Du har ikke adgang til denne handling.'})
             resp.status_code = 403
             return resp
-        flash("Kun HR-administratorer kan udføre denne handling.", "danger")
+        flash("Du har ikke adgang til denne side.", "danger")
         return redirect(url_for('hr_dashboard.dashboard'))
 
     def _dept_scope(company):
@@ -151,6 +150,11 @@ def create_hr_dashboard_blueprint():
         if not company:
             flash("Company information not found.", "danger")
             return redirect(url_for('auth.login'))
+
+        # S-2.3: the company-wide overview is for HR; a department head works
+        # from their own department.
+        if department_scope() is not None:
+            return redirect(url_for('hr_dashboard.my_department'))
 
         try:
             ctx = _hr_dashboard_metrics(company)
@@ -1057,14 +1061,17 @@ def create_hr_dashboard_blueprint():
             fiscal_year = int(request.args.get('year', _dt.datetime.now().year))
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
+            # S-2.3: a department head sees (read-only) their OWN department's budget.
+            _scope = _dept_scope(company)
             cur.execute("""
                 SELECT db.*,
                        (SELECT COUNT(DISTINCT cu.user_id) FROM company_users cu
                         WHERE cu.company_id = db.company_id AND cu.department = db.department AND cu.status = 'active') AS employee_count
                 FROM department_budgets db
                 WHERE db.company_id = %s AND db.fiscal_year = %s
+                  AND (%s IS NULL OR db.department = %s)
                 ORDER BY db.department
-            """, (company['id'], fiscal_year))
+            """, (company['id'], fiscal_year, _scope, _scope))
             budgets = cur.fetchall()
 
             # Calculate totals
@@ -1079,7 +1086,8 @@ def create_hr_dashboard_blueprint():
                     SELECT department FROM department_budgets
                     WHERE company_id = %s AND fiscal_year = %s
                 )
-            """, (company['id'], company['id'], fiscal_year))
+                AND (%s IS NULL OR department = %s)
+            """, (company['id'], company['id'], fiscal_year, _scope, _scope))
             unbudgeted_depts = [r['department'] for r in cur.fetchall()]
 
             cur.close()
@@ -1099,7 +1107,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/budgets/save', methods=['POST'])
     def save_budget():
         """Create or update a department budget"""
-        auth_check = require_hr_manager_access(as_json=True)
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.budget.edit')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1134,7 +1142,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/generate-insights', methods=['POST'])
     def generate_insights():
         """Generate AI insights for the company (on-demand)"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return jsonify({'success': False, 'message': 'Not authenticated'}), 401
         company = get_company_context()
@@ -1153,7 +1161,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/skill-gaps')
     def skill_gaps_view():
         """View skill gap heatmap"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1321,7 +1329,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/skill-targets/save', methods=['POST'])
     def save_skill_target():
         """Add or update a skill target"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.manage')
         if auth_check:
             return jsonify({'success': False}), 401
         company = get_company_context()
@@ -1350,7 +1358,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/skill-targets/<int:target_id>/delete', methods=['POST'])
     def delete_skill_target(target_id):
         """Delete a skill target"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.manage')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1533,7 +1541,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/roi')
     def roi_dashboard():
         """Training ROI dashboard"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1597,7 +1605,7 @@ def create_hr_dashboard_blueprint():
         journey, so the query zeroes every stage and returns an anon_note that
         the template renders as a privacy notice instead of the funnel.
         """
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1646,7 +1654,7 @@ def create_hr_dashboard_blueprint():
         (it drops any first-month cohort below k and sets anon_note), so no extra
         floor flag is needed — small cohorts simply never reach the template.
         """
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1683,7 +1691,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/employee-progress')
     def employee_progress():
         """Detailed employee progress tracking"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         
@@ -1798,7 +1806,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/learning-analytics')
     def learning_analytics():
         """Advanced learning analytics and insights"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         
@@ -2077,7 +2085,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/reports')
     def reports():
         """HR Reports and data export"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         
@@ -2179,7 +2187,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/export/<report_type>')
     def export_report(report_type):
         """Export HR reports as CSV"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.reports.export')
         if auth_check:
             return auth_check
         
@@ -2321,6 +2329,12 @@ def create_hr_dashboard_blueprint():
             if not employee:
                 flash("Medarbejder ikke fundet.", "danger")
                 return redirect(url_for('companies.employees'))
+
+            # S-2.3: a department head only sees people in their own department.
+            _scope = _dept_scope(company)
+            if _scope is not None and (employee.get('department') or '') != _scope:
+                flash("Du kan kun se medarbejdere i din egen afdeling.", "danger")
+                return redirect(url_for('hr_dashboard.my_department'))
 
             # Get course history
             cur.execute("""
@@ -2477,8 +2491,9 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/reset-password', methods=['POST'])
     def reset_employee_password(user_id):
-        """HR manager can reset an employee's password without email confirmation"""
-        auth_check = require_hr_manager_access()
+        """HR sends the employee a one-time reset LINK (S-2.4). HR never sees,
+        chooses or relays a password."""
+        auth_check = require_hr_manager_access(cap='hr.employees.manage')
         if auth_check:
             return auth_check
 
@@ -2486,10 +2501,6 @@ def create_hr_dashboard_blueprint():
         if not company:
             flash("Virksomhed ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
-
-        import secrets
-        import string
-        from werkzeug.security import generate_password_hash
 
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -2508,12 +2519,10 @@ def create_hr_dashboard_blueprint():
                 cur.close()
                 return redirect(url_for('companies.employees'))
 
-            # Generate a random password
-            alphabet = string.ascii_letters + string.digits
-            new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
-            hashed = generate_password_hash(new_password)
-
-            cur.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user_id))
+            if not emp.get('email'):
+                flash("Medarbejderen har ingen e-mailadresse, så der kan ikke sendes et link.", "danger")
+                cur.close()
+                return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
             # Audit log
             cur.execute("""
@@ -2525,7 +2534,15 @@ def create_hr_dashboard_blueprint():
             current_app.mysql.connection.commit()
             cur.close()
 
-            flash(f"Nyt password for {emp['username']}: {new_password}", "success")
+            from auth import send_user_password_link
+            sent = send_user_password_link(
+                current_app.mysql.connection,
+                {'id': emp['user_id'], 'email': emp['email'], 'username': emp['username']}, 'reset')
+            if sent:
+                flash(f"Vi har sendt et link til at nulstille adgangskoden til {emp['email']}.", "success")
+            else:
+                flash("Linket blev oprettet, men e-mailen kunne ikke sendes. Bed medarbejderen bruge "
+                      "«Glemt adgangskode» på login-siden.", "warning")
             return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
         except Exception as e:
@@ -2536,7 +2553,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/employee/<int:user_id>/toggle-status', methods=['POST'])
     def toggle_employee_status(user_id):
         """Activate or deactivate an employee"""
-        auth_check = require_hr_manager_access()
+        auth_check = require_hr_manager_access(cap='hr.employees.manage')
         if auth_check:
             return auth_check
 
@@ -2626,7 +2643,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/billing')
     def billing_overview():
         """Billing overview — all orders with billing status"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.billing')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -2702,7 +2719,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/order/<order_id>/billing', methods=['POST'])
     def update_billing(order_id):
         """Update billing info on an order"""
-        auth_check = require_hr_manager_access(as_json=True)
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.billing')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -2772,7 +2789,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/billing/bulk', methods=['POST'])
     def bulk_billing_update():
         """Bulk update billing status for multiple orders"""
-        auth_check = require_hr_manager_access(as_json=True)
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.billing')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4340,7 +4357,7 @@ def create_hr_dashboard_blueprint():
     def benchmarking_view():
         """Anonymous industry benchmark for the company (k-anonymity enforced
         inside benchmarking.benchmark)."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4656,7 +4673,7 @@ def create_hr_dashboard_blueprint():
         """Read compliance_requirements (company-scoped) and DERIVE per-employee
         status (compliant / expiring / overdue) from completed courses within the
         recurrence window. Nothing is stored; status is computed at read time."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()

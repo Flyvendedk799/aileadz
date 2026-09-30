@@ -735,6 +735,14 @@ def admin_vendor_status(vendor_id):
         cur.execute("UPDATE vendors SET status = %s WHERE id = %s", (new_status, vendor_id))
         current_app.mysql.connection.commit()
         cur.close()
+        # S-2.7: a suspended vendor loses their running session right away.
+        try:
+            import vendor_auth
+            vendor_auth.invalidate_vendor_cache(vendor_id)
+        except Exception:
+            pass
+        from security_audit import audit
+        audit('admin.vendor_status', 'vendor', vendor_id, f"Leverandør {vendor_id} sat til {new_status}")
         flash(f"Leverandørstatus opdateret til {new_status}.", "success")
     except Exception as e:
         logging.error("Could not update vendor status: %s", e)
@@ -1071,7 +1079,7 @@ def admin_system_health():
 # NOTE: this is full read/write impersonation by design (requested). Security
 # hardening (read-only mode, SECRET_KEY rotation) is tracked separately.
 # ---------------------------------------------------------------------------
-@admin_dashboard_bp.route('/impersonate/<int:company_id>')
+@admin_dashboard_bp.route('/impersonate/<int:company_id>', methods=['POST'])
 @require_role('admin')
 def impersonate_company(company_id):
     cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -1088,16 +1096,10 @@ def impersonate_company(company_id):
         flash("Virksomheden blev ikke fundet.", "warning")
         return redirect(url_for('companies.admin_companies_list'))
 
-    # Stash the admin's own context ONCE so we can restore it on exit.
-    if 'admin_acting_company_id' not in session:
-        session['_imp_prev_company_id'] = session.get('company_id')
-        session['_imp_prev_company_role'] = session.get('company_role')
-        session['_imp_prev_company_name'] = session.get('company_name')
-
-    session['admin_acting_company_id'] = company['id']
-    session['company_id'] = company['id']
-    session['company_role'] = 'company_admin'
-    session['company_name'] = company['company_name']
+    # S-2.5: explicit, POST-only "act as" with an expiry; the admin's own
+    # context is stashed once and restored by impersonate_exit.
+    import impersonation
+    impersonation.begin(session, company)
 
     # Audit (best-effort; reuses order_service audit shape / audit_log table).
     try:
@@ -1113,30 +1115,15 @@ def impersonate_company(company_id):
     except Exception as e:
         logging.debug("impersonate audit skipped: %s", e)
 
-    flash(f"Du ser nu {company['company_name']} som administrator.", "info")
+    flash(f"Du ser nu {company['company_name']} som administrator. Visningen logges og udløber efter 2 timer.", "info")
     return redirect(url_for('hr_dashboard.dashboard'))
 
 
 @admin_dashboard_bp.route('/impersonate/exit')
 @require_role('admin')
 def impersonate_exit():
-    acting = session.pop('admin_acting_company_id', None)
-    # Restore the admin's own context.
-    prev_id = session.pop('_imp_prev_company_id', None)
-    prev_role = session.pop('_imp_prev_company_role', None)
-    prev_name = session.pop('_imp_prev_company_name', None)
-    if prev_id:
-        session['company_id'] = prev_id
-    else:
-        session.pop('company_id', None)
-    if prev_role:
-        session['company_role'] = prev_role
-    else:
-        session.pop('company_role', None)
-    if prev_name:
-        session['company_name'] = prev_name
-    else:
-        session.pop('company_name', None)
+    import impersonation
+    acting = impersonation.end(session)
 
     try:
         if acting:
@@ -1150,9 +1137,9 @@ def impersonate_exit():
     except Exception as e:
         logging.debug("impersonate-exit audit skipped: %s", e)
 
-    flash("Impersonation afsluttet.", "info")
-    if acting:
-        return redirect(url_for('companies.admin_company_detail', company_id=acting))
+    flash("Du er ikke længere i virksomhedsvisning og ser igen dit eget workspace.", "info")
+    # Never redirect to the company detail page here: that used to silently
+    # re-enter the acting state (S-2.5).
     return redirect(url_for('companies.admin_companies_list'))
 
 

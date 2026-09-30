@@ -19,7 +19,6 @@ from tests import sqlite_mysql  # noqa: E402
 
 EXTRA_SCHEMA = """
 ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'active';
-ALTER TABLE company_users ADD COLUMN job_title TEXT;
 ALTER TABLE company_users ADD COLUMN employee_id TEXT;
 ALTER TABLE companies ADD COLUMN industry TEXT;
 ALTER TABLE companies ADD COLUMN updated_at TEXT;

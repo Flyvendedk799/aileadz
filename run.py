@@ -264,6 +264,8 @@ def create_app():
     # Forgot password / reset / invite screens (N-2.1).
     from account_flows import register_account_flows
     register_account_flows(app)
+    from bulk_invite import bulk_invite_bp
+    app.register_blueprint(bulk_invite_bp)
 
     # Dashboard-upgrade blueprints: new HR feature pages (Pillar B) sharing the
     # /hr prefix, and the global ⌘K search API. Guarded so a failure here can

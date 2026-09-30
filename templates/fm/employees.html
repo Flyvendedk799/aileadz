@@ -8,6 +8,7 @@
 {% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
 <div class="fm-spread" style="margin-bottom:18px">
   <div></div>
+  <a href="{{ url_for('bulk_invite.bulk_invite') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-file-csv"></i> Inviter fra CSV</a>
   <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tilføj medarbejder</a>
 </div>
 

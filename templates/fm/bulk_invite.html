@@ -1,0 +1,54 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Inviter medarbejdere{% endblock %}
+{% block topbar_title %}Inviter medarbejdere{% endblock %}
+{% block topbar_sub %}Upload en CSV-fil, se hvad der sker, og send invitationer.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
+
+  {% if step == 'upload' %}
+  <div class="fm-card" style="max-width:720px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-file-csv"></i></span><h3>Vælg en fil</h3></div>
+  <div class="fm-card-body">
+    <p style="font-size:13.5px;color:var(--fm-ink-2);margin-top:0">Filen skal have en overskriftsrække med <strong>navn</strong> og <strong>email</strong>. Afdeling, stilling og rolle er valgfrie. Alle nye personer får en e-mail, hvor de selv vælger en adgangskode.</p>
+    <form method="post" enctype="multipart/form-data">
+      <input type="hidden" name="action" value="preview">
+      <input class="fm-input" type="file" name="file" accept=".csv,text/csv" required>
+      <div style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+        <button class="btn btn-primary" type="submit">Se hvad der sker</button>
+        <a class="btn btn-ghost" href="{{ url_for('bulk_invite.bulk_invite_sample') }}">Hent eksempelfil</a>
+        <a class="btn btn-ghost" href="{{ url_for('companies.employees') }}">Annuller</a>
+      </div>
+    </form>
+  </div></div>
+
+  {% elif step == 'preview' %}
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-list-check"></i></span><h3>Gennemgang</h3>
+    <span class="fm-badge teal" style="margin-left:auto">{{ valid }} klar · {{ rows|length - valid }} med fejl</span></div>
+  <div class="fm-card-body">
+    {% for e in errors %}<p style="color:var(--fm-danger);font-size:13px">{{ e }}</p>{% endfor %}
+    <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table">
+      <thead><tr><th>Linje</th><th>Navn</th><th>E-mail</th><th>Afdeling</th><th>Rolle</th><th>Status</th></tr></thead>
+      <tbody>{% for r in rows %}<tr>
+        <td>{{ r.line }}</td><td>{{ r.name }}</td><td>{{ r.email }}</td><td>{{ r.department or '-' }}</td><td>{{ r.role }}</td>
+        <td>{% if r.problem %}<span class="fm-badge red">{{ r.problem }}</span>{% else %}<span class="fm-badge green">Klar</span>{% endif %}</td>
+      </tr>{% endfor %}</tbody></table></div>
+    <form method="post" style="margin-top:14px;display:flex;gap:10px;flex-wrap:wrap">
+      <input type="hidden" name="action" value="confirm">
+      <textarea name="csv_text" hidden>{{ csv_text }}</textarea>
+      {% if valid %}<button class="btn btn-primary" type="submit">Opret og send {{ valid }} invitation{{ 'er' if valid != 1 }}</button>{% endif %}
+      <a class="btn btn-ghost" href="{{ url_for('bulk_invite.bulk_invite') }}">Vælg en anden fil</a>
+    </form>
+  </div></div>
+
+  {% else %}
+  <div class="fm-card" style="max-width:820px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-check"></i></span><h3>Færdig</h3></div>
+  <div class="fm-card-body">
+    <p style="font-size:14px">{{ counts.created }} oprettet, {{ counts.linked }} tilknyttet eksisterende konto, {{ counts.skipped }} sprunget over. {{ mailed }} invitation{{ 'er' if mailed != 1 }} sendt.
+    {% if counts.created and mailed < counts.created %}<br><span class="muted">Nogle mails blev ikke sendt. Tjek e-mailopsætningen under Systemstatus og send et link fra medarbejderens side.</span>{% endif %}</p>
+    <ul style="font-size:13px;color:var(--fm-ink-2)">{% for r, msg in outcome %}<li>{{ r.name }} ({{ r.email }}): {{ msg }}</li>{% endfor %}</ul>
+    <a class="btn btn-primary" href="{{ url_for('companies.employees') }}">Til medarbejdere</a>
+  </div></div>
+  {% endif %}
+</div>
+{% endblock %}

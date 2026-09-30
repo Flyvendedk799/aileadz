@@ -1131,6 +1131,43 @@ def _section_strength(key, p):
         return 0.0
 
 
+def unlocked_help(p):
+    """What the AI can do FOR the user given what it already knows (N-5.1).
+
+    The profile is context for the help, not a form to finish: instead of "x of 8
+    fields / missing: ..." the UI shows what this knowledge makes possible, plus one
+    soft next step phrased as a benefit. Returns ``(unlocked, next_help)``.
+    """
+    p = p or {}
+    unlocked = []
+    role = (p.get("target_role") or "").strip()
+    if p.get("skills"):
+        unlocked.append("anbefale kurser, der bygger videre på dine kompetencer")
+    if role:
+        unlocked.append("finde kurser mod dit mål: " + role)
+    if p.get("experience"):
+        unlocked.append("vælge det rigtige niveau ud fra din erfaring")
+    if p.get("certifications"):
+        unlocked.append("undgå kurser, du allerede har bevis på")
+    if p.get("learning_goals") or (p.get("goals") or "").strip():
+        unlocked.append("lave en læringssti mod dine mål")
+    if (p.get("preferred_format") or "").strip() or (p.get("preferred_location") or "").strip():
+        unlocked.append("filtrere efter den form og det sted, du foretrækker")
+    if p.get("education"):
+        unlocked.append("matche dit uddannelsesniveau")
+    if not unlocked:
+        unlocked.append("give generelle anbefalinger, indtil jeg kender dig bedre")
+    if not role:
+        nxt = "Fortæl, hvor du gerne vil hen, så kan jeg finde kurser mod det."
+    elif not p.get("skills"):
+        nxt = "Fortæl, hvad du er god til, så kan jeg ramme niveauet bedre."
+    elif not p.get("experience"):
+        nxt = "Fortæl kort om dit nuværende job, så kan jeg tilpasse forslagene."
+    else:
+        nxt = "Jeg har nok til at give dig gode forslag. Spørg mig, hvad du vil."
+    return unlocked, nxt
+
+
 def profile_completeness(username, profile=None):
     """Return a completeness report driving the AI Profiler's "complete me to
     100%" loop.
@@ -1171,10 +1208,13 @@ def profile_completeness(username, profile=None):
     # the canonical section order (experience/skills before niceties).
     incomplete = [s for s in sections if s["strength"] < 1.0]
     weakest = min(incomplete, key=lambda s: s["strength"])["key"] if incomplete else None
+    unlocked, next_help = unlocked_help(p)
     return {
         "pct": round(done_count / total * 100) if total else 0,
         "done": done_count,
         "total": total,
+        "unlocked": unlocked,
+        "next_help": next_help,
         "sections": sections,
         "missing": [s["label"] for s in sections if not s["done"]],
         "weighted_pct": weighted,

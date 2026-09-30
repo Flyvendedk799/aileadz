@@ -538,6 +538,82 @@
     body.appendChild(card); down();
   }
 
+  /* ---------------- saved-at-once profile additions (N-5.1) ---------------- */
+  // The AI already saved these; one card lists them, each with an inline Fortryd.
+  function renderProfileSaved(body, items) {
+    if (!items.length) return;
+    const card = document.createElement("div");
+    card.className = "pcard saved";
+    const rows = items.map((it, i) => `
+      <div class="psaved-row" data-i="${i}">
+        <span class="psaved-label"><i class="fa-solid fa-check"></i> ${esc(it.label || "Noteret")}</span>
+        ${it.undo ? '<button type="button" class="psaved-undo">Fortryd</button>' : ""}
+      </div>`).join("");
+    card.innerHTML = `
+      <div class="pcard-ic">${ic[items[0].section] || ic.summary}</div>
+      <div class="pcard-body"><div class="pcard-msg"><span class="q" style="color:var(--green)">Noteret på din profil</span></div>${rows}</div>`;
+    card.querySelectorAll(".psaved-row").forEach((row) => {
+      const it = items[+row.dataset.i];
+      const btn = row.querySelector(".psaved-undo");
+      if (!btn || !it.undo) return;
+      btn.addEventListener("click", async () => {
+        btn.disabled = true; btn.textContent = "…";
+        try {
+          await saveProfileUpdate(it.undo.action, it.undo.data || {});
+          row.querySelector(".psaved-label").style.textDecoration = "line-through";
+          row.querySelector(".psaved-label").style.opacity = ".6";
+          btn.replaceWith(Object.assign(document.createElement("span"), { textContent: "Fortrudt", className: "psaved-done" }));
+          refreshRing();
+        } catch (e) { btn.disabled = false; btn.textContent = "Prøv igen"; }
+      });
+    });
+    body.appendChild(card); down();
+  }
+
+  // Several removals/edits proposed in one turn: one card, accept all or none.
+  function renderProfileConfirmBatch(body, items) {
+    if (!items.length) return;
+    const card = document.createElement("div");
+    card.className = "pcard";
+    card.innerHTML = `
+      <div class="pcard-ic">${ic[items[0].section] || ic.summary}</div>
+      <div class="pcard-body"><div class="pcard-msg"><span class="q">Opdater profil?</span></div>
+        <ul class="pbatch">${items.map((it) => `<li>${esc(it.message || "")}</li>`).join("")}</ul></div>
+      <div class="pcard-actions"><button class="p-save">Gem alle</button><button class="p-no">Nej tak</button></div>`;
+    card.querySelector(".p-save").onclick = async function () {
+      this.disabled = true; this.textContent = "…";
+      try {
+        for (const it of items) { const c = it.confirm || {}; await saveProfileUpdate(c.action, c.data || {}); }
+        this.textContent = "Gemt ✓"; card.querySelector(".p-no").remove(); refreshRing();
+      } catch (e) { this.disabled = false; this.textContent = "Prøv igen"; }
+    };
+    card.querySelector(".p-no").onclick = function () {
+      card.classList.add("dim");
+      card.querySelector(".pcard-actions").innerHTML = '<span style="font-size:12px;color:var(--ink-3)">Afvist</span>';
+    };
+    body.appendChild(card); down();
+  }
+
+  /* ---------------- choice card (ui_type=choice) ---------------- */
+  // The user picks one option; the pick goes back to the assistant as a normal
+  // message (or straight to the save action when the card names one).
+  function choiceCard(body, opts, onPick) {
+    const card = document.createElement("div");
+    card.className = "pcard ui choice";
+    card.innerHTML = `
+      <div class="pcard-ic">${ic[opts.section] || ic.summary}</div>
+      <div class="pcard-body"><div class="pcard-msg">${esc(opts.message)}</div>
+        <div class="pcard-tags">${opts.choices.map((c, i) => `<button type="button" class="pcard-tag pick" data-i="${i}">${esc(c.label || c.value)}</button>`).join("")}</div>
+      </div>`;
+    card.querySelectorAll(".pick").forEach((b) => b.addEventListener("click", () => {
+      const c = opts.choices[+b.dataset.i];
+      card.querySelectorAll(".pick").forEach((x) => { x.disabled = true; });
+      b.classList.add("done");
+      onPick(c);
+    }));
+    body.appendChild(card); down();
+  }
+
   /* ---------------- UI card (form) ---------------- */
   function uiCard(body, opts, onSave) {
     const card = document.createElement("div");
@@ -1432,6 +1508,12 @@
             if (typeof window.refreshProfilerBanner === "function") {
               window.refreshProfilerBanner();
             }
+          } else if (data.type === "profile_saved") {
+            renderProfileSaved(body, data.items || []);
+            refreshWorkspaceStatus();
+            if (typeof window.refreshProfilerBanner === "function") window.refreshProfilerBanner();
+          } else if (data.type === "profile_confirm_batch") {
+            renderProfileConfirmBatch(body, data.items || []);
           } else if (data.type === "profile_confirm_request") {
             // Proposed profile change -> native confirm card, wired to the real save.
             const conf = data.confirm || {};
@@ -1440,6 +1522,13 @@
             profileConfirm(body, { section: data.section, message: data.message || "", tags: tags, section_label: data.section },
               conf.action ? () => saveProfileUpdate(conf.action, conf.data || {}) : null);
           } else if (data.type === "ui_card") {
+            const choices = (data.choices || []).filter((c) => c && (c.label || c.value));
+            if ((data.ui_type === "choice" || (!data.fields || !data.fields.length)) && choices.length) {
+              // Choice card: options render as buttons; the pick is sent on.
+              choiceCard(body, { section: data.section, message: data.message || "", choices: choices },
+                (c) => { if (data.save_action && data.section !== "summary") { saveProfileUpdate(data.save_action, Object.assign({}, data.prefilled || {}, { value: c.value })).catch(() => {}); } else { ask(c.label || c.value); } });
+              return;
+            }
             // Form card -> native uiCard design, wired to the real save endpoint.
             const fields = (data.fields || []).map((f) => ({
               name: f.name, label: f.label, type: f.type,

@@ -138,7 +138,7 @@ class PromptToolNameDriftTests(unittest.TestCase):
         self.assertIn("catalog_compare_products", hints["comparing"])
         self.assertIn("catalog_get_product", hints["ready_to_buy"])
         self.assertIn("check_course_readiness", hints["ready_to_buy"])
-        self.assertIn("request_user_input", hints["profile_and_search"])
+        self.assertIn("update_user_profile", hints["profile_and_search"])
         self.assertIn("catalog_search", hints["profile_and_search"])
 
 

@@ -52,6 +52,11 @@
   .prof-metric .l { font-size: 11px; color: var(--fm-ink-3); white-space: nowrap; }
   .prof-cta { display: inline-flex; align-items: center; gap: 6px; padding: 8px 13px; border-radius: 10px; border: none; background: var(--fm-primary); color: #fff; font-weight: 650; font-size: 12.5px; cursor: pointer; white-space: nowrap; }
   [data-theme="dark"] .prof-cta { color: #06201d; }
+
+  .ps-title { font-size: 12px; font-weight: 700; color: var(--fm-ink-2); margin-bottom: 4px; }
+  .ps-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 3px; font-size: 12.5px; color: var(--fm-ink-2); }
+  .ps-list i { color: var(--fm-success); font-size: 10px; margin-right: 4px; }
+  .ps-next { margin-top: 6px; font-size: 12.5px; color: var(--fm-primary); font-weight: 600; }
   .prof-link { font-size: 12px; font-weight: 600; color: var(--fm-primary); white-space: nowrap; text-decoration: none; }
   @media (max-width: 640px) { .prof-link { display: none; } .prof-sub { display: none; } }
 </style>
@@ -65,9 +70,8 @@
     <div class="prof-kicker"><i class="fa-solid fa-user-check"></i> Profilmode</div>
     <div class="prof-title">AI Profiler — profil, erfaring og mål</div>
     <div class="prof-sub">Svar på et par spørgsmål — jeg gemmer det hele på din profil og i din hukommelse undervejs.</div>
-    <div class="prof-missing" id="profMissing"></div>
+    <div class="prof-missing" id="profMissing" aria-live="polite"></div>
     <div class="prof-metrics" aria-label="Profil og hukommelsesstatus">
-      <span class="prof-metric"><span class="v" id="profDone">0/0</span><span class="l">felter</span></span>
       <span class="prof-metric"><span class="v" id="profMem">—</span><span class="l">hukommelser</span></span>
       <span class="prof-metric"><span class="v" id="profUsed">—</span><span class="l">brugt af AI</span></span>
       <span class="prof-metric"><span class="v" id="profNodes">—</span><span class="l">datapunkter</span></span>
@@ -105,6 +109,7 @@
 {% block extra_scripts %}
 <script>window.CHAT_MODE = 'profiler';</script>
 <script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/profile-strength.js') }}?v={{ asset_version('futurematch/assets/profile-strength.js') }}"></script>
 <script src="{{ url_for('static', filename='futurematch/assets/chat.js') }}?v={{ asset_version('futurematch/assets/chat.js') }}"></script>
 <script>
   (function () {
@@ -118,8 +123,6 @@
       if (!d) return;
       var counts = d.counts || {};
       var completeness = d.completeness || {};
-      var done = document.getElementById('profDone');
-      if (done && completeness.total) done.textContent = (completeness.done || 0) + '/' + completeness.total;
       var mem = document.getElementById('profMem');
       if (mem && counts.memories != null) mem.textContent = counts.memories;
       var used = document.getElementById('profUsed');
@@ -137,16 +140,9 @@
       if (!profilerCompleteTracked && (c.pct || 0) >= 100) {
         profilerCompleteTracked = true; track('profiler_complete', { pct: c.pct || 0 });
       }
-      var done = document.getElementById('profDone');
-      if (done && c.total) done.textContent = (c.done || 0) + '/' + c.total;
+      // Need-driven: what the AI can do now + one soft next step (shared component).
       var miss = document.getElementById('profMissing');
-      if (!miss) return;
-      if (c.missing && c.missing.length) {
-        miss.innerHTML = '<span style="font-size:11px;color:var(--fm-ink-3);align-self:center;margin-right:2px">Mangler:</span>' +
-          c.missing.map(function (m) { return '<span class="prof-tag">' + m + '</span>'; }).join('');
-      } else {
-        miss.innerHTML = '<span class="prof-tag done">Profilen er komplet 🎉</span>';
-      }
+      if (miss && window.fmProfileStrength) miss.innerHTML = window.fmProfileStrength.html(c);
     };
     // Start / Fortsæt send a neutral SEED turn (kind "seed"). The server then
     // skips intent classification and the agent picks where to begin from what

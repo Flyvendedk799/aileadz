@@ -3333,10 +3333,123 @@ def _clean_profile_data(data):
         cleaned[k] = v
     return cleaned
 
+_AUTOSAVE_ADDS = ("add_skill", "add_experience", "add_education", "add_course",
+                  "add_certification", "add_language", "add_link")
+
+
+def _autosave_enabled():
+    """Additions save immediately (N-5.1). AI_PROFILE_AUTOSAVE=0 restores the old
+    propose-then-confirm card for additions."""
+    return _os.getenv("AI_PROFILE_AUTOSAVE", "1").strip().lower() not in ("0", "false", "no", "off")
+
+
+def _autosave_profile_add(username, action, data):
+    """Persist one profile ADDITION and return ``(label, undo)`` or ``None``.
+
+    ``undo`` is a ready-made ``confirm_profile_update`` payload (a remove_*) that
+    the chat shows as the inline "Fortryd" button.
+    """
+    from app1 import user_profile_db as db
+    if action == "add_skill":
+        name, level = data.get("skill_name", ""), data.get("skill_level", "mellem")
+        if not db.add_skill(username, name, level, source="ai_chat"):
+            return None
+        try:
+            from skill_history import record_user_snapshot
+            record_user_snapshot(username, name, level, source="ai_chat")
+        except Exception:
+            pass
+        return f"{name} ({level})", {"action": "remove_skill", "data": {"skill_name": name}}
+    if action == "add_experience":
+        title, company = data.get("title", ""), data.get("company", "")
+        db.add_experience(username, title=title, company=company, start_year=data.get("start_year"),
+                          end_year=data.get("end_year"), is_current=data.get("is_current", False),
+                          description=data.get("description", ""))
+        row = next((e for e in reversed(db.get_experience(username))
+                    if e["title"].lower() == title.lower()), None)
+        return (title + (f" @ {company}" if company else ""),
+                {"action": "remove_experience", "data": {"id": row["id"]}} if row else None)
+    if action == "add_education":
+        degree = data.get("degree", "")
+        db.add_education(username, degree=degree, institution=data.get("institution", ""),
+                         year_completed=data.get("year_completed"), description=data.get("description", ""))
+        row = next((e for e in reversed(db.get_education(username))
+                    if e["degree"].lower() == degree.lower()), None)
+        return degree, ({"action": "remove_education", "data": {"id": row["id"]}} if row else None)
+    if action == "add_course":
+        title = data.get("course_title", "")
+        db.add_completed_course(username, course_title=title, course_handle=data.get("course_handle") or None,
+                                vendor=data.get("vendor", ""), completed_date=data.get("completed_date") or None,
+                                certificate_note=data.get("certificate_note", ""))
+        return title, {"action": "remove_course", "data": {"course_title": title}}
+    if action == "add_certification":
+        name = data.get("name", "")
+        db.add_certification(username, name=name, issuer=data.get("issuer", ""), issue_date=data.get("issue_date"),
+                             expiry_date=data.get("expiry_date"), credential_id=data.get("credential_id"),
+                             credential_url=data.get("credential_url"))
+        row = next((c for c in reversed(db.get_certifications(username))
+                    if str(c.get("name") or "").lower() == name.lower()), None)
+        return name, ({"action": "remove_certification", "data": {"id": row["id"]}} if row else None)
+    if action == "add_language":
+        language = data.get("language", "")
+        db.add_language(username, language, proficiency=data.get("proficiency", "mellem"))
+        return language, {"action": "remove_language", "data": {"language": language}}
+    if action == "add_link":
+        db.add_portfolio_link(username, data.get("label", ""), data.get("url", ""), kind=data.get("kind"))
+        row = next((p for p in reversed(db.get_portfolio_links(username))
+                    if str(p.get("url") or "").rstrip("/") == str(data.get("url", "")).rstrip("/")), None)
+        return data.get("label") or data.get("url", ""), (
+            {"action": "remove_link", "data": {"id": row["id"]}} if row else None)
+    return None
+
+
 def _execute_update_user_profile(args, username):
-    """Validate profile update and return proposed action for user confirmation.
-    Add-actions are NOT executed here — they go through frontend confirmation first.
-    Remove/update actions execute immediately."""
+    """Profile writes from the AI (N-5.1: say it, and do it).
+
+    ADDITIONS are saved at once and come back as ``status: "saved"`` with an
+    ``undo`` payload (the chat shows "Noteret ... Fortryd"). Removals, edits and
+    level upgrades stay proposals the user confirms. Incomplete data still yields
+    a ``ui_card`` and errors are passed through unchanged.
+    """
+    raw = _propose_user_profile_update(args, username)
+    if not _autosave_enabled():
+        return raw
+    try:
+        res = json.loads(raw)
+    except Exception:
+        return raw
+    if res.get("status") != "proposed":
+        return raw
+    conf = res.get("confirm") or {}
+    action, data = conf.get("action", ""), conf.get("data") or {}
+    # Level upgrades ("Opgradér ...") are edits, not additions: keep the confirm card.
+    if action not in _AUTOSAVE_ADDS or str(res.get("message", "")).startswith("Opgradér"):
+        return raw
+    try:
+        saved = _autosave_profile_add(username, action, data)
+    except Exception as e:
+        print(f"[ProfileUpdate autosave failed -> proposal] {e}")
+        try:
+            from flask import current_app as _app
+            _app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return raw
+    if not saved:
+        return raw
+    label, undo = saved
+    return json.dumps({
+        "status": "saved", "section": res.get("section", ""), "label": label,
+        "message": f"Noteret på din profil: {label}",
+        "undo": undo,
+        "note_for_assistant": "Det er allerede gemt og brugeren kan fortryde under svaret. Sig det kort og naturligt, bed ikke om bekræftelse.",
+    }, ensure_ascii=False)
+
+
+def _propose_user_profile_update(args, username):
+    """Validate profile update and return a proposed action (nothing executed for
+    additions here - ``_execute_update_user_profile`` saves those).
+    Remove/update actions are proposed for confirmation."""
     if not username:
         return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
 

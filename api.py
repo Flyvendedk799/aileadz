@@ -1154,6 +1154,14 @@ def apply_cv_items(username, data):
         except Exception:
             career_action = {}
 
+        # N-5.1: tell the assistants a CV was just applied, so the profiler does not
+        # ask for what is now on the profile.
+        try:
+            if sum(counts.values()) > 0:
+                import time as _time
+                session['cv_applied'] = {'t': int(_time.time()), 'counts': counts}
+        except Exception:
+            pass
         return {
             'success': outcomes['failed'] == 0,
             'partial_success': outcomes['failed'] > 0 and sum(counts.values()) > 0,

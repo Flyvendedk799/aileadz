@@ -1117,7 +1117,11 @@ def feedback():
         from app1 import conversation_state as _conv
         data = request.get_json(silent=True) or {}
         sids = _conv.all_session_ids(session) or ["unknown"]
-        sid = _conv.current_sid(session, data.get("mode") or "chat") or sids[0]
+        if data.get("mode") == "hr":
+            sids = [session.get("hr_chat_session_id") or "unknown"]
+            sid = sids[0]
+        else:
+            sid = _conv.current_sid(session, data.get("mode") or "chat") or sids[0]
         try:
             rating = max(-1, min(1, int(data.get("rating", 0) or 0)))  # +1 up, -1 down, 0 cleared
         except (TypeError, ValueError):
@@ -1799,6 +1803,10 @@ def confirm_tool_action():
         return jsonify({"status": "already_confirmed"})
 
     scope = entry["scope"]
+    if scope == "hr" and not (session.get("role") == "admin" or (
+            session.get("company_id") and session.get("company_role") in ("company_admin", "hr_manager", "department_head"))):
+        # An HR confirmation is only honoured for someone who still holds an HR role.
+        return jsonify({"status": "error", "message": "Ingen adgang til HR-handlinger."}), 403
     tool_name = entry["tool_name"]
     args = dict(entry["args"])
     args["confirm"] = True  # inject the confirmation flag

@@ -510,7 +510,8 @@ class HrSelectionTests(unittest.TestCase):
         self.assertIn("ui_action", panel)
         self.assertIn("fm-aip-action", panel)
         # Only same-origin absolute paths may be navigated to.
-        self.assertIn(r"/^\/[^\/]/.test(target)", panel)
+        kit = open(os.path.join(os.path.dirname(AI_PANEL), "..", "..", "static", "futurematch", "assets", "ai-stream.js"), encoding="utf-8").read()
+        self.assertIn(r"/^\/[^\/]/.test(target)", kit)
 
 
 # ── Vendor: vendor_catalog_health ─────────────────────────────────────────

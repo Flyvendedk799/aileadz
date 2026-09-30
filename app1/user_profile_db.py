@@ -1927,7 +1927,7 @@ def list_conversations(username, limit=30):
     try:
         cur.execute(
             "SELECT id, session_id, title, mode, created_at, updated_at FROM conversation_history "
-            "WHERE username = %s ORDER BY updated_at DESC LIMIT %s",
+            "WHERE username = %s AND mode <> 'hr' ORDER BY updated_at DESC LIMIT %s",
             (username, limit)
         )
         rows = list(cur.fetchall() or [])

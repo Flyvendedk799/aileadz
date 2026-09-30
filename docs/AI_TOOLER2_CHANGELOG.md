@@ -118,7 +118,7 @@ Four new employee tools:
 
 | Flag | Default | Phase | Controls |
 |---|---|---|---|
-| `AI_TOOLER2` | `off` | P1 | Master kill-switch for all new tools + UI |
+| `AI_TOOLER2` | `on` (GA) | P1 | Opt-out only: `off` reports the batch disabled in diagnostics; tools are not gated on it (N-5.5) |
 | `AI_LIVE_TOOL_EVENTS` | `1` | existing | Live tool progress/start events |
 | `AI_CAPTURE_FINAL` | `1` | existing | Final-answer capture (one completion per tool turn) |
 | `AI_TOOL_TURN_TEMPERATURE` | `0.2` | P1/P3 | Temperature for tool-deciding turns |

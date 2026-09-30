@@ -130,6 +130,7 @@ def remind_expiring_certifications(within_days=DEFAULT_WITHIN_DAYS,
                        + f" ({exp_str}). Husk at forny den.")
 
             _notify(r["username"], title, msg)
+            _notify_managers(r["username"], name, exp_str, days)
             _mark_reminded(r["id"], exp_str)
             summary["reminded"] += 1
         except Exception as e:
@@ -143,14 +144,51 @@ def remind_expiring_certifications(within_days=DEFAULT_WITHIN_DAYS,
     return summary
 
 
+def _notify_managers(username, cert_name, exp_str, days):
+    """Also tell the employee's manager (else HR) - a lapsed certification is a
+    compliance matter, not only a personal reminder (N-4.3). Never raises."""
+    try:
+        import MySQLdb.cursors
+        from notification_service import notify_user, notify_roles, HR_ROLES
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            "SELECT cu.company_id, cu.user_id, cu.manager_user_id, COALESCE(cu.full_name, cu.username) AS name "
+            "FROM company_users cu LEFT JOIN users u ON u.id = cu.user_id "
+            "WHERE (u.username = %s OR cu.username = %s) AND cu.status = 'active' LIMIT 1",
+            (username, username),
+        )
+        emp = cur.fetchone()
+        if not emp or not emp.get("company_id"):
+            cur.close()
+            return
+        when = ("udløb %s" % exp_str) if days < 0 else ("udløber %s" % exp_str)
+        common = dict(title="Certificering kræver opfølgning",
+                      message="%s: certificeringen “%s” %s." % (emp.get("name") or username, cert_name, when),
+                      kind="certification", action_url="/hr/compliance",
+                      dedupe_key="cert-exp:%s:%s:%s" % (emp["user_id"], cert_name, exp_str), dedupe_hours=None)
+        if emp.get("manager_user_id"):
+            notify_user(cur, user_id=emp["manager_user_id"], company_id=emp["company_id"], **common)
+        else:
+            notify_roles(cur, emp["company_id"], HR_ROLES, **common)
+        conn.commit()
+        cur.close()
+    except Exception as e:
+        logger.debug("cert_expiry: manager notice skipped: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+
+
 def _notify(username, title, message):
     """Insert one learner notification. ``user_id`` HOLDS the username."""
+    from notification_service import notify_user
     conn = current_app.mysql.connection
     cur = conn.cursor()
-    cur.execute(
-        "INSERT INTO notifications (user_id, title, message, image_url) VALUES (%s, %s, %s, %s)",
-        (username, (title or "")[:255], (message or "")[:1000], ""),
-    )
+    notify_user(cur, title=(title or "")[:255], message=(message or "")[:1000],
+                username=username, kind="certification", action_url="/profile",
+                dedupe_key=None)
     conn.commit()
     cur.close()
 

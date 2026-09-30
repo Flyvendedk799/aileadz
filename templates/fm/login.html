@@ -106,15 +106,15 @@
         </div>
         <div class="form-row">
           <label class="remember"><input type="checkbox" name="remember" checked /> Husk mig</label>
-          <a class="forgot" href="#">Glemt adgangskode?</a>
+          <a class="forgot" href="{{ url_for('auth.forgot_password') if has_endpoint('auth.forgot_password') else url_for('account.forgot_password') }}">Glemt adgangskode?</a>
         </div>
         <button type="submit" class="btn btn-primary btn-lg" style="width:100%">Log ind <i class="fa-solid fa-arrow-right"></i></button>
       </form>
 
       <div class="divider">ELLER</div>
       <div class="sso">
-        <a class="sso-btn" href="#"><i class="fa-brands fa-microsoft" style="color:#2b7fc4"></i> Microsoft</a>
-        <a class="sso-btn" href="#"><i class="fa-solid fa-key" style="color:var(--fm-clay)"></i> SSO</a>
+        <a class="sso-btn" href="{{ url_for('sso_discovery.discover', hint='microsoft') }}"><i class="fa-brands fa-microsoft" style="color:#2b7fc4"></i> Microsoft</a>
+        <a class="sso-btn" href="{{ url_for('sso_discovery.discover') }}"><i class="fa-solid fa-key" style="color:var(--fm-clay)"></i> SSO</a>
       </div>
 
       <div class="fc-foot">Har du ikke en konto? <a href="{{ url_for('auth.register') }}">Opret konto</a></div>

@@ -243,3 +243,43 @@
   body{background:#fff !important}
   a[href]::after{content:""}
 }
+
+/* ---- Shared assistant kit (ai-stream.js): HR panel, HR page, vendor assistant, widget ---- */
+.fm-md{line-height:1.55}
+.fm-md p{margin:0 0 .6em}.fm-md p:last-child{margin-bottom:0}
+.fm-md ul,.fm-md ol{margin:.3em 0 .6em;padding-left:1.25em}
+.fm-md a{color:var(--fm-primary);text-decoration:underline}
+.fm-md table{border-collapse:collapse;font-size:12.5px;margin:.4em 0}
+.fm-md th,.fm-md td{border:1px solid var(--fm-line);padding:4px 8px;text-align:left}
+.fm-md code{background:var(--fm-surface-3);padding:1px 5px;border-radius:5px;font-size:.92em}
+.fm-md strong{font-weight:650}
+.fm-chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.fm-chip{border:1px solid var(--fm-line);background:var(--fm-surface-2);border-radius:999px;padding:6px 12px;
+  font-size:12px;cursor:pointer;color:var(--fm-ink-2);font-family:inherit}
+.fm-chip:hover{border-color:var(--fm-primary);color:var(--fm-primary)}
+.fm-action-link{display:inline-flex;align-items:center;gap:6px;margin-top:8px;padding:8px 13px;border-radius:10px;
+  font-size:12.5px;font-weight:650;text-decoration:none;color:#fff;background:var(--fm-primary)}
+.fm-action-link::before{content:"\2192";font-weight:700}
+.fm-action-link:hover{filter:brightness(1.07);color:#fff;text-decoration:none}
+.fm-confirm-card{margin-top:10px;padding:13px 15px;border-radius:14px;max-width:420px;
+  border:1px solid color-mix(in srgb,var(--fm-primary) 30%,var(--fm-line));
+  background:color-mix(in srgb,var(--fm-primary) 5%,var(--fm-surface))}
+.fm-confirm-head{display:flex;align-items:center;gap:8px;font-size:12px;font-weight:700;color:var(--fm-primary);margin-bottom:8px}
+.fm-confirm-body{font-size:13.5px;color:var(--fm-ink);line-height:1.45;margin-bottom:10px}
+.fm-confirm-details{font-size:12px;color:var(--fm-ink-2);margin-bottom:10px;line-height:1.4}
+.fm-confirm-meta{font-size:11.5px;color:var(--fm-ink-3);margin-bottom:10px}
+.fm-confirm-actions{display:flex;gap:8px}
+.fm-confirm-ok{flex:1;padding:8px 14px;border-radius:8px;border:none;background:var(--fm-primary);color:#fff;
+  font-size:13px;font-weight:650;cursor:pointer}
+.fm-confirm-ok:disabled{opacity:.55;cursor:default}
+.fm-confirm-cancel{padding:8px 14px;border-radius:8px;border:1px solid var(--fm-line);background:transparent;
+  color:var(--fm-ink-2);font-size:13px;font-weight:600;cursor:pointer}
+.fm-confirm-result{margin-top:10px;font-size:12.5px;font-weight:600}
+.fm-confirm-result.ok{color:var(--fm-success)}.fm-confirm-result.err{color:var(--fm-danger)}
+.fm-feedback{display:flex;gap:4px;margin-top:6px}
+.fm-feedback button{border:none;background:none;cursor:pointer;color:var(--fm-ink-3);padding:3px 6px;border-radius:6px}
+.fm-feedback button:hover{background:var(--fm-surface-3);color:var(--fm-ink)}
+.fm-feedback button.on{color:var(--fm-primary)}
+.fm-aip-msg.bot{white-space:normal}
+.fm-aip-hist{display:flex;gap:6px;align-items:center}
+.fm-aip-hist button{background:none;border:none;color:#fff;cursor:pointer;font-size:13px;opacity:.9}

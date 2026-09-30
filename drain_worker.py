@@ -75,7 +75,9 @@ def main():
 
     if args.loop:
         print(f"[drain_worker] loop: every {args.interval}s, only={only or 'all due'}", flush=True)
+        import scheduler
         while True:
+            scheduler.stamp_worker_heartbeat(app)
             _run_once(app, only=only, force=args.force)
             time.sleep(max(5, args.interval))
     else:

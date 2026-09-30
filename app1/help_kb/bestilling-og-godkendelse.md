@@ -23,4 +23,4 @@ Bed assistenten om at tilmelde dig kurset. Den viser et bekræftelseskort med ku
 - Overskrider bestillingen din afdelings resterende budget, sendes den til godkendelse i stedet for at blive afvist.
 
 ## Følg status
-Se status på "Min tidslinje" (/min-tidslinje) eller under "Mine bestillinger" på Min læring, fx "Afventer godkendelse", "Godkendt", "Afvist", "Bekræftet" eller "Gennemført". Du kan også spørge AI-assistenten, hvordan det går med din bestilling. Spørgsmål om en afvisning afklares med din HR-afdeling.
+Se status på "Min tidslinje" (/min-tidslinje) eller under "Mine bestillinger" på Min læring. Klik på en bestilling for at se forløbet, tilføje kurset til kalenderen, annullere den eller markere den som gennemført. Forløbet er: "Afventer godkendelse" → "Godkendt – afventer booking" → "Booket" (udbyderen har bekræftet din plads) → "Gennemført". En bestilling kan også være "Afvist" eller "Annulleret". Der er ingen betaling i appen: kurset faktureres uden for platformen. Du kan også spørge AI-assistenten, hvordan det går med din bestilling. Spørgsmål om en afvisning afklares med din HR-afdeling.

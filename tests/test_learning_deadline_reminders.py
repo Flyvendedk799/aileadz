@@ -88,52 +88,47 @@ def _row(progress_id, user_id, days_left, name="Onboarding"):
 
 # ── 1) aggregate manager card: counts only, k-anon-safe ──────────────────────
 
+def _notif(returns=1):
+    """Patch the unified notification writer (N-3.2)."""
+    return mock.patch("notification_service.insert_company_notification",
+                      return_value=returns)
+
+
 class ManagerCardTests(unittest.TestCase):
     def test_card_quotes_counts_not_names(self):
-        # dedupe COUNT(*) returns 0 -> not a recent duplicate -> insert.
         cur = FakeCursor(fetchone={"cnt": 0})
         conn = FakeConnection(cur)
-        n = deadline_service._insert_manager_card(cur, conn, 7, overdue=2, soon=3)
+        with _notif() as ins:
+            n = deadline_service._insert_manager_card(cur, conn, 7, overdue=2, soon=3)
         self.assertEqual(n, 1)
         self.assertEqual(conn.commits, 1)
-        insert = next(e for e in cur.executed
-                      if "INSERT INTO company_notifications" in e[0])
-        # Params: (company_id, target_roles_json, title, message, is_urgent).
-        # recipient_user_id is the literal NULL in the SQL (role-broadcast), not a
-        # param — so the card carries no per-learner addressee.
-        params = insert[1]
-        self.assertEqual(params[0], 7)             # company_id first
-        self.assertIn("VALUES (%s, NULL, NULL", insert[0])  # recipient NULL in SQL
-        message = params[3]                          # message
+        self.assertEqual(ins.call_args.args[1], 7)          # company-scoped
+        self.assertEqual(ins.call_args.kwargs["target_roles"], deadline_service._HR_ROLES)
+        self.assertNotIn("recipient_user_id", ins.call_args.kwargs)  # role broadcast
+        message = ins.call_args.kwargs["message"]
         self.assertIn("2 læringsforløb er forfaldne", message)
         self.assertIn("3 har frist", message)
-        self.assertIn("learning-deadline:company-7", message)  # dedupe marker
-        # Aggregate only: no user id / username can appear (we passed counts only).
+        # dedupe marker lives in dedupe_key, NOT in the visible message (N-3.2)
+        self.assertNotIn("learning-deadline", message)
+        self.assertEqual(ins.call_args.kwargs["dedupe_key"], "learning-deadline:company-7")
+        self.assertTrue(ins.call_args.kwargs["action_url"])
         self.assertNotIn("user", message.lower())
 
     def test_overdue_is_urgent_soon_only_is_not(self):
         cur = FakeCursor(fetchone={"cnt": 0})
         conn = FakeConnection(cur)
-        deadline_service._insert_manager_card(cur, conn, 7, overdue=1, soon=0)
-        urgent = next(e[1][4] for e in cur.executed
-                      if "INSERT INTO company_notifications" in e[0])
-        self.assertEqual(urgent, 1)
-
-        cur2 = FakeCursor(fetchone={"cnt": 0})
-        conn2 = FakeConnection(cur2)
-        deadline_service._insert_manager_card(cur2, conn2, 7, overdue=0, soon=4)
-        urgent2 = next(e[1][4] for e in cur2.executed
-                       if "INSERT INTO company_notifications" in e[0])
-        self.assertEqual(urgent2, 0)
+        with _notif() as ins:
+            deadline_service._insert_manager_card(cur, conn, 7, overdue=1, soon=0)
+            deadline_service._insert_manager_card(cur, conn, 7, overdue=0, soon=4)
+        flags = [bool(c.kwargs["is_urgent"]) for c in ins.call_args_list]
+        self.assertEqual(flags, [True, False])
 
     def test_recent_duplicate_skips_card(self):
-        cur = FakeCursor(fetchone={"cnt": 1})  # already nudged
+        cur = FakeCursor(fetchone={"cnt": 1})
         conn = FakeConnection(cur)
-        n = deadline_service._insert_manager_card(cur, conn, 7, overdue=1, soon=1)
+        with _notif(returns=0):  # the service dedupes on dedupe_key
+            n = deadline_service._insert_manager_card(cur, conn, 7, overdue=1, soon=1)
         self.assertEqual(n, 0)
-        inserts = [e for e in cur.executed
-                   if "INSERT INTO company_notifications" in e[0]]
-        self.assertEqual(inserts, [])
 
     def test_no_counts_is_silent(self):
         cur = FakeCursor(fetchone={"cnt": 0})
@@ -203,23 +198,21 @@ class LearnerReminderTests(unittest.TestCase):
         cur = FakeCursor(fetchone={"cnt": 0})
         conn = FakeConnection(cur)
         rows = [_row(11, 101, -2), _row(12, 102, 1)]
-        n = deadline_service._remind_learners(cur, conn, 7, rows)
+        with _notif() as ins:
+            n = deadline_service._remind_learners(cur, conn, 7, rows)
         self.assertEqual(n, 2)
-        inserts = [e for e in cur.executed
-                   if "INSERT INTO company_notifications" in e[0]]
-        self.assertEqual(len(inserts), 2)
-        for _sql, params in inserts:
-            self.assertEqual(params[0], 7)            # company_id
-            self.assertIn(params[1], (101, 102))      # recipient = the learner
-        # overdue row -> urgent, soon row -> not urgent
-        urgents = {params[1]: params[4] for _sql, params in inserts}
-        self.assertEqual(urgents[101], 1)
-        self.assertEqual(urgents[102], 0)
+        self.assertEqual(ins.call_count, 2)
+        by_user = {c.kwargs["recipient_user_id"]: c.kwargs for c in ins.call_args_list}
+        self.assertEqual(set(by_user), {101, 102})   # addressed to the learner
+        self.assertTrue(by_user[101]["is_urgent"])   # overdue -> urgent
+        self.assertFalse(by_user[102]["is_urgent"])  # soon -> not urgent
+        self.assertEqual(by_user[101]["action_url"], "/min-laering")
 
     def test_per_row_dedupe_skips_recently_reminded(self):
-        cur = FakeCursor(fetchone={"cnt": 1})  # already reminded
+        cur = FakeCursor(fetchone={"cnt": 1})
         conn = FakeConnection(cur)
-        n = deadline_service._remind_learners(cur, conn, 7, [_row(11, 101, -1)])
+        with _notif(returns=0):
+            n = deadline_service._remind_learners(cur, conn, 7, [_row(11, 101, -1)])
         self.assertEqual(n, 0)
 
     def test_rows_without_user_id_are_skipped(self):
@@ -232,7 +225,8 @@ class LearnerReminderTests(unittest.TestCase):
         cur = FakeCursor(fetchone={"cnt": 0})
         conn = FakeConnection(cur)
         many = [_row(i, 1000 + i, 2) for i in range(deadline_service._MAX_LEARNER_REMINDERS + 25)]
-        n = deadline_service._remind_learners(cur, conn, 7, many)
+        with _notif():
+            n = deadline_service._remind_learners(cur, conn, 7, many)
         self.assertEqual(n, deadline_service._MAX_LEARNER_REMINDERS)
 
 

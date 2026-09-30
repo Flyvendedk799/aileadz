@@ -10,37 +10,20 @@ pages_bp = Blueprint('pages', __name__, template_folder='templates')
 
 
 def _fetch_company_notifications(limit=60):
-    """Recipient-scoped company_notifications for the session user.
+    """The session user's notifications from the ONE unified table (N-3.2).
 
-    Scoping mirrors hr_dashboard.notifications: same company, addressed to this
-    user directly OR broadcast (recipient_user_id IS NULL), and either untargeted
-    or targeted at this user's company_role. Read-only; returns [] on any failure
-    so the page never breaks for users without notifications.
+    Every row belongs to exactly one recipient, so read state is per user. Returns
+    [] on any failure so the page never breaks for users without notifications.
     """
-    company_id = session.get('company_id')
-    user_id = session.get('user_id')
-    company_role = session.get('company_role')
-    if not company_id:
+    username = session.get('user')
+    if not username:
         return []
     try:
+        from notification_service import list_for_user
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute(
-            """
-            SELECT cn.id, cn.title, cn.message, cn.is_urgent, cn.is_read,
-                   cn.created_at, u.username AS sender_name
-            FROM company_notifications cn
-            LEFT JOIN users u ON cn.sender_user_id = u.id
-            WHERE cn.company_id = %s
-              AND (cn.recipient_user_id = %s OR cn.recipient_user_id IS NULL)
-              AND (cn.target_roles IS NULL OR JSON_CONTAINS(cn.target_roles, %s))
-            ORDER BY cn.is_read ASC, cn.is_urgent DESC, cn.created_at DESC
-            LIMIT %s
-            """,
-            (company_id, user_id, json.dumps(company_role), int(limit)),
-        )
-        rows = cur.fetchall() or []
+        rows = list_for_user(cur, username, limit=limit)
         cur.close()
-        return list(rows)
+        return rows
     except Exception as e:
         current_app.logger.warning("notifications fetch: %s", e)
         return []
@@ -80,7 +63,15 @@ def contact():
 
 @pages_bp.route('/support')
 def support():
-    return render_template('fm/support.html')
+    """Support page. Contact details come from the environment so the page never
+    promises a phone line or a response time the operator has not configured."""
+    return render_template(
+        'fm/support.html',
+        support_email=os.environ.get('SUPPORT_EMAIL', 'support@futurematch.dk'),
+        support_phone=os.environ.get('SUPPORT_PHONE', '').strip(),
+        support_hours=os.environ.get('SUPPORT_HOURS', '').strip(),
+        support_sla=os.environ.get('SUPPORT_SLA', '').strip(),
+    )
 
 @pages_bp.route('/privacy')
 def privacy():
@@ -235,10 +226,10 @@ def settings():
             confirm_password = request.form.get('confirm_password')
             
             if not current_password:
-                flash("Angiv venligst dit nuvaerende kodeord.", "danger")
+                flash("Angiv venligst din nuværende adgangskode.", "danger")
                 return redirect(url_for('pages.settings'))
             if new_password != confirm_password:
-                flash("Det nye kodeord og bekraeftelse stemmer ikke overens.", "danger")
+                flash("Den nye adgangskode og bekræftelsen stemmer ikke overens.", "danger")
                 return redirect(url_for('pages.settings'))
             from werkzeug.security import check_password_hash, generate_password_hash
             stored_pw = user_data.get('password', '')
@@ -247,7 +238,7 @@ def settings():
             else:
                 pw_ok = (stored_pw == current_password)
             if not pw_ok:
-                flash("Nuvaerende kodeord er forkert.", "danger")
+                flash("Den nuværende adgangskode er forkert.", "danger")
                 return redirect(url_for('pages.settings'))
             hashed_new = generate_password_hash(new_password)
             try:
@@ -255,7 +246,7 @@ def settings():
                 cur.execute("UPDATE users SET password = %s WHERE username = %s", (hashed_new, username))
                 current_app.mysql.connection.commit()
                 cur.close()
-                flash("Kodeord opdateret!", "success")
+                flash("Adgangskoden er opdateret.", "success")
             except Exception as e:
                 current_app.logger.error("Error updating password: %s", e)
                 flash("Fejl ved opdatering af kodeord.", "danger")

@@ -5,6 +5,14 @@
 {% block topbar_sub %}{{ company.company_name }} · spørg om uddannelse, kompetencer, budgetter og medarbejdere.{% endblock %}
 {% block extra_head %}
 <style>
+.hr-layout{display:grid;grid-template-columns:230px minmax(0,1fr);gap:14px;align-items:start}
+.hr-sessions{padding:12px;max-height:calc(100vh - 200px);overflow-y:auto}
+.hr-sessions-title{font-size:12px;font-weight:700;color:var(--fm-ink-2);margin-bottom:8px}
+.hr-session{display:block;width:100%;text-align:left;border:1px solid transparent;background:none;border-radius:9px;padding:7px 9px;
+  font-size:12.5px;color:var(--fm-ink-2);cursor:pointer;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-family:inherit}
+.hr-session:hover{background:var(--fm-surface-2)}
+.hr-session.active{border-color:var(--fm-primary);color:var(--fm-primary);background:var(--fm-primary-tint)}
+@media(max-width:860px){.hr-layout{grid-template-columns:1fr}.hr-sessions{max-height:150px}}
 .hr-chat-card{display:flex;flex-direction:column;height:calc(100vh - 200px);min-height:480px;max-height:820px;padding:0;overflow:hidden}
 .hr-chat-messages{flex:1;overflow-y:auto;padding:20px;background:var(--fm-surface-2)}
 .hr-msg{margin-bottom:16px;display:flex;gap:11px;max-width:85%}
@@ -56,6 +64,11 @@
 
   <div id="proactiveAlerts"></div>
 
+  <div class="hr-layout">
+  <aside class="fm-card hr-sessions">
+    <div class="hr-sessions-title"><i class="fa-solid fa-clock-rotate-left"></i> Tidligere samtaler</div>
+    <div id="hrSessionList"></div>
+  </aside>
   <div class="fm-card hr-chat-card">
     <div class="hr-chat-messages" id="chatMessages">
       <div class="hr-msg assistant">
@@ -81,9 +94,12 @@
       <button class="btn btn-primary" onclick="sendMessage()" id="sendBtn"><i class="fa-solid fa-paper-plane"></i></button>
     </div>
   </div>
+  </div>
 </div>
 {% endblock %}
 {% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}?v={{ asset_version('futurematch/assets/ai-stream.js') }}"></script>
 <script>
 const chatMessages = document.getElementById('chatMessages');
 const chatInput = document.getElementById('chatInput');
@@ -94,99 +110,7 @@ let activeToolRun = null;
 
 function sendSuggestion(el){ chatInput.value = el.textContent; sendMessage(); }
 
-function sendMessage(){
-  const query = chatInput.value.trim();
-  if (!query || isProcessing) return;
-  isProcessing = true;
-  chatInput.value = '';
-  document.getElementById('sendBtn').disabled = true;
-  activeToolRun = null;
-  appendMessage('user', query);
-  typingIndicator.classList.add('active');
-  typingText.textContent = 'Analyserer...';
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-
-  fetch('{{ url_for("hr_dashboard.hr_chatbot_ask") }}', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({query: query})
-  }).then(response => {
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let assistantText = '';
-    let currentBubble = null;
-    function processStream(){
-      reader.read().then(({done, value}) => {
-        if (done){ finishMessage(assistantText); return; }
-        const chunk = decoder.decode(value, {stream: true});
-        const lines = chunk.split('\n');
-        for (const line of lines){
-          if (!line.startsWith('data: ')) continue;
-          try {
-            const data = JSON.parse(line.substring(6));
-            if (data.type === 'tool_call'){
-              typingText.textContent = `Kører: ${formatToolName(data)}...`;
-              renderToolCall(data);
-            } else if (data.type === 'text'){
-              if (!currentBubble){
-                typingIndicator.classList.remove('active');
-                currentBubble = appendMessage('assistant', '', true);
-              }
-              assistantText += data.content;
-              currentBubble.innerHTML = formatMarkdown(assistantText);
-              chatMessages.scrollTop = chatMessages.scrollHeight;
-            } else if (data.type === 'error'){
-              typingIndicator.classList.remove('active');
-              appendMessage('assistant', data.content);
-            } else if (data.type === 'done'){
-              finishMessage(assistantText); return;
-            }
-          } catch (e){}
-        }
-        processStream();
-      }).catch(err => {
-        console.error('Stream error:', err);
-        finishMessage(assistantText || 'Der opstod en forbindelsesfejl.');
-      });
-    }
-    processStream();
-  }).catch(err => {
-    console.error('Fetch error:', err);
-    typingIndicator.classList.remove('active');
-    appendMessage('assistant', 'Der opstod en fejl. Prøv igen.');
-    isProcessing = false;
-    document.getElementById('sendBtn').disabled = false;
-  });
-}
-
-function finishMessage(text){
-  typingIndicator.classList.remove('active');
-  isProcessing = false;
-  activeToolRun = null;
-  document.getElementById('sendBtn').disabled = false;
-  chatInput.focus();
-  const sugMatch = text.match(/<suggestions>\s*(\[.*?\])\s*<\/suggestions>/s);
-  if (sugMatch){
-    try {
-      const suggestions = JSON.parse(sugMatch[1]);
-      const lastMsg = chatMessages.querySelector('.hr-msg.assistant:last-child');
-      if (lastMsg){
-        const bubble = lastMsg.querySelector('.hr-msg-bubble');
-        if (bubble){ bubble.innerHTML = bubble.innerHTML.replace(/<suggestions>.*?<\/suggestions>/gs, ''); }
-        const sugDiv = document.createElement('div');
-        sugDiv.className = 'hr-suggestions';
-        suggestions.forEach(s => {
-          const chip = document.createElement('span');
-          chip.className = 'hr-suggestion-chip';
-          chip.textContent = s;
-          chip.onclick = function(){ sendSuggestion(this); };
-          sugDiv.appendChild(chip);
-        });
-        lastMsg.querySelector('.hr-msg-bubble').parentElement.appendChild(sugDiv);
-      }
-    } catch (e){}
-  }
-}
+function scrollDown(){ chatMessages.scrollTop = chatMessages.scrollHeight; }
 
 function appendMessage(role, content, returnBubble){
   const msg = document.createElement('div');
@@ -196,24 +120,57 @@ function appendMessage(role, content, returnBubble){
   avatar.innerHTML = role === 'user' ? '<i class="fa-solid fa-user"></i>' : '<i class="fa-solid fa-robot"></i>';
   const wrapper = document.createElement('div');
   const bubble = document.createElement('div');
-  bubble.className = 'hr-msg-bubble';
-  bubble.innerHTML = formatMarkdown(content);
+  bubble.className = 'hr-msg-bubble' + (role === 'assistant' ? ' fm-md' : '');
+  if (role === 'assistant') bubble.innerHTML = FMAI.md(content); else bubble.textContent = content;
   wrapper.appendChild(bubble);
   msg.appendChild(avatar);
   msg.appendChild(wrapper);
   chatMessages.appendChild(msg);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
-  if (returnBubble) return bubble;
+  scrollDown();
+  return returnBubble ? bubble : msg;
 }
 
-function formatMarkdown(text){
-  if (!text) return '';
-  let html = text.replace(/<suggestions>.*?<\/suggestions>/gs, '');
-  html = html.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/^[-*] (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>)/gs, '<ul>$1</ul>');
-  html = html.replace(/\n/g, '<br>');
-  return html;
+function sendMessage(){
+  const query = chatInput.value.trim();
+  if (!query || isProcessing) return;
+  isProcessing = true;
+  chatInput.value = '';
+  document.getElementById('sendBtn').disabled = true;
+  activeToolRun = null;
+  chatMessages.querySelectorAll('.fm-chips').forEach(n => n.remove());
+  appendMessage('user', query);
+  typingIndicator.classList.add('active');
+  typingText.textContent = 'Analyserer...';
+  scrollDown();
+
+  let bubble = null, wrapper = null, acc = '', msgIndex = null;
+  function ensureBubble(){
+    if (!bubble){
+      typingIndicator.classList.remove('active');
+      bubble = appendMessage('assistant', '', true);
+      wrapper = bubble.parentElement;
+    }
+    return bubble;
+  }
+  FMAI.ask('{{ url_for("hr_dashboard.hr_chatbot_ask") }}', {query: query, page: 'chatbot'}, {
+    tool_call: d => { typingText.textContent = `Kører: ${formatToolName(d)}...`; renderToolCall(d); },
+    text: d => { ensureBubble(); acc += d.content || ''; bubble.innerHTML = FMAI.md(acc); scrollDown(); },
+    suggestions: d => { ensureBubble(); FMAI.chips(wrapper, d.items, label => { chatInput.value = label; sendMessage(); }); scrollDown(); },
+    confirm_card: d => { ensureBubble(); FMAI.confirmCard(wrapper, d); scrollDown(); },
+    ui_action: d => { ensureBubble(); FMAI.action(wrapper, d); scrollDown(); },
+    meta: d => { msgIndex = d.message_index; },
+    error: d => { ensureBubble(); bubble.innerHTML = FMAI.md(d.content || 'Der opstod en fejl. Prøv igen.'); },
+    done: () => {
+      typingIndicator.classList.remove('active');
+      isProcessing = false; activeToolRun = null;
+      document.getElementById('sendBtn').disabled = false;
+      chatInput.focus();
+      if (wrapper && acc && msgIndex != null){
+        FMAI.feedback(wrapper, {mode: 'hr', message_index: msgIndex, query_text: query, assistant_response: acc.slice(0, 300)});
+      }
+      loadSessions();
+    }
+  });
 }
 
 function safeHtml(value){
@@ -267,11 +224,46 @@ function renderToolCall(data){
   const icon = data.ui_icon ? '<i class="fa-solid ' + safeHtml(data.ui_icon) + '"></i>' : '';
   chip.innerHTML = icon + '<span>' + safeHtml(formatToolName(data)) + '</span>' + (meta.length ? '<span class="meta">' + safeHtml(meta.join(' · ')) + '</span>' : '');
   activeToolRun.querySelector('.hr-tool-count').textContent = String(list.children.length);
-  chatMessages.scrollTop = chatMessages.scrollHeight;
+  scrollDown();
 }
 
 function resetChat(){
-  fetch('{{ url_for("hr_dashboard.hr_chatbot_reset") }}', {method: 'POST'}).then(() => location.reload());
+  fetch('{{ url_for("hr_dashboard.hr_chatbot_reset") }}', {method: 'POST', credentials: 'same-origin'}).then(() => location.reload());
+}
+
+/* ---- durable history: resume the last conversation, list and reopen earlier ones ---- */
+function renderHistory(messages){
+  if (!messages || !messages.length) return;
+  chatMessages.innerHTML = '';
+  messages.forEach(m => appendMessage(m.role === 'user' ? 'user' : 'assistant', m.content));
+}
+
+function loadSessions(){
+  fetch('{{ url_for("hr_dashboard.hr_chatbot_history") }}', {credentials: 'same-origin'})
+    .then(r => r.ok ? r.json() : null)
+    .then(j => {
+      if (!j) return;
+      const box = document.getElementById('hrSessionList');
+      if (!box) return;
+      box.innerHTML = '';
+      (j.sessions || []).forEach(s => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = 'hr-session' + (s.session_id === j.session_id ? ' active' : '');
+        b.textContent = s.title;
+        b.onclick = () => openSession(s.session_id);
+        box.appendChild(b);
+      });
+      if (!box.children.length) box.innerHTML = '<div class="fm-muted" style="font-size:12px">Ingen tidligere samtaler endnu.</div>';
+    }).catch(() => {});
+}
+
+function openSession(sid){
+  if (isProcessing) return;
+  fetch('{{ url_for("hr_dashboard.hr_chatbot_open") }}', {
+    method: 'POST', headers: {'Content-Type': 'application/json'}, credentials: 'same-origin',
+    body: JSON.stringify({session_id: sid})
+  }).then(r => r.ok ? r.json() : null).then(j => { if (j){ renderHistory(j.messages); loadSessions(); } });
 }
 
 function loadAlerts(){
@@ -287,13 +279,17 @@ function loadAlerts(){
         div.className = 'hr-alert-bar';
         div.style.background = colorMap[a.color] || colorMap.info;
         div.style.color = textMap[a.color] || textMap.info;
-        div.innerHTML = `<i class="fa-solid ${(a.icon||'').replace('fa-','fa-')}"></i><span><strong>${a.title}</strong> — ${a.message}</span>`;
+        div.innerHTML = `<i class="fa-solid ${safeHtml(a.icon || '')}"></i><span><strong>${safeHtml(a.title)}</strong> — ${safeHtml(a.message)}</span>`;
         div.onclick = () => { window.location.href = a.action_url; };
         container.appendChild(div);
       });
     }).catch(() => {});
 }
 
-document.addEventListener('DOMContentLoaded', () => { chatInput.focus(); loadAlerts(); });
+document.addEventListener('DOMContentLoaded', () => {
+  chatInput.focus(); loadAlerts(); loadSessions();
+  fetch('{{ url_for("hr_dashboard.hr_chatbot_history") }}', {credentials: 'same-origin'})
+    .then(r => r.ok ? r.json() : null).then(j => { if (j) renderHistory(j.messages); }).catch(() => {});
+});
 </script>
 {% endblock %}

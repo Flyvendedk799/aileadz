@@ -17,10 +17,10 @@ audience: employee
 - Brug "Spørg AI-assistenten" eller "Udforsk kurser" for at komme videre.
 
 ## Min tidslinje
-- Vælg "Min tidslinje" i menuen under Konto.
+- Vælg "Mine bestillinger" i menuen under Min læring. Klik på en bestilling for detaljer, kalender og afslutning.
 - Øverst ser du "Kurser i alt", "Afventer", "Aktive" og "Overskredet".
 - For hvert kursus vises status, godkendelse, bestillingsdato, frist, gennemførelsesdato og pris, når de findes.
 - "Fristen er overskredet" vises, hvis et kursus, der ikke er afsluttet, har passeret sin frist.
 
 ## Hvad betyder statusserne?
-"Afventer betaling", "Afventer godkendelse", "Godkendt", "Afvist", "Behandler", "Bekræftet", "Annulleret" og "Gennemført".
+"Afventer godkendelse", "Godkendt – afventer booking", "Booket", "Gennemført", "Afvist" og "Annulleret". Faktureringen sker uden for appen, så der er ingen betalingsstatus for dig som medarbejder.

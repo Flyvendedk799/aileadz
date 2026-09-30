@@ -761,7 +761,15 @@ def export_settings():
 # (event_name, Danish description) for the UI.
 WEBHOOK_EVENT_CHOICES = [
     ('order.created', 'Ordre oprettet'),
-    ('order.updated', 'Ordre opdateret'),
+    ('order.needs_approval', 'Ordre afventer godkendelse'),
+    ('order.approved', 'Ordre godkendt'),
+    ('order.rejected', 'Ordre afvist'),
+    ('order.booked', 'Plads bekræftet af udbyder'),
+    ('order.completed', 'Ordre gennemført'),
+    ('order.cancelled', 'Ordre annulleret'),
+    ('order.updated', 'Ordre opdateret (alle statusskift)'),
+    ('order.billing_changed', 'Fakturering ændret'),
+    ('budget.overrun', 'Afdelingsbudget overskredet'),
     ('employee.added', 'Medarbejder tilføjet'),
     ('employee.updated', 'Medarbejder opdateret'),
     ('course.completed', 'Kursus gennemført'),
@@ -841,9 +849,64 @@ def _load_company_webhooks(company_id):
     return rows
 
 
+def load_webhook_deliveries(company_id, limit=40):
+    """Recent per-subscriber deliveries (company-scoped) for the delivery log."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT d.id, d.event_type, d.status, d.attempts, d.http_status, d.last_error,
+                      d.created_at, d.delivered_at, w.name AS webhook_name, w.url AS webhook_url
+               FROM webhook_deliveries d LEFT JOIN company_webhooks w ON w.id = d.webhook_id
+               WHERE d.company_id = %s ORDER BY d.id DESC LIMIT %s""",
+            (company_id, int(limit)),
+        )
+        rows = list(cur.fetchall() or [])
+        cur.close()
+        return rows
+    except Exception as e:
+        current_app.logger.debug(f"webhook delivery log unavailable: {e}")
+        return []
+
+
+@enterprise_settings_bp.route('/webhooks/deliveries/<int:delivery_id>/resend', methods=['POST'])
+@require_company_role('company_admin', 'hr_manager')
+def webhooks_resend(delivery_id):
+    """'Gensend': retry ONE failed delivery (other subscribers keep their state)."""
+    company = get_company_context()
+    if not company:
+        flash('Virksomhed ikke fundet.', 'danger')
+        return redirect(url_for('dashboard.dashboard'))
+    try:
+        from event_bus import resend_delivery, drain_outbox
+        queued = resend_delivery(current_app.mysql.connection, company['id'], delivery_id)
+        if queued:
+            try:
+                drain_outbox(limit=5)
+            except Exception:
+                pass
+            flash('Leveringen er sat i kø igen og sendes nu.', 'success')
+        else:
+            flash('Leveringen blev ikke fundet.', 'danger')
+    except Exception as e:
+        current_app.logger.error(f"Failed to resend delivery {delivery_id}: {e}")
+        flash('Leveringen kunne ikke sendes igen. Prøv igen.', 'danger')
+    return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
+
+
+def _hub_or(endpoint, tab):
+    """Redirect to the settings-hub tab (canonical, N-4.6) when it is registered."""
+    if 'settings_hub.tab' in current_app.view_functions:
+        return redirect(url_for('settings_hub.tab', tab=tab))
+    return redirect(url_for(endpoint))
+
+
 @enterprise_settings_bp.route('/webhooks')
 @require_company_role('company_admin', 'hr_manager')
 def webhooks_page():
+    from settings_hub import hub_redirect
+    _r = hub_redirect('webhooks')
+    if _r is not None:
+        return _r
     """List the session company's webhook subscriptions with management forms."""
     company = get_company_context()
     if not company:
@@ -856,6 +919,7 @@ def webhooks_page():
         company_id=company['id'],
         company=company,
         webhooks=webhooks,
+        deliveries=load_webhook_deliveries(company['id']),
         event_choices=WEBHOOK_EVENT_CHOICES,
     )
 
@@ -878,23 +942,26 @@ def webhooks_create():
 
     if not _is_valid_webhook_url(url):
         flash('Ugyldig URL. Brug en offentlig http(s)-adresse.', 'danger')
-        return redirect(url_for('enterprise_settings.webhooks_page'))
+        return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
     if not selected:
         flash('Vælg mindst én hændelse, webhooken skal lytte på.', 'danger')
-        return redirect(url_for('enterprise_settings.webhooks_page'))
+        return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
     try:
         conn = current_app.mysql.connection
         cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        import secrets as _secrets
+        signing_secret = _secrets.token_hex(24)
         cur.execute(
             """INSERT INTO company_webhooks
-                   (company_id, name, url, events, is_active, created_by)
-               VALUES (%s, %s, %s, %s, %s, %s)""",
+                   (company_id, name, url, secret, events, is_active, created_by)
+               VALUES (%s, %s, %s, %s, %s, %s, %s)""",
             (
                 company_id,
                 name or url[:100],
                 url[:500],
+                signing_secret,
                 json.dumps(selected),
                 is_active,
                 session.get('user_id'),
@@ -902,7 +969,7 @@ def webhooks_create():
         )
         conn.commit()
         cur.close()
-        flash('Webhook oprettet.', 'success')
+        flash('Webhook oprettet. Signeringsnøgle (vises kun nu, gem den): ' + signing_secret, 'success')
     except Exception as e:
         current_app.logger.error(f"Failed to create webhook: {e}")
         try:
@@ -911,7 +978,7 @@ def webhooks_create():
             pass
         flash('Kunne ikke oprette webhook. Prøv igen.', 'danger')
 
-    return redirect(url_for('enterprise_settings.webhooks_page'))
+    return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
 
 @enterprise_settings_bp.route('/webhooks/<int:webhook_id>/toggle', methods=['POST'])
@@ -949,7 +1016,7 @@ def webhooks_toggle(webhook_id):
             pass
         flash('Kunne ikke opdatere webhook.', 'danger')
 
-    return redirect(url_for('enterprise_settings.webhooks_page'))
+    return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
 
 @enterprise_settings_bp.route('/webhooks/<int:webhook_id>/delete', methods=['POST'])
@@ -984,7 +1051,7 @@ def webhooks_delete(webhook_id):
             pass
         flash('Kunne ikke slette webhook.', 'danger')
 
-    return redirect(url_for('enterprise_settings.webhooks_page'))
+    return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
 
 @enterprise_settings_bp.route('/webhooks/<int:webhook_id>/test', methods=['POST'])
@@ -1018,7 +1085,7 @@ def webhooks_test(webhook_id):
 
     if not target:
         flash('Webhook ikke fundet.', 'danger')
-        return redirect(url_for('enterprise_settings.webhooks_page'))
+        return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
     # Guarded import: never crash the page if event_bus is unavailable.
     try:
@@ -1026,7 +1093,7 @@ def webhooks_test(webhook_id):
     except Exception as e:
         current_app.logger.error(f"event_bus unavailable for test ping: {e}")
         flash('Test kunne ikke sendes (event-bus utilgængelig).', 'danger')
-        return redirect(url_for('enterprise_settings.webhooks_page'))
+        return _hub_or('enterprise_settings.webhooks_page', 'webhooks')
 
     try:
         emit_event(company_id, 'ping', {
@@ -1041,4 +1108,4 @@ def webhooks_test(webhook_id):
         current_app.logger.error(f"Failed to emit test ping: {e}")
         flash('Test kunne ikke sendes. Prøv igen.', 'danger')
 
-    return redirect(url_for('enterprise_settings.webhooks_page'))
+    return _hub_or('enterprise_settings.webhooks_page', 'webhooks')

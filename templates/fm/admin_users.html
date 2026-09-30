@@ -5,15 +5,7 @@
 {% block topbar_sub %}Skift rolle og tildel kreditter uden at forlade admin-workspacet.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-    <a class="pg-tab" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
-  </div>
+{% set active_admin_page = 'users' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="fm-card">
     <div class="fm-card-head">
@@ -40,7 +32,7 @@
               <td class="muted">{{ u.id }}</td>
               <td style="font-weight:650">{{ u.username }}</td>
               <td class="muted">{{ u.email or '-' }}</td>
-              <td><span class="fm-badge {{ 'indigo' if u.role == 'admin' else '' }}">{{ u.role or 'user' }}</span></td>
+              <td><span class="fm-badge {{ 'indigo' if u.role == 'admin' else '' }}">{{ u.role or 'user' }}</span>{% if u.status == 'deactivated' %} <span class="fm-badge red">Deaktiveret</span>{% endif %}</td>
               <td>{{ u.company_name or '-' }}</td>
               <td class="muted">{{ u.company_role or '-' }}</td>
               <td style="text-align:right;font-weight:650">{{ u.credits or 0 }}</td>
@@ -52,6 +44,8 @@
                 <button class="btn btn-ghost btn-sm" onclick="setRole({{ u.id }}, 'user')" title="Fjern admin"><i class="fa-solid fa-user"></i></button>
                 {% endif %}
                 <button class="btn btn-soft btn-sm" onclick="addCredits({{ u.id }})" title="Tilføj kreditter"><i class="fa-solid fa-coins"></i></button>
+                <button class="btn btn-ghost btn-sm" onclick="sendReset({{ u.id }})" title="Send link til ny adgangskode"><i class="fa-solid fa-envelope"></i></button>
+                <button class="btn btn-ghost btn-sm" onclick="toggleActive({{ u.id }}, {{ 'true' if u.status == 'deactivated' else 'false' }})" title="{{ 'Aktivér bruger' if u.status == 'deactivated' else 'Deaktivér bruger' }}"><i class="fa-solid {{ 'fa-user-check' if u.status == 'deactivated' else 'fa-user-slash' }}"></i></button>
               </td>
             </tr>
             {% else %}
@@ -85,6 +79,17 @@ document.getElementById('userSearch').addEventListener('input', function() {
     tr.style.display = tr.textContent.toLowerCase().includes(q) ? '' : 'none';
   });
 });
+
+function sendReset(userId) {
+  if (!confirm('Send et link til ny adgangskode til denne bruger?')) return;
+  fetch(`/admin/users/${userId}/send-reset`, {method: 'POST'}).then(r => r.json()).then(d => alert(d.message));
+}
+function toggleActive(userId, isDeactivated) {
+  if (!confirm(isDeactivated ? 'Aktivér brugeren igen?' : 'Deaktivér brugeren? De kan ikke logge ind, før du aktiverer dem igen.')) return;
+  fetch(`/admin/users/${userId}/deactivate`, {method: 'POST'}).then(r => r.json()).then(d => {
+    if (d.success) location.reload(); else alert('Fejl: ' + d.message);
+  });
+}
 
 function setRole(userId, role) {
   if (!confirm(`Skift rolle til "${role}"?`)) return;

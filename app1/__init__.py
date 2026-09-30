@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect, make_response
 from markupsafe import escape
 import db_compat  # noqa: F401
 import json
@@ -19,9 +19,9 @@ try:
 except ImportError:
     raise ImportError("Please install fuzzywuzzy (pip install fuzzywuzzy) or consider using RapidFuzz.")
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY') or "supersecretkey"  # Env-overridable; fallback kept so prod doesn't break.
-
+# NOTE: this module used to create its own throwaway ``Flask()`` app (with a
+# hardcoded fallback secret key) next to the blueprint. The real app is built by
+# run.create_app(); the stray instance was removed (N-8.6).
 app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
 # Register order routes as nested blueprint
@@ -77,16 +77,14 @@ DANISH_MONTHS = {
 }
 
 def load_products():
-    global PRODUCTS_CACHE
-    if PRODUCTS_CACHE is None:
-        file_path = os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                PRODUCTS_CACHE = json.load(file)
-        except Exception as e:
-            print(f"Error loading JSON file: {e}")
-            PRODUCTS_CACHE = []
-    return PRODUCTS_CACHE
+    """Raw product dicts from the ONE catalog (catalog_service), not a private,
+    forever-cached copy of the Shopify export (N-3.1)."""
+    try:
+        import catalog_service
+        return [p["raw"] for p in catalog_service.get_products()]
+    except Exception as e:
+        print(f"Error loading catalog: {e}")
+        return []
 
 def extract_location_and_date(product):
     location = ""
@@ -946,6 +944,13 @@ def ask():
         if turn_kind not in ("message", "seed"):
             turn_kind = "message"
 
+        # N-6.4: a company on a HARD credit limit pauses the AI with a friendly message.
+        if session.get("company_id"):
+            import credit_service
+            paused = credit_service.guard(company_id=session.get("company_id"), username=session.get("user"))
+            if paused:
+                return jsonify({"answers": [{"type": "text", "content": paused}], "credits_paused": True}), 402
+
         return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind)
 
     except Exception as ex:
@@ -1109,10 +1114,22 @@ def voice():
 def feedback():
     try:
         from app1.memory_store import log_event
-        data = request.json or {}
-        sid = session.get("session_id", "unknown")
-        rating = data.get("rating", 0)  # 1 = thumbs up, -1 = thumbs down
-        message_index = data.get("message_index", 0)
+        from app1 import conversation_state as _conv
+        data = request.get_json(silent=True) or {}
+        sids = _conv.all_session_ids(session) or ["unknown"]
+        if data.get("mode") == "hr":
+            sids = [session.get("hr_chat_session_id") or "unknown"]
+            sid = sids[0]
+        else:
+            sid = _conv.current_sid(session, data.get("mode") or "chat") or sids[0]
+        try:
+            rating = max(-1, min(1, int(data.get("rating", 0) or 0)))  # +1 up, -1 down, 0 cleared
+        except (TypeError, ValueError):
+            rating = 0
+        try:
+            message_index = int(data.get("message_index", 0) or 0)
+        except (TypeError, ValueError):
+            message_index = 0
         query_text = data.get("query_text", "")
         assistant_response = data.get("assistant_response", "")
         reason = data.get("reason", "")
@@ -1138,16 +1155,26 @@ def feedback():
             }
         )
 
-        # Phase 1.2: Sync feedback to MySQL chatbot_interactions
+        # Sync the rating to the ONE answer it belongs to (message_index), falling
+        # back to the latest answer of the session for rows written before the column.
         try:
             username = session.get('user') or session.get('browser_token', 'anonymous')
             cur = current_app.mysql.connection.cursor()
-            cur.execute("""
-                UPDATE chatbot_interactions
-                SET feedback_rating = %s
-                WHERE session_id = %s AND username = %s
-                ORDER BY created_at DESC LIMIT 1
-            """, (rating, sid, username))
+            marks = ", ".join(["%s"] * len(sids))
+            target = None
+            if message_index:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "AND message_index = %s ORDER BY id DESC LIMIT 1", (*sids, username, message_index))
+                target = cur.fetchone()
+            if not target:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "ORDER BY id DESC LIMIT 1", (*sids, username))
+                target = cur.fetchone()
+            if target:
+                tid = target["id"] if isinstance(target, dict) else target[0]
+                cur.execute("UPDATE chatbot_interactions SET feedback_rating = %s WHERE id = %s", (rating, tid))
             current_app.mysql.connection.commit()
             cur.close()
         except Exception as fb_err:
@@ -1776,6 +1803,10 @@ def confirm_tool_action():
         return jsonify({"status": "already_confirmed"})
 
     scope = entry["scope"]
+    if scope == "hr" and not (session.get("role") == "admin" or (
+            session.get("company_id") and session.get("company_role") in ("company_admin", "hr_manager", "department_head"))):
+        # An HR confirmation is only honoured for someone who still holds an HR role.
+        return jsonify({"status": "error", "message": "Ingen adgang til HR-handlinger."}), 403
     tool_name = entry["tool_name"]
     args = dict(entry["args"])
     args["confirm"] = True  # inject the confirmation flag
@@ -2216,12 +2247,49 @@ def _widget_cors_headers(resp, req_host, allowed_hosts):
             resp.headers['Access-Control-Allow-Origin'] = origin
             resp.headers['Vary'] = 'Origin'
             resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature, X-Widget-Session'
             resp.headers['Access-Control-Allow-Credentials'] = 'true'
             resp.headers['Access-Control-Max-Age'] = '600'
     except Exception:
         pass
     return resp
+
+
+def _widget_serializer():
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(current_app.secret_key, salt="widget-session-v1")
+
+
+def _widget_mint_session(token, parent_host, preview=False):
+    """Session token held by the iframe (N-5.6). It pins the widget token, the
+    PARENT page's host (the only trustworthy origin signal - the iframe's own
+    Origin is always our host) and the conversation id, so memory works even when
+    the browser blocks third-party cookies."""
+    return _widget_serializer().dumps({
+        "t": token, "h": parent_host or "", "p": 1 if preview else 0,
+        "s": "widget_" + uuid.uuid4().hex})
+
+
+def _widget_read_session(token, raw, max_age=12 * 3600):
+    """Payload dict when the token is valid for this widget, else None."""
+    if not raw:
+        return None
+    try:
+        data = _widget_serializer().loads(raw, max_age=max_age)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("t") != token:
+        return None
+    return data
+
+
+def _widget_frame_ancestors(allowed_hosts):
+    if not allowed_hosts:
+        return None
+    parts = ["'self'"]
+    for h in allowed_hosts:
+        parts += ["https://" + h, "https://*." + h]
+    return "frame-ancestors " + " ".join(parts)
 
 
 @app1_bp.route("/widget/<token>")
@@ -2241,21 +2309,26 @@ def widget_embed(token):
     if not widget:
         return "Widget not found or inactive", 404
 
-    # Check allowed domains via Referer header
-    referer = request.headers.get('Referer', '')
-    allowed = widget.get('allowed_domains')
-    if allowed and isinstance(allowed, str):
-        from urllib.parse import urlparse
-        ref_domain = urlparse(referer).netloc
-        allowed_list = [d.strip().lower() for d in allowed.split(',') if d.strip()]
-        if allowed_list and ref_domain and ref_domain.lower() not in allowed_list:
-            return "Domain not allowed", 403
+    # The parent page's host (Referer of the iframe navigation) is checked against
+    # the allowlist; a signed session token carries the verdict to /ask.
+    allowed_hosts = _widget_allowed_hosts(widget)
+    parent_host = _widget_origin_host()
+    own_host = (request.host or '').split(':')[0].lower()
+    preview = bool(request.args.get('preview')) and bool(session.get('username')) and parent_host == own_host
+    if allowed_hosts and not preview and not _widget_host_allowed(parent_host, allowed_hosts):
+        return "Domain not allowed", 403
 
     from branding_service import get_branding
     branding = get_branding(widget['cid'])
     widget['tenant_logo'] = branding.get('logo_url') or branding.get('company_logo')
 
-    return render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
+    resp = make_response(render_template(
+        'widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'),
+        widget_session=_widget_mint_session(token, parent_host, preview)))
+    fa = _widget_frame_ancestors(allowed_hosts)
+    if fa and not preview:
+        resp.headers['Content-Security-Policy'] = fa
+    return resp
 
 
 @app1_bp.route("/widget/<token>/ask", methods=["POST", "OPTIONS"])
@@ -2277,7 +2350,7 @@ def widget_ask(token):
     cur.close()
 
     if not widget:
-        return jsonify({"error": "Widget not found"}), 404
+        return jsonify({"error": "Widget'en blev ikke fundet."}), 404
 
     allowed_hosts = _widget_allowed_hosts(widget)
     req_host = _widget_origin_host()
@@ -2294,13 +2367,16 @@ def widget_ask(token):
     # allowlist configured stays open (backward-compatible) but is still
     # rate-capped below.
     hmac_result = _widget_hmac_valid(widget, req_host)
+    wsess = _widget_read_session(token, request.headers.get('X-Widget-Session', ''))
     if hmac_result is True:
         pass  # valid signed origin token
     elif hmac_result is False:
         return jsonify({"error": "Ugyldig oprindelse. Anmodningen blev afvist."}), 403
     elif allowed_hosts:
-        # No HMAC configured -> allowlist enforcement.
-        if not _widget_host_allowed(req_host, allowed_hosts):
+        # The session token was only issued to an allowlisted parent page, so a
+        # valid token IS the origin proof (Origin here is always our own host).
+        ok = bool(wsess) and (wsess.get("p") or _widget_host_allowed(wsess.get("h", ""), allowed_hosts))
+        if not ok:
             return jsonify({
                 "error": "Denne widget er ikke tilladt på dette domæne."
             }), 403
@@ -2321,10 +2397,11 @@ def widget_ask(token):
         return jsonify({"error": "No query"}), 400
 
     # Use a widget-specific session ID
-    widget_session_id = session.get('widget_session_id')
+    widget_session_id = (wsess or {}).get("s") or session.get('widget_session_id')
     if not widget_session_id:
         widget_session_id = f"widget_{uuid.uuid4().hex}"
         session['widget_session_id'] = widget_session_id
+    widget_session_id = str(widget_session_id)[:80]
 
     from app1.agent import handle_agentic_ask
     # handle_agentic_ask already returns a fully-built streaming Response — do not
@@ -2435,6 +2512,7 @@ def widget_loader_js(token):
   frame.id='ailead-widget-frame';
   frame.src='{iframe_url}';
   frame.allow='clipboard-write';
+  frame.referrerPolicy='origin';
   document.body.appendChild(frame);
   var open=false;
   btn.addEventListener('click',function(){{
@@ -2454,7 +2532,3 @@ def widget_loader_js(token):
     return resp
 
 
-app.register_blueprint(app1_bp, url_prefix='/app1')
-
-if __name__ == "__main__":
-    app.run(debug=False)

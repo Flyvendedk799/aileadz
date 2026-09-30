@@ -1,0 +1,45 @@
+{% extends "fm_base.html" %}
+{% block page_id %}csettings{% endblock %}
+{% block title %}Integrationer{% endblock %}
+{% block topbar_title %}Integrationer{% endblock %}
+{% block topbar_sub %}Forbind Futurematch med HR-systemer, kalender og jeres egne værktøjer.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
+<div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px">
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-users-gear"></i></span><h3>SCIM-provisionering</h3></div>
+  <div class="fm-card-body" style="font-size:13.5px">
+    <p style="margin-top:0">Lad Entra ID, Okta eller jeres HR-system oprette og afmelde medarbejdere automatisk. Afdelinger i jeres IdP (grupper) bliver til afdelinger her.</p>
+    <div class="muted" style="font-size:12px">Base-URL</div>
+    <code style="font-family:var(--ff-mono);font-size:12.5px;word-break:break-all">{{ base }}/scim/v2</code>
+    <p style="margin:10px 0 0;font-size:12.5px" class="muted">Ressourcer: /Users og /Groups. Brug en <a href="{{ url_for('settings_hub.tab', tab='api') }}">API-nøgle</a> med fuld adgang som Bearer-token.</p>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-plug"></i></span><h3>Webhooks</h3></div>
+  <div class="fm-card-body" style="font-size:13.5px">
+    <p style="margin-top:0">Få besked i jeres systemer, når en ordre godkendes, en plads bekræftes, et kursus gennemføres, et budget overskrides eller en medarbejder ændres.</p>
+    <a class="btn btn-soft btn-sm" href="{{ url_for('settings_hub.tab', tab='webhooks') }}">Åbn webhooks og leveringslog</a>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-key"></i></span><h3>Single Sign-On</h3></div>
+  <div class="fm-card-body" style="font-size:13.5px">
+    <p style="margin-top:0">Log ind med Microsoft eller Google (OpenID Connect).</p>
+    <a class="btn btn-soft btn-sm" href="{{ url_for('settings_hub.tab', tab='sso') }}">Åbn SSO-opsætning</a>
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-regular fa-calendar"></i></span><h3>Kalender</h3></div>
+  <div class="fm-card-body" style="font-size:13.5px">
+    <p style="margin-top:0">Abonnér på virksomhedens kurser og frister i Outlook eller Google Kalender.</p>
+    {% if has_endpoint('hr_ext.calendar_feed') %}<code style="font-family:var(--ff-mono);font-size:12.5px;word-break:break-all">{{ base }}{{ url_for('hr_ext.calendar_feed') }}</code>
+    <p class="muted" style="font-size:12.5px;margin:8px 0 0">Kræver, at du er logget ind. Til automatisk abonnement bruges kalender-API'et med en nøgle.</p>{% endif %}
+  </div></div>
+
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-comments"></i></span><h3>Chatbot-widget</h3></div>
+  <div class="fm-card-body" style="font-size:13.5px">
+    <p style="margin-top:0">Indlejr AI-assistenten på jeres intranet eller hjemmeside.</p>
+    <a class="btn btn-soft btn-sm" href="{{ url_for('settings_hub.tab', tab='chatbot', view='widget') }}">Åbn widget-opsætning</a>
+  </div></div>
+</div>
+</div>
+{% endblock %}

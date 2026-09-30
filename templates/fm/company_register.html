@@ -147,12 +147,12 @@
           </div>
           <div class="form-row2">
             <div class="fm-field">
-              <label>Password *</label>
+              <label>Adgangskode <span style="font-weight:400;color:var(--fm-ink-3)">(valgfri)</span></label>
               <div class="reg-input">
                 <input type="text" class="fm-input" name="hr_password" id="hr_password_field">
                 <button type="button" class="btn btn-ghost" onclick="generateHRPassword()"><i class="fa-solid fa-dice"></i></button>
               </div>
-              <div class="validation-hint">Klik terningen for at generere. Del det med HR-manageren.</div>
+              <div class="validation-hint">Lad feltet stå tomt, så får kontaktpersonen en invitation på e-mail og vælger selv sin adgangskode (anbefalet).</div>
             </div>
             <div class="fm-field">
               <label>Telefon</label>
@@ -261,8 +261,8 @@ function goStep(step) {
                 const uname = document.getElementById('hr_username').value.trim();
                 const email = document.getElementById('hr_email').value.trim();
                 const pw = document.getElementById('hr_password_field').value.trim();
-                if (!name || !uname || !email || !pw) {
-                    alert('Udfyld venligst alle påkrævede felter for HR-manageren.');
+                if (!name || !uname || !email) {
+                    alert('Udfyld venligst navn, brugernavn og e-mail for kontaktpersonen.');
                     return;
                 }
                 if (!email.includes('@')) {

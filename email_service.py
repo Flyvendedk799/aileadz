@@ -11,6 +11,83 @@ from typing import Optional
 from flask import current_app, render_template_string
 
 
+_TRUTHY = {'1', 'true', 'yes', 'on'}
+
+
+def load_mail_config(app) -> dict:
+    """Copy the ``MAIL_*`` environment into ``app.config`` (N-0.2).
+
+    Flask-Mail reads its settings from ``app.config`` only, and nothing used to
+    copy the env vars across, so every send silently fell through to
+    "skipped_no_backend".  Safe to call repeatedly; returns the resolved,
+    secret-free summary.
+    """
+    env = os.environ
+    server = env.get('MAIL_SERVER') or env.get('SMTP_HOST') or env.get('SMTP_SERVER') or ''
+    try:
+        port = int(env.get('MAIL_PORT') or env.get('SMTP_PORT') or 587)
+    except ValueError:
+        port = 587
+    use_ssl = (env.get('MAIL_USE_SSL') or '').lower() in _TRUTHY
+    use_tls = (env.get('MAIL_USE_TLS') or ('0' if use_ssl else '1')).lower() in _TRUTHY
+    username = env.get('MAIL_USERNAME') or env.get('SMTP_USER') or ''
+    app.config.update({
+        'MAIL_SERVER': server,
+        'MAIL_PORT': port,
+        'MAIL_USE_TLS': use_tls and not use_ssl,
+        'MAIL_USE_SSL': use_ssl,
+        'MAIL_USERNAME': username or None,
+        'MAIL_PASSWORD': env.get('MAIL_PASSWORD') or env.get('SMTP_PASSWORD') or None,
+        'MAIL_DEFAULT_SENDER': env.get('MAIL_DEFAULT_SENDER') or username or None,
+        'MAIL_SUPPRESS_SEND': False,
+    })
+    return mail_status(app)
+
+
+def mail_status(app=None) -> dict:
+    """Honest mail readiness: which config is missing, never the secrets."""
+    cfg = (app or current_app).config
+    missing = []
+    try:
+        import flask_mail  # noqa: F401
+    except Exception:
+        missing.append('flask_mail (pip-pakke)')
+    if not (cfg.get('MAIL_SERVER') or os.getenv('MAIL_SERVER')):
+        missing.append('MAIL_SERVER')
+    if not (cfg.get('MAIL_DEFAULT_SENDER') or os.getenv('MAIL_DEFAULT_SENDER')):
+        missing.append('MAIL_DEFAULT_SENDER')
+    return {
+        'configured': not missing,
+        'missing': missing,
+        'server': cfg.get('MAIL_SERVER') or '',
+        'port': cfg.get('MAIL_PORT'),
+        'tls': bool(cfg.get('MAIL_USE_TLS')),
+        'ssl': bool(cfg.get('MAIL_USE_SSL')),
+        'has_credentials': bool(cfg.get('MAIL_USERNAME') and cfg.get('MAIL_PASSWORD')),
+        'sender': cfg.get('MAIL_DEFAULT_SENDER') or '',
+    }
+
+
+def send_test_email(to_email: str) -> dict:
+    """Send a real test mail and report the outcome (admin "send test email")."""
+    status = mail_status()
+    if not status['configured']:
+        return {'ok': False, 'error': 'E-mail er ikke sat op endnu. Mangler: ' + ', '.join(status['missing'])}
+    try:
+        from flask_mail import Mail, Message
+        Mail(current_app).send(Message(
+            subject='Test fra Futurematch',
+            recipients=[to_email],
+            html='<p>Hej! Denne test-mail bekræfter, at Futurematch kan sende e-mail.</p>',
+            sender=('Futurematch', _default_sender()),
+        ))
+        _record_email_attempt(to_email, 'test', 'sent')
+        return {'ok': True}
+    except Exception as e:  # SMTP auth/connect errors are the useful signal here
+        _record_email_attempt(to_email, 'test', 'error', error=str(e))
+        return {'ok': False, 'error': str(e)}
+
+
 def _mail_configured() -> bool:
     return bool(os.getenv('MAIL_SERVER') or current_app.config.get('MAIL_SERVER'))
 
@@ -27,7 +104,12 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     <h1 style="color: {{ primary_color }}; font-size: 22px;">Velkommen til {{ company_name }}</h1>
     <p>Hej {{ recipient_name }},</p>
     <p>Du er inviteret til {{ company_name }}s læringsplatform.</p>
+    {% if set_password_url %}
+    <p><a href="{{ set_password_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;">Vælg din adgangskode</a></p>
+    <p style="font-size:12px;color:#64748b;">Linket virker i 7 dage og kun én gang. Bagefter logger du ind <a href="{{ login_url }}">her</a>.</p>
+    {% else %}
     <p><a href="{{ login_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:12px 20px;border-radius:8px;text-decoration:none;">Log ind</a></p>
+    {% endif %}
     <p style="font-size:12px;color:#64748b;">Har du spørgsmål? Kontakt {{ support_email or 'support' }}.</p>
   </div>
 </body></html>
@@ -51,6 +133,9 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     <h2 style="color: {{ primary_color }};">Ordrebekræftelse</h2>
     <p>Tak for din bestilling hos {{ company_name }}.</p>
     <p><strong>{{ product_title }}</strong></p>
+    {% if status_line %}<p style="font-size:14px;">Status: <strong>{{ status_line }}</strong></p>{% endif %}
+    {% if next_step %}<p style="font-size:14px;color:#334155;">{{ next_step }}</p>{% endif %}
+    {% if order_url %}<p><a href="{{ order_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Se status</a></p>{% endif %}
     <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
   </div>
 </body></html>
@@ -76,7 +161,77 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     <h2 style="color: {{ primary_color }};">Din kursusbestilling er {{ decision or 'godkendt' }}</h2>
     <p><strong>{{ product_title }}</strong></p>
     <p>{{ message or 'Du kan nu komme i gang. Log ind for at se detaljerne.' }}</p>
+    {% if order_url %}<p><a href="{{ order_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Se din bestilling</a></p>{% endif %}
     <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'vendor_submission_result': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    <h2 style="color: {{ primary_color }};">{% if approved %}Dit katalog er godkendt{% else %}Dit katalog blev ikke godkendt{% endif %}</h2>
+    <p>Hej {{ vendor_name or 'leverandør' }},</p>
+    {% if approved %}
+    <p>Vi har gennemgået din indsendelse{% if filename %} ({{ filename }}){% endif %} og importeret {{ row_count }} kurser til kataloget.</p>
+    {% else %}
+    <p>Vi kunne desværre ikke godkende din indsendelse{% if filename %} ({{ filename }}){% endif %}.{% if note %} Begrundelse: {{ note }}{% endif %}</p>
+    <p>Ret filen og indsend den igen i leverandørportalen.</p>
+    {% endif %}
+  </div>
+</body></html>
+""",
+        'order_booked': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">Din plads er booket</h2>
+    <p><strong>{{ product_title }}</strong></p>
+    {% if variant_date %}<p style="font-size:14px;">Dato: {{ variant_date }}</p>{% endif %}
+    {% if variant_location %}<p style="font-size:14px;">Sted: {{ variant_location }}</p>{% endif %}
+    <p>Udbyderen har bekræftet din plads. Du kan tilføje kurset til din kalender fra bestillingen.</p>
+    {% if order_url %}<p><a href="{{ order_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Se din bestilling</a></p>{% endif %}
+    <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'order_cancelled': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color:#b91c1c;">Bestilling annulleret</h2>
+    <p><strong>{{ product_title }}</strong></p>
+    {% if reason %}<p style="font-size:14px;">Årsag: {{ reason }}</p>{% endif %}
+    {% if order_url %}<p><a href="{{ order_url }}" style="color: {{ primary_color }};">Se bestillingen</a></p>{% endif %}
+    <p style="font-size:13px;color:#64748b;">Ordre: {{ order_id }}</p>
+  </div>
+</body></html>
+""",
+        'vendor_new_order': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    <h2 style="color: {{ primary_color }};">Ny bestilling afventer din bekræftelse</h2>
+    <p>Hej {{ vendor_name or 'leverandør' }},</p>
+    <p>En bestilling er godkendt og venter på, at du bekræfter pladsen.</p>
+    <p><strong>{{ product_title }}</strong></p>
+    {% if participant %}<p style="font-size:14px;">Deltager: {{ participant }}</p>{% endif %}
+    {% if variant_date %}<p style="font-size:14px;">Dato: {{ variant_date }}</p>{% endif %}
+    {% if variant_location %}<p style="font-size:14px;">Sted: {{ variant_location }}</p>{% endif %}
+    {% if orders_url %}<p><a href="{{ orders_url }}" style="display:inline-block;background:{{ primary_color }};color:#fff;padding:10px 18px;border-radius:8px;text-decoration:none;">Åbn bestillinger</a></p>{% endif %}
+  </div>
+</body></html>
+""",
+        'scheduled_report': """
+<!DOCTYPE html>
+<html><body style="font-family: {{ font_family }}; padding: 24px;">
+  <div style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;padding:32px;border:1px solid #e2e8f0;">
+    {% if logo_url %}<img src="{{ logo_url }}" alt="{{ company_name }}" style="height:36px;margin-bottom:16px;">{% endif %}
+    <h2 style="color: {{ primary_color }};">{{ report_title }}</h2>
+    <p>Her er din {{ cadence }} rapport for {{ scope }}. Den ligger som CSV-fil i vedhæftningen ({{ row_count }} rækker).</p>
+    <p style="font-size:13px;color:#64748b;">Du kan sætte rapporten på pause eller slette den under Rapporter &amp; eksport i HR-workspace.</p>
   </div>
 </body></html>
 """,
@@ -313,6 +468,39 @@ def email_recently_sent(dedupe_key: str, *, within_hours: int = 24,
         return False
 
 
+# Templates that respect users.email_notifications. Everything else (order
+# confirmation/decision, password reset, invites, welcome) is transactional.
+NON_TRANSACTIONAL_TEMPLATES = frozenset({
+    'manager_weekly_digest', 'compliance_recert_alert', 'announcement',
+    'budget_overrun_alert', 'order_approval_needed', 'scheduled_report',
+})
+
+
+def recipient_opted_out(to_email: str) -> bool:
+    """True iff a platform user with this address switched email notifications
+    off. Fully guarded: any error means "not opted out"."""
+    try:
+        conn = getattr(current_app, 'mysql', None)
+        conn = getattr(conn, 'connection', None) if conn is not None else None
+        if conn is None or not to_email:
+            return False
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT email_notifications FROM users WHERE email = %s LIMIT 1",
+                (to_email,),
+            )
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if not row:
+            return False
+        val = row.get('email_notifications') if isinstance(row, dict) else row[0]
+        return val is not None and int(val) == 0
+    except Exception:
+        return False
+
+
 def send_branded_email(
     to_email: str,
     subject: str,
@@ -322,6 +510,7 @@ def send_branded_email(
     reply_to: Optional[str] = None,
     company_id=None,
     dedupe_key: Optional[str] = None,
+    attachments: Optional[list] = None,
     **context,
 ) -> bool:
     """Send a branded email. Returns True on success, False on no-op/failure.
@@ -357,6 +546,16 @@ def send_branded_email(
         )
         return False
 
+    # Honour the per-user "email notifications" preference for non-transactional
+    # mail (digests, alerts, announcements). Order/account/invite mail is always
+    # sent (N-3.2).
+    if template_name in NON_TRANSACTIONAL_TEMPLATES and recipient_opted_out(to_email):
+        _record_email_attempt(
+            to_email, template_name, 'skipped_opt_out', company_id=company_id,
+            dedupe_key=dedupe_key,
+        )
+        return False
+
     from_name = branding.get('company_name') or 'Futurematch'
     default_sender = _default_sender()
     reply = reply_to or branding.get('support_email') or default_sender or None
@@ -383,6 +582,8 @@ def send_branded_email(
             sender=(from_name, default_sender),
             reply_to=reply,
         )
+        for fname, data, mimetype in (attachments or []):
+            msg.attach(fname, mimetype, data)
         mail.send(msg)
         _record_email_attempt(
             to_email, template_name, 'sent', company_id=company_id,
@@ -456,7 +657,8 @@ def send_order_confirmation(order: dict, *, branding: Optional[dict] = None,
 
 
 def send_employee_welcome(company: Optional[dict], employee: dict, *,
-                          login_url: str = '', branding: Optional[dict] = None) -> bool:
+                          login_url: str = '', branding: Optional[dict] = None,
+                          set_password_url: str = '') -> bool:
     """Best-effort welcome/invite email to a newly added employee. Never raises.
 
     `company` may be the company row dict (with an 'id'); `employee` carries
@@ -493,6 +695,7 @@ def send_employee_welcome(company: Optional[dict], employee: dict, *,
             company_name=company_name,
             recipient_name=recipient_name,
             login_url=login_url or os.getenv('APP_BASE_URL', ''),
+            set_password_url=set_password_url,
         )
     except Exception as e:  # pragma: no cover - defensive
         try:

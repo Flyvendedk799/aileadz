@@ -730,11 +730,56 @@ def llm_judge(query: str, answer: str, tool_results=None, *, model: str = "gpt-4
 # Orchestration: score one collected interaction against its expectation
 # ─────────────────────────────────────────────────────────────────────────────
 
+# Checklist / form-first phrasing the assistant must NOT use (north star: a
+# helper with a toolbox, never a form-filler). Matched on accent-folded text.
+_FORM_PHRASES = (
+    "for at kunne hjaelpe dig har jeg brug for foelgende",
+    "udfyld foelgende", "udfyld venligst", "foelgende oplysninger", "foelgende felter",
+    "jeg har brug for disse oplysninger", "svar paa foelgende spoergsmaal",
+    "trin 1", "step 1", "felt:", "obligatoriske felter", "profilen er ikke komplet",
+    "du mangler at udfylde", "mangler: ",
+)
+_PROFILE_FIELDS = ("erfaring", "uddannelse", "kompetencer", "sprog", "certificering",
+                   "maal", "job", "stilling", "interesser", "mobilnummer", "telefon", "email")
+
+
+def fluency_ok(final_text, expect) -> Dict[str, Any]:
+    """Flags checklist phrasing, field enumeration and form-first behaviour.
+
+    Applies only when the case sets ``expect.fluent`` (or ``expect.fluency``).
+    FAIL when the answer (a) contains a form/checklist phrase, (b) asks three or
+    more separate questions in one turn, (c) lists four or more profile fields in
+    one sentence/bullet run, or (d) is mostly a numbered/bulleted list of things
+    the user must supply.
+    """
+    if not (expect.get("fluent") or expect.get("fluency")):
+        return _result(None, False, "fluency not requested")
+    text = _fold(final_text or "")
+    reasons = []
+    for ph in _FORM_PHRASES:
+        if ph in text:
+            reasons.append("form phrase: %r" % ph)
+            break
+    if (final_text or "").count("?") >= 3:
+        reasons.append("%d questions in one turn" % (final_text or "").count("?"))
+    for line in text.replace("\n", ". ").split("."):
+        if sum(1 for f in _PROFILE_FIELDS if f in line) >= 4:
+            reasons.append("enumerates profile fields")
+            break
+    items = [l for l in (final_text or "").splitlines() if l.strip()[:2] in ("- ", "* ") or l.strip()[:2].rstrip(".)").isdigit()]
+    if len(items) >= 4 and sum(1 for l in items if l.strip().endswith("?") or ":" in l) >= 3:
+        reasons.append("list of things to supply")
+    if reasons:
+        return _result(FAIL, True, "; ".join(reasons))
+    return _result(PASS, True, "conversational")
+
+
 # Logical metric keys the runner aggregates on.
 METRIC_KEYS = (
     "tool_selection", "refusal", "retrieval", "grounding",
     "profile_event", "order_confirmation",
     "mutation_confirmation", "role_gating",  # Phase 12 / AI Tooler 2
+    "fluency",                                # N-5.7
     "judge",
 )
 
@@ -775,6 +820,15 @@ def score_case(collected: Dict[str, Any], expect: Dict[str, Any], *, use_judge: 
     out["order_confirmation"] = confirmation_before_order(text, events, expect)
     out["mutation_confirmation"] = confirmation_before_mutation(text, events, expect)
     out["role_gating"] = role_gating_correct(events, expect)
+    out["fluency"] = fluency_ok(text, expect)
+
+    if collected.get("skipped"):
+        # Scope not runnable here (e.g. no vendor credentials): report, never fail.
+        skipped = {k: _result(None, False, "skipped: " + str(collected["skipped"])) for k in METRIC_KEYS}
+        skipped["_passed"] = True
+        skipped["_transport_ok"] = True
+        skipped["_skipped"] = True
+        return skipped
 
     if use_judge:
         q = (case or {}).get("query") or _last_query(case)

@@ -41,6 +41,8 @@ UI_ACTION = "ui_action"                  # NEW: cross-surface navigation directi
 # Profile / memory
 PROFILE_UPDATE = "profile_update"
 PROFILE_CONFIRM_REQUEST = "profile_confirm_request"
+PROFILE_SAVED = "profile_saved"                    # additions already saved, each with an undo
+PROFILE_CONFIRM_BATCH = "profile_confirm_batch"    # several proposals on one card
 UI_CARD = "ui_card"
 MEMORY_USED = "memory_used"
 MEMORY_SAVED = "memory_saved"
@@ -65,7 +67,7 @@ KNOWN_EVENT_TYPES = frozenset({
     TOOL_CALL, TOOL_PROGRESS,
     COURSE_CARDS, PRODUCT, COMPARISON_CARD, LEARNING_PATH_CARD,
     SUGGESTIONS, NOTICE, UI_ACTION,
-    PROFILE_UPDATE, PROFILE_CONFIRM_REQUEST, UI_CARD,
+    PROFILE_UPDATE, PROFILE_CONFIRM_REQUEST, PROFILE_SAVED, PROFILE_CONFIRM_BATCH, UI_CARD,
     MEMORY_USED, MEMORY_SAVED, PROFILER_PROGRESS,
     CONFIRM_CARD,
     CV_SUMMARY_CARD, MINDMAP_CARD, SKILL_GAPS_CARD,

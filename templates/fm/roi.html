@@ -9,6 +9,12 @@
 {% set active_hr_page = 'roi' %}{% include 'fm/_hr_subnav.html' %}
 
   {% set r = roi or {} %}
+  <form method="get" class="fm-flex fm-gap8" style="justify-content:flex-end;align-items:center;margin-bottom:10px">
+    <label style="font-size:12.5px;color:var(--fm-ink-2)" for="roiYear">Regnskabsår</label>
+    <select id="roiYear" name="year" class="fm-input" style="width:auto" onchange="this.form.submit()">
+      {% for y in range((fiscal_year or 2026) + 1, (fiscal_year or 2026) - 4, -1) %}<option value="{{ y }}" {{ 'selected' if y == fiscal_year }}>{{ y }}</option>{% endfor %}
+    </select>
+  </form>
 
   <!-- ===== MEASURED SKILL UPLIFT vs SPEND (skill-uplift loop, plan #19) ===== -->
   {# The product's core promise made measurable: how much skill level the year's

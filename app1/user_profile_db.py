@@ -987,7 +987,19 @@ def update_memory(username, memory_id, **fields):
     affected = cur.rowcount
     current_app.mysql.connection.commit()
     cur.close()
+    if affected > 0:
+        _resync_knowledge(username)
     return affected > 0
+
+
+def _resync_knowledge(username):
+    """Mind-map edits/deletes must reach the AI's recall index at once (N-5.2),
+    not after the 5-minute sync throttle. Never raises."""
+    try:
+        from app1 import user_knowledge
+        user_knowledge.sync_user(username, force=True)
+    except Exception:
+        pass
 
 
 def remove_memory(username, memory_id):
@@ -996,6 +1008,8 @@ def remove_memory(username, memory_id):
     affected = cur.rowcount
     current_app.mysql.connection.commit()
     cur.close()
+    if affected > 0:
+        _resync_knowledge(username)
     return affected > 0
 
 
@@ -1131,6 +1145,43 @@ def _section_strength(key, p):
         return 0.0
 
 
+def unlocked_help(p):
+    """What the AI can do FOR the user given what it already knows (N-5.1).
+
+    The profile is context for the help, not a form to finish: instead of "x of 8
+    fields / missing: ..." the UI shows what this knowledge makes possible, plus one
+    soft next step phrased as a benefit. Returns ``(unlocked, next_help)``.
+    """
+    p = p or {}
+    unlocked = []
+    role = (p.get("target_role") or "").strip()
+    if p.get("skills"):
+        unlocked.append("anbefale kurser, der bygger videre på dine kompetencer")
+    if role:
+        unlocked.append("finde kurser mod dit mål: " + role)
+    if p.get("experience"):
+        unlocked.append("vælge det rigtige niveau ud fra din erfaring")
+    if p.get("certifications"):
+        unlocked.append("undgå kurser, du allerede har bevis på")
+    if p.get("learning_goals") or (p.get("goals") or "").strip():
+        unlocked.append("lave en læringssti mod dine mål")
+    if (p.get("preferred_format") or "").strip() or (p.get("preferred_location") or "").strip():
+        unlocked.append("filtrere efter den form og det sted, du foretrækker")
+    if p.get("education"):
+        unlocked.append("matche dit uddannelsesniveau")
+    if not unlocked:
+        unlocked.append("give generelle anbefalinger, indtil jeg kender dig bedre")
+    if not role:
+        nxt = "Fortæl, hvor du gerne vil hen, så kan jeg finde kurser mod det."
+    elif not p.get("skills"):
+        nxt = "Fortæl, hvad du er god til, så kan jeg ramme niveauet bedre."
+    elif not p.get("experience"):
+        nxt = "Fortæl kort om dit nuværende job, så kan jeg tilpasse forslagene."
+    else:
+        nxt = "Jeg har nok til at give dig gode forslag. Spørg mig, hvad du vil."
+    return unlocked, nxt
+
+
 def profile_completeness(username, profile=None):
     """Return a completeness report driving the AI Profiler's "complete me to
     100%" loop.
@@ -1171,10 +1222,13 @@ def profile_completeness(username, profile=None):
     # the canonical section order (experience/skills before niceties).
     incomplete = [s for s in sections if s["strength"] < 1.0]
     weakest = min(incomplete, key=lambda s: s["strength"])["key"] if incomplete else None
+    unlocked, next_help = unlocked_help(p)
     return {
         "pct": round(done_count / total * 100) if total else 0,
         "done": done_count,
         "total": total,
+        "unlocked": unlocked,
+        "next_help": next_help,
         "sections": sections,
         "missing": [s["label"] for s in sections if not s["done"]],
         "weighted_pct": weighted,
@@ -1297,6 +1351,15 @@ def save_learning_path(username, title, steps, *, goal="", source="ai",
     row = cur.fetchone()
     existing_id = (row[0] if not isinstance(row, dict) else row.get("id")) if row else None
     if existing_id:
+        # Versioned saves (N-4.4): keep the state being replaced instead of losing it.
+        try:
+            cur.execute(
+                "INSERT INTO user_learning_path_versions (path_id, username, goal, steps) "
+                "SELECT id, username, goal, steps FROM user_learning_paths WHERE id = %s AND username = %s",
+                (existing_id, username),
+            )
+        except Exception as _ve:  # table missing on a not-yet-migrated DB: never block the save
+            current_app.logger.debug("learning path version skipped: %s", _ve)
         cur.execute(
             "UPDATE user_learning_paths SET goal = %s, steps = %s, total_cost = %s, "
             "total_duration_days = %s, source = %s WHERE username = %s AND id = %s",
@@ -1873,7 +1936,7 @@ def list_conversations(username, limit=30):
     try:
         cur.execute(
             "SELECT id, session_id, title, mode, created_at, updated_at FROM conversation_history "
-            "WHERE username = %s ORDER BY updated_at DESC LIMIT %s",
+            "WHERE username = %s AND mode <> 'hr' ORDER BY updated_at DESC LIMIT %s",
             (username, limit)
         )
         rows = list(cur.fetchall() or [])

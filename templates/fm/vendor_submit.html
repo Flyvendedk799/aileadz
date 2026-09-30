@@ -46,6 +46,7 @@
   </header>
   <nav class="vp-nav">
     <a href="{{ url_for('vendor.vendor_dashboard') }}">Oversigt</a>
+    <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
     <a href="{{ url_for('vendor.vendor_submit') }}" class="active">Indsend katalog</a>
     <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
     <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
@@ -65,7 +66,7 @@
       <form method="POST" action="{{ url_for('vendor.vendor_submit') }}" enctype="multipart/form-data">
         <div class="vp-drop">
           <i class="fa-solid fa-file-csv"></i>
-          <p>Vaelg en CSV-fil med dine kurser</p>
+          <p>Vælg en CSV-fil med dine kurser</p>
           <input class="vp-file" type="file" name="catalog_csv" accept=".csv,text/csv" required />
         </div>
         <button class="vp-btn" type="submit">Indsend til godkendelse</button>

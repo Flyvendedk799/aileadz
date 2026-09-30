@@ -124,12 +124,12 @@ def vendor_login():
         email = (request.form.get("email") or "").strip().lower()
         password = request.form.get("password") or ""
         if not email or not password:
-            flash("Udfyld bade e-mail og adgangskode.", "danger")
+            flash("Udfyld både e-mail og adgangskode.", "danger")
             return render_template("fm/vendor_login.html", email=email)
 
         auth = _vendor_auth()
         if auth is None or not hasattr(auth, "authenticate_vendor"):
-            flash("Leverandorlogin er midlertidigt utilgaengeligt. Prov igen senere.", "danger")
+            flash("Leverandørlogin er midlertidigt utilgængeligt. Prøv igen senere.", "danger")
             return render_template("fm/vendor_login.html", email=email)
 
         try:
@@ -200,7 +200,7 @@ def vendor_set_password(token):
         confirm = request.form.get("confirm") or ""
 
         if len(password) < 8:
-            flash("Adgangskoden skal vaere mindst 8 tegn.", "danger")
+            flash("Adgangskoden skal være mindst 8 tegn.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
         if password != confirm:
@@ -210,7 +210,7 @@ def vendor_set_password(token):
 
         auth = _vendor_auth()
         if auth is None or not hasattr(auth, "hash_vendor_password"):
-            flash("Leverandorlogin er midlertidigt utilgaengeligt. Prov igen senere.", "danger")
+            flash("Leverandørlogin er midlertidigt utilgængeligt. Prøv igen senere.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
 
@@ -218,7 +218,7 @@ def vendor_set_password(token):
             password_hash = auth.hash_vendor_password(password)
         except Exception as e:
             logger.warning("vendor_set_password: hashing failed: %s", e)
-            flash("Adgangskoden kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Adgangskoden kunne ikke gemmes. Prøv igen senere.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
 
@@ -243,7 +243,7 @@ def vendor_set_password(token):
             except Exception:
                 pass
             logger.warning("vendor_set_password: update failed: %s", e)
-            flash("Adgangskoden kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Adgangskoden kunne ikke gemmes. Prøv igen senere.", "danger")
             return render_template("fm/vendor_set_password.html", token=token,
                                    invalid=False, vendor_name=vendor_row.get("vendor_name") or "")
 
@@ -384,6 +384,7 @@ def vendor_dashboard():
 
     last_submission = submissions[0] if submissions else None
     kpis = {
+        "awaiting_booking": awaiting_booking_count(vendor_id),
         "course_count": len(products),
         "submission_count": len(submissions),
         "pending_count": sum(1 for s in submissions if (s.get("status") or "") == "pending"),
@@ -470,6 +471,16 @@ def vendor_profile():
             )
             conn.commit()
             cur.close()
+            # N-3.1: the DB is the vendor-profile source; mirror what the vendor edits.
+            try:
+                vrow = _fetch_vendor_row(vendor_id) or {}
+                import catalog_service
+                catalog_service.save_vendor_profile(
+                    conn, vrow.get("vendor_name") or "",
+                    {"reputation": description, "website": website, "logo_url": logo_url},
+                    actor=f"vendor:{vendor_id}")
+            except Exception as pe:
+                logger.debug("vendor_portal: profile mirror skipped: %s", pe)
             flash("Din profil er opdateret.", "success")
         except Exception as e:
             try:
@@ -497,11 +508,11 @@ def vendor_submit():
     if request.method == "POST":
         upload = request.files.get("catalog_csv")
         if not upload or not upload.filename:
-            flash("Vaelg en CSV-fil.", "danger")
+            flash("Vælg en CSV-fil.", "danger")
             return redirect(url_for("vendor.vendor_submit"))
 
         if catalog is None:
-            flash("Katalogimport er midlertidigt utilgaengelig. Prov igen senere.", "danger")
+            flash("Katalogimport er midlertidigt utilgængelig. Prøv igen senere.", "danger")
             return redirect(url_for("vendor.vendor_submit"))
 
         filename = upload.filename
@@ -521,7 +532,7 @@ def vendor_submit():
             )
         except Exception as e:
             logger.warning("vendor_portal: save_import_draft failed: %s", e)
-            flash("Importkladden kunne ikke gemmes. Prov igen senere.", "danger")
+            flash("Importkladden kunne ikke gemmes. Prøv igen senere.", "danger")
             return redirect(url_for("vendor.vendor_submit"))
 
         job_id = (draft or {}).get("job_id", "")
@@ -556,6 +567,176 @@ def vendor_submit():
         return redirect(url_for("vendor.vendor_dashboard"))
 
     return render_template("fm/vendor_submit.html")
+
+
+# ---------------------------------------------------------------------------
+# Reset link helper (N-6.1). The forgot/reset SCREENS are Part A's (S-2.4):
+# vendor_forgot_password / vendor_reset_password; this is what the admin's
+# "send nulstillingslink" button uses.
+# ---------------------------------------------------------------------------
+def send_vendor_reset_link(vendor_row):
+    """Mint a vendor_reset token and email the link. Returns True when a mail
+    was handed to the mail layer. Never raises."""
+    try:
+        import account_tokens
+        raw = account_tokens.create_token("vendor_reset", vendor_row["id"], ttl_minutes=60)
+        link = account_tokens.build_url("vendor.vendor_reset_password", raw, "/vendor/reset-password/{token}")
+        from email_service import send_branded_email
+        return bool(send_branded_email(
+            vendor_row.get("contact_email"), "Nulstil din adgangskode - Futurematch leverandørportal",
+            "password_reset", {}, reset_url=link,
+            dedupe_key="vendor_reset:%s:%s" % (vendor_row["id"], raw[:6]),
+        ))
+    except Exception as e:
+        logger.warning("vendor_portal: reset link failed: %s", e)
+        return False
+
+
+# ---------------------------------------------------------------------------
+# Orders (N-6.1): the vendor confirms (booked), declines or completes ITS OWN orders
+# ---------------------------------------------------------------------------
+def _active_vendor_ctx():
+    """OrderContext for the logged-in vendor, or None when the account is not
+    active any more. The status is re-read on EVERY request so suspending a
+    vendor takes effect immediately (the session alone is not trusted)."""
+    vendor_id = session.get("vendor_id")
+    if not vendor_id or session.get("user_type") != "vendor":
+        return None
+    row = _fetch_vendor_row(vendor_id)
+    if not row or (row.get("status") or "") != "active":
+        return None
+    from order_service import OrderContext
+    return OrderContext.for_vendor(vendor_id, label=row.get("vendor_name") or session.get("vendor_name"))
+
+
+def awaiting_booking_count(vendor_id):
+    """Approved orders this vendor has not confirmed yet (the derived in-app badge)."""
+    if not vendor_id:
+        return 0
+    try:
+        cur = _db().cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM course_orders WHERE vendor_id = %s AND status IN ('approved', 'pending')",
+                    (vendor_id,))
+        r = cur.fetchone()
+        cur.close()
+        return int((r.get("n") if isinstance(r, dict) else r[0]) or 0)
+    except Exception:
+        return 0
+
+
+@vendor_bp.context_processor
+def _vendor_nav_badge():
+    if session.get("user_type") == "vendor" and session.get("vendor_id"):
+        return {"vendor_awaiting_count": awaiting_booking_count(session.get("vendor_id"))}
+    return {}
+
+
+_ORDER_TABS = {
+    "afventer": ("Afventer bekræftelse", "('approved', 'pending')"),
+    "booket": ("Bekræftet", "('booked', 'confirmed', 'processing')"),
+    "afsluttet": ("Afsluttet", "('completed')"),
+    "annulleret": ("Annulleret", "('cancelled', 'rejected')"),
+}
+
+
+def _vendor_orders(vendor_id, tab):
+    """This vendor's orders only (vendor_id is the session's, never a parameter)."""
+    where = "co.vendor_id = %s AND co.status NOT IN ('pending_approval')"
+    if tab in _ORDER_TABS:
+        where += " AND co.status IN " + _ORDER_TABS[tab][1]
+    cur = _db().cursor()
+    cur.execute(
+        "SELECT co.order_id, co.product_title, co.product_handle, co.variant_date, co.variant_location, "
+        "co.status, co.user_name, co.user_email, co.user_phone, co.request_notes, co.cancel_reason, "
+        "co.created_at, c.company_name "
+        "FROM course_orders co LEFT JOIN companies c ON c.id = co.company_id "
+        "WHERE " + where + " ORDER BY co.created_at DESC LIMIT 200",
+        (vendor_id,),
+    )
+    rows = list(cur.fetchall() or [])
+    cur.close()
+    return rows
+
+
+@vendor_bp.route("/orders", methods=["GET"])
+@_vendor_login_required
+def vendor_orders():
+    ctx = _active_vendor_ctx()
+    if ctx is None:
+        _clear_vendor_session()
+        flash("Din konto er ikke aktiv. Kontakt Futurematch, hvis det er en fejl.", "danger")
+        return redirect(url_for("vendor.vendor_login"))
+    tab = request.args.get("tab") or "afventer"
+    if tab not in _ORDER_TABS and tab != "alle":
+        tab = "afventer"
+    import order_lifecycle as lc
+    try:
+        orders = _vendor_orders(ctx.vendor_id, tab)
+        load_error = False
+    except Exception as e:
+        logger.warning("vendor_orders: load failed: %s", e)
+        orders, load_error = [], True
+    for o in orders:
+        st = lc.normalize_status(o.get("status"))
+        o["state"] = st
+        o["label"] = lc.status_label(st, short=True)
+        o["tone"] = lc.STATUS_TONES[st]
+        o["can_book"] = st == lc.APPROVED
+        o["can_decline"] = st in (lc.APPROVED, lc.BOOKED)
+        o["can_complete"] = st in (lc.APPROVED, lc.BOOKED)
+    return render_template(
+        "fm/vendor_orders.html", vendor_name=session.get("vendor_name") or "", orders=orders, tab=tab,
+        tabs=_ORDER_TABS, load_error=load_error,
+    )
+
+
+def _order_action(order_id, fn_name):
+    ctx = _active_vendor_ctx()
+    if ctx is None:
+        return None, None
+    import order_service
+    if fn_name == "book":
+        return ctx, order_service.book_order(ctx, order_id)
+    if fn_name == "complete":
+        return ctx, order_service.complete_order(ctx, order_id)
+    if fn_name == "decline":
+        reason = (request.form.get("reason") or "").strip()
+        if not reason:
+            return ctx, {"success": False, "error": "reason_required",
+                         "message": "Skriv en kort begrundelse, så HR og deltageren ved hvorfor."}
+        return ctx, order_service.set_status(ctx, order_id, "cancelled", reason=reason[:240])
+    return ctx, {"success": False, "error": "bad_action", "message": "Ukendt handling."}
+
+
+def _order_action_response(order_id, fn_name, ok_msg):
+    ctx, res = _order_action(order_id, fn_name)
+    if ctx is None:
+        _clear_vendor_session()
+        flash("Din konto er ikke aktiv. Kontakt Futurematch, hvis det er en fejl.", "danger")
+        return redirect(url_for("vendor.vendor_login"))
+    if res.get("success"):
+        flash(ok_msg, "success")
+    else:
+        flash(res.get("message") or "Handlingen kunne ikke gennemføres.", "danger")
+    return redirect(url_for("vendor.vendor_orders", tab=request.form.get("tab") or "afventer"))
+
+
+@vendor_bp.route("/orders/<order_id>/book", methods=["POST"])
+@_vendor_login_required
+def vendor_order_book(order_id):
+    return _order_action_response(order_id, "book", "Pladsen er bekræftet. Deltageren og HR får besked.")
+
+
+@vendor_bp.route("/orders/<order_id>/decline", methods=["POST"])
+@_vendor_login_required
+def vendor_order_decline(order_id):
+    return _order_action_response(order_id, "decline", "Bestillingen er afvist. HR og deltageren får besked.")
+
+
+@vendor_bp.route("/orders/<order_id>/complete", methods=["POST"])
+@_vendor_login_required
+def vendor_order_complete(order_id):
+    return _order_action_response(order_id, "complete", "Deltagelsen er registreret som gennemført.")
 
 
 # ===========================================================================
@@ -598,7 +779,20 @@ ABSOLUTTE REGLER:
 
 STIL:
 - Kort, præcist og på dansk. Brug bullet points til tal. Fremhæv den vigtigste indsigt først.
+- Tal som en kollega, ikke som en formular: stil højst ét opklarende spørgsmål ad gangen.
+- Afslut hvert svar med 2-3 korte forslag til næste skridt i formen
+  <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggestions> (tagget vises ikke for brugeren).
+
+EKSEMPLER PÅ TONEN:
+Leverandør: Hvordan går det med mine kurser?
+Dig: (henter tallene først) Dine ordrer er steget 12 % de seneste 30 dage, og det er især PRINCE2, der trækker. Gennemførelsesraten er solid, men to kurser har ingen kommende datoer, og dem ser kunderne ikke. Skal jeg pege på de to?
+
+Leverandør: Hvem har købt mit dyreste kursus?
+Dig: Det kan jeg ikke se, og jeg nævner aldrig købere. Jeg kan til gengæld vise, hvordan kurset klarer sig på pris og efterspørgsel i forhold til lignende kurser.
 """
+
+# Suggestion chips shown when the model forgets its <suggestions> tag.
+VENDOR_FALLBACK_SUGGESTIONS = ["Vis mine topkurser", "Hvad efterspørges lige nu?", "Tjek mine kursusopslag"]
 
 
 def _cleanup_vendor_sessions():
@@ -645,16 +839,24 @@ def vendor_ask():
 
     # Per-vendor conversation memory, keyed by an isolated session id.
     _cleanup_vendor_sessions()
-    sid = session.get("vendor_chat_session_id")
-    if not sid:
-        sid = f"vendor_{vendor_id}_{uuid.uuid4()}"
-        session["vendor_chat_session_id"] = sid
+    # Durable memory (N-5.4): the transcript lives in MySQL, the in-process dict is
+    # only a cache, so a deploy / second worker / new tab keeps the conversation.
+    import vendor_conversations
+    who = vendor_conversations.owner(vendor_id)
+    sid = vendor_conversations.resolve_sid(session, vendor_id)
     if sid not in VENDOR_CHAT_MEMORY:
-        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}]
+        VENDOR_CHAT_MEMORY[sid] = [{"role": "system", "content": VENDOR_SYSTEM_PROMPT}] + [
+            dict(m, _ts=time.time()) for m in vendor_conversations.load(who, sid)]
 
     messages = VENDOR_CHAT_MEMORY[sid]
-    # Inject/refresh a small vendor-context system line (which vendor we are).
-    context_line = {"role": "system", "content": f"LEVERANDØR: {vendor_name}"}
+    # Inject/refresh a small vendor-context system line (which vendor we are). The
+    # name is vendor-controlled free text, so it is fenced as DATA (prompt injection).
+    try:
+        import grounding as _g
+        fenced_name = _g.delimit_untrusted("leverandørnavn", vendor_name) or vendor_name
+    except Exception:
+        fenced_name = vendor_name
+    context_line = {"role": "system", "content": f"LEVERANDØR: {fenced_name}"}
     if len(messages) > 1 and messages[1].get("role") == "system" \
             and (messages[1].get("content") or "").startswith("LEVERANDØR:"):
         messages[1] = context_line
@@ -777,19 +979,46 @@ def vendor_ask():
             final_messages = list(
                 runtime_result.stream_messages or runtime_result.messages or clean_messages
             )
-            full_text = runtime_result.text or ""
-            if runtime_result.needs_final_stream or not full_text.strip():
-                full_text = ""
+            import ai_reply
+            raw_text = runtime_result.text or ""
+            flt = ai_reply.SuggestionFilter()
+            if runtime_result.needs_final_stream or not raw_text.strip():
+                raw_text = ""
                 for token in iter_completion_stream(final_messages):
-                    full_text += token
-                    yield _vendor_sse({"type": "text", "content": token})
+                    raw_text += token
+                    shown = flt.feed(token)
+                    if shown:
+                        yield _vendor_sse({"type": "text", "content": shown})
+                tail = flt.flush()
+                if tail:
+                    yield _vendor_sse({"type": "text", "content": tail})
             else:
-                yield _vendor_sse({"type": "text", "content": full_text})
+                yield _vendor_sse({"type": "text", "content": ai_reply.strip_suggestions(raw_text)})
+            full_text = ai_reply.strip_suggestions(raw_text)
+
+            # Grounding check (same circuit-breaker the HR assistant uses): figures the
+            # answer quotes must be backed by THIS turn's tool results.
+            try:
+                import grounding as _grounding
+                evidence = [getattr(tr, "output", None) for tr in (runtime_result.tool_results or [])]
+                evidence = [e for e in evidence if e]
+                if evidence and full_text.strip():
+                    verdict = _grounding.grounding_disclaimer(full_text, evidence)
+                    if verdict.get("violation") and verdict.get("disclaimer"):
+                        note = "\n\n" + verdict["disclaimer"]
+                        full_text += note
+                        yield _vendor_sse({"type": "text", "content": note})
+            except Exception as _ge:
+                logger.debug("vendor grounding check skipped: %s", _ge)
+
+            suggestions = ai_reply.extract_suggestions(raw_text) or VENDOR_FALLBACK_SUGGESTIONS
+            yield _vendor_sse({"type": "suggestions", "items": suggestions})
 
             messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
             # Bound memory growth.
             if len(messages) > 30:
                 VENDOR_CHAT_MEMORY[sid] = [messages[0]] + messages[-16:]
+            vendor_conversations.save(who, sid, [m for m in VENDOR_CHAT_MEMORY[sid] if m.get("role") in ("user", "assistant")])
 
             yield _vendor_sse({"type": "done"})
         except Exception as e:

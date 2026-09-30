@@ -169,6 +169,16 @@ def _job_outbox_drain(app):
     return counts if isinstance(counts, dict) else {'result': counts}
 
 
+def _job_ops_alerts(app):
+    """Notify platform admins when emails or integration events keep failing (N-8.2)."""
+    try:
+        from observability import check_ops_alerts
+    except Exception as e:
+        return {'error': "observability import failed: %s" % e}
+    with app.app_context():
+        return check_ops_alerts(app.mysql.connection)
+
+
 def _job_daily_company_insights(app):
     """Generate AI conversation insights for each active company."""
     try:
@@ -306,7 +316,8 @@ def company_analytics_snapshot(conn, company_id, day=None):
         total_queries = int((row.get('total_queries') if isinstance(row, dict) else row[0]) or 0)
         avg_feedback = (row.get('avg_feedback') if isinstance(row, dict) else row[1])
         try:
-            satisfaction = round(float(avg_feedback), 2) if avg_feedback is not None else None
+            from feedback_scale import to_five
+            satisfaction = to_five(avg_feedback) if avg_feedback is not None else None
         except Exception:
             satisfaction = None
 
@@ -523,6 +534,74 @@ def _job_cert_expiry_reminders(app):
             return {'error': str(e)}
 
 
+def _job_billing_overdue(app):
+    """Daily: one HR notification per invoice past its due date (off-platform billing)."""
+    try:
+        import billing_service
+    except Exception as e:
+        return {'error': "billing_service import failed: %s" % e}
+    total = 0
+    with app.app_context():
+        conn = app.mysql.connection
+        cur = conn.cursor()
+        try:
+            total = billing_service.notify_overdue(cur)
+            conn.commit()
+        except Exception as e:
+            logger.warning("scheduler: billing overdue failed: %s", e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return {'error': str(e)}
+        finally:
+            cur.close()
+    return {'notifications': total}
+
+
+def _job_scheduled_reports(app):
+    """Hourly: e-mail the reports HR has scheduled (company_report_schedules)."""
+    try:
+        import scheduled_reports
+    except Exception as e:
+        return {'error': "scheduled_reports import failed: %s" % e}
+    with app.app_context():
+        conn = app.mysql.connection
+        cur = conn.cursor()
+        try:
+            summary = scheduled_reports.run_due_schedules(cur)
+            conn.commit()
+            return summary
+        except Exception as e:
+            logger.warning("scheduler: scheduled reports failed: %s", e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return {'error': str(e)}
+        finally:
+            cur.close()
+
+def _job_shopify_sync(app):
+    """Daily: refresh the catalog from Shopify (env credentials; skips when unset)."""
+    try:
+        import shopify_sync
+    except Exception as e:
+        return {'error': "shopify_sync import failed: %s" % e}
+    with app.app_context():
+        return shopify_sync.sync()
+
+
+def _job_catalog_embed(app):
+    """Embed catalog products that still have no vector (incremental)."""
+    try:
+        from app1 import rag
+    except Exception as e:
+        return {'error': "rag import failed: %s" % e}
+    with app.app_context():
+        return rag.embed_missing()
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -531,6 +610,12 @@ JOBS = [
         'name': 'outbox_drain',
         'interval_seconds': 120,          # ~2 min: near-real-time webhook delivery
         'fn': _job_outbox_drain,
+        'enabled': True,
+    },
+    {
+        'name': 'ops_alerts',
+        'interval_seconds': 900,          # 15 min: failed emails / stuck webhooks reach an admin fast
+        'fn': _job_ops_alerts,
         'enabled': True,
     },
     {
@@ -567,6 +652,30 @@ JOBS = [
         'name': 'company_analytics_rollup',
         'interval_seconds': 86400,        # daily — writes the per-company daily KPI snapshot
         'fn': _job_company_analytics_rollup,
+        'enabled': True,
+    },
+    {
+        'name': 'scheduled_reports',
+        'interval_seconds': 3600,         # hourly check; each schedule has its own cadence
+        'fn': _job_scheduled_reports,
+        'enabled': True,
+    },
+    {
+        'name': 'billing_overdue',
+        'interval_seconds': 86400,        # daily - flag invoices past their due date
+        'fn': _job_billing_overdue,
+        'enabled': True,
+    },
+    {
+        'name': 'shopify_sync',
+        'interval_seconds': 86400,        # daily; skips cleanly without Shopify env vars
+        'fn': _job_shopify_sync,
+        'enabled': True,
+    },
+    {
+        'name': 'catalog_embed',
+        'interval_seconds': 21600,        # every 6 h: embed products that have no vector yet
+        'fn': _job_catalog_embed,
         'enabled': True,
     },
     {
@@ -838,6 +947,96 @@ def run_due_jobs(app, only=None, force=False):
                 logger.warning("scheduler: stamp(error) failed for %s: %s", name, e2)
 
     return out
+
+
+# ── Worker heartbeat + status view (N-8.1) ───────────────────────────────────
+# The dedicated worker (``drain_worker.py --loop``) stamps a heartbeat row each
+# pass so /readyz and the admin system page can tell "worker is alive" from
+# "jobs only run when somebody happens to browse".
+HEARTBEAT_JOB = '_worker_heartbeat'
+HEARTBEAT_STALE_SECONDS = 300
+
+
+def stamp_worker_heartbeat(app):
+    """Record that the dedicated worker process is alive. Never raises."""
+    try:
+        with app.app_context():
+            conn = app.mysql.connection
+            _ensure_table(conn=conn)
+            cur = conn.cursor()
+            try:
+                cur.execute(
+                    "INSERT INTO scheduled_job_runs (job_name, last_run_at, last_status) "
+                    "VALUES (%s, NOW(), 'ok') "
+                    "ON DUPLICATE KEY UPDATE last_run_at = NOW(), last_status = 'ok'",
+                    (HEARTBEAT_JOB,),
+                )
+                conn.commit()
+            finally:
+                cur.close()
+    except Exception as e:
+        logger.warning("scheduler: heartbeat failed: %s", e)
+
+
+def in_request_runner_enabled():
+    """True when the legacy ``after_request`` runner should drive jobs.
+
+    Prod runs the dedicated worker and sets ``SCHEDULER_OPPORTUNISTIC=0`` so
+    visitors never pay for background work; the runner stays the default so a
+    fresh deploy without a worker still sends emails and webhooks.
+    """
+    import os
+    return os.getenv("SCHEDULER_OPPORTUNISTIC", "1").lower() not in {"0", "false", "no", "off"}
+
+
+def job_status_rows(conn):
+    """Per-job last-run info for the admin page and /readyz. Never raises.
+
+    Each row: name, interval_seconds, last_run_at (str|None), last_status,
+    last_summary, overdue (bool: last run older than 2x the interval or never).
+    """
+    rows = []
+    try:
+        _ensure_table(conn=conn)
+        cur = conn.cursor()
+        try:
+            cur.execute(
+                "SELECT job_name, last_run_at, UNIX_TIMESTAMP(last_run_at) AS ts, "
+                "last_status, last_summary FROM scheduled_job_runs"
+            )
+            found = {}
+            for r in (cur.fetchall() or []):
+                d = r if isinstance(r, dict) else dict(zip(
+                    ('job_name', 'last_run_at', 'ts', 'last_status', 'last_summary'), r))
+                found[d['job_name']] = d
+        finally:
+            cur.close()
+        now = time.time()
+        for job in JOBS:
+            d = found.get(job['name']) or {}
+            ts = d.get('ts')
+            overdue = (ts is None) or (now - float(ts) > 2 * job['interval_seconds'] + 120)
+            rows.append({
+                'name': job['name'],
+                'interval_seconds': job['interval_seconds'],
+                'last_run_at': str(d.get('last_run_at')) if d.get('last_run_at') else None,
+                'last_status': d.get('last_status'),
+                'last_summary': d.get('last_summary'),
+                'overdue': bool(overdue),
+            })
+        hb = found.get(HEARTBEAT_JOB) or {}
+        hb_ts = hb.get('ts')
+        rows.append({
+            'name': HEARTBEAT_JOB,
+            'interval_seconds': HEARTBEAT_STALE_SECONDS,
+            'last_run_at': str(hb.get('last_run_at')) if hb.get('last_run_at') else None,
+            'last_status': hb.get('last_status'),
+            'last_summary': None,
+            'overdue': (hb_ts is None) or (now - float(hb_ts) > HEARTBEAT_STALE_SECONDS),
+        })
+    except Exception as e:
+        logger.warning("scheduler: job_status_rows failed: %s", e)
+    return rows
 
 
 def run_due_jobs_safe(app, only=None, force=False):

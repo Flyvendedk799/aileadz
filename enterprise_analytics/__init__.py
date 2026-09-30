@@ -600,7 +600,7 @@ def analytics_dashboard(company_id):
     # Get company data
     data = analytics_engine.get_company_data(company_id)
     if not data:
-        flash('Unable to load analytics data', 'error')
+        flash('Analysedata kunne ikke indlæses.', 'error')
         return redirect(url_for('dashboard.dashboard'))
     
     # Calculate engagement scores
@@ -682,7 +682,7 @@ def get_engagement_trends(company_id):
             'data': trends
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve trends'}), 500
+        return jsonify({'error': 'Tendenser kunne ikke hentes.'}), 500
 
 @analytics_bp.route('/analytics/api/department-performance/<int:company_id>')
 def get_department_performance(company_id):
@@ -726,7 +726,7 @@ def get_department_performance(company_id):
             payload['anon_note'] = anon_note.get('note_da')
         return jsonify(payload)
     except Exception as e:
-        return jsonify({'error': 'Failed to retrieve department performance'}), 500
+        return jsonify({'error': 'Afdelingsresultater kunne ikke hentes.'}), 500
 
 @analytics_bp.route('/analytics/api/learning-roi/<int:company_id>')
 def calculate_learning_roi(company_id):
@@ -777,7 +777,7 @@ def calculate_learning_roi(company_id):
             'data': roi_data
         })
     except Exception as e:
-        return jsonify({'error': 'Failed to calculate ROI'}), 500
+        return jsonify({'error': 'ROI kunne ikke beregnes.'}), 500
 
 def create_analytics_charts(data, engagement_scores, performance_predictions):
     """Create interactive charts for analytics dashboard"""

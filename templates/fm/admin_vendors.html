@@ -12,17 +12,13 @@
   @media (max-width: 980px) { .vnd-split { grid-template-columns: 1fr; } }
 </style>
 {% endblock %}
+{% from 'fm/_admin_list.html' import search_bar, pager %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
-  </div>
+{% set active_admin_page = 'vendors' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="kpi-row">
-    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-store"></i></span><div><div class="kl">Leverandører</div><div class="kv tnum">{{ vendors|length }}</div></div></div>
+    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-store"></i></span><div><div class="kl">Leverandører</div><div class="kv tnum">{{ all_vendor_count }}</div></div></div>
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-circle-check"></i></span><div><div class="kl">Aktive</div><div class="kv tnum">{{ vendors|selectattr('status', 'equalto', 'active')|list|length }}</div></div></div>
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-inbox"></i></span><div><div class="kl">Afventende indsendelser</div><div class="kv tnum">{{ pending_count }}</div></div></div>
   </div>
@@ -32,9 +28,10 @@
       <div class="fm-card-head">
         <span class="fm-ch-icon"><i class="fa-solid fa-store"></i></span>
         <h3>Leverandørkonti</h3>
-        <span class="fm-badge" style="margin-left:auto">{{ vendors|length }}</span>
+        <span class="fm-badge" style="margin-left:auto">{{ pg.total }}</span>
       </div>
       <div class="fm-card-body" style="padding-top:6px">
+        {{ search_bar(q, 'Søg leverandør, e-mail eller status…') }}
         <div class="fm-table-wrap" style="border:0;box-shadow:none">
           <table class="fm-table">
             <thead>
@@ -53,6 +50,11 @@
                 </td>
                 <td style="text-align:right;font-weight:650">{{ v.course_count }}</td>
                 <td style="text-align:right;white-space:nowrap">
+                  {% if v.status != 'suspended' %}
+                  <form class="vnd-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_vendor_resend_invite', vendor_id=v.id) }}">
+                    <button class="btn btn-ghost btn-sm" type="submit" title="{{ 'Send ny invitation' if v.status == 'pending' else 'Send link til ny adgangskode' }}"><i class="fa-solid fa-envelope"></i> {{ 'Gensend invitation' if v.status == 'pending' else 'Nulstillingslink' }}</button>
+                  </form>
+                  {% endif %}
                   {% if v.status != 'active' %}
                   <form class="vnd-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_vendor_status', vendor_id=v.id) }}">
                     <input type="hidden" name="status" value="active">
@@ -73,6 +75,7 @@
             </tbody>
           </table>
         </div>
+        {{ pager(pg, "leverandører") }}
       </div>
     </div>
 
@@ -89,8 +92,8 @@
             <input class="fm-input" id="contact_email" name="contact_email" type="email" required placeholder="kontakt@leverandor.dk">
           </div>
           <div>
-            <label for="password">Startadgangskode</label>
-            <input class="fm-input" id="password" name="password" type="text" required placeholder="Midlertidig adgangskode">
+            <label for="password">Startadgangskode <span class="muted">(valgfri)</span></label>
+            <input class="fm-input" id="password" name="password" type="text" placeholder="Lad stå tom for at sende en invitation til at vælge adgangskode">
           </div>
           <div>
             <label for="website">Hjemmeside (valgfri)</label>
@@ -143,9 +146,9 @@
                 {% endif %}
                 {% if s.status == 'pending' %}
                 <form class="vnd-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_vendor_submission_action', submission_id=s.id, action='approved') }}">
-                  <button class="btn btn-ghost btn-sm" type="submit" title="Markér godkendt"><i class="fa-solid fa-check"></i></button>
+                  <button class="btn btn-primary btn-sm" type="submit" title="Gennemgå kladden og importér kurserne"><i class="fa-solid fa-file-import"></i> Godkend &amp; importér</button>
                 </form>
-                <form class="vnd-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_vendor_submission_action', submission_id=s.id, action='rejected') }}" onsubmit="return confirm('Afvis denne indsendelse?');">
+                <form class="vnd-status-form" method="POST" action="{{ url_for('admin_dashboard.admin_vendor_submission_action', submission_id=s.id, action='rejected') }}" onsubmit="return confirm('Afvis denne indsendelse? Kladden kasseres, og leverandøren får besked.');">
                   <button class="btn btn-ghost btn-sm" type="submit" title="Afvis"><i class="fa-solid fa-xmark"></i></button>
                 </form>
                 {% endif %}

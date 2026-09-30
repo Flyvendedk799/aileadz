@@ -1,9 +1,13 @@
 # Runbook: Deploy & Operations Index
 
 Single entrypoint for operating aileadz. The app is a Flask app-factory
-(`create_app()` in `run.py`) deployed on PythonAnywhere via a WSGI file
-(template: `wsgi_pythonanywhere.example.py`). Enterprise tables self-create
-idempotently on `before_request`. There is no separate migration step.
+(`create_app()` in `run.py`) deployed on the VPS by ServerHoster (`gunicorn
+wsgi:application`) plus a separate worker service (`python drain_worker.py --loop`,
+see JOB_RUNNER.md). Tables self-create/extend at boot from the single definitions in
+`enterprise_tables.py` + `schema_registry.py`; data fixes run once (flag rows in
+`schema_meta`). Alembic (`migrations/`) is the forward path: dump the live schema
+with `scripts/dump_schema_baseline.py`, review it, then `alembic stamp 0002_performance_indexes`
+and `alembic upgrade head`. `wsgi_pythonanywhere.example.py` is legacy.
 
 ## Runbooks
 

@@ -51,6 +51,7 @@
   </header>
   <nav class="vp-nav">
     <a href="{{ url_for('vendor.vendor_dashboard') }}">Oversigt</a>
+    <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
     <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
     <a href="{{ url_for('vendor.vendor_profile') }}" class="active">Profil</a>
     <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>

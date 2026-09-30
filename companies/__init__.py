@@ -963,9 +963,15 @@ def create_companies_blueprint():
                     co['health'], co['health_label'] = 'green', 'Sund'
         except Exception as e:
             current_app.logger.error(f"admin_companies_list: {e}")
+        from admin_lists import filter_rows, list_args, paginate
+        _page, _per, q = list_args(request)
+        companies = filter_rows(companies, q, ['company_name', 'company_slug', 'industry', 'subscription_plan'])
+        pg = paginate(companies, _page, _per)
         return render_template(
             'fm/admin_companies.html',
-            companies=companies,
+            companies=pg['items'],
+            pg=pg,
+            q=q,
             acting_company_id=session.get('admin_acting_company_id'),
         )
 

@@ -307,7 +307,7 @@ def user_list():
         total = (row['cnt'] if row else 0) or 0
 
         cur.execute("""
-            SELECT u.id, u.username, u.email, u.role, u.credits, {created_at_select},
+            SELECT u.id, u.username, u.email, u.role, u.credits, COALESCE(u.status, 'active') AS status, {created_at_select},
                    cu.company_id, c.company_name, cu.role AS company_role
             FROM users u
             LEFT JOIN company_users cu ON cu.user_id = u.id AND cu.status = 'active'
@@ -354,6 +354,80 @@ def update_user_role(user_id):
     except Exception as e:
         logging.error("Error updating role: %s", e)
         return jsonify({'success': False, 'message': str(e)}), 500
+
+
+@admin_dashboard_bp.route('/users/<int:user_id>/deactivate', methods=['POST'])
+@require_role('admin')
+def toggle_user_active(user_id):
+    """Deactivate / reactivate a user. A deactivated user cannot log in and their
+    company membership is switched off too; reactivating restores both."""
+    if user_id == session.get('user_id'):
+        return jsonify({'success': False, 'message': 'Du kan ikke deaktivere dig selv.'}), 400
+    try:
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, username, COALESCE(status, 'active') AS status FROM users WHERE id = %s", (user_id,))
+        u = cur.fetchone()
+        if not u:
+            cur.close()
+            return jsonify({'success': False, 'message': 'Brugeren blev ikke fundet.'}), 404
+        deactivate = (u.get('status') or 'active') != 'deactivated'
+        cur.execute("UPDATE users SET status = %s WHERE id = %s", ('deactivated' if deactivate else 'active', user_id))
+        cur.execute("UPDATE company_users SET status = %s WHERE user_id = %s",
+                    ('inactive' if deactivate else 'active', user_id))
+        try:
+            cur.execute(
+                "INSERT INTO audit_log (company_id, user_id, action, action_type, resource_type, resource_id, description, details) "
+                "VALUES (NULL, %s, %s, %s, 'user', %s, %s, %s)",
+                (session.get('user_id'), 'user.deactivated' if deactivate else 'user.reactivated',
+                 'user.deactivated' if deactivate else 'user.reactivated', str(user_id),
+                 u.get('username'), u.get('username')),
+            )
+        except Exception:
+            pass
+        conn.commit()
+        cur.close()
+        return jsonify({'success': True, 'deactivated': deactivate,
+                        'message': 'Brugeren er deaktiveret.' if deactivate else 'Brugeren er aktiveret igen.'})
+    except Exception as e:
+        logging.error("toggle_user_active failed: %s", e)
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+        return jsonify({'success': False, 'message': 'Kunne ikke ændre brugerens status.'}), 500
+
+
+@admin_dashboard_bp.route('/users/<int:user_id>/send-reset', methods=['POST'])
+@require_role('admin')
+def send_user_reset_link(user_id):
+    """Email a single-use password-reset link (nobody ever handles a plaintext password)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, username, email, COALESCE(status, 'active') AS status FROM users WHERE id = %s", (user_id,))
+        u = cur.fetchone()
+        cur.close()
+        if not u:
+            return jsonify({'success': False, 'message': 'Brugeren blev ikke fundet.'}), 404
+        if not u.get('email'):
+            return jsonify({'success': False, 'message': 'Brugeren har ingen e-mailadresse.'}), 400
+        if u.get('status') == 'deactivated':
+            return jsonify({'success': False, 'message': 'Brugeren er deaktiveret. Aktivér først.'}), 400
+        import account_tokens
+        raw = account_tokens.create_token('user_reset', user_id, ttl_minutes=60)
+        try:
+            link = url_for('auth.reset_password', token=raw, _external=True)
+        except Exception:
+            link = request.url_root.rstrip('/') + '/reset-password/' + raw
+        from email_service import send_branded_email
+        sent = send_branded_email(u['email'], "Nulstil din adgangskode", 'password_reset', {}, reset_url=link,
+                                  dedupe_key='user_reset:%s:%s' % (user_id, raw[:6]))
+        msg = ('Nulstillingslink sendt til ' + u['email'] + '.') if sent else \
+              'Linket er oprettet, men e-mail er ikke sat op endnu (se Systemstatus).'
+        return jsonify({'success': True, 'emailed': bool(sent), 'message': msg})
+    except Exception as e:
+        logging.error("send_user_reset_link failed: %s", e)
+        return jsonify({'success': False, 'message': 'Linket kunne ikke sendes.'}), 500
 
 
 @admin_dashboard_bp.route('/users/<int:user_id>/credits', methods=['POST'])
@@ -436,6 +510,7 @@ def admin_catalog_import_confirm(job_id):
             _mark_submissions_approved_for_job(cur, job_id)
             current_app.mysql.connection.commit()
             cur.close()
+            _email_vendor_submission_result_for_job(job_id, approved=True)
         except Exception as e:
             logging.warning("Vendor submission approval bookkeeping failed for %s: %s", job_id, e)
         flash("CSV import er bekraeftet og kataloget er opdateret.", "success")
@@ -552,6 +627,83 @@ def _mark_submissions_approved_for_job(cur, job_id):
         logging.warning("Could not auto-approve vendor submissions for job %s: %s", job_id, e)
 
 
+def _email_vendor_submission_result(submission_id, approved, note=None):
+    """Tell the vendor how their catalog submission went. Never raises."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("""SELECT v.contact_email, v.vendor_name, vs.filename, vs.row_count
+                        FROM vendor_submissions vs JOIN vendors v ON v.id = vs.vendor_id
+                        WHERE vs.id = %s""", (submission_id,))
+        row = cur.fetchone()
+        cur.close()
+        _send_submission_mail(row, approved, note)
+    except Exception as e:
+        logging.debug("Vendor submission mail skipped: %s", e)
+
+
+def _email_vendor_submission_result_for_job(job_id, approved, note=None):
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("""SELECT v.contact_email, v.vendor_name, vs.filename, vs.row_count
+                        FROM vendor_submissions vs JOIN vendors v ON v.id = vs.vendor_id
+                        WHERE vs.job_id = %s""", (job_id,))
+        rows = cur.fetchall() or []
+        cur.close()
+        for row in rows:
+            _send_submission_mail(row, approved, note)
+    except Exception as e:
+        logging.debug("Vendor submission mail (job) skipped: %s", e)
+
+
+def _send_submission_mail(row, approved, note):
+    if not row or not row.get('contact_email'):
+        return
+    from email_service import send_branded_email
+    send_branded_email(
+        row['contact_email'],
+        "Dit katalog er godkendt og importeret" if approved else "Dit katalog blev ikke godkendt",
+        'vendor_submission_result', {},
+        vendor_name=row.get('vendor_name') or '', filename=row.get('filename') or '',
+        row_count=row.get('row_count') or 0, approved=bool(approved), note=note or '',
+    )
+
+
+@admin_dashboard_bp.route('/vendors/<int:vendor_id>/resend-invite', methods=['POST'])
+@require_role('admin')
+def admin_vendor_resend_invite(vendor_id):
+    """Send a fresh invite (pending vendors) or a password-reset link (active ones)."""
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute("SELECT id, vendor_name, contact_email, status FROM vendors WHERE id = %s", (vendor_id,))
+        v = cur.fetchone()
+        if not v:
+            cur.close()
+            flash("Leverandøren blev ikke fundet.", "warning")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
+        if v.get('status') == 'suspended':
+            cur.close()
+            flash("Leverandøren er suspenderet. Aktivér kontoen, før du sender en invitation.", "warning")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
+        if v.get('status') == 'pending':
+            import secrets
+            token = secrets.token_urlsafe(32)[:80]
+            expires = datetime.now() + timedelta(days=7)
+            cur.execute("UPDATE vendors SET invite_token = %s, invite_expires_at = %s WHERE id = %s",
+                        (token, expires, vendor_id))
+            current_app.mysql.connection.commit()
+            _send_vendor_invite_email(v.get('contact_email'), v.get('vendor_name'), token, expires)
+            flash("Ny invitation er sendt.", "success")
+        else:
+            from vendor_portal import send_vendor_reset_link
+            send_vendor_reset_link(v)
+            flash("Et link til at vælge ny adgangskode er sendt.", "success")
+        cur.close()
+    except Exception as e:
+        logging.error("Resend vendor invite failed: %s", e)
+        flash("Invitationen kunne ikke sendes.", "danger")
+    return redirect(url_for('admin_dashboard.admin_vendors'))
+
+
 @admin_dashboard_bp.route('/vendors')
 @require_role('admin')
 def admin_vendors():
@@ -575,6 +727,13 @@ def admin_vendors():
         name = (vendor.get('vendor_name') or '').strip().lower()
         vendor['course_count'] = course_counts.get(name, 0)
 
+    from admin_lists import filter_rows, list_args, paginate
+    _page, _per, q = list_args(request)
+    all_vendor_count = len(vendors)
+    vendors = filter_rows(vendors, q, ['vendor_name', 'contact_email', 'status', 'website'])
+    pg = paginate(vendors, _page, _per)
+    vendors = pg['items']
+
     submissions = []
     try:
         cur.execute("""
@@ -596,6 +755,9 @@ def admin_vendors():
     return render_template(
         'fm/admin_vendors.html',
         vendors=vendors,
+        pg=pg,
+        q=q,
+        all_vendor_count=all_vendor_count,
         submissions=submissions,
         pending_count=pending_count,
     )
@@ -759,6 +921,29 @@ def admin_vendor_submission_action(submission_id, action):
         return redirect(url_for('admin_dashboard.admin_vendors'))
     try:
         cur = current_app.mysql.connection.cursor()
+        cur.execute("SELECT id, vendor_id, job_id, status FROM vendor_submissions WHERE id = %s", (submission_id,))
+        sub = cur.fetchone()
+        cur.close()
+        if not sub:
+            flash("Indsendelsen blev ikke fundet.", "warning")
+            return redirect(url_for('admin_dashboard.admin_vendors'))
+        sub = sub if isinstance(sub, dict) else {'id': sub[0], 'vendor_id': sub[1], 'job_id': sub[2], 'status': sub[3]}
+        job_id = sub.get('job_id')
+        draft = None
+        try:
+            draft = catalog.get_import_draft(job_id) if job_id else None
+        except Exception:
+            draft = None
+
+        if action == 'approved' and draft:
+            # "Godkend & importér": the catalog only changes through the preview's
+            # confirm step (which also marks the submission approved and mails the
+            # vendor), so approving never leaves the vendor "approved" with nothing imported.
+            flash("Gennemgå kladden og tryk «Bekræft import» for at godkende og importere kurserne.", "info")
+            return redirect(url_for('admin_dashboard.admin_catalog_import_preview', job_id=job_id))
+
+        note = (request.form.get('note') or '').strip() or None
+        cur = current_app.mysql.connection.cursor()
         cur.execute(
             """UPDATE vendor_submissions
                    SET status = %s, reviewed_by = %s, reviewed_at = NOW()
@@ -767,8 +952,14 @@ def admin_vendor_submission_action(submission_id, action):
         )
         current_app.mysql.connection.commit()
         cur.close()
+        if action == 'rejected' and job_id and draft:
+            try:
+                catalog.delete_import_draft(job_id)
+            except Exception as e:
+                logging.warning("Could not discard rejected draft %s: %s", job_id, e)
+        _email_vendor_submission_result(submission_id, approved=(action == 'approved'), note=note)
         label = "godkendt" if action == 'approved' else "afvist"
-        flash(f"Indsendelsen er {label}.", "success")
+        flash(f"Indsendelsen er {label}. Leverandøren er underrettet.", "success")
     except Exception as e:
         logging.error("Could not update vendor submission: %s", e)
         try:
@@ -827,9 +1018,16 @@ def admin_agreements():
 
     active_count = sum(1 for a in agreements if a.get('is_active'))
 
+    from admin_lists import filter_rows, list_args, paginate
+    _page, _per, q = list_args(request)
+    agreements = filter_rows(agreements, q, ['company_name', 'vendor_name', 'agreement_name', 'agreement_reference'])
+    pg = paginate(agreements, _page, _per)
+
     return render_template(
         'fm/admin_agreements.html',
-        agreements=agreements,
+        agreements=pg['items'],
+        pg=pg,
+        q=q,
         companies=companies,
         vendors=vendors,
         active_count=active_count,
@@ -977,6 +1175,10 @@ def admin_audit_log():
     except (TypeError, ValueError):
         company_id = None
 
+    from admin_lists import list_args
+    page, per_page, q = list_args(request, per_page=50)
+    offset = (page - 1) * per_page
+    total = 0
     rows, action_types = [], []
     try:
         where = ["al.created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)"]
@@ -987,16 +1189,22 @@ def admin_audit_log():
         if company_id:
             where.append("al.company_id = %s")
             params.append(company_id)
+        if q:
+            where.append("(al.description LIKE %s OR al.action_type LIKE %s OR u.username LIKE %s "
+                         "OR c.company_name LIKE %s OR al.resource_id LIKE %s)")
+            like = "%" + q + "%"
+            params.extend([like] * 5)
+        base = ("FROM audit_log al LEFT JOIN companies c ON c.id = al.company_id "
+                "LEFT JOIN users u ON u.id = al.user_id WHERE " + " AND ".join(where))
+        cur.execute("SELECT COUNT(*) AS n " + base, tuple(params))
+        r = cur.fetchone() or {}
+        total = int(r.get('n') or 0)
         cur.execute(
             """SELECT al.id, al.company_id, al.user_id, al.action, al.action_type,
                       al.resource_type, al.resource_id, al.description, al.created_at,
-                      c.company_name, u.username
-               FROM audit_log al
-               LEFT JOIN companies c ON c.id = al.company_id
-               LEFT JOIN users u ON u.id = al.user_id
-               WHERE """ + " AND ".join(where) + """
-               ORDER BY al.created_at DESC LIMIT 300""",
-            tuple(params),
+                      c.company_name, u.username """ + base +
+            " ORDER BY al.created_at DESC LIMIT %s OFFSET %s",
+            tuple(params) + (per_page, offset),
         )
         rows = cur.fetchall() or []
         cur.execute(
@@ -1010,7 +1218,11 @@ def admin_audit_log():
     finally:
         cur.close()
 
-    return render_template('fm/adminlog.html', rows=rows, action_types=action_types,
+    pages = max(1, (total + per_page - 1) // per_page)
+    pg = {'items': rows, 'page': page, 'pages': pages, 'total': total, 'per_page': per_page,
+          'has_prev': page > 1, 'has_next': page < pages}
+
+    return render_template('fm/adminlog.html', rows=rows, action_types=action_types, pg=pg, q=q,
                            sel_action_type=action_type, sel_company_id=company_id, days=days)
 
 

@@ -80,6 +80,9 @@ def login(slug=None):
                         cur_up.close()
                     except Exception:
                         pass
+        if user and password_valid and (user.get('status') or 'active') == 'deactivated':
+            flash('Kontoen er deaktiveret. Kontakt din administrator.', 'danger')
+            return redirect(url_for('auth.login'))
         if user and password_valid:
             _apply_session_user_context(user)
             flash('Login successful!', 'success')

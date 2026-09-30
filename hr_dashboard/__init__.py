@@ -796,6 +796,22 @@ def create_hr_dashboard_blueprint():
             """, (company['id'],))
             approvals = cur.fetchall()
 
+            # N-4.7: remaining department budget next to every request.
+            budgets = {}
+            try:
+                cur.execute("""
+                    SELECT department, annual_budget, spent FROM department_budgets
+                    WHERE company_id = %s AND fiscal_year = %s
+                """, (company['id'], date.today().year))
+                for b in cur.fetchall():
+                    budgets[b['department']] = float(b['annual_budget'] or 0) - float(b['spent'] or 0)
+            except Exception:
+                budgets = {}
+            for a in approvals:
+                rem = budgets.get(a.get('department'))
+                a['dept_remaining'] = rem
+                a['over_budget'] = bool(rem is not None and float(a.get('price') or 0) > rem)
+
             pending_count = sum(1 for a in approvals if a['status'] == 'pending')
 
             # 30-day daily approval-activity trend by status (read-only, company-scoped).
@@ -844,6 +860,31 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error loading approvals: {e}")
             flash("Error loading approvals.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/approvals/bulk', methods=['POST'])
+    def bulk_decide_approvals():
+        """Approve or reject many requests at once (N-4.7). One result per request."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({'success': False, 'message': 'Ikke logget ind.'}), 401
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
+        data = request.get_json(silent=True) or {}
+        decision = data.get('decision')
+        ids = data.get('approval_ids') or []
+        if decision not in ('approved', 'rejected') or not ids or len(ids) > 100:
+            return jsonify({'success': False, 'message': 'Vælg 1-100 anmodninger og en beslutning.'}), 400
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        ctx.company_id = company['id']
+        res = order_service.bulk_decide(ctx, ids, decision, data.get('notes') or '')
+        word = 'godkendt' if decision == 'approved' else 'afvist'
+        msg = f"{res['done']} anmodninger {word}"
+        if res['failed']:
+            msg += f", {res['failed']} kunne ikke behandles"
+        return jsonify({'success': res['done'] > 0, 'message': msg, 'done': res['done'],
+                        'failed': res['failed']})
 
     @hr_dashboard_bp.route('/approval/<int:approval_id>/decide', methods=['POST'])
     def decide_approval(approval_id):
@@ -2432,79 +2473,86 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/billing')
     def billing_overview():
-        """Billing overview — all orders with billing status"""
+        """Billing overview - order billing state tracked for external invoicing."""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomheden blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
-
+        import billing_service
+        billing_filter = request.args.get('billing_status', '')
+        dept_filter = request.args.get('department', '')
+        date_from = request.args.get('from', '')
+        date_to = request.args.get('to', '')
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Filter params
-            billing_filter = request.args.get('billing_status', '')
-            dept_filter = request.args.get('department', '')
-
-            where = "co.company_id = %s AND co.status NOT IN ('cancelled', 'rejected')"
-            params = [company['id']]
-
-            if billing_filter:
-                where += " AND COALESCE(co.billing_status, 'not_invoiced') = %s"
-                params.append(billing_filter)
-            if dept_filter:
-                where += " AND co.department = %s"
-                params.append(dept_filter)
-
-            cur.execute(f"""
-                SELECT co.order_id, co.product_title, co.username, co.department,
-                       co.price, co.status, co.created_at,
-                       COALESCE(co.billing_status, 'not_invoiced') as billing_status,
-                       co.invoice_number, co.invoice_date, co.payment_date,
-                       co.payment_method, co.payment_reference, co.billing_note
-                FROM course_orders co
-                WHERE {where}
-                ORDER BY co.created_at DESC
-                LIMIT 500
-            """, tuple(params))
-            orders = cur.fetchall()
-
-            # Summary stats
-            cur.execute("""
-                SELECT
-                    COUNT(*) as total_orders,
-                    COALESCE(SUM(price), 0) as total_value,
-                    COUNT(CASE WHEN COALESCE(billing_status, 'not_invoiced') = 'not_invoiced' THEN 1 END) as not_invoiced,
-                    COALESCE(SUM(CASE WHEN COALESCE(billing_status, 'not_invoiced') = 'not_invoiced' THEN price ELSE 0 END), 0) as not_invoiced_value,
-                    COUNT(CASE WHEN billing_status = 'invoiced' THEN 1 END) as invoiced,
-                    COALESCE(SUM(CASE WHEN billing_status = 'invoiced' THEN price ELSE 0 END), 0) as invoiced_value,
-                    COUNT(CASE WHEN billing_status = 'paid' THEN 1 END) as paid,
-                    COALESCE(SUM(CASE WHEN billing_status = 'paid' THEN price ELSE 0 END), 0) as paid_value
-                FROM course_orders
-                WHERE company_id = %s AND status NOT IN ('cancelled', 'rejected')
-            """, (company['id'],))
-            summary = cur.fetchone()
-
-            # Departments for filter
+            orders = billing_service.fetch_orders(
+                cur, company_id=company['id'], billing_filter=billing_filter,
+                department=dept_filter, date_from=date_from, date_to=date_to)
+            summary = billing_service.summary(
+                cur, company_id=company['id'], department=dept_filter,
+                date_from=date_from, date_to=date_to)
             cur.execute("""
                 SELECT DISTINCT department FROM company_users
                 WHERE company_id = %s AND department IS NOT NULL
                 ORDER BY department
             """, (company['id'],))
             departments = [r['department'] for r in cur.fetchall()]
-
             cur.close()
+            can_edit = (session.get('role') == 'admin'
+                        or session.get('company_role') in ('company_admin', 'hr_manager'))
             return render_template('fm/billing.html',
                                    company=company, orders=orders, summary=summary,
-                                   departments=departments,
-                                   billing_filter=billing_filter, dept_filter=dept_filter)
-
+                                   departments=departments, can_edit=can_edit,
+                                   billing_filter=billing_filter, dept_filter=dept_filter,
+                                   date_from=date_from, date_to=date_to, scope='company')
         except Exception as e:
             current_app.logger.error(f"Error loading billing: {e}")
-            flash("Error loading billing overview.", "danger")
+            flash("Faktureringsoversigten kunne ikke indlæses. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/billing/export.csv')
+    def billing_export_csv():
+        """CSV for reconciliation with the external accounting system."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import billing_service
+        from flask import Response
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        orders = billing_service.fetch_orders(
+            cur, company_id=company['id'], billing_filter=request.args.get('billing_status', ''),
+            department=request.args.get('department', ''), date_from=request.args.get('from', ''),
+            date_to=request.args.get('to', ''), limit=5000)
+        cur.close()
+        body = billing_service.to_csv(orders, {company['id']: company.get('company_name')})
+        return Response(body, mimetype='text/csv; charset=utf-8', headers={
+            'Content-Disposition': 'attachment; filename="fakturering-%s.csv"' % date.today().isoformat()})
+
+    @hr_dashboard_bp.route('/billing/summary')
+    def billing_print_summary():
+        """Printable summary per company/period (browser print -> PDF if wanted)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import billing_service
+        date_from, date_to = request.args.get('from', ''), request.args.get('to', '')
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        summary = billing_service.summary(cur, company_id=company['id'], date_from=date_from, date_to=date_to)
+        orders = billing_service.fetch_orders(cur, company_id=company['id'], date_from=date_from,
+                                              date_to=date_to, limit=2000)
+        cur.close()
+        return render_template('fm/billing_summary.html', company=company, summary=summary,
+                               orders=orders, date_from=date_from, date_to=date_to,
+                               today=date.today().strftime('%d.%m.%Y'))
 
     @hr_dashboard_bp.route('/order/<order_id>/billing', methods=['POST'])
     def update_billing(order_id):

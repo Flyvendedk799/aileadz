@@ -5,12 +5,7 @@
 {% block topbar_sub %}{{ companies|length }} tenants på platformen.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
-<div class="pg-subnav">
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Platform</a>
-  <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-  <a class="pg-tab active" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
-  <a class="pg-tab" href="{{ url_for('companies.register_company') }}"><i class="fa-solid fa-plus"></i> Opret virksomhed</a>
-</div>
+{% set active_admin_page = 'companies' %}{% include 'fm/_admin_subnav.html' %}
 
 <div class="fm-spread" style="margin-bottom:14px">
   <div></div>

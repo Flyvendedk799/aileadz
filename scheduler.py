@@ -523,6 +523,31 @@ def _job_cert_expiry_reminders(app):
             return {'error': str(e)}
 
 
+def _job_billing_overdue(app):
+    """Daily: one HR notification per invoice past its due date (off-platform billing)."""
+    try:
+        import billing_service
+    except Exception as e:
+        return {'error': "billing_service import failed: %s" % e}
+    total = 0
+    with app.app_context():
+        conn = app.mysql.connection
+        cur = conn.cursor()
+        try:
+            total = billing_service.notify_overdue(cur)
+            conn.commit()
+        except Exception as e:
+            logger.warning("scheduler: billing overdue failed: %s", e)
+            try:
+                conn.rollback()
+            except Exception:
+                pass
+            return {'error': str(e)}
+        finally:
+            cur.close()
+    return {'notifications': total}
+
+
 # ── Job registry ─────────────────────────────────────────────────────────────
 # Each job: name, interval_seconds, fn(app)->summary(dict), enabled.
 # Ordered so the cheap, frequent outbox drain runs first.
@@ -567,6 +592,12 @@ JOBS = [
         'name': 'company_analytics_rollup',
         'interval_seconds': 86400,        # daily — writes the per-company daily KPI snapshot
         'fn': _job_company_analytics_rollup,
+        'enabled': True,
+    },
+    {
+        'name': 'billing_overdue',
+        'interval_seconds': 86400,        # daily - flag invoices past their due date
+        'fn': _job_billing_overdue,
         'enabled': True,
     },
     {

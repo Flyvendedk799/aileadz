@@ -16,12 +16,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a>
-  </div>
+{% set active_admin_page = 'agreements' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-handshake"></i></span><div><div class="kl">Aftaler</div><div class="kv tnum">{{ agreements|length }}</div></div></div>

@@ -106,7 +106,7 @@ def chatbot_dashboard():
         pass
 
     try:
-        cur.execute("SELECT SUM(price) AS rev FROM course_orders WHERE status IN ('completed', 'paid')")
+        cur.execute("SELECT SUM(price) AS rev FROM course_orders WHERE status NOT IN ('cancelled', 'rejected', 'pending_approval')")
         row = cur.fetchone()
         total_revenue = row['rev'] or 0
     except Exception:

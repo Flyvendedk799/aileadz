@@ -384,6 +384,7 @@ def vendor_dashboard():
 
     last_submission = submissions[0] if submissions else None
     kpis = {
+        "awaiting_booking": awaiting_booking_count(vendor_id),
         "course_count": len(products),
         "submission_count": len(submissions),
         "pending_count": sum(1 for s in submissions if (s.get("status") or "") == "pending"),
@@ -556,6 +557,231 @@ def vendor_submit():
         return redirect(url_for("vendor.vendor_dashboard"))
 
     return render_template("fm/vendor_submit.html")
+
+
+# ---------------------------------------------------------------------------
+# Forgot password (N-6.1) - tokenised email link, single use, expiring
+# ---------------------------------------------------------------------------
+def send_vendor_reset_link(vendor_row):
+    """Mint a vendor_reset token and email the link. Returns True when a mail
+    was handed to the mail layer. Never raises."""
+    try:
+        import account_tokens
+        raw = account_tokens.create_token("vendor_reset", vendor_row["id"], ttl_minutes=60)
+        try:
+            link = url_for("vendor.vendor_reset_password", token=raw, _external=True)
+        except Exception:
+            link = url_for("vendor.vendor_reset_password", token=raw)
+        from email_service import send_branded_email
+        return bool(send_branded_email(
+            vendor_row.get("contact_email"), "Nulstil din adgangskode - Futurematch leverandørportal",
+            "password_reset", {}, reset_url=link,
+            dedupe_key="vendor_reset:%s:%s" % (vendor_row["id"], raw[:6]),
+        ))
+    except Exception as e:
+        logger.warning("vendor_portal: reset link failed: %s", e)
+        return False
+
+
+@vendor_bp.route("/forgot-password", methods=["GET", "POST"])
+def vendor_forgot_password():
+    sent = False
+    if request.method == "POST":
+        email = (request.form.get("email") or "").strip().lower()
+        if email:
+            try:
+                cur = _db().cursor()
+                cur.execute("SELECT id, vendor_name, contact_email, status FROM vendors "
+                            "WHERE LOWER(contact_email) = %s LIMIT 1", (email,))
+                row = cur.fetchone()
+                cur.close()
+                # Only active accounts get a link; the answer is identical either way
+                # so the form cannot be used to find out which emails exist.
+                if row and (row.get("status") or "") == "active":
+                    send_vendor_reset_link(row)
+            except Exception as e:
+                logger.warning("vendor_forgot_password: lookup failed: %s", e)
+        sent = True
+    return render_template("fm/vendor_forgot_password.html", sent=sent)
+
+
+@vendor_bp.route("/reset-password/<token>", methods=["GET", "POST"])
+def vendor_reset_password(token):
+    import account_tokens
+    vendor_id = account_tokens.peek_token("vendor_reset", token)
+    row = _fetch_vendor_row(vendor_id) if vendor_id else None
+    if not row or (row.get("status") or "") != "active":
+        flash("Linket er ugyldigt eller udløbet. Bed om et nyt link.", "danger")
+        return render_template("fm/vendor_set_password.html", token=token, invalid=True, vendor_name="",
+                               form_action=None)
+    action = url_for("vendor.vendor_reset_password", token=token)
+    if request.method == "POST":
+        password = request.form.get("password") or ""
+        if len(password) < 8:
+            flash("Adgangskoden skal være mindst 8 tegn.", "danger")
+        elif password != (request.form.get("confirm") or ""):
+            flash("De to adgangskoder er ikke ens.", "danger")
+        else:
+            auth = _vendor_auth()
+            sid = account_tokens.consume_token("vendor_reset", token)
+            if sid and auth is not None:
+                cur = _db().cursor()
+                cur.execute("UPDATE vendors SET password_hash = %s WHERE id = %s",
+                            (auth.hash_vendor_password(password), sid))
+                _db().commit()
+                cur.close()
+                flash("Din adgangskode er nulstillet. Du kan nu logge ind.", "success")
+                return redirect(url_for("vendor.vendor_login"))
+            flash("Linket er allerede brugt. Bed om et nyt link.", "danger")
+    return render_template("fm/vendor_set_password.html", token=token, invalid=False,
+                           vendor_name=row.get("vendor_name") or "", form_action=action)
+
+
+# ---------------------------------------------------------------------------
+# Orders (N-6.1): the vendor confirms (booked), declines or completes ITS OWN orders
+# ---------------------------------------------------------------------------
+def _active_vendor_ctx():
+    """OrderContext for the logged-in vendor, or None when the account is not
+    active any more. The status is re-read on EVERY request so suspending a
+    vendor takes effect immediately (the session alone is not trusted)."""
+    vendor_id = session.get("vendor_id")
+    if not vendor_id or session.get("user_type") != "vendor":
+        return None
+    row = _fetch_vendor_row(vendor_id)
+    if not row or (row.get("status") or "") != "active":
+        return None
+    from order_service import OrderContext
+    return OrderContext.for_vendor(vendor_id, label=row.get("vendor_name") or session.get("vendor_name"))
+
+
+def awaiting_booking_count(vendor_id):
+    """Approved orders this vendor has not confirmed yet (the derived in-app badge)."""
+    if not vendor_id:
+        return 0
+    try:
+        cur = _db().cursor()
+        cur.execute("SELECT COUNT(*) AS n FROM course_orders WHERE vendor_id = %s AND status IN ('approved', 'pending')",
+                    (vendor_id,))
+        r = cur.fetchone()
+        cur.close()
+        return int((r.get("n") if isinstance(r, dict) else r[0]) or 0)
+    except Exception:
+        return 0
+
+
+@vendor_bp.context_processor
+def _vendor_nav_badge():
+    if session.get("user_type") == "vendor" and session.get("vendor_id"):
+        return {"vendor_awaiting_count": awaiting_booking_count(session.get("vendor_id"))}
+    return {}
+
+
+_ORDER_TABS = {
+    "afventer": ("Afventer bekræftelse", "('approved', 'pending')"),
+    "booket": ("Bekræftet", "('booked', 'confirmed', 'processing')"),
+    "afsluttet": ("Afsluttet", "('completed')"),
+    "annulleret": ("Annulleret", "('cancelled', 'rejected')"),
+}
+
+
+def _vendor_orders(vendor_id, tab):
+    """This vendor's orders only (vendor_id is the session's, never a parameter)."""
+    where = "co.vendor_id = %s AND co.status NOT IN ('pending_approval')"
+    if tab in _ORDER_TABS:
+        where += " AND co.status IN " + _ORDER_TABS[tab][1]
+    cur = _db().cursor()
+    cur.execute(
+        "SELECT co.order_id, co.product_title, co.product_handle, co.variant_date, co.variant_location, "
+        "co.status, co.user_name, co.user_email, co.user_phone, co.request_notes, co.cancel_reason, "
+        "co.created_at, c.company_name "
+        "FROM course_orders co LEFT JOIN companies c ON c.id = co.company_id "
+        "WHERE " + where + " ORDER BY co.created_at DESC LIMIT 200",
+        (vendor_id,),
+    )
+    rows = list(cur.fetchall() or [])
+    cur.close()
+    return rows
+
+
+@vendor_bp.route("/orders", methods=["GET"])
+@_vendor_login_required
+def vendor_orders():
+    ctx = _active_vendor_ctx()
+    if ctx is None:
+        _clear_vendor_session()
+        flash("Din konto er ikke aktiv. Kontakt Futurematch, hvis det er en fejl.", "danger")
+        return redirect(url_for("vendor.vendor_login"))
+    tab = request.args.get("tab") or "afventer"
+    if tab not in _ORDER_TABS and tab != "alle":
+        tab = "afventer"
+    import order_lifecycle as lc
+    try:
+        orders = _vendor_orders(ctx.vendor_id, tab)
+        load_error = False
+    except Exception as e:
+        logger.warning("vendor_orders: load failed: %s", e)
+        orders, load_error = [], True
+    for o in orders:
+        st = lc.normalize_status(o.get("status"))
+        o["state"] = st
+        o["label"] = lc.status_label(st, short=True)
+        o["tone"] = lc.STATUS_TONES[st]
+        o["can_book"] = st == lc.APPROVED
+        o["can_decline"] = st in (lc.APPROVED, lc.BOOKED)
+        o["can_complete"] = st in (lc.APPROVED, lc.BOOKED)
+    return render_template(
+        "fm/vendor_orders.html", vendor_name=session.get("vendor_name") or "", orders=orders, tab=tab,
+        tabs=_ORDER_TABS, load_error=load_error,
+    )
+
+
+def _order_action(order_id, fn_name):
+    ctx = _active_vendor_ctx()
+    if ctx is None:
+        return None, None
+    import order_service
+    if fn_name == "book":
+        return ctx, order_service.book_order(ctx, order_id)
+    if fn_name == "complete":
+        return ctx, order_service.complete_order(ctx, order_id)
+    if fn_name == "decline":
+        reason = (request.form.get("reason") or "").strip()
+        if not reason:
+            return ctx, {"success": False, "error": "reason_required",
+                         "message": "Skriv en kort begrundelse, så HR og deltageren ved hvorfor."}
+        return ctx, order_service.set_status(ctx, order_id, "cancelled", reason=reason[:240])
+    return ctx, {"success": False, "error": "bad_action", "message": "Ukendt handling."}
+
+
+def _order_action_response(order_id, fn_name, ok_msg):
+    ctx, res = _order_action(order_id, fn_name)
+    if ctx is None:
+        _clear_vendor_session()
+        flash("Din konto er ikke aktiv. Kontakt Futurematch, hvis det er en fejl.", "danger")
+        return redirect(url_for("vendor.vendor_login"))
+    if res.get("success"):
+        flash(ok_msg, "success")
+    else:
+        flash(res.get("message") or "Handlingen kunne ikke gennemføres.", "danger")
+    return redirect(url_for("vendor.vendor_orders", tab=request.form.get("tab") or "afventer"))
+
+
+@vendor_bp.route("/orders/<order_id>/book", methods=["POST"])
+@_vendor_login_required
+def vendor_order_book(order_id):
+    return _order_action_response(order_id, "book", "Pladsen er bekræftet. Deltageren og HR får besked.")
+
+
+@vendor_bp.route("/orders/<order_id>/decline", methods=["POST"])
+@_vendor_login_required
+def vendor_order_decline(order_id):
+    return _order_action_response(order_id, "decline", "Bestillingen er afvist. HR og deltageren får besked.")
+
+
+@vendor_bp.route("/orders/<order_id>/complete", methods=["POST"])
+@_vendor_login_required
+def vendor_order_complete(order_id):
+    return _order_action_response(order_id, "complete", "Deltagelsen er registreret som gennemført.")
 
 
 # ===========================================================================

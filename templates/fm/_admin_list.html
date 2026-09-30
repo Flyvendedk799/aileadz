@@ -1,0 +1,30 @@
+{# Shared search box + pager for the platform-admin lists (N-6.5).
+   {% from 'fm/_admin_list.html' import search_bar, pager %}
+   search_bar(q, placeholder) renders a GET form that keeps other filters;
+   pager(pg) renders "Side x af y" with prev/next links that keep q and filters. #}
+{% macro search_bar(q, placeholder='Søg…') %}
+<form method="get" class="fm-flex fm-gap8" style="margin:0 0 14px;align-items:center">
+  {% for k, v in request.args.items() if k not in ('q', 'page') %}<input type="hidden" name="{{ k }}" value="{{ v }}">{% endfor %}
+  <div style="position:relative;flex:1;max-width:380px">
+    <i class="fa-solid fa-magnifying-glass" style="position:absolute;left:12px;top:50%;transform:translateY(-50%);color:var(--fm-ink-3);font-size:12px"></i>
+    <input class="fm-input" type="search" name="q" value="{{ q or '' }}" placeholder="{{ placeholder }}" style="padding-left:34px;width:100%">
+  </div>
+  <button class="btn btn-soft btn-sm" type="submit">Søg</button>
+  {% if q %}<a class="btn btn-ghost btn-sm" href="{{ url_for(request.endpoint, **request.view_args) }}">Ryd</a>{% endif %}
+</form>
+{% endmacro %}
+
+{% macro pager(pg, noun='rækker') %}
+{% if pg.pages > 1 %}
+<div class="fm-spread" style="padding:12px 4px;align-items:center">
+  <span class="muted" style="font-size:13px">Side {{ pg.page }} af {{ pg.pages }} · {{ pg.total }} {{ noun }}</span>
+  <span class="fm-flex fm-gap8">
+    {% set _args = dict(request.args.items()) %}
+    {% if pg.has_prev %}{% set _ = _args.update({'page': pg.page - 1}) %}<a class="btn btn-soft btn-sm" href="{{ url_for(request.endpoint, **dict(request.view_args or {}, **_args)) }}"><i class="fa-solid fa-chevron-left"></i> Forrige</a>{% endif %}
+    {% if pg.has_next %}{% set _ = _args.update({'page': pg.page + 1}) %}<a class="btn btn-soft btn-sm" href="{{ url_for(request.endpoint, **dict(request.view_args or {}, **_args)) }}">Næste <i class="fa-solid fa-chevron-right"></i></a>{% endif %}
+  </span>
+</div>
+{% elif pg.total %}
+<div class="muted" style="font-size:13px;padding:8px 4px">{{ pg.total }} {{ noun }}</div>
+{% endif %}
+{% endmacro %}

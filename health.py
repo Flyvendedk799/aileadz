@@ -104,6 +104,40 @@ def _check_db():
         return False
 
 
+def _worker_block():
+    """Background-worker visibility: job last runs + outbox backlog. Never raises."""
+    try:
+        import scheduler
+
+        conn = current_app.mysql.connection
+        jobs = scheduler.job_status_rows(conn)
+        backlog = None
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT COUNT(*) AS n FROM event_outbox WHERE status = 'pending'")
+                row = cur.fetchone()
+                backlog = int((row.get('n') if isinstance(row, dict) else row[0]) or 0)
+            finally:
+                cur.close()
+        except Exception:
+            backlog = None
+        heartbeat = next((j for j in jobs if j['name'] == scheduler.HEARTBEAT_JOB), None)
+        return {
+            'dedicated_worker': scheduler.in_request_runner_enabled() is False,
+            'heartbeat_ok': bool(heartbeat and not heartbeat['overdue']),
+            'outbox_pending': backlog,
+            'jobs': [
+                {'name': j['name'], 'last_run_at': j['last_run_at'],
+                 'status': j['last_status'], 'overdue': j['overdue']}
+                for j in jobs if j['name'] != scheduler.HEARTBEAT_JOB
+            ],
+        }
+    except Exception as exc:  # pragma: no cover
+        logging.warning("worker block failed: %s", exc)
+        return None
+
+
 def _check_catalog():
     """Return True if at least one RAG catalog index file exists on disk."""
     try:
@@ -144,6 +178,10 @@ def readyz():
         features = _features_block()
         if features is not None:
             body['features'] = features
+        # N-8.1: per-job last run + outbox backlog, so a dead worker is visible.
+        worker = _worker_block() if db_ok else None
+        if worker is not None:
+            body['worker'] = worker
         return jsonify(body), (200 if db_ok else 503)
     except Exception as exc:
         # A probe must never raise — degrade gracefully.

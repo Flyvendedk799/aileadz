@@ -14,6 +14,10 @@ anthropic>=1,<2
 requests>=2.32,<3
 python-dotenv>=1,<2
 
+# Outbound transactional email (email_service.send_branded_email). Without it
+# every send silently falls through to "skipped_no_backend".
+Flask-Mail>=0.10,<1
+
 # Fuzzy matching
 fuzzywuzzy>=0.18,<0.19
 python-Levenshtein>=0.27,<0.28

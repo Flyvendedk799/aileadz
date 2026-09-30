@@ -215,6 +215,13 @@ def create_app():
     mysql = MySQL(app)
     app.mysql = mysql
 
+    # MAIL_* env -> app.config so Flask-Mail can actually send (N-0.2).
+    try:
+        from email_service import load_mail_config
+        load_mail_config(app)
+    except Exception as e:
+        logging.warning("Mail config skipped: %s", e)
+
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(app1_bp, url_prefix='/app1')
     app.register_blueprint(auth_bp)
@@ -413,9 +420,9 @@ def create_app():
     def home():
         return redirect(url_for('dashboard.dashboard'))
 
-    @app.errorhandler(404)
-    def not_found(error):
-        return redirect(url_for('dashboard.dashboard')), 404
+    # Danish 404/500 pages, JSON for API callers (N-0.3).
+    from error_pages import register_error_handlers
+    register_error_handlers(app)
 
     return app
 

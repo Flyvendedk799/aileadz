@@ -161,6 +161,7 @@ def _env():
         "/" + kw["filename"] if ep == "static" and kw.get("filename") else "/" + ep
     )
     env.globals["csrf_token"] = lambda: ""
+    env.globals["asset_version"] = lambda p: "test"
     env.globals["session"] = {}
     env.globals["request"] = jinja2.ChainableUndefined()
     env.globals["get_flashed_messages"] = lambda **kw: []

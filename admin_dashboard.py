@@ -1050,8 +1050,42 @@ def admin_system_health():
             snapshot[label] = None
     cur.close()
 
+    mail = {}
+    try:
+        from email_service import mail_status
+        mail = mail_status()
+    except Exception as e:
+        logging.warning("system-health: mail status unavailable: %s", e)
+
+    jobs = []
+    try:
+        import scheduler
+        jobs = scheduler.job_status_rows(current_app.mysql.connection)
+    except Exception as e:
+        logging.warning("system-health: job status unavailable: %s", e)
+
     return render_template('fm/admin_system_health.html',
-                           features=features, outbox=outbox, snapshot=snapshot)
+                           features=features, outbox=outbox, snapshot=snapshot,
+                           mail=mail, jobs=jobs)
+
+
+@admin_dashboard_bp.route('/system-health/test-email', methods=['POST'])
+@require_role('admin')
+def admin_send_test_email():
+    """N-0.2: send a real test mail so ops can verify SMTP from the VPS."""
+    from email_service import send_test_email
+    to_email = (request.form.get('to_email') or '').strip()
+    if not to_email:
+        to_email = (session.get('email') or '').strip()
+    if not to_email or '@' not in to_email:
+        flash("Angiv en gyldig e-mailadresse til testen.", "danger")
+        return redirect(url_for('admin_dashboard.admin_system_health'))
+    result = send_test_email(to_email)
+    if result.get('ok'):
+        flash(f"Test-mail sendt til {to_email}. Tjek indbakken (og spam).", "success")
+    else:
+        flash(f"Test-mail fejlede: {result.get('error')}", "danger")
+    return redirect(url_for('admin_dashboard.admin_system_health'))
 
 
 # ---------------------------------------------------------------------------

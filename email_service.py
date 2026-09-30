@@ -11,6 +11,83 @@ from typing import Optional
 from flask import current_app, render_template_string
 
 
+_TRUTHY = {'1', 'true', 'yes', 'on'}
+
+
+def load_mail_config(app) -> dict:
+    """Copy the ``MAIL_*`` environment into ``app.config`` (N-0.2).
+
+    Flask-Mail reads its settings from ``app.config`` only, and nothing used to
+    copy the env vars across, so every send silently fell through to
+    "skipped_no_backend".  Safe to call repeatedly; returns the resolved,
+    secret-free summary.
+    """
+    env = os.environ
+    server = env.get('MAIL_SERVER') or env.get('SMTP_HOST') or env.get('SMTP_SERVER') or ''
+    try:
+        port = int(env.get('MAIL_PORT') or env.get('SMTP_PORT') or 587)
+    except ValueError:
+        port = 587
+    use_ssl = (env.get('MAIL_USE_SSL') or '').lower() in _TRUTHY
+    use_tls = (env.get('MAIL_USE_TLS') or ('0' if use_ssl else '1')).lower() in _TRUTHY
+    username = env.get('MAIL_USERNAME') or env.get('SMTP_USER') or ''
+    app.config.update({
+        'MAIL_SERVER': server,
+        'MAIL_PORT': port,
+        'MAIL_USE_TLS': use_tls and not use_ssl,
+        'MAIL_USE_SSL': use_ssl,
+        'MAIL_USERNAME': username or None,
+        'MAIL_PASSWORD': env.get('MAIL_PASSWORD') or env.get('SMTP_PASSWORD') or None,
+        'MAIL_DEFAULT_SENDER': env.get('MAIL_DEFAULT_SENDER') or username or None,
+        'MAIL_SUPPRESS_SEND': False,
+    })
+    return mail_status(app)
+
+
+def mail_status(app=None) -> dict:
+    """Honest mail readiness: which config is missing, never the secrets."""
+    cfg = (app or current_app).config
+    missing = []
+    try:
+        import flask_mail  # noqa: F401
+    except Exception:
+        missing.append('flask_mail (pip-pakke)')
+    if not (cfg.get('MAIL_SERVER') or os.getenv('MAIL_SERVER')):
+        missing.append('MAIL_SERVER')
+    if not (cfg.get('MAIL_DEFAULT_SENDER') or os.getenv('MAIL_DEFAULT_SENDER')):
+        missing.append('MAIL_DEFAULT_SENDER')
+    return {
+        'configured': not missing,
+        'missing': missing,
+        'server': cfg.get('MAIL_SERVER') or '',
+        'port': cfg.get('MAIL_PORT'),
+        'tls': bool(cfg.get('MAIL_USE_TLS')),
+        'ssl': bool(cfg.get('MAIL_USE_SSL')),
+        'has_credentials': bool(cfg.get('MAIL_USERNAME') and cfg.get('MAIL_PASSWORD')),
+        'sender': cfg.get('MAIL_DEFAULT_SENDER') or '',
+    }
+
+
+def send_test_email(to_email: str) -> dict:
+    """Send a real test mail and report the outcome (admin "send test email")."""
+    status = mail_status()
+    if not status['configured']:
+        return {'ok': False, 'error': 'E-mail er ikke sat op endnu. Mangler: ' + ', '.join(status['missing'])}
+    try:
+        from flask_mail import Mail, Message
+        Mail(current_app).send(Message(
+            subject='Test fra Futurematch',
+            recipients=[to_email],
+            html='<p>Hej! Denne test-mail bekræfter, at Futurematch kan sende e-mail.</p>',
+            sender=('Futurematch', _default_sender()),
+        ))
+        _record_email_attempt(to_email, 'test', 'sent')
+        return {'ok': True}
+    except Exception as e:  # SMTP auth/connect errors are the useful signal here
+        _record_email_attempt(to_email, 'test', 'error', error=str(e))
+        return {'ok': False, 'error': str(e)}
+
+
 def _mail_configured() -> bool:
     return bool(os.getenv('MAIL_SERVER') or current_app.config.get('MAIL_SERVER'))
 

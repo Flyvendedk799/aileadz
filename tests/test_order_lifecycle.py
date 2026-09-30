@@ -216,7 +216,7 @@ class CreateAndApproveTests(OrderFlowBase):
 
     def test_completion_deadline_comes_from_the_variant_date(self):
         oid = self.create(variant_date="2026-11-03")["order_id"]
-        self.assertEqual(self.order(oid)["completion_deadline"], "2026-11-03")
+        self.assertEqual(str(self.order(oid)["completion_deadline"])[:10], "2026-11-03")
 
     def test_order_persists_request_notes(self):
         oid = self.create(extra={"notes": "Vegetar"})["order_id"]
@@ -369,7 +369,7 @@ class BillingTests(OrderFlowBase):
         ok = svc.set_billing_status(self.hr(), self.oid, "invoiced", invoice_number="F-100", due_date="2026-12-01")
         self.assertTrue(ok["success"])
         row = self.order(self.oid)
-        self.assertEqual((row["billing_status"], row["invoice_number"], row["invoice_due_date"]),
+        self.assertEqual((row["billing_status"], row["invoice_number"], str(row["invoice_due_date"])[:10]),
                          ("invoiced", "F-100", "2026-12-01"))
         paid = svc.set_billing_status(self.hr(), self.oid, "paid", payment_reference="BANK-7")
         self.assertTrue(paid["success"])

@@ -1,0 +1,26 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}csettings{% endblock %}
+{% block title %}Bestillingspolitik{% endblock %}
+{% block topbar_title %}Bestillingspolitik{% endblock %}
+{% block topbar_sub %}Hvordan sker holdbestillinger, og hvornår godkendes køb automatisk?{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+{% include 'fm/_settings_tabs.html' %}
+
+<div class="fm-card" style="margin-bottom:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-robot"></i></span><h3>Automatisk godkendelse</h3></div>
+<div class="fm-card-body" style="font-size:13.5px">
+  <p style="margin-top:0">Sæt beløbsgrænser, så små køb godkendes med det samme, og store altid kræver en leder.</p>
+  <a class="btn btn-soft btn-sm" href="{{ url_for('hr_dashboard.approval_policies') }}">Åbn godkendelsespolitikker</a>
+</div></div>
+
+{# Team-order policy (company default + per-vendor overrides). The form partial and its save route are provided by the AI work (N-5.2). #}
+{% if team_policy_partial %}
+{% include 'fm/_team_order_policy.html' %}
+{% else %}
+<div class="fm-card"><div class="fm-card-body">
+  {{ ui.empty('Holdbestillinger kommer snart', 'Her vælger HR, om medarbejdere kan bestille til et helt hold, og om det sker som ét køb pr. person eller via HR. Indtil videre bestiller hver medarbejder selv sin plads.', 'fa-people-group') }}
+</div></div>
+{% endif %}
+</div>
+{% endblock %}

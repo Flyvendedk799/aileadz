@@ -560,7 +560,9 @@ def vendor_submit():
 
 
 # ---------------------------------------------------------------------------
-# Forgot password (N-6.1) - tokenised email link, single use, expiring
+# Reset link helper (N-6.1). The forgot/reset SCREENS are Part A's (S-2.4):
+# vendor_forgot_password / vendor_reset_password; this is what the admin's
+# "send nulstillingslink" button uses.
 # ---------------------------------------------------------------------------
 def send_vendor_reset_link(vendor_row):
     """Mint a vendor_reset token and email the link. Returns True when a mail
@@ -568,10 +570,7 @@ def send_vendor_reset_link(vendor_row):
     try:
         import account_tokens
         raw = account_tokens.create_token("vendor_reset", vendor_row["id"], ttl_minutes=60)
-        try:
-            link = url_for("vendor.vendor_reset_password", token=raw, _external=True)
-        except Exception:
-            link = url_for("vendor.vendor_reset_password", token=raw)
+        link = account_tokens.build_url("vendor.vendor_reset_password", raw, "/vendor/reset-password/{token}")
         from email_service import send_branded_email
         return bool(send_branded_email(
             vendor_row.get("contact_email"), "Nulstil din adgangskode - Futurematch leverandørportal",
@@ -581,60 +580,6 @@ def send_vendor_reset_link(vendor_row):
     except Exception as e:
         logger.warning("vendor_portal: reset link failed: %s", e)
         return False
-
-
-@vendor_bp.route("/forgot-password", methods=["GET", "POST"])
-def vendor_forgot_password():
-    sent = False
-    if request.method == "POST":
-        email = (request.form.get("email") or "").strip().lower()
-        if email:
-            try:
-                cur = _db().cursor()
-                cur.execute("SELECT id, vendor_name, contact_email, status FROM vendors "
-                            "WHERE LOWER(contact_email) = %s LIMIT 1", (email,))
-                row = cur.fetchone()
-                cur.close()
-                # Only active accounts get a link; the answer is identical either way
-                # so the form cannot be used to find out which emails exist.
-                if row and (row.get("status") or "") == "active":
-                    send_vendor_reset_link(row)
-            except Exception as e:
-                logger.warning("vendor_forgot_password: lookup failed: %s", e)
-        sent = True
-    return render_template("fm/vendor_forgot_password.html", sent=sent)
-
-
-@vendor_bp.route("/reset-password/<token>", methods=["GET", "POST"])
-def vendor_reset_password(token):
-    import account_tokens
-    vendor_id = account_tokens.peek_token("vendor_reset", token)
-    row = _fetch_vendor_row(vendor_id) if vendor_id else None
-    if not row or (row.get("status") or "") != "active":
-        flash("Linket er ugyldigt eller udløbet. Bed om et nyt link.", "danger")
-        return render_template("fm/vendor_set_password.html", token=token, invalid=True, vendor_name="",
-                               form_action=None)
-    action = url_for("vendor.vendor_reset_password", token=token)
-    if request.method == "POST":
-        password = request.form.get("password") or ""
-        if len(password) < 8:
-            flash("Adgangskoden skal være mindst 8 tegn.", "danger")
-        elif password != (request.form.get("confirm") or ""):
-            flash("De to adgangskoder er ikke ens.", "danger")
-        else:
-            auth = _vendor_auth()
-            sid = account_tokens.consume_token("vendor_reset", token)
-            if sid and auth is not None:
-                cur = _db().cursor()
-                cur.execute("UPDATE vendors SET password_hash = %s WHERE id = %s",
-                            (auth.hash_vendor_password(password), sid))
-                _db().commit()
-                cur.close()
-                flash("Din adgangskode er nulstillet. Du kan nu logge ind.", "success")
-                return redirect(url_for("vendor.vendor_login"))
-            flash("Linket er allerede brugt. Bed om et nyt link.", "danger")
-    return render_template("fm/vendor_set_password.html", token=token, invalid=False,
-                           vendor_name=row.get("vendor_name") or "", form_action=action)
 
 
 # ---------------------------------------------------------------------------

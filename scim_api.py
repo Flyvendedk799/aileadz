@@ -975,3 +975,7 @@ def _send_welcome_email(email, full_name):
         )
     except Exception as e:  # pragma: no cover - best-effort
         logger.debug("scim_api: welcome email skipped: %s", e)
+
+
+# SCIM Groups <-> departments (N-7.2): registers its routes on scim_bp.
+import scim_groups  # noqa: E402,F401

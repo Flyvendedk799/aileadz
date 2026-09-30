@@ -1,0 +1,15 @@
+{# Tab bar of the company settings hub. Include at the top of the content block of
+   every settings page; the active tab comes from the hub (g.settings_tab). #}
+{% if settings_hub_tabs is defined %}
+<nav class="pg-subnav" aria-label="Virksomhedsindstillinger">
+  {% for t in settings_hub_tabs() %}
+  <a class="pg-tab {{ 'active' if t.active }}" href="{{ url_for('settings_hub.tab', tab=t.key) }}"><i class="fa-solid {{ t.icon }}"></i> {{ t.label }}</a>
+  {% endfor %}
+</nav>
+{% if settings_hub_sub() %}
+<nav class="pg-subnav" style="margin-top:-6px" aria-label="Chatbot og widget">
+  <a class="pg-tab {{ 'active' if settings_hub_sub() == 'chatbot' }}" href="{{ url_for('settings_hub.tab', tab='chatbot') }}">Chatbot</a>
+  <a class="pg-tab {{ 'active' if settings_hub_sub() == 'widget' }}" href="{{ url_for('settings_hub.tab', tab='chatbot', view='widget') }}">Widget</a>
+</nav>
+{% endif %}
+{% endif %}

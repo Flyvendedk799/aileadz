@@ -14,7 +14,12 @@
       <a class="btn btn-ghost btn-sm" href="{{ url_for('hr_ext.order_ics', order_id=order.order_id) }}"><i class="fa-regular fa-calendar-plus"></i> Kalender</a>
       {% endif %}
       <button class="btn btn-ghost btn-sm" onclick="window.print()"><i class="fa-solid fa-print"></i> Print</button>
+      {% if admin_view %}
+      {% if order.company_id %}<a href="{{ url_for('admin_dashboard.impersonate_company', company_id=order.company_id) }}" class="btn btn-soft btn-sm"><i class="fa-solid fa-user-secret"></i> Åbn som virksomhed (HR)</a>{% endif %}
+      <a href="{{ url_for('admin_reports.chatbot_dashboard') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Chatbot BI</a>
+      {% else %}
       <a href="{{ url_for('hr_dashboard.pending_approvals') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-arrow-left"></i> Godkendelser</a>
+      {% endif %}
     </div>
   </div>
 

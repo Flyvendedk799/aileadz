@@ -356,6 +356,98 @@ def update_user_role(user_id):
         return jsonify({'success': False, 'message': str(e)}), 500
 
 
+def _ai_quality_snapshot(cur, days):
+    """Platform-wide AI run quality from ai_agent_runs (all tenants, counts only)."""
+    out = {'totals': {}, 'by_scope': [], 'by_runtime': [], 'by_company': [], 'error': None}
+    where = "created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)"
+    try:
+        cur.execute(
+            "SELECT COUNT(*) AS runs, "
+            "SUM(CASE WHEN status <> 'ok' AND status <> 'success' THEN 1 ELSE 0 END) AS not_ok, "
+            "SUM(CASE WHEN COALESCE(fallback_reason, '') <> '' THEN 1 ELSE 0 END) AS fallbacks, "
+            "SUM(CASE WHEN grounding_violation = 1 THEN 1 ELSE 0 END) AS grounding, "
+            "AVG(self_eval_score) AS self_eval, AVG(latency_ms) AS latency_ms "
+            "FROM ai_agent_runs WHERE " + where, (days,))
+        t = cur.fetchone() or {}
+        out['totals'] = {k: (float(v) if v is not None else 0) for k, v in t.items()}
+        cur.execute(
+            "SELECT COALESCE(agent_scope, 'ukendt') AS label, COUNT(*) AS runs, "
+            "SUM(CASE WHEN grounding_violation = 1 THEN 1 ELSE 0 END) AS grounding, AVG(latency_ms) AS latency_ms "
+            "FROM ai_agent_runs WHERE " + where + " GROUP BY COALESCE(agent_scope, 'ukendt') ORDER BY runs DESC", (days,))
+        out['by_scope'] = list(cur.fetchall() or [])
+        cur.execute(
+            "SELECT COALESCE(runtime, 'ukendt') AS label, COUNT(*) AS runs, "
+            "SUM(CASE WHEN COALESCE(fallback_reason, '') <> '' THEN 1 ELSE 0 END) AS fallbacks, AVG(latency_ms) AS latency_ms "
+            "FROM ai_agent_runs WHERE " + where + " GROUP BY COALESCE(runtime, 'ukendt') ORDER BY runs DESC", (days,))
+        out['by_runtime'] = list(cur.fetchall() or [])
+        cur.execute(
+            "SELECT r.company_id, COALESCE(c.company_name, 'Uden virksomhed') AS company_name, COUNT(*) AS runs, "
+            "SUM(CASE WHEN r.grounding_violation = 1 THEN 1 ELSE 0 END) AS grounding, AVG(r.self_eval_score) AS self_eval "
+            "FROM ai_agent_runs r LEFT JOIN companies c ON c.id = r.company_id "
+            "WHERE r." + where + " GROUP BY r.company_id, c.company_name ORDER BY runs DESC LIMIT 15", (days,))
+        out['by_company'] = list(cur.fetchall() or [])
+    except Exception as e:
+        logging.warning("ai quality snapshot failed: %s", e)
+        out['error'] = str(e)
+    return out
+
+
+@admin_dashboard_bp.route('/ai-quality')
+@require_role('admin')
+def admin_ai_quality():
+    """Platform-level AI quality view (N-6.5): grounding violations, fallbacks, latency and
+    self-eval across ALL tenants - the company-level view stays under /hr/ai-quality."""
+    try:
+        days = max(1, min(180, int(request.args.get('days', 30))))
+    except (TypeError, ValueError):
+        days = 30
+    cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+    snap = _ai_quality_snapshot(cur, days)
+    cur.close()
+    return render_template('fm/admin_ai_quality.html', snap=snap, days=days)
+
+
+@admin_dashboard_bp.route('/orders/<order_id>')
+@require_role('admin')
+def admin_order_detail(order_id):
+    """Platform-wide order detail (Chatbot BI 'Detaljer' works across tenants).
+
+    Read-only: changes are made in the company's own HR workspace (the page links
+    there through the admin 'act as' flow) so every write still goes through the
+    tenant-scoped order routes and is audited as such."""
+    import order_lifecycle as lc
+    import order_service
+    try:
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        cur.execute(
+            """SELECT co.*, u.email, cu.job_title, cu.employee_id, c.company_name
+               FROM course_orders co
+               LEFT JOIN users u ON u.id = co.user_id
+               LEFT JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
+               LEFT JOIN companies c ON c.id = co.company_id
+               WHERE co.order_id = %s""", (order_id,))
+        order = cur.fetchone()
+        cur.close()
+    except Exception as e:
+        logging.warning("admin_order_detail failed: %s", e)
+        order = None
+    if not order:
+        flash("Ordren blev ikke fundet.", "warning")
+        return redirect(url_for('admin_reports.chatbot_dashboard'))
+    ctx = order_service.OrderContext.from_session(source='admin')
+    history = order_service.get_history(ctx, order_id)
+    status = lc.normalize_status(order.get('status'))
+    billing = lc.normalize_billing(order.get('billing_status'))
+    company = {'id': order.get('company_id'), 'company_name': order.get('company_name') or 'Uden virksomhed'}
+    return render_template(
+        'fm/order_details.html', order=order, company=company, history=history,
+        status=status, status_label=lc.status_label(status), status_tone=lc.STATUS_TONES[status],
+        status_labels=lc.STATUS_LABELS_SHORT, billing=billing, billing_label=lc.billing_label(billing),
+        billing_tone=lc.BILLING_TONES[billing], billing_transitions=[], billing_labels=lc.BILLING_LABELS,
+        can_bill=False, can_manage=False, next_statuses=[], admin_view=True,
+    )
+
+
 @admin_dashboard_bp.route('/users/<int:user_id>/deactivate', methods=['POST'])
 @require_role('admin')
 def toggle_user_active(user_id):
@@ -413,15 +505,17 @@ def send_user_reset_link(user_id):
             return jsonify({'success': False, 'message': 'Brugeren har ingen e-mailadresse.'}), 400
         if u.get('status') == 'deactivated':
             return jsonify({'success': False, 'message': 'Brugeren er deaktiveret. Aktivér først.'}), 400
-        import account_tokens
-        raw = account_tokens.create_token('user_reset', user_id, ttl_minutes=60)
-        try:
-            link = url_for('auth.reset_password', token=raw, _external=True)
-        except Exception:
-            link = request.url_root.rstrip('/') + '/reset-password/' + raw
-        from email_service import send_branded_email
-        sent = send_branded_email(u['email'], "Nulstil din adgangskode", 'password_reset', {}, reset_url=link,
-                                  dedupe_key='user_reset:%s:%s' % (user_id, raw[:6]))
+        import auth as _auth
+        if hasattr(_auth, 'send_user_password_link'):
+            # Part A (S-2.4): token issue + email in one call.
+            sent = _auth.send_user_password_link(current_app.mysql.connection, u, purpose='reset')
+        else:
+            import account_tokens
+            raw = account_tokens.create_token('user_reset', user_id, ttl_minutes=60)
+            link = account_tokens.build_url('auth.reset_password', raw, '/reset-password/{token}')
+            from email_service import send_branded_email
+            sent = send_branded_email(u['email'], "Nulstil din adgangskode", 'password_reset', {}, reset_url=link,
+                                      dedupe_key='user_reset:%s:%s' % (user_id, raw[:6]))
         msg = ('Nulstillingslink sendt til ' + u['email'] + '.') if sent else \
               'Linket er oprettet, men e-mail er ikke sat op endnu (se Systemstatus).'
         return jsonify({'success': True, 'emailed': bool(sent), 'message': msg})

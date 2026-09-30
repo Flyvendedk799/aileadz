@@ -987,7 +987,19 @@ def update_memory(username, memory_id, **fields):
     affected = cur.rowcount
     current_app.mysql.connection.commit()
     cur.close()
+    if affected > 0:
+        _resync_knowledge(username)
     return affected > 0
+
+
+def _resync_knowledge(username):
+    """Mind-map edits/deletes must reach the AI's recall index at once (N-5.2),
+    not after the 5-minute sync throttle. Never raises."""
+    try:
+        from app1 import user_knowledge
+        user_knowledge.sync_user(username, force=True)
+    except Exception:
+        pass
 
 
 def remove_memory(username, memory_id):
@@ -996,6 +1008,8 @@ def remove_memory(username, memory_id):
     affected = cur.rowcount
     current_app.mysql.connection.commit()
     cur.close()
+    if affected > 0:
+        _resync_knowledge(username)
     return affected > 0
 
 

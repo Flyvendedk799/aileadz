@@ -216,7 +216,7 @@ def _notify_company_admins_safe(cur, company_id, title, message, is_urgent=0,
             cur, company_id, ("company_admin", "hr_manager"),
             title=str(title)[:255], message=str(message),
             kind="order", is_urgent=bool(is_urgent), action_url=action_url,
-            dedupe_key=dedupe_key, dedupe_hours=24 if dedupe_key else None,  # gitleaks:allow (kwargs, not a secret)
+            dedupe_key=dedupe_key, dedupe_hours=24 if dedupe_key else None,
         )
     except Exception as e:  # pragma: no cover - defensive
         logger.debug("order_service: company notification skipped: %s", e)

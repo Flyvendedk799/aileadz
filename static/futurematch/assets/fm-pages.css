@@ -206,6 +206,7 @@
 .fm-aip-panel{position:absolute;right:0;bottom:62px;width:360px;max-width:88vw;height:460px;max-height:72vh;
   display:flex;flex-direction:column;border:1px solid var(--fm-line);border-radius:16px;overflow:hidden;
   background:var(--fm-surface);box-shadow:var(--sh-lg)}
+.fm-aip-panel[hidden]{display:none}
 .fm-aip-head{display:flex;align-items:center;justify-content:space-between;padding:13px 16px;
   font-weight:650;font-size:13.5px;color:#fff;background:linear-gradient(135deg,var(--fm-primary),var(--fm-clay))}
 .fm-aip-x{background:none;border:none;color:#fff;cursor:pointer;font-size:15px}

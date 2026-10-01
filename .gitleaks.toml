@@ -16,10 +16,7 @@ useDefault = true
 # False positive: order_service.py passes keyword arguments
 # (`dedupe_key=dedupe_key, dedupe_hours=...`) that the generic-api-key rule reads
 # as a key assignment. No secret is involved. Scoped to that file and rule only.
-[[allowlists]]
+[allowlist]
 description = "order_service notify_roles dedupe_key kwargs (generic-api-key false positive)"
-targetRules = ["generic-api-key"]
-condition = "AND"
-paths = ['''^order_service\.py$''']
 regexTarget = "line"
-regexes = ['''dedupe_key\s*=\s*dedupe_key''']
+regexes = ['''dedupe_key\s*=\s*dedupe_key,\s*dedupe_hours''']

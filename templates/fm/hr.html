@@ -55,6 +55,33 @@
 <div class="fm-wrap">
         {% set active_hr_page = 'dashboard' %}{% include 'fm/_hr_subnav.html' %}
 
+        {% if onboarding and onboarding.completed_count < 5 and not onboarding_dismissed %}
+        <section class="fm-card" style="margin-bottom:18px" data-reveal>
+          <div class="fm-card-body" style="padding:18px 22px">
+            <div class="fm-spread" style="gap:12px;flex-wrap:wrap;align-items:flex-start">
+              <div>
+                <span class="fm-eyebrow"><i class="fa-solid fa-flag-checkered"></i> Kom godt i gang</span>
+                <h2 style="font-size:18px;margin:4px 0 2px">{{ onboarding.completed_count }} af 5 trin er på plads</h2>
+                <p class="muted" style="margin:0;font-size:13px">Tag dem i den rækkefølge, der passer jer. Hvert trin åbner den rigtige side.</p>
+              </div>
+              <form method="post" action="{{ url_for('hr_dashboard.dismiss_onboarding') }}"><button class="btn btn-ghost btn-sm" type="submit">Skjul</button></form>
+            </div>
+            <div class="fm-prog thin" style="margin:12px 0"><span style="width:{{ onboarding.completed_count * 20 }}%"></span></div>
+            <div style="display:flex;gap:10px;flex-wrap:wrap">
+              {% set steps = [
+                (onboarding.has_employees, 'Inviter medarbejdere', url_for('bulk_invite.bulk_invite'), 'fa-user-plus'),
+                (onboarding.has_departments, 'Opret afdelinger', url_for('hr_dashboard.departments'), 'fa-sitemap'),
+                (onboarding.has_budgets, 'Sæt budgetter', url_for('hr_dashboard.department_budgets'), 'fa-wallet'),
+                (onboarding.has_orders, 'Find det første kursus', url_for('catalog.catalog_index'), 'fa-graduation-cap'),
+                (onboarding.has_used_chatbot, 'Prøv HR-assistenten', url_for('hr_dashboard.hr_chatbot'), 'fa-robot')] %}
+              {% for done, label, href, icon in steps %}
+              <a class="btn {{ 'btn-soft' if done else 'btn-ghost' }} btn-sm" href="{{ href }}"><i class="fa-solid {{ 'fa-circle-check' if done else icon }}"></i> {{ label }}</a>
+              {% endfor %}
+            </div>
+          </div>
+        </section>
+        {% endif %}
+
         {% set m = hr_metrics or {} %}
         {% set lm = learning_metrics or {} %}
         <!-- KPIs -->
@@ -62,7 +89,7 @@
           <article class="hr-kpi teal" data-reveal data-d="1"><span class="ic"><i class="fa-solid fa-users"></i></span><div><div class="lab">Medarbejdere</div><div class="val tnum">{{ m.total_employees or 0 }}</div><div class="det">{{ m.active_employees or 0 }} aktive · {{ m.new_hires_30_days or 0 }} nye (30 d)</div></div></article>
           <a class="hr-kpi green" href="{{ url_for('hr_dashboard.learning_paths') }}" data-reveal data-d="2"><span class="ic"><i class="fa-solid fa-graduation-cap"></i></span><div><div class="lab">Læringsfremdrift <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ completion_rate or 0 }}%</div><div class="det">{{ lm.completed_courses or 0 }} gennemført · {{ lm.in_progress_courses or 0 }} i gang</div></div></a>
           <a class="hr-kpi indigo" href="{{ url_for('hr_dashboard.pending_approvals') }}" data-reveal data-d="3"><span class="ic"><i class="fa-solid fa-cart-shopping"></i></span><div><div class="lab">Kursusordrer <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ lm.total_enrollments or 0 }}</div><div class="det">{{ completed_orders_count or 0 }} gennemført · {{ pending_orders_count or 0 }} afventer</div></div></a>
-          <a class="hr-kpi clay" href="{{ url_for('hr_dashboard.roi_dashboard') }}" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelses-ROI <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ '{:,.0f}'.format(roi_total_spend or 0) }}</div><div class="det">{{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></a>
+          <a class="hr-kpi clay" href="{{ url_for('hr_dashboard.roi_dashboard') }}" data-reveal data-d="4"><span class="ic"><i class="fa-solid fa-chart-line"></i></span><div><div class="lab">Uddannelsesforbrug <i class="fa-solid fa-arrow-right"></i></div><div class="val tnum">{{ '{:,.0f}'.format(roi_total_spend or 0) }}</div><div class="det">{{ conversion_rate or 0 }}% konvertering · {{ total_chatbot_queries or 0 }} samtaler</div></div></a>
         </section>
 
         {% set dh = dashboard_health or {} %}
@@ -145,11 +172,7 @@
                   <td>{{ o.product_title }}</td>
                   <td class="mono">{{ o.price }}</td>
                   <td>
-                    {% if st == 'completed' %}<span class="fm-badge green dot">Gennemført</span>
-                    {% elif st in ['pending','pending_approval'] %}<span class="fm-badge amber dot">Afventer</span>
-                    {% elif st == 'approved' %}<span class="fm-badge teal dot">Godkendt</span>
-                    {% elif st == 'rejected' %}<span class="fm-badge red dot">Afvist</span>
-                    {% else %}<span class="fm-badge">{{ st }}</span>{% endif %}
+                    <span class="fm-badge {{ order_status_tone(st) }} dot">{{ order_status_label(st, short=True) }}</span>
                   </td>
                   <td style="text-align:right;white-space:nowrap">
                     {% if o.variant_date and o.order_id and o.order_id != 'N/A' %}{{ ui.addtocal(url_for('hr_ext.order_ics', order_id=o.order_id), 'Kalender') }}{% endif %}

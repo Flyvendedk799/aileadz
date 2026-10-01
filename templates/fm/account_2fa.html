@@ -1,0 +1,88 @@
+{% extends "fm_base.html" %}
+{% block page_id %}account-2fa{% endblock %}
+{% block title %}Tofaktorgodkendelse · Futurematch{% endblock %}
+{% block topbar_title %}Tofaktorgodkendelse{% endblock %}
+{% block topbar_sub %}Beskyt din konto med en kode fra din telefon.{% endblock %}
+{% block extra_head %}
+<style>
+  .tf-wrap { max-width: 720px; margin: 0 auto; display: grid; gap: 18px; }
+  .tf-secret { font-family: var(--ff-mono, monospace); font-size: 18px; letter-spacing: .08em; padding: 12px 14px; background: var(--fm-surface-3); border-radius: var(--r-ctrl); word-break: break-all; }
+  .tf-codes { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; font-family: var(--ff-mono, monospace); font-size: 15px; }
+  .tf-codes span { padding: 8px 12px; background: var(--fm-surface-3); border-radius: var(--r-ctrl); text-align: center; }
+  .tf-qr { display: flex; justify-content: center; padding: 10px; }
+  .tf-qr canvas, .tf-qr img { border-radius: 8px; background: #fff; padding: 8px; }
+  .tf-inline { display: flex; gap: 10px; flex-wrap: wrap; align-items: flex-end; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="tf-wrap">
+
+  {% if must %}
+  <div class="callout"><span class="ci"><i class="fa-solid fa-shield-halved"></i></span>
+    <div style="flex:1"><div style="font-weight:650">Tofaktorgodkendelse er påkrævet</div>
+    <div style="font-size:12.5px;color:var(--fm-ink-2)">Din rolle kræver, at du slår tofaktorgodkendelse til, før du kan bruge resten af platformen.</div></div>
+  </div>
+  {% endif %}
+
+  {% if new_codes %}
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-life-ring"></i></span><h3>Dine reservekoder</h3></div>
+    <div class="fm-card-body">
+      <p style="font-size:13px;color:var(--fm-ink-2);margin-top:0">Gem disse koder et sikkert sted (fx i en adgangskodemanager). Hver kode virker én gang og kan bruges, hvis du mister din telefon. De vises kun denne ene gang.</p>
+      <div class="tf-codes">{% for c in new_codes %}<span>{{ c }}</span>{% endfor %}</div>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if enabled %}
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-lock"></i></span><h3>Status</h3></div>
+    <div class="fm-card-body">
+      <p style="margin-top:0"><span class="fm-badge green">Slået til</span> Du bliver bedt om en kode hver gang du logger ind. Du har {{ codes_left }} reservekode{{ '' if codes_left == 1 else 'r' }} tilbage.</p>
+
+      <form method="post" action="{{ url_for('auth.account_2fa') }}" class="tf-inline" style="margin-bottom:14px">
+        <input type="hidden" name="action" value="regenerate">
+        <div class="fm-field" style="margin:0"><label>Adgangskode</label><input class="fm-input" type="password" name="password" autocomplete="current-password" required></div>
+        <div class="fm-field" style="margin:0"><label>Kode</label><input class="fm-input" type="text" name="code" autocomplete="one-time-code" inputmode="numeric" required></div>
+        <button type="submit" class="btn btn-soft btn-sm"><i class="fa-solid fa-rotate"></i> Nye reservekoder</button>
+      </form>
+
+      {% if not required %}
+      <form method="post" action="{{ url_for('auth.account_2fa') }}" class="tf-inline">
+        <input type="hidden" name="action" value="disable">
+        <div class="fm-field" style="margin:0"><label>Adgangskode</label><input class="fm-input" type="password" name="password" autocomplete="current-password" required></div>
+        <div class="fm-field" style="margin:0"><label>Kode</label><input class="fm-input" type="text" name="code" autocomplete="one-time-code" inputmode="numeric" required></div>
+        <button type="submit" class="btn btn-ghost btn-sm"><i class="fa-solid fa-ban"></i> Slå fra</button>
+      </form>
+      {% else %}
+      <p style="font-size:12.5px;color:var(--fm-ink-3);margin-bottom:0">Tofaktorgodkendelse er påkrævet for din rolle og kan ikke slås fra.</p>
+      {% endif %}
+    </div>
+  </div>
+  {% else %}
+  <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-mobile-screen"></i></span><h3>Slå tofaktorgodkendelse til</h3></div>
+    <div class="fm-card-body">
+      <ol style="font-size:13.5px;color:var(--fm-ink-2);padding-left:18px;margin-top:0">
+        <li>Åbn en authenticator-app (fx Microsoft Authenticator, Google Authenticator eller 1Password).</li>
+        <li>Scan QR-koden, eller skriv nøglen herunder ind manuelt.</li>
+        <li>Skriv den 6-cifrede kode fra appen nedenfor for at bekræfte.</li>
+      </ol>
+      <div class="tf-qr" id="tf-qr" data-uri="{{ uri }}"></div>
+      <div class="fm-eyebrow" style="margin-top:6px">Nøgle</div>
+      <div class="tf-secret">{{ secret }}</div>
+
+      <form method="post" action="{{ url_for('auth.account_2fa') }}" class="tf-inline" style="margin-top:16px">
+        <input type="hidden" name="action" value="confirm">
+        <div class="fm-field" style="margin:0"><label>Kode fra appen</label><input class="fm-input" type="text" name="code" autocomplete="one-time-code" inputmode="numeric" maxlength="8" required autofocus></div>
+        <button type="submit" class="btn btn-primary btn-sm"><i class="fa-solid fa-check"></i> Bekræft og slå til</button>
+      </form>
+    </div>
+  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script>
+    (function () {
+      var el = document.getElementById('tf-qr');
+      if (el && window.QRCode) { new QRCode(el, { text: el.getAttribute('data-uri'), width: 176, height: 176 }); }
+    })();
+  </script>
+  {% endif %}
+</div>
+{% endblock %}

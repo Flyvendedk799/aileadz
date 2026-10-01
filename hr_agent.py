@@ -56,53 +56,50 @@ def _hr_grounding_evidence(runtime_result):
     return evidence
 
 
-HR_CHAT_MEMORY = {}
-HR_SESSION_TTL = 3600
-
-HR_SYSTEM_PROMPT = """Du er en AI-assistent for HR-ledere i Futurematch-platformen. Du hjaelper med at analysere uddannelsesdata, kompetencer og medarbejderudvikling.
+HR_SYSTEM_PROMPT = """Du er AI-assistent for HR-ledere i Futurematch-platformen. Du hjælper med at forstå uddannelsesdata, kompetencer og medarbejderudvikling – og du får tingene gjort, ikke bare forklaret.
 
 DIN ROLLE:
-- Du er en strategisk HR-raadgiver der hjaelper med datadrevet beslutningstagning
-- Du har adgang til virksomhedens uddannelses- og kompetencedata
-- Du giver handlingsrettede anbefalinger baseret paa data, ikke bare tal
+- Du er en strategisk HR-rådgiver, der hjælper med datadrevet beslutningstagning.
+- Du har adgang til virksomhedens uddannelses- og kompetencedata gennem værktøjer.
+- Du giver handlingsrettede anbefalinger baseret på data, ikke bare tal.
 
 HVAD DU KAN:
-- Vise trainingsstatus per afdeling og medarbejder
-- Analysere kompetencegab og anbefale indsatsomraader
+- Vise træningsstatus pr. afdeling og medarbejder
+- Analysere kompetencegab og pege på indsatsområder
 - Give budgetoverblik og advarsler
-- Finde og anbefale kurser til teams
-- Bruge Futurematch-katalogets produkt-, kategori- og leverandørsider som kilde til konkrete kursuslinks
+- Finde og anbefale kurser til teams, med konkrete kursuslinks fra kataloget
 - Vurdere leverandøraftaler, aktive/inaktive leverandører og katalogdækning
-- Lave konkrete træningsplaner der binder kompetencegab, budget og kursuskatalog sammen
-- Vise chatbot-brugsstatistik for medarbejdere
-- Identificere inaktive medarbejdere og risikoomraader
-- Generere traeningsrapporter
-- Aabne den rigtige HR-side for brugeren (hr_open_in_app) i stedet for kun at fortaelle hvor den ligger
+- Lave træningsplaner, der binder kompetencegab, budget og kursuskatalog sammen
+- Vise chatbot-brugsstatistik og identificere inaktive medarbejdere og risikoområder
+- Generere træningsrapporter
+- Åbne den rigtige HR-side (hr_open_in_app) i stedet for kun at fortælle, hvor den ligger
 
-SAMTALEFLOW:
-- Vaer direkte og handlingsorienteret. HR-ledere har travlt.
-- Naar du viser data, fremhaev de vigtigste indsigter foerst.
-- Giv altid 1-2 konkrete handlingsforslag baseret paa dataen.
-- Brug dansk, professionelt men venligt.
-
-SVARLÆNGDE:
-- Korte, praecise svar. Brug bullet points til data.
-- Maks 3-4 saetninger mellem datablokke.
-- Vis altid den vigtigste metrik foerst.
+SAMTALEN:
+- Vær direkte og handlingsorienteret. HR-ledere har travlt.
+- Start med den vigtigste indsigt. Giv 1-2 konkrete handlingsforslag ud fra dataen.
+- Brug dansk, professionelt men venligt. Korte, præcise svar; bullet points til data; højst 3-4 sætninger mellem datablokke.
+- Mangler du en oplysning, så brug et værktøj eller gæt fornuftigt og sig det – spørg kun, når du virkelig ikke kan komme videre.
 
 REGLER:
 - Du har KUN adgang til denne virksomheds data. Nævn aldrig andre virksomheder.
-- Vis aldrig personfoelsomme data som CPR-numre eller loenoplysninger.
-- Hvis der mangler data, foreslaa hvordan HR kan udfylde det (f.eks. tilfoej kompetencemaal).
-- Brug værktøjer før du nævner konkrete budgetter, medarbejdertal, kompetencegab, leverandørstatus eller kursusanbefalinger.
+- Vis aldrig personfølsomme data som CPR-numre eller lønoplysninger.
+- Hvis der mangler data, så foreslå, hvordan HR kan udfylde det (f.eks. tilføj kompetencemål).
+- Brug værktøjer, før du nævner konkrete budgetter, medarbejdertal, kompetencegab, leverandørstatus eller kursusanbefalinger.
 - Brug interne Futurematch-links (/products, /categories, /vendors). Brug aldrig gamle webshoplinks.
-- Naar dit svar peger paa en side brugeren skal handle paa (compliance, godkendelser, budgetter, kompetencer, leverandoerer, rapporter), saa AABN den med hr_open_in_app i stedet for kun at naevne den. Det aendrer intet — det navigerer kun.
-- Staar brugeren allerede paa den side du ville aabne, saa svar med dataen i stedet for at navigere dem til det sted de allerede er.
+- Peger dit svar på en side, brugeren skal handle på (compliance, godkendelser, budgetter, kompetencer, leverandører, rapporter), så åbn den med hr_open_in_app. Det ændrer intet – det navigerer kun.
+- Står brugeren allerede på den side, du ville åbne, så svar med dataen i stedet.
+- Handlinger, der ændrer data, vises altid som et bekræftelseskort; brugeren bekræfter selv.
 
-OPFØLGNINGSFORSLAG:
-Afslut altid med 2-3 konkrete forslag til naeste skridt, formateret som:
+AFSLUT med 2-3 konkrete forslag til næste skridt:
 <suggestions>["forslag 1", "forslag 2", "forslag 3"]</suggestions>
 """
+
+HR_FEW_SHOT = """EKSEMPLER PÅ STIL (HR):
+Spørgsmål: Hvad bruger vi på uddannelse?
+Svar i stil: Start med forbruget i år og hvor meget der er tilbage, peg på den afdeling, der skiller sig ud, og foreslå at se den nærmere.
+
+Spørgsmål: Find kurser til salgsteamet
+Svar i stil: Giv de 2-3 bedste kurser med pris og format, knyt dem til teamets største gab, og tilbyd at lægge dem i en træningsplan."""
 
 
 def get_hr_system_prompt():
@@ -117,13 +114,15 @@ def get_hr_system_prompt():
     return HR_SYSTEM_PROMPT
 
 
-def _cleanup_hr_sessions():
-    now = time.time()
-    stale = [sid for sid, msgs in HR_CHAT_MEMORY.items()
-             if msgs and isinstance(msgs[-1], dict) and
-             msgs[-1].get("_ts", 0) < now - HR_SESSION_TTL]
-    for sid in stale:
-        del HR_CHAT_MEMORY[sid]
+def _hr_fallback_suggestions(page):
+    """Deterministic next steps when the model forgot its <suggestions> tag."""
+    by_page = {
+        "budgets": ["Hvilke afdelinger er tæt på budgettet?", "Hvad kan vi nå inden årsskiftet?"],
+        "compliance": ["Hvem mangler compliance?", "Hvilke krav udløber snart?"],
+        "skill_gaps": ["Største kompetencegap lige nu?", "Find kurser til det største gab"],
+        "approvals": ["Hvilke ordrer afventer godkendelse?", "Hvad bør jeg prioritere?"],
+    }
+    return by_page.get(page) or ["Vis træningsstatus", "Hvor står vi på budgettet?", "Største kompetencegap lige nu?"]
 
 
 def _classify_hr_intent(user_query: str) -> str:
@@ -150,6 +149,60 @@ def _hr_page_label(page):
         return ""
 
 
+
+
+def _log_hr_interaction(flask_session, sid, query, answer, intent, tools_used, latency_ms, message_index):
+    """One chatbot_interactions row per HR turn, so HR answers get feedback and show
+    up in the same analytics as every other assistant turn. Never raises."""
+    try:
+        cur = current_app.mysql.connection.cursor()
+        cur.execute(
+            """INSERT INTO chatbot_interactions
+                   (company_id, session_id, username, query_text, response_text, query_type, category,
+                    response_time_ms, tools_used, conversation_depth, is_logged_in, message_index, created_at)
+               VALUES (%s, %s, %s, %s, %s, %s, 'hr_assistant', %s, %s, %s, 1, %s, NOW())""",
+            (flask_session.get("company_id"), sid, flask_session.get("user"), (query or "")[:2000],
+             (answer or "")[:2000], intent or "unknown", int(latency_ms or 0),
+             ",".join(dict.fromkeys(tools_used))[:500] if tools_used else None, message_index, message_index),
+        )
+        current_app.mysql.connection.commit()
+        cur.close()
+    except Exception as exc:
+        print(f"[HR interaction log] {exc}")
+        try:
+            current_app.mysql.connection.rollback()
+        except Exception:
+            pass
+
+
+def _hr_context_layers(flask_session, page):
+    """Who is asking and where they stand, as prioritised layers (ai_context_layers)
+    instead of a hand-rolled system message that was re-inserted every turn."""
+    import ai_context_layers as _ctx
+    company_name = flask_session.get('company_name', 'Virksomheden')
+    user_role = flask_session.get('company_role', 'hr_manager')
+    user_dept = flask_session.get('company_department', '')
+    user_name = flask_session.get('user', 'ukendt')
+    # The role is an internal enum (trusted); company name, display name and department
+    # are tenant-stored free text, so each is fenced as DATA (a stored prompt injection
+    # in any of them must not be obeyed as instructions).
+    parts = [
+        f"HR-BRUGER (rolle: {user_role}): {_fence('HR-BRUGERNAVN', user_name)}",
+        f"VIRKSOMHED: {_fence('VIRKSOMHEDSNAVN', company_name)}",
+    ]
+    if user_dept:
+        parts.append(f"AFDELING: {_fence('AFDELING', user_dept)}")
+    layers = [_ctx.layer("assistant_context", "\n".join(parts))]
+    page_label = _hr_page_label(page)
+    if page_label:
+        # The page id is an internal enum resolved through HR_DESTINATIONS - our own label.
+        layers.append(_ctx.layer(
+            "assistant_page",
+            f"AKTUEL SIDE: {page_label}. Brugeren står på denne HR-side lige nu – "
+            "tolk vage spørgsmål ('hvem mangler her?', 'hvordan ser det ud?') i den kontekst."))
+    return layers
+
+
 def handle_hr_ask(user_query, flask_session, page=None):
     """Handle an HR chatbot query. Returns SSE stream response.
 
@@ -157,65 +210,29 @@ def handle_hr_ask(user_query, flask_session, page=None):
     (the panel posts it). It reaches the model as context AND the tool selector
     as an additive hint, so "hvem mangler her?" resolves against the page the
     manager is actually looking at instead of being answered generically.
+
+    The conversation is durable: it is loaded from / saved to MySQL
+    (``hr_conversations``), so a deploy, a second worker or a new tab continues it.
     """
-    _cleanup_hr_sessions()
+    import ai_reply
+    import hr_conversations
 
-    hr_sid = flask_session.get("hr_chat_session_id")
-    if not hr_sid:
-        hr_sid = f"hr_{uuid.uuid4()}"
-        flask_session["hr_chat_session_id"] = hr_sid
-
-    if hr_sid not in HR_CHAT_MEMORY:
-        HR_CHAT_MEMORY[hr_sid] = [
-            {"role": "system", "content": get_hr_system_prompt()}
-        ]
-
-    messages = HR_CHAT_MEMORY[hr_sid]
-    messages.append({"role": "user", "content": user_query, "_ts": time.time()})
-
-    company_name = flask_session.get('company_name', 'Virksomheden')
-    user_role = flask_session.get('company_role', 'hr_manager')
-    user_dept = flask_session.get('company_department', '')
-    user_name = flask_session.get('user', 'ukendt')
-
-    # The role is an internal enum (trusted); the company name, the HR user's
-    # display name and the department label are tenant-stored free text, so a
-    # stored prompt-injection in any of them must NOT be obeyed as instructions.
-    # Fence each as DATA (identity fallback keeps the value if grounding is off).
-    context_parts = [
-        f"HR-BRUGER (rolle: {user_role}): {_fence('HR-BRUGERNAVN', user_name)}",
-        f"VIRKSOMHED: {_fence('VIRKSOMHEDSNAVN', company_name)}",
-    ]
-    if user_dept:
-        context_parts.append(f"AFDELING: {_fence('AFDELING', user_dept)}")
-    page_label = _hr_page_label(page)
-    if page_label:
-        # The page id is an internal enum resolved through HR_DESTINATIONS, so the
-        # label is ours — no fencing needed, and nothing user-supplied reaches here.
-        context_parts.append(
-            f"AKTUEL SIDE: {page_label}. Brugeren står på denne HR-side lige nu — "
-            "tolk vage spørgsmål ('hvem mangler her?', 'hvordan ser det ud?') i den kontekst."
-        )
-
-    context_msg = {"role": "system", "content": "\n".join(context_parts)}
-    if len(messages) > 2 and messages[1].get("role") == "system" and messages[1].get("content", "").startswith("HR-BRUGER"):
-        messages[1] = context_msg
-    else:
-        messages.insert(1, context_msg)
-
+    username = flask_session.get("user")
+    hr_sid = hr_conversations.resolve_sid(flask_session, username)
+    history = hr_conversations.load(username, hr_sid)
+    # The turn's own messages: system prompt + stored transcript + this question.
+    base_messages = [{"role": "system", "content": get_hr_system_prompt()}] + history
+    base_messages.append({"role": "user", "content": user_query})
+    context_layers = _hr_context_layers(flask_session, page)
     intent = _classify_hr_intent(user_query)
+    sse = ai_reply.sse
 
     def stream_generator():
+        turn_start = time.time()
         try:
-            yield f"data: {json.dumps({'type': 'ping', 'content': 'ok'})}\n\n"
+            yield sse({'type': 'ping', 'content': 'ok'})
 
-            clean_messages = []
-            for m in messages:
-                if m.get("_ts") and m is not messages[-1] and m.get("role") == "user":
-                    continue
-                clean_messages.append({k: v for k, v in m.items() if k != "_ts"})
-
-            from ai_context import build_few_shot_message, choose_max_iterations, few_shot_mode, prune_conversation_memory, run_chitchat_turn
+            from ai_context import choose_max_iterations, few_shot_mode, prune_conversation_memory, run_chitchat_turn
             from ai_runtime import (
                 PROMPT_VERSION as AI_PROMPT_VERSION,
                 build_tool_call_event,
@@ -235,25 +252,15 @@ def handle_hr_ask(user_query, flask_session, page=None):
                 update_agent_run_quality,
                 user_facing_error_message,
             )
+            import ai_context_layers as _ctx
             from ai_tool_registry import get_hr_tool_selection, make_tool_choice, tool_name, toolset_enabled
 
-            clean_messages = prune_conversation_memory(clean_messages, keep_recent=14, trigger_at=22)
-
-            pre_turn_estimate = estimate_messages_tokens(prepare_messages_for_turn(clean_messages))
-            if len(clean_messages) <= 14 and pre_turn_estimate < 18000 and few_shot_mode() not in {"0", "false", "no", "off", "never"}:
-                few_shot = build_few_shot_message("")
-                if few_shot:
-                    few_shot = {
-                        "role": "system",
-                        "content": (
-                            "EKSEMPLER (HR kort stil):\n"
-                            "Bruger: Hvad bruger vi på uddannelse?\n"
-                            "Assistent: [budget] Her er et kort overblik — vil du se det per afdeling?\n\n"
-                            "Bruger: Find kurser til salgsteamet\n"
-                            "Assistent: [katalog] Her er relevante kurser — skal jeg filtrere på format eller budget?"
-                        ),
-                    }
-                    clean_messages.insert(1, few_shot)
+            pruned = prune_conversation_memory(list(base_messages), keep_recent=14, trigger_at=22)
+            layers = list(context_layers)
+            pre_turn_estimate = estimate_messages_tokens(prepare_messages_for_turn(pruned))
+            if len(pruned) <= 14 and pre_turn_estimate < 18000 and few_shot_mode() not in {"0", "false", "no", "off", "never"}:
+                layers.append(_ctx.layer("few_shot", HR_FEW_SHOT))
+            clean_messages = pruned[:1] + layers + pruned[1:]
 
             if toolset_enabled():
                 hr_tools, toolset_meta = get_hr_tool_selection(
@@ -273,8 +280,9 @@ def handle_hr_ask(user_query, flask_session, page=None):
             token_estimate = estimate_messages_tokens(prepare_messages_for_turn(clean_messages))
             allowed, budget_message, compaction_level = check_turn_token_budget(clean_messages)
             if not allowed:
-                yield f"data: {json.dumps({'type': 'text', 'content': budget_message})}\n\n"
-                yield f"data: {json.dumps({'type': 'done'})}\n\n"
+                yield sse({'type': 'text', 'content': budget_message})
+                yield sse({'type': 'done'})
+                yield "data: [DONE]\n\n"
                 return
 
             turn_model = choose_turn_model(
@@ -293,7 +301,7 @@ def handle_hr_ask(user_query, flask_session, page=None):
                 runtime_result = run_chitchat_turn(clean_messages, intent=intent)
             else:
                 if hr_tools:
-                    yield f"data: {json.dumps({'type': 'thinking', 'content': 'Analyserer…'})}\n\n"
+                    yield sse({'type': 'thinking', 'content': 'Analyserer…'})
                 agent_kwargs = {
                     "messages": clean_messages,
                     "tools": hr_tools,
@@ -315,16 +323,15 @@ def handle_hr_ask(user_query, flask_session, page=None):
                         if _kind == "tool_event":
                             if _payload.get("id"):
                                 live_tool_call_ids.add(_payload["id"])
-                            yield f"data: {json.dumps(_payload, ensure_ascii=False)}\n\n"
+                            yield sse(_payload)
                         elif _kind == "ping":
-                            yield f"data: {json.dumps({'type': 'ping', 'content': 'working'})}\n\n"
+                            yield sse({'type': 'ping', 'content': 'working'})
                         elif _kind == "result":
                             runtime_result = _payload
                     if runtime_result is None:
                         raise RuntimeError("live tool events: HR agent-loopet leverede intet resultat")
                 else:
                     runtime_result = run_agent_with_fallback(**agent_kwargs)
-            final_text = runtime_result.text or ""
             if in_rate_limit_cooldown():
                 compaction_level = "cooldown"
 
@@ -352,9 +359,11 @@ def handle_hr_ask(user_query, flask_session, page=None):
             except Exception:
                 pass
 
+            tools_used = []
             for tool_result in runtime_result.tool_results:
+                tools_used.append(tool_result.name)
                 if tool_result.call_id not in live_tool_call_ids:
-                    yield f"data: {json.dumps(build_tool_call_event(tool_result, agent_scope='hr'), ensure_ascii=False)}\n\n"
+                    yield sse(build_tool_call_event(tool_result, agent_scope='hr'))
                 try:
                     log_tool_run(
                         getattr(current_app, "mysql", None),
@@ -372,24 +381,25 @@ def handle_hr_ask(user_query, flask_session, page=None):
                     _hr_tr_dict = json.loads(tool_result.output or "{}")
                 except (json.JSONDecodeError, TypeError):
                     _hr_tr_dict = {}
+                if not isinstance(_hr_tr_dict, dict):
+                    _hr_tr_dict = {}
                 if tool_result.name == "hr_open_in_app" and _hr_tr_dict.get("target"):
                     # Read-only navigation directive → a button in the panel.
-                    _nav_payload = {
+                    yield sse({
                         "type": "ui_action",
                         "action": _hr_tr_dict.get("action", "navigate"),
                         "destination": _hr_tr_dict.get("destination", ""),
                         "target": _hr_tr_dict.get("target", ""),
                         "label": _hr_tr_dict.get("label", "Åbn"),
                         "new_tab": bool(_hr_tr_dict.get("new_tab")),
-                    }
-                    yield f"data: {json.dumps(_nav_payload, ensure_ascii=False)}\n\n"
+                    })
                 if _hr_tr_dict.get("needs_confirmation"):
                     try:
                         from app1 import confirm_store as _cs
                         _token = _cs.store_pending(
                             hr_sid, "hr", tool_result.name, tool_result.arguments or {}
                         )
-                        _confirm_payload = {
+                        yield sse({
                             "type": "confirm_card",
                             "token": _token,
                             "action": _hr_tr_dict.get("action", tool_result.name),
@@ -397,8 +407,7 @@ def handle_hr_ask(user_query, flask_session, page=None):
                             "details": _hr_tr_dict.get("details"),
                             "recipient_count": _hr_tr_dict.get("recipient_count"),
                             "price": _hr_tr_dict.get("price"),
-                        }
-                        yield f"data: {json.dumps(_confirm_payload, ensure_ascii=False)}\n\n"
+                        })
                     except Exception as _ce:
                         print(f"[HR confirm_store error] {tool_result.name}: {_ce}")
 
@@ -406,28 +415,30 @@ def handle_hr_ask(user_query, flask_session, page=None):
             final_messages = list(
                 runtime_result.stream_messages or runtime_result.messages or clean_messages
             )
-            full_text = runtime_result.text or ""
-            if runtime_result.needs_final_stream or not full_text.strip():
+            raw_text = runtime_result.text or ""
+            flt = ai_reply.SuggestionFilter()
+            if runtime_result.needs_final_stream or not raw_text.strip():
+                raw_text = ""
                 for token in iter_completion_stream(final_messages, model=turn_model):
-                    full_text += token
-                    yield f"data: {json.dumps({'type': 'text', 'content': token})}\n\n"
-            elif full_text:
-                # RT-02: the runtime captured the final answer (one completion
-                # saved) — chunk it ~3 ord ad gangen so the buffered text still
-                # feels typewriter-streamed (concatenation is identical).
-                for piece in iter_buffered_text_chunks(full_text):
-                    yield f"data: {json.dumps({'type': 'text', 'content': piece})}\n\n"
+                    raw_text += token
+                    shown = flt.feed(token)
+                    if shown:
+                        yield sse({'type': 'text', 'content': shown})
+                tail = flt.flush()
+                if tail:
+                    yield sse({'type': 'text', 'content': tail})
+            elif raw_text:
+                # RT-02: the runtime captured the final answer (one completion saved) -
+                # chunk it ~3 words at a time so it still feels typewriter-streamed.
+                for piece in iter_buffered_text_chunks(ai_reply.strip_suggestions(raw_text)):
+                    yield sse({'type': 'text', 'content': piece})
+            full_text = ai_reply.strip_suggestions(raw_text)
 
             # ── Grounding circuit-breaker (HR money-quoting path) ──
-            # HR answers quote real budgets, spend, ROI and headcount. After the
-            # complete answer has streamed, validate it against THIS turn's tool
-            # results (the canonical source for those figures) and, if it asserts
-            # a price/date/title not backed by them, append at most ONE guarded
-            # Danish disclaimer (log-don't-block — we never suppress the answer,
-            # only nudge verification). The violation is logged through the
-            # existing ai_runtime quality path so the dormant grounding_violation
-            # column finally populates for HR turns. Pure check + trailing note =
-            # zero new API cost. Fully guarded so the SSE path is never broken.
+            # HR answers quote real budgets, spend, ROI and headcount. After the answer
+            # has streamed, validate it against THIS turn's tool results and, if it
+            # asserts a price/date/title not backed by them, append at most ONE guarded
+            # Danish disclaimer (log-don't-block). Fully guarded so the SSE path never breaks.
             grounding_violation = False
             try:
                 if (
@@ -444,12 +455,10 @@ def handle_hr_ask(user_query, flask_session, page=None):
                         if disclaimer:
                             note = "\n\n" + disclaimer
                             full_text += note
-                            yield f"data: {json.dumps({'type': 'text', 'content': note})}\n\n"
+                            yield sse({'type': 'text', 'content': note})
             except Exception as _grounding_err:
                 print(f"[HR Grounding Check Error] {_grounding_err}")
 
-            # Backfill the grounding flag onto the run row logged above (guarded,
-            # idempotent, no-op when the flag is False/None or tracing is off).
             try:
                 update_agent_run_quality(
                     getattr(current_app, "mysql", None),
@@ -459,10 +468,22 @@ def handle_hr_ask(user_query, flask_session, page=None):
             except Exception:
                 pass
 
-            messages.append({"role": "assistant", "content": full_text, "_ts": time.time()})
-            HR_CHAT_MEMORY[hr_sid] = prune_conversation_memory(messages, keep_recent=16, trigger_at=28)
+            # Chips come as their own event (parsed server-side, like the employee chat).
+            suggestions = ai_reply.extract_suggestions(raw_text) or _hr_fallback_suggestions(page)
+            yield sse({'type': 'suggestions', 'items': suggestions})
 
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            # Persist the durable transcript, log the turn (feedback needs a row), tell
+            # the client which answer it can rate.
+            stored = history + [{"role": "user", "content": user_query},
+                                {"role": "assistant", "content": full_text}]
+            hr_conversations.save(username, hr_sid, stored)
+            message_index = sum(1 for m in stored if m["role"] == "assistant")
+            _log_hr_interaction(flask_session, hr_sid, user_query, full_text, intent, tools_used,
+                                (time.time() - turn_start) * 1000, message_index)
+            yield sse({'type': 'meta', 'message_index': message_index})
+
+            yield sse({'type': 'done'})
+            yield "data: [DONE]\n\n"
 
         except Exception as e:
             print(f"[HR Agent Error] {e}")
@@ -476,8 +497,9 @@ def handle_hr_ask(user_query, flask_session, page=None):
                 _err_msg = _ufem(e)
             except Exception:
                 _err_msg = "Der opstod en fejl. Prøv venligst igen."
-            yield f"data: {json.dumps({'type': 'error', 'content': _err_msg})}\n\n"
-            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+            yield sse({'type': 'error', 'content': _err_msg})
+            yield sse({'type': 'done'})
+            yield "data: [DONE]\n\n"
         finally:
             close_flask_mysql_connection()
 

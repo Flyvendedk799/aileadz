@@ -434,10 +434,11 @@ class LearningPathEventRoutingTests(unittest.TestCase):
 class FallbackSuggestionsTests(unittest.TestCase):
     def test_profiler_targets_missing(self):
         s = agent._fallback_suggestions(mode="profiler", completeness={"missing": ["Erfaring"], "weighted_pct": 30})
-        self.assertTrue(any("erfaring" in x.lower() for x in s))
-        # Need-driven wording: the chip invites them to tell you something,
-        # it does not name an empty field to fill in.
+        # N-5.1: never "Fortæl om min {felt}". The chips say what the AI can do,
+        # not which empty box is next.
+        self.assertFalse(any("fortæl om min" in x.lower() for x in s), s)
         self.assertFalse(any("udfyld" in x.lower() or "mangler" in x.lower() for x in s), s)
+        self.assertTrue(any("hjælpe" in x.lower() or "kurser" in x.lower() or "hvor" in x.lower() for x in s), s)
 
     def test_profiler_offers_courses_once_a_direction_exists(self):
         """A stated goal is enough to be useful — no completeness threshold."""

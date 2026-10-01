@@ -1,0 +1,19 @@
+{# Canonical platform-admin sub-navigation (N-2.3): ONE list instead of 7 drifting variants.
+   Set `active_admin_page` before including:
+       {% set active_admin_page = 'users' %}{% include 'fm/_admin_subnav.html' %} #}
+{% set _ap = active_admin_page | default('') %}
+<nav class="pg-subnav" aria-label="Admin-navigation">
+  <a class="pg-tab {{ 'active' if _ap == 'home' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
+  <a class="pg-tab {{ 'active' if _ap == 'users' }}" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
+  <a class="pg-tab {{ 'active' if _ap == 'companies' }}" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i> Virksomheder</a>
+  <a class="pg-tab {{ 'active' if _ap == 'credits' }}" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
+  <a class="pg-tab {{ 'active' if _ap == 'billing' }}" href="{{ url_for('admin_dashboard.admin_billing') }}"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</a>
+  <a class="pg-tab {{ 'active' if _ap == 'catalog' }}" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
+  <a class="pg-tab {{ 'active' if _ap == 'vendors' }}" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
+  <a class="pg-tab {{ 'active' if _ap == 'agreements' }}" href="{{ url_for('admin_dashboard.admin_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a>
+  <a class="pg-tab {{ 'active' if _ap == 'chatbot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i> Chatbot BI</a>
+  <a class="pg-tab {{ 'active' if _ap == 'ai' }}" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
+  <a class="pg-tab {{ 'active' if _ap == 'notifications' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i> Notifikationer</a>
+  <a class="pg-tab {{ 'active' if _ap == 'log' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i> Aktivitetslog</a>
+  <a class="pg-tab {{ 'active' if _ap == 'health' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i> Systemstatus</a>
+</nav>

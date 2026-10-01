@@ -11,11 +11,19 @@ class _Upload:
         return self._payload
 
 
+# The 17 MB Shopify export is no longer committed (N-3.1): it lives on the data
+# volume (CATALOG_SOURCE_FILE) and is refreshed by the shopify_sync job. Tests that
+# assert against the REAL catalog run only where it is present.
+_HAS_REAL_CATALOG = len(catalog.get_products()) > 1000
+_needs_real_catalog = unittest.skipUnless(_HAS_REAL_CATALOG, "real Shopify export not present")
+
+
 class CatalogServiceTest(unittest.TestCase):
     def test_slugify_danish_names(self):
         self.assertEqual(catalog.slugify("Ledelse og organisation"), "ledelse-og-organisation")
         self.assertEqual(catalog.slugify("København & Århus"), "kobenhavn-aarhus")
 
+    @_needs_real_catalog
     def test_loads_source_catalog(self):
         products = catalog.get_products()
         self.assertGreater(len(products), 1000)
@@ -24,6 +32,7 @@ class CatalogServiceTest(unittest.TestCase):
         self.assertIn("price_label", first)
         self.assertIsInstance(first["categories"], list)
 
+    @_needs_real_catalog
     def test_categories_ignore_operational_tags(self):
         categories = {category["name"].lower() for category in catalog.get_categories()}
         self.assertNotIn("efter aftale", categories)

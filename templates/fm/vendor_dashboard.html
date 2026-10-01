@@ -26,7 +26,7 @@
     .vp-wrap { max-width: 1040px; margin: 0 auto; padding: 26px 24px 60px; }
     .vp-h1 { font-family: 'Bricolage Grotesque', serif; font-size: 26px; font-weight: 700; margin: 0 0 4px; }
     .vp-lead { color: var(--fm-ink-2); font-size: 14px; margin: 0 0 22px; }
-    .vp-kpis { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-bottom: 28px; }
+    .vp-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 14px; margin-bottom: 28px; }
     .vp-kpi { background: var(--fm-surface, #fff); border: 1px solid var(--fm-line); border-radius: 14px; padding: 18px; }
     .vp-kpi .num { font-size: 30px; font-weight: 800; color: var(--fm-primary); line-height: 1; }
     .vp-kpi .lbl { font-size: 12.5px; color: var(--fm-ink-2); margin-top: 6px; }
@@ -106,10 +106,11 @@
   </header>
   <nav class="vp-nav">
     <a href="{{ url_for('vendor.vendor_dashboard') }}" class="active">Oversigt</a>
+    <a href="{{ url_for('vendor.vendor_orders') }}">Bestillinger{% if vendor_awaiting_count %} <span class="badge pending">{{ vendor_awaiting_count }}</span>{% endif %}</a>
     <a href="{{ url_for('vendor.vendor_analytics') }}">Analyser</a>
     <a href="{{ url_for('vendor.vendor_submit') }}">Indsend katalog</a>
     <a href="{{ url_for('vendor.vendor_profile') }}">Profil</a>
-    <a href="{{ url_for('vendor.vendor_logout') }}" class="logout">Log ud</a>
+    <form method="post" action="{{ url_for('vendor.vendor_logout') }}" style="margin:0 0 0 auto"><button type="submit" class="logout" style="background:none;border:0;padding:0;font:inherit;color:var(--fm-ink-3);cursor:pointer">Log ud</button></form>
   </nav>
 
   <main class="vp-wrap">
@@ -133,8 +134,14 @@
       </div>
       <div class="vp-kpi">
         <div class="num">{{ kpis.pending_count }}</div>
-        <div class="lbl">Afventer godkendelse</div>
+        <div class="lbl">Kataloger afventer godkendelse</div>
       </div>
+      {% if kpis.awaiting_booking is defined %}
+      <a class="vp-kpi" href="{{ url_for('vendor.vendor_orders', tab='afventer') }}" style="text-decoration:none;color:inherit;border-color:{{ 'var(--fm-clay)' if kpis.awaiting_booking else 'var(--fm-line)' }}">
+        <div class="num">{{ kpis.awaiting_booking }}</div>
+        <div class="lbl">Bestillinger der afventer din bekræftelse{% if kpis.awaiting_booking %} &rarr; bekræft nu{% endif %}</div>
+      </a>
+      {% endif %}
     </div>
 
     <div class="vp-card">

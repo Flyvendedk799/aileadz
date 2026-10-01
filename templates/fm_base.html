@@ -12,7 +12,7 @@
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
   <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=16" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=14" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=15" />
   {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
   <style id="fm-wl-vars">
     :root {
@@ -22,19 +22,23 @@
   </style>
   {% endif %}
   {% if white_label_active and company_branding.custom_css %}
-  <style>{{ company_branding.custom_css|safe }}</style>
+  <style>{{ company_branding.custom_css|safe_css }}</style>
   {% endif %}
   {% block extra_head %}{% endblock %}
 </head>
 
-{% set _role = 'employee' if (session.get('company_role') == 'employee') else 'manager' %}
+{% set _role = 'manager' if can('company.workspace') else 'employee' %}
 {% set platform_name = company_branding.company_name if white_label_active and company_branding.company_name else 'Futurematch' %}
 {% set platform_tagline = company_branding.tagline if white_label_active and company_branding.tagline else 'Læring & HR' %}
 {% set _uname = session.get('user') or 'Gæst' %}
 {% set _initials = (_uname[:2] | upper) if _uname else 'FM' %}
 {% set _usermeta = (session.get('company_name') ~ ' · ' ~ (session.get('company_role') or 'Bruger')) if session.get('company_name') else 'Futurematch' %}
-<body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" class="{% block body_class %}{% endblock %}">
+<body data-page="{% block page_id %}{% endblock %}" data-role="{{ _role }}" data-brand-server="1" class="{% block body_class %}{% endblock %}">
 
+{# The server decides the brand. A white-label tenant pushes its brand into the
+   browser (for the live preview in the branding editor); everyone else clears any
+   brand left over from a previous session so a stale localStorage never paints
+   over the real name and logo. #}
 {% if white_label_active and company_branding.company_name %}
 <script>
   try {
@@ -48,12 +52,14 @@
     }));
   } catch (e) {}
 </script>
+{% else %}
+<script>try { localStorage.removeItem('fm-brand'); } catch (e) {}</script>
 {% endif %}
 
 <div class="fm-shell">
   <aside class="fm-side" id="fmSide" aria-label="Primær navigation">
     <div class="fm-side-head">
-      <a class="fm-brand" href="{{ url_for('dashboard.dashboard') }}">
+      <a class="fm-brand" href="{{ url_for('futurematch.employee_home') if session.get('user') else url_for('dashboard.dashboard') }}">
         {% if white_label_active and company_branding.company_logo %}
         <span class="fm-mark"><img src="{{ company_branding.company_logo }}" alt="{{ platform_name }}" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></span>
         {% else %}
@@ -71,17 +77,14 @@
       {% set page = self.page_id()|trim %}
       {% set _ai_pages = ['chat', 'profiler', 'mindmap', 'cvupload'] %}
       {% set _in_ai = page in _ai_pages %}
-      {% if _role == 'employee' %}
+
+      {# Every learner gets "Min læring" (employees, managers and solo users alike). #}
       <div class="fm-nav-label">Min læring</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'emphome' }}" href="{{ url_for('futurematch.employee_home') }}"><i class="fa-solid fa-house"></i><span>Min læring</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Mine bestillinger</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'goals' }}" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i><span>Udviklingsmål</span></a></li>
       </ul>
-      {% else %}
-      <div class="fm-nav-label">Workspace</div>
-      <ul class="fm-nav-list">
-        <li><a class="fm-nav-link {{ 'active' if page == 'index' }}" href="{{ url_for('dashboard.dashboard') }}"><i class="fa-solid fa-house"></i><span>Oversigt</span></a></li>
-      </ul>
-      {% endif %}
 
       <div class="fm-ai-cluster {{ 'in' if _in_ai }}">
         <ul class="fm-nav-list">
@@ -93,36 +96,32 @@
         {% if _in_ai %}{% include 'fm/_ai_sidebar.html' %}{% endif %}
       </div>
 
-      {% if _role == 'employee' %}
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
       </ul>
-      {% else %}
-      <ul class="fm-nav-list">
-        <li><a class="fm-nav-link {{ 'active' if page == 'catalog' }}" href="{{ url_for('catalog.catalog_index') }}"><i class="fa-solid fa-graduation-cap"></i><span>Kursuskatalog</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'analytics' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-chart-line"></i><span>Analyse</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'reports' }}" href="{{ url_for('reports.reports') }}"><i class="fa-solid fa-file-lines"></i><span>Rapporter</span></a></li>
-      </ul>
-      {% endif %}
 
       {# Page-specific sidebar extras (unused on the AI workspace pages — those
          use the shared conversation panel above). #}
       {% block sidebar_extra %}{% endblock %}
 
-      {% if session.get('company_id') %}
+      {# The Virksomhed block is shown by CAPABILITY (capabilities.can), so an
+         employee never sees links that would bounce with an error. #}
+      {% if session.get('company_id') and can('company.workspace') %}
       <div class="fm-nav-label">Virksomhed</div>
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'hr' }}" href="{{ url_for('hr_dashboard.dashboard') }}"><i class="fa-solid fa-building"></i><span>HR-workspace</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i><span>Mit team</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i><span>Compliance</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'company' }}" href="{{ url_for('companies.analytics') }}"><i class="fa-solid fa-chart-simple"></i><span>Virksomheds-BI</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'benchmark' }}" href="{{ url_for('companies.benchmarking_page') }}"><i class="fa-solid fa-ranking-star"></i><span>Branche-benchmark</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'creports' }}" href="{{ url_for('multitenant_reports.reports') }}"><i class="fa-solid fa-folder-open"></i><span>Virksomhedsrapporter</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i><span>Træningsplan</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i><span>Indkøb &amp; leverandører</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i><span>Engagement</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-kvalitet</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'webhooks' }}" href="{{ url_for('enterprise_settings.webhooks_page') }}"><i class="fa-solid fa-plug"></i><span>Webhooks</span></a></li>
+        {% if can('company.team') %}<li><a class="fm-nav-link {{ 'active' if page == 'team' }}" href="{{ url_for('hr_dashboard.team_cockpit') }}"><i class="fa-solid fa-users-rectangle"></i><span>Mit team</span></a></li>{% endif %}
+        {% if can('company.approvals') %}<li><a class="fm-nav-link {{ 'active' if page == 'approvals' }}" href="{{ url_for('hr_dashboard.pending_approvals') }}"><i class="fa-solid fa-circle-check"></i><span>Godkendelser</span></a></li>{% endif %}
+        {% if can('company.assistant') %}<li><a class="fm-nav-link {{ 'active' if page == 'hrchat' }}" href="{{ url_for('hr_dashboard.hr_chatbot') }}"><i class="fa-solid fa-robot"></i><span>HR-assistent</span></a></li>{% endif %}
+        {% if can('company.compliance') %}<li><a class="fm-nav-link {{ 'active' if page == 'compliance' }}" href="{{ url_for('hr_dashboard.compliance_matrix') }}"><i class="fa-solid fa-clipboard-check"></i><span>Compliance</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if page == 'company' }}" href="{{ url_for('hr_dashboard.learning_analytics') }}"><i class="fa-solid fa-chart-simple"></i><span>Læringsanalyse</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if page == 'benchmark' }}" href="{{ url_for('hr_dashboard.benchmarking_view') }}"><i class="fa-solid fa-ranking-star"></i><span>Branche-benchmark</span></a></li>{% endif %}
+        {% if can('company.reports') %}<li><a class="fm-nav-link {{ 'active' if page == 'creports' }}" href="{{ url_for('hr_dashboard.reports') }}"><i class="fa-solid fa-folder-open"></i><span>Rapporter &amp; eksport</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if page == 'training_plan' }}" href="{{ url_for('hr_ext.training_plan') }}"><i class="fa-solid fa-list-check"></i><span>Træningsplan</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if page == 'procurement' }}" href="{{ url_for('hr_ext.procurement') }}"><i class="fa-solid fa-store"></i><span>Indkøb &amp; leverandører</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if page == 'engagement' }}" href="{{ url_for('hr_ext.engagement') }}"><i class="fa-solid fa-hand-holding-heart"></i><span>Engagement</span></a></li>{% endif %}
+        {% if can('company.analytics') %}<li><a class="fm-nav-link {{ 'active' if page == 'ai_quality' }}" href="{{ url_for('hr_ext.ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-kvalitet</span></a></li>{% endif %}
+        {% if can('company.settings') %}<li><a class="fm-nav-link {{ 'active' if page in ['csettings', 'webhooks', 'branding', 'sso'] }}" href="/virksomhed/indstillinger"><i class="fa-solid fa-gear"></i><span>Virksomhedsindstillinger</span></a></li>{% endif %}
       </ul>
       {% endif %}
 
@@ -130,10 +129,9 @@
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'notifications' }}" href="{{ url_for('pages.notifications') }}"><i class="fa-solid fa-bell"></i><span>Notifikationer</span><span class="fm-nav-badge" data-notif-badge hidden></span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'profile' }}" href="{{ url_for('pages.profile') }}"><i class="fa-solid fa-id-card"></i><span>Profil &amp; CV</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'goals' }}" href="{{ url_for('futurematch.learning_goals') }}"><i class="fa-solid fa-bullseye"></i><span>Udviklingsmål</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'timeline' }}" href="{{ url_for('futurematch.timeline') }}"><i class="fa-solid fa-timeline"></i><span>Min tidslinje</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'cvupload' }}" href="{{ url_for('futurematch.cv_upload') }}"><i class="fa-solid fa-file-arrow-up"></i><span>Upload CV</span></a></li>
+        {% if session.get('user') %}<li><a class="fm-nav-link {{ 'active' if page == 'usage' }}" href="{{ url_for('pages.analytics') }}"><i class="fa-solid fa-coins"></i><span>Mit forbrug</span></a></li>{% endif %}
         <li><a class="fm-nav-link {{ 'active' if page == 'settings' }}" href="{{ url_for('pages.settings') }}"><i class="fa-solid fa-sliders"></i><span>Indstillinger</span></a></li>
+        {% if has_endpoint('gdpr.my_data') %}<li><a class="fm-nav-link" href="{{ url_for('gdpr.my_data') }}"><i class="fa-solid fa-user-shield"></i><span>Mine data</span></a></li>{% endif %}
       </ul>
 
       {% if session.get('role') == 'admin' %}
@@ -141,12 +139,17 @@
       <ul class="fm-nav-list">
         <li><a class="fm-nav-link {{ 'active' if page == 'admin' }}" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i><span>Adminpanel</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'acompanies' }}" href="{{ url_for('companies.admin_companies_list') }}"><i class="fa-solid fa-building"></i><span>Virksomheder &amp; HR</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'ausers' }}" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i><span>Brugere &amp; kreditter</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'acatalog' }}" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i><span>Katalogadmin</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'vendors' }}" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i><span>Leverandører</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'agreements' }}" href="{{ url_for('admin_dashboard.admin_agreements') }}"><i class="fa-solid fa-handshake"></i><span>Aftaler</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'abot' }}" href="{{ url_for('admin_reports.chatbot_dashboard') }}"><i class="fa-solid fa-robot"></i><span>Chatbot BI</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'aicost' }}" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i><span>AI-omkostninger</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'aiquality' }}" href="{{ url_for('admin_dashboard.admin_ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i><span>AI-kvalitet (platform)</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'aiset' }}" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i><span>AI-udbyder</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'funnel' }}" href="{{ url_for('admin_reports.conversion_funnel') }}"><i class="fa-solid fa-filter"></i><span>Konverteringstragt</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'freshness' }}" href="{{ url_for('admin_reports.catalog_freshness_dashboard') }}"><i class="fa-solid fa-calendar-xmark"></i><span>Katalogfriskhed</span></a></li>
-        <li><a class="fm-nav-link {{ 'active' if page == 'vendors' }}" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i><span>Leverandører</span></a></li>
+        <li><a class="fm-nav-link {{ 'active' if page == 'notif' }}" href="{{ url_for('admin_notifications.notifications_dashboard') }}"><i class="fa-solid fa-bullhorn"></i><span>Send notifikation</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'alog' }}" href="{{ url_for('admin_dashboard.admin_audit_log') }}"><i class="fa-solid fa-clock-rotate-left"></i><span>Aktivitetslog</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'syshealth' }}" href="{{ url_for('admin_dashboard.admin_system_health') }}"><i class="fa-solid fa-heart-pulse"></i><span>Systemstatus</span></a></li>
         <li><a class="fm-nav-link {{ 'active' if page == 'gdpr' }}" href="{{ url_for('gdpr.admin_console') }}"><i class="fa-solid fa-user-shield"></i><span>GDPR / datasletning</span></a></li>
@@ -187,8 +190,8 @@
         <button class="fm-icon-btn" data-theme-toggle aria-label="Tema"><i class="fa-solid fa-moon"></i></button>
         <a class="fm-icon-btn" href="{{ url_for('pages.notifications') }}" aria-label="Notifikationer"><i class="fa-solid fa-bell"></i><span class="dot" data-notif-dot hidden></span><span class="fm-bell-count" data-notif-count hidden></span></a>
         {% if session.get('user') %}
-        <span class="fm-chip credits"><i class="fa-solid fa-coins"></i> {{ session.get('credits', 0) }}</span>
-        <a class="fm-icon-btn" href="{{ url_for('auth.logout') }}" aria-label="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></a>
+        {% set _cc = credit_chip() %}<a class="fm-chip credits" href="{{ url_for('pages.analytics') }}" title="{{ 'Virksomhedens AI-kreditter' if _cc.scope == 'company' else 'Dine AI-kreditter' }}" style="text-decoration:none"><i class="fa-solid fa-coins"></i> {{ _cc.label }}</a>
+        <form method="post" action="{{ url_for('auth.logout') }}" style="display:inline;margin:0"><button type="submit" class="fm-icon-btn" aria-label="Log ud" title="Log ud"><i class="fa-solid fa-arrow-right-from-bracket"></i></button></form>
         {% else %}
         <a class="fm-chip" href="{{ url_for('auth.login') }}" style="text-decoration:none"><i class="fa-solid fa-arrow-right-to-bracket"></i> Log ind</a>
         {% endif %}
@@ -227,6 +230,7 @@
       <span>© 2026 {{ platform_name }} · Adaptiv lærings- og HR-platform</span>
       <span>
         <a href="{{ url_for('pages.support') }}">Support</a> ·
+        {% if has_endpoint('vendor.vendor_login') %}<a href="{{ url_for('vendor.vendor_login') }}">Leverandørportal</a> ·{% endif %}
         <a href="{{ url_for('pages.privacy') }}">Fortrolighed</a> ·
         <a href="{{ url_for('pages.terms') }}">Vilkår</a>
       </span>

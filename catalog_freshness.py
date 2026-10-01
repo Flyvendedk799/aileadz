@@ -363,23 +363,11 @@ def notify_expiring_agreements(company_id, within_days=30):
         for ag in agreements:
             try:
                 vendor = ag.get("vendor_name") or "Ukendt leverandør"
-                # Stable per-agreement marker for the recent-duplicate guard.
+                # Stable per-agreement key: the notification service dedupes on it
+                # (per recipient) instead of a marker string hidden in the message.
                 marker = "supplier-agreement:%s" % (
                     ag.get("agreement_reference") or ag.get("id") or vendor
                 )
-                cur.execute(
-                    """
-                    SELECT COUNT(*) AS cnt
-                    FROM company_notifications
-                    WHERE company_id = %s
-                      AND message LIKE %s
-                      AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                    """,
-                    (company_id, "%" + marker + "%", _NOTIFY_DEDUPE_DAYS),
-                )
-                row = cur.fetchone()
-                if row and (row.get("cnt") or 0) > 0:
-                    continue  # Already nudged recently — don't spam.
 
                 days_left = ag.get("days_left")
                 if isinstance(days_left, int) and days_left < 0:
@@ -398,30 +386,26 @@ def notify_expiring_agreements(company_id, within_days=30):
                     if isinstance(valid_until, datetime.date)
                     else "ukendt dato"
                 )
-                # The marker is embedded in the message so the dedupe LIKE above
-                # can find it without needing an extra column.
                 message = (
                     "Rabataftalen med %s %s (gyldig til %s). "
-                    "Forny aftalen, så rabatten ikke forsvinder fra kataloget. "
-                    "[%s]" % (vendor, when, vu_text, marker)
+                    "Forny aftalen, så rabatten ikke forsvinder fra kataloget."
+                    % (vendor, when, vu_text)
                 )
 
-                cur.execute(
-                    """
-                    INSERT INTO company_notifications
-                        (company_id, recipient_user_id, sender_user_id,
-                         target_roles, title, message, is_urgent, is_read)
-                    VALUES (%s, NULL, NULL, %s, %s, %s, %s, 0)
-                    """,
-                    (
-                        company_id,
-                        roles_json,
-                        title[:255],
-                        message,
-                        1 if (isinstance(days_left, int) and days_left < 0) else 0,
-                    ),
+                from notification_service import insert_company_notification
+                created = insert_company_notification(
+                    cur, company_id,
+                    target_roles=_HR_ROLES,
+                    title=title[:255],
+                    message=message,
+                    is_urgent=bool(isinstance(days_left, int) and days_left < 0),
+                    action_url="/hr/suppliers/agreements",
+                    kind="agreement",
+                    dedupe_key=marker,
+                    dedupe_hours=_NOTIFY_DEDUPE_DAYS * 24,
                 )
-                inserted += 1
+                if created:
+                    inserted += 1
             except Exception as exc:
                 _log_warning("notify_expiring_agreements: insert skipped", exc)
                 continue

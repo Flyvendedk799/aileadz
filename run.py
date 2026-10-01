@@ -98,7 +98,14 @@ logging.basicConfig(level=logging.INFO)
 
 
 def _enterprise_sync_stamp_path():
-    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured")
+    # Keyed on the DDL fingerprint: a changed table definition invalidates the
+    # stamp, so new columns apply on the next boot instead of after the TTL (N-3.4).
+    try:
+        from enterprise_tables import ddl_fingerprint
+        suffix = "_" + ddl_fingerprint()
+    except Exception:
+        suffix = ""
+    return os.path.join(tempfile.gettempdir(), "futurematch_enterprise_tables_ensured" + suffix)
 
 
 def _recent_enterprise_sync_exists():
@@ -150,17 +157,55 @@ def _mysql_settings_from_database_url(url):
         return {}
 
 
+INSECURE_SECRET_KEYS = frozenset({
+    '', 'your_secret_key_here', 'supersecretkey', 'secret', 'changeme',
+    'change-me', 'dev', 'development', 'test', 'password',
+})
+_SANDBOX_SECRET_KEY = 'sandbox-only-insecure-secret-key'
+
+
+def resolve_secret_key(env):
+    """Return the Flask SECRET_KEY from ``env`` or refuse to boot (S-1.4).
+
+    Outside SANDBOX=1 a missing or well-known placeholder key raises
+    RuntimeError so a misconfigured deploy fails loudly instead of running with
+    forgeable sessions.
+    """
+    key = (env.get('SECRET_KEY') or '').strip()
+    sandbox = env.get('SANDBOX') == '1'
+    if key and key.lower() not in INSECURE_SECRET_KEYS:
+        if len(key) < 32:
+            logging.warning("SECRET_KEY is shorter than 32 characters; generate a longer one "
+                            "(python -c \"import secrets; print(secrets.token_hex(32))\").")
+        return key
+    if sandbox:
+        return key or _SANDBOX_SECRET_KEY
+    raise RuntimeError(
+        "SECRET_KEY is not set (or is a known placeholder). Refusing to start: "
+        "sessions could be forged. Set a long random SECRET_KEY in the environment "
+        "(see docs/runbooks/SECRET_ROTATION.md), or SANDBOX=1 for local dev/tests."
+    )
+
+
 def create_app():
     app = Flask(__name__, template_folder='templates')
-    # Secret key is env-overridable. The hardcoded value is kept as a fallback so
-    # production keeps working when SECRET_KEY is unset, but we warn loudly so it
-    # gets set + rotated. The warning is suppressed inside the sandbox.
-    app.secret_key = os.environ.get('SECRET_KEY') or 'your_secret_key_here'
-    if not os.environ.get('SECRET_KEY') and os.environ.get('SANDBOX') != '1':
-        logging.warning(
-            "SECRET_KEY is not set; falling back to an insecure default secret key. "
-            "Set the SECRET_KEY environment variable and rotate it for production."
-        )
+    # S-1.4: SECRET_KEY is mandatory. Sessions, the AI-key encryption key and the
+    # SSO-secret encryption key all derive from it, so an unset or well-known
+    # value would let anyone forge a session (role='admin'). Only SANDBOX=1
+    # (tests/dev) may fall back to a throwaway value.
+    app.secret_key = resolve_secret_key(os.environ)
+
+    # S-5.5: no request body larger than this is ever read (the biggest legitimate
+    # upload is a 25 MB voice clip). Oversize requests get a 413 before any handler runs.
+    app.config['MAX_CONTENT_LENGTH'] = int(os.environ.get('MAX_CONTENT_LENGTH_MB', '26')) * 1024 * 1024
+
+    @app.errorhandler(413)
+    def _too_large(_err):
+        from flask import jsonify as _jsonify, request
+        msg = "Filen eller forespørgslen er for stor."
+        if request.path.startswith(('/api', '/app1')) or request.is_json:
+            return _jsonify({"success": False, "ok": False, "error": msg}), 413
+        return msg, 413
 
     # Session cookie hardening. These are additive and don't invalidate existing
     # sessions. SESSION_COOKIE_SECURE must stay False under SANDBOX=1 so the test
@@ -214,6 +259,25 @@ def create_app():
 
     mysql = MySQL(app)
     app.mysql = mysql
+    try:  # the AI analytics store (N-3.3) lives in MySQL; threads outside a request need the handle
+        from app1 import memory_store as _ai_store
+        _ai_store.bind_mysql(mysql)
+    except Exception as e:
+        logging.warning("AI store not bound: %s", e)
+
+    # Request ids, structured logs, optional Sentry (N-8.2).
+    try:
+        from observability import register_observability
+        register_observability(app)
+    except Exception as e:
+        logging.warning("Observability skipped: %s", e)
+
+    # MAIL_* env -> app.config so Flask-Mail can actually send (N-0.2).
+    try:
+        from email_service import load_mail_config
+        load_mail_config(app)
+    except Exception as e:
+        logging.warning("Mail config skipped: %s", e)
 
     app.register_blueprint(dashboard_bp)
     app.register_blueprint(app1_bp, url_prefix='/app1')
@@ -232,9 +296,16 @@ def create_app():
     app.register_blueprint(analytics_bp)
     app.register_blueprint(api_enterprise_bp)
     app.register_blueprint(sso_bp)
+    # Company settings hub + SSO email-domain discovery (N-4.6, N-7.1)
+    from settings_hub import settings_hub_bp, sso_discovery_bp
+    app.register_blueprint(settings_hub_bp)
+    app.register_blueprint(sso_discovery_bp)
     app.register_blueprint(enterprise_settings_bp, url_prefix='/enterprise')
     app.register_blueprint(multitenant_reports_bp, url_prefix='/multitenant-reports')
     app.register_blueprint(futurematch_bp)
+
+    from bulk_invite import bulk_invite_bp
+    app.register_blueprint(bulk_invite_bp)
 
     # Dashboard-upgrade blueprints: new HR feature pages (Pillar B) sharing the
     # /hr prefix, and the global ⌘K search API. Guarded so a failure here can
@@ -280,6 +351,34 @@ def create_app():
     from health import health_bp
     app.register_blueprint(health_bp)
 
+    try:
+        from hr_course_assign import course_assign_bp
+        app.register_blueprint(course_assign_bp)
+    except Exception as e:
+        logging.warning("HR course assign skipped: %s", e)
+
+    # Team-order policy (N-5.2): save route + settings partial state.
+    try:
+        import team_order_policy
+        app.register_blueprint(team_order_policy.team_policy_bp)
+        team_order_policy.register_jinja(app)
+    except Exception as e:
+        logging.warning("Team order policy skipped: %s", e)
+
+    # Admin product browser + search-index controls (N-3.1).
+    try:
+        from catalog_admin_routes import catalog_admin_bp
+        app.register_blueprint(catalog_admin_bp)
+    except Exception as e:
+        logging.warning("Catalog admin routes skipped: %s", e)
+
+    # AI-usage credit screens (N-6.4).
+    try:
+        from credit_routes import credit_bp
+        app.register_blueprint(credit_bp)
+    except Exception as e:
+        logging.warning("Credit routes skipped: %s", e)
+
     # Defensive HTTP response headers (nosniff, frame options, report-only CSP).
     # Guarded so a failure here can never crash create_app().
     try:
@@ -312,6 +411,16 @@ def create_app():
         register_asset_version(app)
     except Exception as e:
         logging.warning("Asset versioning skipped: %s", e)
+
+    # S-1.10: deactivated / SCIM-removed users lose access on the next request
+    # (membership status re-checked, cached ~60 s), on every route.
+    from auth_decorators import register_session_liveness, register_capability_context
+    register_session_liveness(app)
+    register_capability_context(app)
+
+    # Render-time sanitising filters (safe_html / safe_css) replace bare |safe (S-1.9).
+    from html_sanitize import register_html_filters
+    register_html_filters(app)
 
     # Branding schema migration runs every process start (not gated by enterprise sync TTL)
     @app.before_request
@@ -352,6 +461,8 @@ def create_app():
     def _ensure_enterprise_tables_once():
         if not getattr(app, '_enterprise_tables_created', False):
             app._enterprise_tables_created = True  # set early to prevent concurrent runs
+            if os.environ.get("ENTERPRISE_TABLE_SYNC_SKIP") == "1":
+                return  # test suites build the schema explicitly (tests/test_schema_baseline.py)
             if _recent_enterprise_sync_exists():
                 return
             try:
@@ -366,6 +477,23 @@ def create_app():
                     logging.warning("Branding migration: %s", mig_err)
             except Exception as e:
                 logging.warning("Enterprise table init: %s", e)
+
+    # Part A (security/privacy) schema: goal-sharing columns, DSR tickets, 2FA,
+    # reset tokens. Runs once per worker, fully guarded, never blocks a request.
+    @app.before_request
+    def _ensure_security_schema_once():
+        if getattr(app, '_security_schema_ensured', False) or app.config.get('TESTING'):
+            return
+        app._security_schema_ensured = True
+        try:
+            conn = app.mysql.connection
+            import goal_sharing, dsr_service, two_factor, password_tokens
+            goal_sharing.ensure_schema(conn)
+            dsr_service.ensure_table(conn)
+            two_factor.ensure_table(conn)
+            password_tokens.ensure_table(conn)
+        except Exception as e:
+            logging.warning("Security schema init: %s", e)
 
     # Hot-path performance indexes. Runs once per worker process (its own flag,
     # deliberately NOT gated by the enterprise-sync TTL stamp) so a `git pull` +
@@ -413,9 +541,24 @@ def create_app():
     def home():
         return redirect(url_for('dashboard.dashboard'))
 
-    @app.errorhandler(404)
-    def not_found(error):
-        return redirect(url_for('dashboard.dashboard')), 404
+    # One status vocabulary for every template (N-1.1).
+    import order_lifecycle
+    order_lifecycle.register_jinja(app)
+    # Capability-aware navigation helpers (can(), has_endpoint()).
+    import capabilities
+    capabilities.register_jinja(app)
+    import credit_service
+    credit_service.register_jinja(app)
+
+    # Danish 404/500 pages, JSON for API callers (N-0.3).
+    from error_pages import register_error_handlers
+    register_error_handlers(app)
+
+    # S-2.1: CSRF protection (token on every unsafe request; key-authenticated
+    # API/SCIM and the anonymous widget are exempt). Registered last so its
+    # HTML-injection after_request runs before response compression.
+    from csrf_protect import init_csrf
+    init_csrf(app)
 
     return app
 

@@ -1,66 +1,60 @@
 {% extends "fm_base.html" %}
-{% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Fakturering{% endblock %}
-{% block topbar_sub %}{{ company.company_name }} · ordrer, betalingsstatus og massehandlinger.{% endblock %}
 {% from 'fm/_macros.html' import empty %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Fakturering{% endblock %}
+{% block topbar_title %}Fakturering{% endblock %}
+{% block topbar_sub %}{% if scope == 'admin' %}Alle virksomheder og enkeltbrugere{% else %}{{ company.company_name }}{% endif %} · faktureringsstatus, forfaldne fakturaer og afstemning. Betaling sker uden for appen.{% endblock %}
 {% block extra_head %}
 <style>
-  .bill-charts { display: grid; grid-template-columns: 1fr 1.5fr; gap: 16px; margin-bottom: 16px; align-items: start; }
-  .bill-chart-card { padding: 18px; }
-  .bill-chart-card .ch-head { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
-  .bill-chart-card .ch-head h3 { font-size: 14.5px; font-weight: 700; }
-  .bill-chart-card p { font-size: 12px; color: var(--fm-ink-2); margin: 0 0 12px; }
-  @media (max-width: 980px) { .bill-charts { grid-template-columns: 1fr; } }
+  .bill-note { font-size: 12.5px; color: var(--fm-ink-2); margin: 0 0 14px; }
+  .bill-overdue { color: var(--fm-danger); font-weight: 650; }
 </style>
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  {% set active_hr_page = '' %}{% include 'fm/_hr_subnav.html' %}
+  {% if scope == 'admin' %}{% include 'fm/_admin_subnav.html' %}{% else %}{% set active_hr_page = 'billing' %}{% include 'fm/_hr_subnav.html' %}{% endif %}
+
+  {% set url_update = update_url_tmpl or url_for('hr_dashboard.update_billing', order_id='ORDER_ID') %}
+  {% set url_bulk = bulk_url or url_for('hr_dashboard.bulk_billing_update') %}
+  {% set url_csv = csv_url or url_for('hr_dashboard.billing_export_csv') %}
+
+  <p class="bill-note"><i class="fa-solid fa-circle-info"></i> Fakturaen ligger i jeres eksterne økonomisystem. Her registrerer I fakturanummer, forfaldsdato og betaling, så status er ens for HR, administrator og medarbejder.</p>
 
   <div class="kpi-row k4">
     <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-circle-xmark"></i></span><div><div class="kl">Ikke faktureret</div><div class="kv tnum">{{ summary.not_invoiced or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.not_invoiced_value or 0).replace(",", ".") }} kr</div></div></div>
     <div class="kpi-tile ico"><span class="ki gold"><i class="fa-solid fa-file-invoice"></i></span><div><div class="kl">Faktureret</div><div class="kv tnum">{{ summary.invoiced or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.invoiced_value or 0).replace(",", ".") }} kr</div></div></div>
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Betalt</div><div class="kv tnum">{{ summary.paid or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.paid_value or 0).replace(",", ".") }} kr</div></div></div>
-    <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-coins"></i></span><div><div class="kl">Total værdi</div><div class="kv tnum">{{ "{:,.0f}".format(summary.total_value or 0).replace(",", ".") }}</div><div class="kd">kr · {{ summary.total_orders or 0 }} ordrer</div></div></div>
+    <a class="kpi-tile ico" href="?billing_status=overdue" style="text-decoration:none"><span class="ki clay"><i class="fa-solid fa-triangle-exclamation"></i></span><div><div class="kl">Forfaldne</div><div class="kv tnum {{ 'bill-overdue' if summary.overdue }}">{{ summary.overdue or 0 }}</div><div class="kd">{{ "{:,.0f}".format(summary.overdue_value or 0).replace(",", ".") }} kr</div></div></a>
   </div>
 
-  {% if orders and orders|length > 0 %}
-  <section class="bill-charts">
-    <div class="fm-card bill-chart-card" data-reveal data-d="1">
-      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-chart-pie"></i></span><h3>Betalingsstatus</h3></div>
-      <p>Fordeling af ordrer på faktureringsstatus i den viste liste.</p>
-      <div class="fm-chart-wrap"><canvas id="billStatusChart" aria-label="Cirkeldiagram: fordeling af ordrer på faktureringsstatus (ikke faktureret, faktureret, betalt, krediteret)" role="img"></canvas></div>
-    </div>
-    <div class="fm-card bill-chart-card" data-reveal data-d="2">
-      <div class="ch-head"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-indigo) 13%,transparent);color:var(--fm-indigo)"><i class="fa-solid fa-chart-line"></i></span><h3>Ordrevolumen over tid</h3></div>
-      <p>Antal ordrer pr. måned, baseret på oprettelsesdato.</p>
-      <div class="fm-chart-wrap"><canvas id="billVolumeChart" aria-label="Linjediagram: antal kursusordrer pr. måned over tid" role="img"></canvas></div>
-    </div>
-  </section>
-  {% endif %}
-
-  <form method="GET" class="fm-card" style="padding:14px 16px;margin-bottom:16px">
+  <form method="GET" class="fm-card" style="padding:14px 16px;margin:16px 0">
     <div class="fm-flex fm-ac fm-gap12" style="flex-wrap:wrap">
       <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Status</span>
         <select name="billing_status" class="fm-input" style="width:auto" onchange="this.form.submit()">
           <option value="">Alle</option>
-          <option value="not_invoiced" {{ 'selected' if billing_filter == 'not_invoiced' }}>Ikke faktureret</option>
-          <option value="invoiced" {{ 'selected' if billing_filter == 'invoiced' }}>Faktureret</option>
-          <option value="paid" {{ 'selected' if billing_filter == 'paid' }}>Betalt</option>
-          <option value="credited" {{ 'selected' if billing_filter == 'credited' }}>Krediteret</option>
+          {% for k, l in [('not_invoiced','Ikke faktureret'),('invoiced','Faktureret'),('unpaid','Ubetalt (ikke betalt endnu)'),('overdue','Forfaldne'),('paid','Betalt'),('credited','Krediteret')] %}
+          <option value="{{ k }}" {{ 'selected' if billing_filter == k }}>{{ l }}</option>{% endfor %}
         </select>
       </label>
+      {% if departments %}
       <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Afdeling</span>
         <select name="department" class="fm-input" style="width:auto" onchange="this.form.submit()">
           <option value="">Alle</option>
           {% for d in departments %}<option value="{{ d }}" {{ 'selected' if dept_filter == d }}>{{ d }}</option>{% endfor %}
         </select>
       </label>
-      <span class="muted" style="font-size:13px;align-self:flex-end;padding-bottom:8px">{{ orders|length }} ordrer vist</span>
-      <div class="fm-flex fm-gap8" style="margin-left:auto;align-self:flex-end">
-        <button type="button" class="btn btn-ghost btn-sm" id="bulkInvoiceBtn" style="display:none" onclick="bulkAction('invoiced')"><i class="fa-solid fa-file-invoice"></i> Marker faktureret</button>
-        <button type="button" class="btn btn-primary btn-sm" id="bulkPaidBtn" style="display:none" onclick="bulkAction('paid')"><i class="fa-solid fa-check-circle"></i> Marker betalt</button>
+      {% endif %}
+      <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Fra</span><input class="fm-input" type="date" name="from" value="{{ date_from }}" style="width:auto"></label>
+      <label class="fm-field" style="margin:0"><span style="font-size:12px;font-weight:600">Til</span><input class="fm-input" type="date" name="to" value="{{ date_to }}" style="width:auto"></label>
+      <button class="btn btn-ghost btn-sm" type="submit" style="align-self:flex-end">Filtrér</button>
+      <span class="muted" style="font-size:13px;align-self:flex-end;padding-bottom:8px">{{ orders|length }} ordrer</span>
+      <div class="fm-flex fm-gap8" style="margin-left:auto;align-self:flex-end;flex-wrap:wrap">
+        <a class="btn btn-ghost btn-sm" href="{{ url_csv }}?{{ request.query_string.decode() }}"><i class="fa-solid fa-file-csv"></i> Eksportér CSV</a>
+        {% if scope != 'admin' %}<a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.billing_print_summary', **{'from': date_from, 'to': date_to}) }}" target="_blank"><i class="fa-solid fa-print"></i> Printbar oversigt</a>{% endif %}
+        {% if can_edit %}
+        <button type="button" class="btn btn-ghost btn-sm bulk-btn" style="display:none" onclick="bulkAction('invoiced')"><i class="fa-solid fa-file-invoice"></i> Marker faktureret</button>
+        <button type="button" class="btn btn-primary btn-sm bulk-btn" style="display:none" onclick="bulkAction('paid')"><i class="fa-solid fa-check-circle"></i> Bekræft betaling</button>
+        {% endif %}
       </div>
     </div>
   </form>
@@ -69,198 +63,116 @@
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Ordrer &amp; fakturering</h3></div>
     <table class="fm-table">
       <thead><tr>
-        <th style="width:34px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)"></th>
-        <th>Ordre</th><th>Kursus</th><th>Medarbejder</th><th>Afdeling</th><th>Pris</th><th>Ordrestatus</th><th>Fakturering</th><th>Fakturanr.</th><th></th>
+        {% if can_edit %}<th style="width:34px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" aria-label="Vælg alle"></th>{% endif %}
+        <th>Ordre</th><th>Kursus</th><th>Medarbejder</th><th>Pris</th><th>Ordrestatus</th><th>Fakturering</th><th>Fakturanr.</th><th>Forfald</th><th></th>
       </tr></thead>
       <tbody>
       {% for o in orders %}
         <tr>
-          <td><input type="checkbox" class="order-check" value="{{ o.order_id }}" onchange="updateBulkButtons()"></td>
-          <td class="mono" style="font-weight:650">{{ o.order_id[:12] }}</td>
+          {% if can_edit %}<td><input type="checkbox" class="order-check" value="{{ o.order_id }}" onchange="updateBulkButtons()"></td>{% endif %}
+          <td class="mono" style="font-weight:650"><a href="{{ url_for('hr_dashboard.company_order_details', order_id=o.order_id) }}">{{ o.order_id[:8] }}</a></td>
           <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ o.product_title }}">{{ o.product_title }}</td>
-          <td>{{ o.username }}</td>
-          <td><span class="fm-chip">{{ o.department or 'N/A' }}</span></td>
+          <td>{{ o.user_name or o.username }}<div class="muted" style="font-size:11.5px">{{ o.department or '' }}</div></td>
           <td class="mono" style="font-weight:650">{{ "{:,.0f}".format(o.price or 0).replace(",", ".") }} kr</td>
-          <td>
-            {% if o.status == 'completed' %}<span class="status-pill green" style="height:22px;font-size:11px">Afsluttet</span>
-            {% elif o.status in ['confirmed','processing'] %}<span class="status-pill" style="height:22px;font-size:11px">Behandles</span>
-            {% elif o.status == 'pending_approval' %}<span class="status-pill amber" style="height:22px;font-size:11px">Afventer</span>
-            {% else %}<span class="status-pill" style="height:22px;font-size:11px">{{ o.status|title }}</span>{% endif %}
-          </td>
-          <td>
-            {% if o.billing_status == 'paid' %}<span class="fm-badge green dot">Betalt</span>
-            {% elif o.billing_status == 'invoiced' %}<span class="fm-badge amber dot">Faktureret</span>
-            {% elif o.billing_status == 'credited' %}<span class="fm-badge dot">Krediteret</span>
-            {% else %}<span class="fm-badge red dot">Ikke faktureret</span>{% endif %}
-          </td>
+          <td><span class="fm-badge {{ order_status_tone(o.status) }} dot">{{ order_status_label(o.status, short=True) }}</span></td>
+          <td><span class="fm-badge {{ order_billing_tone(o.billing_status) }} dot">{{ order_billing_label(o.billing_status) }}</span></td>
           <td class="muted"><small>{{ o.invoice_number or '-' }}</small></td>
-          <td style="text-align:right"><div class="fm-flex fm-gap8" style="justify-content:flex-end">
-            <button class="btn btn-ghost btn-sm" title="Rediger fakturering" onclick="openBillingModal('{{ o.order_id }}', '{{ o.billing_status }}', {{ (o.invoice_number or '')|tojson }}, {{ (o.payment_method or '')|tojson }}, {{ (o.payment_reference or '')|tojson }}, {{ (o.billing_note or '')|tojson }})"><i class="fa-solid fa-pen"></i></button>
-            {% if o.billing_status == 'not_invoiced' %}<button class="btn btn-ghost btn-sm" title="Marker faktureret" onclick="quickBilling('{{ o.order_id }}', 'invoiced')"><i class="fa-solid fa-file-invoice"></i></button>
-            {% elif o.billing_status == 'invoiced' %}<button class="btn btn-primary btn-sm" title="Marker betalt" onclick="quickBilling('{{ o.order_id }}', 'paid')"><i class="fa-solid fa-check-circle"></i></button>{% endif %}
-          </div></td>
+          <td class="{{ 'bill-overdue' if o.is_overdue }}"><small>{{ o.invoice_due_date or '-' }}{% if o.is_overdue %} · forfalden{% endif %}</small></td>
+          <td style="text-align:right">{% if can_edit %}<div class="fm-flex fm-gap8" style="justify-content:flex-end">
+            <button class="btn btn-ghost btn-sm" title="Rediger fakturering" onclick='openBillingModal({{ o.order_id|tojson }}, {{ o.billing_status|tojson }}, {{ (o.invoice_number or "")|tojson }}, {{ (o.payment_reference or "")|tojson }}, {{ (o.billing_note or "")|tojson }})'><i class="fa-solid fa-pen"></i></button>
+          </div>{% endif %}</td>
         </tr>
       {% else %}
-        <tr><td colspan="10" style="padding:0">{{ empty('Ingen ordrer', 'Ingen ordrer matcher dine filtre. Justér status eller afdeling for at se flere.', 'fa-file-invoice') }}</td></tr>
+        <tr><td colspan="10" style="padding:0">{{ empty('Ingen ordrer', 'Ingen bestillinger matcher dine filtre. Ryd filtrene, eller se godkendte bestillinger under Godkendelser.', 'fa-file-invoice') }}</td></tr>
       {% endfor %}
       </tbody>
     </table>
   </div>
 </div>
 
-<!-- Billing edit modal -->
+{% if can_edit %}
 <div id="billingModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
   <div class="fm-card" style="max-width:480px;width:92%;padding:22px;max-height:90vh;overflow-y:auto">
-    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px"><i class="fa-solid fa-file-invoice-dollar"></i> Rediger fakturering</h3>
-    <input type="hidden" id="billingOrderId">
-    <label class="fm-field"><span>Faktureringsstatus</span><select class="fm-input" id="billingStatus"><option value="not_invoiced">Ikke faktureret</option><option value="invoiced">Faktureret</option><option value="paid">Betalt</option><option value="credited">Krediteret</option></select></label>
-    <label class="fm-field"><span>Fakturanummer</span><input type="text" class="fm-input" id="billingInvoiceNr" placeholder="f.eks. INV-2026-001"></label>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-      <label class="fm-field"><span>Fakturadato</span><input type="date" class="fm-input" id="billingInvoiceDate"></label>
-      <label class="fm-field"><span>Betalingsdato</span><input type="date" class="fm-input" id="billingPaymentDate"></label>
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:6px"><i class="fa-solid fa-file-invoice-dollar"></i> Fakturering</h3>
+    <p class="bill-note" id="bmHint"></p>
+    <input type="hidden" id="bmOrder"><input type="hidden" id="bmTarget">
+    <div id="bmInvoiceFields">
+      <label class="fm-field"><span>Fakturanummer (fra jeres økonomisystem)</span><input type="text" class="fm-input" id="bmInvoiceNr"></label>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+        <label class="fm-field"><span>Fakturadato</span><input type="date" class="fm-input" id="bmInvoiceDate"></label>
+        <label class="fm-field"><span>Forfaldsdato</span><input type="date" class="fm-input" id="bmDueDate"></label>
+      </div>
     </div>
-    <label class="fm-field"><span>Betalingsmetode</span><select class="fm-input" id="billingPaymentMethod"><option value="">Vælg...</option><option value="bankoverfoersel">Bankoverførsel</option><option value="faktura">Faktura (EAN/EHF)</option><option value="kreditkort">Kreditkort</option><option value="mobilepay">MobilePay</option><option value="andet">Andet</option></select></label>
-    <label class="fm-field"><span>Betalingsreference</span><input type="text" class="fm-input" id="billingPaymentRef" placeholder="Transaktions-ID, FI-nummer, etc."></label>
-    <label class="fm-field"><span>Note</span><textarea class="fm-input" id="billingNote" rows="2" placeholder="Intern note om fakturering..."></textarea></label>
-    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:8px">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('billingModal')">Annuller</button>
-      <button class="btn btn-primary btn-sm" onclick="saveBilling()"><i class="fa-solid fa-floppy-disk"></i> Gem</button>
+    <div id="bmPaidFields" style="display:none">
+      <label class="fm-field"><span>Betalt den</span><input type="date" class="fm-input" id="bmPaymentDate"></label>
+      <label class="fm-field"><span>Betalingsreference</span><input type="text" class="fm-input" id="bmPaymentRef"></label>
     </div>
-  </div>
-</div>
-
-<!-- Bulk invoice number modal -->
-<div id="bulkInvoiceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
-  <div class="fm-card" style="max-width:360px;width:92%;padding:22px">
-    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Fakturanummer</h3>
-    <input type="hidden" id="bulkBillingStatus">
-    <label class="fm-field"><span>Fakturanr. (valgfrit)</span><input type="text" class="fm-input" id="bulkInvoiceNr" placeholder="INV-2026-001"></label>
-    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:8px">
-      <button class="btn btn-ghost btn-sm" onclick="closeModal('bulkInvoiceModal')">Annuller</button>
-      <button class="btn btn-primary btn-sm" onclick="executeBulk()">Opdater</button>
+    <label class="fm-field"><span id="bmNoteLabel">Note</span><textarea class="fm-input" id="bmNote" rows="2"></textarea></label>
+    <div class="fm-flex fm-gap8" style="justify-content:space-between;margin-top:8px;flex-wrap:wrap">
+      <div class="fm-flex fm-gap8" id="bmActions"></div>
+      <button class="btn btn-ghost btn-sm" onclick="closeModal('billingModal')">Luk</button>
     </div>
   </div>
 </div>
+{% endif %}
 {% endblock %}
 
-{% block extra_scripts %}{% include 'fm/_charts.html' %}
+{% block extra_scripts %}
 <script>
-(function () {
-  if (typeof FMChart === 'undefined') return;
-  var orders = {{ (orders or [])|list|tojson|safe }};
-  if (!orders.length) return;
-
-  // --- Doughnut: payment-status distribution (counted client-side) ---
-  var statusKeys = ['not_invoiced', 'invoiced', 'paid', 'credited'];
-  var statusLabels = { not_invoiced: 'Ikke faktureret', invoiced: 'Faktureret', paid: 'Betalt', credited: 'Krediteret' };
-  var counts = { not_invoiced: 0, invoiced: 0, paid: 0, credited: 0 };
-  orders.forEach(function (o) {
-    var st = o.billing_status || 'not_invoiced';
-    if (counts[st] === undefined) counts[st] = 0;
-    counts[st] += 1;
-  });
-  FMChart.doughnut('billStatusChart', {
-    labels: statusKeys.map(function (k) { return statusLabels[k]; }),
-    values: statusKeys.map(function (k) { return counts[k] || 0; }),
-    empty: 'Ingen faktureringsdata endnu'
-  });
-
-  // --- Line: order volume per month (from created_at) ---
-  var byMonth = {};
-  orders.forEach(function (o) {
-    if (!o.created_at) return;
-    var d = new Date(o.created_at);
-    if (isNaN(d)) return;
-    var key = d.getFullYear() + '-' + ('0' + (d.getMonth() + 1)).slice(-2);
-    byMonth[key] = (byMonth[key] || 0) + 1;
-  });
-  var monthKeys = Object.keys(byMonth).sort();
-  var monthNames = ['jan', 'feb', 'mar', 'apr', 'maj', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'dec'];
-  FMChart.line('billVolumeChart', {
-    labels: monthKeys.map(function (k) {
-      var p = k.split('-');
-      return monthNames[parseInt(p[1], 10) - 1] + ' ' + p[0].slice(2);
-    }),
-    series: [{ label: 'Ordrer', data: monthKeys.map(function (k) { return byMonth[k]; }), color: FMChart.cssVar('--fm-indigo', '#4f46e5') }],
-    empty: 'Ingen daterede ordrer endnu'
-  });
-})();
-</script>
-<script>
-const BILLING_URL_TMPL = `{{ url_for('hr_dashboard.update_billing', order_id='ORDER_ID') }}`;
-function billingUrl(orderId){ return BILLING_URL_TMPL.replace('ORDER_ID', orderId); }
+const UPDATE_TMPL = {{ url_update|tojson }};
+const BULK_URL = {{ url_bulk|tojson }};
+const NEXT = { not_invoiced: ['invoiced'], invoiced: ['paid', 'credited', 'not_invoiced'], paid: ['credited'], credited: [] };
+const LABEL = { invoiced: 'Marker faktureret', paid: 'Bekræft betaling modtaget', credited: 'Krediter', not_invoiced: 'Fortryd fakturering' };
 function closeModal(id){ document.getElementById(id).style.display='none'; }
-
-function toggleAll(el){
-  document.querySelectorAll('.order-check').forEach(cb => { cb.checked = el.checked; });
-  updateBulkButtons();
-}
+function toggleAll(el){ document.querySelectorAll('.order-check').forEach(cb => { cb.checked = el.checked; }); updateBulkButtons(); }
 function updateBulkButtons(){
-  const checked = document.querySelectorAll('.order-check:checked').length;
-  document.getElementById('bulkInvoiceBtn').style.display = checked > 0 ? '' : 'none';
-  document.getElementById('bulkPaidBtn').style.display = checked > 0 ? '' : 'none';
+  const n = document.querySelectorAll('.order-check:checked').length;
+  document.querySelectorAll('.bulk-btn').forEach(b => { b.style.display = n ? '' : 'none'; });
 }
-function getSelectedIds(){
-  return Array.from(document.querySelectorAll('.order-check:checked')).map(cb => cb.value);
+function selectedIds(){ return Array.from(document.querySelectorAll('.order-check:checked')).map(cb => cb.value); }
+function post(url, body){
+  return fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(body)}).then(r => r.json());
 }
 function bulkAction(status){
-  document.getElementById('bulkBillingStatus').value = status;
-  if (status === 'invoiced'){ document.getElementById('bulkInvoiceModal').style.display='flex'; }
-  else { executeBulk(); }
+  const ids = selectedIds(); if (!ids.length) return;
+  let body = {order_ids: ids, billing_status: status};
+  if (status === 'invoiced') {
+    const nr = prompt('Fakturanummer fra jeres økonomisystem (påkrævet):'); if (!nr) return;
+    body.invoice_number = nr;
+    const due = prompt('Forfaldsdato (ÅÅÅÅ-MM-DD, valgfri):'); if (due) body.due_date = due;
+  } else if (status === 'paid') {
+    const ref = prompt('Betalingsreference (valgfri):'); if (ref) body.payment_reference = ref;
+  }
+  post(BULK_URL, body).then(d => { alert(d.message || 'Færdig'); if (d.success) location.reload(); })
+    .catch(() => alert('Netværksfejl. Prøv igen.'));
 }
-function executeBulk(){
-  const ids = getSelectedIds();
-  const status = document.getElementById('bulkBillingStatus').value || 'paid';
-  const invoiceNr = document.getElementById('bulkInvoiceNr').value;
-  fetch('{{ url_for("hr_dashboard.bulk_billing_update") }}', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({order_ids: ids, billing_status: status, invoice_number: invoiceNr})
-  }).then(r => r.json()).then(d => {
-    if (d.success){ location.reload(); } else { alert('Fejl: ' + d.message); }
+function openBillingModal(orderId, status, invoiceNr, payRef, note){
+  document.getElementById('bmOrder').value = orderId;
+  document.getElementById('bmInvoiceNr').value = invoiceNr || '';
+  document.getElementById('bmPaymentRef').value = payRef || '';
+  document.getElementById('bmNote').value = note || '';
+  ['bmInvoiceDate','bmDueDate','bmPaymentDate'].forEach(i => document.getElementById(i).value = '');
+  const box = document.getElementById('bmActions'); box.innerHTML = '';
+  (NEXT[status] || []).forEach(t => {
+    const b = document.createElement('button');
+    b.className = 'btn ' + (t === 'invoiced' || t === 'paid' ? 'btn-primary' : 'btn-ghost') + ' btn-sm';
+    b.textContent = LABEL[t]; b.onclick = () => save(t); box.appendChild(b);
   });
+  if (!(NEXT[status] || []).length) document.getElementById('bmHint').textContent = 'Ordren er krediteret. Der er ikke flere handlinger.';
+  else document.getElementById('bmHint').textContent = 'Nuværende status: ' + status;
+  document.getElementById('bmPaidFields').style.display = status === 'invoiced' ? '' : 'none';
+  document.getElementById('bmInvoiceFields').style.display = status === 'not_invoiced' ? '' : 'none';
+  document.getElementById('billingModal').style.display = 'flex';
 }
-function openBillingModal(orderId, status, invoiceNr, payMethod, payRef, note){
-  document.getElementById('billingOrderId').value = orderId;
-  document.getElementById('billingStatus').value = status || 'not_invoiced';
-  document.getElementById('billingInvoiceNr').value = invoiceNr || '';
-  document.getElementById('billingInvoiceDate').value = '';
-  document.getElementById('billingPaymentDate').value = '';
-  document.getElementById('billingPaymentMethod').value = payMethod || '';
-  document.getElementById('billingPaymentRef').value = payRef || '';
-  document.getElementById('billingNote').value = note || '';
-  document.getElementById('billingModal').style.display='flex';
-}
-function saveBilling(){
-  const orderId = document.getElementById('billingOrderId').value;
-  const data = {
-    billing_status: document.getElementById('billingStatus').value,
-    invoice_number: document.getElementById('billingInvoiceNr').value,
-    invoice_date: document.getElementById('billingInvoiceDate').value,
-    payment_date: document.getElementById('billingPaymentDate').value,
-    payment_method: document.getElementById('billingPaymentMethod').value,
-    payment_reference: document.getElementById('billingPaymentRef').value,
-    billing_note: document.getElementById('billingNote').value,
-  };
-  fetch(billingUrl(orderId), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(data)
-  }).then(r => r.json()).then(d => {
-    if (d.success){ location.reload(); } else { alert('Fejl: ' + d.message); }
-  });
-}
-function quickBilling(orderId, status){
-  const data = {billing_status: status};
-  if (status === 'paid') data.payment_date = new Date().toISOString().split('T')[0];
-  if (status === 'invoiced') data.invoice_date = new Date().toISOString().split('T')[0];
-  fetch(billingUrl(orderId), {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify(data)
-  }).then(r => r.json()).then(d => {
-    if (d.success){ location.reload(); } else { alert('Fejl: ' + d.message); }
-  });
+function save(target){
+  const id = document.getElementById('bmOrder').value;
+  const v = (i) => document.getElementById(i).value || undefined;
+  post(UPDATE_TMPL.replace('ORDER_ID', id), {
+    billing_status: target, invoice_number: v('bmInvoiceNr'), invoice_date: v('bmInvoiceDate'),
+    due_date: v('bmDueDate'), payment_date: v('bmPaymentDate'), payment_reference: v('bmPaymentRef'),
+    billing_note: v('bmNote')
+  }).then(d => { if (d.success) location.reload(); else alert(d.message || 'Kunne ikke gemme'); })
+    .catch(() => alert('Netværksfejl. Prøv igen.'));
 }
 </script>
 {% endblock %}

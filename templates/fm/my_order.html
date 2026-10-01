@@ -1,0 +1,171 @@
+{% extends "fm_base.html" %}
+{% from 'fm/_macros.html' import empty, addtocal %}
+{% block page_id %}timeline{% endblock %}
+{% block title %}Min bestilling{% endblock %}
+{% block topbar_title %}{{ order.product_title }}{% endblock %}
+{% block topbar_sub %}Ordre {{ order.order_id[:8] }} · {{ status_label }}{% endblock %}
+
+{% block extra_head %}
+<style>
+  .mo-grid { display: grid; grid-template-columns: 1.4fr 1fr; gap: 16px; align-items: start; }
+  @media (max-width: 900px) { .mo-grid { grid-template-columns: 1fr; } }
+  .mo-status { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+  .mo-hint { color: var(--fm-ink-2); font-size: 13.5px; margin-top: 8px; }
+  .mo-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 16px; }
+  .mo-hist { list-style: none; margin: 0; padding: 0; }
+  .mo-hist li { display: flex; gap: 12px; padding: 10px 0; border-bottom: 1px solid var(--fm-line); font-size: 13.5px; }
+  .mo-hist li:last-child { border-bottom: 0; }
+  .mo-hist .when { font-family: var(--ff-mono); font-size: 11.5px; color: var(--fm-ink-3); min-width: 92px; }
+  .mo-chip { display: inline-flex; align-items: center; gap: 8px; padding: 7px 12px; border: 1px solid var(--fm-line); border-radius: 999px; background: var(--fm-surface); font-size: 13px; margin: 0 8px 8px 0; }
+  .mo-chip select { border: 0; background: transparent; font-size: 12px; color: var(--fm-ink-2); }
+  .mo-chip.done { background: var(--fm-primary-tint); border-color: transparent; color: var(--fm-primary); }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="fm-wrap">
+  <div class="crumb"><a href="{{ url_for('futurematch.timeline') }}">Min tidslinje</a><i class="fa-solid fa-chevron-right"></i><span>{{ order.order_id[:8] }}</span></div>
+
+  {% if just_completed and moment %}
+  <div class="fm-card" style="margin:14px 0;border-color:var(--fm-success)">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-circle-check"></i></span><h3>Godt gået. Kurset er gennemført</h3></div>
+    <div class="fm-card-body" style="font-size:13.5px;color:var(--fm-ink-2)">Nedenfor kan du tage det med videre: tilføj det, du har lært, til din profil, og giv kurset en vurdering.</div>
+  </div>
+  {% endif %}
+
+  <div class="mo-grid">
+    <div>
+      <div class="fm-card">
+        <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-graduation-cap"></i></span><h3>Status</h3></div>
+        <div class="fm-card-body">
+          <div class="mo-status">
+            <span class="fm-badge {{ status_tone }} dot" style="font-size:13px">{{ status_label }}</span>
+            {% if order.completion_deadline and status in ['approved','booked'] %}
+            <span class="fm-badge"><i class="fa-solid fa-flag-checkered"></i> Frist {{ order.completion_deadline.strftime('%d.%m.%Y') }}</span>
+            {% endif %}
+          </div>
+          <p class="mo-hint">{{ status_hint }}</p>
+          {% if order.cancel_reason and status in ['cancelled','rejected'] %}
+          <p class="mo-hint"><strong>Begrundelse:</strong> {{ order.cancel_reason }}</p>
+          {% endif %}
+
+          <div class="info-list" style="margin-top:14px">
+            <div class="kv"><span class="k">Kursus</span><span class="v">{% if order.product_handle %}<a href="{{ url_for('catalog.product_detail', handle=order.product_handle) }}">{{ order.product_title }}</a>{% else %}{{ order.product_title }}{% endif %}</span></div>
+            {% if vendor_name %}<div class="kv"><span class="k">Udbyder</span><span class="v">{{ vendor_name }}</span></div>{% endif %}
+            {% if order.variant_date %}<div class="kv"><span class="k">Dato</span><span class="v">{{ order.variant_date }}</span></div>{% endif %}
+            {% if order.variant_location %}<div class="kv"><span class="k">Sted</span><span class="v">{{ order.variant_location }}</span></div>{% endif %}
+            {% if order.price %}<div class="kv"><span class="k">Pris</span><span class="v">{{ '{:,.0f}'.format(order.price).replace(',', '.') }} kr.</span></div>{% endif %}
+            <div class="kv"><span class="k">Bestilt</span><span class="v">{{ order.created_at.strftime('%d.%m.%Y') if order.created_at else '' }}</span></div>
+            <div class="kv"><span class="k">Fakturering</span><span class="v">{{ billing_label }}</span></div>
+          </div>
+
+          <div class="mo-actions">
+            {% if has_date and status in ['approved','booked'] %}
+            {{ addtocal(url_for('futurematch.my_order_ics', order_id=order.order_id)) }}
+            {% endif %}
+            {% if can_complete %}
+            <form method="post" action="{{ url_for('futurematch.my_order_complete', order_id=order.order_id) }}">
+              <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-circle-check"></i> Markér som gennemført</button>
+            </form>
+            {% endif %}
+            {% if can_cancel %}
+            <form method="post" action="{{ url_for('futurematch.my_order_cancel', order_id=order.order_id) }}" onsubmit="return confirm('Vil du annullere denne bestilling?');">
+              <button class="btn btn-ghost btn-sm" type="submit"><i class="fa-solid fa-ban"></i> Annullér</button>
+            </form>
+            {% endif %}
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Spørg AI'en om ordren</a>
+          </div>
+        </div>
+      </div>
+
+      {% if moment %}
+      <div class="fm-card" style="margin-top:16px" id="completion">
+        <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-seedling"></i></span><h3>Det tager du med dig</h3></div>
+        <div class="fm-card-body">
+          {% if moment.skill_proposals %}
+          <p style="font-size:13.5px;color:var(--fm-ink-2);margin:0 0 10px">Kurset peger på disse kompetencer. Tilføj dem, du føler, du har fået, og justér niveauet.</p>
+          <div id="skillChips">
+            {% for s in moment.skill_proposals %}
+            <span class="mo-chip" data-skill="{{ s.name }}">
+              <strong>{{ s.name }}</strong>
+              <select aria-label="Niveau for {{ s.name }}">
+                {% for lv in ['begynder','mellem','avanceret','ekspert'] %}<option value="{{ lv }}" {{ 'selected' if lv == s.level }}>{{ lv|capitalize }}</option>{% endfor %}
+              </select>
+              <button class="btn btn-ghost btn-sm" type="button" data-add><i class="fa-solid fa-plus"></i> Tilføj</button>
+            </span>
+            {% endfor %}
+          </div>
+          <div id="skillMsg" style="font-size:12.5px;color:var(--fm-ink-3);min-height:18px"></div>
+          {% else %}
+          <p style="font-size:13.5px;color:var(--fm-ink-2);margin:0">Fortæl AI'en, hvad du har lært, så kan den hjælpe dig med at sætte det på din profil.</p>
+          {% endif %}
+
+          <div class="mo-actions">
+            {% if moment.review_url %}<a class="btn btn-soft btn-sm" href="{{ moment.review_url }}"><i class="fa-regular fa-star"></i> Giv en vurdering</a>{% endif %}
+            <a class="btn btn-ghost btn-sm" href="{{ url_for('futurematch.chat') }}"><i class="fa-solid fa-comments"></i> Tal med AI'en om det</a>
+          </div>
+
+          {% if moment.next_steps %}
+          <h4 style="font-size:13px;margin:18px 0 8px;color:var(--fm-ink-2)">Naturlige næste skridt</h4>
+          {% for n in moment.next_steps %}
+          <div><a href="{{ n.url }}">{{ n.title }}</a>{% if n.price_label %} <span class="muted" style="font-size:12px">· {{ n.price_label }}</span>{% endif %}</div>
+          {% endfor %}
+          {% endif %}
+        </div>
+      </div>
+      {% endif %}
+    </div>
+
+    <div class="fm-card">
+      <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-clock-rotate-left"></i></span><h3>Forløb</h3></div>
+      <div class="fm-card-body">
+        {% if history %}
+        <ul class="mo-hist">
+          {% for h in history %}
+          <li>
+            <span class="when">{{ h.created_at.strftime('%d.%m.%Y') if h.created_at else '' }}</span>
+            <span>
+              <strong>{{ status_labels.get(h.to_value, h.to_value) }}</strong>
+              {% if h.actor_kind == 'vendor' %}<span class="muted"> · af udbyderen</span>
+              {% elif h.actor_kind in ['manager','admin'] %}<span class="muted"> · af HR</span>{% endif %}
+              {% if h.note %}<div class="muted" style="font-size:12.5px">{{ h.note }}</div>{% endif %}
+            </span>
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}
+        {{ empty('Ingen historik endnu', 'Ændringer i bestillingens status dukker op her.', 'fa-clock-rotate-left') }}
+        {% endif %}
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block extra_scripts %}
+{% if moment and moment.skill_proposals %}
+<script>
+(function () {
+  var url = {{ url_for('futurematch.my_order_skills', order_id=order.order_id)|tojson }};
+  var msg = document.getElementById('skillMsg');
+  document.querySelectorAll('#skillChips [data-add]').forEach(function (btn) {
+    btn.addEventListener('click', function () {
+      var chip = btn.closest('.mo-chip');
+      var name = chip.getAttribute('data-skill');
+      var level = chip.querySelector('select').value;
+      btn.disabled = true;
+      fetch(url, { method: 'POST', credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ skills: [{ name: name, level: level }] }) })
+        .then(function (r) { return r.json(); })
+        .then(function (d) {
+          if (d && d.success) { chip.classList.add('done'); btn.innerHTML = '<i class="fa-solid fa-check"></i> Tilføjet'; }
+          else { btn.disabled = false; msg.textContent = (d && d.message) || 'Kunne ikke tilføje kompetencen.'; }
+        })
+        .catch(function () { btn.disabled = false; msg.textContent = 'Kunne ikke tilføje kompetencen. Prøv igen.'; });
+    });
+  });
+})();
+</script>
+{% endif %}
+{% endblock %}

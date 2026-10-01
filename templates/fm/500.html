@@ -1,0 +1,17 @@
+{% extends "fm_base.html" %}
+{% block page_id %}error500{% endblock %}
+{% block title %}Noget gik galt{% endblock %}
+{% block topbar_title %}Noget gik galt{% endblock %}
+{% block topbar_sub %}Fejl 500{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="fm-card" style="max-width:560px;margin:48px auto;text-align:center">
+    <div class="fm-card-body" style="padding:40px 28px">
+      <div style="font-size:40px;color:var(--fm-danger);margin-bottom:12px"><i class="fa-solid fa-triangle-exclamation"></i></div>
+      <h2 style="font-size:22px;margin-bottom:8px">Der opstod en fejl hos os</h2>
+      <p style="color:var(--fm-ink-2);margin-bottom:22px">Vi har registreret fejlen. Prøv igen om lidt, og kontakt support, hvis det bliver ved.</p>
+      <a class="fm-btn primary" href="javascript:location.reload()">Prøv igen</a>
+    </div>
+  </div>
+</div>
+{% endblock %}

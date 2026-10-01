@@ -28,23 +28,23 @@ def create_companies_blueprint():
 
     def require_branding_access():
         if 'user' not in session:
-            flash("Please log in to access this feature.", "danger")
+            flash("Log ind for at bruge denne funktion.", "danger")
             return redirect(url_for('auth.login'))
         if session.get('role') == 'admin':
             return None
         if session.get('company_role') in ['company_admin', 'hr_manager']:
             return None
-        flash("You don't have permission to manage branding.", "danger")
+        flash("Du har ikke tilladelse til at administrere branding.", "danger")
         return redirect(url_for('dashboard.dashboard'))
 
     def require_company_admin():
         """Decorator to ensure user is a company admin"""
         if 'user' not in session:
-            flash("Please log in to access this feature.", "danger")
+            flash("Log ind for at bruge denne funktion.", "danger")
             return redirect(url_for('auth.login'))
         
         if not session.get('company_id') or session.get('company_role') not in ['company_admin', 'hr_manager']:
-            flash("You don't have permission to access this feature.", "danger")
+            flash("Du har ikke tilladelse til at bruge denne funktion.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return None
 
@@ -82,13 +82,13 @@ def create_companies_blueprint():
             return None
 
     def _resolve_branding_company_id(explicit_id=None):
+        # S-2.5: resolving a company for one request must NOT change which
+        # company the admin is "acting as" (that is an explicit POST, audited).
         if explicit_id is not None and session.get('role') == 'admin':
-            session['admin_acting_company_id'] = explicit_id
             return explicit_id
         if session.get('role') == 'admin':
             acting = request.args.get('company_id', type=int) or session.get('admin_acting_company_id')
             if acting:
-                session['admin_acting_company_id'] = acting
                 return acting
         company = get_company_context()
         if company:
@@ -193,9 +193,19 @@ def create_companies_blueprint():
                 flash("Virksomhedsnavn er påkrævet.", "danger")
                 return render_template('fm/company_register.html')
 
-            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email, hr_password]):
-                flash("Udfyld venligst alle felter for HR-manageren (navn, brugernavn, e-mail, password).", "danger")
+            if hr_mode == 'new' and not all([hr_name, hr_username, hr_email]):
+                flash("Udfyld venligst navn, brugernavn og e-mail for kontaktpersonen.", "danger")
                 return render_template('fm/company_register.html')
+
+            # S-2.4: the password is optional. Without one, the HR manager gets a
+            # one-time set-password link by e-mail (no password is handled by a human).
+            if hr_mode == 'new' and hr_password:
+                from password_policy import validate_password
+                _pw_errors = validate_password(hr_password, hr_username, hr_email)
+                if _pw_errors:
+                    for _e in _pw_errors:
+                        flash(_e, "danger")
+                    return render_template('fm/company_register.html')
 
             if hr_mode == 'existing' and not existing_user_id:
                 flash("Vælg venligst en eksisterende bruger.", "danger")
@@ -206,6 +216,7 @@ def create_companies_blueprint():
             company_slug = company_slug.strip('-')
 
             generated_password = None
+            invite_needed = False
 
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -261,9 +272,11 @@ def create_companies_blueprint():
                         cur.close()
                         return render_template('fm/company_register.html')
 
-                    # Use the password provided by admin
-                    generated_password = hr_password
-                    hashed_password = generate_password_hash(hr_password)
+                    # Password provided by the admin (policy-checked above), or an
+                    # unusable random one until the invite link is used (Part A token flow).
+                    invite_needed = not hr_password
+                    generated_password = hr_password or None
+                    hashed_password = generate_password_hash(hr_password or secrets.token_urlsafe(48))
 
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
@@ -271,20 +284,22 @@ def create_companies_blueprint():
                     """, (hr_username, hr_email, hashed_password))
                     user_id = cur.lastrowid
 
-                # Add user to company as hr_manager
+                # The first user of a new company is its company_admin (superset of
+                # hr_manager). Before, only hr_manager existed, so the admin-only
+                # settings (SSO, API keys, billing policy) were unreachable.
                 hr_permissions = json.dumps({
                     "manage_users": True,
                     "view_analytics": True,
                     "export_data": True,
-                    "manage_billing": False,
-                    "manage_integrations": False,
+                    "manage_billing": True,
+                    "manage_integrations": True,
                     "manage_branding": True,
                 })
                 cur.execute("""
                     INSERT INTO company_users (
                         company_id, user_id, username, full_name, email, role, department, job_title,
                         status, phone, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, %s, 'hr_manager', 'Human Resources', %s, 'active', %s, %s, %s)
+                    ) VALUES (%s, %s, %s, %s, %s, 'company_admin', 'Human Resources', %s, 'active', %s, %s, %s)
                 """, (
                     company_id, user_id, hr_username or hr_name, hr_name, hr_email,
                     hr_job_title, hr_phone, hr_permissions, session.get('user_id')
@@ -322,15 +337,26 @@ def create_companies_blueprint():
                 current_app.mysql.connection.commit()
                 cur.close()
 
-                # Show success with credentials if new user was created
-                if generated_password:
+                invite_sent = False
+                if invite_needed:
+                    try:
+                        from account_flows import send_invite
+                        invite_sent = send_invite(user_id, email=hr_email, name=hr_name,
+                                                  username=hr_username,
+                                                  company={'id': company_id, 'company_name': company_name})
+                    except Exception as _mail_err:
+                        current_app.logger.warning("HR invite e-mail failed: %s", _mail_err)
+
+                # Never echo a password back (S-2.4); say how the HR manager gets in.
+                if hr_mode == 'new':
                     return render_template('fm/register_success.html',
                         company_name=company_name,
                         company_slug=company_slug,
                         hr_name=hr_name,
                         hr_email=hr_email,
-                        hr_password=generated_password,
-                        is_new_user=True
+                        is_new_user=True,
+                        invite_needed=invite_needed,
+                        invite_sent=invite_sent
                     )
                 else:
                     return render_template('fm/register_success.html',
@@ -364,7 +390,7 @@ def create_companies_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedsoplysningerne blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         try:
@@ -416,7 +442,7 @@ def create_companies_blueprint():
 
         except Exception as e:
             current_app.logger.error(f"Error loading employees: {e}")
-            flash("Fejl ved indlaesning af medarbejdere.", "danger")
+            flash("Medarbejderne kunne ikke indlæses.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @companies_bp.route('/employees/add', methods=['GET', 'POST'])
@@ -428,7 +454,7 @@ def create_companies_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedsoplysningerne blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         # Helper: load departments for re-renders / GET dropdown.
@@ -441,6 +467,20 @@ def create_companies_blueprint():
                 return rows
             except Exception as e:
                 current_app.logger.error(f"Error loading departments: {e}")
+                return []
+
+        # Possible managers (N-2.3): active members of THIS company.
+        def _load_managers():
+            try:
+                mcur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+                mcur.execute("""SELECT cu.user_id, COALESCE(cu.full_name, u.username) AS name
+                                FROM company_users cu JOIN users u ON u.id = cu.user_id
+                                WHERE cu.company_id = %s AND cu.status = 'active' ORDER BY name""", (company['id'],))
+                rows = mcur.fetchall() or []
+                mcur.close()
+                return rows
+            except Exception as e:
+                current_app.logger.error(f"Error loading managers: {e}")
                 return []
 
         # Seat governance snapshot for the template (informational banner).
@@ -461,7 +501,7 @@ def create_companies_blueprint():
             if not seat_ok:
                 flash(seat_reason or "Du kan ikke tilføje flere medarbejdere lige nu.", "danger")
                 return render_template('fm/add_employee.html', company=company,
-                                       departments=_load_departments(),
+                                       departments=_load_departments(), managers=_load_managers(),
                                        seat_status=seat_status,
                                        active_hr_page='employees')
 
@@ -470,20 +510,40 @@ def create_companies_blueprint():
             username = request.form.get('username', '').strip()
             email = request.form.get('email', '').strip()
             password = request.form.get('password', '').strip()
+            # No password typed = invite: the employee gets a set-password link and
+            # picks their own (HR never has to know or pass on a password).
             role = request.form.get('role', 'employee')
             department = request.form.get('department', '').strip()
             job_title = request.form.get('job_title', '').strip()
             employee_id = request.form.get('employee_id', '').strip()
             hire_date = request.form.get('hire_date', '')
             employment_type = request.form.get('employment_type', 'full_time')
+            try:
+                manager_user_id = int(request.form.get('manager_user_id') or 0) or None
+            except (TypeError, ValueError):
+                manager_user_id = None
 
             # Validation
-            if not all([full_name, username, email, password, department, job_title]):
-                flash("Udfyld venligst alle paakraevede felter.", "danger")
+            if not all([full_name, username, email, department, job_title]):
+                flash("Udfyld venligst alle påkrævede felter.", "danger")
                 return render_template('fm/add_employee.html', company=company,
-                                       departments=_load_departments(),
+                                       departments=_load_departments(), managers=_load_managers(),
                                        seat_status=seat_status,
                                        active_hr_page='employees')
+
+            # S-2.4: a typed password must satisfy the policy; a blank one means
+            # "invite": the employee gets a set-password link instead.
+            if password:
+                from password_policy import validate_password
+                _pw_errors = validate_password(password, username, email)
+                if _pw_errors:
+                    for _e in _pw_errors:
+                        flash(_e, "danger")
+                    return render_template('fm/add_employee.html', company=company,
+                                           departments=_load_departments(),
+                                           seat_status=seat_status,
+                                           active_hr_page='employees')
+            invite_new_user = False
             
             try:
                 cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -500,15 +560,16 @@ def create_companies_blueprint():
                     cur.execute("SELECT id FROM company_users WHERE company_id = %s AND user_id = %s", 
                               (company['id'], user_id))
                     if cur.fetchone():
-                        flash("This user is already part of your company.", "warning")
+                        flash("Brugeren er allerede medlem af din virksomhed.", "warning")
                         cur.close()
                         return render_template('fm/add_employee.html', company=company,
-                                               departments=_load_departments(),
+                                               departments=_load_departments(), managers=_load_managers(),
                                                seat_status=seat_status,
                                                active_hr_page='employees')
                 else:
-                    # Create new user
-                    hashed_password = generate_password_hash(password)
+                    # Create new user (unusable random password until the invite is used)
+                    invite_new_user = not password
+                    hashed_password = generate_password_hash(password or secrets.token_urlsafe(48))
                     cur.execute("""
                         INSERT INTO users (username, email, password, credits, role)
                         VALUES (%s, %s, %s, 100, 'employee')
@@ -539,17 +600,24 @@ def create_companies_blueprint():
                     }
                 }
                 
+                # The manager must be an active member of THIS company (never another tenant).
+                if manager_user_id:
+                    cur.execute("SELECT 1 FROM company_users WHERE company_id = %s AND user_id = %s AND status = 'active'",
+                                (company['id'], manager_user_id))
+                    if not cur.fetchone():
+                        manager_user_id = None
+
                 # Add to company
                 cur.execute("""
                     INSERT INTO company_users (
                         company_id, user_id, username, full_name, email, role, department, job_title, employee_id,
-                        hire_date, employment_type, status, permissions, added_by
-                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s)
+                        hire_date, employment_type, status, permissions, added_by, manager_user_id
+                    ) VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'active', %s, %s, %s)
                 """, (
                     company['id'], user_id, username, full_name, email, role, department, job_title, employee_id,
                     hire_date if hire_date else None, employment_type,
                     json.dumps(permissions.get(role, permissions['employee'])),
-                    session.get('user_id')
+                    session.get('user_id'), manager_user_id
                 ))
                 
                 # Log the action
@@ -567,37 +635,51 @@ def create_companies_blueprint():
                 current_app.mysql.connection.commit()
                 cur.close()
 
+                # Integration event (webhook subscribers) - best-effort, post-commit.
+                try:
+                    from event_bus import emit_event
+                    emit_event(company['id'], 'employee.added', {
+                        'user_id': user_id, 'username': username, 'email': email,
+                        'name': full_name, 'role': role, 'department': department,
+                        'job_title': job_title, 'source': 'hr_screen'})
+                except Exception as ev_err:
+                    current_app.logger.debug(f"employee.added event skipped: {ev_err}")
+
                 # Best-effort branded welcome/invite email to the new employee.
                 # Guarded so a mail failure (or no backend at all) NEVER blocks
                 # the add — no-ops cleanly when MAIL_SERVER/MAIL_DEFAULT_SENDER
                 # are not configured (ops-gated).
                 try:
-                    from email_service import send_employee_welcome
-                    login_url = ''
-                    try:
-                        login_url = url_for('auth.login', _external=True)
-                    except Exception:
-                        login_url = ''
-                    send_employee_welcome(
-                        company,
-                        {
-                            'email': email,
-                            'name': full_name,
-                            'username': username,
-                        },
-                        login_url=login_url,
-                    )
+                    if invite_new_user:
+                        from account_flows import send_invite
+                        send_invite(user_id, email=email, name=full_name, username=username,
+                                    company=company)
+                    else:
+                        from email_service import send_employee_welcome
+                        try:
+                            login_url = url_for('auth.login', _external=True)
+                        except Exception:
+                            login_url = ''
+                        send_employee_welcome(
+                            company,
+                            {
+                                'email': email,
+                                'name': full_name,
+                                'username': username,
+                            },
+                            login_url=login_url,
+                        )
                 except Exception as mail_err:
                     current_app.logger.debug(
                         f"Employee welcome email skipped: {mail_err}"
                     )
 
-                flash(f"Employee '{username}' has been added successfully!", "success")
+                flash(f"Medarbejderen '{username}' er tilføjet.", "success")
                 return redirect(url_for('companies.employees'))
                 
             except Exception as e:
                 current_app.logger.error(f"Error adding employee: {e}")
-                flash("An error occurred while adding the employee.", "danger")
+                flash("Medarbejderen kunne ikke tilføjes. Prøv igen om lidt.", "danger")
                 if 'cur' in locals():
                     cur.close()
         
@@ -605,8 +687,8 @@ def create_companies_blueprint():
         departments = _load_departments()
 
         return render_template('fm/add_employee.html', company=company,
-                               departments=departments, seat_status=seat_status,
-                               active_hr_page='employees')
+                               departments=departments, managers=_load_managers(),
+                               seat_status=seat_status, active_hr_page='employees')
 
     @companies_bp.route('/employees/<int:user_id>/edit', methods=['GET', 'POST'])
     def edit_employee(user_id):
@@ -617,7 +699,7 @@ def create_companies_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedsoplysningerne blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         try:
@@ -633,7 +715,7 @@ def create_companies_blueprint():
             employee = cur.fetchone()
             
             if not employee:
-                flash("Employee not found.", "danger")
+                flash("Medarbejderen blev ikke fundet.", "danger")
                 cur.close()
                 return redirect(url_for('companies.employees'))
             
@@ -688,7 +770,14 @@ def create_companies_blueprint():
                 ))
                 
                 current_app.mysql.connection.commit()
-                flash("Employee details updated successfully!", "success")
+                try:
+                    from event_bus import emit_event
+                    emit_event(company['id'], 'employee.updated', {
+                        'user_id': user_id, 'role': role, 'department': department,
+                        'job_title': job_title, 'status': status, 'source': 'hr_screen'})
+                except Exception as ev_err:
+                    current_app.logger.debug(f"employee.updated event skipped: {ev_err}")
+                flash("Medarbejderens oplysninger er opdateret.", "success")
                 return redirect(url_for('companies.employees'))
             
             # Get departments for dropdown
@@ -717,152 +806,33 @@ def create_companies_blueprint():
             
         except Exception as e:
             current_app.logger.error(f"Error editing employee: {e}")
-            flash("Error loading employee details.", "danger")
+            flash("Medarbejderens oplysninger kunne ikke indlæses.", "danger")
             return redirect(url_for('companies.employees'))
 
     @companies_bp.route('/analytics')
     def analytics():
-        """Advanced company analytics dashboard"""
-        auth_check = require_company_admin()
-        if auth_check:
-            return auth_check
-
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-            cid = company['id']
-            period = request.args.get('period', '30d')
-            days = int(period.replace('d', '')) if period.endswith('d') else 30
-
-            # Employee stats
-            cur.execute("""
-                SELECT COUNT(*) as total,
-                       COUNT(CASE WHEN status = 'active' THEN 1 END) as active,
-                       COUNT(CASE WHEN added_at >= DATE_SUB(NOW(), INTERVAL %s DAY) THEN 1 END) as new_hires
-                FROM company_users WHERE company_id = %s
-            """, (days, cid))
-            emp_stats = cur.fetchone() or {}
-
-            # Course order stats
-            cur.execute("""
-                SELECT COUNT(*) as total_orders,
-                       COUNT(CASE WHEN completion_status = 'completed' THEN 1 END) as completed,
-                       COALESCE(SUM(price), 0) as total_spent
-                FROM course_orders WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            """, (cid, days))
-            order_stats = cur.fetchone() or {}
-            total_orders = order_stats.get('total_orders', 0) or 0
-            completed = order_stats.get('completed', 0) or 0
-            completion_rate = round((completed / total_orders * 100) if total_orders else 0, 1)
-
-            # Chatbot engagement
-            cur.execute("""
-                SELECT COUNT(*) as total_interactions,
-                       COUNT(DISTINCT username) as unique_users,
-                       COALESCE(AVG(response_time_ms), 0) as avg_response_time,
-                       COALESCE(AVG(interaction_quality_score), 0) as avg_quality
-                FROM chatbot_interactions WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            """, (cid, days))
-            chat_stats = cur.fetchone() or {}
-
-            # Daily activity (for chart)
-            cur.execute("""
-                SELECT DATE(created_at) as day, COUNT(*) as interactions
-                FROM chatbot_interactions WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-                GROUP BY DATE(created_at) ORDER BY day
-            """, (cid, days))
-            daily_activity = cur.fetchall()
-
-            # Department breakdown
-            cur.execute("""
-                SELECT COALESCE(cu.department, 'Ukendt') as department,
-                       COUNT(DISTINCT cu.user_id) as employees,
-                       COUNT(DISTINCT co.id) as orders,
-                       COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_orders
-                FROM company_users cu
-                LEFT JOIN course_orders co ON cu.user_id = co.user_id AND co.company_id = cu.company_id
-                WHERE cu.company_id = %s
-                GROUP BY cu.department ORDER BY employees DESC
-            """, (cid,))
-            departments = cur.fetchall()
-
-            # Top courses
-            cur.execute("""
-                SELECT product_title, COUNT(*) as order_count, COALESCE(AVG(price), 0) as avg_price
-                FROM course_orders WHERE company_id = %s
-                GROUP BY product_title ORDER BY order_count DESC LIMIT 5
-            """, (cid,))
-            top_courses = cur.fetchall()
-
-            cur.close()
-
-            return render_template('fm/company_analytics.html',
-                company=company, period=period, days=days,
-                emp_stats=emp_stats, order_stats=order_stats,
-                completion_rate=completion_rate, chat_stats=chat_stats,
-                daily_activity=daily_activity, departments=departments,
-                top_courses=top_courses)
-            
-        except Exception as e:
-            current_app.logger.error(f"Error loading analytics: {e}")
-            flash("Error loading analytics data.", "danger")
-            return redirect(url_for('hr_dashboard.dashboard'))
+        """Virksomheds-BI is merged into Læringsanalyse (N-4.1)."""
+        return redirect(url_for('hr_dashboard.learning_analytics', period=request.args.get('period', '30d')))
 
     @companies_bp.route('/benchmarking')
     def benchmarking_page():
-        """Cross-tenant industry benchmarking (anonymised peer cohort).
-
-        Mirrors the analytics route's auth + get_company_context pattern. The
-        company admin sees THEIR company's metrics next to the ANONYMISED peer
-        cohort. The benchmarking module enforces k-anonymity at the COMPANY
-        level: a cohort statistic is only computed when at least k distinct
-        tenant companies share the industry — otherwise no cohort numbers are
-        returned. The whole call is guarded; any failure renders a safe empty
-        state rather than 500-ing the dashboard.
-        """
-        auth_check = require_company_admin()
-        if auth_check:
-            return auth_check
-
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-
-        # Default safe empty state in case the module is unavailable or errors.
-        data = {
-            'industry': company.get('industry'),
-            'company_size': company.get('company_size'),
-            'cohort_size': 0,
-            'k': 5,
-            'safe': False,
-            'metrics': [],
-            'overall_note': (
-                'Benchmarking er midlertidigt utilgængelig. Prøv igen senere.'
-            ),
-        }
-        try:
-            import benchmarking
-            data = benchmarking.benchmark(company['id'])
-        except Exception as e:
-            current_app.logger.error(f"Error loading benchmarking: {e}")
-
-        return render_template('fm/benchmarking.html', company=company, data=data)
+        """The canonical benchmarking page lives in the HR workspace (N-4.1)."""
+        return redirect(url_for('hr_dashboard.benchmarking_view'))
 
     @companies_bp.route('/settings', methods=['GET', 'POST'])
     def settings():
-        """Company settings management"""
+        """Company settings management (GET lives in the settings hub, N-4.6)"""
         auth_check = require_company_admin()
         if auth_check:
             return auth_check
+        from settings_hub import hub_redirect
+        _hub = hub_redirect('virksomhed')
+        if _hub is not None:
+            return _hub
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedsoplysningerne blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         if request.method == 'POST':
@@ -880,7 +850,10 @@ def create_companies_blueprint():
                 branding_data = {
                     'language': request.form.get('language', 'da'),
                     'timezone': request.form.get('timezone', 'Europe/Copenhagen'),
-                    'support_email': request.form.get('contact_email', request.form.get('support_email', '')),
+                    # The support-email field used to be ignored because contact_email
+                    # (always posted) took precedence. The dedicated field wins now.
+                    'support_email': (request.form.get('support_email') or request.form.get('contact_email') or '').strip(),
+                    'contact_email': (request.form.get('contact_email') or '').strip(),
                     'support_phone': request.form.get('support_phone', ''),
                     'company_website': request.form.get('website', ''),
                 }
@@ -893,7 +866,7 @@ def create_companies_blueprint():
                 flash("Indstillinger gemt!", "success")
             except Exception as e:
                 current_app.logger.error(f"Settings update error: {e}")
-                flash("Fejl ved opdatering.", "danger")
+                flash("Indstillingerne kunne ikke gemmes.", "danger")
             return redirect(url_for('companies.settings'))
 
         # Load extra settings from company_settings table if exists
@@ -963,9 +936,15 @@ def create_companies_blueprint():
                     co['health'], co['health_label'] = 'green', 'Sund'
         except Exception as e:
             current_app.logger.error(f"admin_companies_list: {e}")
+        from admin_lists import filter_rows, list_args, paginate
+        _page, _per, q = list_args(request)
+        companies = filter_rows(companies, q, ['company_name', 'company_slug', 'industry', 'subscription_plan'])
+        pg = paginate(companies, _page, _per)
         return render_template(
             'fm/admin_companies.html',
-            companies=companies,
+            companies=pg['items'],
+            pg=pg,
+            q=q,
             acting_company_id=session.get('admin_acting_company_id'),
         )
 
@@ -978,7 +957,9 @@ def create_companies_blueprint():
             flash("Virksomhed ikke fundet.", "danger")
             return redirect(url_for('companies.admin_companies_list'))
 
-        session['admin_acting_company_id'] = company_id
+        # Viewing a tenant's detail page is read context only; it must not
+        # silently switch the admin into that company (S-2.5). Use the explicit
+        # "act as" button (POST /admin/impersonate/<id>) for that.
 
         if request.method == 'POST':
             action = request.form.get('action', 'save')
@@ -1017,7 +998,7 @@ def create_companies_blueprint():
                     flash("Virksomhedsindstillinger gemt.", "success")
             except Exception as e:
                 current_app.logger.error(f"admin_company_detail save: {e}")
-                flash("Fejl ved gemning.", "danger")
+                flash("Kunne ikke gemme.", "danger")
             return redirect(url_for('companies.admin_company_detail', company_id=company_id))
 
         features = company.get('features_parsed') or {}
@@ -1055,14 +1036,19 @@ def create_companies_blueprint():
     @companies_bp.route('/branding/<int:company_id>', methods=['GET', 'POST'])
     @require_company_role('company_admin', 'hr_manager')
     def branding(company_id=None):
-        """Unified branding hub for HR admins."""
+        """Unified branding hub for HR admins (opened through the settings hub)."""
+        if company_id is None:
+            from settings_hub import hub_redirect
+            _hub = hub_redirect('branding')
+            if _hub is not None:
+                return _hub
         resolved_id = _resolve_branding_company_id(company_id)
         company = get_company_by_id(resolved_id) if session.get('role') == 'admin' and resolved_id else get_company_context()
         if not company and resolved_id:
             company = get_company_by_id(resolved_id)
 
         if not company and session.get('role') != 'admin':
-            flash("Company information not found.", "danger")
+            flash("Virksomhedsoplysningerne blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         company_id = resolved_id or (company['id'] if company else None)
@@ -1124,7 +1110,7 @@ def create_companies_blueprint():
                 )
                 flash("Branding gemt!" if as_draft else "Branding publiceret!", "success")
             else:
-                flash("Fejl ved gemning af branding.", "danger")
+                flash("Branding kunne ikke gemmes.", "danger")
             return redirect(url_for('companies.branding', company_id=company_id))
 
         settings = {}

@@ -13,7 +13,7 @@ import csv
 import io
 
 from perf_cache import ttl_cache
-from auth_decorators import require_company_role
+from auth_decorators import require_company_role, can, department_scope
 
 # k-anon helpers for small-cohort suppression on per-requirement breakdowns.
 # Guarded import: a missing k-anon module must NEVER crash an HR dashboard render
@@ -24,6 +24,23 @@ try:
     import kanon as _kanon
 except Exception:  # pragma: no cover - boot-safety guard
     _kanon = None
+
+def _parse_when(value):
+    """datetime from a datetime/date/'YYYY[-MM[-DD]]' string, else None."""
+    if value is None or value == '':
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, date):
+        return datetime.combine(value, datetime.min.time())
+    s = str(value).strip()[:10]
+    for fmt in ('%Y-%m-%d', '%Y-%m', '%Y'):
+        try:
+            return datetime.strptime(s[:len(datetime.now().strftime(fmt))], fmt)
+        except ValueError:
+            continue
+    return None
+
 
 def create_hr_dashboard_blueprint():
     hr_dashboard_bp = Blueprint('hr_dashboard', __name__, template_folder='templates')
@@ -37,16 +54,59 @@ def create_hr_dashboard_blueprint():
         read-only impersonation is tracked separately.)
         """
         if 'user' not in session:
-            flash("Please log in to access HR features.", "danger")
+            flash("Log ind for at bruge HR-funktionerne.", "danger")
             return redirect(url_for('auth.login'))
 
         if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
             return None
 
-        if not session.get('company_id') or session.get('company_role') not in ['company_admin', 'hr_manager', 'department_head']:
-            flash("You don't have permission to access HR features.", "danger")
+        if not session.get('company_id') or not can('hr.view'):
+            flash("Du har ikke adgang til HR-funktionerne.", "danger")
             return redirect(url_for('dashboard.dashboard'))
         return None
+
+    def require_hr_manager_access(as_json=False, cap='hr.manage'):
+        """Capability guard for HR *administration* (S-1.6 / S-2.3).
+
+        Department heads pass require_hr_access (department-scoped views) but
+        may not reset passwords, deactivate users, edit budgets/suppliers/
+        policies/billing/departments, change the chatbot or the widget token,
+        or read company-wide analytics. Each route names the capability it
+        needs (default ``hr.manage``); the role matrix in auth_decorators
+        decides. Returns None when allowed, otherwise a denial response (JSON
+        401/403 when ``as_json`` else a flash + redirect).
+        """
+        base = require_hr_access()
+        if base is not None:
+            if as_json:
+                logged_in = 'user' in session
+                resp = jsonify({'success': False,
+                                'message': 'Du har ikke adgang til denne handling.' if logged_in else 'Log ind for at fortsætte.'})
+                resp.status_code = 403 if logged_in else 401
+                return resp
+            return base
+        if session.get('role') == 'admin' and session.get('admin_acting_company_id'):
+            return None
+        if can(cap):
+            return None
+        if as_json:
+            resp = jsonify({'success': False,
+                            'message': 'Du har ikke adgang til denne handling.'})
+            resp.status_code = 403
+            return resp
+        flash("Du har ikke adgang til denne side.", "danger")
+        return redirect(url_for('hr_dashboard.dashboard'))
+
+    def _dept_scope(company):
+        """Department a *department head* is limited to, else None (no scoping).
+
+        Company admins, HR managers and platform admins see every department.
+        A department head with no department resolves to '' so they match
+        nothing rather than everything (fail closed).
+        """
+        if session.get('role') == 'admin' or session.get('company_role') != 'department_head':
+            return None
+        return (company or {}).get('department') or ''
 
     def get_company_context():
         """Get current user's company context.
@@ -105,17 +165,52 @@ def create_hr_dashboard_blueprint():
 
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
+
+        # S-2.3: the company-wide overview is for HR; a department head works
+        # from their own department.
+        if department_scope() is not None:
+            return redirect(url_for('hr_dashboard.my_department'))
 
         try:
             ctx = _hr_dashboard_metrics(company)
         except Exception as e:
             current_app.logger.error(f"Error loading HR dashboard: {e}")
-            flash("Error loading HR dashboard data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('dashboard.dashboard'))
-        return render_template('fm/hr.html', company=company,
+        # The first-run checklist is computed in the (cached) metrics; whether THIS
+        # company dismissed it is read fresh, so dismissing takes effect at once.
+        onboarding_dismissed = False
+        try:
+            mc = current_app.mysql.connection.cursor()
+            mc.execute("SELECT 1 FROM schema_meta WHERE meta_key = %s", ("hr_onboarding_dismissed:%s" % company['id'],))
+            onboarding_dismissed = mc.fetchone() is not None
+            mc.close()
+        except Exception:
+            onboarding_dismissed = False
+        return render_template('fm/hr.html', company=company, onboarding_dismissed=onboarding_dismissed,
                                active_hr_page='dashboard', **ctx)
+
+    @hr_dashboard_bp.route('/onboarding/dismiss', methods=['POST'])
+    def dismiss_onboarding():
+        """Hide the first-run checklist for this company (N-2.2)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if company:
+            try:
+                cur = current_app.mysql.connection.cursor()
+                cur.execute(
+                    "INSERT INTO schema_meta (meta_key, meta_value) VALUES (%s, 'dismissed') "
+                    "ON DUPLICATE KEY UPDATE meta_value = VALUES(meta_value)",
+                    ("hr_onboarding_dismissed:%s" % company['id'],))
+                current_app.mysql.connection.commit()
+                cur.close()
+            except Exception as e:
+                current_app.logger.warning(f"dismiss onboarding: {e}")
+        return redirect(url_for('hr_dashboard.dashboard'))
 
     @ttl_cache(seconds=120, key=lambda company: company['id'])
     def _hr_dashboard_metrics(company):
@@ -178,7 +273,7 @@ def create_hr_dashboard_blueprint():
             total_revenue = 0
             
             for order in company_orders:
-                if order['status'] == 'pending':
+                if order['status'] in ('pending_approval', 'approved', 'pending'):
                     pending_orders_count += 1
                 elif order['status'] == 'completed':
                     completed_orders_count += 1
@@ -383,15 +478,16 @@ def create_hr_dashboard_blueprint():
             # Avg feedback for company
             cur.execute("""
                 SELECT AVG(ci.feedback_rating) AS avg_fb,
-                       COUNT(CASE WHEN ci.feedback_rating > 0 THEN 1 END) AS fb_count
+                       COUNT(CASE WHEN ci.feedback_rating <> 0 THEN 1 END) AS fb_count
                 FROM chatbot_interactions ci
                 JOIN users u ON ci.username = u.username
                 JOIN company_users cu ON u.id = cu.user_id
                 WHERE cu.company_id = %s
-                  AND ci.feedback_rating IS NOT NULL AND ci.feedback_rating > 0
+                  AND ci.feedback_rating IS NOT NULL AND ci.feedback_rating <> 0
             """, (company['id'],))
             fb_row = cur.fetchone()
-            company_avg_feedback = round(fb_row['avg_fb'] or 0, 1)
+            from feedback_scale import to_five
+            company_avg_feedback = to_five(fb_row['avg_fb'])
             company_feedback_count = fb_row['fb_count'] or 0
 
             # Phase 3.2: Recent AI insights
@@ -652,13 +748,13 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/order/<order_id>/update', methods=['POST'])
     def update_company_order_status(order_id):
         """Updates the status of a company order"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return auth_check
         
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
         
         if request.is_json:
             new_status = request.json.get('status')
@@ -666,127 +762,39 @@ def create_hr_dashboard_blueprint():
             new_status = request.form.get('status')
         
         if not new_status:
-            return jsonify({'success': False, 'message': 'No status provided'}), 400
+            return jsonify({'success': False, 'message': 'Angiv en status'}), 400
         
-        valid_statuses = ['pending', 'pending_approval', 'approved', 'rejected', 'processing', 'confirmed', 'cancelled', 'completed', 'invoiced', 'paid']
-        if new_status not in valid_statuses:
-            return jsonify({'success': False, 'message': 'Invalid status'}), 400
-        
+        import order_lifecycle as _lc
+        import order_service
+        raw_status = (new_status or '').strip().lower()
+        if raw_status not in _lc.ORDER_STATUSES and raw_status not in _lc.LEGACY_ALIASES:
+            return jsonify({'success': False, 'message': 'Ugyldig status'}), 400
+
         try:
-            cur = current_app.mysql.connection.cursor()
-            
-            # Check if order exists and belongs to the company
-            cur.execute("""
-                SELECT co.order_id FROM course_orders co
-                WHERE co.order_id = %s AND co.company_id = %s
-            """, (order_id, company['id']))
-            
-            if not cur.fetchone():
-                cur.close()
-                return jsonify({'success': False, 'message': 'Order not found or access denied'}), 404
-
-            # Budget-affecting transitions (approve charges, cancel/reject refunds)
-            # go through the single order_service so the EXACTLY-ONCE budget charge/
-            # refund (keyed on budget_charged + the order's own fiscal year) is the
-            # one source of truth. set_status reads the order's CURRENT status, so it
-            # must run BEFORE the status/payment overlay below. The overlay then just
-            # re-asserts the same status and sets the payment_status columns.
-            if new_status in ('approved', 'cancelled', 'rejected'):
-                try:
-                    import order_service
-                    _ctx = order_service.OrderContext(
-                        company_id=company['id'],
-                        user_id=session.get('user_id'),
-                        username=session.get('user'),
-                        company_role=session.get('company_role') or 'hr_manager',
-                        source='hr',
-                    )
-                    order_service.set_status(_ctx, order_id, new_status)
-                except Exception as _se:
-                    current_app.logger.warning("order_service.set_status (order update) failed: %s", _se)
-
-            # Update the order status + payment tracking
-            if new_status == 'paid':
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, payment_status = 'paid', payment_date = NOW(), updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
-            elif new_status == 'invoiced':
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, payment_status = 'invoiced', updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
-            elif new_status == 'approved':
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, payment_status = 'awaiting_payment', updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
+            _ctx = order_service.OrderContext.from_session(source='hr')
+            _ctx.company_id = company['id']
+            note = (request.json or {}).get('note') if request.is_json else request.form.get('note')
+            reason = (request.json or {}).get('reason') if request.is_json else request.form.get('reason')
+            target = _lc.normalize_status(raw_status)
+            # Every writer goes through the ONE order service: transition rules,
+            # budget charge/refund, history, emails and webhooks all live there.
+            if target == _lc.COMPLETED:
+                result = order_service.complete_order(_ctx, order_id, note=note)
             else:
-                cur.execute("""
-                    UPDATE course_orders
-                    SET status = %s, updated_at = NOW()
-                    WHERE order_id = %s AND company_id = %s
-                """, (new_status, order_id, company['id']))
-            
-            if cur.rowcount == 0:
-                cur.close()
-                return jsonify({'success': False, 'message': 'No rows updated'}), 400
-            
-            # When marking completed, also update learning progress + employee counters
-            if new_status == 'completed':
-                try:
-                    cur2 = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-                    cur2.execute("""
-                        SELECT user_id, company_id, product_handle, product_title
-                        FROM course_orders WHERE order_id = %s
-                    """, (order_id,))
-                    order_row = cur2.fetchone()
-                    if order_row and order_row['user_id']:
-                        # Update completion status on the order itself
-                        cur2.execute("""
-                            UPDATE course_orders
-                            SET completion_status = 'completed', completion_date = NOW()
-                            WHERE order_id = %s
-                        """, (order_id,))
-                        # Insert/update employee_learning_progress
-                        cur2.execute("""
-                            INSERT INTO employee_learning_progress
-                                (user_id, company_id, course_handle, content_name, status,
-                                 progress_percentage, completed_at, created_at)
-                            VALUES (%s, %s, %s, %s, 'completed', 100, NOW(), NOW())
-                            ON DUPLICATE KEY UPDATE
-                                status = 'completed', progress_percentage = 100, completed_at = NOW()
-                        """, (order_row['user_id'], order_row['company_id'],
-                              order_row.get('product_handle', ''), order_row.get('product_title', '')))
-                        # Increment total_courses_completed on company_users
-                        cur2.execute("""
-                            UPDATE company_users
-                            SET total_courses_completed = COALESCE(total_courses_completed, 0) + 1
-                            WHERE company_id = %s AND user_id = %s
-                        """, (order_row['company_id'], order_row['user_id']))
-                    cur2.close()
-                except Exception as lp_err:
-                    current_app.logger.warning(f"Learning progress update failed: {lp_err}")
-
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            current_app.logger.info(f"Company order {order_id} status updated to {new_status} by HR user {session.get('user')} for company {company['id']}")
-
+                result = order_service.set_status(_ctx, order_id, target, note=note, reason=reason)
+            if not result.get('success'):
+                code = 404 if result.get('error') == 'not_found' else 400
+                return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke opdatere ordren.'}), code
+            current_app.logger.info(f"Company order {order_id} -> {target} by {session.get('user')} (company {company['id']})")
             return jsonify({
                 'success': True,
-                'message': f'Order status updated to {new_status}',
-                'new_status': new_status
+                'message': f"Ordrestatus opdateret til {_lc.status_label(target, short=True)}.",
+                'new_status': target,
+                'status_label': _lc.status_label(target, short=True),
             })
-            
         except Exception as e:
             current_app.logger.error(f"Error updating company order status: {e}")
-            if 'cur' in locals():
-                cur.close()
-            return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+            return jsonify({'success': False, 'message': 'Der opstod en fejl ved opdatering af ordren.'}), 500
 
     @hr_dashboard_bp.route('/order/<order_id>/details')
     def company_order_details(order_id):
@@ -797,7 +805,7 @@ def create_hr_dashboard_blueprint():
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         try:
@@ -819,16 +827,38 @@ def create_hr_dashboard_blueprint():
             cur.close()
             
             if not order:
-                flash("Order not found.", "danger")
+                flash("Ordren blev ikke fundet.", "danger")
                 return redirect(url_for('hr_dashboard.dashboard'))
             
-            return render_template('fm/order_details.html', 
-                                 order=order, 
-                                 company=company)
-            
+            import order_lifecycle as _lc
+            import order_service
+            _ctx = order_service.OrderContext.from_session(source='hr')
+            _ctx.company_id = company['id']
+            history = order_service.get_history(_ctx, order_id)
+            _status = _lc.normalize_status(order.get('status'))
+            _bill = _lc.normalize_billing(order.get('billing_status'))
+            _is_admin = session.get('role') == 'admin'
+            _role = session.get('company_role')
+            return render_template('fm/order_details.html',
+                                   order=order,
+                                   company=company,
+                                   history=history,
+                                   status=_status,
+                                   status_label=_lc.status_label(_status),
+                                   status_tone=_lc.STATUS_TONES[_status],
+                                   status_labels=_lc.STATUS_LABELS_SHORT,
+                                   billing=_bill,
+                                   billing_label=_lc.billing_label(_bill),
+                                   billing_tone=_lc.BILLING_TONES[_bill],
+                                   billing_transitions=sorted(_lc.BILLING_TRANSITIONS[_bill]),
+                                   billing_labels=_lc.BILLING_LABELS,
+                                   can_bill=_is_admin or _role in ('company_admin', 'hr_manager'),
+                                   can_manage=_is_admin or _role in ('company_admin', 'hr_manager', 'department_head'),
+                                   next_statuses=_lc.allowed_targets(_status, actors={'manager'}))
+
         except Exception as e:
             current_app.logger.error(f"Error loading company order details: {e}")
-            flash("Error loading order details.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     # ── Phase 2.2: Approval Workflow ──
@@ -841,7 +871,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -855,12 +885,29 @@ def create_hr_dashboard_blueprint():
                 JOIN users u ON oa.requester_user_id = u.id
                 LEFT JOIN company_users cu ON oa.requester_user_id = cu.user_id AND oa.company_id = cu.company_id
                 WHERE oa.company_id = %s
+                  AND (%s IS NULL OR cu.department = %s)
                 ORDER BY
                     CASE oa.status WHEN 'pending' THEN 0 ELSE 1 END,
                     oa.requested_at DESC
                 LIMIT 50
-            """, (company['id'],))
+            """, (company['id'], _dept_scope(company), _dept_scope(company)))
             approvals = cur.fetchall()
+
+            # N-4.7: remaining department budget next to every request.
+            budgets = {}
+            try:
+                cur.execute("""
+                    SELECT department, annual_budget, spent FROM department_budgets
+                    WHERE company_id = %s AND fiscal_year = %s
+                """, (company['id'], date.today().year))
+                for b in cur.fetchall():
+                    budgets[b['department']] = float(b['annual_budget'] or 0) - float(b['spent'] or 0)
+            except Exception:
+                budgets = {}
+            for a in approvals:
+                rem = budgets.get(a.get('department'))
+                a['dept_remaining'] = rem
+                a['over_budget'] = bool(rem is not None and float(a.get('price') or 0) > rem)
 
             pending_count = sum(1 for a in approvals if a['status'] == 'pending')
 
@@ -908,84 +955,75 @@ def create_hr_dashboard_blueprint():
                                    approval_trend=approval_trend)
         except Exception as e:
             current_app.logger.error(f"Error loading approvals: {e}")
-            flash("Error loading approvals.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/approvals/bulk', methods=['POST'])
+    def bulk_decide_approvals():
+        """Approve or reject many requests at once (N-4.7). One result per request."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({'success': False, 'message': 'Ikke logget ind.'}), 401
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
+        data = request.get_json(silent=True) or {}
+        decision = data.get('decision')
+        ids = data.get('approval_ids') or []
+        if decision not in ('approved', 'rejected') or not ids or len(ids) > 100:
+            return jsonify({'success': False, 'message': 'Vælg 1-100 anmodninger og en beslutning.'}), 400
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        ctx.company_id = company['id']
+        res = order_service.bulk_decide(ctx, ids, decision, data.get('notes') or '',
+                                        department_scope=_dept_scope(company))
+        word = 'godkendt' if decision == 'approved' else 'afvist'
+        msg = f"{res['done']} anmodninger {word}"
+        if res['failed']:
+            msg += f", {res['failed']} kunne ikke behandles"
+        return jsonify({'success': res['done'] > 0, 'message': msg, 'done': res['done'],
+                        'failed': res['failed']})
 
     @hr_dashboard_bp.route('/approval/<int:approval_id>/decide', methods=['POST'])
     def decide_approval(approval_id):
         """Approve or reject an order"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.get_json() if request.is_json else request.form
         decision = data.get('decision')  # 'approved' or 'rejected'
         notes = data.get('notes', '')
 
         if decision not in ('approved', 'rejected'):
-            return jsonify({'success': False, 'message': 'Invalid decision'}), 400
+            return jsonify({'success': False, 'message': 'Ugyldig beslutning'}), 400
 
         try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Verify approval belongs to this company and is pending
-            cur.execute("""
-                SELECT oa.id, oa.order_id, co.price, co.department
-                FROM order_approvals oa
-                JOIN course_orders co ON oa.order_id = co.order_id
-                WHERE oa.id = %s AND oa.company_id = %s AND oa.status = 'pending'
-            """, (approval_id, company['id']))
-            approval = cur.fetchone()
-            if not approval:
-                cur.close()
-                return jsonify({'success': False, 'message': 'Approval not found or already decided'}), 404
-
-            # Update approval row (+ record approver on the order for the approve case).
-            cur.execute("""
-                UPDATE order_approvals
-                SET status = %s, notes = %s, approver_user_id = %s, decided_at = NOW()
-                WHERE id = %s
-            """, (decision, notes, session.get('user_id'), approval_id))
-            if decision == 'approved':
-                cur.execute("""
-                    UPDATE course_orders SET approved_by = %s, updated_at = NOW()
-                    WHERE order_id = %s
-                """, (session.get('user_id'), approval['order_id']))
-
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            # Authoritative order-status transition + EXACTLY-ONCE budget side
-            # effect goes through the single order_service (NOT raw SQL here).
-            # Approve: pending_approval -> 'pending' charges the budget once.
-            # Reject: -> 'rejected' refunds only if previously charged, using the
-            # order's OWN fiscal year (fixes the phantom-refund + wrong-year bug).
-            try:
-                import order_service
-                ctx = order_service.OrderContext(
-                    company_id=company['id'],
-                    user_id=session.get('user_id'),
-                    username=session.get('user'),
-                    company_role=session.get('company_role') or 'hr_manager',
-                    department=approval.get('department'),
-                    source='hr',
-                )
-                target_status = 'pending' if decision == 'approved' else 'rejected'
-                order_service.set_status(ctx, approval['order_id'], target_status)
-            except Exception as se:
-                current_app.logger.warning("order_service.set_status (approval) failed: %s", se)
-
+            import order_service
+            ctx = order_service.OrderContext.from_session(source='hr')
+            ctx.company_id = company['id']
+            # ONE transaction: approval row + order status + budget charge/refund
+            # (before, the approval committed even when the status change failed and
+            # an approved order ended up as "Afventer betaling" with no email).
+            # S-1.6: a department head may only decide their OWN department's requests.
+            result = order_service.decide_approval(ctx, approval_id, decision, notes,
+                                                   department_scope=_dept_scope(company))
+            if not result.get('success'):
+                code = {'not_found': 404, 'forbidden': 403}.get(result.get('error'), 400)
+                return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke behandle godkendelsen.'}), code
+            oid = result.get('order_id') or ''
             return jsonify({
                 'success': True,
-                'message': f'Ordre {approval["order_id"][:8]} er {"godkendt" if decision == "approved" else "afvist"}.',
-                'decision': decision
+                'message': f'Ordre {oid[:8]} er {"godkendt" if decision == "approved" else "afvist"}.',
+                'decision': decision,
+                'new_status': result.get('status'),
             })
         except Exception as e:
             current_app.logger.error(f"Error processing approval: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+            return jsonify({'success': False, 'message': 'Der opstod en fejl ved behandling af godkendelsen.'}), 500
 
     # ── Phase 2.3: Department Budget Management ──
 
@@ -997,21 +1035,24 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             import datetime as _dt
             fiscal_year = int(request.args.get('year', _dt.datetime.now().year))
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
+            # S-2.3: a department head sees (read-only) their OWN department's budget.
+            _scope = _dept_scope(company)
             cur.execute("""
                 SELECT db.*,
                        (SELECT COUNT(DISTINCT cu.user_id) FROM company_users cu
                         WHERE cu.company_id = db.company_id AND cu.department = db.department AND cu.status = 'active') AS employee_count
                 FROM department_budgets db
                 WHERE db.company_id = %s AND db.fiscal_year = %s
+                  AND (%s IS NULL OR db.department = %s)
                 ORDER BY db.department
-            """, (company['id'], fiscal_year))
+            """, (company['id'], fiscal_year, _scope, _scope))
             budgets = cur.fetchall()
 
             # Calculate totals
@@ -1026,7 +1067,8 @@ def create_hr_dashboard_blueprint():
                     SELECT department FROM department_budgets
                     WHERE company_id = %s AND fiscal_year = %s
                 )
-            """, (company['id'], company['id'], fiscal_year))
+                AND (%s IS NULL OR department = %s)
+            """, (company['id'], company['id'], fiscal_year, _scope, _scope))
             unbudgeted_depts = [r['department'] for r in cur.fetchall()]
 
             cur.close()
@@ -1040,18 +1082,18 @@ def create_hr_dashboard_blueprint():
                                    unbudgeted_depts=unbudgeted_depts)
         except Exception as e:
             current_app.logger.error(f"Error loading budgets: {e}")
-            flash("Error loading budget data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/budgets/save', methods=['POST'])
     def save_budget():
         """Create or update a department budget"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.budget.edit')
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return auth_check
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.get_json() if request.is_json else request.form
         department = data.get('department', '').strip()
@@ -1060,7 +1102,7 @@ def create_hr_dashboard_blueprint():
         fiscal_year = int(data.get('fiscal_year', _dt.datetime.now().year))
 
         if not department or annual_budget < 0:
-            return jsonify({'success': False, 'message': 'Invalid data'}), 400
+            return jsonify({'success': False, 'message': 'Ugyldige data'}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -1081,12 +1123,12 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/generate-insights', methods=['POST'])
     def generate_insights():
         """Generate AI insights for the company (on-demand)"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
-            return jsonify({'success': False, 'message': 'Not authenticated'}), 401
+            return jsonify({'success': False, 'message': 'Ikke logget ind'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
         try:
             from insights_engine import generate_company_insights
             insights = generate_company_insights(current_app._get_current_object(), company['id'])
@@ -1100,12 +1142,12 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/skill-gaps')
     def skill_gaps_view():
         """View skill gap heatmap"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             from insights_engine import get_skill_gap_analysis, get_skill_growth_trend
@@ -1262,13 +1304,13 @@ def create_hr_dashboard_blueprint():
                                    active_hr_page='skill_gaps')
         except Exception as e:
             current_app.logger.error(f"Skill gaps error: {e}")
-            flash("Fejl ved indlaesning af kompetencedata.", "danger")
+            flash("Fejl ved indlæsning af kompetencedata.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/skill-targets/save', methods=['POST'])
     def save_skill_target():
         """Add or update a skill target"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.manage')
         if auth_check:
             return jsonify({'success': False}), 401
         company = get_company_context()
@@ -1280,7 +1322,7 @@ def create_hr_dashboard_blueprint():
         target = int(data.get('target_level', 3))
         priority = data.get('priority', 'medium')
         if not skill:
-            return jsonify({'success': False, 'message': 'Skill name required'}), 400
+            return jsonify({'success': False, 'message': 'Angiv et kompetencenavn'}), 400
         try:
             cur = current_app.mysql.connection.cursor()
             cur.execute("""
@@ -1290,14 +1332,14 @@ def create_hr_dashboard_blueprint():
             """, (company['id'], dept or None, skill, target, priority, target, priority))
             current_app.mysql.connection.commit()
             cur.close()
-            return jsonify({'success': True, 'message': f'Kompetencemaal for "{skill}" gemt.'})
+            return jsonify({'success': True, 'message': f'Kompetencemål for "{skill}" gemt.'})
         except Exception as e:
             return jsonify({'success': False, 'message': str(e)}), 500
 
     @hr_dashboard_bp.route('/skill-targets/<int:target_id>/delete', methods=['POST'])
     def delete_skill_target(target_id):
         """Delete a skill target"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.manage')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -1310,7 +1352,7 @@ def create_hr_dashboard_blueprint():
                         (target_id, company['id']))
             current_app.mysql.connection.commit()
             cur.close()
-            flash("Kompetencemaal slettet.", "success")
+            flash("Kompetencemål slettet.", "success")
         except Exception as e:
             current_app.logger.error(f"Error deleting skill target: {e}")
             flash("Fejl ved sletning.", "danger")
@@ -1332,7 +1374,7 @@ def create_hr_dashboard_blueprint():
         department = data.get('department', '').strip()
 
         if not skill_name:
-            return jsonify({'success': False, 'message': 'Kompetencenavn paakraevet'}), 400
+            return jsonify({'success': False, 'message': 'Kompetencenavn påkrævet'}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -1480,12 +1522,12 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/roi')
     def roi_dashboard():
         """Training ROI dashboard"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         try:
             import datetime as _dt
@@ -1531,7 +1573,7 @@ def create_hr_dashboard_blueprint():
                                    fiscal_year=fiscal_year)
         except Exception as e:
             current_app.logger.error(f"ROI dashboard error: {e}")
-            flash("Error loading ROI data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/funnel')
@@ -1544,12 +1586,12 @@ def create_hr_dashboard_blueprint():
         journey, so the query zeroes every stage and returns an anon_note that
         the template renders as a privacy notice instead of the funnel.
         """
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         try:
@@ -1593,12 +1635,12 @@ def create_hr_dashboard_blueprint():
         (it drops any first-month cohort below k and sets anon_note), so no extra
         floor flag is needed — small cohorts simply never reach the template.
         """
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         try:
@@ -1630,13 +1672,13 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/employee-progress')
     def employee_progress():
         """Detailed employee progress tracking"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         # Get filters
@@ -1739,19 +1781,19 @@ def create_hr_dashboard_blueprint():
             
         except Exception as e:
             current_app.logger.error(f"Error loading employee progress: {e}")
-            flash("Error loading employee progress data.", "danger")
+            flash("Kunne ikke indlæse data. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/learning-analytics')
     def learning_analytics():
         """Advanced learning analytics and insights"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         # Get time period filter
@@ -1999,7 +2041,34 @@ def create_hr_dashboard_blueprint():
                 current_app.logger.error(f"Error building course-category throughput chart: {e}")
                 category_throughput = []
 
+            # AI usage block (absorbed from Virksomheds-BI, N-4.1)
+            ai_usage, ai_daily, headcount = {}, [], {}
+            try:
+                cur.execute("""
+                    SELECT COUNT(*) AS total_interactions, COUNT(DISTINCT username) AS unique_users,
+                           COALESCE(AVG(response_time_ms), 0) AS avg_response_time,
+                           COALESCE(AVG(interaction_quality_score), 0) AS avg_quality
+                    FROM chatbot_interactions WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                """, (company['id'], period_days))
+                ai_usage = cur.fetchone() or {}
+                cur.execute("""
+                    SELECT DATE(created_at) AS day, COUNT(*) AS interactions FROM chatbot_interactions
+                    WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
+                    GROUP BY DATE(created_at) ORDER BY day
+                """, (company['id'], period_days))
+                ai_daily = [{'day': str(r['day']), 'interactions': int(r['interactions'] or 0)} for r in cur.fetchall()]
+                cur.execute("""
+                    SELECT COUNT(*) AS total,
+                           COUNT(CASE WHEN status = 'active' THEN 1 END) AS active,
+                           COUNT(CASE WHEN added_at >= DATE_SUB(NOW(), INTERVAL %s DAY) THEN 1 END) AS new_hires
+                    FROM company_users WHERE company_id = %s
+                """, (period_days, company['id']))
+                headcount = cur.fetchone() or {}
+            except Exception as ai_err:
+                current_app.logger.warning(f"Learning analytics AI block skipped: {ai_err}")
+
             return render_template('fm/learning_analytics.html',
+                                 ai_usage=ai_usage, ai_daily=ai_daily, headcount=headcount,
                                  company=company,
                                  period=period,
                                  learning_trends=learning_trends,
@@ -2018,19 +2087,19 @@ def create_hr_dashboard_blueprint():
             
         except Exception as e:
             current_app.logger.error(f"Error loading learning analytics: {e}")
-            flash("Error loading learning analytics data.", "danger")
+            flash("Læringsanalysen kunne ikke indlæses. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/reports')
     def reports():
         """HR Reports and data export"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
 
         report_summary = {
@@ -2095,141 +2164,137 @@ def create_hr_dashboard_blueprint():
         except Exception as e:
             current_app.logger.warning(f"HR reports summary error: {e}")
 
+        import report_exports
         report_cards = [
-            {
-                'type': 'employee_progress',
-                'title': 'Medarbejderfremdrift',
-                'description': 'Status, afdeling, kurser, fremdrift og chatbot-engagement pr. medarbejder.',
-                'icon': 'fa-users',
-            },
-            {
-                'type': 'course_completions',
-                'title': 'Kursusgennemfoersel',
-                'description': 'Alle kursusordrer med status, dato, pris, lokation og gennemfoersel.',
-                'icon': 'fa-graduation-cap',
-            },
-            {
-                'type': 'department_summary',
-                'title': 'Afdelingsresume',
-                'description': 'Afdelingernes medarbejdere, tilmeldinger, completion rate og investering.',
-                'icon': 'fa-sitemap',
-            },
+            {'type': k, 'title': v[0], 'description': v[1], 'icon': v[2]}
+            for k, v in report_exports.REPORTS.items()
         ]
+        schedules, departments = [], []
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            cur.execute("""SELECT id, report_type, cadence, department, enabled, last_sent_at
+                           FROM company_report_schedules WHERE company_id = %s ORDER BY id""", (company['id'],))
+            schedules = cur.fetchall() or []
+            cur.execute("SELECT DISTINCT department FROM company_users WHERE company_id = %s "
+                        "AND department IS NOT NULL ORDER BY department", (company['id'],))
+            departments = [r['department'] for r in cur.fetchall()]
+            cur.close()
+        except Exception as e:
+            current_app.logger.warning(f"HR report schedules skipped: {e}")
+        for s in schedules:
+            meta = report_exports.REPORTS.get(report_exports.resolve(s['report_type']) or '')
+            s['title'] = meta[0] if meta else s['report_type']
+            s['cadence_label'] = {'daily': 'dagligt', 'weekly': 'ugentligt', 'monthly': 'månedligt'}.get(s['cadence'], s['cadence'])
 
         return render_template('fm/hr_reports.html',
                                company=company,
                                report_summary=report_summary,
                                department_rows=department_rows,
                                report_cards=report_cards,
+                               schedules=schedules, departments=departments,
+                               can_schedule=(session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')),
+                               filt_department=request.args.get('department', ''),
+                               filt_from=request.args.get('from', ''), filt_to=request.args.get('to', ''),
                                active_hr_page='reports')
 
     @hr_dashboard_bp.route('/export/<report_type>')
     def export_report(report_type):
-        """Export HR reports as CSV"""
+        """Export an HR report as Excel-friendly CSV (UTF-8 BOM, filters)."""
+        auth_check = require_hr_manager_access(cap='hr.reports.export')
+        if auth_check:
+            return auth_check
+
+        company = get_company_context()
+        if not company:
+            flash("Virksomheden blev ikke fundet.", "danger")
+            return redirect(url_for('auth.login'))
+
+        import report_exports
+        key = report_exports.resolve(report_type)
+        if not key:
+            flash("Ukendt rapporttype.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        try:
+            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            headers, rows = report_exports.build(
+                cur, company['id'], key, department=request.args.get('department') or None,
+                date_from=request.args.get('from') or None, date_to=request.args.get('to') or None)
+            cur.close()
+        except Exception as e:
+            current_app.logger.error(f"Error exporting report: {e}")
+            flash("Rapporten kunne ikke hentes lige nu. Prøv igen om lidt.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+
+        if not rows:
+            flash("Ingen data matcher dine valg endnu. Justér filtrene, eller prøv igen, når der er aktivitet.", "warning")
+            return redirect(url_for('hr_dashboard.reports'))
+
+        return current_app.response_class(
+            report_exports.to_csv(headers, rows),
+            mimetype='text/csv; charset=utf-8',
+            headers={'Content-Disposition':
+                     f'attachment; filename={key}_{company["company_slug"]}_{datetime.now().strftime("%Y%m%d")}.csv'})
+
+    # ── Scheduled reports (N-4.2) ──
+    @hr_dashboard_bp.route('/reports/schedules/<int:schedule_id>/<action>', methods=['POST'])
+    def report_schedule_action(schedule_id, action):
+        """Pause, resume or cancel a scheduled report (company-scoped)."""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
-        
         company = get_company_context()
         if not company:
-            return jsonify({'error': 'Company not found'}), 404
-        
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+            return redirect(url_for('auth.login'))
+        if action not in ('pause', 'resume', 'cancel'):
+            flash("Ukendt handling.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+            flash("Kun HR-ledere kan ændre planlagte rapporter.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        if action == 'cancel':
+            cur.execute("DELETE FROM company_report_schedules WHERE id = %s AND company_id = %s",
+                        (schedule_id, company['id']))
+        else:
+            cur.execute("UPDATE company_report_schedules SET enabled = %s WHERE id = %s AND company_id = %s",
+                        (1 if action == 'resume' else 0, schedule_id, company['id']))
+        changed = cur.rowcount
+        conn.commit()
+        cur.close()
+        flash({'pause': "Rapportplanen er sat på pause.", 'resume': "Rapportplanen er genoptaget.",
+               'cancel': "Rapportplanen er slettet."}[action] if changed else "Planen blev ikke fundet.",
+              "success" if changed else "warning")
+        return redirect(url_for('hr_dashboard.reports'))
 
-            if report_type == 'employee_progress':
-                cur.execute("""
-                    SELECT 
-                        u.username as 'Employee Name',
-                        u.email as 'Email',
-                        cu.department as 'Department',
-                        cu.job_title as 'Job Title',
-                        cu.employee_id as 'Employee ID',
-                        cu.hire_date as 'Hire Date',
-                        COUNT(DISTINCT co.id) as 'Courses Enrolled',
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as 'Courses Completed',
-                        COALESCE(AVG(elp.progress_percentage), 0) as 'Average Progress %',
-                        cu.total_chatbot_queries as 'Chatbot Interactions',
-                        cu.last_login as 'Last Login'
-                    FROM company_users cu
-                    JOIN users u ON cu.user_id = u.id
-                    LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                    LEFT JOIN employee_learning_progress elp ON cu.user_id = elp.user_id AND cu.company_id = elp.company_id
-                    WHERE cu.company_id = %s
-                    GROUP BY cu.user_id, u.username, u.email, cu.department, cu.job_title, 
-                             cu.employee_id, cu.hire_date, cu.total_chatbot_queries, cu.last_login
-                    ORDER BY u.username
-                """, (company['id'],))
-                
-            elif report_type == 'course_completions':
-                cur.execute("""
-                    SELECT 
-                        u.username as 'Employee Name',
-                        cu.department as 'Department',
-                        co.product_title as 'Course Title',
-                        co.created_at as 'Enrollment Date',
-                        co.completion_status as 'Status',
-                        co.completion_date as 'Completion Date',
-                        co.price as 'Course Price',
-                        co.variant_location as 'Location',
-                        co.variant_date as 'Course Date'
-                    FROM course_orders co
-                    JOIN users u ON co.user_id = u.id
-                    JOIN company_users cu ON co.user_id = cu.user_id AND co.company_id = cu.company_id
-                    WHERE co.company_id = %s
-                    ORDER BY co.created_at DESC
-                """, (company['id'],))
-                
-            elif report_type == 'department_summary':
-                cur.execute("""
-                    SELECT 
-                        cu.department as 'Department',
-                        COUNT(DISTINCT cu.user_id) as 'Total Employees',
-                        COUNT(DISTINCT CASE WHEN cu.status = 'active' THEN cu.user_id END) as 'Active Employees',
-                        COUNT(DISTINCT co.id) as 'Total Enrollments',
-                        COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as 'Completed Courses',
-                        ROUND(
-                            COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) * 100.0 / 
-                            NULLIF(COUNT(DISTINCT co.id), 0), 1
-                        ) as 'Completion Rate %',
-                        COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as 'Training Investment'
-                    FROM company_users cu
-                    LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                    WHERE cu.company_id = %s
-                    GROUP BY cu.department
-                    ORDER BY cu.department
-                """, (company['id'],))
-                
-            else:
-                return jsonify({'error': 'Invalid report type'}), 400
-            
-            data = cur.fetchall()
-            cur.close()
-            
-            if not data:
-                return jsonify({'error': 'No data found'}), 404
-            
-            # Create CSV
-            output = io.StringIO()
-            if data:
-                writer = csv.DictWriter(output, fieldnames=data[0].keys())
-                writer.writeheader()
-                writer.writerows(data)
-            
-            # Create response
-            response = current_app.response_class(
-                output.getvalue(),
-                mimetype='text/csv',
-                headers={
-                    'Content-Disposition': f'attachment; filename={report_type}_{company["company_slug"]}_{datetime.now().strftime("%Y%m%d")}.csv'
-                }
-            )
-            
-            return response
-            
-        except Exception as e:
-            current_app.logger.error(f"Error exporting report: {e}")
-            return jsonify({'error': 'Export failed'}), 500
+    @hr_dashboard_bp.route('/reports/schedules/add', methods=['POST'])
+    def report_schedule_add():
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        if not (session.get('role') == 'admin' or session.get('company_role') in ('company_admin', 'hr_manager')):
+            flash("Kun HR-ledere kan planlægge rapporter.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        import report_exports
+        key = report_exports.resolve(request.form.get('report_type', ''))
+        cadence = request.form.get('cadence', '')
+        if not key or cadence not in ('daily', 'weekly', 'monthly'):
+            flash("Vælg en rapport og en hyppighed.", "danger")
+            return redirect(url_for('hr_dashboard.reports'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO company_report_schedules (company_id, report_type, cadence, department, created_by, enabled)
+            VALUES (%s, %s, %s, %s, %s, 1)
+            ON DUPLICATE KEY UPDATE cadence = VALUES(cadence), enabled = 1
+        """, (company['id'], key, cadence, (request.form.get('department') or None), session.get('user_id')))
+        conn.commit()
+        cur.close()
+        flash("Rapporten er planlagt. Den sendes til HR-ledere på e-mail.", "success")
+        return redirect(url_for('hr_dashboard.reports'))
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/details')
     def employee_details(user_id):
@@ -2268,6 +2333,12 @@ def create_hr_dashboard_blueprint():
             if not employee:
                 flash("Medarbejder ikke fundet.", "danger")
                 return redirect(url_for('companies.employees'))
+
+            # S-2.3: a department head only sees people in their own department.
+            _scope = _dept_scope(company)
+            if _scope is not None and (employee.get('department') or '') != _scope:
+                flash("Du kan kun se medarbejdere i din egen afdeling.", "danger")
+                return redirect(url_for('hr_dashboard.my_department'))
 
             # Get course history
             cur.execute("""
@@ -2415,17 +2486,115 @@ def create_hr_dashboard_blueprint():
                                  employee_education=employee_education,
                                  employee_experience=employee_experience,
                                  employee_completed_courses=employee_completed_courses,
-                                 active_hr_page='employees')
+                                 active_hr_page='employee_progress')
 
         except Exception as e:
             current_app.logger.error(f"Error loading employee details: {e}")
-            flash("Fejl ved indlaesning af medarbejderdetaljer.", "danger")
+            flash("Fejl ved indlæsning af medarbejderdetaljer.", "danger")
             return redirect(url_for('companies.employees'))
+
+    # ── Employee goals with per-goal sharing (N-3.5 UI on top of S-4.4 data rules) ──
+    # One set of routes serves two callers: browsers (Accept: text/html) get the
+    # page / a flash + redirect, JSON callers get JSON. Permissions are Part A's
+    # matrix: department heads may view their own department, only HR manages.
+
+    def _wants_html():
+        return (not request.is_json) and 'text/html' in (request.headers.get('Accept') or '')
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals', methods=['GET'])
+    def employee_goals(user_id):
+        """Two sections: "Delt med medarbejderen" and "Kun synligt for HR"."""
+        html = _wants_html()
+        auth_check = require_hr_manager_access(as_json=not html, cap='hr.employees.view')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company or not _employee_in_scope(company, user_id):
+            if not html:
+                return jsonify({'success': False, 'message': 'Medarbejder ikke fundet.'}), 404
+            flash("Medarbejderen blev ikke fundet i din virksomhed.", "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        import goal_sharing_ui as goal_sharing
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            shared, private = goal_sharing.list_goals_for_hr(cur, company['id'], user_id, conn=conn)
+            emp = goal_sharing.employee_in_company(cur, company['id'], user_id) if html else None
+        finally:
+            cur.close()
+        if not html:
+            return jsonify({'success': True, 'delt_med_medarbejderen': shared, 'kun_synligt_for_hr': private})
+        return render_template('fm/employee_goals_hr.html', company=company, employee=emp,
+                               shared=shared, private=private)
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals/add', methods=['POST'])
+    def employee_goal_add(user_id):
+        auth_check = require_hr_manager_access(cap='hr.employees.manage')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company or not _employee_in_scope(company, user_id):
+            flash("Medarbejderen blev ikke fundet i din virksomhed.", "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        import goal_sharing_ui as goal_sharing
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        res = goal_sharing.add_goal(
+            cur, company_id=company['id'], employee_id=user_id, title=request.form.get('title'),
+            description=request.form.get('description'), target_date=request.form.get('target_date'),
+            share=bool(request.form.get('share')), actor_user_id=session.get('user_id'),
+            note=request.form.get('note'), conn=conn)
+        conn.commit()
+        cur.close()
+        flash("Målet er oprettet." if res.get('success') else res.get('message', 'Kunne ikke oprette målet.'),
+              "success" if res.get('success') else "danger")
+        return redirect(url_for('hr_dashboard.employee_goals', user_id=user_id))
+
+    @hr_dashboard_bp.route('/goals/<int:goal_id>/share', methods=['POST'])
+    def employee_goal_share(goal_id):
+        """Toggle "Del med medarbejder" on one goal (audit-logged, learner notified)."""
+        html = _wants_html()
+        auth_check = require_hr_manager_access(as_json=not html, cap='hr.employees.manage')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            if not html:
+                return jsonify({'success': False, 'message': 'Virksomhed ikke fundet.'}), 404
+            return redirect(url_for('auth.login'))
+        data = request.get_json(silent=True) or request.form
+        shared = str(data.get('shared', '')).lower() in ('1', 'true', 'on', 'ja')
+        note = (data.get('note') or '').strip() or None
+        import goal_sharing_ui as goal_sharing
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            res = goal_sharing.set_shared(cur, company_id=company['id'], goal_id=goal_id, shared=shared,
+                                          actor_user_id=session.get('user_id'), note=note, conn=conn)
+            conn.commit()
+        finally:
+            cur.close()
+        if res.get('success'):
+            try:
+                import learner_context
+                learner_context.clear_cache()
+            except Exception:
+                pass
+        if not html:
+            if not res.get('success'):
+                return jsonify({'success': False, 'message': res.get('message', 'Målet blev ikke fundet.')}), 404
+            return jsonify({'success': True, 'goal_id': goal_id, 'shared': shared})
+        if not res.get('success') or not res.get('employee_id'):
+            flash(res.get('message', 'Kunne ikke ændre deling.'), "danger")
+            return redirect(url_for('hr_dashboard.employee_progress'))
+        flash("Målet er nu delt med medarbejderen." if shared else "Målet er nu kun synligt for HR.", "success")
+        return redirect(url_for('hr_dashboard.employee_goals', user_id=res['employee_id']))
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/reset-password', methods=['POST'])
     def reset_employee_password(user_id):
-        """HR manager can reset an employee's password without email confirmation"""
-        auth_check = require_hr_access()
+        """HR sends the employee a one-time reset LINK (S-2.4). HR never sees,
+        chooses or relays a password."""
+        auth_check = require_hr_manager_access(cap='hr.employees.manage')
         if auth_check:
             return auth_check
 
@@ -2433,10 +2602,6 @@ def create_hr_dashboard_blueprint():
         if not company:
             flash("Virksomhed ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
-
-        import secrets
-        import string
-        from werkzeug.security import generate_password_hash
 
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -2455,35 +2620,38 @@ def create_hr_dashboard_blueprint():
                 cur.close()
                 return redirect(url_for('companies.employees'))
 
-            # Generate a random password
-            alphabet = string.ascii_letters + string.digits
-            new_password = ''.join(secrets.choice(alphabet) for _ in range(12))
-            hashed = generate_password_hash(new_password)
+            if not emp.get('email'):
+                flash("Medarbejderen har ingen e-mailadresse, så der kan ikke sendes et link.", "danger")
+                cur.close()
+                return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
-            cur.execute("UPDATE users SET password = %s WHERE id = %s", (hashed, user_id))
-
-            # Audit log
             cur.execute("""
                 INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
-                VALUES (%s, %s, 'password_reset', 'user', %s, %s)
+                VALUES (%s, %s, 'password_reset_link', 'user', %s, %s)
             """, (company['id'], session.get('user_id'), str(user_id),
-                  json.dumps({"target_username": emp['username'], "reset_by": session.get('user')})))
-
+                  json.dumps({"target_username": emp['username'], "sent_by": session.get('user')})))
             current_app.mysql.connection.commit()
             cur.close()
 
-            flash(f"Nyt password for {emp['username']}: {new_password}", "success")
+            # Nobody reads out a password any more: the employee gets a one-time
+            # link by e-mail and chooses their own (N-2.1 / S-2.4, Part A token flow).
+            from account_flows import send_reset_link
+            if send_reset_link(user_id, actor=session.get('user') or 'hr',
+                               user={'id': user_id, 'email': emp['email'], 'username': emp['username']}):
+                flash(f"Vi har sendt et link til at nulstille adgangskoden til {emp['email']}.", "success")
+            else:
+                flash("Linket kunne ikke sendes lige nu. Tjek e-mailopsætningen under Systemstatus, og prøv igen.", "danger")
             return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
         except Exception as e:
-            current_app.logger.error(f"Error resetting password: {e}")
-            flash("Fejl ved nulstilling af password.", "danger")
+            current_app.logger.error(f"Error sending reset link: {e}")
+            flash("Fejl ved afsendelse af nulstillingslink.", "danger")
             return redirect(url_for('hr_dashboard.employee_details', user_id=user_id))
 
     @hr_dashboard_bp.route('/employee/<int:user_id>/toggle-status', methods=['POST'])
     def toggle_employee_status(user_id):
         """Activate or deactivate an employee"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.employees.manage')
         if auth_check:
             return auth_check
 
@@ -2512,6 +2680,14 @@ def create_hr_dashboard_blueprint():
             current_app.mysql.connection.commit()
             cur.close()
 
+            if new_status != 'active':
+                # S-1.10: end the deactivated user's session access right away.
+                try:
+                    from auth_decorators import invalidate_session_cache
+                    invalidate_session_cache(user_id)
+                except Exception:
+                    pass
+
             label = 'aktiveret' if new_status == 'active' else 'deaktiveret'
             flash(f"Medarbejder er {label}.", "success")
         except Exception as e:
@@ -2526,241 +2702,165 @@ def create_hr_dashboard_blueprint():
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
-        
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
 
-            # Get all notifications for HR
-            cur.execute("""
-                SELECT cn.*, u.username as sender_name
-                FROM company_notifications cn
-                LEFT JOIN users u ON cn.sender_user_id = u.id
-                WHERE cn.company_id = %s 
-                AND (cn.recipient_user_id = %s OR cn.recipient_user_id IS NULL)
-                AND (cn.target_roles IS NULL OR JSON_CONTAINS(cn.target_roles, %s))
-                ORDER BY cn.is_urgent DESC, cn.created_at DESC
-                LIMIT 50
-            """, (company['id'], session.get('user_id'), json.dumps(session.get('company_role'))))
-            
-            notifications = cur.fetchall()
-            
-            cur.close()
-            
-            return render_template('fm/notifications.html',
-                                 company=company,
-                                 notifications=notifications)
-            
-        except Exception as e:
-            current_app.logger.error(f"Error loading notifications: {e}")
-            flash("Error loading notifications.", "danger")
-            return redirect(url_for('hr_dashboard.dashboard'))
+        # N-3.2: one canonical notification page for everyone. This route used to
+        # pass the wrong variable and always rendered empty; it now redirects.
+        return redirect(url_for('pages.notifications'))
 
     # ── Billing Management (off-platform billing workflow) ──
 
     @hr_dashboard_bp.route('/billing')
     def billing_overview():
-        """Billing overview — all orders with billing status"""
-        auth_check = require_hr_access()
+        """Billing overview - order billing state tracked for external invoicing."""
+        auth_check = require_hr_manager_access(cap='hr.billing')
         if auth_check:
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomheden blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
-
+        import billing_service
+        billing_filter = request.args.get('billing_status', '')
+        dept_filter = request.args.get('department', '')
+        date_from = request.args.get('from', '')
+        date_to = request.args.get('to', '')
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Filter params
-            billing_filter = request.args.get('billing_status', '')
-            dept_filter = request.args.get('department', '')
-
-            where = "co.company_id = %s AND co.status NOT IN ('cancelled', 'rejected')"
-            params = [company['id']]
-
-            if billing_filter:
-                where += " AND COALESCE(co.billing_status, 'not_invoiced') = %s"
-                params.append(billing_filter)
-            if dept_filter:
-                where += " AND co.department = %s"
-                params.append(dept_filter)
-
-            cur.execute(f"""
-                SELECT co.order_id, co.product_title, co.username, co.department,
-                       co.price, co.status, co.created_at,
-                       COALESCE(co.billing_status, 'not_invoiced') as billing_status,
-                       co.invoice_number, co.invoice_date, co.payment_date,
-                       co.payment_method, co.payment_reference, co.billing_note
-                FROM course_orders co
-                WHERE {where}
-                ORDER BY co.created_at DESC
-                LIMIT 500
-            """, tuple(params))
-            orders = cur.fetchall()
-
-            # Summary stats
-            cur.execute("""
-                SELECT
-                    COUNT(*) as total_orders,
-                    COALESCE(SUM(price), 0) as total_value,
-                    COUNT(CASE WHEN COALESCE(billing_status, 'not_invoiced') = 'not_invoiced' THEN 1 END) as not_invoiced,
-                    COALESCE(SUM(CASE WHEN COALESCE(billing_status, 'not_invoiced') = 'not_invoiced' THEN price ELSE 0 END), 0) as not_invoiced_value,
-                    COUNT(CASE WHEN billing_status = 'invoiced' THEN 1 END) as invoiced,
-                    COALESCE(SUM(CASE WHEN billing_status = 'invoiced' THEN price ELSE 0 END), 0) as invoiced_value,
-                    COUNT(CASE WHEN billing_status = 'paid' THEN 1 END) as paid,
-                    COALESCE(SUM(CASE WHEN billing_status = 'paid' THEN price ELSE 0 END), 0) as paid_value
-                FROM course_orders
-                WHERE company_id = %s AND status NOT IN ('cancelled', 'rejected')
-            """, (company['id'],))
-            summary = cur.fetchone()
-
-            # Departments for filter
+            orders = billing_service.fetch_orders(
+                cur, company_id=company['id'], billing_filter=billing_filter,
+                department=dept_filter, date_from=date_from, date_to=date_to)
+            summary = billing_service.summary(
+                cur, company_id=company['id'], department=dept_filter,
+                date_from=date_from, date_to=date_to)
             cur.execute("""
                 SELECT DISTINCT department FROM company_users
                 WHERE company_id = %s AND department IS NOT NULL
                 ORDER BY department
             """, (company['id'],))
             departments = [r['department'] for r in cur.fetchall()]
-
             cur.close()
+            can_edit = (session.get('role') == 'admin'
+                        or session.get('company_role') in ('company_admin', 'hr_manager'))
             return render_template('fm/billing.html',
                                    company=company, orders=orders, summary=summary,
-                                   departments=departments,
-                                   billing_filter=billing_filter, dept_filter=dept_filter)
-
+                                   departments=departments, can_edit=can_edit,
+                                   billing_filter=billing_filter, dept_filter=dept_filter,
+                                   date_from=date_from, date_to=date_to, scope='company')
         except Exception as e:
             current_app.logger.error(f"Error loading billing: {e}")
-            flash("Error loading billing overview.", "danger")
+            flash("Faktureringsoversigten kunne ikke indlæses. Prøv igen om lidt.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
+
+    @hr_dashboard_bp.route('/billing/export.csv')
+    def billing_export_csv():
+        """CSV for reconciliation with the external accounting system."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import billing_service
+        from flask import Response
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        orders = billing_service.fetch_orders(
+            cur, company_id=company['id'], billing_filter=request.args.get('billing_status', ''),
+            department=request.args.get('department', ''), date_from=request.args.get('from', ''),
+            date_to=request.args.get('to', ''), limit=5000)
+        cur.close()
+        body = billing_service.to_csv(orders, {company['id']: company.get('company_name')})
+        return Response(body, mimetype='text/csv; charset=utf-8', headers={
+            'Content-Disposition': 'attachment; filename="fakturering-%s.csv"' % date.today().isoformat()})
+
+    @hr_dashboard_bp.route('/billing/summary')
+    def billing_print_summary():
+        """Printable summary per company/period (browser print -> PDF if wanted)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import billing_service
+        date_from, date_to = request.args.get('from', ''), request.args.get('to', '')
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        summary = billing_service.summary(cur, company_id=company['id'], date_from=date_from, date_to=date_to)
+        orders = billing_service.fetch_orders(cur, company_id=company['id'], date_from=date_from,
+                                              date_to=date_to, limit=2000)
+        cur.close()
+        return render_template('fm/billing_summary.html', company=company, summary=summary,
+                               orders=orders, date_from=date_from, date_to=date_to,
+                               today=date.today().strftime('%d.%m.%Y'))
 
     @hr_dashboard_bp.route('/order/<order_id>/billing', methods=['POST'])
     def update_billing(order_id):
         """Update billing info on an order"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.billing')
         if auth_check:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+            return auth_check
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.json or {}
-        billing_status = data.get('billing_status', '')
-        valid_billing = ['not_invoiced', 'invoiced', 'paid', 'credited']
-        if billing_status and billing_status not in valid_billing:
-            return jsonify({'success': False, 'message': 'Invalid billing status'}), 400
-
-        try:
-            cur = current_app.mysql.connection.cursor()
-
-            # Verify order belongs to company
-            cur.execute("SELECT id FROM course_orders WHERE order_id = %s AND company_id = %s",
-                        (order_id, company['id']))
-            if not cur.fetchone():
-                cur.close()
-                return jsonify({'success': False, 'message': 'Order not found'}), 404
-
-            updates = []
-            params = []
-
-            if billing_status:
-                updates.append("billing_status = %s")
-                params.append(billing_status)
-            if 'invoice_number' in data:
-                updates.append("invoice_number = %s")
-                params.append(data['invoice_number'] or None)
-            if 'invoice_date' in data:
-                updates.append("invoice_date = %s")
-                params.append(data['invoice_date'] or None)
-            if 'payment_date' in data:
-                updates.append("payment_date = %s")
-                params.append(data['payment_date'] or None)
-            if 'payment_method' in data:
-                updates.append("payment_method = %s")
-                params.append(data['payment_method'] or None)
-            if 'payment_reference' in data:
-                updates.append("payment_reference = %s")
-                params.append(data['payment_reference'] or None)
-            if 'billing_note' in data:
-                updates.append("billing_note = %s")
-                params.append(data['billing_note'] or None)
-
-            if not updates:
-                cur.close()
-                return jsonify({'success': False, 'message': 'No fields to update'}), 400
-
-            params.extend([order_id, company['id']])
-            cur.execute(f"""
-                UPDATE course_orders SET {', '.join(updates)}
-                WHERE order_id = %s AND company_id = %s
-            """, tuple(params))
-
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            return jsonify({'success': True, 'message': f'Fakturering opdateret for {order_id}'})
-
-        except Exception as e:
-            current_app.logger.error(f"Error updating billing: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        ctx.company_id = company['id']
+        billing_status = (data.get('billing_status') or '').strip()
+        fields = dict(
+            invoice_number=data.get('invoice_number') or None,
+            invoice_date=data.get('invoice_date') or None,
+            due_date=data.get('due_date') or None,
+            payment_date=data.get('payment_date') or None,
+            payment_reference=data.get('payment_reference') or None,
+            payment_method=data.get('payment_method') or None,
+            note=(data.get('billing_note') or data.get('note') or None),
+        )
+        if billing_status:
+            result = order_service.set_billing_status(ctx, order_id, billing_status, **fields)
+        else:
+            result = order_service.update_billing_details(ctx, order_id, **fields)
+        if not result.get('success'):
+            code = 404 if result.get('error') == 'not_found' else 400
+            return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke opdatere faktureringen.'}), code
+        return jsonify({'success': True, 'message': 'Fakturering opdateret.',
+                        'billing_status': result.get('billing_status')})
 
     @hr_dashboard_bp.route('/billing/bulk', methods=['POST'])
     def bulk_billing_update():
         """Bulk update billing status for multiple orders"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.billing')
         if auth_check:
-            return jsonify({'success': False, 'message': 'Unauthorized'}), 401
+            return auth_check
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.json or {}
         order_ids = data.get('order_ids', [])
-        billing_status = data.get('billing_status', '')
-        invoice_number = data.get('invoice_number', '')
-
+        billing_status = (data.get('billing_status') or '').strip()
         if not order_ids or not billing_status:
-            return jsonify({'success': False, 'message': 'Missing order_ids or billing_status'}), 400
-        if billing_status not in ['not_invoiced', 'invoiced', 'paid', 'credited']:
-            return jsonify({'success': False, 'message': 'Invalid billing status'}), 400
+            return jsonify({'success': False, 'message': 'Vælg ordrer og en faktureringsstatus.'}), 400
         if len(order_ids) > 100:
-            return jsonify({'success': False, 'message': 'Max 100 orders per batch'}), 400
-
-        try:
-            cur = current_app.mysql.connection.cursor()
-            placeholders = ','.join(['%s'] * len(order_ids))
-
-            update_parts = ["billing_status = %s"]
-            update_params = [billing_status]
-
-            if billing_status == 'invoiced' and invoice_number:
-                update_parts.append("invoice_number = %s")
-                update_params.append(invoice_number)
-                update_parts.append("invoice_date = CURDATE()")
-            elif billing_status == 'paid':
-                update_parts.append("payment_date = CURDATE()")
-
-            update_params.extend(order_ids)
-            update_params.append(company['id'])
-
-            cur.execute(f"""
-                UPDATE course_orders SET {', '.join(update_parts)}
-                WHERE order_id IN ({placeholders}) AND company_id = %s
-            """, tuple(update_params))
-
-            updated = cur.rowcount
-            current_app.mysql.connection.commit()
-            cur.close()
-
-            return jsonify({'success': True, 'message': f'{updated} ordrer opdateret', 'updated': updated})
-
-        except Exception as e:
-            current_app.logger.error(f"Error in bulk billing update: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+            return jsonify({'success': False, 'message': 'Højst 100 ordrer ad gangen.'}), 400
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='hr')
+        ctx.company_id = company['id']
+        result = order_service.bulk_set_billing_status(
+            ctx, order_ids, billing_status,
+            invoice_number=data.get('invoice_number') or None,
+            invoice_date=data.get('invoice_date') or None,
+            due_date=data.get('due_date') or None,
+            payment_date=data.get('payment_date') or None,
+            payment_reference=data.get('payment_reference') or None,
+            note=data.get('note') or None,
+        )
+        failed = [r for r in result['results'] if not r.get('success')]
+        msg = f"{result['done']} ordrer opdateret"
+        if failed:
+            msg += f", {len(failed)} kunne ikke opdateres ({failed[0].get('message') or 'se fejl'})"
+        return jsonify({'success': result['done'] > 0, 'message': msg, 'updated': result['done'],
+                        'failed': len(failed)})
 
     # ── Phase 5: HR Chatbot ──
 
@@ -2772,7 +2872,7 @@ def create_hr_dashboard_blueprint():
             return auth_check
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         return render_template('fm/chatbot.html', company=company)
 
@@ -2781,10 +2881,10 @@ def create_hr_dashboard_blueprint():
         """HR chatbot SSE endpoint"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
         company = get_company_context()
         if not company:
-            return jsonify({"error": "No company"}), 400
+            return jsonify({"error": "Ingen virksomhed"}), 400
 
         data = request.json or {}
         user_query = (data.get('query') or '').strip()
@@ -2807,6 +2907,12 @@ def create_hr_dashboard_blueprint():
         except Exception:
             page = ''
 
+        import credit_service
+        paused = credit_service.guard(company_id=company['id'], username=session.get('user'))
+        if paused:
+            return jsonify({"error": paused, "answers": [{"type": "text", "content": paused}],
+                            "credits_paused": True}), 402
+
         from hr_agent import handle_hr_ask
         return handle_hr_ask(user_query, session, page=page)
 
@@ -2815,9 +2921,39 @@ def create_hr_dashboard_blueprint():
         """Reset the HR chatbot session memory"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
-        session.pop('hr_chat_session_id', None)
-        return jsonify({"success": True})
+            return jsonify({"error": "Ikke logget ind"}), 401
+        import hr_conversations
+        sid = hr_conversations.start_new(session, session.get('user'))
+        return jsonify({"success": True, "session_id": sid})
+
+    @hr_dashboard_bp.route('/chatbot/history')
+    def hr_chatbot_history():
+        """The current HR conversation + the user's past ones (panel restore, full page list)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"error": "Ikke logget ind"}), 401
+        import hr_conversations
+        username = session.get('user')
+        sid = hr_conversations.resolve_sid(session, username)
+        return jsonify({
+            "session_id": sid,
+            "messages": hr_conversations.load(username, sid),
+            "sessions": hr_conversations.list_sessions(username),
+        })
+
+    @hr_dashboard_bp.route('/chatbot/open', methods=['POST'])
+    def hr_chatbot_open():
+        """Continue one of the user's own past HR conversations."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return jsonify({"error": "Ikke logget ind"}), 401
+        import hr_conversations
+        sid = ((request.get_json(silent=True) or {}).get('session_id') or '').strip()
+        messages = hr_conversations.open_session(session.get('user'), sid)
+        if messages is None:
+            return jsonify({"error": "Samtalen blev ikke fundet."}), 404
+        session['hr_chat_session_id'] = sid
+        return jsonify({"session_id": sid, "messages": messages})
 
     @hr_dashboard_bp.route('/chatbot/sessions')
     def chatbot_sessions():
@@ -2904,7 +3040,7 @@ def create_hr_dashboard_blueprint():
         """Get proactive notification alerts for HR"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
         company = get_company_context()
         if not company:
             return jsonify({"alerts": []})
@@ -2969,7 +3105,7 @@ def create_hr_dashboard_blueprint():
             # Upcoming course deadlines (courses starting within 7 days)
             cur.execute("""
                 SELECT COUNT(*) as cnt FROM course_orders
-                WHERE company_id = %s AND status IN ('confirmed', 'processing')
+                WHERE company_id = %s AND status IN ('booked', 'confirmed', 'processing')
                 AND started_at IS NOT NULL AND started_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)
             """, (company['id'],))
             upcoming = cur.fetchone()['cnt']
@@ -2985,14 +3121,10 @@ def create_hr_dashboard_blueprint():
                 })
 
             # Unread company notifications
-            user_id = session.get('user_id')
-            if user_id:
-                cur.execute("""
-                    SELECT COUNT(*) as cnt FROM company_notifications
-                    WHERE company_id = %s AND is_read = 0
-                    AND (recipient_user_id = %s OR recipient_user_id IS NULL)
-                """, (company['id'], user_id))
-                unread = cur.fetchone()['cnt']
+            username = session.get('user')
+            if username:
+                from notification_service import unread_count as _unread_count
+                unread = _unread_count(cur, username)
                 if unread > 0:
                     alerts.append({
                         "type": "notification",
@@ -3000,7 +3132,7 @@ def create_hr_dashboard_blueprint():
                         "color": "secondary",
                         "title": f"{unread} ulæste notifikationer",
                         "message": "Du har ulæste beskeder.",
-                        "action_url": url_for('hr_dashboard.notifications'),
+                        "action_url": url_for('pages.notifications'),
                         "priority": 4
                     })
 
@@ -3017,15 +3149,15 @@ def create_hr_dashboard_blueprint():
         """Dismiss/mark notification as read"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({"error": "Unauthorized"}), 401
+            return jsonify({"error": "Ikke logget ind"}), 401
 
         data = request.json or {}
         notif_id = data.get('notification_id')
         if notif_id:
             try:
+                from notification_service import mark_read as _mark_read
                 cur = current_app.mysql.connection.cursor()
-                cur.execute("UPDATE company_notifications SET is_read = 1 WHERE id = %s AND company_id = %s",
-                            (notif_id, session.get('company_id')))
+                _mark_read(cur, session.get('user'), notif_id)
                 current_app.mysql.connection.commit()
                 cur.close()
             except Exception:
@@ -3073,7 +3205,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/departments/add', methods=['POST'])
     def add_department():
         """Add a new department"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -3092,7 +3224,7 @@ def create_hr_dashboard_blueprint():
             import hashlib
             code = 'D-' + hashlib.md5(name.encode()).hexdigest()[:6].upper()
         if not name:
-            flash("Afdelingsnavn er paakraevet.", "danger")
+            flash("Afdelingsnavn er påkrævet.", "danger")
             return redirect(url_for('hr_dashboard.departments'))
 
         try:
@@ -3116,6 +3248,8 @@ def create_hr_dashboard_blueprint():
                         (company_id, department_name, department_code, description, learning_budget_per_employee)
                     VALUES (%s, %s, %s, %s, %s)
                 """, (company['id'], name, code, description or None, budget_val))
+                import department_service
+                department_service.sync_budget_from_per_employee(cur, company['id'], name, budget_val)
                 current_app.mysql.connection.commit()
                 flash(f"Afdelingen '{name}' er oprettet.", "success")
             cur.close()
@@ -3131,7 +3265,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/departments/<int:dept_id>/edit', methods=['POST'])
     def edit_department(dept_id):
         """Edit an existing department"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -3145,7 +3279,7 @@ def create_hr_dashboard_blueprint():
         budget = request.form.get('learning_budget_per_employee', '0').strip()
 
         if not name:
-            flash("Afdelingsnavn er paakraevet.", "danger")
+            flash("Afdelingsnavn er påkrævet.", "danger")
             return redirect(url_for('hr_dashboard.departments'))
 
         # Auto-generate code if empty (unique constraint requires non-empty)
@@ -3177,12 +3311,13 @@ def create_hr_dashboard_blueprint():
                 WHERE id = %s AND company_id = %s
             """, (name, code, description or None, budget_val, dept_id, company['id']))
 
-            # Update employees if name changed
+            # A rename cascades to employees, budgets, policies, skill targets,
+            # compliance requirements and orders (N-3.5); the per-employee budget
+            # feeds department_budgets instead of sitting unused.
+            import department_service
             if old_name != name:
-                cur.execute("""
-                    UPDATE company_users SET department = %s
-                    WHERE company_id = %s AND department = %s
-                """, (name, company['id'], old_name))
+                department_service.rename_department(cur, company['id'], old_name, name)
+            department_service.sync_budget_from_per_employee(cur, company['id'], name, budget_val)
 
             current_app.mysql.connection.commit()
             cur.close()
@@ -3196,7 +3331,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/departments/<int:dept_id>/delete', methods=['POST'])
     def delete_department(dept_id):
         """Delete a department"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -3240,97 +3375,20 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/my-department')
     def my_department():
-        """Department head view — see own department's employees, training, budget, approvals."""
+        """Merged into "Mit team" (N-3.5): redirect to the department view."""
         if 'user' not in session:
-            flash("Please log in.", "danger")
+            flash("Log ind for at se din afdeling.", "danger")
             return redirect(url_for('auth.login'))
-
-        if not session.get('company_id') or session.get('company_role') not in ('department_head', 'hr_manager', 'company_admin'):
-            flash("Du har ikke adgang til denne side.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
-
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-
-        user_department = company.get('department', '')
-        if not user_department:
-            flash("Din afdeling er ikke sat op.", "warning")
-            return redirect(url_for('hr_dashboard.dashboard'))
-
-        try:
-            cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-
-            # Department employees
-            cur.execute("""
-                SELECT cu.user_id, u.username, u.email, cu.job_title, cu.role, cu.status,
-                       cu.hire_date, cu.last_login, cu.total_chatbot_queries,
-                       cu.total_courses_completed
-                FROM company_users cu
-                JOIN users u ON cu.user_id = u.id
-                WHERE cu.company_id = %s AND cu.department = %s
-                ORDER BY u.username
-            """, (company['id'], user_department))
-            employees = cur.fetchall()
-
-            # Department orders
-            cur.execute("""
-                SELECT co.order_id, co.product_title, co.price, co.status,
-                       co.completion_status, co.created_at, u.username
-                FROM course_orders co
-                JOIN users u ON co.user_id = u.id
-                WHERE co.company_id = %s AND co.department = %s
-                ORDER BY co.created_at DESC
-                LIMIT 20
-            """, (company['id'], user_department))
-            orders = cur.fetchall()
-
-            # Department budget
-            import datetime as _dt
-            fiscal_year = _dt.datetime.now().year
-            cur.execute("""
-                SELECT annual_budget, spent
-                FROM department_budgets
-                WHERE company_id = %s AND department = %s AND fiscal_year = %s
-            """, (company['id'], user_department, fiscal_year))
-            budget_row = cur.fetchone()
-            budget = {
-                'annual_budget': float(budget_row['annual_budget']) if budget_row else 0,
-                'spent': float(budget_row['spent']) if budget_row else 0,
-            }
-            budget['remaining'] = budget['annual_budget'] - budget['spent']
-            budget['utilization'] = round(budget['spent'] / budget['annual_budget'] * 100, 1) if budget['annual_budget'] > 0 else 0
-
-            # Pending approvals for this department
-            cur.execute("""
-                SELECT COUNT(*) AS cnt FROM order_approvals oa
-                JOIN course_orders co ON oa.order_id = co.order_id
-                WHERE oa.company_id = %s AND co.department = %s AND oa.status = 'pending'
-            """, (company['id'], user_department))
-            pending_count = cur.fetchone()['cnt'] or 0
-
-            cur.close()
-
-            return render_template('fm/my_department.html',
-                                   company=company,
-                                   department=user_department,
-                                   employees=employees,
-                                   orders=orders,
-                                   budget=budget,
-                                   pending_count=pending_count,
-                                   fiscal_year=fiscal_year)
-        except Exception as e:
-            current_app.logger.error(f"My department error: {e}")
-            flash("Error loading department data.", "danger")
-            return redirect(url_for('hr_dashboard.dashboard'))
+        return redirect(url_for('hr_dashboard.team_cockpit', scope='department'))
 
     # ── Learning Paths Management ──
     @hr_dashboard_bp.route('/learning-paths')
     def learning_paths():
-        if 'company_id' not in session:
-            flash("Virksomhedsadgang kraevet.", "danger")
-            return redirect(url_for('auth.login'))
+        # S-1.5: lists every colleague (names, departments) for the assignment
+        # dropdown, so it is HR-only. Previously any company member got in.
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
         company_id = session['company_id']
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
@@ -3386,8 +3444,11 @@ def create_hr_dashboard_blueprint():
             for e in enrollments_raw:
                 enrollments[e['learning_path_id']].append(e)
 
+            import learning_path_service
+            path_steps = {p['id']: learning_path_service.get_steps(cur, company_id, p['id']) for p in paths}
             cur.close()
             return render_template('fm/learning_paths.html',
+                                   path_steps=path_steps,
                                    paths=paths,
                                    employees=employees,
                                    departments=departments,
@@ -3395,17 +3456,17 @@ def create_hr_dashboard_blueprint():
                                    active_hr_page='learning_paths')
         except Exception as e:
             current_app.logger.error(f"Learning paths error: {e}")
-            flash("Fejl ved indlaesning af laeringsforloeb.", "danger")
+            flash("Fejl ved indlæsning af læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.dashboard'))
 
     @hr_dashboard_bp.route('/learning-paths/create', methods=['POST'])
     def create_learning_path():
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager', 'department_head'):
-            flash("Du har ikke rettigheder til at oprette laeringsforloeb.", "danger")
+            flash("Du har ikke rettigheder til at oprette læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
         path_name = request.form.get('path_name', '').strip()
@@ -3413,7 +3474,7 @@ def create_hr_dashboard_blueprint():
         difficulty_level = request.form.get('difficulty_level', 'beginner')
 
         if not path_name:
-            flash("Navn paa laeringsforloeb er paakraevet.", "warning")
+            flash("Navn paa læringsforløb er påkrævet.", "warning")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
         try:
@@ -3424,20 +3485,20 @@ def create_hr_dashboard_blueprint():
             """, (company_id, path_name, path_category, difficulty_level))
             current_app.mysql.connection.commit()
             cur.close()
-            flash(f"Laeringsforloeb '{path_name}' oprettet.", "success")
+            flash(f"Læringsforløb '{path_name}' oprettet.", "success")
         except Exception as e:
             current_app.logger.error(f"Create learning path error: {e}")
-            flash("Fejl ved oprettelse af laeringsforloeb.", "danger")
+            flash("Fejl ved oprettelse af læringsforløb.", "danger")
         return redirect(url_for('hr_dashboard.learning_paths'))
 
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/assign', methods=['POST'])
     def assign_learning_path(path_id):
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager', 'department_head'):
-            flash("Du har ikke rettigheder til at tildele laeringsforloeb.", "danger")
+            flash("Du har ikke rettigheder til at tildele læringsforløb.", "danger")
             return redirect(url_for('hr_dashboard.learning_paths'))
 
         assign_type = request.form.get('assign_type', 'individual')
@@ -3464,34 +3525,65 @@ def create_hr_dashboard_blueprint():
                 flash("Ingen medarbejdere valgt.", "warning")
                 return redirect(url_for('hr_dashboard.learning_paths'))
 
-            assigned = 0
-            for uid in user_ids:
-                # Check if already enrolled
-                cur.execute("""
-                    SELECT id FROM employee_learning_progress
-                    WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
-                """, (uid, company_id, path_id))
-                if cur.fetchone():
-                    continue
-                cur.execute("""
-                    INSERT INTO employee_learning_progress
-                    (user_id, company_id, learning_path_id, status, progress_percentage, due_date, started_at)
-                    VALUES (%s, %s, %s, 'not_started', 0, %s, NOW())
-                """, (uid, company_id, path_id, due_date))
-                assigned += 1
+            import learning_path_service
+            import order_service
+            ctx = order_service.OrderContext.from_session(source='hr')
+            ctx.company_id = company_id
+            res = learning_path_service.assign_path(cur, ctx, company_id, path_id, user_ids,
+                                                    due_date=due_date, sender_id=session.get('user_id'))
+            assigned = res['assigned']
 
             current_app.mysql.connection.commit()
             cur.close()
-            flash(f"{assigned} medarbejder(e) tildelt laeringsforloeb.", "success")
+            msg = f"{assigned} medarbejder(e) tildelt læringsforløbet."
+            if res['orders']:
+                msg += f" {res['orders']} kursusbestillinger er sendt til godkendelse."
+            if res['order_failures']:
+                msg += f" {res['order_failures']} bestillinger kunne ikke oprettes."
+            flash(msg, "success")
         except Exception as e:
             current_app.logger.error(f"Assign learning path error: {e}")
-            flash("Fejl ved tildeling af laeringsforloeb.", "danger")
+            flash("Tildelingen mislykkedes. Prøv igen om lidt.", "danger")
+        return redirect(url_for('hr_dashboard.learning_paths'))
+
+    @hr_dashboard_bp.route('/learning-paths/<int:path_id>/steps', methods=['POST'])
+    def save_learning_path_steps(path_id):
+        """Edit a path's steps. One step per line: ``kursus-handle`` (catalog step,
+        ordered on assignment) or free text (guidance). Every save is versioned."""
+        if 'company_id' not in session:
+            return jsonify({'error': 'Ikke logget ind'}), 401
+        if session.get('company_role') not in ('company_admin', 'hr_manager'):
+            flash("Kun HR-ledere kan redigere forløbets trin.", "danger")
+            return redirect(url_for('hr_dashboard.learning_paths'))
+        import learning_path_service
+        steps = []
+        for line in (request.form.get('steps') or '').splitlines():
+            line = line.strip()
+            if not line:
+                continue
+            if line.startswith('#'):
+                steps.append({'title': line.lstrip('# ').strip()})
+            else:
+                handle, _, title = line.partition('|')
+                steps.append({'course_handle': handle.strip(), 'title': title.strip()})
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        res = learning_path_service.save_steps(cur, session['company_id'], path_id, steps,
+                                               actor_user_id=session.get('user_id'),
+                                               note=(request.form.get('note') or None))
+        if res.get('success'):
+            conn.commit()
+            flash(f"Trin gemt (version {res['version']}).", "success")
+        else:
+            conn.rollback()
+            flash(res.get('message', 'Trinene kunne ikke gemmes.'), "danger")
+        cur.close()
         return redirect(url_for('hr_dashboard.learning_paths'))
 
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/toggle', methods=['POST'])
     def toggle_learning_path(path_id):
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager'):
@@ -3505,7 +3597,7 @@ def create_hr_dashboard_blueprint():
             """, (path_id, company_id))
             current_app.mysql.connection.commit()
             cur.close()
-            flash("Laeringsforloeb status opdateret.", "success")
+            flash("Læringsforløb status opdateret.", "success")
         except Exception as e:
             current_app.logger.error(f"Toggle learning path error: {e}")
             flash("Fejl ved opdatering.", "danger")
@@ -3514,7 +3606,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/learning-paths/<int:path_id>/delete', methods=['POST'])
     def delete_learning_path(path_id):
         if 'company_id' not in session:
-            return jsonify({'error': 'Unauthorized'}), 401
+            return jsonify({'error': 'Ikke logget ind'}), 401
         company_id = session['company_id']
         role = session.get('company_role', '')
         if role not in ('company_admin', 'hr_manager'):
@@ -3533,7 +3625,7 @@ def create_hr_dashboard_blueprint():
             """, (path_id, company_id))
             current_app.mysql.connection.commit()
             cur.close()
-            flash("Laeringsforloeb slettet.", "success")
+            flash("Læringsforløb slettet.", "success")
         except Exception as e:
             current_app.logger.error(f"Delete learning path error: {e}")
             flash("Fejl ved sletning.", "danger")
@@ -3704,7 +3796,7 @@ def create_hr_dashboard_blueprint():
                 return redirect(url_for('hr_dashboard.internal_courses'))
         except Exception as e:
             current_app.logger.error(f"Error loading course: {e}")
-            flash("Fejl ved indlaesning af kursus.", "danger")
+            flash("Fejl ved indlæsning af kursus.", "danger")
             return redirect(url_for('hr_dashboard.internal_courses'))
 
         if request.method == 'POST':
@@ -3953,9 +4045,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/toggle', methods=['POST'])
     def toggle_supplier():
         """Toggle a supplier active/inactive"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({"success": False}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({"success": False}), 400
@@ -3965,7 +4057,7 @@ def create_hr_dashboard_blueprint():
         is_active = int(data.get('is_active', 1))
 
         if not vendor_name:
-            return jsonify({"success": False, "message": "Vendor name required"}), 400
+            return jsonify({"success": False, "message": "Angiv et leverandørnavn"}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -3983,9 +4075,9 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/bulk-toggle', methods=['POST'])
     def bulk_toggle_suppliers():
         """Bulk toggle suppliers"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
-            return jsonify({"success": False}), 401
+            return auth_check
         company = get_company_context()
         if not company:
             return jsonify({"success": False}), 400
@@ -3995,7 +4087,7 @@ def create_hr_dashboard_blueprint():
         is_active = int(data.get('is_active', 1))
 
         if not vendor_names:
-            return jsonify({"success": False, "message": "No vendors selected"}), 400
+            return jsonify({"success": False, "message": "Vælg mindst én leverandør"}), 400
 
         try:
             cur = current_app.mysql.connection.cursor()
@@ -4049,7 +4141,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/agreements/save', methods=['POST'])
     def save_supplier_agreement():
         """Create or update a supplier discount agreement"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4116,7 +4208,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/suppliers/agreements/<int:agreement_id>/delete', methods=['POST'])
     def delete_supplier_agreement(agreement_id):
         """Delete a supplier agreement"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4185,7 +4277,7 @@ def create_hr_dashboard_blueprint():
     @require_company_role('company_admin', 'hr_manager')
     def save_approval_policy():
         """Create or update an auto-approval policy (company-wide or per-dept)."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4247,7 +4339,7 @@ def create_hr_dashboard_blueprint():
     @require_company_role('company_admin', 'hr_manager')
     def delete_approval_policy(policy_id):
         """Delete an auto-approval policy (company-scoped)."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4277,7 +4369,7 @@ def create_hr_dashboard_blueprint():
     def benchmarking_view():
         """Anonymous industry benchmark for the company (k-anonymity enforced
         inside benchmarking.benchmark)."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4302,10 +4394,14 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/chatbot-settings', methods=['GET', 'POST'])
     def chatbot_settings():
-        """Configure chatbot behavior for company employees"""
-        auth_check = require_hr_access()
+        """Configure chatbot behavior for company employees (GET: settings hub, N-4.6)"""
+        auth_check = require_hr_manager_access()
         if auth_check:
             return auth_check
+        from settings_hub import hub_redirect
+        _hub = hub_redirect('chatbot')
+        if _hub is not None:
+            return _hub
         company = get_company_context()
         if not company:
             flash("Virksomhed ikke fundet.", "danger")
@@ -4367,10 +4463,14 @@ def create_hr_dashboard_blueprint():
 
     @hr_dashboard_bp.route('/widget')
     def widget_creator():
-        """Widget embed code generator with live preview"""
+        """Widget embed code generator with live preview (opened through the settings hub)"""
         auth_check = require_hr_access()
         if auth_check:
             return auth_check
+        from settings_hub import hub_redirect
+        _hub = hub_redirect('chatbot', view='widget')
+        if _hub is not None:
+            return _hub
 
         company = get_company_context()
         if not company:
@@ -4389,7 +4489,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/widget/save', methods=['POST'])
     def widget_save():
         """Save widget customization settings"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -4451,7 +4551,7 @@ def create_hr_dashboard_blueprint():
     @hr_dashboard_bp.route('/widget/regenerate-token', methods=['POST'])
     def widget_regenerate_token():
         """Regenerate the widget authentication token"""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(as_json=True)
         if auth_check:
             return auth_check
 
@@ -4492,6 +4592,19 @@ def create_hr_dashboard_blueprint():
             return redirect(url_for('auth.login'))
 
         manager_id = session.get('user_id')
+        # ONE "Mit team" page (N-3.5): direct reports OR the whole department.
+        # HR roles may look at any department via ?department=; everyone else
+        # only at their own.
+        scope = 'department' if request.args.get('scope') == 'department' else 'reports'
+        my_dept = (company.get('department') or '').strip()
+        dept = my_dept
+        req_dept = (request.args.get('department') or '').strip()
+        if req_dept and (session.get('role') == 'admin'
+                         or session.get('company_role') in ('company_admin', 'hr_manager')):
+            dept, scope = req_dept, 'department'
+        if scope == 'department' and not dept:
+            scope = 'reports'
+        dept_budget, dept_orders = None, []
         reports = []
         pending_for_me = []
         summary = {'team_size': 0, 'avg_progress': 0, 'pending_approvals': 0,
@@ -4516,10 +4629,10 @@ def create_hr_dashboard_blueprint():
                     ON cu.user_id = co.user_id AND cu.company_id = co.company_id
                 LEFT JOIN employee_learning_progress elp
                     ON cu.user_id = elp.user_id AND cu.company_id = elp.company_id
-                WHERE cu.company_id = %s AND cu.manager_user_id = %s
+                WHERE cu.company_id = %s AND """ + ("cu.department = %s" if scope == 'department' else "cu.manager_user_id = %s") + """
                 GROUP BY cu.user_id, name, u.username, cu.department, cu.job_title, cu.status
                 ORDER BY name
-            """, (company['id'], manager_id))
+            """, (company['id'], dept if scope == 'department' else manager_id))
             reports = cur.fetchall() or []
 
             report_ids = [r['user_id'] for r in reports if r.get('user_id')]
@@ -4558,11 +4671,32 @@ def create_hr_dashboard_blueprint():
                 JOIN users requ ON oa.requester_user_id = requ.id
                 WHERE oa.company_id = %s
                   AND oa.status = 'pending'
-                  AND reqcu.manager_user_id = %s
+                  AND """ + ("co.department = %s" if scope == 'department' else "reqcu.manager_user_id = %s") + """
                 ORDER BY oa.requested_at DESC
                 LIMIT 50
-            """, (company['id'], manager_id))
+            """, (company['id'], dept if scope == 'department' else manager_id))
             pending_for_me = cur.fetchall() or []
+
+            if scope == 'department':
+                cur.execute("""
+                    SELECT annual_budget, spent FROM department_budgets
+                    WHERE company_id = %s AND department = %s AND fiscal_year = %s
+                """, (company['id'], dept, date.today().year))
+                b = cur.fetchone()
+                annual = float(b['annual_budget'] or 0) if b else 0
+                spent = float(b['spent'] or 0) if b else 0
+                dept_budget = {'annual': annual, 'spent': spent, 'remaining': annual - spent,
+                               'utilization': round(spent / annual * 100, 1) if annual > 0 else 0,
+                               'has_budget': bool(b)}
+                cur.execute("""
+                    SELECT co.order_id, co.product_title, co.price, co.status, co.created_at,
+                           COALESCE(cu.full_name, co.username) AS name
+                    FROM course_orders co
+                    LEFT JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
+                    WHERE co.company_id = %s AND co.department = %s
+                    ORDER BY co.created_at DESC LIMIT 15
+                """, (company['id'], dept))
+                dept_orders = cur.fetchall() or []
             cur.close()
 
             # Summary KPIs.
@@ -4575,7 +4709,7 @@ def create_hr_dashboard_blueprint():
                     sum(float(r.get('avg_progress') or 0) for r in reports) / len(reports), 1)
         except Exception as e:
             current_app.logger.error(f"Error loading team cockpit: {e}")
-            flash("Fejl ved indlaesning af teamoverblik.", "danger")
+            flash("Teamoverblikket kunne ikke indlæses. Prøv igen om lidt.", "danger")
             reports, pending_for_me = [], []
 
         return render_template('fm/team_cockpit.html',
@@ -4583,6 +4717,8 @@ def create_hr_dashboard_blueprint():
                                reports=reports,
                                pending_for_me=pending_for_me,
                                summary=summary,
+                               scope=scope, department=dept, my_department=my_dept,
+                               dept_budget=dept_budget, dept_orders=dept_orders,
                                active_hr_page='team')
 
     # ══════════════════════════════════════════════════════════════════
@@ -4593,7 +4729,7 @@ def create_hr_dashboard_blueprint():
         """Read compliance_requirements (company-scoped) and DERIVE per-employee
         status (compliant / expiring / overdue) from completed courses within the
         recurrence window. Nothing is stored; status is computed at read time."""
-        auth_check = require_hr_access()
+        auth_check = require_hr_manager_access(cap='hr.analytics')
         if auth_check:
             return auth_check
         company = get_company_context()
@@ -4650,15 +4786,35 @@ def create_hr_dashboard_blueprint():
                     SELECT cu.user_id,
                            LOWER(COALESCE(ucc.course_handle, '')) AS handle,
                            LOWER(COALESCE(ucc.course_title, '')) AS title,
-                           ucc.completed_at AS completed_at
+                           ucc.completed_date AS completed_at
                     FROM user_completed_courses ucc
-                    JOIN company_users cu
-                        ON ucc.user_id = cu.user_id AND cu.company_id = %s
+                    JOIN users uu ON uu.username = ucc.username
+                    JOIN company_users cu ON cu.user_id = uu.id AND cu.company_id = %s
                     WHERE cu.status = 'active'
                 """, (company['id'],))
-                completions += (cur.fetchall() or [])
+                for c in (cur.fetchall() or []):
+                    c['completed_at'] = _parse_when(c.get('completed_at'))
+                    completions.append(c)
             except Exception:
                 # Table may not exist on this tenant; course_orders is sufficient.
+                pass
+            # Certifications count too (N-4.3): a valid certificate satisfies a
+            # requirement whose title/category/handle it matches. An explicit
+            # expiry date wins over the recurrence window.
+            try:
+                cur.execute("""
+                    SELECT cu.user_id, LOWER(COALESCE(uc.name, '')) AS title, '' AS handle,
+                           uc.issue_date AS completed_at, uc.expiry_date AS expiry
+                    FROM user_certifications uc
+                    JOIN users uu ON uu.username = uc.username
+                    JOIN company_users cu ON cu.user_id = uu.id AND cu.company_id = %s
+                    WHERE cu.status = 'active'
+                """, (company['id'],))
+                for c in (cur.fetchall() or []):
+                    c['completed_at'] = _parse_when(c.get('completed_at')) or datetime.now()
+                    c['expiry'] = _parse_when(c.get('expiry'))
+                    completions.append(c)
+            except Exception:
                 pass
             cur.close()
 
@@ -4686,6 +4842,7 @@ def create_hr_dashboard_blueprint():
 
                 # Find the most recent matching completion.
                 best = None
+                explicit_expiry = None
                 for c in comp_by_user.get(emp['user_id'], []):
                     matched = False
                     if handle and (handle == c['handle'] or handle in c['title']):
@@ -4705,9 +4862,14 @@ def create_hr_dashboard_blueprint():
                             continue
                     if best is None or when > best:
                         best = when
+                        explicit_expiry = c.get('expiry')
 
                 if best is None:
                     return 'overdue'  # missing == overdue per the contract
+                if explicit_expiry is not None:
+                    if explicit_expiry < now:
+                        return 'overdue'
+                    return 'expiring' if (explicit_expiry - now).days < 60 else 'compliant'
                 if recurrence <= 0:
                     return 'compliant'  # one-time, never expires
                 expiry = best + timedelta(days=recurrence * 30)
@@ -4746,7 +4908,7 @@ def create_hr_dashboard_blueprint():
             roles = sorted({(e.get('role') or '') for e in employees if e.get('role')})
         except Exception as e:
             current_app.logger.error(f"Error loading compliance matrix: {e}")
-            flash("Fejl ved indlaesning af compliance-matrix.", "danger")
+            flash("Compliance-matricen kunne ikke indlæses. Prøv igen om lidt.", "danger")
             matrix, totals = [], {'requirements': 0, 'compliant': 0, 'expiring': 0, 'overdue': 0}
 
         # ── "Most-at-risk requirements" bar data (k-anon-safe) ───────────────
@@ -4804,6 +4966,23 @@ def create_hr_dashboard_blueprint():
             current_app.logger.error(f"Error building compliance at-risk chart: {e}")
             at_risk_chart = []
 
+        if request.args.get('format') == 'csv':
+            import report_exports
+            labels = {'compliant': 'Opfyldt', 'expiring': 'Udløber snart', 'overdue': 'Mangler / udløbet'}
+            csv_rows = []
+            for row in matrix:
+                for emp in row['employees']:
+                    csv_rows.append([row['requirement'].get('title'), row['requirement'].get('category') or '',
+                                     'Ja' if row['requirement'].get('is_statutory') else 'Nej',
+                                     emp['name'], emp.get('department') or '', labels.get(emp['status'], emp['status'])])
+            if not csv_rows:
+                flash("Der er ingen compliance-data at eksportere endnu.", "warning")
+                return redirect(url_for('hr_dashboard.compliance_matrix'))
+            return current_app.response_class(
+                report_exports.to_csv(['Krav', 'Kategori', 'Lovpligtigt', 'Medarbejder', 'Afdeling', 'Status'], csv_rows),
+                mimetype='text/csv; charset=utf-8',
+                headers={'Content-Disposition': 'attachment; filename=compliance_%s.csv' % datetime.now().strftime('%Y%m%d')})
+
         return render_template('fm/compliance.html',
                                company=company,
                                matrix=matrix,
@@ -4839,7 +5018,7 @@ def create_hr_dashboard_blueprint():
         is_statutory = 1 if request.form.get('is_statutory') in ('1', 'on', 'true', 'ja') else 0
 
         if not title:
-            flash("Titel paa kravet er paakraevet.", "warning")
+            flash("Titel på kravet er påkrævet.", "warning")
             return redirect(url_for('hr_dashboard.compliance_matrix'))
 
         try:
@@ -4853,10 +5032,91 @@ def create_hr_dashboard_blueprint():
                   dept, role, handle, recurrence, is_statutory))
             current_app.mysql.connection.commit()
             cur.close()
-            flash(f"Compliance-krav '{title}' tilfoejet.", "success")
+            flash(f"Compliance-kravet '{title}' er tilføjet.", "success")
         except Exception as e:
             current_app.logger.error(f"Error adding compliance requirement: {e}")
             flash("Fejl ved oprettelse af compliance-krav.", "danger")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    def _req_form_values():
+        title = (request.form.get('title') or '').strip()
+        try:
+            recurrence = max(0, int(request.form.get('recurrence_months') or 0))
+        except (ValueError, TypeError):
+            recurrence = 0
+        return dict(
+            title=title[:255], category=(request.form.get('category') or '').strip()[:100] or None,
+            dept=(request.form.get('applies_to_department') or '').strip() or None,
+            role=(request.form.get('applies_to_role') or '').strip() or None,
+            handle=(request.form.get('required_course_handle') or '').strip() or None,
+            recurrence=recurrence,
+            statutory=1 if request.form.get('is_statutory') in ('1', 'on', 'true', 'ja') else 0)
+
+    @hr_dashboard_bp.route('/compliance/<int:req_id>/edit', methods=['POST'])
+    def edit_compliance_requirement(req_id):
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        v = _req_form_values()
+        if not v['title']:
+            flash("Titel på kravet er påkrævet.", "warning")
+            return redirect(url_for('hr_dashboard.compliance_matrix'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute("""
+            UPDATE compliance_requirements
+            SET title = %s, category = %s, applies_to_department = %s, applies_to_role = %s,
+                required_course_handle = %s, recurrence_months = %s, is_statutory = %s
+            WHERE id = %s AND company_id = %s
+        """, (v['title'], v['category'], v['dept'], v['role'], v['handle'], v['recurrence'],
+              v['statutory'], req_id, company['id']))
+        changed = cur.rowcount
+        conn.commit()
+        cur.close()
+        flash("Kravet er opdateret." if changed else "Kravet blev ikke fundet.", "success" if changed else "warning")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    @hr_dashboard_bp.route('/compliance/<int:req_id>/delete', methods=['POST'])
+    def delete_compliance_requirement(req_id):
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        conn = current_app.mysql.connection
+        cur = conn.cursor()
+        cur.execute("DELETE FROM compliance_requirements WHERE id = %s AND company_id = %s", (req_id, company['id']))
+        changed = cur.rowcount
+        conn.commit()
+        cur.close()
+        flash("Kravet er slettet." if changed else "Kravet blev ikke fundet.", "success" if changed else "warning")
+        return redirect(url_for('hr_dashboard.compliance_matrix'))
+
+    @hr_dashboard_bp.route('/compliance/<int:req_id>/assign', methods=['POST'])
+    def assign_compliance_course(req_id):
+        """"Tildel påkrævet kursus": order the requirement's course for every
+        applicable employee who has no open or completed order for it. The orders
+        go through order_service (pending_approval, budget rules, notifications)."""
+        auth_check = require_hr_access()
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return redirect(url_for('auth.login'))
+        import compliance_assign
+        conn = current_app.mysql.connection
+        cur = conn.cursor(MySQLdb.cursors.DictCursor)
+        import order_service
+        ctx = order_service.OrderContext.from_session(source='compliance')
+        ctx.company_id = company['id']
+        result = compliance_assign.assign_required_course(cur, ctx, company['id'], req_id)
+        conn.commit()
+        cur.close()
+        flash(result['message'], 'success' if result.get('created') else 'warning')
         return redirect(url_for('hr_dashboard.compliance_matrix'))
 
     # ══════════════════════════════════════════════════════════════════
@@ -4900,10 +5160,12 @@ def create_hr_dashboard_blueprint():
             departments = sorted({(e.get('department') or '') for e in employees if e.get('department')})
         except Exception as e:
             current_app.logger.error(f"Error loading bulk-assign form: {e}")
-            flash("Fejl ved indlaesning af tildelingsformular.", "danger")
+            flash("Fejl ved indlæsning af tildelingsformular.", "danger")
 
         return render_template('fm/bulk_assign.html',
                                company=company,
+                               preselect_department=(request.args.get('department') or '').strip(),
+                               focus_skill=(request.args.get('skill') or '').strip(),
                                paths=paths,
                                employees=employees,
                                departments=departments,
@@ -4925,7 +5187,7 @@ def create_hr_dashboard_blueprint():
 
         confirm = (request.form.get('confirm') or '').strip().lower()
         if confirm != 'ja':
-            flash("Bekraeft tildelingen ved at skrive 'ja' i bekraeftelsesfeltet.", "warning")
+            flash("Bekræft tildelingen ved at skrive 'ja' i bekræftelsesfeltet.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
         try:
@@ -4933,7 +5195,7 @@ def create_hr_dashboard_blueprint():
         except (ValueError, TypeError):
             path_id = 0
         if not path_id:
-            flash("Vaelg et laeringsforloeb.", "warning")
+            flash("Vælg et læringsforløb.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
         # Parse employee_ids[] (multi-select / checkboxes).
@@ -4947,7 +5209,7 @@ def create_hr_dashboard_blueprint():
         employee_ids = list(dict.fromkeys(employee_ids))  # de-dupe, keep order
 
         if not employee_ids:
-            flash("Vaelg mindst en medarbejder.", "warning")
+            flash("Vælg mindst en medarbejder.", "warning")
             return redirect(url_for('hr_dashboard.bulk_assign_form'))
 
         due_date = request.form.get('due_date') or None
@@ -4965,7 +5227,7 @@ def create_hr_dashboard_blueprint():
             path = cur.fetchone()
             if not path:
                 cur.close()
-                flash("Laeringsforloeb ikke fundet.", "danger")
+                flash("Læringsforløb ikke fundet.", "danger")
                 return redirect(url_for('hr_dashboard.bulk_assign_form'))
             path_name = path['path_name']
 
@@ -4978,44 +5240,13 @@ def create_hr_dashboard_blueprint():
             """, tuple([company['id']] + employee_ids))
             valid_ids = [r['user_id'] for r in (cur.fetchall() or [])]
 
-            sender_id = session.get('user_id')
-            for uid in valid_ids:
-                try:
-                    # Skip if already enrolled in this path.
-                    cur.execute("""
-                        SELECT id FROM employee_learning_progress
-                        WHERE user_id = %s AND company_id = %s AND learning_path_id = %s
-                    """, (uid, company['id'], path_id))
-                    if cur.fetchone():
-                        skipped += 1
-                        continue
-                    cur.execute("""
-                        INSERT INTO employee_learning_progress
-                            (user_id, company_id, learning_path_id, status,
-                             progress_percentage, due_date, started_at)
-                        VALUES (%s, %s, %s, 'not_started', 0, %s, NOW())
-                    """, (uid, company['id'], path_id, due_date))
-                    assigned += 1
-
-                    # Nudge: per-employee notification (mirrors notify code shape).
-                    try:
-                        cur.execute("""
-                            INSERT INTO company_notifications
-                                (company_id, recipient_user_id, sender_user_id,
-                                 target_roles, title, message, is_urgent, is_read)
-                            VALUES (%s, %s, %s, NULL, %s, %s, 0, 0)
-                        """, (company['id'], uid, sender_id,
-                              "Nyt laeringsforloeb tildelt"[:255],
-                              f"Du er blevet tildelt laeringsforloebet '{path_name}'. "
-                              f"Log ind og kom i gang." +
-                              (f" Frist: {due_date}." if due_date else "")))
-                        nudged += 1
-                    except Exception as ne:
-                        # Notification failure must not abort the assignment.
-                        current_app.logger.warning(f"Bulk-assign nudge skipped for user {uid}: {ne}")
-                except Exception as ie:
-                    current_app.logger.warning(f"Bulk-assign skipped user {uid}: {ie}")
-                    continue
+            import learning_path_service
+            import order_service
+            ctx = order_service.OrderContext.from_session(source='hr')
+            ctx.company_id = company['id']
+            res = learning_path_service.assign_path(cur, ctx, company['id'], path_id, valid_ids,
+                                                    due_date=due_date, sender_id=session.get('user_id'))
+            assigned, skipped, nudged = res['assigned'], res['skipped'], res['assigned']
 
             current_app.mysql.connection.commit()
             cur.close()
@@ -5027,8 +5258,75 @@ def create_hr_dashboard_blueprint():
                 current_app.mysql.connection.rollback()
             except Exception:
                 pass
-            flash("Fejl ved bulk-tildeling af laeringsforloeb.", "danger")
+            flash("Fejl ved bulk-tildeling af læringsforløb.", "danger")
         return redirect(url_for('hr_dashboard.bulk_assign_form'))
+
+    # ── S-4.4: per-goal sharing ("Del med medarbejder") ──────────────────────
+    # JSON endpoints; the two-section HR view ("Delt med medarbejderen" /
+    # "Kun synligt for HR") is the UX side of N-3.5 and builds on these.
+
+    def _employee_in_scope(company, user_id):
+        """The employee row if they belong to this company (and, for a
+        department head, to their own department); else None."""
+        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        try:
+            cur.execute("SELECT user_id, department FROM company_users WHERE company_id = %s AND user_id = %s LIMIT 1",
+                        (company['id'], user_id))
+            row = cur.fetchone()
+        finally:
+            cur.close()
+        if not row:
+            return None
+        scope = _dept_scope(company)
+        if scope is not None and (row.get('department') or '') != scope:
+            return None
+        return row
+
+    @hr_dashboard_bp.route('/employee/<int:user_id>/goals', methods=['POST'])
+    def employee_goals_create(user_id):
+        auth_check = require_hr_manager_access(as_json=True, cap='hr.employees.manage')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company or not _employee_in_scope(company, user_id):
+            return jsonify({'success': False, 'message': 'Medarbejder ikke fundet.'}), 404
+        data = request.get_json(silent=True) or request.form
+        title = (data.get('title') or '').strip()
+        if not title:
+            return jsonify({'success': False, 'message': 'Angiv en titel til målet.'}), 400
+        import goal_sharing
+        shared = str(data.get('shared', '')).lower() in ('1', 'true', 'on', 'ja')
+        goal_id = goal_sharing.create_goal(
+            current_app.mysql.connection, company_id=company['id'], employee_user_id=user_id, title=title,
+            description=data.get('description') or '', target_date=data.get('target_date') or None,
+            shared=shared, actor_user_id=session.get('user_id'), note=data.get('note'))
+        if shared:
+            from security_audit import audit
+            audit('hr.goal.share', 'employee_goal', goal_id, 'Mål oprettet og delt med medarbejder %s' % user_id,
+                  company_id=company['id'])
+        return jsonify({'success': True, 'goal_id': goal_id, 'shared': shared}), 201
+
+    @hr_dashboard_bp.route('/settings/ai-hr-goals', methods=['POST'])
+    def set_ai_hr_goals():
+        auth_check = require_hr_manager_access(as_json=True, cap='company.settings')
+        if auth_check:
+            return auth_check
+        company = get_company_context()
+        if not company:
+            return jsonify({'success': False, 'message': 'Virksomhed ikke fundet.'}), 404
+        data = request.get_json(silent=True) or request.form
+        enabled = str(data.get('enabled', '1')).lower() in ('1', 'true', 'on', 'ja')
+        import goal_sharing
+        goal_sharing.set_company_ai_sharing(current_app.mysql.connection, company['id'], enabled)
+        from security_audit import audit
+        audit('company.ai_hr_goals', 'company_settings', company['id'],
+              'AI-adgang til delte HR-mål %s' % ('slået til' if enabled else 'slået fra'), company_id=company['id'])
+        try:
+            import learner_context
+            learner_context.clear_cache()
+        except Exception:
+            pass
+        return jsonify({'success': True, 'enabled': enabled})
 
     return hr_dashboard_bp
 

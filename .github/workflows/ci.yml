@@ -13,13 +13,13 @@ concurrency:
 jobs:
   # ── Secret scanning ─────────────────────────────────────────────────────────
   # Runs gitleaks with the repo's .gitleaks.toml (which extends the default rules
-  # and narrowly allowlists the known, pending-rotation secrets in run.py).
+  # with no allowlist).
   gitleaks:
     name: Secret scan (gitleaks)
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -34,9 +34,30 @@ jobs:
           # though the push-event scan passes. The automatic token is sufficient.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
+  # ── Lint (real bugs only: syntax errors, undefined names; see ruff.toml) ─────
+  lint:
+    name: Lint (ruff)
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Ruff
+        run: |
+          python -m pip install --upgrade pip ruff
+          ruff check .
+
   # ── Tests + boot smoke ──────────────────────────────────────────────────────
   test:
     name: Boot smoke + pytest
+    # A hung test must fail the job in minutes, not burn the 6 h default (N-0.1).
+    timeout-minutes: 20
     runs-on: ubuntu-latest
 
     services:
@@ -71,10 +92,10 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python 3.12
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
           cache: "pip"
@@ -85,7 +106,7 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r requirements.txt
           # Test runner (not a runtime dependency, so keep it out of requirements.txt).
-          pip install pytest
+          pip install pytest pytest-timeout pytest-cov
 
       - name: Wait for MySQL
         run: |
@@ -104,7 +125,18 @@ jobs:
         run: python -c "from run import create_app; create_app()"
 
       - name: Run pytest suite
-        run: python -m pytest tests/ -q
+        # Includes the fresh-database bootstrap test (tests/test_schema_baseline.py):
+        # the MySQL service container above starts empty, ensure_enterprise_tables
+        # builds every table and verify_schema must report nothing missing.
+        run: python -m pytest -q --timeout=120 --cov=. --cov-report=term --cov-report=xml
+
+      - name: Upload coverage report
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: coverage-xml
+          path: coverage.xml
+          if-no-files-found: ignore
 
       - name: Readiness capability check (/readyz, best-effort)
         continue-on-error: true

@@ -5,7 +5,12 @@ Replaces the single-tenant reports.py with company-scoped analytics
 """
 
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
-from auth_decorators import require_company
+from auth_decorators import require_company, require_company_role
+
+# S-1.5: these pages expose colleagues' orders and PII (names, emails). Employees
+# must not reach them; department heads only get their own department view.
+_hr_only = require_company_role('company_admin', 'hr_manager')
+_hr_or_dept_head = require_company_role('company_admin', 'hr_manager', 'department_head')
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
@@ -76,11 +81,11 @@ def create_multitenant_reports_blueprint():
     def require_company_access():
         """Ensure user has access to company reports"""
         if 'user' not in session:
-            flash("Please log in to view reports.", "danger")
+            flash("Log ind for at se rapporter.", "danger")
             return redirect(url_for('auth.login'))
         
         if not session.get('company_id'):
-            flash("You must be part of a company to view reports.", "danger")
+            flash("Du skal være tilknyttet en virksomhed for at se rapporter.", "danger")
             return redirect(url_for('auth.login'))
         return None
 
@@ -101,7 +106,9 @@ def create_multitenant_reports_blueprint():
                 JOIN company_users cu ON c.id = cu.company_id
                 JOIN users u ON cu.user_id = u.id
                 WHERE u.username = %s AND cu.status = 'active'
-            """, (session['user'],))
+                  AND (%s IS NULL OR c.id = %s)
+                ORDER BY cu.added_at DESC
+            """, (session['user'], session.get('company_id'), session.get('company_id')))
             result = cur.fetchone()
             cur.close()
             return result
@@ -111,7 +118,7 @@ def create_multitenant_reports_blueprint():
 
     @multitenant_reports_bp.route('')
     @multitenant_reports_bp.route('/')
-    @require_company
+    @_hr_only
     def reports():
         """
         Company-specific reports dashboard
@@ -119,12 +126,12 @@ def create_multitenant_reports_blueprint():
         """
         company = get_company_context()
         if not company:
-            flash("Company information not found.", "danger")
+            flash("Virksomhedens oplysninger blev ikke fundet.", "danger")
             return redirect(url_for('auth.login'))
         
         conn = current_app.mysql.connection
         if not conn:
-            flash("Database connection not available.", "danger")
+            flash("Databasen er ikke tilgængelig lige nu.", "danger")
             return redirect(url_for('auth.login'))
 
         # Initialize analytics variables
@@ -344,7 +351,7 @@ def create_multitenant_reports_blueprint():
                 orders = cur.fetchall()
                 
                 for od in orders:
-                    if od['status'] == 'pending':
+                    if od['status'] in ('pending_approval', 'approved', 'pending'):
                         pending_orders_count += 1
                     elif od['status'] == 'completed' or od['completion_status'] == 'completed':
                         completed_orders_count += 1
@@ -531,134 +538,63 @@ def create_multitenant_reports_blueprint():
         )
 
     @multitenant_reports_bp.route('/order/<order_id>')
-    @require_company
+    @_hr_only
     def order_detail(order_id):
-        """
-        Company-scoped order details
-        """
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        conn = current_app.mysql.connection
-        if not conn:
-            flash("Database connection not available.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
-
-        try:
-            cur = conn.cursor(MySQLdb.cursors.DictCursor)
-            cur.execute("""
-                SELECT co.*, u.username, cu.department, cu.job_title
-                FROM course_orders co
-                LEFT JOIN users u ON co.user_id = u.id
-                LEFT JOIN company_users cu ON co.user_id = cu.user_id AND co.company_id = cu.company_id
-                WHERE co.order_id = %s AND co.company_id = %s
-            """, (order_id, company['id']))
-            order = cur.fetchone()
-            cur.close()
-            
-            if not order:
-                flash("Order not found or not accessible.", "danger")
-                return redirect(url_for('multitenant_reports.reports'))
-            
-            return render_template('fm/mt_order_detail.html',
-                                 company=company, order=order)
-        except Exception as e:
-            current_app.logger.error(f"Error fetching order details: {e}")
-            flash("Error loading order details.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
+        """Canonical order detail lives in the HR workspace (N-4.1); this copy
+        redirects there so old links keep working."""
+        return redirect(url_for('hr_dashboard.company_order_details', order_id=order_id))
 
     @multitenant_reports_bp.route('/order/<order_id>/update', methods=['POST'])
-    @require_company
+    @_hr_only
     def update_order_status(order_id):
-        """
-        Update order status (company-scoped)
-        Only HR managers and company admins can update orders
-        """
+        """Update order status (company-scoped). Only HR managers and company
+        admins. Goes through the ONE order service (transition rules, budget
+        charge/refund, history, emails, webhooks) - no raw SQL here."""
         company = get_company_context()
         if not company:
-            return jsonify({'success': False, 'message': 'Company not found'}), 404
-        
-        # Check permissions
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
+
         if company['user_role'] not in ['company_admin', 'hr_manager']:
-            return jsonify({'success': False, 'message': 'Insufficient permissions'}), 403
-        
+            return jsonify({'success': False, 'message': 'Du har ikke rettigheder til at ændre ordrer.'}), 403
+
         if request.is_json:
             new_status = request.json.get('status')
         else:
             new_status = request.form.get('status')
-        
         if not new_status:
-            return jsonify({'success': False, 'message': 'No status provided'}), 400
-        
-        valid_statuses = ['pending', 'processing', 'confirmed', 'cancelled', 'completed']
-        if new_status not in valid_statuses:
-            return jsonify({'success': False, 'message': 'Invalid status'}), 400
-        
-        conn = current_app.mysql.connection
-        if not conn:
-            return jsonify({'success': False, 'message': 'Database connection error'}), 500
+            return jsonify({'success': False, 'message': 'Angiv en status.'}), 400
 
+        import order_lifecycle as lc
+        import order_service
+        raw = (new_status or '').strip().lower()
+        if raw not in lc.ORDER_STATUSES and raw not in lc.LEGACY_ALIASES:
+            return jsonify({'success': False, 'message': 'Ugyldig status.'}), 400
+        target = lc.normalize_status(raw)
         try:
-            cur = conn.cursor()
-            
-            # Verify order belongs to company
-            cur.execute("""
-                SELECT order_id FROM course_orders
-                WHERE order_id = %s AND company_id = %s
-            """, (order_id, company['id']))
-            
-            if not cur.fetchone():
-                cur.close()
-                return jsonify({'success': False, 'message': 'Order not found'}), 404
-            
-            # Update order status
-            cur.execute("""
-                UPDATE course_orders
-                SET status = %s, updated_at = NOW()
-                WHERE order_id = %s AND company_id = %s
-            """, (new_status, order_id, company['id']))
-            
-            if cur.rowcount == 0:
-                cur.close()
-                return jsonify({'success': False, 'message': 'No rows updated'}), 400
-            
-            # Log the action
-            cur.execute("""
-                INSERT INTO audit_log (company_id, user_id, action_type, resource_type, resource_id, details)
-                VALUES (%s, %s, 'order_status_updated', 'order', %s, %s)
-            """, (
-                company['id'], session.get('user_id'), order_id,
-                json.dumps({'old_status': 'unknown', 'new_status': new_status, 'updated_by': session.get('user')})
-            ))
-            
-            conn.commit()
-            cur.close()
-
-            current_app.logger.info(f"Order {order_id} status updated to {new_status} by {session.get('user')} in company {company['company_name']}")
-            
-            return jsonify({
-                'success': True,
-                'message': f'Order status updated to {new_status}',
-                'new_status': new_status
-            })
-            
+            ctx = order_service.OrderContext.from_session(source='hr_reports')
+            ctx.company_id = company['id']
+            if target == lc.COMPLETED:
+                result = order_service.complete_order(ctx, order_id)
+            else:
+                result = order_service.set_status(ctx, order_id, target)
+            if not result.get('success'):
+                code = 404 if result.get('error') == 'not_found' else 400
+                return jsonify({'success': False, 'message': result.get('message') or 'Kunne ikke opdatere ordren.'}), code
+            return jsonify({'success': True, 'new_status': target,
+                            'message': 'Ordrestatus opdateret til %s.' % lc.status_label(target, short=True)})
         except Exception as e:
             current_app.logger.error(f"Error updating order status: {e}")
-            if 'cur' in locals():
-                cur.close()
-            return jsonify({'success': False, 'message': f'Database error: {str(e)}'}), 500
+            return jsonify({'success': False, 'message': 'Der opstod en fejl ved opdatering af ordren.'}), 500
 
     @multitenant_reports_bp.route('/analytics/export')
-    @require_company
+    @_hr_only
     def export_analytics():
         """
         Export company-specific analytics data as JSON
         """
         company = get_company_context()
         if not company:
-            return jsonify({'error': 'Company not found'}), 404
+            return jsonify({'error': 'Virksomheden blev ikke fundet.'}), 404
         
         # Check permissions
         if company['user_role'] not in ['company_admin', 'hr_manager', 'department_head']:
@@ -773,81 +709,11 @@ def create_multitenant_reports_blueprint():
         return response
 
     @multitenant_reports_bp.route('/department/<department_name>')
-    @require_company
+    @_hr_or_dept_head
     def department_analytics(department_name):
-        """
-        Department-specific analytics within the company
-        """
-        company = get_company_context()
-        if not company:
-            flash("Company information not found.", "danger")
-            return redirect(url_for('auth.login'))
-        
-        # Check if user can view this department
-        user_role = company['user_role']
-        user_department = company['department']
-        
-        if user_role not in ['company_admin', 'hr_manager'] and user_department != department_name:
-            flash("You don't have permission to view this department's analytics.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
-        
-        conn = current_app.mysql.connection
-        if not conn:
-            flash("Database connection error.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
-
-        try:
-            cur = conn.cursor(MySQLdb.cursors.DictCursor)
-            
-            # Get department-specific metrics
-            cur.execute("""
-                SELECT 
-                    COUNT(DISTINCT cu.user_id) as total_employees,
-                    COUNT(DISTINCT CASE WHEN cu.status = 'active' THEN cu.user_id END) as active_employees,
-                    COUNT(DISTINCT co.id) as total_course_orders,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as completed_courses,
-                    COALESCE(SUM(CASE WHEN co.completion_status = 'completed' THEN co.price END), 0) as total_investment,
-                    COUNT(DISTINCT ci.id) as total_chatbot_interactions,
-                    COALESCE(AVG(ci.interaction_quality_score), 0) as avg_interaction_quality
-                FROM company_users cu
-                LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                LEFT JOIN chatbot_interactions ci ON ci.company_id = cu.company_id AND ci.username = (
-                    SELECT u.username FROM users u WHERE u.id = cu.user_id
-                )
-                WHERE cu.company_id = %s AND cu.department = %s
-            """, (company['id'], department_name))
-            
-            dept_stats = cur.fetchone()
-            
-            # Get department employees
-            cur.execute("""
-                SELECT 
-                    u.username, cu.job_title, cu.role, cu.hire_date,
-                    COUNT(DISTINCT co.id) as courses_enrolled,
-                    COUNT(DISTINCT CASE WHEN co.completion_status = 'completed' THEN co.id END) as courses_completed,
-                    cu.total_chatbot_queries, cu.last_chatbot_interaction
-                FROM company_users cu
-                JOIN users u ON cu.user_id = u.id
-                LEFT JOIN course_orders co ON cu.user_id = co.user_id AND cu.company_id = co.company_id
-                WHERE cu.company_id = %s AND cu.department = %s AND cu.status = 'active'
-                GROUP BY cu.user_id, u.username, cu.job_title, cu.role, cu.hire_date, cu.total_chatbot_queries, cu.last_chatbot_interaction
-                ORDER BY courses_completed DESC, cu.total_chatbot_queries DESC
-            """, (company['id'], department_name))
-            
-            dept_employees = cur.fetchall()
-            
-            cur.close()
-            
-            return render_template('fm/department_analytics.html',
-                                 company=company,
-                                 department_name=department_name,
-                                 dept_stats=dept_stats,
-                                 dept_employees=dept_employees)
-            
-        except Exception as e:
-            current_app.logger.error(f"Error loading department analytics: {e}")
-            flash("Error loading department analytics.", "danger")
-            return redirect(url_for('multitenant_reports.reports'))
+        """Merged into the one "Mit team" page (N-3.5). Permission is enforced
+        there: HR roles may open any department, others only their own."""
+        return redirect(url_for('hr_dashboard.team_cockpit', scope='department', department=department_name))
 
     return multitenant_reports_bp
 

@@ -280,7 +280,8 @@ def cohort_for(company_id):
 # ---------------------------------------------------------------------------
 
 # Order statuses that count as realised spend (an actual order, not cancelled).
-_SPEND_STATUSES = ('pending', 'approved', 'completed', 'paid', 'confirmed', 'processing')
+_SPEND_STATUSES = ('approved', 'booked', 'completed',
+                   'pending', 'paid', 'confirmed', 'processing')  # legacy names kept for unmigrated rows
 
 
 def _company_value_maps(cohort_ids):

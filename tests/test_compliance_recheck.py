@@ -145,32 +145,37 @@ class CardRaisingTests(unittest.TestCase):
         return mock.patch.object(compliance_service, "_get_conn",
                                  return_value=conn)
 
+    @staticmethod
+    def _notif(returns=1):
+        """Patch the unified notification writer (N-3.2) and record calls."""
+        return mock.patch("notification_service.insert_company_notification",
+                          return_value=returns)
+
     def test_raises_one_card_per_at_risk_requirement(self):
-        # dedupe COUNT(*) returns 0 -> not a recent duplicate -> insert.
         cur = FakeCursor(fetchone={"cnt": 0})
         conn = FakeConnection(cur)
         gaps = [
             _req(1, "Arbejdsmiljø", overdue=2, statutory=True),
             _req(2, "Brandøvelse", missing=3),
         ]
-        with self._patch_conn(conn):
+        with self._patch_conn(conn), self._notif() as ins:
             n = compliance_service._insert_cards(7, gaps)
         self.assertEqual(n, 2)
         self.assertEqual(conn.commits, 1)
-        # Two INSERTs into company_notifications, both company-scoped.
-        inserts = [e for e in cur.executed if "INSERT INTO company_notifications" in e[0]]
-        self.assertEqual(len(inserts), 2)
-        for _sql, params in inserts:
-            self.assertEqual(params[0], 7)  # company_id first
+        self.assertEqual(ins.call_count, 2)
+        for call in ins.call_args_list:
+            self.assertEqual(call.args[1], 7)  # company_id, company-scoped
+            self.assertEqual(call.kwargs["target_roles"], compliance_service._HR_ROLES)
+            self.assertTrue(call.kwargs["action_url"])  # every card is clickable
 
     def test_recent_duplicate_is_skipped(self):
-        cur = FakeCursor(fetchone={"cnt": 1})  # already nudged recently
+        cur = FakeCursor(fetchone={"cnt": 1})
         conn = FakeConnection(cur)
-        with self._patch_conn(conn):
+        with self._patch_conn(conn), self._notif(returns=0) as ins:  # deduped by the service
             n = compliance_service._insert_cards(7, [_req(1, "GDPR", overdue=1)])
         self.assertEqual(n, 0)
-        inserts = [e for e in cur.executed if "INSERT INTO company_notifications" in e[0]]
-        self.assertEqual(inserts, [])
+        # the dedupe key is stable per requirement, never part of the text
+        self.assertEqual(ins.call_args.kwargs["dedupe_key"], "compliance-recert:req-1")
 
     def test_statutory_overdue_is_urgent_others_are_not(self):
         cur = FakeCursor(fetchone={"cnt": 0})
@@ -181,27 +186,24 @@ class CardRaisingTests(unittest.TestCase):
             _req(3, "ISO", overdue=1, statutory=False),          # overdue but not statutory
             _req(4, "GDPR", expiring=2, statutory=True),         # statutory but only expiring
         ]
-        with self._patch_conn(conn):
+        with self._patch_conn(conn), self._notif() as ins:
             compliance_service._insert_cards(7, gaps)
-        inserts = [e for e in cur.executed if "INSERT INTO company_notifications" in e[0]]
-        # is_urgent is the 5th param in the VALUES tuple (company, roles, title,
-        # message, is_urgent).
-        urgents = [params[4] for _sql, params in inserts]
-        self.assertEqual(urgents, [1, 0, 0, 0])
+        urgents = [bool(c.kwargs["is_urgent"]) for c in ins.call_args_list]
+        self.assertEqual(urgents, [True, False, False, False])
 
     def test_message_quotes_counts_not_names(self):
         cur = FakeCursor(fetchone={"cnt": 0})
         conn = FakeConnection(cur)
-        with self._patch_conn(conn):
+        with self._patch_conn(conn), self._notif() as ins:
             compliance_service._insert_cards(
                 7, [_req(9, "Førstehjælp", overdue=2, missing=1, expiring=4)])
-        insert = next(e for e in cur.executed
-                      if "INSERT INTO company_notifications" in e[0])
-        message = insert[1][3]  # 4th value = message
+        message = ins.call_args.kwargs["message"]
         self.assertIn("2 udløbet", message)
         self.assertIn("1 mangler", message)
         self.assertIn("4 udløber", message)
-        self.assertIn("compliance-recert:req-9", message)  # dedupe marker present
+        # the internal dedupe marker must NOT leak into user-visible text
+        self.assertNotIn("compliance-recert", message)
+        self.assertEqual(ins.call_args.kwargs["dedupe_key"], "compliance-recert:req-9")
 
     def test_no_gaps_is_silent(self):
         cur = FakeCursor(fetchone={"cnt": 0})

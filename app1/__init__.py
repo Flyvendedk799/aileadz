@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect
+from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect, make_response
 from markupsafe import escape
 import db_compat  # noqa: F401
 import json
@@ -12,6 +12,7 @@ import hmac
 import hashlib
 import time
 from urllib.parse import urlparse
+from auth_decorators import login_required as _login_required, require_role as _require_role
 
 # Try to import fuzzywuzzy; if not installed, raise a clear error.
 try:
@@ -19,9 +20,9 @@ try:
 except ImportError:
     raise ImportError("Please install fuzzywuzzy (pip install fuzzywuzzy) or consider using RapidFuzz.")
 
-app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY') or "supersecretkey"  # Env-overridable; fallback kept so prod doesn't break.
-
+# NOTE: this module used to create its own throwaway ``Flask()`` app (with a
+# hardcoded fallback secret key) next to the blueprint. The real app is built by
+# run.create_app(); the stray instance was removed (N-8.6).
 app1_bp = Blueprint('app1', __name__, template_folder='templates')
 
 # Register order routes as nested blueprint
@@ -77,16 +78,14 @@ DANISH_MONTHS = {
 }
 
 def load_products():
-    global PRODUCTS_CACHE
-    if PRODUCTS_CACHE is None:
-        file_path = os.path.join(os.path.dirname(__file__), "shopify_products_all_pages.json")
-        try:
-            with open(file_path, "r", encoding="utf-8") as file:
-                PRODUCTS_CACHE = json.load(file)
-        except Exception as e:
-            print(f"Error loading JSON file: {e}")
-            PRODUCTS_CACHE = []
-    return PRODUCTS_CACHE
+    """Raw product dicts from the ONE catalog (catalog_service), not a private,
+    forever-cached copy of the Shopify export (N-3.1)."""
+    try:
+        import catalog_service
+        return [p["raw"] for p in catalog_service.get_products()]
+    except Exception as e:
+        print(f"Error loading catalog: {e}")
+        return []
 
 def extract_location_and_date(product):
     location = ""
@@ -908,6 +907,7 @@ def anon_token():
 
 # 5.4: Observability dashboard endpoint
 @app1_bp.route("/dashboard")
+@_require_role("admin")
 def dashboard():
     try:
         from app1.memory_store import get_observability_dashboard
@@ -946,6 +946,13 @@ def ask():
         if turn_kind not in ("message", "seed"):
             turn_kind = "message"
 
+        # N-6.4: a company on a HARD credit limit pauses the AI with a friendly message.
+        if session.get("company_id"):
+            import credit_service
+            paused = credit_service.guard(company_id=session.get("company_id"), username=session.get("user"))
+            if paused:
+                return jsonify({"answers": [{"type": "text", "content": paused}], "credits_paused": True}), 402
+
         return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind)
 
     except Exception as ex:
@@ -967,6 +974,10 @@ def ask():
 
 # Whisper's hard upload limit is 25 MB; cap here so we reject early and cheaply.
 VOICE_MAX_BYTES = 25 * 1024 * 1024
+
+
+VOICE_RATE_LIMIT = int(os.getenv("VOICE_RATE_LIMIT", "20"))
+VOICE_RATE_WINDOW = int(os.getenv("VOICE_RATE_WINDOW", "300"))
 
 
 def _voice_input_enabled():
@@ -1010,6 +1021,7 @@ def _voice_audio_from_request():
 
 
 @app1_bp.route("/voice", methods=["POST"])
+@_login_required
 def voice():
     """Transcribe an uploaded audio blob with OpenAI Whisper and return the text.
 
@@ -1025,6 +1037,15 @@ def voice():
             "text": "",
             "error": "Stemmeinput er ikke aktiveret.",
         }), 200
+
+    # S-1.11: per-user rate limit so nobody can drain the Whisper budget.
+    import rate_limit as _rl
+    if not _rl.hit("voice:%s" % session.get("user"), VOICE_RATE_LIMIT, VOICE_RATE_WINDOW):
+        return jsonify({
+            "ok": False,
+            "text": "",
+            "error": "Du sender for mange lydbeskeder. Vent lidt og prøv igen.",
+        }), 429
 
     try:
         filename, data, err = _voice_audio_from_request()
@@ -1104,20 +1125,68 @@ def voice():
         }), 500
 
 
+def _server_side_turn(sid, message_index):
+    """Return (user_query, assistant_answer) for the ``message_index``-th (1-based)
+    assistant message of session ``sid`` from the server-held transcript, or
+    ("", "") when it is not available. Never trusts client-supplied text."""
+    try:
+        from app1.agent import CHAT_MEMORY
+        msgs = CHAT_MEMORY.get(sid) or []
+        idx = int(message_index)
+        seen = 0
+        last_user = ""
+        for m in msgs:
+            role = m.get("role")
+            content = m.get("content")
+            if role == "user" and isinstance(content, str):
+                last_user = content
+            elif role == "assistant" and isinstance(content, str) and content.strip():
+                seen += 1
+                if seen == idx:
+                    return last_user[:300], content[:300]
+    except Exception:
+        pass
+    return "", ""
+
+
 # Phase 6: Feedback endpoint
 @app1_bp.route("/feedback", methods=["POST"])
 def feedback():
     try:
         from app1.memory_store import log_event
-        data = request.json or {}
-        sid = session.get("session_id", "unknown")
-        rating = data.get("rating", 0)  # 1 = thumbs up, -1 = thumbs down
-        message_index = data.get("message_index", 0)
-        query_text = data.get("query_text", "")
-        assistant_response = data.get("assistant_response", "")
+        from app1 import conversation_state as _conv
+        data = request.get_json(silent=True) or {}
+        sids = _conv.all_session_ids(session) or ["unknown"]
+        if data.get("mode") == "hr":
+            sids = [session.get("hr_chat_session_id") or "unknown"]
+            sid = sids[0]
+        else:
+            sid = _conv.current_sid(session, data.get("mode") or "chat") or sids[0]
+        try:
+            rating = max(-1, min(1, int(data.get("rating", 0) or 0)))  # +1 up, -1 down, 0 cleared
+        except (TypeError, ValueError):
+            rating = 0
+        try:
+            message_index = int(data.get("message_index", 0) or 0)
+        except (TypeError, ValueError):
+            message_index = 0
+        # S-1.7: the rated Q&A text is taken from the SERVER-side transcript,
+        # never from the client. Client-sent text used to be stored, thumbs-up'd
+        # and replayed into other users' prompts (cross-tenant prompt injection).
+        query_text, assistant_response = "", ""
+        for _candidate in [sid] + [s for s in sids if s != sid]:
+            query_text, assistant_response = _server_side_turn(_candidate, message_index)
+            if query_text or assistant_response:
+                break
         reason = data.get("reason", "")
         comment = data.get("comment", "")
         latency_ms = data.get("latency_ms", 0)
+        try:
+            rating = 1 if int(float(rating)) > 0 else (-1 if int(float(rating)) < 0 else 0)
+        except (TypeError, ValueError):
+            rating = 0
+        reason = reason if isinstance(reason, str) else ""
+        comment = comment if isinstance(comment, str) else ""
 
         try:
             latency_val = int(float(latency_ms))
@@ -1130,6 +1199,7 @@ def feedback():
             query_text=query_text,
             feedback_rating=rating,
             message_index=message_index,
+            company_id=session.get("company_id"),
             extra={
                 "assistant_response": assistant_response[:300],
                 "reason": reason[:80],
@@ -1138,16 +1208,26 @@ def feedback():
             }
         )
 
-        # Phase 1.2: Sync feedback to MySQL chatbot_interactions
+        # Sync the rating to the ONE answer it belongs to (message_index), falling
+        # back to the latest answer of the session for rows written before the column.
         try:
             username = session.get('user') or session.get('browser_token', 'anonymous')
             cur = current_app.mysql.connection.cursor()
-            cur.execute("""
-                UPDATE chatbot_interactions
-                SET feedback_rating = %s
-                WHERE session_id = %s AND username = %s
-                ORDER BY created_at DESC LIMIT 1
-            """, (rating, sid, username))
+            marks = ", ".join(["%s"] * len(sids))
+            target = None
+            if message_index:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "AND message_index = %s ORDER BY id DESC LIMIT 1", (*sids, username, message_index))
+                target = cur.fetchone()
+            if not target:
+                cur.execute(
+                    f"SELECT id FROM chatbot_interactions WHERE session_id IN ({marks}) AND username = %s "
+                    "ORDER BY id DESC LIMIT 1", (*sids, username))
+                target = cur.fetchone()
+            if target:
+                tid = target["id"] if isinstance(target, dict) else target[0]
+                cur.execute("UPDATE chatbot_interactions SET feedback_rating = %s WHERE id = %s", (rating, tid))
             current_app.mysql.connection.commit()
             cur.close()
         except Exception as fb_err:
@@ -1776,6 +1856,10 @@ def confirm_tool_action():
         return jsonify({"status": "already_confirmed"})
 
     scope = entry["scope"]
+    if scope == "hr" and not (session.get("role") == "admin" or (
+            session.get("company_id") and session.get("company_role") in ("company_admin", "hr_manager", "department_head"))):
+        # An HR confirmation is only honoured for someone who still holds an HR role.
+        return jsonify({"status": "error", "message": "Ingen adgang til HR-handlinger."}), 403
     tool_name = entry["tool_name"]
     args = dict(entry["args"])
     args["confirm"] = True  # inject the confirmation flag
@@ -1816,6 +1900,7 @@ def confirm_tool_action():
 
 
 @app1_bp.route("/adminlog")
+@_require_role("admin")
 def adminlog():
     from app1.memory_store import get_debug_sessions, get_debug_logs_for_session
     import datetime as _dt
@@ -1870,6 +1955,7 @@ def adminlog():
 
 
 @app1_bp.route("/adminlog/session/<session_id>")
+@_require_role("admin")
 def adminlog_session(session_id):
     from app1.memory_store import get_debug_logs_for_session
     logs = get_debug_logs_for_session(session_id)
@@ -1877,6 +1963,7 @@ def adminlog_session(session_id):
 
 
 @app1_bp.route("/adminlog/sessions_summary")
+@_require_role("admin")
 def adminlog_sessions_summary():
     """Lightweight endpoint for admin log auto-refresh polling."""
     from app1.memory_store import get_debug_sessions
@@ -1887,7 +1974,26 @@ def adminlog_sessions_summary():
     ]})
 
 
+@app1_bp.route("/adminlog/feedback")
+@_require_role("admin")
+def adminlog_feedback():
+    """Positive feedback awaiting review before it may be reused as a prompt
+    example (S-1.7). ?all=1 also lists already-reviewed rows."""
+    from app1.memory_store import list_feedback_for_review
+    return jsonify({"items": list_feedback_for_review(only_pending=request.args.get("all") != "1")})
+
+
+@app1_bp.route("/adminlog/feedback/<int:feedback_id>/review", methods=["POST"])
+@_require_role("admin")
+def adminlog_feedback_review(feedback_id):
+    from app1.memory_store import set_feedback_reviewed
+    approved = bool((request.get_json(silent=True) or {}).get("approved", True))
+    ok = set_feedback_reviewed(feedback_id, approved)
+    return jsonify({"status": "ok" if ok else "not_found"}), (200 if ok else 404)
+
+
 @app1_bp.route("/adminlog/clear", methods=["POST"])
+@_require_role("admin")
 def adminlog_clear():
     from app1.memory_store import clear_debug_logs
     clear_debug_logs()
@@ -2216,12 +2322,46 @@ def _widget_cors_headers(resp, req_host, allowed_hosts):
             resp.headers['Access-Control-Allow-Origin'] = origin
             resp.headers['Vary'] = 'Origin'
             resp.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature'
+            resp.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-Widget-Signature, X-Widget-Session'
             resp.headers['Access-Control-Allow-Credentials'] = 'true'
             resp.headers['Access-Control-Max-Age'] = '600'
     except Exception:
         pass
     return resp
+
+
+def _widget_serializer():
+    from itsdangerous import URLSafeTimedSerializer
+    return URLSafeTimedSerializer(current_app.secret_key, salt="widget-session-v1")
+
+
+def _widget_mint_session(token, parent_host, preview=False):
+    """Session token held by the iframe (N-5.6). It pins the widget token, the
+    PARENT page's host (the only trustworthy origin signal - the iframe's own
+    Origin is always our host) and the conversation id, so memory works even when
+    the browser blocks third-party cookies."""
+    return _widget_serializer().dumps({
+        "t": token, "h": parent_host or "", "p": 1 if preview else 0,
+        "s": "widget_" + uuid.uuid4().hex})
+
+
+def _widget_read_session(token, raw, max_age=12 * 3600):
+    """Payload dict when the token is valid for this widget, else None."""
+    if not raw:
+        return None
+    try:
+        data = _widget_serializer().loads(raw, max_age=max_age)
+    except Exception:
+        return None
+    if not isinstance(data, dict) or data.get("t") != token:
+        return None
+    return data
+
+
+def _csp_with_frame_ancestors(ancestors):
+    """The app-wide enforced CSP with ``frame-ancestors`` replaced (widget page)."""
+    import security_headers
+    return re.sub(r"frame-ancestors [^;]*", "frame-ancestors " + ancestors, security_headers._CSP)
 
 
 @app1_bp.route("/widget/<token>")
@@ -2241,21 +2381,31 @@ def widget_embed(token):
     if not widget:
         return "Widget not found or inactive", 404
 
-    # Check allowed domains via Referer header
-    referer = request.headers.get('Referer', '')
-    allowed = widget.get('allowed_domains')
-    if allowed and isinstance(allowed, str):
-        from urllib.parse import urlparse
-        ref_domain = urlparse(referer).netloc
-        allowed_list = [d.strip().lower() for d in allowed.split(',') if d.strip()]
-        if allowed_list and ref_domain and ref_domain.lower() not in allowed_list:
-            return "Domain not allowed", 403
+    # The parent page's host (Referer of the iframe navigation) is checked against
+    # the allowlist; a signed session token carries the verdict to /ask.
+    allowed_hosts = _widget_allowed_hosts(widget)
+    parent_host = _widget_origin_host()
+    own_host = (request.host or '').split(':')[0].lower()
+    preview = bool(request.args.get('preview')) and bool(session.get('username')) and parent_host == own_host
+    if allowed_hosts and not preview and not _widget_host_allowed(parent_host, allowed_hosts):
+        return "Domain not allowed", 403
 
     from branding_service import get_branding
     branding = get_branding(widget['cid'])
     widget['tenant_logo'] = branding.get('logo_url') or branding.get('company_logo')
 
-    return render_template('widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'))
+    resp = make_response(render_template(
+        'widget_chat.html', widget=widget, tenant_logo=widget.get('tenant_logo'),
+        widget_session=_widget_mint_session(token, parent_host, preview)))
+    # S-5.6: the BROWSER enforces who may frame the widget. With an allowlist, only
+    # those hosts (and their subdomains) can embed it; without one it stays open
+    # (backward compatible) but is still rate capped on /ask.
+    if allowed_hosts:
+        ancestors = " ".join(["'self'"] + ["https://%s https://*.%s" % (h, h) for h in allowed_hosts])
+    else:
+        ancestors = "*"
+    resp.headers['Content-Security-Policy'] = _csp_with_frame_ancestors(ancestors)
+    return resp
 
 
 @app1_bp.route("/widget/<token>/ask", methods=["POST", "OPTIONS"])
@@ -2277,7 +2427,7 @@ def widget_ask(token):
     cur.close()
 
     if not widget:
-        return jsonify({"error": "Widget not found"}), 404
+        return jsonify({"error": "Widget'en blev ikke fundet."}), 404
 
     allowed_hosts = _widget_allowed_hosts(widget)
     req_host = _widget_origin_host()
@@ -2294,13 +2444,16 @@ def widget_ask(token):
     # allowlist configured stays open (backward-compatible) but is still
     # rate-capped below.
     hmac_result = _widget_hmac_valid(widget, req_host)
+    wsess = _widget_read_session(token, request.headers.get('X-Widget-Session', ''))
     if hmac_result is True:
         pass  # valid signed origin token
     elif hmac_result is False:
         return jsonify({"error": "Ugyldig oprindelse. Anmodningen blev afvist."}), 403
     elif allowed_hosts:
-        # No HMAC configured -> allowlist enforcement.
-        if not _widget_host_allowed(req_host, allowed_hosts):
+        # The session token was only issued to an allowlisted parent page, so a
+        # valid token IS the origin proof (Origin here is always our own host).
+        ok = bool(wsess) and (wsess.get("p") or _widget_host_allowed(wsess.get("h", ""), allowed_hosts))
+        if not ok:
             return jsonify({
                 "error": "Denne widget er ikke tilladt på dette domæne."
             }), 403
@@ -2321,10 +2474,11 @@ def widget_ask(token):
         return jsonify({"error": "No query"}), 400
 
     # Use a widget-specific session ID
-    widget_session_id = session.get('widget_session_id')
+    widget_session_id = (wsess or {}).get("s") or session.get('widget_session_id')
     if not widget_session_id:
         widget_session_id = f"widget_{uuid.uuid4().hex}"
         session['widget_session_id'] = widget_session_id
+    widget_session_id = str(widget_session_id)[:80]
 
     from app1.agent import handle_agentic_ask
     # handle_agentic_ask already returns a fully-built streaming Response — do not
@@ -2341,6 +2495,25 @@ def widget_ask(token):
     response.headers['X-Accel-Buffering'] = 'no'
     response.headers['Cache-Control'] = 'no-cache'
     return _widget_cors_headers(response, req_host, allowed_hosts)
+
+
+_CSS_COLOR_RE = re.compile(r'^(#[0-9a-fA-F]{3,8}|[a-zA-Z]{3,20}|(rgb|hsl)a?\([0-9 ,.%/]{3,40}\))$')
+
+
+def _safe_css_color(value, default):
+    """Return ``value`` only if it is a plain CSS colour (hex, name, rgb/hsl)."""
+    v = str(value or '').strip()
+    return v if _CSS_COLOR_RE.match(v) else default
+
+
+def _safe_logo_url(value):
+    """Logo URLs must be http(s) or site-relative; anything else is dropped."""
+    v = str(value or '').strip()
+    if v.startswith('/') and not v.startswith('//'):
+        return v
+    if re.match(r'^https?://', v, re.I):
+        return v
+    return ''
 
 
 @app1_bp.route("/widget/<token>/loader.js")
@@ -2362,14 +2535,21 @@ def widget_loader_js(token):
 
     from branding_service import get_branding
     branding = get_branding(widget['cid'])
-    tenant_logo = branding.get('logo_url') or branding.get('company_logo') or ''
+    tenant_logo = _safe_logo_url(branding.get('logo_url') or branding.get('company_logo') or '')
 
     # Extract settings
-    primary = widget.get('theme_primary_color', '#0f766e')
-    text_color = widget.get('theme_text_color', '#FFFFFF')
+    # S-1.9: every HR-authored value interpolated into the loader is either
+    # whitelisted (colours), position-validated, or JSON-encoded (title/logo).
+    primary = _safe_css_color(widget.get('theme_primary_color'), '#0f766e')
+    text_color = _safe_css_color(widget.get('theme_text_color'), '#FFFFFF')
     position = widget.get('position', 'bottom-right') or 'bottom-right'
     size = widget.get('widget_size', 'medium')
-    title = widget.get('widget_title', 'Kursusrådgiver')
+    title = widget.get('widget_title') or 'Kursusrådgiver'
+    title_js = json.dumps(str(title)[:120]).replace('</', '<\\/')
+    if position not in ('bottom-right', 'bottom-left', 'top-right', 'top-left'):
+        position = 'bottom-right'
+    if size not in ('small', 'medium', 'large'):
+        size = 'medium'
 
     size_map = {'small': 350, 'medium': 400, 'large': 450}
     width = size_map.get(size, 400)
@@ -2384,7 +2564,7 @@ def widget_loader_js(token):
 
     iframe_url = request.url_root.rstrip('/') + url_for('app1.widget_embed', token=token)
     logo_html = (
-        f"<img src='{tenant_logo}' alt='' style='width:26px;height:26px;object-fit:contain;border-radius:50%;'>"
+        f"<img src='{escape(tenant_logo)}' alt='' style='width:26px;height:26px;object-fit:contain;border-radius:50%;'>"
         if tenant_logo else
         "<svg viewBox=\"0 0 24 24\"><path d=\"M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm0 14H6l-2 2V4h16v12z\"/></svg>"
     )
@@ -2428,13 +2608,14 @@ def widget_loader_js(token):
   document.head.appendChild(s);
   var btn=document.createElement('button');
   btn.id='ailead-widget-btn';
-  btn.title='{title}';
+  btn.title={title_js};
   btn.innerHTML={btn_icon_js};
   document.body.appendChild(btn);
   var frame=document.createElement('iframe');
   frame.id='ailead-widget-frame';
   frame.src='{iframe_url}';
   frame.allow='clipboard-write';
+  frame.referrerPolicy='origin';
   document.body.appendChild(frame);
   var open=false;
   btn.addEventListener('click',function(){{
@@ -2454,7 +2635,3 @@ def widget_loader_js(token):
     return resp
 
 
-app.register_blueprint(app1_bp, url_prefix='/app1')
-
-if __name__ == "__main__":
-    app.run(debug=False)

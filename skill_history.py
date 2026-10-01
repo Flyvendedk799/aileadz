@@ -158,11 +158,29 @@ def current_level_for(cur, company_id, employee_id, skill_name):
     return _coerce_level(val)
 
 
+def resolve_user_id(cur, username):
+    """``users.id`` for a username (the id every skill/goal table is keyed on)."""
+    try:
+        cur.execute("SELECT id FROM users WHERE username = %s LIMIT 1", (username,))
+        row = cur.fetchone()
+    except Exception:
+        return None
+    if not row:
+        return None
+    return row.get('id') if isinstance(row, dict) else row[0]
+
+
 def record_user_snapshot(username, skill_name, level, previous_level=None,
                          source='profile_manual', company_id=None, employee_id=None):
     """Record a skill history snapshot for a user given their username.
 
-    Resolves company_id and employee_id from company_users if not provided.
+    Id convention (N-1.4): ``employee_id`` is ``users.id`` — the same id
+    ``employee_skills_matrix``, the HR screens and ``learner_context`` use.
+    Before this fix the learner-side writers stored ``company_users.id`` here,
+    so their trail never joined to the HR data. ``company_users.user_id`` is
+    used (falling back to a ``users`` lookup), never ``company_users.id``.
+
+    Resolves company_id and employee_id if not provided.
     Converts Danish/string levels to integer scores via competency.level_to_score.
     Safe and never raises.
     """
@@ -177,18 +195,23 @@ def record_user_snapshot(username, skill_name, level, previous_level=None,
         eid = employee_id
         if has_request_context() and session:
             cid = cid or session.get('company_id')
-            eid = eid or session.get('employee_id')
+            if not eid and session.get('user') == username:
+                eid = session.get('user_id')
 
         cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
         if not cid or not eid:
             cur.execute(
-                "SELECT id, company_id FROM company_users WHERE username = %s AND status = 'active' LIMIT 1",
-                (username,)
+                "SELECT cu.user_id AS user_id, cu.company_id AS company_id FROM company_users cu "
+                "LEFT JOIN users u ON u.id = cu.user_id "
+                "WHERE (u.username = %s OR cu.username = %s) AND cu.status = 'active' LIMIT 1",
+                (username, username)
             )
             row = cur.fetchone()
             if row:
                 cid = cid or row.get('company_id')
-                eid = eid or row.get('id')
+                eid = eid or row.get('user_id')
+        if cid and not eid:
+            eid = resolve_user_id(cur, username)
 
         if not cid or not eid:
             cur.close()

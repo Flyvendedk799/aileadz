@@ -79,6 +79,11 @@ def _ensure_table(mysql):
         return False
 
 
+def _reset_table_ready():
+    global _table_ready
+    _table_ready = False
+
+
 def _cleanup_expired():
     """Remove expired in-process entries. Must be called while holding _LOCK."""
     now = time.time()
@@ -121,6 +126,7 @@ def store_pending(session_id: str, scope: str, tool_name: str, args: dict) -> st
             cur.close()
         except Exception as e:
             print(f"[confirm_store] DB write failed (in-process token still valid): {e}")
+            _reset_table_ready()  # the handle may point at a different DB next time
             try:
                 mysql.connection.rollback()
             except Exception:
@@ -213,6 +219,7 @@ def _db_pop(mysql, session_id, token):
         }
     except Exception as e:
         print(f"[confirm_store] DB pop failed: {e}")
+        _reset_table_ready()
         try:
             mysql.connection.rollback()
         except Exception:

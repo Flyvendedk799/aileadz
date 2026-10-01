@@ -1,4 +1,5 @@
 {% extends "fm_base.html" %}
+{% from 'fm/_admin_list.html' import search_bar, pager %}
 {% block page_id %}agreements{% endblock %}
 {% block title %}Leverandøraftaler{% endblock %}
 {% block topbar_title %}Leverandøraftaler{% endblock %}
@@ -16,12 +17,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_vendors') }}"><i class="fa-solid fa-store"></i> Leverandører</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_agreements') }}"><i class="fa-solid fa-handshake"></i> Aftaler</a>
-  </div>
+{% set active_admin_page = 'agreements' %}{% include 'fm/_admin_subnav.html' %}
 
   <div class="kpi-row">
     <div class="kpi-tile ico"><span class="ki indigo"><i class="fa-solid fa-handshake"></i></span><div><div class="kl">Aftaler</div><div class="kv tnum">{{ agreements|length }}</div></div></div>
@@ -34,9 +30,10 @@
       <div class="fm-card-head">
         <span class="fm-ch-icon"><i class="fa-solid fa-handshake"></i></span>
         <h3>Aftaler</h3>
-        <span class="fm-badge" style="margin-left:auto">{{ agreements|length }}</span>
+        <span class="fm-badge" style="margin-left:auto">{{ pg.total }}</span>
       </div>
       <div class="fm-card-body" style="padding-top:6px">
+        {{ search_bar(q, 'Søg virksomhed eller leverandør…') }}
         <div class="fm-table-wrap" style="border:0;box-shadow:none">
           <table class="fm-table">
             <thead>
@@ -79,11 +76,12 @@
                 </td>
               </tr>
               {% else %}
-              <tr><td colspan="6" class="muted" style="text-align:center;padding:28px">Ingen aftaler oprettet endnu.</td></tr>
+              <tr><td colspan="6" class="muted" style="text-align:center;padding:28px">{% if q %}Ingen aftaler matcher «{{ q }}».{% else %}Ingen aftaler oprettet endnu. Brug formularen til højre for at oprette den første.{% endif %}</td></tr>
               {% endfor %}
             </tbody>
           </table>
         </div>
+        {{ pager(pg, 'aftaler') }}
       </div>
     </div>
 

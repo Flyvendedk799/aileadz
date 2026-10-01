@@ -85,33 +85,6 @@
           </div>
         </section>
 
-        <!-- Continue learning -->
-        <div class="fm-section-head" style="margin-top:0">
-          <div><span class="fm-eyebrow"><i class="fa-solid fa-play"></i> Fortsæt hvor du slap</span><h2 class="fm-section-title">I gang lige nu</h2></div>
-          {% if orders %}<a href="{{ url_for('futurematch.timeline') }}" class="fm-badge teal">Min tidslinje</a>{% endif %}
-        </div>
-        <section class="fm-grid" style="grid-template-columns:1fr;gap:14px">
-          {% if active %}
-            {% for c in active %}
-            <a class="learn-card" data-reveal data-d="{{ loop.index }}" href="{% if c.handle %}{{ url_for('catalog.product_detail', handle=c.handle) }}{% else %}{{ url_for('futurematch.timeline') }}{% endif %}">
-              <span class="learn-thumb"><i class="fa-solid fa-book-open-reader"></i></span>
-              <div class="learn-main">
-                <div class="learn-vendor">{{ c.status_label }}</div>
-                <div class="learn-title">{{ c.title }}</div>
-                <div class="fm-prog thin"><span style="width:55%"></span></div>
-              </div>
-              <span class="fm-badge teal dot" style="white-space:nowrap">I gang</span>
-            </a>
-            {% endfor %}
-          {% else %}
-          <div class="fm-card" data-reveal data-d="1"><div class="fm-card-body">
-            <div class="muted" style="text-align:center;font-size:13.5px;padding:24px 16px;color:var(--fm-ink-3)">
-              {% if orders %}Ingen aktive kurser lige nu. Se status på dine bestillinger nedenfor.{% else %}Ingen kurser i gang endnu. <a href="{{ url_for('catalog.catalog_index') }}" style="color:var(--fm-primary)">Find dit første kursus</a>.{% endif %}
-            </div>
-          </div></div>
-          {% endif %}
-        </section>
-
         <!-- Two column: recommended + side -->
         <div class="split" style="margin-top:8px">
           <div>

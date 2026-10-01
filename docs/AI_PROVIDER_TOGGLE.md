@@ -4,6 +4,11 @@ Samtale-agenten kan køre på enten OpenAI eller Anthropic (Claude). Skiftet ske
 fra `/admin/ai-settings` og kræver **ingen genstart** — næste forespørgsel efter
 cachen udløber (60 s) bruger den nye udbyder.
 
+Kode: `ai_provider.py` (valg, modeller, `MANAGED_KEYS`), `ai_provider_anthropic.py`
+(Claude-runtime + adapter), `ai_runtime.run_agent_with_fallback` (dispatch +
+fallback), `ai_secrets.py` (API-nøgler), `admin_dashboard.ai_settings` (siden).
+Resten af AI-arkitekturen: [ai-framework.md](ai-framework.md).
+
 ## Hurtig start
 
 1. Installér afhængigheden: `pip install -r requirements.txt` (`anthropic>=1,<2`).
@@ -11,8 +16,9 @@ cachen udløber (60 s) bruger den nye udbyder.
    og gem. (Alternativt: sæt den som miljøvariabel — se nedenfor.)
 3. Klik **Test anthropic** for at bekræfte at nøglen virker.
 4. Vælg `Anthropic (Claude)` som udbyder og gem.
-5. Verificér på `/readyz` → `ai.ready: true`, eller i tabellen "Kørsler seneste
-   24 timer" på samme side.
+5. Verificér på `/readyz` → `ai.ready: true` (kun for admin-session eller
+   `X-Health-Token`; offentligt returneres kun `status`), eller i tabellen
+   "Kørsler seneste 24 timer" på AI-udbyder-siden.
 
 Tilbagerulning: vælg `OpenAI (GPT)` igen. Ét felt, ingen deploy.
 
@@ -35,8 +41,8 @@ embeddings-API, og det leverede katalogindeks er bygget med
 | Værdi | Betydning |
 |---|---|
 | `openai` | Standard. Uændret adfærd. |
-| `anthropic` | Claude serverer samtale-agenten. Ved fejl falder forespørgslen automatisk tilbage til OpenAI (`runtime_path = anthropic-openai-fallback`). |
-| `anthropic_shadow` | OpenAI serverer brugeren; en stikprøve (`AI_SHADOW_SAMPLE_RATE`) køres også gennem Claude i baggrunden og logges som `runtime = anthropic-shadow`. |
+| `anthropic` | Claude serverer samtale-agenten. Ved fejl falder forespørgslen automatisk tilbage til OpenAI via Chat Completions (`runtime_path = anthropic-openai-fallback`; `anthropic-invalid-request-fallback` ved permanent 4xx, som også logges som ERROR). Har et skrivende værktøj allerede kørt, genafspilles løkken **ikke** — fejlen kastes videre (ville ellers udføre skrivningen to gange). |
+| `anthropic_shadow` | OpenAI serverer brugeren; en stikprøve (`AI_SHADOW_SAMPLE_RATE`, standard 0,1; max 2 samtidige) køres også gennem Claude i baggrunden og logges som `runtime = anthropic-shadow`. |
 
 Skyggekørsler er **værktøjsfrie** med vilje: at køre værktøjsløkken igen ville
 udføre skrivende værktøjer (ordrer, profilændringer, HR-writes) to gange. De
@@ -53,6 +59,13 @@ Bemærk det hurtige niveau: `AI_MODEL_ROUTING=balanced` sender de fleste ture
 dertil, og Haiku er ~7× dyrere end `gpt-4o-mini`. Prompt-caching (se nedenfor)
 trækker inputsiden ned igen. `claude-sonnet-5` er et billigere hovedvalg.
 Priserne står i `ai_cost_model.PRICE_TABLE_USD_PER_1M` og skal opdateres der.
+Cache-læsninger afregnes til 10 % af inputprisen for `claude-*` (50 % for OpenAI;
+`AI_CACHED_INPUT_DISCOUNT` overstyrer begge).
+
+Modelstrenge og routing (`AI_MAIN_MODEL`, `AI_FAST_MODEL`, `ANTHROPIC_MAIN_MODEL`,
+`ANTHROPIC_FAST_MODEL`, `AI_MODEL_ROUTING` = `quality|balanced|cost`) kan sættes
+fra admin-siden. `AI_RUNTIME` (`responses` standard | `chat`) vælger kun
+OpenAI-løkken.
 
 ## Tekniske forskelle der er håndteret i adapteren
 
@@ -60,7 +73,9 @@ Priserne står i `ai_cost_model.PRICE_TABLE_USD_PER_1M` og skal opdateres der.
 
 1. **Ingen `temperature` / `top_p` / `top_k`** — fjernet på nuværende
    Claude-modeller (returnerer 400). Intentionen udtrykkes med
-   `output_config.effort` (`low` på værktøjsture, `high` på hovedsvar).
+   `output_config.effort` (`low` på værktøjsture og hurtig-niveauet, `high` på
+   hovedsvar; `ANTHROPIC_EFFORT` overstyrer; Haiku-niveauet får slet ikke
+   `effort`).
 2. **`max_tokens` har et gulv — ét per turtype.** Thinking-tokens tælles med i
    `max_tokens`, og adaptiv thinking er slået til som standard, så alle
    OpenAI-lofter er for lave her.
@@ -76,9 +91,11 @@ Priserne står i `ai_cost_model.PRICE_TABLE_USD_PER_1M` og skal opdateres der.
    styres af prompten. Ture der alligevel rammer `max_tokens`, logges som
    `WARNING` og bliver genereret om — de serveres aldrig halve.
 3. **Systemprompten flyttes til `system`-parameteren** med et
-   `cache_control`-brudpunkt på den statiske blok. `consolidate_system_layers()`
-   garanterer allerede at `messages[0]` er byte-stabil, så cache-præfikset
-   (tools + system) holder på tværs af ture.
+   `cache_control`-brudpunkt på den statiske blok (+ et andet efter
+   knowledge-laget). `consolidate_system_layers()` garanterer at `messages[0]`
+   er byte-stabil, så cache-præfikset (tools + system) holder på tværs af ture.
+   Steering-laget sendes som afsluttende `role:"system"`-besked på modeller der
+   understøtter det (Opus 5/4.8, Fable/Mythos) — se ai-framework.md §2b.
 4. **Værktøjsresultater samles i én bruger-besked** som `tool_result`-blokke.
    Deles de op, holder modellen op med at kalde værktøjer parallelt.
 
@@ -99,9 +116,10 @@ Dommeren bliver på OpenAI, så begge udbydere scores af den samme neutrale mode
 
 * `/readyz` → `ai`-blokken: aktiv udbyder, modeller, om nøglerne er sat.
   Blokken er bevidst **ikke** cachet, fordi udbyderen kan skifte i drift.
-* `/readyz` → `features.anthropic`: om SDK + nøgle overhovedet er til stede.
+* `/readyz` → `features.anthropic`: om SDK'et kan importeres (nøglen vises i `ai`-blokken).
 * `ai_agent_runs.runtime`: `chat` / `responses` / `anthropic` /
-  `anthropic-shadow`; `runtime_path` skelner fallback- og guardrail-udfald.
+  `anthropic-shadow`; `runtime_path` skelner fallback- og guardrail-udfald
+  (`*-fallback`, `*-over-budget`, `anthropic-refusal`, `anthropic-forced-final`).
 * `/admin/ai-cost`: pris pr. model, nu også for `claude-*`.
 
 ## Indstillinger
@@ -154,9 +172,8 @@ tomt felt ved gem betyder "behold nuværende"; fjernelse kræver et eksplicit kl
 * **Det er en reel rettighedsændring.** Før krævede det serveradgang at sætte en
   provider-nøgle; nu kan enhver konto med admin-rollen gøre det. Gennemgå hvem
   der har den rolle.
-* Formularen beskyttes af `SESSION_COOKIE_SAMESITE='Lax'` (sat i `run.py`), som
-  forhindrer cross-site POST i at medbringe sessionscookien. Appen har ikke
-  CSRF-tokens nogen steder, så der er ikke tilføjet et her.
+* Formularen beskyttes af Flask-WTF CSRF (`csrf_protect.py`; token injiceres i
+  alle POST-formularer) oven i `SESSION_COOKIE_SAMESITE='Lax'` (`run.py`).
 * Nøgler eksporteres til `os.environ` ved cache-opdatering, så ældre kaldesteder
   der læser `OPENAI_API_KEY` direkte (`app1`, `catalog_service`,
   `insights_engine`, `ai_eval`) også ser en UI-sat nøgle. Fjerner du en nøgle,

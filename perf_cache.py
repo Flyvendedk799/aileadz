@@ -2,8 +2,8 @@
 
 Why this module exists
 ----------------------
-The dashboards recompute the same heavy aggregations on every load. PythonAnywhere
-offers no Redis (the repo's ``redis`` dependency is optional and used only for
+The dashboards recompute the same heavy aggregations on every load. The host
+has no Redis (the repo's ``redis`` dependency is optional and used only for
 distributed rate-limiting), so this is a **per-worker, in-process** cache: each
 uWSGI worker keeps its own copy. That is the right trade-off for the read-heavy,
 low-write dashboards it backs — a short TTL bounds how stale any one worker can be,

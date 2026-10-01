@@ -7,8 +7,8 @@ compliance recheck). The outbox drain is still here — it is simply registered 
 the `outbox_drain` job, so the old behaviour is preserved and reliable.
 
 Runs DIRECTLY in the app context — so there is no token, no HTTP round-trip, and
-no public URL to secure. Use it as a PythonAnywhere Scheduled Task (single-shot)
-or an Always-on Task (--loop).
+no public URL to secure. Run it as a ServerHoster worker service (--loop)
+or a single-shot scheduled task (see docs/runbooks/JOB_RUNNER.md).
 
     python3 drain_worker.py                  # run all due jobs once and exit (Scheduled Task)
     python3 drain_worker.py --loop           # run due jobs forever every INTERVAL secs (Always-on Task)

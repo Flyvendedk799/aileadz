@@ -1,79 +1,59 @@
-# Runbook: Email / ESP Setup
+# Runbook: E-mail / SMTP setup
 
-The branded transactional emails — **order confirmations** and **employee
-welcome/invite** mails — are implemented in `email_service.py` but **no-op
-safely until a mail backend is configured**. This runbook turns them on with an
-EU-resident ESP / SMTP relay (GDPR: the app and its users are Danish, so keep
-mail data in the EU).
+All transactional mail goes through `email_service.send_branded_email()` (Flask-Mail,
+in `requirements.txt`). Templates (`render_branded_email`): `welcome`, `password_reset`,
+`password_invite`, `order_confirmation`, `order_approval_needed`, `order_approved`,
+`order_booked`, `order_cancelled`, `vendor_new_order`, `vendor_submission_result`,
+`vendor_invite`, `scheduled_report`, `budget_overrun_alert`, `compliance_recert_alert`,
+`manager_weekly_digest`, `announcement`. Callers are best-effort wrappers that never
+raise, so the app works whether or not mail is configured. Keep mail data with an
+EU-resident SMTP provider that signs a DPA (the users are Danish).
 
-## Current behaviour (before setup)
+## Behaviour
 
-- `send_branded_email()` renders the email, then **gates on configuration**: it
-  needs *both* a mail server **and** a default sender, or it returns `False`
-  quietly and logs at debug — it never raises
-  (`email_service.py:148-200`, gate at `email_service.py:191-200`).
-- `_mail_configured()` checks for `MAIL_SERVER` (env or app config) —
-  `email_service.py:15`.
-- `_default_sender()` reads `MAIL_DEFAULT_SENDER` (env or app config) —
-  `email_service.py:75-76`.
-- When unconfigured, every attempt is logged in `email_log` with status
-  `skipped_no_backend` (`email_service.py:196`), so you can audit what *would*
-  have been sent.
-- Callers `send_order_confirmation()` (`email_service.py:245`) and
-  `send_employee_welcome()` (`email_service.py:284`) are best-effort wrappers
-  that never raise — so the rest of the app is unaffected whether or not mail is
-  configured.
+- `run.py` calls `email_service.load_mail_config(app)` at boot: the environment is
+  copied into `app.config` (Flask-Mail reads config only).
+- A send needs BOTH a server and a sender (`send_branded_email`). Otherwise it returns
+  `False` without raising and writes an `email_log` row with status `skipped_no_backend`.
+- Other `email_log` statuses: `sent`, `error` (SMTP failure or render failure; the
+  message is in the `error` column), `skipped_opt_out` (digests/alerts/announcements are
+  not sent to users who disabled e-mail notifications; order, account and invite mail
+  always is). `dedupe_key` stamps stop time-sensitive alerts repeating.
+- From-name is the tenant's display name (`Futurematch` without branding); reply-to is the
+  tenant `support_email`, else the default sender.
+- `email_log` rows are deleted after 365 days (`retention_service`, `RETENTION_EMAIL_LOG_DAYS`).
 
-The actual send uses **Flask-Mail** (`from flask_mail import Message, Mail` —
-`email_service.py:205-206`), so the standard `MAIL_*` config keys apply.
+## Configuration
 
-## Setup
+Set on the web service AND the worker service (the worker sends digests, reports, alerts).
+`load_mail_config` resolves each setting in this order:
 
-### 1. Pick an EU-resident ESP / SMTP relay
-
-Choose a provider whose sending infrastructure is in the EU and that signs a DPA
-(e.g. an EU-region SMTP relay). You need: SMTP host, port, username, password,
-and TLS settings.
-
-### 2. Set the mail env vars
-
-The two the code explicitly checks are **required**:
-
-| Env var | Purpose | Read at |
+| Setting | Env, first non-empty wins | Default |
 |---|---|---|
-| `MAIL_SERVER` | SMTP host — presence of this is the on/off switch | `email_service.py:15` |
-| `MAIL_DEFAULT_SENDER` | From-address for all branded mail | `email_service.py:75-76` |
+| server | `MAIL_SERVER`, `SMTP_HOST`, `SMTP_SERVER` | none (mail off) |
+| port | `MAIL_PORT`, `SMTP_PORT` | `587` |
+| SSL | `MAIL_USE_SSL` (`1/true/yes/on`) | on when unset and port is `465` |
+| STARTTLS | `MAIL_USE_TLS` | `1`, or `0` when SSL is on |
+| username | `MAIL_USERNAME`, `SMTP_USER` | none |
+| password | `MAIL_PASSWORD`, `SMTP_PASSWORD` | none |
+| sender | `MAIL_DEFAULT_SENDER`; else `SMTP_FROM` (with `SMTP_FROM_NAME` becomes `Name <addr>`); else the username | none (mail off) |
 
-Flask-Mail also honours the standard keys (set whichever your relay needs):
-
-| Env var | Typical value |
-|---|---|
-| `MAIL_PORT` | `587` (STARTTLS) or `465` (SSL) |
-| `MAIL_USE_TLS` | `true` for port 587 |
-| `MAIL_USE_SSL` | `true` for port 465 |
-| `MAIL_USERNAME` | SMTP user |
-| `MAIL_PASSWORD` | SMTP password (secret — keep out of git) |
-
-Set these in the WSGI environment (see `wsgi_pythonanywhere.example.py` for the
-`os.environ[...]` pattern). If you set them as Flask config instead of env vars,
-make sure they land in `app.config` before the first email send — the helpers
-fall back to `current_app.config.get(...)`.
-
-### 3. Reload the web app.
+`APP_BASE_URL` is used for the links in the mails. Never commit `MAIL_PASSWORD`.
+Redeploy / restart both services after changing the variables.
 
 ## Verify
 
-1. With `MAIL_SERVER` **or** `MAIL_DEFAULT_SENDER` missing, a send attempt logs
-   `skipped_no_backend` in `email_log` and returns `False` — confirm this is what
-   you saw *before* setup.
-2. After setting both + reloading, trigger an order confirmation (place a test
-   order) or add a test employee (welcome mail).
-3. Confirm the recipient receives the branded mail and that the `email_log` row
-   shows status `sent` (`email_service.py:213-215`). A `error` status row means
-   the SMTP credentials/host are wrong — fix and retry.
+1. Admin -> Systemstatus (`/admin/system-health`) shows the mail status and lists what is
+   missing (`MAIL_SERVER`, `MAIL_DEFAULT_SENDER`, `flask_mail`).
+2. Use "Send test-mail" on that page (`POST /admin/system-health/test-email`,
+   `email_service.send_test_email`). It reports the SMTP error text on failure and logs
+   `test` rows in `email_log`.
+3. Trigger a real mail (place a test order, or add a test employee) and confirm the
+   `email_log` row is `sent`. `error` means wrong host/credentials/TLS mode; fix and retry.
+4. Before setup you should see `skipped_no_backend` rows: that confirms the gate works.
 
 ## Done criteria
 
-- `MAIL_SERVER` + `MAIL_DEFAULT_SENDER` (and any auth/TLS vars) set in WSGI env.
-- A test order confirmation and a test welcome email both deliver and log `sent`.
-- Provider is EU-resident with a DPA in place.
+- Server + sender configured on both services; test mail delivers.
+- A test order confirmation and a test welcome mail deliver and log `sent`.
+- The provider is EU-resident with a DPA.

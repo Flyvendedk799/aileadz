@@ -69,15 +69,10 @@ def mind_map():
 
 
 # How many cards each employee-home section ever renders (cheap, bounded).
-_HOME_ACTIVE_LIMIT = 4
 _HOME_ORDER_LIMIT = 5
 _HOME_REC_LIMIT = 3
 
-# Maps a course_orders.status to a learner-facing "is this still in progress?"
-# bucket. Anything in this set is shown under "I gang lige nu".
 import order_lifecycle as _lc  # noqa: E402  (status vocabulary, N-1.1)
-
-_HOME_ACTIVE_STATUSES = frozenset({'approved', 'booked'})
 
 
 def _home_skill_completeness(profile):
@@ -171,7 +166,6 @@ def employee_home():
     user_id = session.get('user_id')
     company_id = session.get('company_id')
 
-    active = []
     orders = []
     profile = {}
     skills_groups = []
@@ -217,10 +211,6 @@ def employee_home():
                         'state': _ORDER_STATE.get(raw_status, 'afventer'),
                         'created_at': r.get('created_at'),
                     }
-                    # "I gang lige nu": approved/active and not yet completed.
-                    completed = (r.get('completion_status') or '').lower() in ('completed', 'gennemfoert', 'done')
-                    if raw_status in _HOME_ACTIVE_STATUSES and not completed and len(active) < _HOME_ACTIVE_LIMIT:
-                        active.append(item)
                     if len(orders) < _HOME_ORDER_LIMIT:
                         orders.append(item)
         except Exception as e:
@@ -305,7 +295,6 @@ def employee_home():
         goals=goals,
         deadlines=deadlines[:4],
         show_welcome=show_welcome,
-        active=active,
         orders=orders,
         recommendations=recommendations,
         hr_assignments=hr_assignments,

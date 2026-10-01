@@ -10,7 +10,7 @@ Design goals (see migrations/README.md):
 * DB URL FROM ENV: the database URL is built from the same MYSQL_* environment
   variables the app uses in run.py:
       MYSQL_HOST, MYSQL_PORT, MYSQL_USER, MYSQL_PASSWORD, MYSQL_DB
-  Defaults mirror run.py's production fallbacks so behaviour is consistent.
+  There is no production fallback; a missing config fails loudly.
   An explicit ALEMBIC_DATABASE_URL / DATABASE_URL env var, if set, wins over
   everything (handy for tunnels / CI / a fully-formed SQLAlchemy URL).
 

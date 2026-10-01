@@ -562,7 +562,7 @@ def grounded_real(final_text, tool_results=None, user_query="") -> Optional[Dict
 # 5. Profile-event / order-confirmation checks (intent-specific)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PROFILE_EVENT_TYPES = {"profile_confirm_request", "ui_card", "profile_update"}
+_PROFILE_EVENT_TYPES = {"profile_confirm_request", "profile_confirm_batch", "profile_saved", "ui_card", "profile_update"}
 
 
 def profile_event_present(events, expect) -> Dict[str, Any]:

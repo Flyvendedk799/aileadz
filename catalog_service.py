@@ -66,7 +66,7 @@ _CACHE = {
 
 # Throttle the file-signature stat. _signature() stat()s four files and is hit on
 # every catalog/derive call; within a single page render that is many redundant
-# stat syscalls (slow on PythonAnywhere's networked filesystem). Re-checking the
+# stat syscalls (slow on networked filesystems). Re-checking the
 # files at most every CATALOG_SIGNATURE_TTL_SECONDS collapses those to one stat
 # burst per window while still picking up catalog edits within a few seconds.
 _SIG_CACHE = {"value": None, "checked_at": 0.0}

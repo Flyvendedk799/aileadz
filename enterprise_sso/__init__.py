@@ -30,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Guarded crypto / XML-security imports.
-# These MUST NOT crash create_app() if the wheel is missing on PythonAnywhere.
+# These MUST NOT crash create_app() if the wheel is missing on the host.
 # ---------------------------------------------------------------------------
 
 # defusedxml: XXE-safe XML parsing for attacker-controlled SAMLResponse payloads.
@@ -461,8 +461,7 @@ class SAMLProvider:
         TODO(security): This is a PRESENCE check only and does NOT verify the
         signature cryptographically (digest, signature value, certificate trust,
         canonicalization, audience/recipient/conditions, replay). Full validation
-        requires python3-saml or signxml + xmlsec, which are heavy native deps on
-        PythonAnywhere and are tracked as a separate follow-up item. Until then a
+        requires python3-saml or signxml + xmlsec, which are heavy native deps and are tracked as a separate follow-up item. Until then a
         forged-but-"signed" assertion from an untrusted IdP could still pass; the
         presence check closes only the trivial "no signature at all" forgery.
         """

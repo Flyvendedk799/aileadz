@@ -7,8 +7,8 @@ advertises gzip support. The big HR/dashboard pages render hundreds of KB of
 HTML; gzip typically cuts that by ~75%, which is pure transfer-time win on every
 page load.
 
-PythonAnywhere's nginx gzips files served via the Web-tab *static* mapping, but
-NOT the dynamic responses proxied from the worker — so this fills that gap.
+The reverse proxy does not gzip dynamic responses proxied from the worker, so
+this fills that gap.
 
 Safety (this module never breaks a response):
   - Skips streamed / passthrough responses (SSE chat stream, send_file) — those

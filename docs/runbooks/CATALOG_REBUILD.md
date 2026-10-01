@@ -1,85 +1,61 @@
-# Runbook: RAG Catalog Rebuild
+# Runbook: Catalog, search index and embeddings
 
-The chat assistant's product search uses a hybrid RAG index (BM25 + vector
-embeddings + AI summaries) over the Shopify course catalog. The index lives in a
-single augmented artifact, `app1/shopify_products_augmented.json`. **That file is
-currently absent**, so RAG is **degraded** — search falls back to the raw,
-un-augmented catalog without AI summaries or embeddings. This runbook regenerates
-it.
+The chat assistant's course search is hybrid RAG (BM25 + vector embeddings + reranker)
+over ONE catalog assembled by `catalog_service.py`; `app1/rag.load_augmented_products()`
+is a view over it. The index (BM25 + vectors) is rebuilt in memory whenever the catalog
+signature changes (mtime of the five files below).
 
-## What it is
+## Catalog inputs (all git-ignored; none ships with a fresh clone)
 
-- **Builder:** `app1/build_index.py`.
-- **Input:** the raw Shopify export. It is NOT in git any more: it lives at `$CATALOG_SOURCE_FILE` (default `app1/shopify_products_all_pages.json`) and is refreshed daily by the `shopify_sync` job (needs `SHOPIFY_STORE` + `SHOPIFY_ADMIN_TOKEN`). Admin > Katalogadmin > "Genopbyg indeks" rebuilds the search index and embeds only new products —
-  `app1/build_index.py:17`.
-- **Output:** `app1/shopify_products_augmented.json` —
-  `app1/build_index.py:18`.
-- **Consumer:** `app1/rag.py` loads the augmented file at `app1/rag.py:17`. When
-  it's missing, RAG runs degraded.
-- **Readiness signal:** `/readyz` reports `"catalog": true` only if at least one
-  RAG index file exists on disk (`health.py:82-87`, surfaced at
-  `health.py:102,107`).
+| Input | Path | Written by |
+|---|---|---|
+| Raw Shopify export | `catalog_service.source_file_path()`: `$CATALOG_SOURCE_FILE` (absolute, or relative to the app root), default `app1/shopify_products_all_pages.json` | `shopify_sync` job / `POST /admin/catalog/sync` |
+| Augmented products (AI summary, structured metadata, embedding) | `app1/shopify_products_augmented.json` | offline `app1/build_index.py` only |
+| CSV imports | `instance/catalog_import_products.json` | admin import flow |
+| Admin edits / hide / archive overlay | `instance/catalog_overlay.json` | admin product browser |
+| Category overrides | `instance/catalog_category_overrides.json` | admin category flow |
+| Embeddings for products without one in the augmented file | `instance/catalog_embeddings.json` (sidecar, by handle) | `rag.embed_missing()` |
 
-## ⚠️ This is a slow, paid, offline job
+Vendor profiles (`app1/vendor_profiles.json`) are separate and ARE tracked in git.
+`/readyz` reports `"catalog": true` when the source file or either `app1/shopify_products_*.json`
+file exists on disk (`health.py`).
 
-`build_index.py` calls OpenAI **per product**:
+## Day-to-day (no manual rebuild needed)
 
-- One **`gpt-4o-mini` chat completion per product** to generate a Danish AI
-  summary (`generate_summary()`, `app1/build_index.py:134-165`, model at
-  `:155`). There's a deliberate `time.sleep(0.3)` between products
-  (`:334`).
-- **Embeddings** for every product, batched 100 at a time
-  (`BATCH_SIZE = 100`, `:235-256`), with `time.sleep(0.5)` between batches
-  (`:331`).
+- `shopify_sync` (daily, worker): pulls active products from the Shopify Admin API into
+  the source file, replacing it atomically and refusing a response with under 50 % of the
+  current product count. Needs `SHOPIFY_STORE` + `SHOPIFY_ADMIN_TOKEN` (`SHOPIFY_API_VERSION`
+  optional); otherwise it skips cleanly.
+- `catalog_embed` (every 6 h, worker): `rag.embed_missing()` embeds up to 300 products
+  that have no vector into the sidecar (batches of 100, `AI_EMBEDDING_MODEL`,
+  `AI_EMBEDDING_DIMENSIONS`). A catalog change also triggers it in the background unless
+  `CATALOG_AUTO_EMBED=0`. Skipped without `OPENAI_API_KEY` (search stays keyword-only).
+- Admin -> Katalogadmin: "Synkronisér fra Shopify" = `POST /admin/catalog/sync`; "Genopbyg indeks" =
+  `POST /admin/catalog/reindex` (rebuild the in-memory index, then `embed_missing`);
+  `GET /admin/catalog/index-status` returns products / with_embeddings / missing_embeddings /
+  bm25_terms / last_error. All platform-admin only (`catalog_admin_routes.py`).
 
-So the full run is a **one-time, billable, minutes-long offline job** — not
-something to run on every deploy. It resumes from any existing augmented file
-(skips products that already have embeddings — `:287`), so re-runs are cheaper
-than the first run.
+## Full offline augmentation: `app1/build_index.py`
 
-## Run it
+Only needed to regenerate AI summaries/metadata for the whole catalog, or after changing
+the embedding model or dimensions (existing vectors are then the wrong size or space).
+It is a slow, paid job: per product two `gpt-4o-mini` calls (structured metadata + Danish
+summary), run with `BUILD_INDEX_WORKERS` (default 16) concurrent threads, then embeddings in
+batches of 100 with a checkpoint write after every batch.
 
-1. Ensure `OPENAI_API_KEY` is set in the shell (the script exits if not —
-   `app1/build_index.py:13-15`; it also reads `.env` via `load_dotenv`).
-2. **Back up** any existing artifact first (so you can roll back a bad rebuild):
-   ```
-   cp app1/shopify_products_augmented.json app1/shopify_products_augmented.json.bak  # if it exists
-   ```
-3. Run from the repo root:
-   ```
-   python3 app1/build_index.py
-   ```
-4. Watch the progress output (per-product summary + batched embedding logs).
-5. When it finishes, confirm `app1/shopify_products_augmented.json` exists and is
-   non-trivial in size, and keep the `.bak` until you've verified the rebuild.
+1. Put the raw export in place (run the sync, or set `CATALOG_SOURCE_FILE`). The script
+   exits if `OPENAI_API_KEY` is unset (it also loads `.env`) or the input is missing.
+2. Back up any existing `app1/shopify_products_augmented.json` (the script overwrites it).
+3. From the repo root: `python app1/build_index.py`, or `python app1/build_index.py --skip-existing`
+   to keep products that already have an embedding and only process new ones.
+4. Copy the result to the host if you built it elsewhere, then use "Genopbyg indeks".
+5. Verify: `/readyz` shows `catalog: true`; `index-status` shows `missing_embeddings` near 0;
+   ask the chat a course query and check summarized, ranked hits.
 
-## Verify
+## Notes
 
-1. `app1/shopify_products_augmented.json` exists and contains `ai_summary` +
-   embedding fields per product.
-2. Reload the web app, hit `GET /readyz` → `"catalog": true` (`health.py:102`).
-3. Ask the chat assistant a product query and confirm relevant, summarized hits
-   (full hybrid RAG restored).
-
-## Storing the artifact (owner decision)
-
-The augmented JSON is **large**, and the repo's `.gitignore` currently ignores
-`*.json` broadly, so the artifact is **not** tracked. Whether to **un-gitignore**
-and commit it (so deploys ship with a prebuilt index instead of re-running the
-paid job) is the **repository owner's decision** — it trades repo size for not
-having to rebuild on a fresh deploy. Options:
-
-- **Keep it gitignored (default):** regenerate via this runbook on each fresh
-  environment. Cheapest repo, but every clean deploy needs the paid job (or a
-  manual copy of the artifact).
-- **Track it:** add an explicit `!app1/shopify_products_augmented.json` negation
-  in `.gitignore` and commit it. Deploys then ship with the index. Repo grows.
-
-Until the owner decides, treat the file as a build artifact: regenerate or
-hand-copy it onto each host, and keep a backup.
-
-## Done criteria
-
-- `app1/shopify_products_augmented.json` regenerated and backed up.
-- `/readyz` shows `"catalog": true`.
-- Chat product search returns summarized, ranked results.
+- Changing `AI_EMBEDDING_MODEL` / `AI_EMBEDDING_DIMENSIONS`: the sidecar and augmented vectors
+  must be regenerated; delete `instance/catalog_embeddings.json`, rerun `build_index.py`
+  (without `--skip-existing`), then reindex.
+- Because `*.json` is git-ignored, these files exist only on the host. Back them up; whether
+  to un-ignore and commit the (large) augmented file is the owner's call.

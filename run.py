@@ -219,10 +219,8 @@ def create_app():
     })
 
     # Long-lived caching for worker-served static assets. Safe because every
-    # asset URL is cache-busted with a ?v=N query string (bump on each edit). On
-    # PythonAnywhere, mapping /static -> the static/ dir in the Web tab makes nginx
-    # serve these without hitting the worker at all; this default covers the dev
-    # server and any pre-mapping requests. See docs/runbooks/STATIC_AND_PERF.md.
+    # asset URL is cache-busted by content hash (asset_version). See
+    # docs/runbooks/STATIC_AND_PERF.md.
     try:
         app.config['SEND_FILE_MAX_AGE_DEFAULT'] = int(
             os.environ.get('STATIC_MAX_AGE_SECONDS', str(60 * 60 * 24 * 365))
@@ -233,7 +231,7 @@ def create_app():
     # DB config comes from the environment. Precedence: explicit MYSQL_* env vars
     # > a DATABASE_URL (mysql://user:pass@host:port/db, which is what ServerHoster
     # injects for its linked managed MySQL). There is deliberately NO production
-    # fallback any more: the old PythonAnywhere database is gone, so a missing
+    # fallback any more: the old (PythonAnywhere-era) database is gone, so a missing
     # config must fail loudly (localhost/empty password) rather than silently
     # point at a dead host.
     db_url = _mysql_settings_from_database_url(os.environ.get('DATABASE_URL'))
@@ -387,8 +385,8 @@ def create_app():
     except Exception as e:
         logging.warning("Security headers integration skipped: %s", e)
 
-    # Gzip dynamic responses (HTML/JSON/…). PythonAnywhere's nginx gzips mapped
-    # static files but not worker-proxied dynamic responses; this covers those.
+    # Gzip dynamic responses (HTML/JSON/…). The reverse proxy does not
+    # gzip worker-proxied dynamic responses; this covers those.
     # Guarded so a failure here can never crash create_app().
     try:
         from response_compression import register_response_compression
@@ -510,7 +508,7 @@ def create_app():
         except Exception as e:
             logging.warning("Performance index init: %s", e)
 
-    # Opportunistic scheduler driver (no cron/Celery on PythonAnywhere). Mirrors
+    # Opportunistic scheduler driver (no cron/Celery on the host). Mirrors
     # event_bus.opportunistic_drain: runs at most once per ~60s PER WORKER from a
     # request hook so DUE scheduled jobs (outbox drain, daily insights, agreement
     # alerts, compliance recheck) still fire even with no scheduled task. Attached

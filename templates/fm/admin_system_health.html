@@ -107,7 +107,7 @@
       {% if mail and mail.configured %}
       <p style="font-size:13px;color:var(--fm-ink-2)">Server <strong>{{ mail.server }}:{{ mail.port }}</strong>{% if mail.tls %} (TLS){% elif mail.ssl %} (SSL){% endif %}, afsender <strong>{{ mail.sender }}</strong>{% if not mail.has_credentials %}. Ingen login angivet.{% endif %}</p>
       {% else %}
-      <p style="font-size:13px;color:var(--fm-ink-2)">Platformen kan ikke sende e-mail endnu. Mangler: <strong>{{ (mail.missing if mail else ['ukendt'])|join(', ') }}</strong>. Sæt variablerne på serveren (se USER_ACTIONS_PART_B) og genstart.</p>
+      <p style="font-size:13px;color:var(--fm-ink-2)">Platformen kan ikke sende e-mail endnu. Mangler: <strong>{{ (mail.missing if mail else ['ukendt'])|join(', ') }}</strong>. Sæt variablerne på serveren (se docs/USER_ACTIONS.md) og genstart.</p>
       {% endif %}
       <form method="post" action="{{ url_for('admin_dashboard.admin_send_test_email') }}" class="fm-flex fm-gap12" style="margin-top:12px;align-items:flex-end;flex-wrap:wrap">
         <label style="display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--fm-ink-3)">Send test-mail til

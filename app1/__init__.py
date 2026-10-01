@@ -49,7 +49,6 @@ def index():
     """Canonicalise the learner chat entry point on the Futurematch shell."""
     return redirect(url_for('futurematch.chat'))
 
-SHOPIFY_STORE_URL = os.getenv("SHOPIFY_STORE_URL", "futurematch.dk")
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 
 # Set the key for openai
@@ -1915,7 +1914,7 @@ _WIDGET_RATE_SCHEMA_READY = False
 
 def _widget_client_ip():
     """Best-effort client IP for rate-keying. Honours X-Forwarded-For (we sit
-    behind PythonAnywhere's proxy) but only trusts the left-most hop and caps
+    behind the Cloudflare tunnel / proxy) but only trusts the left-most hop and caps
     length so a hostile header can't bloat the rate key."""
     xff = request.headers.get('X-Forwarded-For', '') or ''
     if xff:

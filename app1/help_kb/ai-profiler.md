@@ -10,9 +10,9 @@ AI Profiler (/ai-profiler) er den samme AI som AI-assistenten, men fokuseret på
 
 ## Trin for trin
 1. Vælg "AI Profiler" i menuen. Du skal være logget ind.
-2. Klik "Start". Profileren stiller målrettede spørgsmål til det, der mangler på din profil.
-3. Svar med dine egne ord. Ringen viser, hvor komplet din profil er i procent, og du kan se, hvor mange felter og hukommelser der er udfyldt.
-4. Klik "Stop", når du vil holde pause. Når du kommer tilbage, tager profileren udgangspunkt i det, den allerede ved, og spørger kun ind til det, der mangler.
+2. Klik "Start" (knappen hedder "Fortsæt", når samtalen er i gang). På en tom samtale starter profileren også selv første gang i en browsersession og stiller målrettede spørgsmål til det, der mangler på din profil.
+3. Svar med dine egne ord. Ringen viser, hvor komplet din profil er i procent, og du kan se antal hukommelser, hvor mange af dem AI'en har brugt, og antal datapunkter.
+4. "Stop" afbryder det svar, der er i gang. Kommer du tilbage senere, tager profileren udgangspunkt i det, den allerede ved, og spørger kun ind til det, der mangler.
 
 ## Godt at vide
 - Når din profil er udfyldt nok (som standard 70 %), går profileren videre til at foreslå relevante kurser.

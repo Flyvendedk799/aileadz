@@ -32,8 +32,9 @@ Settings storage
 ----------------
 Values live in the ``ai_settings`` key/value table, are cached in-process for
 ``_SETTINGS_TTL`` seconds, and fall back to ``os.getenv``. Only keys in
-:data:`MANAGED_KEYS` may be written from the admin UI — API keys are NEVER
-stored in the database; they stay in the host environment.
+:data:`MANAGED_KEYS` may be written from the admin UI — API keys are
+not stored in ``ai_settings``; they live in the host environment or, encrypted at
+rest, in ``ai_secrets``.
 
 Thread-safety: ``main_model()`` and friends are called from ThreadPool workers
 (parallel tools, live tool events) where Flask's app context is not visible. The

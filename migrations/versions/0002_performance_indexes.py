@@ -13,10 +13,9 @@ company_users), which is the dominant cost of the slow report pages.
 
 RELATIONSHIP TO THE RUNTIME BOOTSTRAP
 -------------------------------------
-On live PythonAnywhere the authoritative applier is the runtime ensurer
+On the live host the authoritative applier is the runtime ensurer
 ``performance_indexes.ensure_performance_indexes(app)`` (wired into a
-before_request hook in run.py), so the indexes land on a plain ``git pull`` +
-web-app reload. This Alembic revision records the SAME index set as part of the
+before_request hook in run.py), so the indexes land on a plain deploy. This Alembic revision records the SAME index set as part of the
 migration history for DBs managed via ``alembic upgrade``. Per migrations/env.py
 this module must stay STANDALONE (no app imports), so the list is duplicated
 here — keep it in sync with ``performance_indexes.PERFORMANCE_INDEXES``.

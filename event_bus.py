@@ -18,12 +18,12 @@ delivers them to the company's ``company_webhooks`` subscriptions, using the
 EXISTING SSRF-guarded delivery path. Delivery becomes at-least-once with retry
 instead of fire-and-forget.
 
-Design constraints (host has NO cron/Redis/Celery yet — PythonAnywhere)
------------------------------------------------------------------------
+Design constraints (host has NO cron/Redis/Celery)
+--------------------------------------------------
 ``drain_outbox()`` is callable from two places:
 
   1. a token-protected HTTP endpoint (``POST /api/v1/_internal/drain-outbox``)
-     that a PythonAnywhere scheduled task hits for reliable delivery
+     that a scheduled task can hit for reliable delivery
      (OPS-GATED — see enterprise_api), and
   2. a best-effort opportunistic drain that runs a tiny, time-boxed batch on a
      fraction of API requests so events still flow even with no job runner.

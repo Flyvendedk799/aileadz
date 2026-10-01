@@ -1,138 +1,87 @@
 # Runbook: Secret Rotation
 
-How to rotate every credential the aileadz app depends on. Run this whenever a
-secret may have leaked (it has — see `GIT_HISTORY_PURGE.md` — so this rotation
-is **mandatory**, not optional). No real secret values appear in this document;
-it only names env vars and the source lines that read them.
+How to rotate every credential aileadz depends on. Run it whenever a secret may have
+leaked. Old credentials (a DB password, an SSH password, a Shopify Admin token, the
+placeholder session key) were committed to git in the past and are still in history
+(see `GIT_HISTORY_PURGE.md`), so treat anything that was ever valid as public. No real
+values appear here; set them in the ServerHoster environment of BOTH the web and the
+worker service (`.env.example` lists every variable).
 
-> **Why this matters:** the old credentials were hardcoded as fallback defaults
-> directly in `run.py` and in now-deleted duplicate entrypoints (`run_old.py`,
-> `run_b4570bd.py`, `checkout_run.py`). Those duplicates have been removed, but
-> the values are still in git history and therefore must be treated as public.
+## What the app reads
 
-## What the app reads, and where
-
-| Secret | Env var | Read at | Insecure fallback in source |
+| Secret | Variable | Read by | Notes |
 |---|---|---|---|
-| Flask session secret | `SECRET_KEY` | `run.py:134` | `'your_secret_key_here'` |
-| MySQL password | `MYSQL_PASSWORD` | `run.py:158` | a hardcoded literal |
-| MySQL host/user/db | `MYSQL_HOST` / `MYSQL_USER` / `MYSQL_DB` | `run.py:156-159` | hardcoded literals |
-| SSH tunnel password (local dev only) | (none — hardcoded) | `run.py:305` (`ssh_password=`) | a hardcoded literal |
-| OpenAI API key | `OPENAI_API_KEY` | `ai_runtime.py:89`, `app1/__init__.py:59`, `app1/build_index.py:13`, `cv_ingest.py:196`, `insights_engine.py:181`, `app3/__init__.py:10` | none (no key = AI degraded) |
-| SSO token encryption key | `SSO_FERNET_KEY` | `enterprise_sso/__init__.py:86` | derived from `SECRET_KEY` (weaker) |
+| Flask session key | `SECRET_KEY` | `run.py` (`resolve_secret_key`) | Boot fails if unset or a known placeholder. Several Fernet keys derive from it. |
+| DB credentials | `DATABASE_URL` or `MYSQL_HOST/PORT/USER/PASSWORD/DB` | `run.py` | No hardcoded fallback any more. |
+| OpenAI key | `OPENAI_API_KEY` | `ai_secrets.py`, `app1/`, `cv_ingest.py`, `insights_engine.py`, `ai_runtime.py` | Resolution is **DB first, env second**. |
+| Anthropic key | `ANTHROPIC_API_KEY` | `ai_secrets.py`, `ai_provider_anthropic.py` | Same DB-then-env resolution. |
+| AI-key encryption key | `AI_SECRET_KEY` | `ai_secrets.py` | Fernet key for keys stored via `/admin/ai-settings` (`ai_secrets` table); else derived from `SECRET_KEY`. |
+| SSO client-secret key | `SSO_FERNET_KEY` | `enterprise_sso/__init__.py` | Else derived from `SECRET_KEY`. |
+| TOTP-secret key | `TWOFA_FERNET_KEY` | `two_factor.py` | Else derived from `SECRET_KEY`. |
+| Shopify Admin token | `SHOPIFY_ADMIN_TOKEN` | `shopify_sync.py` | Plus `SHOPIFY_STORE`. |
+| SMTP password | `MAIL_PASSWORD` / `SMTP_PASSWORD` | `email_service.py` | |
+| Monitor / drain tokens | `HEALTH_TOKEN`, `OUTBOX_DRAIN_TOKEN` | `health.py`, `enterprise_api` | Shared secrets: change on both sides. |
+| Sentry / Redis | `SENTRY_DSN`, `REDIS_URL` | `observability.py`, `perf_cache.py` | Credentials may be embedded in the URL. |
+| Dev SSH tunnel | `SSH_PASSWORD` / `SSH_PKEY` | `run.py` `main()` | Local development only. |
+| CI | repo secrets `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`, `EVAL_VENDOR_EMAIL`, `EVAL_VENDOR_PASSWORD` | `.github/workflows/ai-eval-nightly.yml` | GitHub -> Settings -> Secrets. |
 
-## Recommended rotation order
+## Recommended order
 
-Rotate in this order so the app is never left pointing at a stale credential:
+1. Database password (direct data access).
+2. Third-party API keys: OpenAI, Anthropic, Shopify, SMTP, Sentry, GitHub Actions secrets.
+3. `SECRET_KEY` last (forces one re-login for everybody; see below).
 
-1. **MySQL password** (the most damaging if leaked — direct DB access).
-2. **SSH password** (PythonAnywhere account password / SSH access).
-3. **OpenAI API key** (billing + data exposure).
-4. **SECRET_KEY** last — see the cookie-invalidation note below; doing it last
-   means you only force one re-login event after everything else is stable.
+Each step: change the secret at the provider, set the variable on web AND worker,
+restart both, verify.
 
-Each step is: change the secret at the provider, then set the matching env var
-on PythonAnywhere, then reload the web app, then verify.
+### 1. Database password
 
----
+Change the password of the DB user (ServerHoster-managed MySQL or your own), then update
+`DATABASE_URL` (the URL-encoded password) or `MYSQL_PASSWORD` on both services and restart.
+Check that `/readyz` shows `"db": true` (admin session or `X-Health-Token`).
 
-### 1. MySQL password
+### 2. API keys
 
-1. PythonAnywhere → **Databases** tab → set a new password for the MySQL
-   instance (user `TobiasMastek`, database `TobiasMastek$AiLead`).
-2. Set the env var the app reads (`run.py:158`):
-   - **Web app (WSGI):** add `os.environ["MYSQL_PASSWORD"] = "..."` to the WSGI
-     file *before* the app is imported (mirror the pattern in
-     `wsgi_pythonanywhere.example.py`). Never commit the real value.
-   - **Scheduled tasks / consoles:** export `MYSQL_PASSWORD` in the task command
-     or in `~/.bashrc` so background jobs use the same credential.
-3. Reload the web app.
+- OpenAI / Anthropic: create the new key, revoke the old one. **Check `/admin/ai-settings`
+  first:** a key stored there takes precedence over the env var, so updating only the env
+  var changes nothing. Replace the key in the UI (or clear it there so the env var applies).
+  `/readyz` `openai: true` and `ai` block confirm the key resolves.
+- Shopify: rotate the Admin API token in Shopify, update `SHOPIFY_ADMIN_TOKEN`; confirm with
+  "Synkronisér fra Shopify" in Katalogadmin.
+- SMTP: change at the provider, update `MAIL_PASSWORD` / `SMTP_PASSWORD`, use "Send test-mail"
+  on Admin -> Systemstatus.
 
-> Because `MYSQL_PASSWORD` (and host/user/db) have non-secret-safe **fallbacks**
-> baked into `run.py`, an unset env var silently uses the old leaked value — so
-> always confirm the env var is actually set, don't rely on the default.
+### 3. SECRET_KEY (last)
 
-### 2. SSH password
+1. Generate: `python -c "import secrets; print(secrets.token_hex(32))"`.
+2. **Before** starting the app on the new key, re-encrypt what is encrypted with a key derived
+   from `SECRET_KEY` (AI provider keys, SSO client secrets, TOTP secrets) with the same DB
+   environment the app uses:
+   ```
+   OLD_SECRET_KEY=<old> NEW_SECRET_KEY=<new> python scripts/rotate_secret_key.py          # dry run
+   OLD_SECRET_KEY=<old> NEW_SECRET_KEY=<new> python scripts/rotate_secret_key.py --apply
+   ```
+   The report lists `seen/rotated/unreadable` per family and never prints a secret. A family
+   whose dedicated key is set (`AI_SECRET_KEY`, `SSO_FERNET_KEY`, `TWOFA_FERNET_KEY`) is
+   skipped because it does not depend on `SECRET_KEY`.
+3. Set `SECRET_KEY` on web and worker, restart both.
 
-The SSH tunnel (`run.py:296-320`) is used for **local development only** — it
-connects through `ssh.pythonanywhere.com` with `ssh_password=` hardcoded at
-`run.py:305`. On the PythonAnywhere host itself the app connects to MySQL
-directly and this code path is not used.
-
-1. Change your PythonAnywhere account password (Account tab) — this is the SSH
-   password.
-2. Update local dev: do **not** re-hardcode it. The hardcoded literal at
-   `run.py:305` should be replaced with `os.environ.get('SSH_PASSWORD')` and the
-   value supplied via a local `.env` / shell export. Until that code change
-   lands, local devs must edit the literal locally and must never commit it.
-
-### 3. OpenAI API key
-
-1. OpenAI dashboard → revoke the leaked key, create a new one.
-2. Set `OPENAI_API_KEY` in the WSGI file (see
-   `wsgi_pythonanywhere.example.py:11`) and in any console/scheduled-task
-   environment that runs `app1/build_index.py`, drains, or digests.
-3. Reload the web app.
-
-If the key is unset the app still boots; chat/RAG/CV features degrade and
-`/readyz` reports `"openai": false` (`health.py:35`, `health.py:103`).
-
-### 4. SECRET_KEY (do this last)
-
-1. Generate a fresh random key (e.g. `python -c "import secrets; print(secrets.token_urlsafe(48))"`).
-2. Set `SECRET_KEY` in the WSGI environment (read at `run.py:134`).
-3. Reload the web app.
-
-> **Rotating `SECRET_KEY` invalidates every existing session cookie — this is a
-> feature, not a bug.** Any cookie that may have been forged with the leaked key
-> stops being accepted immediately. All users are logged out and must sign in
-> again. Schedule it for a low-traffic window and tell users to expect a
-> re-login.
->
-> **Re-encrypt the stored secrets in the same maintenance window.** AI provider
-> keys, SSO client secrets and TOTP secrets are encrypted with a key *derived
-> from* `SECRET_KEY` unless a dedicated key is set, so rotating it would orphan
-> them. Run `scripts/rotate_secret_key.py` (dry run first, then `--apply`) with
-> `OLD_SECRET_KEY` and `NEW_SECRET_KEY` **before** starting the app on the new key.
-> Since S-1.4 the app also refuses to boot with an unset or placeholder key.
->
-> **Also consider `SSO_FERNET_KEY`:** if it is unset, the SSO token encryption
-> key is *derived from* `SECRET_KEY` (`enterprise_sso/__init__.py:115-116`), so
-> rotating `SECRET_KEY` also rotates the derived SSO key and invalidates
-> outstanding SSO tokens. To decouple the two, set an explicit `SSO_FERNET_KEY`
-> (a urlsafe-base64 32-byte key) — then rotate it on its own cadence.
-
----
-
-## Setting env vars on PythonAnywhere
-
-There is no single "secrets" UI. Set each var in **both** places that run code:
-
-- **Web app:** the WSGI configuration file (Web tab → WSGI config). Assign
-  `os.environ[...]` at the top, before the Flask app is imported. Use
-  `wsgi_pythonanywhere.example.py` as the template — copy it, fill in real
-  values, and keep the filled copy out of git.
-- **Scheduled tasks & consoles:** export the vars in the task command line or in
-  `~/.bashrc`, so the outbox drain, digests, and `build_index.py` see the same
-  credentials as the web app.
+> Rotating `SECRET_KEY` invalidates every session cookie: all users must sign in again. Pick a
+> quiet window. To decouple the stored-secret families from it for good, set the dedicated
+> Fernet keys; rotating a dedicated key has no script (re-save the AI keys in
+> `/admin/ai-settings`, re-save SSO client secrets, users re-enrol 2FA).
 
 ## Verify
 
-1. Reload the web app (Web tab → Reload).
-2. Hit the probes:
-   - `GET /healthz` → `{"status":"ok"}`, HTTP 200 (liveness; touches nothing).
-   - `GET /readyz` → HTTP 200 with `"db": true` confirms the new MySQL
-     credentials work; `"openai": true` confirms the OpenAI key is set
-     (`health.py:97-116`). A 503 / `"db": false` means the DB credential is
-     wrong — fix before considering rotation complete.
-3. Confirm a fresh login works (proves the new `SECRET_KEY` is signing cookies).
-4. If you set/rotated `SSO_FERNET_KEY`, confirm an SSO login round-trips.
+1. `GET /healthz` returns 200. `GET /readyz` with `X-Health-Token` (or as admin) returns 200
+   with `db: true`, `openai: true`; `worker.heartbeat_ok` true again after the worker restart.
+2. A fresh login works (the new `SECRET_KEY` signs cookies); an SSO login round-trips if SSO is
+   in use; an admin with 2FA still passes the code prompt.
+3. Chat answers (AI key), a catalog sync and a test mail succeed.
 
 ## Done criteria
 
-- All four provider-side secrets changed.
-- Matching env vars set in WSGI **and** scheduled-task environments.
-- `/readyz` returns 200 with `db: true` and `openai: true`.
-- Fresh login + (if applicable) SSO login succeed.
-- Git-history purge tracked separately (`GIT_HISTORY_PURGE.md`) — rotation does
-  **not** remove the leaked values from history.
+- Every affected provider-side secret changed and the old one revoked.
+- Variables updated on the web AND worker service, GitHub Actions secrets updated.
+- Checks above pass.
+- Rotation does not remove old values from git history: that is `GIT_HISTORY_PURGE.md`.

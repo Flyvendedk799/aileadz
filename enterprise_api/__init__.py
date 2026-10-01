@@ -2141,10 +2141,11 @@ def _fire_webhook(company_id, event_type, payload):
 
 # ── Outbox drain: scheduled (reliable) + opportunistic (best-effort) ─────────
 #
-# There is NO cron/Redis/Celery/job-runner on the host (PythonAnywhere). So the
-# outbox is drained two ways:
+# There is NO cron/Redis/Celery on the host (ServerHoster). The scheduler worker
+# (drain_worker.py, see docs/runbooks/JOB_RUNNER.md) is the primary driver. Besides
+# it, the outbox is drained two ways:
 #
-#   1. RELIABLE (OPS-GATED): a PythonAnywhere *scheduled task* calls
+#   1. RELIABLE (OPS-GATED): an external *scheduled task* calls
 #      POST /api/v1/_internal/drain-outbox with the shared secret in the
 #      X-Drain-Token header (matching env OUTBOX_DRAIN_TOKEN). This is the
 #      delivery path you can actually rely on, and it must be wired up by ops.
@@ -2199,7 +2200,7 @@ def _enterprise_api_opportunistic_drain():
 def drain_outbox_endpoint():
     """Token-protected outbox drain (OPS-GATED).
 
-    Intended to be hit by a PythonAnywhere scheduled task for reliable
+    Intended to be hit by an external scheduled task for reliable
     integration-event delivery. Auth is a shared secret compared in constant
     time against env OUTBOX_DRAIN_TOKEN (header: X-Drain-Token, or
     Authorization: Bearer <token>). If OUTBOX_DRAIN_TOKEN is unset the endpoint

@@ -3,7 +3,7 @@
 # Secret scanning is ENABLED with gitleaks' built-in ruleset and NO allowlist.
 # (S-1.1: the former run.py / run_history.txt allowlist was removed once the
 # hardcoded credentials left the working tree. The old values still sit in git
-# history until it is purged -- see docs/USER_ACTIONS_PART_A.md and
+# history until it is purged -- see docs/USER_ACTIONS.md and
 # docs/runbooks/GIT_HISTORY_PURGE.md. A full-history scan will therefore keep
 # reporting those historic findings until the purge is done; scans of new
 # commits are clean.)

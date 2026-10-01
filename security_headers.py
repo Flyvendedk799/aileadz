@@ -131,8 +131,8 @@ def register_security_headers(app):
                 if hsts:
                     response.headers["Strict-Transport-Security"] = hsts
             # Long-lived caching for static assets that still go through the
-            # worker (before the PythonAnywhere /static nginx mapping is set, or
-            # on the dev server). Asset URLs are versioned with ?v=N, so caching
+            # worker (there is no separate static server in front, e.g. on the
+            # dev server). Asset URLs are versioned with ?v=N, so caching
             # them aggressively is safe. Flask's own static view already sets a
             # Cache-Control from SEND_FILE_MAX_AGE_DEFAULT, so we only fill it in
             # when absent and never override a more specific one.

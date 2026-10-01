@@ -28,7 +28,7 @@ def load_mail_config(app) -> dict:
         port = int(env.get('MAIL_PORT') or env.get('SMTP_PORT') or 587)
     except ValueError:
         port = 587
-    use_ssl = (env.get('MAIL_USE_SSL') or '').lower() in _TRUTHY
+    use_ssl = ((env.get('MAIL_USE_SSL') or '').lower() in _TRUTHY) or (not env.get('MAIL_USE_SSL') and port == 465)
     use_tls = (env.get('MAIL_USE_TLS') or ('0' if use_ssl else '1')).lower() in _TRUTHY
     username = env.get('MAIL_USERNAME') or env.get('SMTP_USER') or ''
     app.config.update({
@@ -38,7 +38,7 @@ def load_mail_config(app) -> dict:
         'MAIL_USE_SSL': use_ssl,
         'MAIL_USERNAME': username or None,
         'MAIL_PASSWORD': env.get('MAIL_PASSWORD') or env.get('SMTP_PASSWORD') or None,
-        'MAIL_DEFAULT_SENDER': env.get('MAIL_DEFAULT_SENDER') or username or None,
+        'MAIL_DEFAULT_SENDER': _sender_from_env(env) or username or None,
         'MAIL_SUPPRESS_SEND': False,
     })
     return mail_status(app)
@@ -341,10 +341,20 @@ def render_branded_email(template_name: str, branding: Optional[dict] = None, **
     return render_template_string(body_tpl, **ctx)
 
 
+def _sender_from_env(env) -> str:
+    """``MAIL_DEFAULT_SENDER``, else ServerHoster's ``SMTP_FROM`` (+ ``SMTP_FROM_NAME``)."""
+    explicit = env.get('MAIL_DEFAULT_SENDER')
+    if explicit:
+        return explicit
+    addr = env.get('SMTP_FROM') or ''
+    name = env.get('SMTP_FROM_NAME') or ''
+    return f'{name} <{addr}>' if addr and name else addr
+
+
 def _default_sender() -> str:
     """Resolve the configured default sender address (env wins, then config)."""
     return (
-        os.getenv('MAIL_DEFAULT_SENDER')
+        _sender_from_env(os.environ)
         or current_app.config.get('MAIL_DEFAULT_SENDER')
         or ''
     )

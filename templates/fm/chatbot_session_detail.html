@@ -46,7 +46,7 @@
         </div>
         <div class="tr-row ai">
           <div class="tr-av"><i class="fa-solid fa-robot"></i></div>
-          <div class="tr-bubble">{{ interaction.response_text|safe_html }}
+          <div class="tr-bubble"><div class="tr-md fm-md">{{ interaction.response_text|safe_html }}</div>
             {% if interaction.tools_used %}<div class="tr-tools"><i class="fa-solid fa-wrench"></i> Kørte værktøjer: {{ interaction.tools_used }}</div>{% endif %}
             <span class="tr-time">{{ interaction.created_at.strftime('%H:%M:%S') if interaction.created_at else '' }}</span>
           </div>
@@ -57,4 +57,15 @@
     </div></div></div>
   </div>
 </div>
+{% endblock %}
+{% block extra_scripts %}
+<script src="https://cdn.jsdelivr.net/npm/marked@12.0.0/marked.min.js"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/ai-stream.js') }}?v={{ asset_version('futurematch/assets/ai-stream.js') }}"></script>
+<script>
+// Stored answers are markdown; render plain-text ones the same way the chat did (tables, lists, bold).
+document.querySelectorAll('.tr-md').forEach(function (el) {
+  var raw = el.textContent;
+  if (window.FMAI && raw && !/<[a-z][\s\S]*>/i.test(el.innerHTML)) el.innerHTML = FMAI.md(raw);
+});
+</script>
 {% endblock %}

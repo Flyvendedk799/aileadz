@@ -54,15 +54,15 @@
             <div><div style="font-weight:650">{{ s.username or 'Ukendt' }}</div><div style="font-size:11.5px;color:var(--fm-ink-3)">ID: {{ s.session_id[:8] }}</div></div>
           </div></td>
           <td><span class="fm-chip">{{ s.department or 'Ingen afdeling' }}</span></td>
-          <td class="muted">{{ s.started_at.strftime('%d. %b %H:%M') if s.started_at else 'N/A' }}</td>
-          <td class="muted">{{ s.last_activity.strftime('%d. %b %H:%M') if s.last_activity else 'N/A' }}</td>
+          <td class="muted">{{ s.started_at.strftime('%d. %b %H:%M') if s.started_at else '–' }}</td>
+          <td class="muted">{{ s.last_activity.strftime('%d. %b %H:%M') if s.last_activity else '–' }}</td>
           <td><span class="fm-badge">{{ s.message_count }} beskeder</span></td>
           <td>
             {% set score = s.avg_quality|float %}
             {% if score >= 4.0 %}<span class="fm-badge green dot"><i class="fa-solid fa-star"></i> {{ "%.1f"|format(score) }}</span>
             {% elif score >= 3.0 %}<span class="fm-badge dot"><i class="fa-solid fa-star"></i> {{ "%.1f"|format(score) }}</span>
             {% elif score > 0 %}<span class="fm-badge amber dot"><i class="fa-solid fa-star"></i> {{ "%.1f"|format(score) }}</span>
-            {% else %}<span class="fm-badge">N/A</span>{% endif %}
+            {% else %}<span class="fm-badge">Ikke vurderet</span>{% endif %}
           </td>
           <td style="text-align:right"><a href="{{ url_for('hr_dashboard.chatbot_session_detail', session_id=s.session_id) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-eye"></i> Se samtale</a></td>
         </tr>
@@ -124,7 +124,7 @@ const _ss = document.getElementById('sessionSearch');
 if (_ss) _ss.addEventListener('keyup', function(){
   const value = this.value.toLowerCase();
   document.querySelectorAll('#sessionsTable tbody tr').forEach(row => {
-    row.style.display = row.textContent.toLowerCase().includes(value) ? '' : 'none';
+    row.style.display = Array.prototype.slice.call(row.cells, 0, 2).map(c => c.textContent).join(' ').toLowerCase().includes(value) ? '' : 'none';
   });
 });
 </script>

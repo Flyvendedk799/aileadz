@@ -29,10 +29,10 @@
     <div class="fm-card-body">
       <p style="color:var(--fm-ink-2);font-size:13.5px;margin:0 0 16px">Vælg hvilke kurser chatbotten skal anbefale til jeres medarbejdere.</p>
       {% set mode = settings.chatbot_course_mode or 'both' %}
-      <div class="mode-grid" style="margin-bottom:18px">
-        <div class="mode-card {% if mode == 'internal_only' %}active{% endif %}" onclick="selectMode('internal_only')"><i class="fa-solid fa-building"></i><h6>Kun interne</h6><small>Vis kun virksomhedens egne kurser</small></div>
-        <div class="mode-card {% if mode == 'both' %}active{% endif %}" onclick="selectMode('both')"><i class="fa-solid fa-right-left"></i><h6>Begge</h6><small>Mix af interne og eksterne kurser</small></div>
-        <div class="mode-card {% if mode == 'external_only' %}active{% endif %}" onclick="selectMode('external_only')"><i class="fa-solid fa-globe"></i><h6>Kun eksterne</h6><small>Vis kun kurser fra eksterne udbydere</small></div>
+      <div class="mode-grid" role="radiogroup" aria-label="Kursuskilder" style="margin-bottom:18px">
+        <div class="mode-card {% if mode == 'internal_only' %}active{% endif %}" role="radio" tabindex="0" aria-checked="{{ 'true' if mode == 'internal_only' else 'false' }}" onclick="selectMode('internal_only', this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectMode('internal_only', this)}"><i class="fa-solid fa-building"></i><h6>Kun interne</h6><small>Vis kun virksomhedens egne kurser</small></div>
+        <div class="mode-card {% if mode == 'both' %}active{% endif %}" role="radio" tabindex="0" aria-checked="{{ 'true' if mode == 'both' else 'false' }}" onclick="selectMode('both', this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectMode('both', this)}"><i class="fa-solid fa-right-left"></i><h6>Begge</h6><small>Mix af interne og eksterne kurser</small></div>
+        <div class="mode-card {% if mode == 'external_only' %}active{% endif %}" role="radio" tabindex="0" aria-checked="{{ 'true' if mode == 'external_only' else 'false' }}" onclick="selectMode('external_only', this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();selectMode('external_only', this)}"><i class="fa-solid fa-globe"></i><h6>Kun eksterne</h6><small>Vis kun kurser fra eksterne udbydere</small></div>
       </div>
       <input type="hidden" name="chatbot_course_mode" id="chatbot_course_mode" value="{{ mode }}">
 
@@ -78,10 +78,10 @@
 {% endblock %}
 {% block extra_scripts %}
 <script>
-function selectMode(mode){
+function selectMode(mode, card){
   document.getElementById('chatbot_course_mode').value = mode;
-  document.querySelectorAll('.mode-card').forEach(c => c.classList.remove('active'));
-  event.currentTarget.classList.add('active');
+  document.querySelectorAll('.mode-card').forEach(c => { c.classList.remove('active'); c.setAttribute('aria-checked', 'false'); });
+  card.classList.add('active'); card.setAttribute('aria-checked', 'true');
   document.getElementById('sliderSection').style.display = mode === 'both' ? 'block' : 'none';
 }
 function updateSliderLabel(val){ document.getElementById('sliderValue').textContent = val + '% interne'; }

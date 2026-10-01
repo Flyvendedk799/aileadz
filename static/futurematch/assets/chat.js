@@ -97,33 +97,51 @@
     }
   }
 
-  async function refreshWorkspaceStatus() {
+  /* ---------------- shared AI workspace ----------------
+     One debounced fetch of /api/profile/workspace feeds every status widget on
+     the AI surfaces: the chat's status bar here, and the profiler banner, which
+     listens for the `fm:workspace` event instead of fetching on its own. A turn
+     that saves several things asks for a refresh several times; the debounce
+     turns that into one request. The number shown is the depth-aware
+     weighted_pct (the same one the profile page and the Mind-Map show), and the
+     text is the need-driven next_help, never a missing-fields checklist. */
+  let profileLoaded = false;
+  let wsTimer = null;
+  function refreshWorkspace(delay) {
+    clearTimeout(wsTimer);
+    wsTimer = setTimeout(loadWorkspace, delay == null ? 250 : delay);
+  }
+  async function loadWorkspace() {
     const bar = $("#aiWorkspaceStatus");
-    if (!bar) return;
     try {
-      const resp = await fetch("/api/profile/mindmap", {
+      const resp = await fetch("/api/profile/workspace", {
         headers: { "X-Requested-With": "XMLHttpRequest" },
         credentials: "same-origin",
       });
       if (!resp.ok) throw new Error("workspace " + resp.status);
       const data = await resp.json();
       if (!data || data.success === false) throw new Error("workspace_shape");
-      const c = data.completeness || {};
-      const counts = data.counts || {};
-      const pct = $("#aiWsPct"), mem = $("#aiWsMem"), used = $("#aiWsUsed"), nodes = $("#aiWsNodes"), missing = $("#aiWsMissing");
-      if (pct) pct.textContent = c.pct != null ? c.pct + "%" : "—";
-      if (mem) mem.textContent = counts.memories != null ? counts.memories : "—";
-      if (used) used.textContent = counts.used_memories != null ? counts.used_memories : "—";
-      if (nodes) nodes.textContent = counts.leaves != null ? counts.leaves : "—";
-      if (missing) {
-        const missingItems = Array.isArray(c.missing) ? c.missing : [];
-        missing.textContent = missingItems.length ? "Mangler: " + missingItems.slice(0, 3).join(", ") : "Profilen er komplet";
-      }
-      bar.hidden = false;
+      profileLoaded = true;
+      window.fmWorkspace.last = data;
+      if (bar) paintWorkspaceBar(data);
+      document.dispatchEvent(new CustomEvent("fm:workspace", { detail: data }));
     } catch (e) {
-      bar.hidden = true;
+      if (bar) bar.hidden = true;
     }
   }
+  function paintWorkspaceBar(data) {
+    const c = data.completeness || {};
+    const counts = data.counts || {};
+    const shown = c.weighted_pct != null ? c.weighted_pct : c.pct;
+    const pct = $("#aiWsPct"), mem = $("#aiWsMem"), used = $("#aiWsUsed"), nodes = $("#aiWsNodes"), next = $("#aiWsNext");
+    if (pct) pct.textContent = shown != null ? shown + "%" : "—";
+    if (mem) mem.textContent = counts.memories != null ? counts.memories : "—";
+    if (used) used.textContent = counts.used_memories != null ? counts.used_memories : "—";
+    if (nodes) nodes.textContent = counts.leaves != null ? counts.leaves : "—";
+    if (next) next.textContent = c.next_help || "";
+    $("#aiWorkspaceStatus").hidden = false;
+  }
+  window.fmWorkspace = { refresh: refreshWorkspace, last: null };
 
   const md = (t) => sanitizeHtml(window.marked ? window.marked.parse(t) : esc(t).replace(/\n/g, "<br>"));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -184,7 +202,7 @@
     t.className = "toast";
     t.innerHTML = `<div class="toast-ic">${ic[section] || ic.summary}</div>
       <div class="toast-body"><div class="toast-msg">${esc(msg)}</div>
-        <a class="toast-link" href="/profile" target="_blank">Vis i profil <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
+        <a class="toast-link" href="${section === "memories" ? "/mind-map" : "/profile"}" target="_blank">${section === "memories" ? "Vis Mind-Map" : "Vis i profil"} <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg></a></div>
       <button class="toast-x" aria-label="Luk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg></button>`;
     t.querySelector(".toast-x").onclick = () => dismissToast(t);
     toastStack.appendChild(t);
@@ -192,17 +210,6 @@
     while (toastStack.children.length > 3) toastStack.firstChild.remove();
   }
   function dismissToast(t) { if (!t.parentNode) return; t.classList.add("out"); setTimeout(() => t.remove(), 300); }
-
-  /* ---------------- profile ring ---------------- */
-  // Starts at 0 (neutral) until the real profile completeness loads. Never a fake number.
-  let ringScore = 0;
-  function setRing(score) {
-    ringScore = Math.max(0, Math.min(100, Math.round(score) || 0));
-    const C = 2 * Math.PI * 15.5;
-    const fg = $("#ringFg"), pct = $("#ringPct");
-    if (fg) fg.setAttribute("stroke-dasharray", (C * ringScore / 100) + " " + C);
-    if (pct) pct.textContent = ringScore + "%";
-  }
 
   /* ---------------- message builders ---------------- */
   function addUser(text) {
@@ -505,10 +512,7 @@
     if (!resp.ok) throw new Error("save_failed");
     const r = await resp.json();
     if (!r || r.status !== "success") throw new Error((r && r.message) || "save_failed");
-    refreshWorkspaceStatus();
-    if (typeof window.refreshProfilerBanner === "function") {
-      window.refreshProfilerBanner();
-    }
+    refreshWorkspace();
     return r;
   }
 
@@ -536,7 +540,7 @@
       card.querySelector(".pcard-msg").innerHTML = '<span class="q" style="color:var(--green)">✓ Gemt</span> ' + esc(opts.message);
       toast(opts.toast || "Profil opdateret", opts.section);
       // Re-sync the ring from the real profile rather than guessing a bump.
-      refreshRing();
+      refreshWorkspace();
       collapseToPill(card, opts.label || "Profil opdateret", false);
     };
     card.querySelector(".p-no").onclick = function () {
@@ -577,7 +581,7 @@
           row.querySelector(".psaved-label").style.textDecoration = "line-through";
           row.querySelector(".psaved-label").style.opacity = ".6";
           btn.replaceWith(Object.assign(document.createElement("span"), { textContent: "Fortrudt", className: "psaved-done" }));
-          refreshRing();
+          refreshWorkspace();
         } catch (e) { btn.disabled = false; btn.textContent = "Prøv igen"; }
       });
     });
@@ -598,7 +602,7 @@
       this.disabled = true; this.textContent = "…";
       try {
         for (const it of items) { const c = it.confirm || {}; await saveProfileUpdate(c.action, c.data || {}); }
-        this.textContent = "Gemt ✓"; card.querySelector(".p-no").remove(); refreshRing();
+        this.textContent = "Gemt ✓"; card.querySelector(".p-no").remove(); refreshWorkspace();
       } catch (e) { this.disabled = false; this.textContent = "Prøv igen"; }
     };
     card.querySelector(".p-no").onclick = function () {
@@ -675,7 +679,7 @@
       card.querySelectorAll("input,select").forEach((i) => { i.disabled = true; i.style.opacity = ".6"; });
       toast(opts.toast || "Profil opdateret", opts.section);
       // Re-sync the ring from the real profile rather than guessing a bump.
-      refreshRing();
+      refreshWorkspace();
       collapseToPill(card, opts.label || "Tilføjet", false);
     };
     card.querySelector(".p-no").onclick = function () {
@@ -730,11 +734,11 @@
 
   // APPEND an error row instead of wiping the body — already-streamed content
   // (partial answer, cards, tool chips) must survive a dropped connection.
-  function appendError(body, query) {
+  function appendError(body, query, retryOpts) {
     const row = document.createElement("div");
     row.className = "err";
     row.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg><span>Forbindelsen blev afbrudt — Prøv igen.</span><button class="retry">Prøv igen</button>`;
-    row.querySelector(".retry").onclick = () => { row.remove(); run(query, { skipUser: true }); };
+    row.querySelector(".retry").onclick = () => { row.remove(); run(query, Object.assign({}, retryOpts || {}, { skipUser: true })); };
     body.appendChild(row); down();
   }
 
@@ -1081,7 +1085,7 @@
             wrap.classList.add("removed");
             label.innerHTML = "🧠 <span style='text-decoration:line-through;opacity:.6'>Slettet</span>";
             del.remove();
-            refreshWorkspaceStatus();
+            refreshWorkspace();
           } else { del.disabled = false; }
         } catch (_) { del.disabled = false; }
       });
@@ -1242,9 +1246,10 @@
   function renderMindmapCard(body, data) {
     const cats = data.categories || {};
     const comp = data.completeness || {};
-    const pct = comp.pct != null ? comp.pct : "—";
+    // Depth-aware, like every other surface (profile page, profiler, Mind-Map).
+    const pct = comp.weighted_pct != null ? comp.weighted_pct : (comp.pct != null ? comp.pct : "—");
     const memories = data.recent_memories || [];
-    const CLABELS = { kompetencer: "Kompetencer", erfaring: "Erfaring", uddannelse: "Uddannelse", certificeringer: "Cert.", sprog: "Sprog", hukommelse: "Hukommelse" };
+    const CLABELS = { kompetencer: "Kompetencer", erfaring: "Erfaring", uddannelse: "Uddannelse", certificeringer: "Cert.", sprog: "Sprog", maal: "Mål", kurser: "Kurser", laeringsstier: "Stier", hukommelse: "Hukommelse" };
     const card = document.createElement("div");
     card.className = "mindmap-prev-card";
     const catsHtml = Object.entries(cats).filter(([, n]) => n > 0).map(([k, n]) =>
@@ -1412,7 +1417,7 @@
     body.appendChild(card); down();
   }
 
-  async function streamFromBackend(body, actualQuery, kind) {
+  async function streamFromBackend(body, actualQuery, kind, context) {
     // Abort plumbing: the Stop button aborts via currentAbort; a no-event
     // watchdog aborts a silently dead connection (backend emits an initial
     // ping and heartbeats far below this threshold).
@@ -1455,7 +1460,9 @@
       const resp = await fetch(ASK_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: actualQuery, mode: (window.CHAT_MODE || "default"), kind: kind || "message" }),
+        body: JSON.stringify(Object.assign(
+          { query: actualQuery, mode: (window.CHAT_MODE || "default"), kind: kind || "message" },
+          context ? { context: context } : {})),
         signal: controller.signal,
       });
       if (!resp.ok || !resp.body) throw new Error("HTTP " + resp.status);
@@ -1518,22 +1525,22 @@
             note.className = "md";
             note.innerHTML = md(data.message || "Profil opdateret");
             body.appendChild(note); down();
-            refreshWorkspaceStatus();
-            if (typeof window.refreshProfilerBanner === "function") {
-              window.refreshProfilerBanner();
-            }
+            refreshWorkspace();
           } else if (data.type === "profile_saved") {
             renderProfileSaved(body, data.items || []);
-            refreshWorkspaceStatus();
-            if (typeof window.refreshProfilerBanner === "function") window.refreshProfilerBanner();
+            refreshWorkspace();
           } else if (data.type === "profile_confirm_batch") {
             renderProfileConfirmBatch(body, data.items || []);
           } else if (data.type === "profile_confirm_request") {
             // Proposed profile change -> native confirm card, wired to the real save.
             const conf = data.confirm || {};
+            // Row ids are plumbing for the save call, not something to show.
             const tags = (conf.data && typeof conf.data === "object")
-              ? Object.values(conf.data).filter(Boolean).map(String) : [];
-            profileConfirm(body, { section: data.section, message: data.message || "", tags: tags, section_label: data.section },
+              ? Object.entries(conf.data).filter(([k, v]) => k !== "id" && v).map(([, v]) => String(v)) : [];
+            const forgetting = data.section === "memories";
+            profileConfirm(body, { section: data.section, message: data.message || "", tags: forgetting ? undefined : tags, section_label: data.section,
+                                   toast: forgetting ? "Hukommelsen er glemt" : undefined,
+                                   label: forgetting ? "Glemt" : undefined },
               conf.action ? () => saveProfileUpdate(conf.action, conf.data || {}) : null);
           } else if (data.type === "ui_card") {
             const choices = (data.choices || []).filter((c) => c && (c.label || c.value));
@@ -1553,13 +1560,13 @@
               data.save_action ? (values) => saveProfileUpdate(data.save_action, Object.assign({}, prefilled, values)) : null);
           } else if (data.type === "memory_used") {
             renderMemoryUsed(body, data.memories || []);
-            refreshWorkspaceStatus();
+            refreshWorkspace();
           } else if (data.type === "memory_saved") {
             renderMemorySaved(body, data);
-            refreshWorkspaceStatus();
+            refreshWorkspace();
           } else if (data.type === "profiler_progress") {
             if (typeof window.onProfilerProgress === "function") window.onProfilerProgress(data.completeness);
-            refreshWorkspaceStatus();
+            refreshWorkspace();
           } else if (data.type === "tool_progress") {
             // In-flight chip progress update from build_tool_progress_event (Phase 1/9)
             updateToolProgress(body, data);
@@ -1640,6 +1647,9 @@
       attached = []; renderRef();
     }
     lastActualQuery = actualQuery;
+    // A handoff ({from, focus}) rides on the first message after arriving from
+    // another surface only; a retry of that message re-sends it.
+    const context = opts.context !== undefined ? opts.context : takeHandoff();
     input.value = ""; resize(); toggleSend();
     setSending(true);
     const body = addBot();
@@ -1647,7 +1657,7 @@
     let result = null, lastErr = null;
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
-        result = await streamFromBackend(body, actualQuery, opts.kind);
+        result = await streamFromBackend(body, actualQuery, opts.kind, context);
         lastErr = null;
         break;
       } catch (e) {
@@ -1661,7 +1671,7 @@
     th.remove();
     if (lastErr) {
       settleToolChips(body);
-      appendError(body, actualQuery);
+      appendError(body, actualQuery, { kind: opts.kind, context: context });
     } else {
       // User Stop: mark the cut-off, but still render the feedback row so
       // aborted answers are measurable.
@@ -1848,40 +1858,8 @@
   }
   window.fmOpenConversation = openConversation;
 
-  /* ---------------- real profile completeness ----------------
-     Drives the ring from GET /api/profile/completeness — the same depth-aware
-     weighted_pct the profile page, the Mind-Map and the profiler use. (A
-     client-side 5-section formula used to show a different number here.)
-     Anonymous / 401 / fetch failure -> ring stays hidden, never a fake %. */
-  let profileLoaded = false;
-
-  async function loadProfile() {
-    const widget = $(".ring-widget");
-    try {
-      const resp = await fetch("/api/profile/completeness", {
-        headers: { "Accept": "application/json", "X-Requested-With": "XMLHttpRequest" },
-        credentials: "same-origin",
-      });
-      if (!resp.ok) throw new Error("completeness " + resp.status);
-      const data = await resp.json();
-      const c = data && data.completeness;
-      if (!c) throw new Error("completeness_shape");
-      profileLoaded = true;
-      setRing(c.weighted_pct != null ? c.weighted_pct : (c.pct || 0));
-      if (widget) widget.style.display = "";
-    } catch (e) {
-      // Anonymous / failed: hide the ring widget rather than show a fake number.
-      profileLoaded = false;
-      if (widget) widget.style.display = "none";
-    }
-  }
-
-  // Re-sync the ring from the live profile after a save (used by profile cards).
-  // Only re-fetches when the profile loaded successfully in the first place.
-  function refreshRing() { if (profileLoaded) loadProfile(); }
-
   /* ---------------- login state ----------------
-     Positive signal: the profile fetch succeeded (profileLoaded). Negative
+     Positive signal: the workspace fetch succeeded (profileLoaded). Negative
      signal: the fm_base shell renders a "Log ind" userchip for anonymous
      sessions. Unknown (standalone layout, fetch race) -> assume logged in;
      order creation is still confirm-gated server-side either way. */
@@ -1951,30 +1929,45 @@
      from the profile, memories and conversation digests, not the transcript.
      ?c=<id> reopens a specific conversation (sidebar links, reloads — the open
      conversation is pinned in the URL); ?intent= sends into a fresh chat. */
+  // {from, focus} from the URL of a cross-surface handoff (mind-map node,
+  // profile section, CV portal); consumed by the first message (app1/surface_context.py).
+  let pendingHandoff = null;
+  function takeHandoff() { const h = pendingHandoff; pendingHandoff = null; return h; }
   function bootChat() {
     let params;
     try { params = new URLSearchParams(location.search); } catch (e) { params = new URLSearchParams(); }
     const cid = params.get("c");
     if (cid) return openConversation(cid);
     const intent = (params.get("intent") || "").trim();
-    if (intent) {
+    const from = (params.get("from") || "").trim();
+    const focus = (params.get("focus") || "").trim();
+    if (intent || from || focus) {
       try {
-        params.delete("intent");
-        history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : ""));
+        ["intent", "from", "focus"].forEach((k) => params.delete(k));
+        history.replaceState(null, "", location.pathname + (params.toString() ? "?" + params.toString() : "") + location.hash);
       } catch (e) { /* non-critical */ }
     }
+    if (from || focus) pendingHandoff = { from: from, focus: focus };
     return newChat().then(() => {
-      if (!intent) return false;
-      input.value = intent;
-      input.dispatchEvent(new Event("input", { bubbles: true }));
-      setTimeout(() => { if (!sending) send.click(); }, 80);
-      return true;
+      if (intent) {
+        input.value = intent;
+        input.dispatchEvent(new Event("input", { bubbles: true }));
+        setTimeout(() => { if (!sending) send.click(); }, 80);
+        return true;
+      }
+      if (pendingHandoff && pendingHandoff.focus) {
+        // Arrived with something in focus but no words: open with a neutral
+        // seed so the AI starts from what the user was looking at. A bare
+        // `from` waits for the first message (or the profiler's own opener).
+        run("Lad os tage udgangspunkt i det, jeg kiggede på", { kind: "seed" });
+        return true;
+      }
+      return false;
     });
   }
   window.fmChatBoot = bootChat();
   renderRef();
-  refreshWorkspaceStatus();
-  loadProfile();
+  refreshWorkspace(0);
   loadNudges();
   input.focus();
 })();

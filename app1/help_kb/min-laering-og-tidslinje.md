@@ -12,7 +12,7 @@ audience: employee
 - "Anbefalet til dig": kurser matchet til din profil. Er der ingen anbefalinger, så udfyld din profil.
 - "Mål og frister": dine udviklingsmål og kommende frister. Har HR tildelt dig en læringssti, vises den under "Tildelt af HR".
 - "Mine bestillinger": dine seneste bestillinger med status. Klik "Se alle på tidslinjen" for hele listen.
-- "Kompetenceprofil": hvor udfyldt din profil er, og dine kompetencer grupperet efter niveau.
+- "Kompetenceprofil": din profilstyrke (samme tal som på profilsiden) og dine kompetencer grupperet efter niveau.
 - Mangler din profil kompetencer, vises "Kom godt i gang" med "Upload CV" og "Udfyld profil manuelt".
 - Brug "Spørg AI-assistenten" eller "Udforsk kurser" for at komme videre.
 

@@ -83,7 +83,7 @@
     if (!listEl) return;
     const items = visibleConvs();
     if (!CONVS.length) {
-      listEl.innerHTML = '<div class="ai-conv-empty">Ingen samtaler endnu. Start en i Kursusrådgiver eller AI Profiler — de vises her på alle tre AI-sider.</div>';
+      listEl.innerHTML = '<div class="ai-conv-empty">Ingen samtaler endnu. Start en i Kursusrådgiver eller AI Profiler — de vises her på alle AI-siderne.</div>';
       return;
     }
     if (!items.length) {

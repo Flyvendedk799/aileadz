@@ -6,7 +6,7 @@
 - Runtime: `static/futurematch/assets/mind-map-support.js`.
 - Data: `GET /api/profile/mindmap` (`get_mindmap_api` in `api.py`).
 - Tests: `tests/test_mind_map_v2.py` (structural, jinja2 only, no Flask or DB).
-- Open items: ROADMAP R-2 (memory edit still uses `window.prompt`) and R-3 (page loads three.js r128 while the CV portal loads 0.160).
+- Open items: ROADMAP R-3 (page loads three.js r128 while the CV portal loads 0.160).
 
 ## 1. Navigation
 
@@ -51,7 +51,9 @@
 
 The API's 500 branch deliberately still includes a usable root node alongside the 500 status (an empty but valid graph), so the client checks `r.ok` first and a DB failure reads as a failure, not "no profile". A background refresh that fails (after a memory write) leaves the current graph alone.
 
-Adding a memory uses an inline composer with the real category vocabulary (a test pins it to `_MEMORY_CATEGORIES` in `app1/user_profile_db.py`); delete asks first. Structured profile facts carry stable entity ids and correction metadata; the inspector links to the canonical profile editor and removes supported facts through the user-scoped REST endpoints after confirmation. The graph also includes portfolio links, completed courses and saved learning paths.
+Adding and editing a memory share one inline composer with the real category vocabulary (a test pins it to `_MEMORY_CATEGORIES` in `app1/user_profile_db.py`): `addEditId` switches it to "Ret hukommelse", prefilled, and the save PUTs `{id,label,detail,category}` (the graph's memory meta carries `category` for this). Delete asks first.
+
+**Ask the AI.** Every node but the root and the conversation digest has "Spørg AI om dette" (branches: "Uddyb med AI"). `_focusFor` maps it to a handoff focus: the node id for a stored row or memory, `section:<key>` for a branch or a summary leaf (`_BRANCH_SECTION`), and `_handoffUrl` opens `/ai-profiler?from=mind_map&focus=...`; the gap CTA opens the advisor the same way. The server resolves the focus against the user's own data (`app1/surface_context.py`, ai-framework.md 1b). The bottom ring and the root stats show the depth-aware `weighted_pct` as "profilstyrke". Structured profile facts carry stable entity ids and correction metadata; the inspector links to the canonical profile editor and removes supported facts through the user-scoped REST endpoints after confirmation. The graph also includes portfolio links, completed courses and saved learning paths.
 
 ## 4. Gotchas (read before editing)
 

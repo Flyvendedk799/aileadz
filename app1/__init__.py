@@ -748,6 +748,11 @@ def ask():
         turn_kind = (request.json.get("kind") or "message").strip().lower()
         if turn_kind not in ("message", "seed"):
             turn_kind = "message"
+        # Cross-surface handoff ({from, focus}) sent with the first message after
+        # the user arrives from the Mind-Map, the profile or the CV portal.
+        # Whitelisted here; resolved against the user's own data in the agent.
+        from app1.surface_context import normalize_context
+        surface_context = normalize_context(request.json.get("context"))
 
         # N-6.4: a company on a HARD credit limit pauses the AI with a friendly message.
         if session.get("company_id"):
@@ -756,7 +761,8 @@ def ask():
             if paused:
                 return jsonify({"answers": [{"type": "text", "content": paused}], "credits_paused": True}), 402
 
-        return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind)
+        return handle_agentic_ask(user_query, session, mode=mode, turn_kind=turn_kind,
+                                  surface_context=surface_context or None)
 
     except Exception as ex:
         print(f"Unexpected error: {ex}")
@@ -1554,6 +1560,18 @@ def confirm_profile_update():
                 update_profile_summary(logged_in_user, **clean)
                 return _success("Profil opdateret")
             return _success("Ingen ændringer")
+
+        elif action == "remove_memory":
+            # forget_about_user's proposal: the user confirmed forgetting one of
+            # their own memories (remove_memory is scoped by username).
+            from app1.user_profile_db import remove_memory
+            try:
+                mem_id = int(payload.get("id"))
+            except (TypeError, ValueError):
+                return jsonify({"status": "error", "message": "Hukommelsen mangler et id"}), 400
+            return _success("Glemt") if remove_memory(logged_in_user, mem_id) else (
+                jsonify({"status": "not_found", "message": "Hukommelsen blev ikke fundet"}), 404
+            )
 
         elif action == "set_target_role":
             from app1.user_profile_db import update_profile_summary

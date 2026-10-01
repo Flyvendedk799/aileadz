@@ -463,8 +463,11 @@
           <div id="careerAction" hidden></div>
           <div class="completion-actions">
             <a class="cv-btn ghost" href="/profile">Gennemgå profil</a>
-            <a class="cv-btn ghost" href="/mind-map?source=cv">Udforsk Mind-Map</a>
-            <a class="cv-btn primary" href="/chat?intent=Vis%20mine%20st%C3%B8rste%20kompetencegab%20og%20anbefal%20kurser%20der%20lukker%20dem">Find næste læringstrin</a>
+            <a class="cv-btn ghost" href="/mind-map">Udforsk Mind-Map</a>
+            {# Both AI surfaces get from=cv_upload: the assistants already know what the
+               CV saved (cv_just_applied) and build on it instead of asking again. #}
+            <a class="cv-btn ghost" href="{{ url_for('futurematch.chat') }}?from=cv_upload&amp;focus=section:skills&amp;intent={{ 'Vis mine største kompetencegab og anbefal kurser der lukker dem'|urlencode }}">Find kurser til mine gab</a>
+            <a class="cv-btn primary" href="{{ url_for('futurematch.ai_profiler') }}?from=cv_upload&amp;intent={{ 'Jeg har lige opdateret min profil fra mit CV. Hvad bygger vi videre på?'|urlencode }}">Gennemgå med AI Profiler</a>
           </div>
         </div>
       </div>

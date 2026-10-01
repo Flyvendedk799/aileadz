@@ -155,12 +155,13 @@ class ProfilerContinuationTests(unittest.TestCase):
     def test_ai_profiler_template_contracts(self):
         """ai_profiler.html sends neutral SEED turns (no section-scripted
         sentences that match the profile-update patterns), keeps the dynamic
-        Start/Fortsæt CTA and refreshProfilerBanner."""
+        Start/Fortsæt CTA and paints the banner from the shared workspace event."""
         tmpl_path = os.path.join(_REPO_ROOT, "templates", "fm", "ai_profiler.html")
         with open(tmpl_path, encoding="utf-8") as fh:
             content = fh.read()
 
-        self.assertIn("window.refreshProfilerBanner", content)
+        self.assertIn("'fm:workspace'", content)
+        self.assertNotIn("/api/profile/mindmap", content)  # no second graph fetch
         self.assertIn("window.fmSendSeed", content)
         self.assertIn("'Start profilsamtalen'", content)
         self.assertIn("'Fortsæt profilsamtalen'", content)

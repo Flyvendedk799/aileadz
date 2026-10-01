@@ -66,6 +66,8 @@ LAYER_SPECS: Dict[str, LayerSpec] = {
     "turn_hint": LayerSpec(13, 600, 300, STEERING),
     "profiler_state": LayerSpec(14, 1500, 600, STEERING),
     "cv_just_applied": LayerSpec(14, 500, 200, STEERING),
+    # Cross-surface handoff: where the learner came from + the profile item they had open.
+    "surface_context": LayerSpec(13, 900, 400, STEERING),
     "employee_info": LayerSpec(15, 600, 300, KNOWLEDGE),
     "learning_context": LayerSpec(16, 1500, 500, KNOWLEDGE),
     "memories": LayerSpec(20, 2000, 600, KNOWLEDGE),

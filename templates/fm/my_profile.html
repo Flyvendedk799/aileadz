@@ -47,6 +47,11 @@
   /* card head action button (inline add toggles) */
   .ch-add { margin-left: auto; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 12px; border-radius: var(--r-pill); border: 1px dashed var(--fm-line-2); background: transparent; color: var(--fm-primary); font-size: 12.5px; font-weight: 600; cursor: pointer; transition: var(--t); }
   .ch-add:hover { background: var(--fm-primary-tint); border-color: var(--fm-primary); }
+  /* "Uddyb med AI": hands the section to the AI Profiler with it in focus. */
+  .ch-ai { margin-left: 6px; display: inline-flex; align-items: center; gap: 6px; height: 30px; padding: 0 11px; border-radius: var(--r-pill); border: 1px solid transparent; background: var(--fm-primary-tint); color: var(--fm-primary); font-size: 12.5px; font-weight: 600; text-decoration: none; white-space: nowrap; transition: var(--t); }
+  .ch-ai:hover { border-color: var(--fm-primary); }
+  .fm-card-head:has(.ch-ai), .fm-section-head:has(.ch-ai) { flex-wrap: wrap; row-gap: 6px; }
+  @media (max-width: 560px) { .ch-ai .t { display: none; } .ch-ai { padding: 0 10px; } }
 
   /* generic inline add form (used by skills, experience, education, certs, languages) */
   .inline-add { display: none; gap: 10px; flex-wrap: wrap; align-items: flex-end; margin-top: 14px; padding: 14px; border: 1px solid var(--fm-line); border-radius: var(--r-md); background: var(--fm-surface-2); }
@@ -240,7 +245,7 @@
                 <button class="btn btn-soft btn-sm" onclick="openAdd()"><i class="fa-solid fa-plus"></i> Tilføj kompetence</button>
                 <a href="{{ url_for('futurematch.cv_upload') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload CV</a>
                 <a href="{{ url_for('futurematch.mind_map') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-brain"></i> 3D Mind-Map</a>
-                <a href="{{ url_for('futurematch.ai_profiler') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Opdater via AI</a>
+                <a href="{{ url_for('futurematch.ai_profiler') }}?from=profile" class="btn btn-ghost btn-sm"><i class="fa-solid fa-pen"></i> Opdater via AI</a>
               </div>
             </div>
           </div>
@@ -264,7 +269,7 @@
         <div class="ai-nudge" data-reveal>
           <span class="ai-ic"><i class="fa-solid fa-wand-magic-sparkles"></i></span>
           <div style="flex:1"><div style="font-weight:700;font-size:15px">Få et skarpere kursusmatch</div><div style="font-size:13px;color:var(--fm-ink-2);margin-top:2px">Jo mere udfyldt din profil er, jo bedre finder AI’en relevante kurser til dig.</div></div>
-          <a href="{{ url_for('futurematch.chat') }}?intent={{ 'Hjælp mig med at finde kurser der matcher min profil og mine mål'|urlencode }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
+          <a href="{{ url_for('futurematch.chat') }}?from=profile&amp;intent={{ 'Hjælp mig med at finde kurser der matcher min profil og mine mål'|urlencode }}" class="btn btn-primary btn-sm">Lad AI hjælpe <i class="fa-solid fa-arrow-right"></i></a>
         </div>
 
         <!-- CV Summary Widget (Phase 3) -->
@@ -289,21 +294,21 @@
         </div>
 
         <!-- Learning paths (AI-built, persisted) -->
-        <div class="fm-card" data-reveal id="pathsCard" style="margin-top:18px">
+        <div class="fm-card" data-reveal id="learning-paths" style="margin-top:18px">
           <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-route"></i></span><h3>Mine læringsstier</h3>
-            <a href="{{ url_for('futurematch.chat') }}?intent={{ 'Byg en sekventiel læringssti til mine mål'|urlencode }}" class="fm-badge teal" style="margin-left:auto">Byg en sti med AI</a></div>
+            <a href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:learning-paths&amp;intent={{ 'Byg en sekventiel læringssti til mine mål'|urlencode }}" class="fm-badge teal" style="margin-left:auto">Byg en sti med AI</a></div>
           <div class="fm-card-body"><div id="pathsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
         </div>
 
         <!-- Skill gaps (current → target on the canonical 1-5 scale) -->
         <div class="fm-card" data-reveal id="gapsCard" style="margin-top:18px">
           <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Kompetencegab</h3>
-            <a href="{{ url_for('futurematch.chat') }}?intent={{ 'Vis mine største kompetencegab og anbefal konkrete kurser der lukker dem'|urlencode }}" class="fm-badge teal" style="margin-left:auto">Luk gabet med AI</a></div>
+            <a href="{{ url_for('futurematch.chat') }}?from=profile&amp;focus=section:skills&amp;intent={{ 'Vis mine største kompetencegab og anbefal konkrete kurser der lukker dem'|urlencode }}" class="fm-badge teal" style="margin-left:auto">Luk gabet med AI</a></div>
           <div class="fm-card-body"><div id="gapsList"><div class="muted" style="font-size:13px">Indlæser…</div></div></div>
         </div>
 
         <!-- Proficiency matrix -->
-        <div class="fm-card" data-reveal id="skills" style="margin-top:18px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span></div>
+        <div class="fm-card" data-reveal id="skills" style="margin-top:18px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Alle kompetencer</h3><span class="fm-badge teal" id="skBadge" style="margin-left:auto">0 i alt</span><a class="ch-ai" href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:skills" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
           <div class="fm-card-body">
             <div id="skillMatrix"><div class="muted" style="font-size:13px;padding:8px 0">Indlæser…</div></div>
             <div class="inline-add" id="addSkill">
@@ -317,7 +322,7 @@
 
         <!-- Career + education/languages -->
         <div class="split" style="margin-top:18px">
-          <div class="fm-card" data-reveal data-d="1" id="experience"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="ch-add" onclick="toggleForm('addExp')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+          <div class="fm-card" data-reveal data-d="1" id="experience"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-briefcase"></i></span><h3>Erhvervserfaring</h3><button class="ch-add" onclick="toggleForm('addExp')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:experience" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
             <div class="fm-card-body">
               <div class="inline-add" id="addExp" style="margin-top:0;margin-bottom:14px">
                 <div class="fm-field" style="flex:2;min-width:160px"><label>Stilling / titel</label><input class="fm-input" id="expTitle" placeholder="F.eks. Projektleder" /></div>
@@ -332,7 +337,7 @@
             </div>
           </div>
           <div class="stack">
-            <div class="fm-card" data-reveal data-d="2" id="education"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3><button class="ch-add" onclick="toggleForm('addEdu')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card" data-reveal data-d="2" id="education"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-gold) 16%,transparent);color:var(--fm-gold)"><i class="fa-solid fa-graduation-cap"></i></span><h3>Uddannelse</h3><button class="ch-add" onclick="toggleForm('addEdu')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:education" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addEdu" style="margin-top:0;margin-bottom:12px">
                   <div class="fm-field" style="flex:2;min-width:160px"><label>Uddannelse / grad</label><input class="fm-input" id="eduDegree" placeholder="F.eks. Cand.merc." /></div>
@@ -344,7 +349,7 @@
                 <div id="eduList" style="display:flex;flex-direction:column;gap:10px"><div class="muted" style="font-size:13px">Indlæser…</div></div>
               </div>
             </div>
-            <div class="fm-card" data-reveal data-d="3" id="languages"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-language"></i></span><h3>Sprog</h3><button class="ch-add" onclick="toggleForm('addLang')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card" data-reveal data-d="3" id="languages"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-language"></i></span><h3>Sprog</h3><button class="ch-add" onclick="toggleForm('addLang')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:languages" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addLang" style="margin-top:0;margin-bottom:12px">
                   <div class="fm-field" style="flex:2;min-width:140px"><label>Sprog</label><input class="fm-input" id="langName" placeholder="F.eks. Engelsk" /></div>
@@ -355,7 +360,7 @@
                 <div class="lang-wrap" id="langList"><div class="muted" style="font-size:13px">Indlæser…</div></div>
               </div>
             </div>
-            <div class="fm-card" data-reveal data-d="4" id="portfolio"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-clay) 16%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-link"></i></span><h3>Portfolio &amp; links</h3><button class="ch-add" onclick="toggleForm('addLink')"><i class="fa-solid fa-plus"></i> Tilføj</button></div>
+            <div class="fm-card" data-reveal data-d="4" id="portfolio"><div class="fm-card-head"><span class="fm-ch-icon" style="background:color-mix(in srgb,var(--fm-clay) 16%,transparent);color:var(--fm-clay)"><i class="fa-solid fa-link"></i></span><h3>Portfolio &amp; links</h3><button class="ch-add" onclick="toggleForm('addLink')"><i class="fa-solid fa-plus"></i> Tilføj</button><a class="ch-ai" href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:portfolio" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
               <div class="fm-card-body">
                 <div class="inline-add" id="addLink" style="margin-top:0;margin-bottom:12px">
                   <div class="fm-field" style="flex:1;min-width:120px"><label>Tekst</label><input class="fm-input" id="lnkLabel" placeholder="F.eks. LinkedIn" /></div>
@@ -367,13 +372,13 @@
               </div>
             </div>
             <div class="fm-card" data-reveal data-d="5" id="goals"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-bullseye"></i></span><h3>Karrieremål</h3></div>
-              <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.learning_goals') }}" class="btn btn-soft btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-bullseye"></i> Se og styr mine mål</a><a href="{{ url_for('futurematch.ai_profiler') }}?intent={{ 'Jeg vil gerne definere eller opdatere mine karrieremål'|urlencode }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Redigér med AI</a></div>
+              <div class="fm-card-body"><p id="cvGoals" style="font-size:13.5px;color:var(--fm-ink-2);line-height:1.6;margin:0 0 12px">—</p><a href="{{ url_for('futurematch.learning_goals') }}" class="btn btn-soft btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-bullseye"></i> Se og styr mine mål</a><a href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:goals&amp;intent={{ 'Jeg vil gerne definere eller opdatere mine karrieremål'|urlencode }}" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-pen"></i> Redigér med AI</a></div>
             </div>
           </div>
         </div>
 
         <!-- Certifications (first-class) -->
-        <div class="fm-section-head" id="certifications"><div><span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Beviser</span><h2 class="fm-section-title">Certificeringer</h2></div><button class="ch-add" onclick="toggleForm('addCert')"><i class="fa-solid fa-plus"></i> Tilføj certificering</button></div>
+        <div class="fm-section-head" id="certifications"><div><span class="fm-eyebrow"><i class="fa-solid fa-shield-halved"></i> Beviser</span><h2 class="fm-section-title">Certificeringer</h2></div><button class="ch-add" onclick="toggleForm('addCert')"><i class="fa-solid fa-plus"></i> Tilføj certificering</button><a class="ch-ai" href="{{ url_for('futurematch.ai_profiler') }}?from=profile&amp;focus=section:certifications" title="Uddyb med AI Profiler" aria-label="Uddyb med AI Profiler"><i class="fa-solid fa-wand-magic-sparkles"></i><span class="t">Uddyb med AI</span></a></div>
         <div class="inline-add" id="addCert" style="margin-bottom:16px">
           <div class="fm-field" style="flex:2;min-width:180px"><label>Certificering</label><input class="fm-input" id="crtName" placeholder="F.eks. PRINCE2 Foundation" /></div>
           <div class="fm-field" style="flex:2;min-width:160px"><label>Udsteder</label><input class="fm-input" id="crtIssuer" placeholder="F.eks. AXELOS" /></div>
@@ -824,7 +829,8 @@
           const hasCv = data.has_cv;
           const s = data.summary || {};
           if (badge) {
-            badge.textContent = hasCv ? (s.completeness_pct + '% udfyldt') : 'Intet CV endnu';
+            const strength = s.completeness_weighted_pct != null ? s.completeness_weighted_pct : s.completeness_pct;
+            badge.textContent = hasCv ? (strength + '% profilstyrke') : 'Intet CV endnu';
             badge.className = 'fm-badge ' + (hasCv ? 'teal' : 'clay');
           }
           if (!hasCv) {
@@ -834,7 +840,7 @@
               '<p>Upload dit eksisterende CV — vi analyserer det automatisk og trækker dine kompetencer, erfaringer og uddannelser direkte ind på din profil og i AI-assistenten.</p>' +
               '<div style="display:flex;justify-content:center;gap:10px;flex-wrap:wrap">' +
                 '<a href="' + URLS.cvUpload + '" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload dit CV nu</a>' +
-                '<a href="' + URLS.aiProfiler + '?intent=' + encodeURIComponent('Hjælp mig med at opbygge min profil fra bunden') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Byg profil via AI</a>' +
+                '<a href="' + URLS.aiProfiler + '?from=profile&intent=' + encodeURIComponent('Hjælp mig med at opbygge min profil fra bunden') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Byg profil via AI</a>' +
               '</div>' +
             '</div>';
             return;
@@ -861,7 +867,7 @@
             (chips ? '<div style="margin-bottom:14px"><div class="cv-widget-preview-title" style="margin-bottom:8px"><i class="fa-solid fa-layer-group"></i> Nøglekompetencer</div><div class="cv-widget-chips">' + chips + '</div></div>' : '') +
             '<div class="cv-widget-actions">' +
               '<a href="' + URLS.cvUpload + '" class="btn btn-primary btn-sm"><i class="fa-solid fa-file-arrow-up"></i> Upload / Opdater CV</a>' +
-              '<a href="' + URLS.aiProfiler + '?intent=' + encodeURIComponent('Jeg vil gerne gennemgå og forbedre mit CV med AI') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Finpuds med AI</a>' +
+              '<a href="' + URLS.aiProfiler + '?from=profile&intent=' + encodeURIComponent('Jeg vil gerne gennemgå og forbedre mit CV med AI') + '" class="btn btn-soft btn-sm"><i class="fa-solid fa-wand-magic-sparkles"></i> Finpuds med AI</a>' +
               '<a href="' + URLS.mindMap + '" class="btn btn-ghost btn-sm"><i class="fa-solid fa-brain"></i> Se i 3D Mind-Map</a>' +
             '</div>';
         })

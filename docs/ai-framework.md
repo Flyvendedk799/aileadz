@@ -40,7 +40,8 @@ offered, the model decides; nothing here may add a mandatory step.
 | HR tools + compliance primitives | `hr_tools.py` |
 | Vendor assistant | `vendor_portal.py` (`POST /vendor/ask`), `vendor_tools.py`, `vendor_conversations.py` |
 | CV text/image extraction + LLM parse; CV parse-job store | `cv_ingest.py`; `cv_parse_store.py` |
-| Profile REST API, CV parse/stream/apply/improve, mind-map graph | `api.py` |
+| Profile REST API, CV parse/stream/apply/improve, mind-map graph (`mindmap_payload`), workspace summary | `api.py` |
+| Cross-surface handoff context (`{from, focus}` -> `surface_context` layer + read tools) | `app1/surface_context.py` |
 | Page shells (`/chat`, `/ai-profiler`, `/mind-map`, `/profil-upload`, `/min-laering`, ...) | `futurematch_ui.py` |
 | Orders / policy / credits | `order_lifecycle.py`, `order_service.py`, `team_order_policy.py`, `credit_service.py` |
 | Guest -> user memory migration | `anon_migration.py` |
@@ -66,6 +67,39 @@ handoff thresholds. A new persona is a new entry there.
 `/app1/ask` also accepts `kind: "seed"` for UI-generated openers (profiler
 Start/Fortsæt, `window.fmSendSeed`): the regex intent classifier is skipped
 (intent `profiler_resume`), so an opener's wording can never pull in a playbook.
+
+### 1b. One learner workspace: handoffs between surfaces
+
+The chat, the profiler, the Mind-Map, the profile page (`/profile`) and the CV portal
+share one profile and one memory, and hand the user to each other with context:
+
+- **URL contract:** `?from=<surface>&focus=<ref>&intent=<text>` on `/chat` or
+  `/ai-profiler`. `chat.js bootChat()` strips the params, then sends `context: {from,
+  focus}` with the **first** message only (a retry re-sends it). `intent` goes in as
+  the user's message; a `focus` without words sends a neutral seed; a bare `from` waits
+  for the first message (or the profiler's own opener, which no longer fires on top of a
+  handoff: `bootChat` resolves `true` when it sent something).
+- **Vocabulary** (`app1/surface_context.py`): `from` in `SURFACES` (`chat, profiler,
+  mind_map, profile, cv_upload, my_learning, goals, timeline`); `focus` is `section:<key>`
+  (`SECTIONS`) or a Mind-Map node id (`skill:42`, `exp:7`, `edu:`, `cert:`, `lang:`,
+  `goal:`, `link:`, `path:`, `course:`, `mem:`), the same ids as `open_mind_map` and
+  `#n=`. `normalize_context` whitelists in `ask()`; `resolve_focus` looks the ref up in
+  the user's **own** profile/memories (an unknown ref is dropped, so the client can only
+  point, never inject text).
+- **Effect:** a `surface_context` layer (trusted header; quoted profile text fenced as
+  data) phrased as a natural place to start, and `origin_tool_names` -> the selector's
+  `context_tools` (read tools only, plus the proposal-only `forget_about_user` for a
+  memory focus; side-effect tools are filtered out like `_HR_PAGE_TOOLS`).
+- **Entry points:** Mind-Map inspector "Spørg AI om dette" / "Uddyb med AI" and the gap
+  CTA; "Uddyb med AI" on each profile section; the CV portal's "Gennemgå med AI
+  Profiler" / "Find kurser til mine gab"; `open_in_app(open_profiler|open_advisor,
+  section|node, intent)` (`_handoff_url`).
+- **One number, one fetch:** `GET /api/profile/workspace` (completeness + Mind-Map
+  counts, built by `api.mindmap_payload(with_gaps=False)` so "datapunkter" cannot drift).
+  `chat.js refreshWorkspace()` debounces every refresh into one request and dispatches
+  `fm:workspace`; the profiler banner listens instead of fetching the graph. Every
+  surface shows the depth-aware `weighted_pct` as "profilstyrke" with `next_help`,
+  never a "Mangler: ..." list.
 
 ## 2. Request lifecycle
 
@@ -133,6 +167,7 @@ memories, profiler playbook and company rules rarely reached the model.
 | `assistant_context` (HR/vendor: who asks, for which tenant) | 6 | 1000 | knowledge |
 | `profile` (`format_profile_for_ai(include_ids=True)`) | 10 | 4500 | knowledge |
 | `guidance` / `turn_hint` / `assistant_page` | 12 / 13 / 13 | 1500 / 600 / 500 | steering |
+| `surface_context` (cross-surface handoff, see 1b) | 13 | 900 | steering |
 | `profiler_state` / `cv_just_applied` | 14 / 14 | 1500 / 500 | steering |
 | `employee_info` / `learning_context` | 15 / 16 | 600 / 1500 | knowledge |
 | `memories` | 20 | 2000 | knowledge |
@@ -234,7 +269,11 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `request_manager_approval` (confirm, self-scoped).
 - **Profile writes:** additions save immediately with an inline **Fortryd** (undo);
   removals/edits keep the confirm card; several changes can share one card
-  (`AI_PROFILE_AUTOSAVE=0` restores propose-then-confirm).
+  (`AI_PROFILE_AUTOSAVE=0` restores propose-then-confirm). Removing or editing
+  experience, education or a certification by name resolves the row id at proposal
+  time (`_resolve_profile_entity_id`: several matches -> `choose`, none -> `not_found`
+  with what exists), so the confirm click never fails on "id mangler". `set_target_role`
+  saves a first direction at once but **proposes** replacing an existing one.
 
 ### Key tool behaviours
 - **Budget filtering** uses the cheapest bookable variant (`_min_variant_price`,
@@ -263,6 +302,8 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
   `sse_events.UI_ACTIONS` (a test pins the tool enum to it both ways); includes
   `open_cv_upload` (`/profil-upload`), `open_mind_map`, `open_my_learning`
   (`/min-laering`), `open_goals` (`/mine-maal`), `open_timeline` (`/min-tidslinje`).
+  `open_profiler` / `open_advisor` take `section` or `node` + `intent` and build a
+  handoff URL (1b); `open_catalog` URL-encodes its query.
 - **`show_cv_summary` / `show_mindmap_preview` / `show_skill_gaps`** (profile-gated):
   read-only cards; reach the menu by keywords + semantic fallback.
   `show_skill_gaps` = `compute_skill_gaps` (1-5 scale) -> `skill_gaps_card`; its JSON is
@@ -288,7 +329,13 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **Memory:** `remember_about_user` supersedes near-duplicates (`_find_supersedable_memory`:
   token-based, category-scoped - a substring rule once let "Java" overwrite
   "JavaScript"). `memory_saved` carries the row `id` for inline delete.
-  REST: `GET /app1/memory`, `DELETE /app1/memory/<id>`.
+  REST: `GET /app1/memory`, `DELETE /app1/memory/<id>`. The `memories` layer prints
+  `[#id]` per memory; **`forget_about_user`** (`memory_id` or the user's words) only
+  proposes: it returns a `profile_confirm_request` card whose click posts
+  `remove_memory` to `/app1/confirm_profile_update` (several matches -> `choose`).
+  Reached on "glem / forget / husker forkert" phrases, in profiler mode, and from a
+  memory focus. `get_learning_context` (profile + budget + agreements in one read) is
+  reachable on budget/agreement phrases and the semantic fallback.
 
 ## 5. Profile, completeness, competency, CV, mind-map
 
@@ -305,14 +352,20 @@ the server synthesises chips (`_fallback_suggestions`), and chat.js has a final 
 - **Completeness - one source:** `profile_completeness(username, profile=None)`. The
   8-section binary `pct`/`total`/`missing` contract is unchanged (tests depend on it);
   it also returns depth-aware `weighted_pct`, per-section `strength`, `weakest`,
-  `target_role`. Consumed by `/api/profile/completeness`, the profile page,
-  `futurematch_ui._home_skill_completeness`, the profiler ring and the mind-map.
+  `target_role`. Consumed by `/api/profile/completeness`, `/api/profile/workspace`,
+  the profile page, `futurematch_ui._home_skill_completeness`, the profiler ring, the
+  chat status and the mind-map; every one of them displays `weighted_pct`.
 - **Profiler -> suggester handoff:** fires when `weighted_pct >= AI_PROFILER_HANDOFF_PCT`
   (70) or a target role is set and `weighted_pct >= 40`: `recommend_for_profile` ->
   `course_cards` + CTA. Persisted in `conversation_history.state_json.handoff`; marked
   fired only when courses were shown, else retried up to 2 attempts.
 - **Proactive profiler:** `ai_profiler.html` auto-sends a neutral seed ("Start /
-  Fortsæt profilsamtalen", `kind:"seed"`) once per browser session on an empty thread.
+  Fortsæt profilsamtalen", `kind:"seed"`) once per browser session on an empty thread,
+  unless a handoff already sent the first message.
+- **CV awareness:** `apply_cv_items` stores `session['cv_applied'] = {t, counts, gaps}`;
+  `cv_applied_note(surface=...)` becomes the `cv_just_applied` layer once per surface
+  within the hour (`mark_cv_note_seen` runs in the request phase: the cookie session is
+  written before the SSE body streams, so a write inside `stream_generator` is lost).
 - **Need-driven context:** the `profile` layer (with `[#id]`s) is what the model knows;
   `_build_profiler_state` adds depth, target role and <=3 unknowns *with the reason each
   matters* (strength >=0.5 never listed). No imperatives - guard tests
@@ -349,12 +402,14 @@ event names `stage`/`result`/`error` - NOT the chat vocabulary):
 Gotchas: the DC template uses `{{ }}`, so the block is wrapped in `{% raw %}`; never
 write a literal `x-dc` open tag before the real element (even in a CSS comment) -
 `parseDcText` regex-matches the FIRST one. Memory CRUD: `/api/profile/memories`
-(DELETE `{id}`, POST `{label,detail,category,source}`; the page's category chips must
-mirror `_MEMORY_CATEGORIES` - tested). A non-2xx graph response shows a retry card,
-never a fake-empty profile.
+(DELETE `{id}`, POST `{label,detail,category,source}`, PUT `{id,label,detail,category}`
+from the same inline composer; the page's category chips must mirror
+`_MEMORY_CATEGORIES` - tested). A non-2xx graph response shows a retry card with a
+Danish message, never a fake-empty profile.
 
 **Discoverability:** `/profil-upload` and `/mind-map` are in the employee sidebar
-(`fm_base.html`) and the profile hero; CV upload is also on `employee_home.html`.
+(`fm_base.html`) and the profile hero; CV upload is also on `employee_home.html`. The
+AI entry points between surfaces are listed in 1b.
 
 ## 6. Trust spine
 
@@ -572,6 +627,7 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 - **Offline coverage by area:** runtime/provider `test_ai_runtime.py`, `test_ai_provider_toggle.py`,
   `test_ai_fallback_guard.py`; SSE pipeline `test_ask_sse_offline.py` (mocked LLM: no
   `<suggestions>` leak, one final completion, grounding disclaimer, `meta` before `[DONE]`);
+  cross-surface handoff, forget tool, workspace summary `test_learner_ai_handoff.py`;
   registry/reachability `test_ai_tool_registry.py`, `test_ai_copilot_upgrade.py`,
   `test_tooler2_registry_grounding.py`, `test_prompt_tool_name_drift.py`; confirm/write tools
   `test_tool_confirm.py`, `test_hr_write_tools.py`, `test_hr_platform_tools.py`,

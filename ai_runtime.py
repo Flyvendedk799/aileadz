@@ -556,11 +556,11 @@ def live_tool_events_enabled() -> bool:
 def ai_tooler2_enabled() -> bool:
     """Master kill-switch for the AI Tooler 2 batch.
 
-    Gates every new platform-control tool and the new confirm/progress UI wiring so
-    the whole batch can be disabled with a single flag. Default OFF until the batch
-    is verified in an environment; flip AI_TOOLER2=on (or 1/true/yes) to enable.
+    The Tooler 2 tools are generally available (N-5.5): the flag defaults ON and the
+    tools are NOT gated on it. It stays as an explicit opt-out - set AI_TOOLER2=off to
+    report the batch as disabled in diagnostics (used by /health and the eval harness).
     """
-    return (os.getenv("AI_TOOLER2", "") or "").strip().lower() in {"1", "true", "yes", "on"}
+    return (os.getenv("AI_TOOLER2", "on") or "on").strip().lower() not in {"0", "false", "no", "off"}
 
 
 def live_agent_timeout_seconds() -> float:
@@ -1890,6 +1890,15 @@ def log_agent_run(
     self_eval_score: Optional[float] = None,
     grounding_violation: Optional[bool] = None,
 ) -> None:
+    # N-6.4: every AI turn is metered through the credit ledger, independent of
+    # the trace sampling rate below (shadow calls are not billed).
+    try:
+        import credit_service
+        credit_service.charge_from_usage(
+            mysql, username=username, company_id=company_id, agent_scope=agent_scope,
+            model=model, usage=usage, runtime=runtime)
+    except Exception:
+        pass
     if not mysql or trace_sample_rate() <= 0:
         return
     try:
@@ -2837,6 +2846,21 @@ def run_agent_with_fallback(
 ) -> AgentRunResult:
     active_provider = ai_provider.provider()
 
+    # N-5.5: a provider fallback replays the whole tool loop on the other provider.
+    # Once a side-effect tool has run, replaying could run it twice, so the failure
+    # is surfaced instead of retried (read-only loops still fall back freely).
+    _side_effect_ran = {"ran": False}
+    _real_executor = tool_executor
+
+    def tool_executor(tool_call, *a, **k):  # noqa: F811 - deliberate wrapper
+        try:
+            name = getattr(tool_call, "name", None) or tool_call.function.name
+            if tool_display_metadata(name, agent_scope).get("side_effect"):
+                _side_effect_ran["ran"] = True
+        except Exception:
+            pass
+        return _real_executor(tool_call, *a, **k)
+
     if active_provider == ai_provider.PROVIDER_ANTHROPIC:
         import ai_provider_anthropic
 
@@ -2856,6 +2880,8 @@ def run_agent_with_fallback(
                 company_scope=company_scope,
             )
         except Exception as exc:
+            if _side_effect_ran["ran"]:
+                raise
             # Claude unavailable (missing key/SDK, outage, 5xx): serve the turn on
             # OpenAI instead of failing the request. `model` is passed explicitly
             # because the caller's choose_turn_model() handed us a Claude id.
@@ -2944,6 +2970,8 @@ def run_agent_with_fallback(
             company_scope=company_scope,
         )
     except Exception as exc:
+        if _side_effect_ran["ran"]:
+            raise
         fallback = run_chat_agent(
             messages=messages,
             tools=tools,

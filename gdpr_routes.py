@@ -145,7 +145,7 @@ def my_data():
     try:
         from gdpr_service import export_user_data
 
-        payload = export_user_data(username)
+        payload = export_user_data(username, learner_view=True)
     except Exception as exc:  # pragma: no cover - defensive
         logger.warning("gdpr.my_data fejlede for %s: %s", username, exc)
         flash("Kunne ikke generere din dataeksport lige nu. Prøv igen senere.", "danger")
@@ -153,6 +153,59 @@ def my_data():
 
     _audit("gdpr_self_export", username, {"by": "self"})
     return _json_download(payload, username)
+
+
+@gdpr_bp.route("/mine-data/anmod-sletning", methods=["POST"])
+@login_required
+def request_erasure():
+    """Self-service "Anmod om sletning" (S-4.2): opens a DSR ticket with a
+    30-day SLA. Nothing is deleted here; a platform admin carries it out."""
+    username = session.get("user")
+    user_id = session.get("user_id")
+    if request.form.get("confirm") != "1":
+        flash("Sæt kryds i bekræftelsen for at indsende anmodningen.", "warning")
+        return redirect(request.referrer or url_for("pages.settings"))
+    try:
+        import dsr_service
+        from flask import current_app
+        conn = current_app.mysql.connection
+        email = None
+        cur = conn.cursor()
+        cur.execute("SELECT email FROM users WHERE id = %s", (user_id,))
+        row = cur.fetchone()
+        cur.close()
+        if row:
+            email = row["email"] if isinstance(row, dict) else row[0]
+        ticket, created = dsr_service.create_request(
+            conn, user_id=user_id, username=username, email=email,
+            request_type="erasure", reason=(request.form.get("reason") or "").strip())
+    except Exception as exc:
+        logger.warning("gdpr.request_erasure fejlede for %s: %s", username, exc)
+        flash("Vi kunne ikke registrere din anmodning lige nu. Prøv igen om lidt, eller skriv til support.", "danger")
+        return redirect(url_for("pages.settings"))
+
+    if created:
+        _audit("gdpr_erasure_requested", username, {"ticket": ticket.get("id") if isinstance(ticket, dict) else None})
+        _notify_admins_of_request(username)
+        flash("Tak. Vi har modtaget din anmodning om sletning og behandler den senest 30 dage fra i dag.", "success")
+    else:
+        flash("Du har allerede en åben anmodning om sletning. Vi behandler den inden for 30 dage fra indsendelsen.", "info")
+    return redirect(url_for("pages.settings") + "#privatliv")
+
+
+def _notify_admins_of_request(username):
+    """Best effort: e-mail DSR_NOTIFY_EMAIL (if set) and ping the admins in-app."""
+    try:
+        import os
+        to = os.environ.get("DSR_NOTIFY_EMAIL") or os.environ.get("SUPPORT_EMAIL")
+        if to:
+            from email_service import send_branded_email
+            send_branded_email(to, "Ny anmodning om sletning (GDPR)", "announcement", {},
+                               heading="Ny anmodning om sletning",
+                               message="En bruger har anmodet om sletning. Åbn GDPR-konsollen for at behandle den "
+                                       "inden for 30 dage.", recipient_name="")
+    except Exception as exc:  # pragma: no cover - never blocks the request
+        logger.debug("dsr notify mail skipped: %s", exc)
 
 
 # ---------------------------------------------------------------------------
@@ -181,7 +234,43 @@ def admin_console():
             summary = {"username": username, "row_counts": {}, "total_rows": 0,
                        "errors": [f"Opslag fejlede: {exc}"]}
 
-    return render_template("fm/gdpr.html", lookup_username=username, summary=summary, plan=None)
+    return render_template("fm/gdpr.html", lookup_username=username, summary=summary, plan=None,
+                           dsr_requests=_load_dsr_queue())
+
+
+def _load_dsr_queue():
+    """Open data-subject requests with an overdue flag, for the admin console."""
+    try:
+        import dsr_service
+        from flask import current_app
+        rows = dsr_service.list_requests(current_app.mysql.connection)
+        out = []
+        for row in rows:
+            row = dict(row) if isinstance(row, dict) else {}
+            row["overdue"] = dsr_service.is_overdue(row)
+            out.append(row)
+        return out
+    except Exception as exc:
+        logger.debug("dsr queue unavailable: %s", exc)
+        return []
+
+
+@gdpr_bp.route("/admin/gdpr/dsr/<int:request_id>/afvis", methods=["POST"])
+@require_role("admin")
+def dsr_reject(request_id):
+    try:
+        import dsr_service
+        from flask import current_app
+        ok = dsr_service.set_status(current_app.mysql.connection, request_id, "rejected",
+                                    session.get("user"), (request.form.get("note") or "").strip())
+        flash("Anmodningen er afvist og lukket." if ok else "Anmodningen findes ikke eller er allerede lukket.",
+              "success" if ok else "warning")
+        if ok:
+            _audit("gdpr_dsr_rejected", str(request_id), {"by": session.get("user")})
+    except Exception as exc:
+        logger.warning("dsr_reject fejlede: %s", exc)
+        flash("Kunne ikke afvise anmodningen.", "danger")
+    return redirect(url_for("gdpr.admin_console"))
 
 
 @gdpr_bp.route("/admin/gdpr/export", methods=["POST"])
@@ -257,6 +346,21 @@ def admin_erase():
             "warning",
         )
 
+    ticket_ids = []
+    if do_execute:
+        try:  # find the subject's tickets BEFORE the erasure anonymises them
+            import dsr_service
+            from flask import current_app
+            cur = current_app.mysql.connection.cursor()
+            cur.execute("SELECT id FROM users WHERE username = %s", (username,))
+            urow = cur.fetchone()
+            cur.close()
+            uid = (urow["id"] if isinstance(urow, dict) else urow[0]) if urow else None
+            ticket_ids = dsr_service.open_erasure_ticket_ids(
+                current_app.mysql.connection, user_id=uid, username=username)
+        except Exception as exc:
+            logger.debug("dsr ticket lookup skipped: %s", exc)
+
     plan = erase_user_data(
         username,
         actor=actor,
@@ -264,6 +368,16 @@ def admin_erase():
         browser_token=browser_token,
         session_id=session_id,
     )
+
+    if do_execute and plan.get("ok") and ticket_ids:
+        try:
+            import dsr_service
+            from flask import current_app
+            for tid in ticket_ids:
+                dsr_service.set_status(current_app.mysql.connection, tid, "completed", actor,
+                                       "Sletning gennemført i GDPR-konsollen")
+        except Exception as exc:
+            logger.debug("dsr ticket close skipped: %s", exc)
 
     if do_execute:
         _audit(
@@ -314,6 +428,7 @@ def admin_erase():
         summary=summary,
         plan=plan,
         executed=do_execute,
+        dsr_requests=_load_dsr_queue(),
     )
 
 

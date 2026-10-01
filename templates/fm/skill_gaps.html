@@ -68,7 +68,8 @@
           <td><span class="fm-badge teal">Mål {{ data.target_level }}/5</span></td>
           <td><span class="fm-badge {{ 'red' if (data.avg_current or 0)|float < 2 else 'amber' }}">{{ data.avg_current }}/5 gns.</span></td>
           <td><span class="fm-badge {{ 'red' if data.status == 'red' else 'amber' }}">−{{ data.gap }}</span></td>
-          <td style="text-align:right"><a href="{{ url_for('futurematch.chat') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-magnifying-glass"></i> Find kurser</a></td>
+          <td style="text-align:right;white-space:nowrap"><a href="{{ url_for('hr_ext.training_plan', department=dept, focus=skill_name) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-list-check"></i> Lav træningsplan</a>
+            <a href="{{ url_for('hr_dashboard.bulk_assign_form', department=dept, skill=skill_name) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tildel</a></td>
         </tr>
         {% endif %}
       {% endfor %}

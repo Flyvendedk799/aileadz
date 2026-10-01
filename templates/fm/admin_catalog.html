@@ -17,12 +17,22 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
-  <div class="pg-subnav">
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.admin_home') }}"><i class="fa-solid fa-shield-halved"></i> Oversigt</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.user_list') }}"><i class="fa-solid fa-users"></i> Brugere</a>
-    <a class="pg-tab" href="{{ url_for('admin_dashboard.credits') }}"><i class="fa-solid fa-coins"></i> Kreditter</a>
-    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_catalog') }}"><i class="fa-solid fa-boxes-stacked"></i> Katalog</a>
-    <a class="pg-tab" href="{{ url_for('catalog.catalog_index') }}" target="_blank"><i class="fa-solid fa-up-right-from-square"></i> Offentligt katalog</a>
+{% set active_admin_page = 'catalog' %}{% include 'fm/_admin_subnav.html' %}
+
+  <div class="fm-card" style="margin-bottom:16px">
+    <div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-database"></i></span><h3>Søgeindeks</h3>
+      {% if index %}<span class="fm-badge {{ 'green' if not index.last_error and index.products else 'red' }} dot" style="margin-left:auto">{{ 'Klar' if not index.last_error and index.products else 'Kræver opmærksomhed' }}</span>{% endif %}
+    </div>
+    <div class="fm-card-body">
+      {% if index %}
+      <p style="font-size:13px;color:var(--fm-ink-2);margin:0 0 10px">AI-søgningen og kataloget bruger samme kursusliste. {{ index.products }} kurser er indekseret, {{ index.with_embeddings }} med semantisk søgning{% if index.missing_embeddings %} ({{ index.missing_embeddings }} mangler embedding, de findes stadig via nøgleord){% endif %}. Bygget: {{ index.built_at or 'ikke endnu' }}.{% if index.last_error %} Seneste fejl: {{ index.last_error }}{% endif %}</p>
+      {% if not index.embeddings_available %}<p style="font-size:12.5px;color:var(--fm-warning);margin:0 0 10px">OPENAI_API_KEY er ikke sat, så nye kurser kan ikke få embeddings endnu.</p>{% endif %}
+      {% endif %}
+      <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
+        <form method="post" action="{{ url_for('catalog_admin.reindex') }}"><button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-arrows-rotate"></i> Genopbyg indeks</button></form>
+        <form method="post" action="{{ url_for('catalog_admin.sync_now') }}"><button class="btn btn-ghost btn-sm" type="submit" {{ '' if shopify_ready else 'title="SHOPIFY_STORE og SHOPIFY_ADMIN_TOKEN er ikke sat"' }}><i class="fa-brands fa-shopify"></i> Synkronisér fra Shopify</button></form>
+      </div>
+    </div>
   </div>
 
   <div class="kpi-row">

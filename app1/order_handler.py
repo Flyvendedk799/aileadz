@@ -14,123 +14,132 @@ import re
 
 logger = logging.getLogger(__name__)
 
+
+def _attribution():
+    """Chat -> order conversion fields for course_orders (N-3.3)."""
+    try:
+        from app1.tools import chat_attribution
+        return chat_attribution()
+    except Exception:
+        return {'chatbot_session_id': session.get('session_id', ''),
+                'chatbot_queries_before_order': session.get('_chatbot_query_count', 0),
+                'recommended_by_tool': session.get('_last_recommending_tool', '')}
+
+def parse_price(price_str) -> float:
+    """Parse a price like ``1.995,00 kr.`` / ``1,995.00`` / ``1995`` / ``1 995``.
+
+    The old parser turned "1.995,00" into 0 (it replaced ',' with '.' and then
+    failed on two dots), which silently ordered courses at price 0.
+    """
+    if price_str is None:
+        return 0.0
+    if isinstance(price_str, (int, float)):
+        return float(price_str)
+    s = str(price_str).strip().lower()
+    if s in ('', '0', '0.00', 'efter aftale', 'pris på forespørgsel'):
+        return 0.0
+    s = re.sub(r'[^\d,.]', '', s)
+    if not s:
+        return 0.0
+    if ',' in s and '.' in s:
+        # Both present: the LAST separator is the decimal point.
+        if s.rfind(',') > s.rfind('.'):
+            s = s.replace('.', '').replace(',', '.')
+        else:
+            s = s.replace(',', '')
+    elif ',' in s:
+        head, _, tail = s.rpartition(',')
+        s = (head.replace(',', '') + tail) if (len(tail) == 3 and head) else s.replace(',', '.')
+    elif '.' in s:
+        head, _, tail = s.rpartition('.')
+        if len(tail) == 3 and head:
+            s = head.replace('.', '') + tail  # "1.995" -> 1995 (Danish thousands)
+    try:
+        return float(s)
+    except ValueError:
+        return 0.0
+
+
 class OrderHandler:
-    """Handles course ordering and payment processing"""
-    
+    """Handles course ordering for the chatbot. Payment happens off-platform:
+    the app never shows payment details, it only tracks order and billing status."""
+
     def __init__(self):
-        self.order_statuses = {
-            'pending': 'Afventer betaling',
-            'pending_approval': 'Afventer godkendelse',
-            'approved': 'Godkendt',
-            'rejected': 'Afvist',
-            'processing': 'Behandler',
-            'confirmed': 'Bekræftet',
-            'cancelled': 'Annulleret',
-            'completed': 'Gennemført'
-        }
-        
+        # ONE status vocabulary (order_lifecycle); legacy names map to the new ones.
+        import order_lifecycle as lc
+        self.order_statuses = dict(lc.STATUS_LABELS)
+        for legacy, canonical in lc.LEGACY_ALIASES.items():
+            self.order_statuses[legacy] = lc.STATUS_LABELS[canonical]
+
     def create_order(self, product_data: Dict, user_info: Dict, variant_info: Dict = None) -> Dict:
-        """
-        Create a new order for a course
-        
-        Args:
-            product_data: Product information including title, price, handle
-            user_info: User information including name, email, phone
-            variant_info: Specific variant (date/location) information
-            
-        Returns:
-            Order details including order_id and payment instructions
+        """Create a course order through the ONE order service.
+
+        Fails truthfully: if the database write fails the caller gets
+        ``success: False`` and nothing is shown as ordered. The confirmation
+        email is sent by the order service (exactly once).
         """
         try:
-            order_id = str(uuid.uuid4())
-            timestamp = datetime.datetime.now()
-            
-            # Extract price
-            price_str = product_data.get('price', '0')
-            price = self._parse_price(price_str)
-            
-            # Create order object
+            price = self._parse_price(product_data.get('price', '0'))
             order = {
-                'order_id': order_id,
-                'timestamp': timestamp.isoformat(),
-                'status': 'pending',
+                'order_id': str(uuid.uuid4()),
+                'timestamp': datetime.datetime.now().isoformat(),
+                'status': 'approved',
                 'product': {
                     'handle': product_data.get('handle', ''),
                     'title': product_data.get('title', ''),
                     'price': price,
                     'vendor': product_data.get('vendor', 'Ukendt'),
-                    'type': product_data.get('product_type', '')  # Added to fix missing 'type' error
+                    'type': product_data.get('product_type', ''),
                 },
                 'variant': variant_info or {},
                 'user': user_info,
                 'payment_method': None,
-                'notes': []
+                'notes': [],
             }
-            
-            # Store order in session for now (in production, this would go to database)
+
+            stored = self._store_order_in_db(order)
+            if not stored.get('success'):
+                logger.error("Order not stored: %s", stored.get('error') or stored.get('message'))
+                return {
+                    'success': False,
+                    'error': stored.get('error') or 'order_not_stored',
+                    'message': stored.get('message') or 'Bestillingen kunne ikke gemmes.',
+                }
+
             if 'orders' not in session:
                 session['orders'] = []
             session['orders'].append(order)
             session.modified = True
-            
-            # Log order creation
-            logger.info(f"Order created: {order_id} for product: {product_data.get('title')}")
-            
-            # Store order in database via the authorized order_service.
-            # The service mutates order['order_id'] / order['status'] to the
-            # persisted values, so read them back to stay consistent.
-            self._store_order_in_db(order)
-            order_id = order.get('order_id', order_id)
-
-            # Best-effort branded order-confirmation email. Guarded so that a
-            # mail backend failure (or no backend at all) NEVER affects the
-            # order result — mirrors the webhook best-effort pattern.
-            self._send_confirmation_email(order)
+            logger.info(f"Order created: {order['order_id']} for product: {product_data.get('title')}")
 
             return {
                 'success': True,
-                'order_id': order_id,
+                'order_id': order['order_id'],
                 'order': order,
-                'payment_instructions': self._generate_payment_instructions(order)
+                'duplicate': bool(stored.get('duplicate')),
+                'next_steps': self._generate_payment_instructions(order),
             }
-            
         except Exception as e:
             logger.error(f"Error creating order: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+            return {'success': False, 'error': str(e)}
 
+    def _parse_price(self, price_str) -> float:
+        """Parse price string to float (handles ``1.995,00`` and ``1,995.00``)."""
+        return parse_price(price_str)
 
-    
-    def _parse_price(self, price_str: str) -> float:
-        """Parse price string to float"""
-        if price_str in ['0', '0.00', 'Efter aftale']:
-            return 0.0
-        
-        # Remove currency symbols and convert to float
-        price_clean = re.sub(r'[^\d,.]', '', price_str)
-        price_clean = price_clean.replace(',', '.')
-        
-        try:
-            return float(price_clean)
-        except:
-            return 0.0
-    
-    def _store_order_in_db(self, order: Dict):
-        """Store order in database.
+    def _store_order_in_db(self, order: Dict) -> Dict:
+        """Persist via order_service.create_order (shared authorization, budget-aware
+        approval, exactly-once budget charge, idempotency guard).
 
-        Delegates to the single authorized order_service.create_order so this
-        chatbot path shares the same authorization, budget-aware approval and
-        exactly-once budget charge as every other order path. The order dict
-        already has an order_id; we record the service's returned values back
-        onto the dict so callers (confirmation, status) stay consistent.
+        Returns the service result dict; ``success`` is False when the write
+        failed. On success the in-memory order is synced to the persisted values.
         """
         try:
             from order_service import create_order as _svc_create_order, OrderContext
         except Exception as imp_err:
             logger.error(f"order_service import failed: {imp_err}")
-            return
+            return {'success': False, 'error': 'service_unavailable',
+                    'message': 'Ordretjenesten er ikke tilgængelig lige nu.'}
 
         try:
             ctx = OrderContext.from_session(source='chat')
@@ -144,94 +153,45 @@ class OrderHandler:
                 user_email=order['user'].get('email', ''),
                 user_name=order['user'].get('name', ''),
                 user_phone=order['user'].get('phone', ''),
-                status=order.get('status', 'pending'),
+                status=None,
                 extra={
-                    'chatbot_session_id': session.get('session_id', ''),
-                    'chatbot_queries_before_order': session.get('_chatbot_query_count', 0),
-                    'recommended_by_tool': session.get('_last_recommending_tool', ''),
+                    **_attribution(),
                     'department': session.get('company_department', ''),
+                    'group_order_id': order.get('group_order_id'),
+                    'notes': (order.get('variant') or {}).get('notes') or order.get('notes_text'),
                 },
             )
-
             if result.get('success'):
-                # Keep the in-memory order in sync with the persisted row so the
-                # session copy and confirmation reflect the authorized outcome.
                 order['order_id'] = result.get('order_id', order['order_id'])
                 order['status'] = result.get('status', order['status'])
+                order['status_label'] = result.get('status_label')
+                order['next_step'] = result.get('next_step')
+                order['order_url'] = result.get('order_url')
                 if result.get('needs_approval'):
                     order['needs_approval'] = True
                 if result.get('budget_warning'):
                     order['budget_warning'] = result['budget_warning']
-            else:
-                logger.error(
-                    "order_service.create_order failed: %s",
-                    result.get('error') or result.get('message'),
-                )
-
+            return result
         except Exception as e:
             logger.error(f"Error storing order in database: {e}")
-
-    def _send_confirmation_email(self, order: Dict) -> None:
-        """Best-effort branded order-confirmation email.
-
-        Fully guarded: any failure (import, branding lookup, no mail backend)
-        is swallowed so the order flow is never affected. No-ops cleanly when
-        no mail backend is configured (ops-gated: MAIL_SERVER/MAIL_DEFAULT_SENDER).
-        """
-        try:
-            to_email = (order.get('user') or {}).get('email', '')
-            if not to_email:
-                return
-
-            try:
-                from email_service import send_order_confirmation
-            except Exception as imp_err:
-                logger.debug(f"email_service import failed: {imp_err}")
-                return
-
-            # Resolve company branding when we have a company context.
-            company_id = None
-            try:
-                company_id = session.get('company_id')
-            except Exception:
-                company_id = None
-
-            send_order_confirmation(order, company_id=company_id)
-        except Exception as e:
-            logger.debug(f"Order confirmation email skipped: {e}")
+            return {'success': False, 'error': str(e),
+                    'message': 'Der opstod en fejl ved oprettelse af ordren.'}
 
     def _generate_payment_instructions(self, order: Dict) -> Dict:
-        """Generate payment instructions for the order"""
+        """What happens next. Payment is handled OFF-platform: we never show
+        payment details (MobilePay/bank/phone), only an honest next step."""
         price = order['product']['price']
-        
-        if price == 0:
-            return {
-                'type': 'contact',
-                'message': 'Dette kursus kræver direkte kontakt for prisaftale.',
-                'contact_info': {
-                    'email': 'kurser@futurematch.dk',
-                    'phone': '+45 12 34 56 78'
-                }
-            }
-        
-        return {
-            'type': 'payment',
-            'amount': price,
-            'currency': 'DKK',
-            'payment_methods': ['MobilePay', 'Bankoverførsel', 'Kort'],
-            'payment_details': {
-                'mobilepay': {
-                    'number': '12345',
-                    'message': f'Ordre {order["order_id"][:8]}'
-                },
-                'bank_transfer': {
-                    'account': '1234-567890',
-                    'message': f'Ordre {order["order_id"]}'
-                }
-            },
-            'deadline': (datetime.datetime.now() + datetime.timedelta(days=3)).isoformat()
-        }
-    
+        vendor = (order['product'].get('vendor') or '').strip()
+        payer = vendor if vendor and vendor.lower() != 'ukendt' else 'Futurematch'
+        if order.get('status') == 'pending_approval':
+            return {'type': 'approval',
+                    'message': 'Bestillingen er sendt til godkendelse. Du hører fra os, så snart den er behandlet.'}
+        if not price:
+            return {'type': 'contact',
+                    'message': 'Kursets pris aftales direkte. Udbyderen kontakter dig, når pladsen er bekræftet.'}
+        return {'type': 'invoice',
+                'message': f'Du modtager faktura fra {payer}. Der er ingen betaling i appen.'}
+
     def get_order_status(self, order_id: str) -> Optional[Dict]:
         """Get the status of an order"""
         try:
@@ -283,66 +243,25 @@ class OrderHandler:
         }
     
     def update_order_status(self, order_id: str, new_status: str) -> bool:
-        """Update the status of an order"""
+        """Update an order's status via the ONE order service (transition rules,
+        budget, history, emails, webhooks all live there)."""
         try:
-            # Update in session
-            orders = session.get('orders', [])
-            for order in orders:
-                if order['order_id'] == order_id:
-                    order['status'] = new_status
-                    order['notes'].append({
-                        'timestamp': datetime.datetime.now().isoformat(),
-                        'note': f'Status opdateret til: {self.order_statuses.get(new_status, new_status)}'
-                    })
-                    session.modified = True
-            
-            # Update in database
-            conn = current_app.mysql.connection
-            if conn:
-                cur = conn.cursor()
-                cur.execute(
-                    "UPDATE course_orders SET status = %s, updated_at = NOW() WHERE order_id = %s",
-                    (new_status, order_id)
-                )
-                # On completion, update learning progress + employee counters
-                if new_status == 'completed':
-                    try:
-                        import MySQLdb.cursors
-                        cur2 = conn.cursor(MySQLdb.cursors.DictCursor)
-                        cur2.execute(
-                            "SELECT user_id, company_id, product_handle, product_title FROM course_orders WHERE order_id = %s",
-                            (order_id,))
-                        orow = cur2.fetchone()
-                        if orow and orow.get('user_id') and orow.get('company_id'):
-                            cur2.execute(
-                                "UPDATE course_orders SET completion_status = 'completed', completion_date = NOW() WHERE order_id = %s",
-                                (order_id,))
-                            cur2.execute("""
-                                INSERT INTO employee_learning_progress
-                                    (user_id, company_id, course_handle, content_name, status,
-                                     progress_percentage, completed_at, created_at)
-                                VALUES (%s, %s, %s, %s, 'completed', 100, NOW(), NOW())
-                                ON DUPLICATE KEY UPDATE
-                                    status = 'completed', progress_percentage = 100, completed_at = NOW()
-                            """, (orow['user_id'], orow['company_id'],
-                                  orow.get('product_handle', ''), orow.get('product_title', '')))
-                            cur2.execute("""
-                                UPDATE company_users
-                                SET total_courses_completed = COALESCE(total_courses_completed, 0) + 1
-                                WHERE company_id = %s AND user_id = %s
-                            """, (orow['company_id'], orow['user_id']))
-                        cur2.close()
-                    except Exception as lp_err:
-                        logger.warning(f"Learning progress update failed: {lp_err}")
-                conn.commit()
-                cur.close()
-
-            return True
-            
+            from order_service import OrderContext, set_status, complete_order
+            import order_lifecycle as lc
+            ctx = OrderContext.from_session(source='chat')
+            target = lc.normalize_status(new_status)
+            res = complete_order(ctx, order_id) if target == lc.COMPLETED else set_status(ctx, order_id, target)
+            ok = bool(res.get('success'))
+            if ok:
+                for order in session.get('orders', []):
+                    if order.get('order_id') == order_id:
+                        order['status'] = target
+                session.modified = True
+            return ok
         except Exception as e:
             logger.error(f"Error updating order status: {e}")
             return False
-    
+
     def validate_user_info(self, user_info: Dict, require_phone: bool = True) -> Tuple[bool, List[str]]:
         """
         Validate user information for order
@@ -395,63 +314,40 @@ class OrderHandler:
         return any(re.match(pattern, phone_clean) for pattern in patterns)
     
     def format_order_confirmation(self, order: Dict) -> str:
-        """Format order confirmation message"""
+        """Order confirmation for the chat: status, what happens next, no payment details."""
         product = order['product']
         variant = order.get('variant', {})
         user = order['user']
-        payment = order.get('payment_instructions', {})
-        
-        confirmation = f"""
-🎉 **Tak for din ordre!**
+        status_label = order.get('status_label') or self.order_statuses.get(order.get('status'), '')
 
-**Ordre nummer:** {order['order_id'][:8]}
+        confirmation = f"""
+**Din bestilling er registreret**
+
+**Ordrenummer:** {order['order_id'][:8]}
+**Status:** {status_label}
 
 **Kursus:** {product['title']}
 """
-        
         if variant.get('date'):
             confirmation += f"**Dato:** {variant['date']}\n"
-        
         if variant.get('location'):
             confirmation += f"**Sted:** {variant['location']}\n"
-        
         if product['price'] > 0:
-            confirmation += f"**Pris:** {product['price']} kr.\n"
-        
-        confirmation += f"\n**Dine oplysninger:**\n"
-        confirmation += f"Navn: {user['name']}\n"
-        confirmation += f"Email: {user['email']}\n"
-        confirmation += f"Telefon: {user['phone']}\n"
-        
-        if payment and payment.get('type') == 'payment':
-            confirmation += f"\n**Betalingsinformation:**\n"
-            confirmation += f"Beløb: {payment.get('amount', 0)} {payment.get('currency', 'DKK')}\n"
-            if payment.get('deadline'):
-                confirmation += f"Betalingsfrist: {self._format_date(payment['deadline'])}\n\n"
-            
-            confirmation += "**Betalingsmuligheder:**\n"
-            payment_details = payment.get('payment_details', {})
-            if 'mobilepay' in payment_details:
-                mp = payment_details['mobilepay']
-                confirmation += f"• MobilePay: {mp.get('number', 'N/A')} (husk at skrive '{mp.get('message', 'N/A')}')\n"
-            
-            if 'bank_transfer' in payment_details:
-                bt = payment_details['bank_transfer']
-                confirmation += f"• Bankoverførsel: Konto {bt.get('account', 'N/A')} (Reference: {bt.get('message', 'N/A')})\n"
-        
-        elif payment and payment.get('type') == 'contact':
-            confirmation += f"\n**Næste skridt:**\n"
-            confirmation += f"{payment.get('message', 'Kontakt os for yderligere information.')}\n"
-            contact_info = payment.get('contact_info', {})
-            if contact_info.get('email'):
-                confirmation += f"Email: {contact_info['email']}\n"
-            if contact_info.get('phone'):
-                confirmation += f"Telefon: {contact_info['phone']}\n"
-        
-        confirmation += "\nDu vil modtage en bekræftelse på email inden for kort tid."
-        
+            confirmation += f"**Pris:** {product['price']:.0f} kr.\n"
+
+        confirmation += "\n**Dine oplysninger:**\n"
+        confirmation += f"Navn: {user.get('name', '')}\n"
+        confirmation += f"Email: {user.get('email', '')}\n"
+        if user.get('phone'):
+            confirmation += f"Telefon: {user['phone']}\n"
+
+        steps = order.get('next_steps') or self._generate_payment_instructions(order)
+        confirmation += f"\n**Næste skridt:**\n{steps.get('message', '')}\n"
+        if order.get('budget_warning'):
+            confirmation += f"\n{order['budget_warning']}\n"
+        confirmation += "\nDu kan følge status på din tidslinje."
         return confirmation
-    
+
     def _format_date(self, iso_date: str) -> str:
         """Format ISO date to Danish format"""
         try:

@@ -14,6 +14,13 @@ anthropic>=1,<2
 requests>=2.32,<3
 python-dotenv>=1,<2
 
+# Outbound transactional email (email_service.send_branded_email). Without it
+# every send silently falls through to "skipped_no_backend".
+Flask-Mail>=0.10,<1
+
+# Optional error tracking: set SENTRY_DSN to enable (observability.py); harmless without it.
+sentry-sdk[flask]>=2,<3
+
 # Fuzzy matching
 fuzzywuzzy>=0.18,<0.19
 python-Levenshtein>=0.27,<0.28
@@ -28,7 +35,11 @@ bleach>=6.1,<7
 # XXE-safe XML parsing for attacker-controlled SAML payloads (enterprise_sso).
 defusedxml>=0.7,<0.8
 # Fernet encryption-at-rest for SSO client secrets (enterprise_sso).
-cryptography>=42,<49
+cryptography>=49,<51
+
+# TOTP two-factor (two_factor.py) uses only the standard library + cryptography.
+# CSRF tokens for the session-authenticated app (csrf_protect.py).
+Flask-WTF>=1.2,<2
 
 # --- Enterprise subsystem deps (imported by enterprise_* blueprints) ---
 # PyJWT provides the top-level ``import jwt`` in enterprise_api/enterprise_sso;
@@ -51,5 +62,5 @@ ldap3>=2.9,<3
 # returns "Vi kunne ikke læse PDF-filen automatisk på serveren" and the upload
 # fails. These were ambiently present on PythonAnywhere but absent from the
 # clean ServerHoster venv — pin them so PDF resumes parse on every deploy.
-pypdf>=4,<6
+pypdf>=6.16.1,<7
 pdfplumber>=0.11,<0.13

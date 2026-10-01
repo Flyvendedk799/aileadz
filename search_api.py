@@ -36,20 +36,36 @@ def search():
 
     company_id = session.get('company_id')
     is_admin = session.get('role') == 'admin'
+    company_role = session.get('company_role')
 
     # --- Employees in the current company -------------------------------
-    if company_id:
+    # S-1.5: only HR roles may look colleagues up. Department heads are limited
+    # to their own department; plain employees get no employee results at all
+    # (otherwise any employee could harvest colleagues' emails).
+    can_search_people = bool(company_id) and (
+        company_role in ('company_admin', 'hr_manager', 'department_head')
+    )
+    if can_search_people:
         try:
             cur = _cursor()
+            dept_clause = ""
+            params = [company_id]
+            if company_role == 'department_head' and not is_admin:
+                dept_clause = (
+                    " AND cu.department = (SELECT d.department FROM company_users d"
+                    " WHERE d.user_id = %s AND d.company_id = %s LIMIT 1)"
+                )
+                params += [session.get('user_id'), company_id]
+            params += [like, like, like]
             cur.execute(
                 """SELECT cu.user_id, COALESCE(cu.full_name, u.username) AS name,
                           u.username, u.email, cu.department
                    FROM company_users cu JOIN users u ON cu.user_id = u.id
-                   WHERE cu.company_id = %s AND cu.status = 'active'
+                   WHERE cu.company_id = %s AND cu.status = 'active'""" + dept_clause + """
                      AND (COALESCE(cu.full_name,'') LIKE %s OR u.username LIKE %s
                           OR COALESCE(u.email,'') LIKE %s)
                    ORDER BY name LIMIT 6""",
-                (company_id, like, like, like),
+                tuple(params),
             )
             items = [{
                 'title': r['name'], 'sub': (r.get('department') or r.get('email') or ''),

@@ -104,13 +104,74 @@ def _check_db():
         return False
 
 
-def _check_catalog():
-    """Return True if at least one RAG catalog index file exists on disk."""
+def _worker_block():
+    """Background-worker visibility: job last runs + outbox backlog. Never raises."""
     try:
+        import scheduler
+
+        conn = current_app.mysql.connection
+        jobs = scheduler.job_status_rows(conn)
+        backlog = None
+        try:
+            cur = conn.cursor()
+            try:
+                cur.execute("SELECT COUNT(*) AS n FROM event_outbox WHERE status = 'pending'")
+                row = cur.fetchone()
+                backlog = int((row.get('n') if isinstance(row, dict) else row[0]) or 0)
+            finally:
+                cur.close()
+        except Exception:
+            backlog = None
+        heartbeat = next((j for j in jobs if j['name'] == scheduler.HEARTBEAT_JOB), None)
+        return {
+            'dedicated_worker': scheduler.in_request_runner_enabled() is False,
+            'heartbeat_ok': bool(heartbeat and not heartbeat['overdue']),
+            'outbox_pending': backlog,
+            'jobs': [
+                {'name': j['name'], 'last_run_at': j['last_run_at'],
+                 'status': j['last_status'], 'overdue': j['overdue']}
+                for j in jobs if j['name'] != scheduler.HEARTBEAT_JOB
+            ],
+        }
+    except Exception as exc:  # pragma: no cover
+        logging.warning("worker block failed: %s", exc)
+        return None
+
+
+def _check_catalog():
+    """Return True if the catalog source (or an augmented index file) exists."""
+    try:
+        try:
+            import catalog_service
+            if os.path.exists(catalog_service.source_file_path()):
+                return True
+        except Exception:
+            pass
         return any(os.path.exists(path) for path in _CATALOG_FILES)
     except Exception as exc:
         logging.warning("Readiness catalog check failed: %s", exc)
         return False
+
+
+def _detail_allowed():
+    """Who may see the readiness DETAILS (feature matrix, provider, key presence)?
+
+    S-5.2: the public answer is just ``{"status": ...}`` (enough for a load
+    balancer). Details are for a logged-in platform admin, or for a monitor that
+    sends the shared secret in ``X-Health-Token`` (env ``HEALTH_TOKEN``).
+    """
+    try:
+        from flask import request, session
+        if session.get('user') and session.get('role') == 'admin':
+            return True
+        expected = os.environ.get('HEALTH_TOKEN')
+        provided = request.headers.get('X-Health-Token', '')
+        if expected and provided:
+            import hmac
+            return hmac.compare_digest(str(provided), str(expected))
+    except Exception:
+        return False
+    return False
 
 
 @health_bp.route('/healthz')
@@ -144,13 +205,14 @@ def readyz():
         features = _features_block()
         if features is not None:
             body['features'] = features
+        # N-8.1: per-job last run + outbox backlog, so a dead worker is visible.
+        worker = _worker_block() if db_ok else None
+        if worker is not None:
+            body['worker'] = worker
+        if not _detail_allowed():
+            body = {'status': status}   # S-5.2: no feature matrix for the public
         return jsonify(body), (200 if db_ok else 503)
     except Exception as exc:
         # A probe must never raise — degrade gracefully.
         logging.warning("Readiness probe error: %s", exc)
-        return jsonify({
-            'db': False,
-            'catalog': False,
-            'openai': _openai_configured(),
-            'status': 'degraded',
-        }), 503
+        return jsonify({'status': 'degraded'}), 503

@@ -283,15 +283,13 @@ def engagement_nudge():
         valid = [r[0] for r in (cur.fetchall() or [])]
         for uid in valid:
             try:
-                cur.execute(
-                    """INSERT INTO company_notifications
-                           (company_id, recipient_user_id, sender_user_id, target_roles,
-                            title, message, is_urgent, is_read)
-                       VALUES (%s, %s, %s, NULL, %s, %s, 0, 0)""",
-                    (company_id, uid, sender_id, "Et venligt skub om din læring"[:255],
-                     str(message)[:1000]),
-                )
-                nudged += 1
+                from notification_service import insert_company_notification
+                if insert_company_notification(
+                        cur, company_id, recipient_user_id=uid, sender_user_id=sender_id,
+                        title="Et venligt skub om din læring"[:255],
+                        message=str(message)[:1000], action_url="/min-laering",
+                        kind="nudge", dedupe_key=None):
+                    nudged += 1
             except Exception as ie:
                 logger.warning("hr_ext: nudge skipped for %s: %s", uid, ie)
         # Audit (best-effort, reuses order_service shape).

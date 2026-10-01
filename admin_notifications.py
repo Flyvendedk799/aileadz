@@ -99,15 +99,16 @@ def notifications_dashboard():
         image_file = request.files.get('image_file')
         image_url = None
         if image_file and image_file.filename != '':
-            filename = secure_filename(image_file.filename)
             upload_folder = os.path.join(current_app.root_path, "static", "uploads", "notifications")
-            if not os.path.exists(upload_folder):
-                os.makedirs(upload_folder)
-            new_filename = f"{session.get('user')}_{filename}"
-            file_path = os.path.join(upload_folder, new_filename)
             try:
-                image_file.save(file_path)
+                # S-5.5: real image content only, size capped, random server-side
+                # name (the client's file name/extension is never used).
+                import upload_guard
+                new_filename = upload_guard.save_image(image_file, upload_folder, max_bytes=2 * 1024 * 1024)
                 image_url = url_for('static', filename=f"uploads/notifications/{new_filename}")
+            except upload_guard.UploadRejected as rej:
+                flash(str(rej), "danger")
+                return redirect(url_for('admin_notifications.notifications_dashboard'))
             except Exception as e:
                 current_app.logger.error("Error saving image: %s", e)
                 flash("Billed upload mislykkedes.", "danger")
@@ -125,6 +126,27 @@ def notifications_dashboard():
             elif target == 'role':
                 query = "INSERT INTO notifications (user_id, title, message, image_url) SELECT username, %s, %s, %s FROM users WHERE role = %s"
                 cur.execute(query, (title, formatted_message, image_url, specific_role))
+            elif target == 'company':
+                # N-3.2/N-6.5: a broadcast can target one company (fan-out to its
+                # active members, each with their own read state).
+                from notification_service import notify_company
+                try:
+                    company_id = int(request.form.get('company_id') or 0)
+                except ValueError:
+                    company_id = 0
+                if not company_id:
+                    flash('Vælg en virksomhed.', 'danger')
+                    return redirect(url_for('admin_notifications.notifications_dashboard'))
+                sent = notify_company(
+                    cur, company_id, title=title, message=formatted_message,
+                    kind='broadcast', image_url=image_url, dedupe_key=None,
+                    sender_user_id=session.get('user_id'),
+                )
+                if not sent:
+                    mysql.connection.rollback()
+                    cur.close()
+                    flash('Virksomheden har ingen aktive medarbejdere at sende til.', 'warning')
+                    return redirect(url_for('admin_notifications.notifications_dashboard'))
             mysql.connection.commit()
             cur.close()
             flash('Notifikation sendt!', 'success')
@@ -219,8 +241,19 @@ def notifications_dashboard():
         last_broadcast_at = '—'
         past_broadcasts = []
 
+    companies = []
+    try:
+        import MySQLdb.cursors
+        ccur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
+        ccur.execute("SELECT id, company_name FROM companies ORDER BY company_name LIMIT 500")
+        companies = list(ccur.fetchall() or [])
+        ccur.close()
+    except Exception:
+        companies = []
+
     return render_template(
         'fm/notifications_admin.html',
+        companies=companies,
         broadcasts_sent=broadcasts_sent,
         recipients_reached=recipients_reached,
         read_rate=read_rate,

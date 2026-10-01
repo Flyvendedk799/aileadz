@@ -478,10 +478,17 @@ OpenAI even when the chat runs on Claude; `AI_USER_KNOWLEDGE_EMBEDDINGS=0` keeps
 it keyword-only.
 
 **HR learner context — `learner_context.py`.** The learner's own assigned
-paths/progress, HR skill-matrix gaps, department targets and (behind
-`AI_LEARNER_HR_GOALS`, default off) HR-written goals, each source degrading
-independently; 120 s cache. `employee_skills_matrix` / `employee_goals` are keyed
-on `users.id` (= `company_users.user_id`).
+paths/progress, HR skill-matrix gaps, department targets and HR-written goals,
+each source degrading independently; 120 s cache. `employee_skills_matrix` /
+`employee_goals` are keyed on `users.id` (= `company_users.user_id`).
+
+*HR-written goals are opt-in per goal (S-4.4).* Only goals HR toggled **"Del med
+medarbejder"** (`employee_goals.shared_with_employee = 1`) are ever read here; the
+predicate lives in `goal_sharing.SHARED_PREDICATE` and every learner-facing query
+carries it (a test scans the repo for unfiltered reads). On top of that sits a
+company-level switch, `company_settings.ai_learner_hr_goals` (default on), and
+`AI_LEARNER_HR_GOALS=0` as a platform-wide kill switch. Unshared goals never reach
+the learner UI, the AI context or the learner's own data export.
 
 **Platform help — `app1/help_kb.py` + `app1/help_kb/*.md`.** 13 curated Danish
 articles, each URL pinned by a drift test. **`search_platform_help`** reaches the
@@ -583,7 +590,7 @@ vendor can never reach another vendor's or any buyer's data.
 | `AI_TOKEN_CHARS_PER_TOKEN` | 4.0 (examples 3.5) | token estimator divisor (Danish tokenizes worse) |
 | `AI_SESSION_SUMMARY_MODE` | llm | per-session digests: `llm` (fast tier) or `rules` |
 | `AI_USER_KNOWLEDGE` / `AI_USER_KNOWLEDGE_EMBEDDINGS` | on / on | semantic user index / its OpenAI embeddings |
-| `AI_LEARNER_HR_CONTEXT` / `AI_LEARNER_HR_GOALS` | on / **off** | HR learner context / HR-written goals (needs privacy sign-off) |
+| `AI_LEARNER_HR_CONTEXT` / `AI_LEARNER_HR_GOALS` | on / on | HR learner context / kill switch for SHARED HR goals (per-goal sharing + a company setting decide what is actually read) |
 | `AI_HELP_KB` | on | platform help tool |
 
 ---
@@ -667,3 +674,86 @@ SANDBOX=1 AI_WARMUP_ON_IMPORT=0 MYSQL_HOST=127.0.0.1 MYSQL_USER=none MYSQL_PASSW
 | 3D surfaces (Three.js) | `templates/fm/cv_upload.html` (CV portal), `templates/fm/mind_map.html` + `static/futurematch/assets/mind-map-support.js` (DCLogic runtime) |
 | Nav shell (sidebar links, `page_id` active state) | `templates/fm_base.html` |
 | GDPR export/erase coverage | `gdpr_service.py` |
+
+---
+
+## 11. Part B changes (2026-09) - completion plan N-1 / N-3 / N-5 / N-6.4
+
+North star unchanged: the AI is a **helper with a toolbox, never a form-filler**. Nothing below adds a
+mandatory step; tools are offered, the model decides.
+
+### Orders and completion (N-1)
+- **One order lifecycle** (`order_lifecycle.py`): `pending_approval -> approved -> booked -> completed`, plus
+  `rejected` / `cancelled`. Every tool that talks about an order reads these labels, never its own.
+  Billing is a separate dimension and is **off-platform**: the AI must never show payment details
+  (MobilePay/bank numbers were removed from `order_handler`). The honest copy is "Du modtager faktura".
+- `create_course_order` fails truthfully (no fake success when the DB write fails), sends ONE e-mail, and is
+  idempotent for the same person + course + date for 10 minutes (the chat "ja" + stale Bekræft card case).
+  It prices the **chosen variant**, not `variants[0]`.
+- `mark_course_complete` now calls `order_service.complete_order` - the single completion path. The result
+  carries `skill_proposals`, `next_steps` and `review_url`; the model offers them **in conversation** (save the
+  skills the user agrees to) rather than presenting a form. Completion also updates the profile's completed
+  courses, learning progress and notifies the learner's manager ("Bekræft kompetenceløft").
+- `check_order_approval_status` and the order tools see the canonical statuses; legacy values are normalised.
+
+### Team orders follow company policy (N-5.2)
+`team_order_policy.py` + table `company_team_order_policy` (`linked_orders` | `hr_bulk_assign` | `not_allowed`,
+company default + per-vendor override). `create_course_order` takes optional `participants`; the tool reads the
+effective policy and returns guidance (`policy_guidance_da`) that the model phrases naturally - it does not
+recite the rule. Linked orders share a `group_order_id` and each goes through approval and budget.
+
+### Catalog is one source (N-3.1)
+`catalog_service.get_products()` feeds pages, search and the chat; `app1.rag` is an index over it (incremental
+embed of new products, `shopify_sync` job, admin "Genopbyg indeks"). The raw Shopify JSON is **no longer in
+git**: `CATALOG_SOURCE_FILE` (default `app1/shopify_products_all_pages.json`) points at it.
+
+### Profiler (N-5.1)
+Additions are saved immediately with an inline **Fortryd**; removals/edits keep the confirm card; several
+changes can share one card. The "FORETRUKKEN METODE ... form" playbook, the X/8 banner and the
+"Fortæl om min {missing}" chip are gone - completeness is context for the model, not a goal.
+
+### HR assistant parity (N-5.3) and shared reply plumbing
+- `hr_conversations.py`: durable HR memory in `conversation_history` (mode `hr`), per-user scoping, history and
+  "open past conversation" routes.
+- `ai_reply.py`: `<suggestions>` are parsed server-side and sent as their own event (HR, vendor, widget).
+- HR confirm cards render and post to `/app1/confirm_tool_action`; HR turns are logged with feedback.
+
+### Runtime correctness (N-5.5)
+The Anthropic -> OpenAI provider fallback no longer replays the tool loop after a **mutating** tool has run
+(it would have executed twice). `AI_TOOLER2` is documented as generally available (see
+`docs/AI_TOOLER2_CHANGELOG.md`).
+
+### AI analytics store (N-3.3)
+Feedback, debug logs, latency and anonymous profiles moved from the per-server SQLite file to MySQL
+(tables in `schema_registry`). One feedback scale everywhere: **+1 / -1**, stored with `message_index`; admin
+and HR dashboards read the same table. Chat-to-order attribution fills `chatbot_session_id` /
+`chatbot_queries_before_order` on the order.
+
+### Credits are AI-usage metering (N-6.4)
+`credit_service.py`: every AI turn (advisor, profiler, HR, vendor, widget) is deducted via the `credit_usage`
+ledger; cost comes from `ai_cost_model` x `AI_CREDITS_PER_DKK` (default 10), min 1 credit. Balances are per
+company (`company_credit_accounts`), solo users use `users.credits`. Grants go through `credit_service.grant`
+(reason + actor). Low balance notifies HR at a threshold; at zero the company setting decides **soft** (default,
+keep working, flag it) or **hard** (AI paused with `HARD_LIMIT_MESSAGE`). The `/app1/ask` and HR ask routes call
+`credit_service.guard` before the turn. Ledger integrity: `verify_ledger` (balance == -SUM(credits_used)).
+
+### Vendor assistant parity (N-5.4)
+`vendor_conversations.py`: durable memory in `conversation_history` (mode `vendor`, owner `vendor:<id>` from the
+session only). The vendor prompt has the same tone examples and `<suggestions>` contract as the HR assistant,
+the vendor name is fenced as data, and figures are checked by the grounding circuit-breaker.
+
+### Widget (N-5.6)
+The iframe document is served only to an allowlisted parent (Referer host) and carries `frame-ancestors`. It
+receives a signed, 12-hour session token (widget token, parent host, conversation id) that it sends as
+`X-Widget-Session`; `/ask` accepts a token instead of trusting `Origin` (which is always our own host inside
+the iframe) and the conversation id lives in the token, so memory works without third-party cookies.
+The stream carries the `suggestions` event like the other surfaces.
+
+### Guest memory and prompt A/B (N-5.8)
+`anon_migration.migrate` turns the anonymous profile into the user's memories (source `anonymous`) on login and
+deletes the guest row only after the copy succeeded. `AI_PROMPT_VARIANTS=v2.0,v2.1` assigns variants
+deterministically by session id (first is control); `AI_PROMPT_ADDENDUM_<V>` adds instructions to a variant.
+
+### Eval (N-5.7)
+70 golden cases with HR/vendor scopes, a `fluency` metric (no form-filler patterns) and a nightly run on both
+providers (`.github/workflows/ai-eval-nightly.yml`).

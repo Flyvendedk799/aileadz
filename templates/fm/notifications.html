@@ -49,7 +49,8 @@
           <span class="nt-ic">{% if n.is_urgent %}<i class="fa-solid fa-triangle-exclamation"></i>{% else %}<i class="fa-solid fa-bell"></i>{% endif %}</span>
           <div class="nt-body">
             <div class="nt-title">{{ n.title or 'Notifikation' }}{% if n.is_urgent %} <span class="fm-badge red">Vigtig</span>{% endif %}</div>
-            <div class="nt-desc">{{ n.message|safe if n.message else '' }}</div>
+            <div class="nt-desc">{{ n.message|safe_html if n.message else '' }}</div>
+            {% if n.action_url %}<div style="margin-top:6px"><a class="fm-link" href="{{ n.action_url }}">Åbn <i class="fa-solid fa-arrow-right"></i></a></div>{% endif %}
             {% if n.sender_name %}<div style="font-size:11.5px;color:var(--fm-ink-3);margin-top:4px"><i class="fa-solid fa-user"></i> {{ n.sender_name }}</div>{% endif %}
             {% if not n.is_read %}
             <div class="nt-act"><button class="btn btn-primary btn-sm" data-mark="{{ n.id }}"><i class="fa-solid fa-check"></i> Markér som læst</button></div>

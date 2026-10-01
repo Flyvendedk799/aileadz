@@ -181,18 +181,6 @@ def emit_event(company_id, event_type, payload):
         return None
 
 
-def _safe_webhook_url(url):
-    """Reuse enterprise_api's SSRF guard. Imported lazily to avoid a circular
-    import (enterprise_api imports event_bus for the drain endpoint). Fails
-    CLOSED (returns False) if the guard cannot be imported."""
-    try:
-        from enterprise_api import _is_safe_webhook_url
-        return bool(_is_safe_webhook_url(url))
-    except Exception as e:
-        logger.warning("event_bus: SSRF guard unavailable, rejecting url: %s", e)
-        return False
-
-
 def _parse_events(raw):
     """Normalise a company_webhooks.events value to a list of event names."""
     if raw is None:
@@ -215,13 +203,56 @@ def _parse_events(raw):
     return []
 
 
+def _delivery_state(cur, outbox_id, wh_id):
+    """The per-subscriber delivery row for (outbox row, webhook), or None."""
+    try:
+        cur.execute(
+            "SELECT id, status, attempts FROM webhook_deliveries "
+            "WHERE outbox_id = %s AND webhook_id = %s ORDER BY id DESC LIMIT 1",
+            (outbox_id, wh_id),
+        )
+        r = cur.fetchone()
+    except Exception:
+        return None
+    if not r:
+        return None
+    if isinstance(r, dict):
+        return r
+    return {'id': r[0], 'status': r[1], 'attempts': r[2]}
+
+
+def _record_delivery(conn, row, wh_id, existing, ok, error=None, http_status=None):
+    """Upsert the per-subscriber delivery state. Best-effort."""
+    try:
+        cur = conn.cursor()
+        if existing:
+            cur.execute(
+                "UPDATE webhook_deliveries SET status=%s, attempts=attempts+1, http_status=%s, "
+                "last_error=%s, delivered_at=" + ("NOW()" if ok else "NULL") + " WHERE id=%s",
+                ('delivered' if ok else 'failed', http_status, (error or None), existing['id']),
+            )
+        else:
+            cur.execute(
+                "INSERT INTO webhook_deliveries (outbox_id, webhook_id, company_id, event_type, status, "
+                "attempts, http_status, last_error, delivered_at) VALUES (%s,%s,%s,%s,%s,1,%s,%s,"
+                + ("NOW()" if ok else "NULL") + ")",
+                (row.get('id'), wh_id, row.get('company_id'), row.get('event_type'),
+                 'delivered' if ok else 'failed', http_status, (error or None)),
+            )
+        cur.close()
+    except Exception as e:
+        logger.debug("event_bus: delivery record skipped: %s", e)
+
+
 def _deliver_to_subscribers(conn, row, company_slug):
     """Deliver one outbox row to all matching subscriptions for its company.
 
+    Delivery state is tracked PER SUBSCRIBER (``webhook_deliveries``): when one
+    subscriber fails and the row is retried, subscribers that already accepted
+    the event are NOT sent it again (before, one failure re-sent to everyone).
+
     Returns (delivered: bool, error: str|None). A row counts as delivered if
-    every matching active subscription accepted it (or there were no matching
-    subscriptions — there is nothing to deliver, so it is considered done and
-    will not be retried forever). Network errors / SSRF rejections -> failure.
+    every matching active subscription accepted it (or there were none).
     """
     company_id = row['company_id']
     event_type = row['event_type']
@@ -231,7 +262,6 @@ def _deliver_to_subscribers(conn, row, company_slug):
         import MySQLdb.cursors
         cur = conn.cursor(MySQLdb.cursors.DictCursor)
     except Exception:
-        # Fall back to default cursor type if MySQLdb cursors unavailable.
         pass
 
     try:
@@ -248,21 +278,17 @@ def _deliver_to_subscribers(conn, row, company_slug):
             pass
         return False, "subscription lookup failed: %s" % e
 
-    # Decode the payload once for the delivery body.
     try:
         data = json.loads(row.get('payload') or 'null')
     except Exception:
         data = row.get('payload')
 
-    matched = 0
     errors = []
     import hashlib
     import hmac
-    import urllib.request
     from datetime import datetime
 
     for wh in webhooks:
-        # company_webhooks may come back as a dict (DictCursor) or tuple.
         if isinstance(wh, dict):
             wh_id = wh.get('id')
             url = wh.get('url')
@@ -275,37 +301,48 @@ def _deliver_to_subscribers(conn, row, company_slug):
 
         if event_type not in events and '*' not in events:
             continue
-        matched += 1
 
-        # SSRF guard: never fetch a tenant-supplied URL that is not a public
-        # http/https endpoint. A rejected URL is a delivery failure.
-        if not _safe_webhook_url(url):
-            errors.append("webhook %s: blocked unsafe url" % wh_id)
-            _bump_webhook_stats(conn, wh_id, ok=False)
-            continue
+        state = _delivery_state(cur, row.get('id'), wh_id)
+        if state and state.get('status') == 'delivered':
+            continue  # this subscriber already has the event
 
+        # S-3.3: SSRF-safe delivery (an unsafe URL raises UnsafeURL and is recorded as a failed delivery). The hostname is resolved once, every
+        # address must be public, the socket connects to that exact IP, and
+        # redirects are NEVER followed (a 3xx is a failed delivery).
         try:
+            import safe_http
+            import webhook_signing
             body = json.dumps({
                 'event': event_type,
                 'data': data,
                 'timestamp': datetime.now().isoformat(),
                 'company_slug': company_slug,
             }).encode()
-            sig = hmac.new(str(secret).encode(), body, hashlib.sha256).hexdigest()
-            req = urllib.request.Request(
-                url, data=body,
+            signature, ts = webhook_signing.sign(secret, body)
+            ok, detail = safe_http.post_json(
+                url, body,
                 headers={
-                    'Content-Type': 'application/json',
-                    'X-Webhook-Signature': sig,
+                    'X-Webhook-Signature': signature,
+                    'X-Webhook-Timestamp': str(ts),
+                    'X-Webhook-Id': str(row.get('id') or ''),
                     'X-Company-Slug': company_slug or '',
                     'X-Event-Type': event_type,
                 },
+                timeout=DELIVERY_TIMEOUT_SECONDS,
             )
-            urllib.request.urlopen(req, timeout=DELIVERY_TIMEOUT_SECONDS)
+            if not ok:
+                raise RuntimeError(detail)
+            try:
+                code = int(str(detail).rsplit(' ', 1)[-1])
+            except (TypeError, ValueError):
+                code = None
             _bump_webhook_stats(conn, wh_id, ok=True)
+            _record_delivery(conn, row, wh_id, state, True, None, code)
         except Exception as e:
             errors.append("webhook %s: %s" % (wh_id, e))
             _bump_webhook_stats(conn, wh_id, ok=False)
+            _record_delivery(conn, row, wh_id, state, False, str(e)[:500],
+                             getattr(e, 'code', None))
 
     try:
         cur.close()
@@ -313,10 +350,41 @@ def _deliver_to_subscribers(conn, row, company_slug):
         pass
 
     if errors:
-        # Some subscriber failed -> the row is not fully delivered; retry later.
         return False, "; ".join(errors)[:2000]
-    # All matched subscribers accepted, OR there were none to deliver to.
     return True, None
+
+
+def resend_delivery(conn, company_id, delivery_id):
+    """'Gensend': put ONE failed delivery (and its outbox row) back in the queue.
+
+    Company-scoped. Only that subscriber is retried because the others keep their
+    'delivered' state. Returns True when queued."""
+    cur = conn.cursor()
+    try:
+        cur.execute(
+            "SELECT id, outbox_id FROM webhook_deliveries WHERE id = %s AND company_id = %s",
+            (delivery_id, company_id),
+        )
+        r = cur.fetchone()
+        if not r:
+            return False
+        oid = r['outbox_id'] if isinstance(r, dict) else r[1]
+        cur.execute("UPDATE webhook_deliveries SET status = 'pending' WHERE id = %s", (delivery_id,))
+        cur.execute(
+            "UPDATE event_outbox SET status = 'pending', attempts = 0 WHERE id = %s AND company_id = %s",
+            (oid, company_id),
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        logger.warning("event_bus: resend failed: %s", e)
+        try:
+            conn.rollback()
+        except Exception:
+            pass
+        return False
+    finally:
+        cur.close()
 
 
 def _bump_webhook_stats(conn, wh_id, ok):

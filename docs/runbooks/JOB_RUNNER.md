@@ -1,10 +1,22 @@
 # Runbook: Background Job Runner (Scheduler — Outbox Drain & Scheduled Maintenance)
 
-aileadz has **no always-on worker** and **no cron/Celery/Redis** on
-PythonAnywhere. Integration events (webhooks, etc.) are written to a durable
-outbox inside the request; daily insights / agreement alerts / compliance
-re-checks all need *something* to call them on a cadence. `scheduler.py` is that
-"something": a tiny, dependency-free job runner.
+Production runs on the VPS under ServerHoster. Background work (webhook delivery,
+scheduled e-mails, reminders, digests, scheduled reports, alerts) must NOT run
+inside visitors' requests. The app ships a dependency-free job runner
+(`scheduler.py`) and a worker entry point (`drain_worker.py`).
+
+## Run it as its own service (recommended, N-8.1)
+
+1. In ServerHoster create a second service from the same repository and branch as
+   the web app, with the start command `python drain_worker.py --loop`.
+2. Give it the SAME environment variables as the web service (`DATABASE_URL`,
+   `SECRET_KEY`, `MAIL_*`, `APP_BASE_URL`, ...).
+3. Once the worker shows a fresh heartbeat under Admin -> Systemstatus ("Worker
+   kører"), set `SCHEDULER_OPPORTUNISTIC=0` on the WEB service and redeploy it.
+   Until then leave it at `1` so nothing stops running.
+4. `/readyz` (`worker` block) and Systemstatus show each job's last run, overdue
+   flags and the outbox backlog; the `ops_alerts` job notifies platform admins when
+   e-mails or webhooks keep failing.
 
 ## The scheduler (`scheduler.py`)
 
@@ -21,7 +33,9 @@ outcome, and returns a per-job summary. **It never raises.**
 | `outbox_drain` | ~120s | `event_bus.drain_outbox()` — deliver pending integration events (webhooks). |
 | `daily_company_insights` | 24h | iterate active companies → `insights_engine.generate_company_insights`. |
 | `daily_agreement_alerts` | 24h | iterate active companies → `catalog_freshness.notify_expiring_agreements`. |
-| `compliance_recheck` | 24h | thin guarded no-op pass today; clear extension point for per-company compliance re-derivation. |
+| `compliance_recheck` | 24h | re-derive compliance per company and raise recertification cards. |
+| `ops_alerts` | 15 min | alert platform admins when e-mails or webhook events keep failing. |
+| `learning_deadline_reminders`, `cert_expiry_reminders`, `company_analytics_rollup`, `weekly_manager_digest` | daily / weekly | see `scheduler.JOBS` for the full, current list. |
 
 "Active company" = `companies.status = 'active'` (falls back to all companies if
 that column is unavailable), bounded to `DEFAULT_COMPANY_BATCH` (200) per pass.
@@ -49,8 +63,8 @@ workers won't run the same daily job in the same window.
 
 ## Three ways to drive it
 
-1. **PythonAnywhere Scheduled Task** (single pass, recommended) — `drain_worker.py` once.
-2. **Always-on-style worker loop** — `drain_worker.py --loop`.
+1. **Scheduled single pass** - `python drain_worker.py` once (any cron-like runner).
+2. **Dedicated worker service (recommended)** - `python drain_worker.py --loop`, writes a heartbeat.
 3. **Opportunistic request hook** — an `after_request` hook in `run.py` runs the
    due jobs at most once per ~60s **per worker**, mirroring
    `event_bus.opportunistic_drain`. Fully guarded (cannot affect the response or

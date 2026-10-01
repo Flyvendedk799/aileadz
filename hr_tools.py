@@ -1132,7 +1132,7 @@ def _execute_get_team_training_status(args):
     cur.execute(f"""
         SELECT cu.department, u.username,
                COUNT(DISTINCT CASE WHEN co.status = 'completed' THEN co.id END) as completed,
-               COUNT(DISTINCT CASE WHEN co.status IN ('confirmed','processing') THEN co.id END) as in_progress,
+               COUNT(DISTINCT CASE WHEN co.status IN ('booked','confirmed','processing') THEN co.id END) as in_progress,
                COUNT(DISTINCT CASE WHEN co.status = 'pending_approval' THEN co.id END) as pending,
                MAX(co.created_at) as last_order_date
         FROM company_users cu
@@ -1428,7 +1428,7 @@ def _execute_get_training_report(args):
             COUNT(*) as total_orders,
             COUNT(CASE WHEN status = 'completed' THEN 1 END) as completed,
             COUNT(CASE WHEN status = 'pending_approval' THEN 1 END) as pending_approval,
-            COUNT(CASE WHEN status IN ('confirmed','processing') THEN 1 END) as in_progress,
+            COUNT(CASE WHEN status IN ('booked','confirmed','processing') THEN 1 END) as in_progress,
             COALESCE(SUM(CASE WHEN status != 'cancelled' THEN price ELSE 0 END), 0) as total_spend,
             COUNT(DISTINCT username) as unique_employees,
             AVG(CASE WHEN status = 'completed' AND completion_date IS NOT NULL
@@ -1570,7 +1570,7 @@ def _execute_get_chatbot_usage_stats(args):
     cur.execute("""
         SELECT COUNT(DISTINCT username) as active_users,
                COUNT(*) as total_queries,
-               AVG(feedback_rating) as avg_feedback,
+               AVG(NULLIF(feedback_rating, 0)) as avg_feedback,
                COUNT(DISTINCT session_id) as total_sessions
         FROM chatbot_interactions
         WHERE company_id = %s AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
@@ -1604,7 +1604,7 @@ def _execute_get_chatbot_usage_stats(args):
         "period_days": period_days,
         "active_users": stats['active_users'] or 0,
         "total_queries": stats['total_queries'] or 0,
-        "avg_feedback": round(float(stats['avg_feedback'] or 0), 2),
+        "avg_feedback": __import__("feedback_scale").to_five(stats['avg_feedback']),
         "total_sessions": stats['total_sessions'] or 0,
         "popular_searches": [{"query": p['query_text'][:80], "count": p['cnt']} for p in popular],
         "daily_trend": [{"date": d['day'].isoformat(), "queries": d['queries'], "users": d['users']} for d in daily]
@@ -1783,7 +1783,7 @@ def _execute_hr_get_ai_usage_risks(args):
             COUNT(*) AS total_queries,
             COUNT(DISTINCT username) AS active_users,
             AVG(response_time_ms) AS avg_latency,
-            SUM(CASE WHEN feedback_rating IS NOT NULL AND feedback_rating > 0 AND feedback_rating <= 2 THEN 1 ELSE 0 END) AS low_feedback,
+            SUM(CASE WHEN feedback_rating < 0 THEN 1 ELSE 0 END) AS low_feedback,
             SUM(CASE WHEN response_time_ms > 12000 THEN 1 ELSE 0 END) AS slow_turns,
             SUM(CASE WHEN tool_results_count = 0 AND tools_used IS NOT NULL AND tools_used != '' THEN 1 ELSE 0 END) AS zero_result_tool_turns
         FROM chatbot_interactions
@@ -2273,7 +2273,7 @@ def _execute_get_team_non_starters(args):
             JOIN company_users cu ON cu.user_id = co.user_id AND cu.company_id = co.company_id
             WHERE co.company_id = %s
               AND cu.status = 'active'
-              AND co.status IN ('approved', 'pending', 'confirmed', 'processing')
+              AND co.status IN ('approved', 'booked', 'pending', 'confirmed', 'processing')
               AND (co.completion_status IS NULL OR co.completion_status = ''
                    OR co.completion_status = 'not_started')
               AND co.started_at IS NULL
@@ -2591,11 +2591,11 @@ def _execute_hr_trial_and_seat_status(args):
 def _execute_approve_order_from_chat(args):
     """MUTATION — approve/reject a pending course order from the HR chat.
 
-    Routes the budget side effects through order_service.set_status (approved ->
-    'pending' charges the budget once; rejected refunds once) and records the
-    decision on order_approvals. Requires (a) confirm=true and (b) the HR actor be
-    a company manager. Strictly company-scoped: the resolved order must belong to
-    the session company.
+    Routes everything through order_service.set_status (approved charges the
+    budget once and updates the approval row in the SAME transaction; rejected
+    refunds once). Requires (a) confirm=true and (b) the HR actor be a company
+    manager. Strictly company-scoped: the resolved order must belong to the
+    session company.
     """
     company_id = session.get('company_id')
     if not company_id:
@@ -2673,10 +2673,11 @@ def _execute_approve_order_from_chat(args):
         }, default=str)
     cur.close()
 
-    # approved -> 'pending' (charges budget once); rejected -> 'rejected' (refunds).
-    new_status = 'pending' if decision == 'approved' else 'rejected'
+    # approved -> 'approved' (charges budget once, learner gets "Godkendt – afventer
+    # booking", email + webhook fire); rejected -> 'rejected' (refunds).
+    new_status = 'approved' if decision == 'approved' else 'rejected'
     try:
-        result = _set_status(ctx, order_id, new_status)
+        result = _set_status(ctx, order_id, new_status, note=(args.get('notes') or None))
     except Exception as exc:
         print(f"[HR_TOOLS][approve_order] set_status raised: {exc}")
         return json.dumps({"error": "Statusændring fejlede."})
@@ -2687,18 +2688,7 @@ def _execute_approve_order_from_chat(args):
             "message": (result or {}).get('message', 'Statusændring fejlede.') if isinstance(result, dict) else "Statusændring fejlede.",
         })
 
-    # ── Record the decision on order_approvals (best-effort, same company). ──
-    try:
-        cur2 = _get_cursor()
-        cur2.execute("""
-            UPDATE order_approvals
-            SET status = %s, approver_user_id = %s, decided_at = NOW()
-            WHERE order_id = %s AND company_id = %s
-        """, (decision, ctx.user_id, order_id, company_id))
-        current_app.mysql.connection.commit()
-        cur2.close()
-    except Exception as exc:
-        print(f"[HR_TOOLS][approve_order] order_approvals update skipped: {exc}")
+    # The approval row was updated inside set_status (same transaction).
 
     return json.dumps({
         "success": True,
@@ -2842,16 +2832,14 @@ def _execute_assign_learning_path_to_team(args):
 
         # Nudge notification per employee (best-effort).
         try:
-            cur.execute("""
-                INSERT INTO company_notifications
-                    (company_id, recipient_user_id, sender_user_id, title, message, is_urgent, created_at)
-                VALUES (%s, %s, %s, %s, %s, 0, NOW())
-            """, (
-                company_id, uid, session.get('user_id'),
-                "Ny læring tildelt",
-                f"Du er blevet tildelt '{content_name}'. Gå i gang når du er klar.",
-            ))
-            nudged += 1
+            from notification_service import insert_company_notification
+            if insert_company_notification(
+                    cur, company_id, recipient_user_id=uid,
+                    sender_user_id=session.get('user_id'),
+                    title="Ny læring tildelt",
+                    message=f"Du er blevet tildelt '{content_name}'. Gå i gang når du er klar.",
+                    action_url="/min-laering", kind="assignment", dedupe_key=None):
+                nudged += 1
         except Exception as exc:
             print(f"[HR_TOOLS][assign_path] nudge skipped for user {uid}: {exc}")
 
@@ -3703,17 +3691,7 @@ def _execute_hr_compare_cohorts(args):
 
 # ── AI Tooler 2 (Phase 5): safe platform-control executors ────────────────────
 
-_REPORT_SCHEDULES_DDL = """CREATE TABLE IF NOT EXISTS company_report_schedules (
-    id INT AUTO_INCREMENT PRIMARY KEY,
-    company_id INT NOT NULL,
-    report_type VARCHAR(64) NOT NULL,
-    cadence VARCHAR(16) NOT NULL,
-    department VARCHAR(100) NULL,
-    created_by INT NULL,
-    enabled TINYINT(1) NOT NULL DEFAULT 1,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE KEY uniq_company_report (company_id, report_type, department)
-)"""
+# company_report_schedules has ONE definition: schema_registry.REGISTRY_DDL (N-3.4).
 
 _REPORT_TYPE_LABELS_DA = {
     "training_status": "Træningsstatus",
@@ -3768,7 +3746,6 @@ def _execute_schedule_recurring_report(args):
 
     cur = _get_cursor()
     try:
-        cur.execute(_REPORT_SCHEDULES_DDL)
         cur.execute(
             """
             INSERT INTO company_report_schedules
@@ -3941,13 +3918,14 @@ def _resolve_company_recipients(cur, company_id, *, audience, department=None):
     rows for the session company are ever returned (cross-tenant guard).
     """
     base = (
-        "SELECT user_id, full_name, username AS email, role "
+        "SELECT user_id, full_name, COALESCE(NULLIF(email, ''), username) AS email, role "
         "FROM company_users WHERE company_id = %s AND status = 'active'"
     )
     params = [company_id]
     aud = (audience or "all").strip().lower()
     if aud == "managers":
-        base += " AND role IN ('manager', 'admin', 'hr')"
+        # S-2.3: the real role names (the old 'manager'/'admin'/'hr' never matched).
+        base += " AND role IN ('company_admin', 'hr_manager', 'department_head')"
     elif aud == "department" and department:
         base += " AND department = %s"
         params.append(department)

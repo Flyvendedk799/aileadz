@@ -22,6 +22,10 @@ This centralises the ad-hoc module-level ``_CACHE`` dicts already scattered arou
 (catalog_service.py, feature_status.py, …) behind one small, lock-guarded API.
 """
 import functools
+import hashlib
+import logging
+import os
+import pickle
 import threading
 import time
 
@@ -29,9 +33,53 @@ _LOCK = threading.RLock()
 # key -> (expires_at_monotonic, value)
 _STORE = {}
 
+# ── optional shared backend (N-8.2) ─────────────────────────────────────────
+# With REDIS_URL set (and the ``redis`` package installed) all workers share one
+# cache, so a mutation that clears a key is seen everywhere instead of only in the
+# worker that handled the request. Every Redis call is guarded: on any error the
+# cache silently falls back to the in-process store for that call.
+_REDIS_STATE = {"client": None, "retry_at": 0.0}
+_REDIS_PREFIX = "fm:cache:"
+
+
+def _redis():
+    url = os.getenv("REDIS_URL", "").strip()
+    if not url:
+        return None
+    if _REDIS_STATE["client"] is not None:
+        return _REDIS_STATE["client"]
+    if time.monotonic() < _REDIS_STATE["retry_at"]:
+        return None
+    try:
+        import redis
+        client = redis.Redis.from_url(url, socket_timeout=0.3, socket_connect_timeout=0.3)
+        client.ping()
+        _REDIS_STATE["client"] = client
+        return client
+    except Exception as exc:
+        logging.getLogger(__name__).warning("perf_cache: redis unavailable, using in-process cache (%s)", exc)
+        _REDIS_STATE["retry_at"] = time.monotonic() + 60
+        return None
+
+
+def _redis_key(key):
+    base = key[0] if isinstance(key, tuple) and key else key
+    rest = key[1:] if isinstance(key, tuple) else ()
+    digest = hashlib.sha1(repr(rest).encode("utf-8", "replace")).hexdigest()
+    return "%s%s:%s" % (_REDIS_PREFIX, base, digest)
+
 
 def cache_get(key):
     """Return (value, hit). ``hit`` is False on miss or expiry."""
+    client = _redis()
+    if client is not None:
+        try:
+            raw = client.get(_redis_key(key))
+            if raw is None:
+                return None, False
+            return pickle.loads(raw), True
+        except Exception:
+            pass
     now = time.monotonic()
     with _LOCK:
         entry = _STORE.get(key)
@@ -45,12 +93,27 @@ def cache_get(key):
 
 
 def cache_set(key, value, ttl):
+    client = _redis()
+    if client is not None:
+        try:
+            client.set(_redis_key(key), pickle.dumps(value), px=max(1, int(float(ttl) * 1000)))
+            return
+        except Exception:
+            pass
     with _LOCK:
         _STORE[key] = (time.monotonic() + float(ttl), value)
 
 
 def cache_clear(prefix=None):
     """Drop everything, or just keys whose string form starts with ``prefix``."""
+    client = _redis()
+    if client is not None:
+        try:
+            pattern = _REDIS_PREFIX + (prefix + "*" if prefix else "*")
+            for k in client.scan_iter(match=pattern, count=200):
+                client.delete(k)
+        except Exception:
+            pass
     with _LOCK:
         if prefix is None:
             _STORE.clear()

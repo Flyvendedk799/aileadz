@@ -1,0 +1,50 @@
+name: Security
+
+# S-5.3: the checks that do not belong in the per-push pipeline.
+#   * gitleaks over the FULL git history, weekly (the push job only scans the new
+#     commits, so a secret that slipped into history would never resurface);
+#   * pip-audit against the dependency ranges in requirements.txt, weekly and on
+#     every change to that file;
+#   * a pinning review: every dependency must carry both a lower and an upper bound.
+
+on:
+  schedule:
+    - cron: "17 4 * * 1"        # Mondays 04:17 UTC
+  workflow_dispatch:
+  pull_request:
+    paths:
+      - "requirements.txt"
+      - ".github/workflows/security.yml"
+      - ".gitleaks.toml"
+
+permissions:
+  contents: read
+
+jobs:
+  gitleaks-history:
+    name: Secret scan, full history
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: gitleaks (whole history)
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  dependency-audit:
+    name: pip-audit + pinning review
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Pinning review (every dependency needs a lower AND an upper bound)
+        run: python scripts/check_requirements_pinning.py requirements.txt
+      - name: pip-audit
+        run: |
+          python -m pip install --upgrade pip pip-audit
+          pip-audit -r requirements.txt --progress-spinner off

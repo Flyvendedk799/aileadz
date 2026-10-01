@@ -13,6 +13,7 @@
 {% endblock %}
 {% block content %}
 <div class="fm-wrap">
+{% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
 <div class="crumb"><a href="{{ url_for('hr_dashboard.dashboard') }}">HR-workspace</a><i class="fa-solid fa-chevron-right"></i><a href="{{ url_for('companies.employees') }}">Medarbejdere</a><i class="fa-solid fa-chevron-right"></i><span>{{ employee.username }}</span></div>
 
   {% with messages = get_flashed_messages(with_categories=true) %}
@@ -68,8 +69,9 @@
       <div class="fm-card"><div class="fm-card-body">
         <div style="font-weight:700;margin-bottom:10px">Handlinger</div>
         <a href="{{ url_for('companies.edit_employee', user_id=employee.user_id) }}" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-pen"></i> Rediger medarbejder</a>
-        <form method="POST" action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}" onsubmit="return confirm('Nyt password genereres og vises på skærmen. Fortsæt?')" style="margin-bottom:8px">
-          <button type="submit" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-key"></i> Nulstil password</button>
+        <a href="{{ url_for('hr_dashboard.employee_goals', user_id=employee.user_id) }}" class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:8px"><i class="fa-solid fa-bullseye"></i> Udviklingsmål</a>
+        <form method="POST" action="{{ url_for('hr_dashboard.reset_employee_password', user_id=employee.user_id) }}" onsubmit="return confirm('Medarbejderen får en e-mail med et link til at vælge en ny adgangskode. Fortsæt?')" style="margin-bottom:8px">
+          <button type="submit" class="btn btn-ghost btn-sm" style="width:100%"><i class="fa-solid fa-key"></i> Send link til ny adgangskode</button>
         </form>
         {% if employee.status == 'active' and employee.role != 'company_admin' %}
         <form method="POST" action="{{ url_for('hr_dashboard.toggle_employee_status', user_id=employee.user_id) }}" onsubmit="return confirm('Deaktiver denne medarbejder?')">

@@ -51,7 +51,7 @@
   <div class="fm-table-wrap">
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)">
       <h3 style="font-size:15px;font-weight:700">Compliance-matrix</h3>
-      <span class="fm-badge">{{ matrix|length }} krav</span>
+      <span class="fm-flex fm-gap8"><a class="btn btn-ghost btn-sm" href="{{ url_for('hr_dashboard.compliance_matrix', format='csv') }}"><i class="fa-solid fa-file-csv"></i> Eksportér CSV</a><span class="fm-badge">{{ matrix|length }} krav</span></span>
     </div>
     <table class="fm-table">
       <thead><tr><th>Krav</th><th>Gælder</th><th>Opfyldt</th><th>Udløber</th><th>Mangler</th><th>Opfyldelse</th><th></th></tr></thead>
@@ -77,7 +77,16 @@
           <td>{% if row.expiring > 0 %}<span class="fm-badge amber">{{ row.expiring }}</span>{% else %}<span style="color:var(--fm-ink-3)">0</span>{% endif %}</td>
           <td>{% if row.overdue > 0 %}<span class="fm-badge red">{{ row.overdue }}</span>{% else %}<span style="color:var(--fm-ink-3)">0</span>{% endif %}</td>
           <td style="min-width:140px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [rate,100]|min }}%;background:{{ barcol }}"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ rate }}%</span></td>
-          <td style="text-align:right"><button class="btn btn-ghost btn-sm" onclick="toggleDrill({{ loop.index0 }})"><i class="fa-solid fa-list-ul"></i> Detaljer</button></td>
+          <td style="text-align:right;white-space:nowrap">
+            <button class="btn btn-ghost btn-sm" onclick="toggleDrill({{ loop.index0 }})"><i class="fa-solid fa-list-ul"></i> Detaljer</button>
+            <button class="btn btn-ghost btn-sm" title="Redigér" onclick='editRequirement({{ {"id": req.id, "title": req.title, "category": req.category or "", "dept": req.applies_to_department or "", "role": req.applies_to_role or "", "handle": req.required_course_handle or "", "rec": req.recurrence_months or 0, "stat": 1 if req.is_statutory else 0}|tojson }})'><i class="fa-solid fa-pen"></i></button>
+            {% if req.required_course_handle and (row.overdue > 0) %}
+            <form method="post" action="{{ url_for('hr_dashboard.assign_compliance_course', req_id=req.id) }}" style="display:inline" onsubmit="return confirm('Bestil kurset til alle, der mangler det? Bestillingerne sendes til godkendelse.')">
+              <button class="btn btn-primary btn-sm" type="submit"><i class="fa-solid fa-user-plus"></i> Tildel kursus</button></form>
+            {% endif %}
+            <form method="post" action="{{ url_for('hr_dashboard.delete_compliance_requirement', req_id=req.id) }}" style="display:inline" onsubmit="return confirm('Slet dette krav?')">
+              <button class="btn btn-ghost btn-sm" type="submit" title="Slet"><i class="fa-solid fa-trash"></i></button></form>
+          </td>
         </tr>
         <tr id="drill-{{ loop.index0 }}" style="display:none">
           <td colspan="7" style="background:var(--fm-bg-2, rgba(0,0,0,.02));padding:14px 18px">
@@ -175,8 +184,8 @@
 <!-- Add requirement modal -->
 <div id="complianceModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
   <div class="fm-card" style="max-width:520px;width:92%;padding:22px;max-height:90vh;overflow:auto">
-    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px">Tilføj compliance-krav</h3>
-    <form method="POST" action="{{ url_for('hr_dashboard.add_compliance_requirement') }}">
+    <h3 style="font-size:17px;font-weight:700;margin-bottom:14px" id="cmpTitle">Tilføj compliance-krav</h3>
+    <form method="POST" id="cmpForm" action="{{ url_for('hr_dashboard.add_compliance_requirement') }}">
       <label class="fm-field"><span>Titel *</span><input type="text" name="title" class="fm-input" required placeholder="f.eks. GDPR-grunduddannelse"></label>
       <label class="fm-field"><span>Kategori</span><input type="text" name="category" class="fm-input" placeholder="f.eks. Databeskyttelse"></label>
       <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
@@ -239,7 +248,23 @@
 })();
 </script>
 <script>
-function openComplianceModal(){ document.getElementById('complianceModal').style.display='flex'; }
+var ADD_URL = {{ url_for('hr_dashboard.add_compliance_requirement')|tojson }};
+var EDIT_URL = {{ url_for('hr_dashboard.edit_compliance_requirement', req_id=0)|tojson }};
+function openComplianceModal(){
+  var f = document.getElementById('cmpForm'); f.reset(); f.action = ADD_URL;
+  document.getElementById('cmpTitle').textContent = 'Tilføj compliance-krav';
+  document.getElementById('complianceModal').style.display='flex';
+}
+function editRequirement(r){
+  var f = document.getElementById('cmpForm'); f.reset();
+  f.action = EDIT_URL.replace('/0/', '/' + r.id + '/');
+  document.getElementById('cmpTitle').textContent = 'Redigér compliance-krav';
+  f.title.value = r.title; f.category.value = r.category;
+  f.applies_to_department.value = r.dept; f.applies_to_role.value = r.role;
+  f.required_course_handle.value = r.handle; f.recurrence_months.value = r.rec;
+  f.is_statutory.checked = !!r.stat;
+  document.getElementById('complianceModal').style.display='flex';
+}
 function closeComplianceModal(){ document.getElementById('complianceModal').style.display='none'; }
 function toggleDrill(i){ var el=document.getElementById('drill-'+i); if(el){ el.style.display = (el.style.display==='none'?'table-row':'none'); } }
 </script>

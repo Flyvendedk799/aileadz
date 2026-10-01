@@ -1,0 +1,64 @@
+name: AI eval (nightly)
+
+# Runs the golden set against BOTH providers every night and uploads the scorecards.
+# Needs repository secrets: OPENAI_API_KEY (required for embeddings on every provider)
+# and ANTHROPIC_API_KEY. Optional: EVAL_VENDOR_EMAIL / EVAL_VENDOR_PASSWORD to also
+# run the vendor-assistant cases (they are reported as skipped otherwise).
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+
+jobs:
+  eval:
+    name: Eval (${{ matrix.provider }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        provider: [openai, anthropic]
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: rootpw
+          MYSQL_DATABASE: futurematch_sandbox
+          MYSQL_USER: fm
+          MYSQL_PASSWORD: fm
+        ports:
+          - 3307:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -prootpw"
+          --health-interval=5s --health-timeout=5s --health-retries=30
+    env:
+      SANDBOX: "1"
+      MYSQL_HOST: "127.0.0.1"
+      MYSQL_PORT: "3307"
+      MYSQL_USER: "fm"
+      MYSQL_PASSWORD: "fm"
+      MYSQL_DB: "futurematch_sandbox"
+      ENTERPRISE_TABLE_SYNC_FORCE: "1"
+      AI_PROVIDER: ${{ matrix.provider }}
+      OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      EVAL_VENDOR_EMAIL: ${{ secrets.EVAL_VENDOR_EMAIL }}
+      EVAL_VENDOR_PASSWORD: ${{ secrets.EVAL_VENDOR_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: "pip"
+      - name: Install
+        run: pip install -r requirements.txt
+      - name: Run golden set
+        run: |
+          python -m ai_eval.run_eval --provider ${{ matrix.provider }}
+          cp ai_eval/last_run.json eval-${{ matrix.provider }}.json
+        continue-on-error: true
+      - uses: actions/upload-artifact@v5
+        with:
+          name: eval-${{ matrix.provider }}
+          path: eval-${{ matrix.provider }}.json
+          if-no-files-found: warn

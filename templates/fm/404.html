@@ -1,0 +1,24 @@
+{% extends "fm_base.html" %}
+{% block page_id %}error404{% endblock %}
+{% block title %}Siden blev ikke fundet{% endblock %}
+{% block topbar_title %}Siden blev ikke fundet{% endblock %}
+{% block topbar_sub %}Fejl 404{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="fm-card" style="max-width:560px;margin:48px auto;text-align:center">
+    <div class="fm-card-body" style="padding:40px 28px">
+      <div style="font-size:40px;color:var(--fm-primary);margin-bottom:12px"><i class="fa-solid fa-compass"></i></div>
+      <h2 style="font-size:22px;margin-bottom:8px">Vi kunne ikke finde den side</h2>
+      <p style="color:var(--fm-ink-2);margin-bottom:22px">Linket kan være forældet, eller siden er flyttet. Prøv en af genvejene herunder.</p>
+      <div class="fm-flex fm-gap12" style="justify-content:center;flex-wrap:wrap">
+        {% if session.get('user') %}
+        <a class="fm-btn primary" href="{{ url_for('futurematch.min_laering') }}">Til min forside</a>
+        {% else %}
+        <a class="fm-btn primary" href="{{ url_for('auth.login') }}">Log ind</a>
+        {% endif %}
+        <a class="fm-btn" href="{{ url_for('catalog.catalog_index') }}">Se kursuskataloget</a>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}

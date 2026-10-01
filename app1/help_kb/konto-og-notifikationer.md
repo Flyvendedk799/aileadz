@@ -13,7 +13,7 @@ Under "Indstillinger" (/indstillinger) styrer du konto, e-mail, notifikationer o
 2. Under "Kodeordsændring" udfylder du "Nuværende kodeord", "Nyt kodeord" og "Bekræft nyt kodeord".
 3. Klik "Ændr kodeord".
 
-Har du glemt din adgangskode, så kontakt din HR-afdeling, som kan nulstille den.
+Har du glemt din adgangskode, så brug "Glemt adgangskode" på log ind-siden. Du får en e-mail med et link, der virker én gang og udløber efter kort tid. HR kan også sende dig et nulstillingslink.
 
 ## E-mail og e-mailnotifikationer
 Under "Profiloplysninger" kan du ændre din e-mail og slå "Modtag email notifikationer" til eller fra. Klik "Gem profiloplysninger" bagefter.

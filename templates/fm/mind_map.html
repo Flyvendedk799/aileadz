@@ -453,7 +453,8 @@
               </sc-for>
             </div>
           </div>
-          <button class="mm-btn" onClick="{{ onDelete }}" style="margin-top:14px;width:100%;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07);color:#f87171;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
+          <button class="mm-btn" onClick="{{ onEdit }}" style="margin-top:14px;width:100%;padding:10px;border-radius:9px;border:1px solid rgba(59,130,246,.28);background:rgba(59,130,246,.08);color:#93c5fd;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;">Redigér hukommelse</button>
+          <button class="mm-btn" onClick="{{ onDelete }}" style="margin-top:8px;width:100%;padding:10px;border-radius:9px;border:1px solid rgba(239,68,68,.25);background:rgba(239,68,68,.07);color:#f87171;font-size:13px;font-family:inherit;cursor:pointer;font-weight:600;display:flex;align-items:center;justify-content:center;gap:8px;">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path><path d="M10 11v6M14 11v6"></path><path d="M9 6V4h6v2"></path></svg>
             Slet hukommelse
           </button>
@@ -1919,17 +1920,40 @@ class Component extends DCLogic {
     const mid=sn&&sn.meta&&sn.meta.memory_id;
     if(!mid)return;
     if(!window.confirm('Slet "'+(sn.label||'denne hukommelse')+'"?'))return;
+    // Honour the server's answer: only drop the node when the delete really happened.
     try{
-      await fetch('/api/profile/memories',{
+      const r=await fetch('/api/profile/memories',{
         method:'DELETE',
         headers:{'Content-Type':'application/json'},
         credentials:'same-origin',
         body:JSON.stringify({id:mid}),
       });
-    }catch(e){}
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||j.success===false||j.removed===false)throw new Error(j.error||'Hukommelsen blev ikke slettet.');
+    }catch(e){window.alert(e.message||'Hukommelsen kunne ikke slettes.');return;}
     const parent=this._parent[this._selId]||this._rootId;
     this._selId=null;
     await this._loadData({quiet:true,keepSel:true,select:parent});
+  };
+  onEdit=async()=>{
+    const sn=this._selId?this._byId[this._selId]:null;
+    const mid=sn&&sn.meta&&sn.meta.memory_id;
+    if(!mid)return;
+    const next=window.prompt('Ret hukommelsen:',sn.label||'');
+    if(next===null)return;
+    const label=next.trim();
+    if(!label)return;
+    try{
+      const r=await fetch('/api/profile/memories',{
+        method:'PUT',
+        headers:{'Content-Type':'application/json'},
+        credentials:'same-origin',
+        body:JSON.stringify({id:mid,label:label}),
+      });
+      const j=await r.json().catch(()=>({}));
+      if(!r.ok||j.success===false)throw new Error(j.error||'Hukommelsen blev ikke rettet.');
+    }catch(e){window.alert(e.message||'Hukommelsen kunne ikke rettes.');return;}
+    await this._loadData({quiet:true,keepSel:true,select:this._selId});
   };
   _deleteProfileFact=async()=>{
     const sn=this._selId?this._byId[this._selId]:null;
@@ -2374,6 +2398,7 @@ class Component extends DCLogic {
       // actions
       onClose:this._deselect,
       onDelete:this.onDelete,
+      onEdit:this.onEdit,
       onDeleteProfile:this._deleteProfileFact,
       onEditProfile:()=>this._go('/profile#'+encodeURIComponent(meta.profile_section||'')),
       onAddMem:this._openAdd,

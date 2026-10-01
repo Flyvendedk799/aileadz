@@ -133,12 +133,13 @@ class FlagTests(unittest.TestCase):
             os.environ.pop("AI_LEARNER_HR_CONTEXT", None)
             os.environ.pop("AI_LEARNER_HR_GOALS", None)
             self.assertTrue(learner_context.hr_context_enabled())
-            self.assertFalse(learner_context.hr_goals_enabled())
+            # S-4.4: company-level setting, default ON (only SHARED goals are ever read)
+            self.assertTrue(learner_context.hr_goals_enabled())
 
     def test_overrides(self):
-        with mock.patch.dict(os.environ, {"AI_LEARNER_HR_CONTEXT": "0", "AI_LEARNER_HR_GOALS": "1"}):
+        with mock.patch.dict(os.environ, {"AI_LEARNER_HR_CONTEXT": "0", "AI_LEARNER_HR_GOALS": "0"}):
             self.assertFalse(learner_context.hr_context_enabled())
-            self.assertTrue(learner_context.hr_goals_enabled())
+            self.assertFalse(learner_context.hr_goals_enabled())   # platform-wide kill switch
 
 
 class ResolveTests(LearnerContextTestBase):
@@ -195,8 +196,7 @@ class BuildTests(LearnerContextTestBase):
                 learner_context.clear_cache()
                 routes = dict(ROUTES_OK)
                 routes[needle] = RuntimeError("table missing")
-                with mock.patch.dict(os.environ, {"AI_LEARNER_HR_GOALS": "1"}):
-                    ctx, conn = self.run_with(routes)
+                ctx, conn = self.run_with(routes)
                 self.assertEqual(ctx["failed_sources"], [name])
                 self.assertGreaterEqual(conn.rollbacks, 1)
                 self.assertIsNotNone(ctx["employee"])
@@ -224,17 +224,26 @@ class BuildTests(LearnerContextTestBase):
         self.assertIsNone(ctx["employee"])
         self.assertGreaterEqual(conn.rollbacks, 1)
 
-    def test_hr_goals_off_by_default(self):
-        ctx, conn = self.run_with(dict(ROUTES_OK))
+    def test_kill_switch_reads_no_goals(self):
+        with mock.patch.dict(os.environ, {"AI_LEARNER_HR_GOALS": "0"}):
+            ctx, conn = self.run_with(dict(ROUTES_OK))
         self.assertEqual(ctx["hr_goals"], [])
         self.assertFalse(any("employee_goals" in sql for sql, _ in conn.executed))
 
-    def test_hr_goals_on_with_flag(self):
-        with mock.patch.dict(os.environ, {"AI_LEARNER_HR_GOALS": "1"}):
-            ctx, conn = self.run_with(dict(ROUTES_OK))
+    def test_company_can_switch_ai_access_to_shared_goals_off(self):
+        routes = dict(ROUTES_OK)
+        routes["FROM company_settings"] = [{"ai_learner_hr_goals": 0}]
+        ctx, conn = self.run_with(routes)
+        self.assertEqual(ctx["hr_goals"], [])
+        self.assertFalse(any("FROM employee_goals" in sql for sql, _ in conn.executed))
+
+    def test_hr_goals_on_by_default_and_only_shared_goals_are_read(self):
+        ctx, conn = self.run_with(dict(ROUTES_OK))
         self.assertEqual(ctx["hr_goals"][0]["title"], "Blive teamleder")
-        goal_sql = [(s, p) for s, p in conn.executed if "employee_goals" in s]
+        goal_sql = [(s, p) for s, p in conn.executed if "FROM employee_goals" in s]
         self.assertEqual(goal_sql[0][1][:2], (USER_ID, COMPANY_ID))
+        # S-4.4: the learner-facing query carries the sharing predicate
+        self.assertIn("shared_with_employee = 1", " ".join(goal_sql[0][0].split()))
 
     def test_master_flag_off_queries_nothing(self):
         with mock.patch.dict(os.environ, {"AI_LEARNER_HR_CONTEXT": "0"}):
@@ -253,6 +262,9 @@ class BuildTests(LearnerContextTestBase):
             self.assertEqual(sql.count("%s"), len(params), sql)
             if "company_users" in sql:
                 self.assertIn(USERNAME, params)
+            elif "FROM company_settings" in sql:
+                # S-4.4 company-level switch: scoped by the learner's company only
+                self.assertEqual(params, (COMPANY_ID,))
             else:
                 self.assertEqual(params[:2], (USER_ID, COMPANY_ID), sql)
                 self.assertTrue(re.search(r"(user_id|employee_id) = %s AND (elp\.)?company_id = %s", sql), sql)
@@ -260,7 +272,7 @@ class BuildTests(LearnerContextTestBase):
     def test_row_user_id_wins_over_caller_user_id(self):
         ctx, conn = self.run_with(dict(ROUTES_OK), user_id=1)
         for sql, params in conn.executed:
-            if "company_users" not in sql:
+            if "company_users" not in sql and "company_settings" not in sql:
                 self.assertEqual(params[0], USER_ID)
 
     def test_cache_hit_avoids_second_query(self):

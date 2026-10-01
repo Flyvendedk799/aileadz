@@ -1,4 +1,6 @@
 __pycache__/
+*.pyc
+node_modules/
 instance/
 static/temp/
 static/uploads/
@@ -19,3 +21,6 @@ run_history.txt
 # AI eval run artifacts (regenerated; baseline established in-environment)
 ai_eval/last_run.json
 ai_eval/baseline.json
+
+# 17 MB Shopify export: lives on the data volume (CATALOG_SOURCE_FILE) and is refreshed by the shopify_sync job
+app1/shopify_products_all_pages.json

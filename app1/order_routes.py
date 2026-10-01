@@ -38,9 +38,9 @@ def store_user_info():
         success = store_user_info_for_order(user_info)
         
         if success:
-            return jsonify({'success': True, 'message': 'User information stored successfully'})
+            return jsonify({'success': True, 'message': 'Oplysningerne er gemt.'})
         else:
-            return jsonify({'success': False, 'error': 'Failed to store user information'}), 500
+            return jsonify({'success': False, 'error': 'Oplysningerne kunne ikke gemmes.'}), 500
             
     except Exception as e:
         logger.error(f"Error storing user info: {e}")
@@ -298,11 +298,8 @@ def format_order_confirmation_for_chat(order):
 **Dine oplysninger:**
 Navn: {order['user']['name']}
 Email: {order['user']['email']}
-Telefon: {order['user']['phone']}
 
-Du vil modtage en bekræftelse på email inden for få minutter.
-
-Har du spørgsmål? Ring til os på 12 34 56 78.
+Du modtager en bekræftelse på email. Du kan følge status på din tidslinje.
 """
     
     return confirmation

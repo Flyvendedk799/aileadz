@@ -1,0 +1,50 @@
+{% extends "fm_base.html" %}
+{% import 'fm/_macros.html' as ui %}
+{% block page_id %}aiquality{% endblock %}
+{% block title %}AI-kvalitet (platform){% endblock %}
+{% block topbar_title %}AI-kvalitet{% endblock %}
+{% block topbar_sub %}Kvalitets- og stabilitetssignaler for AI-assistenterne på tværs af alle virksomheder. Kun tal, ingen samtaleindhold.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  <div class="pg-subnav">
+    <a class="pg-tab" href="{{ url_for('admin_reports.ai_cost_dashboard') }}"><i class="fa-solid fa-gauge-high"></i> AI-omkostninger</a>
+    <a class="pg-tab active" href="{{ url_for('admin_dashboard.admin_ai_quality') }}"><i class="fa-solid fa-wand-magic-sparkles"></i> AI-kvalitet</a>
+    <a class="pg-tab" href="{{ url_for('admin_dashboard.ai_settings') }}"><i class="fa-solid fa-microchip"></i> AI-udbyder</a>
+  </div>
+
+  <form method="get" class="fm-flex fm-gap8" style="margin-bottom:14px;align-items:center">
+    <label class="muted" for="days" style="font-size:13px">Periode</label>
+    <select id="days" name="days" class="fm-select" onchange="this.form.submit()">
+      {% for d, lbl in [(7,'Seneste 7 dage'),(30,'Seneste 30 dage'),(90,'Seneste 90 dage')] %}<option value="{{ d }}" {{ 'selected' if days == d }}>{{ lbl }}</option>{% endfor %}
+    </select>
+  </form>
+
+  {% set t = snap.totals %}
+  {% if snap.error or not t.get('runs') %}
+  {{ ui.empty('Ingen AI-kørsler i perioden', 'Når assistenterne har været i brug, dukker kvalitetstallene op her. Tjek AI-udbyderen, hvis du forventede data.', 'fa-wand-magic-sparkles') }}
+  {% else %}
+  <div class="kpi-row k4">
+    {{ ui.kpi('Kørsler', t.runs|int, 'i perioden', 'fa-play', 'indigo') }}
+    {{ ui.kpi('Fallbacks', t.fallbacks|int, ((t.fallbacks / t.runs * 100)|round(1)) ~ '% af kørsler', 'fa-shuffle', ('clay' if t.fallbacks / t.runs > 0.1 else 'green')) }}
+    {{ ui.kpi('Ubegrundede svar', t.grounding|int, 'fundet af grounding-tjekket', 'fa-triangle-exclamation', ('clay' if t.grounding else 'green')) }}
+    {{ ui.kpi('Gns. svartid', ((t.latency_ms or 0) / 1000)|round(1) ~ ' s', 'pr. kørsel', 'fa-stopwatch') }}
+  </div>
+
+  <div class="split even" style="margin-top:16px">
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-layer-group"></i></span><h3>Pr. assistent</h3></div>
+      <div class="fm-card-body"><table class="fm-table"><thead><tr><th>Assistent</th><th>Kørsler</th><th>Ubegrundede</th><th>Svartid</th></tr></thead><tbody>
+        {% for r in snap.by_scope %}<tr><td>{{ r.label }}</td><td class="tnum">{{ r.runs }}</td><td class="tnum">{{ r.grounding or 0 }}</td><td class="tnum">{{ ((r.latency_ms or 0) / 1000)|round(1) }} s</td></tr>{% endfor %}
+      </tbody></table></div></div>
+    <div class="fm-card"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-microchip"></i></span><h3>Pr. udbyder</h3></div>
+      <div class="fm-card-body"><table class="fm-table"><thead><tr><th>Runtime</th><th>Kørsler</th><th>Fallbacks</th><th>Svartid</th></tr></thead><tbody>
+        {% for r in snap.by_runtime %}<tr><td>{{ r.label }}</td><td class="tnum">{{ r.runs }}</td><td class="tnum">{{ r.fallbacks or 0 }}</td><td class="tnum">{{ ((r.latency_ms or 0) / 1000)|round(1) }} s</td></tr>{% endfor %}
+      </tbody></table></div></div>
+  </div>
+
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-building"></i></span><h3>Mest aktive virksomheder</h3></div>
+    <div class="fm-card-body"><table class="fm-table"><thead><tr><th>Virksomhed</th><th>Kørsler</th><th>Ubegrundede</th><th>Selv-evaluering</th></tr></thead><tbody>
+      {% for r in snap.by_company %}<tr><td>{{ r.company_name }}</td><td class="tnum">{{ r.runs }}</td><td class="tnum">{{ r.grounding or 0 }}</td><td class="tnum">{{ (r.self_eval|round(2)) if r.self_eval is not none else '–' }}</td></tr>{% endfor %}
+    </tbody></table></div></div>
+  {% endif %}
+</div>
+{% endblock %}

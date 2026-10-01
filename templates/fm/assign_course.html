@@ -1,0 +1,40 @@
+{% extends "fm_base.html" %}
+{% block page_id %}hr{% endblock %}
+{% block title %}Tildel kursus til hold{% endblock %}
+{% block topbar_title %}Tildel kursus til hold{% endblock %}
+{% block topbar_sub %}Opret en ordre pr. medarbejder. Som HR godkendes de med det samme.{% endblock %}
+{% block content %}
+<div class="fm-wrap">
+  {% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
+  {% if not product %}
+  <div class="fm-card"><div class="fm-card-body">
+    <p style="margin:0 0 10px">Vi fandt ikke kurset i kataloget. Det er muligvis skjult eller arkiveret.</p>
+    <a class="btn btn-primary btn-sm" href="{{ url_for('catalog.catalog_index') }}">Find et kursus</a>
+  </div></div>
+  {% else %}
+  <form method="post" class="fm-card" style="padding:20px;max-width:760px">
+    <input type="hidden" name="handle" value="{{ product.handle }}">
+    <h3 style="font-size:16px;margin:0 0 4px">{{ product.title }}</h3>
+    <p class="muted" style="margin:0 0 14px;font-size:13px">{{ product.vendor }} · {{ product.price_label }}</p>
+    {% if product.variants|length > 1 %}
+    <label class="fm-field"><span>Hold</span>
+      <select class="fm-input" name="variant_index">
+        {% for v in product.variants %}<option value="{{ loop.index0 }}">{{ v.date or 'Dato efter aftale' }} · {{ v.location or 'Sted efter aftale' }} · {{ v.price_label }}</option>{% endfor %}
+      </select>
+    </label>
+    {% endif %}
+    <div style="max-height:380px;overflow:auto;border:1px solid var(--fm-line);border-radius:10px;margin-top:10px">
+      {% if employees %}
+      <table class="fm-table" style="margin:0"><tbody>
+        {% for e in employees %}
+        <tr><td style="width:36px"><input type="checkbox" name="employee_ids" value="{{ e.user_id }}" {{ 'checked' if e.user_id in preselected }}></td>
+            <td>{{ e.name }}</td><td class="muted">{{ e.department or '' }}</td></tr>
+        {% endfor %}
+      </tbody></table>
+      {% else %}<p class="muted" style="padding:16px;margin:0">Der er ingen aktive medarbejdere endnu.</p>{% endif %}
+    </div>
+    <button class="btn btn-primary" type="submit" style="margin-top:14px"><i class="fa-solid fa-paper-plane"></i> Opret ordrer</button>
+  </form>
+  {% endif %}
+</div>
+{% endblock %}

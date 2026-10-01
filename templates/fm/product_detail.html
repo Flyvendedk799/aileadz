@@ -237,7 +237,13 @@
 
   {% if request.args.get('order') %}
   <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-success);background:color-mix(in srgb,var(--fm-success) 8%,var(--fm-surface))">
-    <i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Tilmeldingsanmodning oprettet med reference <strong>{{ request.args.get('order') }}</strong>.
+    <i class="fa-solid fa-circle-check" style="color:var(--fm-success)"></i> Anmodningen er registreret med reference <strong>{{ request.args.get('order')[:8] }}</strong>.
+    <a href="{{ url_for('futurematch.my_order', order_id=request.args.get('order')) }}" style="margin-left:8px;font-weight:600">Se status på din tidslinje <i class="fa-solid fa-arrow-right"></i></a>
+  </div>
+  {% elif existing_order %}
+  <div class="fm-card" style="padding:14px 18px;margin-bottom:18px;border-left:3px solid var(--fm-primary);background:var(--fm-primary-tint)">
+    <i class="fa-solid fa-circle-info" style="color:var(--fm-primary)"></i> Du har allerede anmodet om dette kursus ({{ existing_order.label|lower }}).
+    <a href="{{ url_for('futurematch.my_order', order_id=existing_order.order_id) }}" style="margin-left:8px;font-weight:600">Se din bestilling <i class="fa-solid fa-arrow-right"></i></a>
   </div>
   {% endif %}
 
@@ -330,7 +336,8 @@
       {% if anon %}
       <a class="pd-cta sm" href="{{ url_for('auth.login') }}"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind for at anmode</a>
       {% else %}
-      <a class="pd-cta sm" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>Anmod om tilmelding</a>
+      {% if existing_order %}<a class="pd-cta sm" href="{{ url_for('futurematch.my_order', order_id=existing_order.order_id) }}"><i class="fa-solid fa-circle-check"></i>Se din bestilling</a>
+      {% else %}<a class="pd-cta sm" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>{{ 'Tilmeld' if request_flow == 'direct' else 'Anmod om tilmelding' }}</a>{% endif %}
       {% endif %}
     </div>
   </div>
@@ -549,12 +556,13 @@
         {% if anon %}
         <a class="pd-cta" href="{{ url_for('auth.login') }}"><i class="fa-solid fa-arrow-right-to-bracket"></i>Log ind for at anmode</a>
         {% else %}
-        <a class="pd-cta" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>Anmod om tilmelding</a>
+        {% if existing_order %}<a class="pd-cta" href="{{ url_for('futurematch.my_order', order_id=existing_order.order_id) }}"><i class="fa-solid fa-circle-check"></i>Se din bestilling</a>
+      {% else %}<a class="pd-cta" href="#pd-request" data-pd-open {% if blocked %}aria-disabled="true"{% endif %}><i class="fa-solid fa-circle-check"></i>{{ 'Tilmeld' if request_flow == 'direct' else 'Anmod om tilmelding' }}</a>{% endif %}
         {% endif %}
         <a class="pd-cta ghost" href="{{ url_for('app1.index', product_handle=product.handle, product_title=product.title) }}"><i class="fa-solid fa-comments"></i>Spørg AI om kurset</a>
 
         <div class="pd-assure">
-          <div><i class="fa-solid fa-check"></i><span>{{ 'Log ind med din arbejdskonto for at anmode' if anon else 'Ingen betaling nu — HR godkender først' }}</span></div>
+          <div><i class="fa-solid fa-check"></i><span>{% if anon %}Log ind med din arbejdskonto for at anmode{% elif request_flow == 'approval' %}Ingen betaling i appen. HR godkender først{% elif request_flow == 'direct' %}Som leder godkendes din tilmelding med det samme{% else %}Ingen betaling i appen. Du modtager en faktura{% endif %}</span></div>
           <div><i class="fa-solid fa-check"></i><span>Anmodningen gemmes på din profil i Futurematch</span></div>
           <div><i class="fa-solid fa-check"></i><span>Leverandøren kontakter dig med bekræftelse</span></div>
         </div>
@@ -639,8 +647,8 @@
       <span class="v" data-pd-price>{{ first_price }}</span>
     </div>
 
-    <button class="pd-cta" type="submit" style="margin-top:16px" {% if blocked %}disabled aria-disabled="true"{% endif %}><i class="fa-solid fa-paper-plane"></i>Send anmodning</button>
-    <div class="pd-modal-foot">Anmodningen gemmes i Futurematch og sendes til HR-godkendelse.</div>
+    <button class="pd-cta" type="submit" style="margin-top:16px" {% if blocked %}disabled aria-disabled="true"{% endif %}><i class="fa-solid fa-paper-plane"></i>{{ 'Bekræft tilmelding' if request_flow == 'direct' else 'Send anmodning' }}</button>
+    <div class="pd-modal-foot">{% if request_flow == 'approval' %}Anmodningen gemmes i Futurematch og sendes til HR-godkendelse.{% elif request_flow == 'direct' %}Tilmeldingen godkendes med det samme og sendes til udbyderen til bekræftelse.{% else %}Anmodningen gemmes i Futurematch. Udbyderen bekræfter din plads, og du modtager en faktura. Der er ingen betaling i appen.{% endif %}</div>
   </form>
 </div>
 {% endif %}

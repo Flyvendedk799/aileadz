@@ -218,4 +218,5 @@ def test_chatjs_intent_link_sends_into_a_fresh_chat():
     and the param is stripped first, so a reload never re-sends it."""
     source = open("static/futurematch/assets/chat.js", encoding="utf-8").read()
     boot = source[source.index("function bootChat()"):source.index("window.fmChatBoot = bootChat();")]
-    assert boot.index('params.delete("intent")') < boot.index("return newChat().then(")
+    assert boot.index('params.delete(k)') < boot.index("return newChat().then(")
+    assert '"intent", "from", "focus"' in boot

@@ -191,7 +191,7 @@
             <div class="fm-card" data-reveal data-d="2"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-pie"></i></span><h3>Kompetenceprofil</h3><a href="{{ url_for('pages.profile') }}" class="fm-badge teal" style="margin-left:auto">Detaljer</a></div>
               <div class="fm-card-body">
                 {% if has_skills %}
-                <div class="ring-big" style="--p:{{ completeness_pct }}"><div><div><span class="pct">{{ completeness_pct }}%</span><div class="lab">Udfyldt</div></div></div></div>
+                <div class="ring-big" style="--p:{{ completeness_pct }}"><div><div><span class="pct">{{ completeness_pct }}%</span><div class="lab">Profilstyrke</div></div></div></div>
                 <div style="margin-top:14px;display:flex;flex-direction:column;gap:10px">
                   {% for g in skills_groups %}
                   <div>
@@ -204,7 +204,7 @@
                   {% endfor %}
                 </div>
                 {% else %}
-                <div class="ring-big" style="--p:{{ completeness_pct }}"><div><div><span class="pct">{{ completeness_pct }}%</span><div class="lab">Udfyldt</div></div></div></div>
+                <div class="ring-big" style="--p:{{ completeness_pct }}"><div><div><span class="pct">{{ completeness_pct }}%</span><div class="lab">Profilstyrke</div></div></div></div>
                 <div class="muted" style="text-align:center;font-size:13px;padding:14px 16px 2px;color:var(--fm-ink-3)">Ingen kompetencer endnu. Tilføj dem for et bedre kursusmatch.</div>
                 {% endif %}
               </div>

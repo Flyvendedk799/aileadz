@@ -78,9 +78,9 @@ import order_lifecycle as _lc  # noqa: E402  (status vocabulary, N-1.1)
 def _home_skill_completeness(profile):
     """Profile-completeness ring data from a get_full_profile() snapshot.
 
-    Consumes the canonical profile_completeness() (user_profile_db) so the ring
-    number is identical across the employee home, profile page, profiler ring
-    and mind-map — one source of truth, no per-surface drift. Returns
+    Consumes the canonical profile_completeness() (user_profile_db) and shows
+    its depth-aware ``weighted_pct``, the number the profile page, the profiler
+    banner, the chat status and the Mind-Map show. Returns
     (pct, sections, has_skills) for backwards compatibility with the template.
     """
     profile = profile or {}
@@ -88,7 +88,8 @@ def _home_skill_completeness(profile):
         from app1.user_profile_db import profile_completeness
         c = profile_completeness(None, profile=profile)
         sections = [{'key': s.get('label'), 'done': s.get('done')} for s in c.get('sections', [])]
-        return c.get('pct', 0), sections, len(profile.get('skills') or []) > 0
+        shown = c.get('weighted_pct') if c.get('weighted_pct') is not None else c.get('pct', 0)
+        return shown, sections, len(profile.get('skills') or []) > 0
     except Exception:
         # Defensive fallback: never break the home page on a completeness hiccup.
         skills = profile.get('skills') or []

@@ -16,7 +16,10 @@ Mind-Map (/mind-map) viser alt, hvad AI'en har gemt om dig, som et 3D-kort: din 
 - Vælger du profilen i midten, ser du din ønskede rolle, et forslag til næste skridt og knapperne "Fortsæt med AI-profiler", "Upload CV" og "Tilføj hukommelse".
 
 ## Ret og slet
-Hukommelser har knappen "Slet hukommelse". Profiloplysninger har "Ret på profil" og for mange typer også "Fjern". Du bliver bedt om at bekræfte, før noget slettes.
+Hukommelser har knapperne "Redigér hukommelse" og "Slet hukommelse". Profiloplysninger har "Ret på profil" og for mange typer også "Fjern". Du bliver bedt om at bekræfte, før noget slettes.
+
+## Spørg AI'en om et punkt
+Vælg et punkt og klik "Spørg AI om dette" (på en gren: "Uddyb med AI"). AI Profiler åbner med netop det punkt i fokus, så I kan uddybe, rette eller bygge videre på det uden at starte forfra. Ringen nederst viser din profilstyrke: hvor godt AI'en kender dig, ikke en tjekliste.
 
 ## Hvis kortet er tomt
 Står der "Din vidensbase er tom", har AI'en endnu ingen oplysninger om dig. Start AI-profileren, upload dit CV eller tilføj en hukommelse. Kan data ikke hentes, vises en fejl med mulighed for at prøve igen. Demo-data vises kun, hvis du selv klikker "Vis demo-data", og de er tydeligt markeret.

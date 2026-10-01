@@ -1326,10 +1326,10 @@ OPENAI_TOOLS.append({
                 "handles": {"type": "array", "items": {"type": "string"},
                             "description": "2-4 handles til open_compare."},
                 "section": {"type": "string",
-                            "description": "Profilsektion til open_profile (fx 'skills','experience','goals','certifications','languages')."},
-                "node": {"type": "string", "description": "Stabilt node-id til open_mind_map, fx 'skill:42' eller 'mem:7'."},
+                            "description": "Profilsektion til open_profile / open_profiler (fx 'skills','experience','goals','certifications','languages')."},
+                "node": {"type": "string", "description": "Præfiks + [#id] fra profilen: 'skill:42' (kompetence), 'exp:7' (erfaring), 'edu:3', 'cert:5', 'lang:2', 'goal:4', 'path:1' eller 'mem:9' (hukommelse). Åbner punktet i open_mind_map og giver open_profiler / open_advisor det i fokus."},
                 "query": {"type": "string", "description": "Søge-/kategoritekst til open_catalog."},
-                "intent": {"type": "string", "description": "Spørgsmål/intention til open_advisor."},
+                "intent": {"type": "string", "description": "Første besked til open_advisor / open_profiler, med brugerens ord."},
                 "label": {"type": "string", "description": "Kort dansk knaptekst, fx 'Åbn kurset' eller 'Sammenlign'."}
             },
             "required": ["action"]
@@ -3035,6 +3035,21 @@ PROFILE_TOOLS = [
                 "required": ["query"]
             }
         }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "forget_about_user",
+            "description": "Foreslå at glemme en hukommelse om brugeren, når de beder dig om det ('glem at jeg …', 'det passer ikke længere') eller retter noget, du husker forkert. Hukommelserne i konteksten har et [#id]; brug det som memory_id, ellers beskriv den med brugerens ord i query. Intet slettes før brugeren trykker bekræft på kortet, så sig kort hvad du foreslår. Strukturerede profilfelter (kompetencer, erfaring, uddannelse …) fjernes med update_user_profile, ikke her.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "memory_id": {"type": "integer", "description": "Id fra [#id] i hukommelsen."},
+                    "query": {"type": "string", "description": "Hvad der skal glemmes, med brugerens ord, hvis id ikke kendes."}
+                },
+                "required": []
+            }
+        }
     }
 ]
 
@@ -3200,6 +3215,83 @@ def _execute_remember_about_user(args, username):
     except Exception as e:
         print(f"[Tool Error] remember_about_user: {e}")
         return _internal_tool_error("remember_about_user", e, "Det lykkedes ikke at gemme det i hukommelsen.")
+
+
+def _memory_match_score(memory, query_norm):
+    """How well a memory matches what the user asked to forget (0..1)."""
+    from app1.user_profile_db import _memory_tokens
+    label = _normalize_memory_label(memory.get("label") or "")
+    if not label or not query_norm:
+        return 0.0
+    if label == query_norm or (len(query_norm) >= 4 and (query_norm in label or label in query_norm)):
+        return 1.0
+    q_tokens = _memory_tokens(query_norm)
+    m_tokens = _memory_tokens(label + " " + (memory.get("detail") or "").lower())
+    if not q_tokens or not m_tokens:
+        return 0.0
+    return len(q_tokens & m_tokens) / len(q_tokens)
+
+
+def _execute_forget_about_user(args, username):
+    """Propose removing one of the user's own memories (decision 18: removals
+    stay confirm-gated). Nothing is deleted here; the chat renders the proposal
+    as a confirm card that posts ``remove_memory`` to /app1/confirm_profile_update.
+
+    Resolves ``memory_id`` (the ``[#id]`` the memories layer shows) or a free-text
+    ``query``. Several plausible matches come back as ``choose`` so the model can
+    ask which one, rather than guessing and deleting the wrong fact.
+    """
+    if not username:
+        return json.dumps({"status": "error", "message": "Brugeren er ikke logget ind."})
+    raw_id = args.get("memory_id") if args.get("memory_id") is not None else args.get("id")
+    query = (args.get("query") or args.get("label") or "").strip()
+    try:
+        mem_id = int(raw_id) if raw_id not in (None, "") else None
+    except (TypeError, ValueError):
+        mem_id = None
+    if mem_id is None and not query:
+        return json.dumps({"status": "error", "message": "Angiv memory_id eller hvad der skal glemmes (query)."},
+                          ensure_ascii=False)
+    try:
+        from app1 import user_profile_db as db
+        db.ensure_tables()
+        memories = db.get_memories(username, limit=200)
+    except Exception as e:
+        return _internal_tool_error("forget_about_user", e, "Hukommelsen kunne ikke hentes lige nu.")
+
+    def _proposal(mem):
+        label = (mem.get("label") or "").strip()
+        return json.dumps({
+            "status": "proposed", "section": "memories",
+            "message": f'Glem "{label}"?',
+            "confirm": {"action": "remove_memory", "data": {"id": mem["id"], "label": label}},
+            "note_for_assistant": "Kortet ligger under dit svar; intet er slettet før brugeren bekræfter.",
+        }, ensure_ascii=False)
+
+    if mem_id is not None:
+        hit = next((m for m in memories if m.get("id") == mem_id), None)
+        if hit:
+            return _proposal(hit)
+        if not query:
+            return json.dumps({"status": "not_found", "message": "Den hukommelse findes ikke (længere)."},
+                              ensure_ascii=False)
+    q_norm = _normalize_memory_label(query)
+    scored = sorted(((_memory_match_score(m, q_norm), m) for m in memories), key=lambda x: x[0], reverse=True)
+    strong = [m for sc, m in scored if sc >= 0.99]
+    plausible = [m for sc, m in scored if sc >= 0.5]
+    if len(strong) == 1:
+        return _proposal(strong[0])
+    if len(plausible) == 1:
+        return _proposal(plausible[0])
+    if plausible:
+        return _model_tool_json(
+            status="choose",
+            message="Flere hukommelser passer. Spørg brugeren hvilken, og kald igen med memory_id.",
+            candidates=[{"id": m["id"], "label": m.get("label")} for m in plausible[:5]],
+        )
+    return json.dumps({"status": "not_found",
+                       "message": "Jeg fandt ingen hukommelse, der passer. Den er måske allerede væk."},
+                      ensure_ascii=False)
 
 
 _FIELD_MAX_LENGTHS = {
@@ -3452,6 +3544,51 @@ def _execute_update_user_profile(args, username):
     }, ensure_ascii=False)
 
 
+# Actions whose confirm path needs a row id. The schema lets the model name the
+# entry instead ("remove_*/update_*: include id or the name/title"), so the
+# proposal resolves the name against the user's own rows; without this the
+# confirm click failed with "id mangler".
+_ID_KEYED_ACTIONS = {
+    "remove_experience": ("get_experience", "title", "erfaring"),
+    "update_experience": ("get_experience", "title", "erfaring"),
+    "remove_education": ("get_education", "degree", "uddannelse"),
+    "update_education": ("get_education", "degree", "uddannelse"),
+    "remove_certification": ("get_certifications", "name", "certificering"),
+    "update_certification": ("get_certifications", "name", "certificering"),
+}
+
+
+def _resolve_profile_entity_id(db, username, action, data):
+    """Fill ``data["id"]`` from the entry's name. Returns ``(data, None)`` or
+    ``(data, json_problem)`` when the name matches none or several rows."""
+    getter, key, noun = _ID_KEYED_ACTIONS[action]
+    wanted = str(data.get(key) or "").strip().casefold()
+    if not wanted:
+        return data, json.dumps({"status": "error",
+                                 "message": f"Angiv id eller navnet på den {noun}, der skal ændres."},
+                                ensure_ascii=False)
+    rows = getattr(db, getter)(username) or []
+    hits = [r for r in rows if str(r.get(key) or "").strip().casefold() == wanted]
+    company = str(data.get("company") or "").strip().casefold()
+    if len(hits) > 1 and company and key == "title":
+        hits = [r for r in hits if str(r.get("company") or "").strip().casefold() == company] or hits
+    if len(hits) == 1:
+        return dict(data, id=hits[0]["id"]), None
+    if hits:
+        return data, _model_tool_json(
+            status="choose",
+            message=f"Flere poster hedder sådan. Spørg hvilken {noun} der menes, og kald igen med id.",
+            candidates=[{k: v for k, v in (("id", r["id"]), (key, r.get(key)), ("company", r.get("company")),
+                                           ("institution", r.get("institution")), ("issuer", r.get("issuer")))
+                         if v not in (None, "")} for r in hits[:5]],
+        )
+    return data, _model_tool_json(
+        status="not_found",
+        message=f"Ingen {noun} på profilen hedder sådan.",
+        existing=[{"id": r["id"], key: r.get(key)} for r in rows[:10]],
+    )
+
+
 def _propose_user_profile_update(args, username):
     """Validate profile update and return a proposed action (nothing executed for
     additions here - ``_execute_update_user_profile`` saves those).
@@ -3499,6 +3636,10 @@ def _propose_user_profile_update(args, username):
             section = section_by_action.get(action)
             if not section:
                 return json.dumps({"status": "error", "message": f"Ukendt profilhandling: {action}"})
+            if action in _ID_KEYED_ACTIONS and not data.get("id"):
+                data, problem = _resolve_profile_entity_id(db, username, action, data)
+                if problem:
+                    return problem
             verb = "Fjern" if action.startswith("remove_") else "Opdatér"
             label = (
                 data.get("skill_name") or data.get("title") or data.get("degree")
@@ -3713,6 +3854,18 @@ def _propose_user_profile_update(args, username):
             ).strip()
             if not role:
                 return json.dumps({"status": "error", "message": "target_role mangler."})
+            # A first direction is an addition and saves at once; REPLACING an
+            # existing one is an edit, so it is proposed like every other edit.
+            try:
+                current = ((db.get_profile_summary(username) or {}).get("target_role") or "").strip()
+            except Exception:
+                current = ""
+            if current and current.casefold() != role.casefold():
+                return json.dumps({
+                    "status": "proposed", "section": "summary",
+                    "message": f'Skift ønsket retning fra "{current}" til "{role}"?',
+                    "confirm": {"action": "set_target_role", "data": {"target_role": role}},
+                }, ensure_ascii=False)
             db.update_profile_summary(username, target_role=role)
             return json.dumps({
                 "status": "success",
@@ -3903,12 +4056,15 @@ PROFILE_TOOLS.append({
                 },
                 "section": {
                     "type": "string",
-                    "enum": ["skills", "experience", "education", "courses", "summary"],
+                    "enum": ["skills", "experience", "education", "courses", "certifications",
+                             "languages", "links", "summary"],
                     "description": "Hvilken profil-sektion dette handler om."
                 },
                 "save_action": {
                     "type": "string",
-                    "enum": ["add_skill", "add_experience", "add_education", "add_course", "update_experience", "update_education", "update_course", "update_summary"],
+                    "enum": ["add_skill", "add_experience", "add_education", "add_course",
+                             "add_certification", "add_language", "add_link",
+                             "update_experience", "update_education", "update_course", "update_summary"],
                     "description": "Hvilken profil-handling der udføres når brugeren bekræfter."
                 },
                 "prefilled": {
@@ -5889,6 +6045,29 @@ def _execute_request_manager_approval(args, username):
     }, default=str)
 
 
+def _handoff_focus(args):
+    """A whitelisted focus ref (``section:x`` or a profile node id) or ''."""
+    from app1.surface_context import normalize_context
+    node = (args.get("node") or "").strip()
+    section = (args.get("section") or "").strip()
+    ref = node or (f"section:{section}" if section else "")
+    return normalize_context({"focus": ref}).get("focus", "")
+
+
+def _handoff_url(path, origin, focus, intent):
+    """Target URL for a cross-surface handoff: chat.js reads ``from``/``focus``
+    and sends them as ``context`` with the first message (app1/surface_context)."""
+    from urllib.parse import urlencode
+    params = {}
+    if focus or intent:
+        params["from"] = origin
+    if focus:
+        params["focus"] = focus
+    if intent:
+        params["intent"] = intent
+    return path + ("?" + urlencode(params) if params else "")
+
+
 def _execute_open_in_app(args, username=None):
     """Resolve a cross-surface navigation directive for the SPA.
 
@@ -5953,21 +6132,27 @@ def _execute_open_in_app(args, username=None):
         out["label"] = label or "Se min læringssti"
 
     elif action == "open_profiler":
-        out["target"] = "/ai-profiler"
-        out["label"] = label or "Gør profilen færdig"
+        intent = (args.get("intent") or "").strip()
+        focus = _handoff_focus(args)
+        out["intent"] = intent
+        out["focus"] = focus
+        out["target"] = _handoff_url("/ai-profiler", "chat", focus, intent)
+        out["label"] = label or "Fortsæt i AI Profiler"
 
     elif action == "open_advisor":
-        from urllib.parse import quote
         intent = (args.get("intent") or args.get("query") or "").strip()
+        focus = _handoff_focus(args)
         out["intent"] = intent
-        out["target"] = "/chat" + (f"?intent={quote(intent)}" if intent else "")
+        out["focus"] = focus
+        out["target"] = _handoff_url("/chat", "profiler", focus, intent)
         out["label"] = label or "Fortsæt i Kursusrådgiver"
         out["new_tab"] = False
 
     elif action == "open_catalog":
+        from urllib.parse import quote
         q = (args.get("query") or "").strip()
         out["query"] = q
-        out["target"] = "/catalog" + (f"?q={q}" if q else "")
+        out["target"] = "/catalog" + (f"?q={quote(q)}" if q else "")
         out["label"] = label or "Åbn kataloget"
 
     elif action == "open_my_learning":
@@ -6019,7 +6204,7 @@ def _execute_show_cv_summary(args, username):
             "focus": focus,
         }, ensure_ascii=False, default=str)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)})
+        return _internal_tool_error("show_cv_summary", e, "CV-overblikket kunne ikke hentes lige nu.")
 
 
 def _execute_show_mindmap_preview(args, username):
@@ -6033,17 +6218,15 @@ def _execute_show_mindmap_preview(args, username):
         profile = get_full_profile(username)
         memories = get_memories(username) or []
         completeness = profile_completeness(username, profile=profile)
-        skills = profile.get("skills") or []
-        experience = profile.get("experience") or []
-        education = profile.get("education") or []
-        certifications = profile.get("certifications") or []
-        languages = profile.get("languages") or []
         categories = {
-            "kompetencer": len(skills),
-            "erfaring": len(experience),
-            "uddannelse": len(education),
-            "certificeringer": len(certifications),
-            "sprog": len(languages),
+            "kompetencer": len(profile.get("skills") or []),
+            "erfaring": len(profile.get("experience") or []),
+            "uddannelse": len(profile.get("education") or []),
+            "certificeringer": len(profile.get("certifications") or []),
+            "sprog": len(profile.get("languages") or []),
+            "maal": len(profile.get("learning_goals") or []),
+            "kurser": len(profile.get("completed_courses") or []),
+            "laeringsstier": len(profile.get("learning_paths") or []),
             "hukommelse": len(memories),
         }
         recent = []
@@ -6054,7 +6237,12 @@ def _execute_show_mindmap_preview(args, username):
                 "label": m.get("label", ""),
                 "category": m.get("category", "andet"),
             })
-        leaf_count = sum(categories.values())
+        # "Datapunkter" must equal the Mind-Map's own count (one builder).
+        try:
+            from api import mindmap_payload
+            leaf_count = mindmap_payload(username, with_gaps=False)["counts"]["leaves"]
+        except Exception:
+            leaf_count = sum(categories.values())
         return json.dumps({
             "status": "mindmap_preview",
             "completeness": completeness,
@@ -6063,7 +6251,7 @@ def _execute_show_mindmap_preview(args, username):
             "recent_memories": recent,
         }, ensure_ascii=False, default=str)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)})
+        return _internal_tool_error("show_mindmap_preview", e, "Mind-Map kunne ikke hentes lige nu.")
 
 
 def _execute_show_skill_gaps(args, username):
@@ -6108,7 +6296,7 @@ def _execute_show_skill_gaps(args, username):
             "next_action": "recommend_for_profile",
         }, ensure_ascii=False, default=str)
     except Exception as e:
-        return json.dumps({"status": "error", "message": str(e)})
+        return _internal_tool_error("show_skill_gaps", e, "Kompetencegabene kunne ikke beregnes lige nu.")
 
 
 def _execute_get_my_agenda(args, username):
@@ -6541,6 +6729,8 @@ def execute_tool(tool_call, username=None, session_id=None):
         elif function_name == "recall_about_user":
             from app1.user_knowledge import execute_recall_about_user
             return execute_recall_about_user(args, username)
+        elif function_name == "forget_about_user":
+            return _execute_forget_about_user(args, username)
         elif function_name == "search_platform_help":
             from app1.help_kb import execute_search_platform_help
             return execute_search_platform_help(args)

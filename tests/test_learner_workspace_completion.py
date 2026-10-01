@@ -278,7 +278,8 @@ def test_navigation_shell_unification_and_modebar():
 def test_profile_page_intent_bridging_and_cv_widget():
     profile_src = open("templates/fm/my_profile.html", encoding="utf-8").read()
     assert "futurematch.ai_profiler" in profile_src
-    assert "?intent=" in profile_src
+    assert "&amp;intent=" in profile_src  # intent links ride with a from=profile handoff
+    assert "from=profile" in profile_src
     assert "cvWidgetCard" in profile_src
     assert "loadCvSummary" in profile_src
     assert "togglePathStep" in profile_src

@@ -132,6 +132,7 @@ _MEMORY_RELEVANCE_MIN = 0.35
 _PROFILE_MUTATING_TOOLS = frozenset({
     "update_user_profile", "request_user_input", "remember_about_user",
     "set_learning_goal", "update_learning_goal", "save_learning_path",
+    "update_learning_path", "mark_course_complete",
 })
 
 
@@ -1467,15 +1468,19 @@ def _fallback_suggestions(*, mode="default", had_cards=False, completeness=None,
     return base[:3]
 
 
-def cv_applied_note(sess, now=None, window_seconds=3600):
+def cv_applied_note(sess, now=None, window_seconds=3600, surface=None):
     """One trusted line when the user applied a CV within the last hour (N-5.1).
 
-    The profiler then acknowledges it and builds on it instead of asking for
-    what the CV already put on the profile.
+    The assistant then acknowledges it and builds on it instead of asking for
+    what the CV already put on the profile. With ``surface`` the note is
+    one-shot per surface (``mark_cv_note_seen``): acknowledged once in the chat
+    and once in the profiler, not on every turn for an hour.
     """
     try:
         info = sess.get("cv_applied")
         if not info:
+            return ""
+        if surface and surface in (info.get("seen") or []):
             return ""
         import time as _time
         if (now if now is not None else _time.time()) - int(info.get("t", 0)) > window_seconds:
@@ -1488,10 +1493,41 @@ def cv_applied_note(sess, now=None, window_seconds=3600):
                 parts.append(f"{c[key]} {label}")
         if not parts:
             return ""
-        return ("Brugeren har netop anvendt sit CV på profilen (" + ", ".join(parts) + "). "
+        note = ("Brugeren har netop anvendt sit CV på profilen (" + ", ".join(parts) + "). "
                 "Anerkend det kort og byg videre på det. Spørg ikke efter noget, som står på profilen nu.")
+        gaps = [str(g) for g in (info.get("gaps") or []) if g][:3]
+        if gaps:
+            note += (" Ud fra CV'et ligger de største kompetencegab i " + ", ".join(gaps)
+                     + "; det er et naturligt næste emne, hvis brugeren vil videre.")
+        return note
     except Exception:
         return ""
+
+
+def _surface_tool_names(ctx, resolved):
+    """Read tools a handoff makes relevant (empty without a handoff)."""
+    if not ctx:
+        return ()
+    try:
+        from app1.surface_context import origin_tool_names
+        return origin_tool_names(ctx, resolved)
+    except Exception:
+        return ()
+
+
+def mark_cv_note_seen(sess, surface):
+    """Record that ``surface`` has had the CV note (reassigns so Flask saves it)."""
+    try:
+        info = dict(sess.get("cv_applied") or {})
+        if not info:
+            return
+        seen = list(info.get("seen") or [])
+        if surface not in seen:
+            seen.append(surface)
+        info["seen"] = seen
+        sess["cv_applied"] = info
+    except Exception:
+        pass
 
 
 def merge_profile_events(events):
@@ -1816,7 +1852,7 @@ def _hr_learning_layer(username, user_id, company_id):
 # ── Main Agent Loop ──
 
 def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="message",
-                       sid_override=None, company_override=None):
+                       sid_override=None, company_override=None, surface_context=None):
     """
     Core Agent Loop with all 6 phases integrated.
 
@@ -1828,6 +1864,11 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
     ``sid_override`` / ``company_override`` let the embeddable widget run with
     its own session id and the embedding company, without touching the
     visitor's employee chat session.
+
+    ``surface_context`` is the whitelisted cross-surface handoff
+    (``app1.surface_context.normalize_context``): where the user came from and
+    which of their own profile items they had open. It becomes the
+    ``surface_context`` layer and adds read-only tools for this turn.
     """
     _cleanup_stale_sessions()
 
@@ -2130,6 +2171,15 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
             except Exception:
                 pass
 
+    # The CV note is consumed per surface HERE, in the request phase: the cookie
+    # session is written before the SSE body streams, so a write inside
+    # stream_generator would be lost and the note would repeat for an hour.
+    _cv_note = ""
+    if logged_in_user:
+        _cv_note = cv_applied_note(session, surface=surface)
+        if _cv_note:
+            mark_cv_note_seen(session, surface)
+
     def stream_generator():
         _interaction_start = time.time()
         try:
@@ -2196,6 +2246,37 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         pass
 
             _kq = _knowledge_query(user_query, messages, mode, db_profile)
+            # Cross-surface handoff (mind-map node, profile section, CV portal):
+            # resolved against the user's OWN data; an unknown ref is dropped.
+            _surface_resolved = None
+            if surface_context:
+                try:
+                    from app1 import surface_context as _sc
+                    _focus = surface_context.get("focus")
+                    if _focus and logged_in_user:
+                        _sc_kind = _sc.focus_kind(surface_context)
+                        _sc_mem, _sc_gaps = [], []
+                        if _sc_kind == "mem" or _focus == "section:memories":
+                            from app1.user_profile_db import get_memories
+                            _sc_mem = get_memories(logged_in_user, limit=200)
+                        if _sc_kind == "skill":
+                            from competency import compute_skill_gaps
+                            _sc_gaps = compute_skill_gaps(logged_in_user, profile=db_profile or None) or []
+                        _surface_resolved = _sc.resolve_focus(_focus, db_profile, _sc_mem, _sc_gaps)
+                    _sc_parts = _sc.build_layer(surface_context, _surface_resolved, mode)
+                    if _sc_parts:
+                        _sc_header, _sc_body, _sc_fenced = _sc_parts
+                        if _sc_fenced:
+                            context_layers.append(_ctx.layer(
+                                "surface_context", _sc_body, header=_sc_header, fence="FOKUS FRA PROFILEN"))
+                        else:
+                            context_layers.append(_ctx.layer("surface_context", _sc_header))
+                    log_debug(sid, "surface_context", {
+                        "from": surface_context.get("from"), "focus": _focus,
+                        "resolved": bool(_surface_resolved),
+                    })
+                except Exception as e:
+                    print(f"[Surface context] {e}")
             if logged_in_user:
                 # Company rules + employee info (short TTL cache, not per session)
                 context_layers.extend(
@@ -2237,7 +2318,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 try:
                     from app1.user_profile_db import format_memories_for_ai
                     rel_mem = _select_memories_for_turn(logged_in_user, _kq, mode, db_profile)
-                    mem_text = format_memories_for_ai(rel_mem)
+                    mem_text = format_memories_for_ai(rel_mem, include_ids=True)
                     if mem_text:
                         context_layers.append(_ctx.layer(
                             "memories", mem_text,
@@ -2262,7 +2343,6 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 _hr_layer = _hr_learning_layer(logged_in_user, session.get("user_id"), company_id)
                 if _hr_layer:
                     context_layers.append(_hr_layer)
-                _cv_note = cv_applied_note(session)
                 if _cv_note:
                     context_layers.append(_ctx.layer("cv_just_applied", _cv_note))
 
@@ -2450,6 +2530,7 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                     shown_count=len(shown_handles),
                     order_flow_open=_order_open,
                     mode=mode,
+                    context_tools=_surface_tool_names(surface_context, _surface_resolved),
                 )
             else:
                 all_tools = OPENAI_TOOLS + (PROFILE_TOOLS if logged_in_user else [])
@@ -2712,7 +2793,9 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                         buffered_ui_html.append(render_product_media(resolved[0]))
                         buffered_course_cards.append(serialize_course_cards([resolved[0]]))
 
-                elif fn == "update_user_profile":
+                elif fn in ("update_user_profile", "forget_about_user"):
+                    # forget_about_user only ever proposes (status "proposed"):
+                    # the same confirm card, posting remove_memory on click.
                     tool_status = tool_result_dict.get("status", "")
                     if tool_status == "proposed":
                         buffered_profile_events.append(json.dumps({

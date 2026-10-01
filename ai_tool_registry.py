@@ -148,6 +148,12 @@ _EMPLOYEE_META = {
     "recall_about_user": ToolMeta(
         "recall_about_user", auth_required=True, toolset_tags=("memory", "profile"),
     ),
+    # Proposes forgetting one of the user's own memories; the removal itself runs
+    # only on the confirm click (/app1/confirm_profile_update remove_memory), so
+    # the tool has no side effect of its own.
+    "forget_about_user": ToolMeta(
+        "forget_about_user", auth_required=True, parallel_safe=False, toolset_tags=("memory", "profile"),
+    ),
     "search_platform_help": ToolMeta(
         "search_platform_help", toolset_tags=("help",), cache_ttl=600,
     ),
@@ -371,6 +377,7 @@ _TOOL_LABELS = {
     "show_skill_gaps": "Kompetencegab",
     "get_my_agenda": "Min agenda",
     "recall_about_user": "Husker tilbage",
+    "forget_about_user": "Glem hukommelse",
     "search_platform_help": "Hjælpeartikler",
     "get_my_compliance": "Mine krav",
     "save_learning_path": "Gem læringssti",
@@ -936,6 +943,16 @@ _TOOL_TRIGGERS = {
         "what did we talk about", "last time we talked", "husker du hvad jeg sagde",
         "do you remember what i said", "vi snakkede om",
     ),
+    "forget_about_user": (
+        "glem at", "glem det", "forget that", "forget about", "husk ikke", "stop med at huske",
+        "det passer ikke længere", "slet hukommelsen", "fjern hukommelsen", "du husker forkert",
+        "you remember wrong", "delete that memory",
+    ),
+    "get_learning_context": (
+        "mit budget og mine aftaler", "leverandøraftaler", "supplier agreements",
+        "hvad har jeg til rådighed", "what can i spend", "learning context",
+        "hvilke aftaler har vi", "hvad dækker firmaet",
+    ),
 }
 
 # Token splitter shared with the fallback scorer.
@@ -1010,6 +1027,7 @@ def get_employee_tool_selection(
     shown_count: int = 0,
     order_flow_open: bool = False,
     mode: str = "default",
+    context_tools: Iterable[str] = (),
 ) -> Tuple[List[Dict[str, Any]], Dict[str, Any]]:
     """Return strict Chat-style tools plus selection metadata for one employee turn.
 
@@ -1022,6 +1040,11 @@ def get_employee_tool_selection(
     ``mode`` is the chat surface mode ("default" or "profiler").  In profiler mode
     the full set of profile, learning-path, goal, and gap tools are always on the
     menu so the model can save data and recommend without waiting for a keyword hit.
+
+    ``context_tools`` are tools a cross-surface handoff makes relevant
+    (``app1.surface_context.origin_tool_names``: the user came from the Mind-Map
+    with a memory open, from a profile section, ...). Additive and, like the HR
+    page hints, never a side-effect tool: arriving from a page is not intent.
     """
     from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS
 
@@ -1057,6 +1080,7 @@ def get_employee_tool_selection(
             "update_learning_path", "show_skill_gaps", "show_cv_summary",
             "set_learning_goal", "get_learning_goals", "update_learning_goal",
             "analyze_skill_gaps", "catalog_search", "recall_about_user",
+            "forget_about_user", "show_mindmap_preview",
         })
 
     # Pure small-talk fast-path: only for genuine greetings/thanks with NO substantive
@@ -1149,6 +1173,18 @@ def get_employee_tool_selection(
                 "sidst vi talte", "sidste gang", "vi talte om", "talte vi om", "tidligere samtale",
                 "husker du", "vi snakkede om", "snakkede vi om", "last time", "we discussed")):
             names.add("recall_about_user")
+        # "Glem at jeg …" / "det passer ikke længere": propose forgetting a memory
+        # (confirm card; nothing is deleted by the tool itself).
+        if _has_any(query, (
+                "glem ", "forget", "husk ikke", "stop med at huske", "passer ikke længere",
+                "passer ikke laengere", "slet hukommelse", "fjern hukommelse", "husker forkert",
+                "ikke længere rigtigt", "ikke laengere rigtigt")):
+            names.update({"forget_about_user", "recall_about_user"})
+        # Profile + budget + supplier agreements + completed courses in one read.
+        if _has_any(query, (
+                "leverandøraftale", "leverandoraftale", "aftaler har vi", "hvad har jeg til rådighed",
+                "hvad har jeg til raadighed", "hvad dækker", "hvad daekker", "mit budget")):
+            names.add("get_learning_context")
         if _has_any(query, ("anbefal til mig", "min profil", "læringssti", "laeringssti", "næste skridt", "naeste skridt",
                             "learning path", "min plan", "min sti", "min læringsplan", "min laeringsplan",
                             "gem stien", "gem planen", "vis min sti", "vis min plan", "hvor langt er jeg")):
@@ -1255,6 +1291,10 @@ def get_employee_tool_selection(
         pass
     if shown_count:
         names.update({"catalog_get_product", "catalog_compare_products"})
+    for _t in context_tools or ():
+        _m = _EMPLOYEE_META.get(_t)
+        if _m is not None and not _m.side_effect:
+            names.add(_t)
 
     # Reachability fallback: surface specialised tools for paraphrased / English /
     # typo'd queries the exact-keyword branches above missed. Additive + bounded;

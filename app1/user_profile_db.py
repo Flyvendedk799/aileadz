@@ -1073,14 +1073,19 @@ _MEMORY_CATEGORY_LABELS = {
 }
 
 
-def format_memories_for_ai(memories):
-    """Compact text block of memories for the system context. Empty -> ''."""
+def format_memories_for_ai(memories, include_ids=False):
+    """Compact text block of memories for the system context. Empty -> ''.
+
+    ``include_ids`` prefixes each line with ``[#id]`` (like the profile layer's
+    ids) so forget_about_user can target the exact memory the user means.
+    """
     if not memories:
         return ""
     lines = []
     for m in memories[:12]:
         cat = _MEMORY_CATEGORY_LABELS.get(m.get("category"), "Andet")
-        line = f"- [{cat}] {m.get('label')}"
+        ref = f"[#{m['id']}]" if include_ids and m.get("id") is not None else ""
+        line = f"- {ref}[{cat}] {m.get('label')}"
         if m.get("detail"):
             line += f": {m['detail']}"
         lines.append(line)

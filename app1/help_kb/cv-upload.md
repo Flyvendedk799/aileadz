@@ -15,7 +15,7 @@ Vælg "CV-portal" eller "Upload CV" i menuen. Knappen "Upload CV" findes også i
 1. Træk dit CV ind i portalen eller klik "Vælg CV-fil". Du kan også vælge "Indsæt tekst", indsætte teksten fra dit CV og klikke "Analysér".
 2. AI'en læser CV'et og laver forslag. Klik på et kort for at redigere det, og vælg "Acceptér" eller "Kassér". "Listevisning" viser alle forslag som en liste med "Vælg alle" og "Fravælg alle".
 3. Vælg, hvad der skal ske "Ved oplysninger der allerede findes": "Flet og behold det højeste niveau", "Erstat med CV-oplysningerne" eller "Behold de eksisterende".
-4. Klik "Gem til min profil". Bagefter kan du vælge "Gennemgå profil", "Udforsk Mind-Map" eller "Find næste læringstrin".
+4. Klik "Gem til min profil". Bagefter kan du vælge "Gennemgå profil", "Udforsk Mind-Map", "Find kurser til mine gab" eller "Gennemgå med AI Profiler". AI'en ved allerede, hvad CV'et har gemt, og spørger ikke efter det igen.
 
 ## Filer og begrænsninger
 - Filtyper: PDF, tekstfiler (fx .txt og .rtf) og billeder (fx .jpg og .png), som læses med tekstgenkendelse.

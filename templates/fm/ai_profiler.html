@@ -174,20 +174,22 @@
       track('profiler_start', { source: source || 'manual' });
       sendSeed(c && (c.pct || 0) > 0 ? SEED_CONTINUE : SEED_START);
     }
-    function refreshProfilerBanner() {
-      return fetch('/api/profile/mindmap', { credentials: 'same-origin' })
-        .then(function (r) { return r.json(); })
-        .then(function (d) {
-          setProfilerStats(d);
-          var c = d && d.completeness;
-          latestCompleteness = c;
-          if (c) window.onProfilerProgress(c);
-          updateCtaState();
-          return d;
-        })
-        .catch(function () {});
-    }
-    window.refreshProfilerBanner = refreshProfilerBanner;
+    // Painted from the shared workspace summary: chat.js fetches
+    // /api/profile/workspace once (debounced) and announces it as `fm:workspace`,
+    // so the banner, the chat status and the Mind-Map show the same numbers.
+    var firstWorkspace = null;
+    var firstWorkspaceSeen = new Promise(function (resolve) { firstWorkspace = resolve; });
+    document.addEventListener('fm:workspace', function (ev) {
+      var d = ev.detail || {};
+      setProfilerStats(d);
+      latestCompleteness = d.completeness || null;
+      if (latestCompleteness) window.onProfilerProgress(latestCompleteness);
+      updateCtaState();
+      firstWorkspace(d);
+    });
+    if (window.fmWorkspace && window.fmWorkspace.last) firstWorkspace(window.fmWorkspace.last);
+    // A workspace fetch that never answers (offline) must not block the opener.
+    setTimeout(function () { firstWorkspace(null); }, 4000);
 
     var threadEl = document.getElementById('thread');
     if (threadEl && window.MutationObserver) {
@@ -199,7 +201,7 @@
     // interview: if the profile is incomplete and the thread is empty, auto-ask
     // the first targeted question (once per browser session, so a navigation
     // back doesn't re-fire it).
-    refreshProfilerBanner().then(function (d) {
+    firstWorkspaceSeen.then(function (d) {
       var c = d && d.completeness;
       function maybeStart() {
         var thread = document.getElementById('thread');
@@ -213,7 +215,13 @@
         }
         updateCtaState();
       }
-      Promise.resolve(window.fmChatBoot).then(maybeStart, maybeStart);
+      // bootChat resolves true when it already sent something (a ?intent= from
+      // the profile page, or a handoff from the Mind-Map / CV portal): then the
+      // auto-opener must not fire on top of it.
+      Promise.resolve(window.fmChatBoot).then(function (sent) {
+        if (sent) { updateCtaState(); return; }
+        maybeStart();
+      }, maybeStart);
     });
 
     // "Start" / "Fortsæt" → ask the profiler to drive or resume the conversation.

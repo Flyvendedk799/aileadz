@@ -14,9 +14,8 @@ Sizes: **XS** under 1 h, **S** up to 1/2 day, **M** 1 to 3 days, **L** 1 to 2 we
 
 | ID | Item | Where | Size |
 |---|---|---|---|
-| R-2 | Mind-map memory **edit still uses `window.prompt`**; add uses the inline composer. Replace with the same composer. | `templates/fm/mind_map.html` (`onEdit`) | S |
 | R-3 | **Two Three.js versions** ship: 0.160 ES module (unpkg) on the CV portal, r128 UMD (cdnjs) on the mind map. Consolidate to one, lazy-loaded. | `templates/fm/cv_upload.html:12`, `templates/fm/mind_map.html:11-12` | M |
-| R-4 | **Completeness ring is styled in three places** (`.ring-big`, `.prof-ring`, `.ring-widget`; the mind map has its own). `profile-strength.js` shares only the message text, not the ring. Extract one ring component using `--fm-*` tokens. | `templates/fm/my_profile.html`, `templates/fm/ai_profiler.html`, `static/futurematch/assets/chat.css` | S |
+| R-4 | **Completeness ring is styled in three places** (`.ring-big`, `.prof-ring`, `.ring-widget`; the mind map has its own). Every ring now shows the same number (`weighted_pct`), and `profile-strength.js` shares the message text, but the ring markup and CSS are still separate (`.ring-widget` in `chat.css` has no markup left). Extract one ring component using `--fm-*` tokens. | `templates/fm/my_profile.html`, `templates/fm/ai_profiler.html`, `static/futurematch/assets/chat.css` | S |
 
 ## Analytics and dead code
 

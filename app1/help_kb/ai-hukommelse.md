@@ -8,10 +8,13 @@ audience: employee
 ## Kort fortalt
 AI-assistenten og AI Profiler kan gemme oplysninger om dig som "hukommelser", så rådgivningen bliver mere personlig. Du kan altid se dem i Mind-Map og slette dem, der er forkerte, eller som du ikke vil have gemt.
 
-## Slet en hukommelse i Mind-Map
+## Ret eller slet en hukommelse i Mind-Map
 1. Åbn Mind-Map (/mind-map).
 2. Klik på hukommelsen. Panelet viser, hvor mange gange AI'en har brugt den.
-3. Klik "Slet hukommelse" og bekræft.
+3. Klik "Redigér hukommelse" for at rette teksten, detaljen eller kategorien, og klik "Gem rettelse". Eller klik "Slet hukommelse" og bekræft.
+
+## Bed AI'en om at glemme noget
+Skriv fx "glem at jeg bor i Aarhus" i AI-assistenten eller AI Profiler. AI'en finder hukommelsen og viser et kort, hvor du bekræfter. Intet slettes, før du har bekræftet.
 
 ## Slet direkte i chatten
 - Når AI'en gemmer noget nyt, vises en besked med knappen "Forkert". Klik på den for at slette hukommelsen med det samme.

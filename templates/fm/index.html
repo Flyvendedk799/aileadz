@@ -109,7 +109,7 @@
         <!-- Hero -->
         <section class="dash-hero">
           <div class="hero-panel" data-reveal data-d="1">
-            <span class="fm-eyebrow"><i class="fa-solid fa-grip"></i> Futurematch workspace</span>
+            <span class="fm-eyebrow"><i class="fa-solid fa-grip"></i> Futurematch arbejdsrum</span>
             <h1 class="hero-title">Styr læring, mennesker og <em>indsigt</em> i én flade.</h1>
             <p class="hero-copy">Gå direkte til kursuskatalog, HR-workspace, rapporter og godkendelser — uden unødig navigation. Bygget til hurtige beslutninger.</p>
             <div class="hero-actions">
@@ -183,7 +183,7 @@
           </div>
           <label class="fm-search" style="width:280px">
             <i class="fa-solid fa-magnifying-glass"></i>
-            <input type="search" id="toolSearch" placeholder="Søg i værktøjer og rapporter" aria-label="Søg i værktøjer" />
+            <input type="search" id="toolSearch" placeholder="Søg i genveje" aria-label="Søg i genveje" />
           </label>
         </div>
         <section class="tool-grid">
@@ -208,6 +208,7 @@
             <div class="tool-foot"><span class="tag">BI</span><span class="tool-arrow"><i class="fa-solid fa-arrow-right"></i></span></div>
           </a>
         </section>
+        <p id="toolEmpty" hidden style="color:var(--fm-ink-3);font-size:13.5px;margin:4px 0 0">Ingen værktøjer matcher din søgning. Prøv et andet ord, eller ryd feltet.</p>
 
         <!-- Lower: activity + quick stats -->
         <div class="fm-section-head"><div><span class="fm-eyebrow"><i class="fa-solid fa-wave-square"></i> Lige nu</span><h2 class="fm-section-title">Seneste aktivitet</h2></div></div>
@@ -255,7 +256,14 @@
   var tools = Array.from(document.querySelectorAll('.tool-grid .tool'));
   box.addEventListener('input', function () {
     var q = box.value.trim().toLowerCase();
-    tools.forEach(function (t) { t.style.display = (!q || t.textContent.toLowerCase().indexOf(q) !== -1) ? '' : 'none'; });
+    var shown = 0;
+    tools.forEach(function (t) {
+      var ok = (!q || t.textContent.toLowerCase().indexOf(q) !== -1);
+      t.style.display = ok ? '' : 'none';
+      if (ok) shown += 1;
+    });
+    var empty = document.getElementById('toolEmpty');
+    if (empty) empty.hidden = shown > 0;
   });
 })();
 </script>

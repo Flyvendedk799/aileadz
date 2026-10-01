@@ -191,14 +191,15 @@ class LearningAnalyticsTests(unittest.TestCase):
         with mock.patch.object(app, "mysql", fake):
             html = client_as(app, "hr_manager").get("/hr/learning-analytics").get_data(as_text=True)
         self.assertIn("Medarbejdernes brug af AI-assistenten", html)
-        self.assertNotIn("Ingen AI-brug i perioden", html)
+        self.assertRegex(html, r'Samtaler</div><div class="kv tnum">40</div>')
 
 
 class DashboardTests(unittest.TestCase):
     def _html(self, extra=None):
         app = get_app()
         with patch_mysql(app, _responder(extra))[1], \
-                mock.patch("credit_service.chip", return_value={"scope": "company", "balance": 12345, "label": "12345"}):
+                mock.patch.dict(app.jinja_env.globals,
+                                {"credit_chip": lambda: {"scope": "company", "balance": 12345, "label": "12345"}}):
             return client_as(app, "hr_manager").get("/dashboard").get_data(as_text=True)
 
     def test_role_label_is_danish_and_not_the_raw_role_key(self):

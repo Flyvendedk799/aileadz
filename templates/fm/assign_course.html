@@ -23,18 +23,39 @@
       </select>
     </label>
     {% endif %}
+    <div class="fm-spread" style="margin-top:12px;flex-wrap:wrap;gap:8px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer"><input type="checkbox" id="selAll" aria-label="Vælg alle medarbejdere"> Vælg alle</label>
+      <span class="muted" style="font-size:12.5px"><span id="selCount">0</span> valgt</span>
+    </div>
     <div style="max-height:380px;overflow:auto;border:1px solid var(--fm-line);border-radius:10px;margin-top:10px">
       {% if employees %}
       <table class="fm-table" style="margin:0"><tbody>
         {% for e in employees %}
-        <tr><td style="width:36px"><input type="checkbox" name="employee_ids" value="{{ e.user_id }}" {{ 'checked' if e.user_id in preselected }}></td>
-            <td>{{ e.name }}</td><td class="muted">{{ e.department or '' }}</td></tr>
+        <tr><td style="width:36px"><input type="checkbox" class="emp-cb" id="emp_{{ e.user_id }}" name="employee_ids" value="{{ e.user_id }}" aria-label="Vælg {{ e.name }}" {{ 'checked' if e.user_id in preselected }}></td>
+            <td><label for="emp_{{ e.user_id }}" style="display:block;cursor:pointer">{{ e.name }}</label></td><td class="muted">{{ e.department or '' }}</td></tr>
         {% endfor %}
       </tbody></table>
       {% else %}<p class="muted" style="padding:16px;margin:0">Der er ingen aktive medarbejdere endnu.</p>{% endif %}
     </div>
-    <button class="btn btn-primary" type="submit" style="margin-top:14px"><i class="fa-solid fa-paper-plane"></i> Opret ordrer</button>
+    <div class="fm-flex fm-gap8" style="margin-top:14px;flex-wrap:wrap">
+      <button class="btn btn-primary" type="submit"><i class="fa-solid fa-paper-plane"></i> Opret ordrer</button>
+      <a class="btn btn-ghost" href="{{ url_for('hr_dashboard.pending_approvals') }}">Annuller</a>
+    </div>
   </form>
+  <script>
+  (function () {
+    var cbs = Array.prototype.slice.call(document.querySelectorAll('.emp-cb')), all = document.getElementById('selAll'), cnt = document.getElementById('selCount');
+    function upd() { var n = cbs.filter(function (c) { return c.checked; }).length; cnt.textContent = n; all.checked = n > 0 && n === cbs.length; }
+    all.addEventListener('change', function () { cbs.forEach(function (c) { c.checked = all.checked; }); upd(); });
+    cbs.forEach(function (c) { c.addEventListener('change', upd); });
+    document.querySelector('form.fm-card').addEventListener('submit', function (e) {
+      var n = cbs.filter(function (c) { return c.checked; }).length;
+      if (!n) { e.preventDefault(); alert('Vælg mindst én medarbejder.'); return; }
+      if (!confirm('Opret ' + n + ' ordre' + (n === 1 ? '' : 'r') + ' nu?')) e.preventDefault();
+    });
+    upd();
+  })();
+  </script>
   {% endif %}
 </div>
 {% endblock %}

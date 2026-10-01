@@ -280,7 +280,8 @@ def engagement_nudge():
                   AND user_id IN ({placeholders})""",
             tuple([company_id] + user_ids),
         )
-        valid = [r[0] for r in (cur.fetchall() or [])]
+        # The app-wide cursor class is DictCursor, so rows are dicts.
+        valid = [(r['user_id'] if isinstance(r, dict) else r[0]) for r in (cur.fetchall() or [])]
         for uid in valid:
             try:
                 from notification_service import insert_company_notification

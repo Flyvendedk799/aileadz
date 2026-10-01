@@ -57,17 +57,30 @@
   'compliance': ['/hr/compliance', 'Se compliance'],
   'ai_summary': ['/hr/learning-analytics', 'Se læringsanalyse']
 } %}
+{# Danish chip labels for insight types (never show the raw snake_case key). #}
+{% set _insight_label = {
+  'low_satisfaction': 'Lav tilfredshed',
+  'no_conversions': 'Ingen ordrer',
+  'engagement_drop': 'Fald i engagement',
+  'popular_unordered': 'Populært, ikke bestilt',
+  'trending_topic': 'Tendens',
+  'budget': 'Budget',
+  'budget_overrun': 'Budgetoverskridelse',
+  'skill_gap': 'Kompetencegab',
+  'compliance': 'Compliance',
+  'ai_summary': 'AI-resumé'
+} %}
 {% macro insight_card(ins) %}
 {% set _cta = _insight_cta.get(ins.insight_type or ins.type) %}
 {% set _href = ins.action_url or (_cta[0] if _cta else '') %}
 {% set _lbl = ins.action_label or (_cta[1] if _cta else 'Åbn') %}
 <div class="fm-insight">
-  <span class="status-pill {{ sev_class(ins.severity) }}">{{ ins.insight_type or ins.type or ins.severity or 'indsigt' }}</span>
+  <span class="status-pill {{ sev_class(ins.severity) }}">{{ _insight_label.get(ins.insight_type or ins.type) or 'Indsigt' }}</span>
   <div class="fm-insight-tx">
     <div class="fm-insight-t">{{ ins.title }}</div>
     <div class="fm-insight-b">{{ ins.body }}</div>
     {% set _when = ins.generated_at or ins.created_at %}
-    {% if _when %}<div class="fm-insight-m">{{ _when }}</div>{% endif %}
+    {% if _when %}<div class="fm-insight-m">{{ _when|dkdate(true) }}</div>{% endif %}
     {% if _href %}<a class="btn btn-ghost btn-sm fm-insight-cta" href="{{ _href }}" style="margin-top:8px">{{ _lbl }} <i class="fa-solid fa-arrow-right"></i></a>{% endif %}
   </div>
 </div>

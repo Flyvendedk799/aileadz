@@ -42,7 +42,7 @@
     <div>
       <div><strong>Hvordan klarer du dig vs. branchen?</strong> {{ data.overall_note }}</div>
       <div class="bm-anon">
-        Anonymitet (k-anonymitet): sammenligningstal vises kun, når mindst k={{ data.k }} virksomheder deler din branche — vi viser aldrig en enkelt konkurrents tal, kun anonyme gennemsnit på tværs af hele kohorten.
+        Anonymitet: sammenligningstal vises kun, når mindst {{ data.k }} virksomheder deler din branche — vi viser aldrig en enkelt konkurrents tal, kun anonyme gennemsnit på tværs af hele kohorten.
       </div>
     </div>
   </div>
@@ -54,7 +54,7 @@
     {% if data.safe %}
       <span class="fm-badge teal"><i class="fa-solid fa-circle-check"></i>&nbsp;Anonym benchmarking aktiv</span>
     {% else %}
-      <span class="fm-badge amber"><i class="fa-solid fa-lock"></i>&nbsp;Kohorten er for lille (k={{ data.k }})</span>
+      <span class="fm-badge amber"><i class="fa-solid fa-lock"></i>&nbsp;Branchen har for få virksomheder (kræver {{ data.k }})</span>
     {% endif %}
   </div>
   {% endif %}
@@ -104,14 +104,14 @@
           <div class="bm-val you">
             <div class="bm-cap">Din værdi</div>
             <div class="bm-num">
-              {% if m.unit == 'kr' %}{{ "{:,.0f}".format(m.your_value).replace(",", ".") }}{% elif m.unit == '%' %}{{ "%.1f"|format(m.your_value) }}{% else %}{{ "%.1f"|format(m.your_value) }}{% endif %}<span class="bm-unit">{{ m.unit }}</span>
+              {% if m.unit == 'kr' %}{{ m.your_value|dknum(0) }}{% elif m.unit == '%' %}{{ m.your_value|dknum(1) }}{% else %}{{ m.your_value|dknum(1) }}{% endif %}<span class="bm-unit">{{ m.unit }}</span>
             </div>
           </div>
           {% if m.safe and m.cohort_avg is not none %}
           <div class="bm-val cohort">
             <div class="bm-cap">Branchegennemsnit</div>
             <div class="bm-num">
-              {% if m.unit == 'kr' %}{{ "{:,.0f}".format(m.cohort_avg).replace(",", ".") }}{% elif m.unit == '%' %}{{ "%.1f"|format(m.cohort_avg) }}{% else %}{{ "%.1f"|format(m.cohort_avg) }}{% endif %}<span class="bm-unit">{{ m.unit }}</span>
+              {% if m.unit == 'kr' %}{{ m.cohort_avg|dknum(0) }}{% elif m.unit == '%' %}{{ m.cohort_avg|dknum(1) }}{% else %}{{ m.cohort_avg|dknum(1) }}{% endif %}<span class="bm-unit">{{ m.unit }}</span>
             </div>
           </div>
           {% endif %}
@@ -123,19 +123,19 @@
             <div class="bm-bar"><span style="width:{{ m.your_percentile|int }}%"></span></div>
             <div class="bm-pct">
               {% if m.your_percentile >= 50 %}
-                Du ligger i <b>top {{ (100 - m.your_percentile)|int }}%</b> af branchen.
+                {% if (100 - m.your_percentile) < 1 %}Du ligger i <b>toppen</b> af branchen.{% else %}Du ligger i <b>top {{ (100 - m.your_percentile)|int }}%</b> af branchen.{% endif %}
               {% else %}
                 Du ligger over <b>{{ m.your_percentile|int }}%</b> af branchen.
               {% endif %}
             </div>
           </div>
           {% if m.cohort_median is not none %}
-          <div class="bm-median"><i class="fa-solid fa-equals"></i>&nbsp;Median i branchen: {% if m.unit == 'kr' %}{{ "{:,.0f}".format(m.cohort_median).replace(",", ".") }}{% else %}{{ "%.1f"|format(m.cohort_median) }}{% endif %}{{ ' ' ~ m.unit if m.unit }}</div>
+          <div class="bm-median"><i class="fa-solid fa-equals"></i>&nbsp;Median i branchen: {% if m.unit == 'kr' %}{{ m.cohort_median|dknum(0) }}{% else %}{{ m.cohort_median|dknum(1) }}{% endif %}{{ ' ' ~ m.unit if m.unit }}</div>
           {% endif %}
         {% else %}
           <div class="bm-locked">
             <i class="fa-solid fa-user-shield"></i>
-            <span>{{ m.note or 'For få virksomheder i branchen til anonym benchmarking endnu (kræver mindst k=' ~ data.k ~ ').' }}</span>
+            <span>{{ m.note or 'For få virksomheder i branchen til anonym benchmarking endnu (kræver mindst ' ~ data.k ~ ' virksomheder).' }}</span>
           </div>
         {% endif %}
       </div>

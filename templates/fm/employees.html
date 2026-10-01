@@ -6,31 +6,32 @@
 {% block content %}
 <div class="fm-wrap">
 {% set active_hr_page = 'employees' %}{% include 'fm/_hr_subnav.html' %}
-<div class="fm-spread" style="margin-bottom:18px">
-  <div></div>
+<div class="fm-flex fm-gap8" style="margin-bottom:18px;justify-content:flex-end;flex-wrap:wrap">
   <a href="{{ url_for('bulk_invite.bulk_invite') }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-file-csv"></i> Inviter fra CSV</a>
   <a href="{{ url_for('companies.add_employee') }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tilføj medarbejder</a>
 </div>
 
 <div class="fm-table-wrap">
   <div class="fm-spread" style="padding:14px 18px;border-bottom:1px solid var(--fm-line);flex-wrap:wrap;gap:10px">
-    <label class="fm-search" style="width:260px"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="employeeSearch" placeholder="Navn eller email…" onkeyup="filterTable()"/></label>
+    <label class="fm-search" style="width:260px;max-width:100%"><i class="fa-solid fa-magnifying-glass"></i><input type="search" id="employeeSearch" placeholder="Navn eller email…" aria-label="Søg efter medarbejder" oninput="filterTable()"/></label>
     <div class="fm-flex fm-gap8" style="flex-wrap:wrap">
-      <select class="fm-select" id="deptFilter" style="width:auto;height:36px;font-size:13px" onchange="filterTable()">
+      <select class="fm-select" id="deptFilter" aria-label="Filtrér efter afdeling" style="width:auto;height:36px;font-size:13px" onchange="filterTable()">
         <option value="">Alle afdelinger</option>
         {% for dept in departments %}<option value="{{ dept }}">{{ dept }}</option>{% endfor %}
       </select>
-      <select class="fm-select" id="roleFilter" style="width:auto;height:36px;font-size:13px" onchange="filterTable()">
+      <select class="fm-select" id="roleFilter" aria-label="Filtrér efter rolle" style="width:auto;height:36px;font-size:13px" onchange="filterTable()">
         <option value="">Alle roller</option>
         <option value="employee">Medarbejder</option>
         <option value="department_head">Afdelingsleder</option>
         <option value="hr_manager">HR Manager</option>
         <option value="company_admin">Admin</option>
       </select>
-      <select class="fm-select" id="statusFilter" style="width:auto;height:36px;font-size:13px" onchange="filterTable()">
-        <option value="">Alle</option>
+      <select class="fm-select" id="statusFilter" aria-label="Filtrér efter status" style="width:auto;height:36px;font-size:13px" onchange="filterTable()">
+        <option value="">Alle statusser</option>
         <option value="active">Aktiv</option>
         <option value="inactive">Inaktiv</option>
+        <option value="on_leave">Orlov</option>
+        <option value="pending">Afventer</option>
       </select>
     </div>
   </div>
@@ -41,7 +42,7 @@
     <tbody>
       {% for emp in employees %}
       <tr class="emp-row" data-name="{{ emp.username|lower }}" data-email="{{ emp.email|lower }}" data-dept="{{ emp.department or '' }}" data-role="{{ emp.role }}" data-status="{{ emp.status }}">
-        <td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">{{ (emp.username[0]|upper) if emp.username else 'U' }}</span><div><div style="font-weight:650">{{ emp.username }}</div><div class="muted" style="font-size:11.5px">{{ emp.email }}</div></div></div></td>
+        <td><div class="fm-cell-user"><span class="ra" style="background:linear-gradient(140deg,var(--fm-indigo),var(--fm-primary))">{{ (emp.username[0]|upper) if emp.username else 'U' }}</span><div style="min-width:0"><a href="{{ url_for('hr_dashboard.employee_details', user_id=emp.user_id) }}" style="display:block;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:650;color:inherit;text-decoration:none" title="{{ emp.username }}">{{ emp.username }}</a><div class="muted" style="font-size:11.5px;max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ emp.email }}">{{ emp.email }}</div></div></div></td>
         <td>{% if emp.department %}<span class="fm-badge">{{ emp.department }}</span>{% else %}<span class="muted">—</span>{% endif %}</td>
         <td>
           {% if emp.role == 'company_admin' %}<span class="fm-badge clay">Admin</span>
@@ -57,11 +58,12 @@
           {% elif emp.status == 'inactive' %}<span class="status-pill" style="height:24px;font-size:11.5px">Inaktiv</span>
           {% else %}<span class="status-pill amber" style="height:24px;font-size:11.5px">Afventer</span>{% endif %}
         </td>
-        <td style="text-align:right"><a href="{{ url_for('companies.edit_employee', user_id=emp.user_id) }}" class="btn btn-ghost btn-sm">Rediger</a></td>
+        <td style="text-align:right;white-space:nowrap"><a href="{{ url_for('companies.edit_employee', user_id=emp.user_id) }}" class="btn btn-ghost btn-sm" aria-label="Rediger {{ emp.username }}">Rediger</a></td>
       </tr>
       {% endfor %}
     </tbody>
   </table>
+  <div id="noMatch" style="display:none;text-align:center;padding:28px 18px;color:var(--fm-ink-3)">Ingen medarbejdere matcher dine filtre. <a href="#" onclick="resetFilters();return false">Nulstil filtre</a></div>
   <div style="padding:12px 18px;font-size:12.5px;color:var(--fm-ink-3)" id="tableFooter">Viser {{ employees|length }} medarbejdere</div>
   {% else %}
   <div style="text-align:center;padding:48px 18px">
@@ -92,7 +94,13 @@ function filterTable() {
         if (show) visible++;
     });
     const footer = document.getElementById('tableFooter');
-    if (footer) footer.textContent = 'Viser ' + visible + ' medarbejdere';
+    if (footer) footer.textContent = 'Viser ' + visible + ' af ' + document.querySelectorAll('.emp-row').length + ' medarbejdere';
+    const none = document.getElementById('noMatch');
+    if (none) none.style.display = visible ? 'none' : 'block';
+}
+function resetFilters() {
+    ['employeeSearch', 'deptFilter', 'roleFilter', 'statusFilter'].forEach(id => { document.getElementById(id).value = ''; });
+    filterTable();
 }
 </script>
 {% endblock %}

@@ -8,6 +8,9 @@
 <style>
   .bill-note { font-size: 12.5px; color: var(--fm-ink-2); margin: 0 0 14px; }
   .bill-overdue { color: var(--fm-danger); font-weight: 650; }
+  .bill-tbl .fm-badge, .bill-tbl td.nw { white-space: nowrap; }
+  .fm-table.bill-tbl thead th, .fm-table.bill-tbl tbody td { padding-left: 9px; padding-right: 9px; }
+  .bill-tbl td:last-child, .bill-tbl th:last-child { position: sticky; right: 0; background: var(--fm-surface); }
 </style>
 {% endblock %}
 {% block content %}
@@ -61,7 +64,7 @@
 
   <div class="fm-table-wrap">
     <div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Ordrer &amp; fakturering</h3></div>
-    <table class="fm-table">
+    <table class="fm-table bill-tbl">
       <thead><tr>
         {% if can_edit %}<th style="width:34px"><input type="checkbox" id="selectAll" onchange="toggleAll(this)" aria-label="Vælg alle"></th>{% endif %}
         <th>Ordre</th><th>Kursus</th><th>Medarbejder</th><th>Pris</th><th>Ordrestatus</th><th>Fakturering</th><th>Fakturanr.</th><th>Forfald</th><th></th>
@@ -69,17 +72,17 @@
       <tbody>
       {% for o in orders %}
         <tr>
-          {% if can_edit %}<td><input type="checkbox" class="order-check" value="{{ o.order_id }}" onchange="updateBulkButtons()"></td>{% endif %}
+          {% if can_edit %}<td><input type="checkbox" class="order-check" value="{{ o.order_id }}" onchange="updateBulkButtons()" aria-label="Vælg ordre {{ o.order_id[:8] }}"></td>{% endif %}
           <td class="mono" style="font-weight:650"><a href="{{ url_for('hr_dashboard.company_order_details', order_id=o.order_id) }}">{{ o.order_id[:8] }}</a></td>
-          <td style="max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ o.product_title }}">{{ o.product_title }}</td>
+          <td style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="{{ o.product_title }}">{{ o.product_title }}</td>
           <td>{{ o.user_name or o.username }}<div class="muted" style="font-size:11.5px">{{ o.department or '' }}</div></td>
-          <td class="mono" style="font-weight:650">{{ "{:,.0f}".format(o.price or 0).replace(",", ".") }} kr</td>
+          <td class="mono nw" style="font-weight:650">{{ "{:,.0f}".format(o.price or 0).replace(",", ".") }} kr</td>
           <td><span class="fm-badge {{ order_status_tone(o.status) }} dot">{{ order_status_label(o.status, short=True) }}</span></td>
           <td><span class="fm-badge {{ order_billing_tone(o.billing_status) }} dot">{{ order_billing_label(o.billing_status) }}</span></td>
           <td class="muted"><small>{{ o.invoice_number or '-' }}</small></td>
-          <td class="{{ 'bill-overdue' if o.is_overdue }}"><small>{{ o.invoice_due_date or '-' }}{% if o.is_overdue %} · forfalden{% endif %}</small></td>
+          <td class="nw {{ 'bill-overdue' if o.is_overdue }}"><small>{{ o.invoice_due_date or '-' }}{% if o.is_overdue %} · forfalden{% endif %}</small></td>
           <td style="text-align:right">{% if can_edit %}<div class="fm-flex fm-gap8" style="justify-content:flex-end">
-            <button class="btn btn-ghost btn-sm" title="Rediger fakturering" onclick='openBillingModal({{ o.order_id|tojson }}, {{ o.billing_status|tojson }}, {{ (o.invoice_number or "")|tojson }}, {{ (o.payment_reference or "")|tojson }}, {{ (o.billing_note or "")|tojson }})'><i class="fa-solid fa-pen"></i></button>
+            <button class="btn btn-ghost btn-sm" title="Rediger fakturering" aria-label="Rediger fakturering for ordre {{ o.order_id[:8] }}" onclick='openBillingModal({{ o.order_id|tojson }}, {{ o.billing_status|tojson }}, {{ (o.invoice_number or "")|tojson }}, {{ (o.payment_reference or "")|tojson }}, {{ (o.billing_note or "")|tojson }})'><i class="fa-solid fa-pen"></i></button>
           </div>{% endif %}</td>
         </tr>
       {% else %}
@@ -107,9 +110,9 @@
       <label class="fm-field"><span>Betalt den</span><input type="date" class="fm-input" id="bmPaymentDate"></label>
       <label class="fm-field"><span>Betalingsreference</span><input type="text" class="fm-input" id="bmPaymentRef"></label>
     </div>
-    <label class="fm-field"><span id="bmNoteLabel">Note</span><textarea class="fm-input" id="bmNote" rows="2"></textarea></label>
+    <label class="fm-field"><span id="bmNoteLabel">Note (kræves ved kreditering)</span><textarea class="fm-input" id="bmNote" rows="2"></textarea></label>
     <div class="fm-flex fm-gap8" style="justify-content:space-between;margin-top:8px;flex-wrap:wrap">
-      <div class="fm-flex fm-gap8" id="bmActions"></div>
+      <div class="fm-flex fm-gap8" id="bmActions" style="flex-wrap:wrap"></div>
       <button class="btn btn-ghost btn-sm" onclick="closeModal('billingModal')">Luk</button>
     </div>
   </div>
@@ -118,12 +121,19 @@
 {% endblock %}
 
 {% block extra_scripts %}
+{# `set` in the content block is not visible here (blocks have separate scopes), so resolve the URLs again. #}
+{% set url_update = update_url_tmpl or url_for('hr_dashboard.update_billing', order_id='ORDER_ID') %}
+{% set url_bulk = bulk_url or url_for('hr_dashboard.bulk_billing_update') %}
 <script>
 const UPDATE_TMPL = {{ url_update|tojson }};
 const BULK_URL = {{ url_bulk|tojson }};
 const NEXT = { not_invoiced: ['invoiced'], invoiced: ['paid', 'credited', 'not_invoiced'], paid: ['credited'], credited: [] };
 const LABEL = { invoiced: 'Marker faktureret', paid: 'Bekræft betaling modtaget', credited: 'Krediter', not_invoiced: 'Fortryd fakturering' };
+const STATUS_LABEL = { not_invoiced: 'Ikke faktureret', invoiced: 'Faktureret', paid: 'Betalt', credited: 'Krediteret' };
 function closeModal(id){ document.getElementById(id).style.display='none'; }
+(function(){ const m = document.getElementById('billingModal'); if (!m) return;
+  m.addEventListener('click', function(e){ if (e.target === m) closeModal('billingModal'); });
+  document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeModal('billingModal'); }); })();
 function toggleAll(el){ document.querySelectorAll('.order-check').forEach(cb => { cb.checked = el.checked; }); updateBulkButtons(); }
 function updateBulkButtons(){
   const n = document.querySelectorAll('.order-check:checked').length;
@@ -159,12 +169,13 @@ function openBillingModal(orderId, status, invoiceNr, payRef, note){
     b.textContent = LABEL[t]; b.onclick = () => save(t); box.appendChild(b);
   });
   if (!(NEXT[status] || []).length) document.getElementById('bmHint').textContent = 'Ordren er krediteret. Der er ikke flere handlinger.';
-  else document.getElementById('bmHint').textContent = 'Nuværende status: ' + status;
+  else document.getElementById('bmHint').textContent = 'Nuværende status: ' + (STATUS_LABEL[status] || status);
   document.getElementById('bmPaidFields').style.display = status === 'invoiced' ? '' : 'none';
   document.getElementById('bmInvoiceFields').style.display = status === 'not_invoiced' ? '' : 'none';
   document.getElementById('billingModal').style.display = 'flex';
 }
 function save(target){
+  if (target === 'credited' && !confirm('Krediter ordren? Beløbet markeres som krediteret.')) return;
   const id = document.getElementById('bmOrder').value;
   const v = (i) => document.getElementById(i).value || undefined;
   post(UPDATE_TMPL.replace('ORDER_ID', id), {

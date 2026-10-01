@@ -61,7 +61,8 @@
 .split { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
 .split.even { grid-template-columns: 1fr 1fr; }
 .split.wide-r { grid-template-columns: 1fr 1.6fr; }
-.stack { display: grid; gap: 16px; }
+.split > * { min-width: 0; } /* a wide table in one column must scroll, not stretch the whole grid */
+.stack { display: grid; gap: 16px; grid-template-columns: minmax(0, 1fr); }
 
 /* info / definition list */
 .info-list .kv { display: flex; justify-content: space-between; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--fm-line); }
@@ -303,3 +304,10 @@ body:has(.fm-aip) .fm-foot{padding-right:150px}
 .fm-aip-msg.bot{white-space:normal}
 .fm-aip-hist{display:flex;gap:6px;align-items:center}
 .fm-aip-hist button{background:none;border:none;color:#fff;cursor:pointer;font-size:13px;opacity:.9}
+/* Assistant output: long words and wide tables scroll/wrap inside the bubble instead of widening the chat. */
+.fm-md{overflow-wrap:anywhere}
+.fm-md table{display:block;max-width:100%;overflow-x:auto}
+.fm-aip-body{overflow-x:hidden}
+.fm-aip-msg{overflow-wrap:anywhere;min-width:0}
+.fm-confirm-card{max-width:100%}
+.fm-feedback button{min-width:32px;min-height:32px}

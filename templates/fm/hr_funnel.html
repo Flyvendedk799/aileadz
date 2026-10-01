@@ -1,7 +1,7 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
 {% block title %}Futurematch{% endblock %}
-{% block topbar_title %}Conversion-funnel{% endblock %}
+{% block topbar_title %}Konverteringsfunnel{% endblock %}
 {% block topbar_sub %}Fra chatbot-samtale til kursusordre i din virksomhed (seneste {{ days }} dage).{% endblock %}
 {% import 'fm/_macros.html' as ui %}
 {% block extra_head %}
@@ -88,23 +88,23 @@
       </div>
       <div class="fn-step">
         <div class="fn-label">Søgninger<small>Udløste en kursussøgning</small></div>
-        <div class="fn-track"><div class="fn-fill s2" style="width:{{ ((f.searches / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.searches|default(0) }}<span class="fn-pct">{{ f.rate_search|default(0) }}%</span></div></div>
+        <div class="fn-track"><div class="fn-fill s2" style="width:{{ ((f.searches / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.searches|default(0) }}<span class="fn-pct">{{ f.rate_search|default(0)|dknum }}%</span></div></div>
       </div>
       <div class="fn-step">
         <div class="fn-label">Produkter vist<small>Chatbotten anbefalede kurser</small></div>
-        <div class="fn-track"><div class="fn-fill s3" style="width:{{ ((f.shown / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.shown|default(0) }}<span class="fn-pct">{{ f.rate_shown|default(0) }}% af søgninger</span></div></div>
+        <div class="fn-track"><div class="fn-fill s3" style="width:{{ ((f.shown / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.shown|default(0) }}<span class="fn-pct">{{ f.rate_shown|default(0)|dknum }}% af søgninger</span></div></div>
       </div>
       <div class="fn-step">
         <div class="fn-label">Ordrer<small>Endte i en ordre</small></div>
-        <div class="fn-track"><div class="fn-fill s4" style="width:{{ ((f.ordered / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.ordered|default(0) }}<span class="fn-pct">{{ f.rate_ordered|default(0) }}% af visninger</span></div></div>
+        <div class="fn-track"><div class="fn-fill s4" style="width:{{ ((f.ordered / base) * 100)|round(1) if f.sessions else 0 }}%">{{ f.ordered|default(0) }}<span class="fn-pct">{{ f.rate_ordered|default(0)|dknum }}% af visninger</span></div></div>
       </div>
     </div>
 
     <div class="fn-rate-row">
-      <div class="fn-rate"><div class="r-l">Samtale → Søgning</div><div class="r-v tnum">{{ f.rate_search|default(0) }}%</div></div>
-      <div class="fn-rate"><div class="r-l">Søgning → Visning</div><div class="r-v tnum">{{ f.rate_shown|default(0) }}%</div></div>
-      <div class="fn-rate"><div class="r-l">Visning → Ordre</div><div class="r-v tnum">{{ f.rate_ordered|default(0) }}%</div></div>
-      <div class="fn-rate"><div class="r-l">Samlet conversion</div><div class="r-v tnum" style="color:var(--fm-primary)">{{ f.overall_rate|default(0) }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Samtale → Søgning</div><div class="r-v tnum">{{ f.rate_search|default(0)|dknum }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Søgning → Visning</div><div class="r-v tnum">{{ f.rate_shown|default(0)|dknum }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Visning → Ordre</div><div class="r-v tnum">{{ f.rate_ordered|default(0)|dknum }}%</div></div>
+      <div class="fn-rate"><div class="r-l">Samlet konvertering</div><div class="r-v tnum" style="color:var(--fm-primary)">{{ f.overall_rate|default(0)|dknum }}%</div></div>
     </div>
   </div>
 

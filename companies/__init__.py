@@ -422,9 +422,9 @@ def create_companies_blueprint():
             
             # Get departments for filtering
             cur.execute("""
-                SELECT DISTINCT department 
-                FROM company_users 
-                WHERE company_id = %s AND status = 'active'
+                SELECT DISTINCT department
+                FROM company_users
+                WHERE company_id = %s AND department IS NOT NULL AND department != ''
                 ORDER BY department
             """, (company['id'],))
             departments = [row['department'] for row in cur.fetchall()]
@@ -537,7 +537,7 @@ def create_companies_blueprint():
                     for _e in _pw_errors:
                         flash(_e, "danger")
                     return render_template('fm/add_employee.html', company=company,
-                                           departments=_load_departments(),
+                                           departments=_load_departments(), managers=_load_managers(),
                                            seat_status=seat_status,
                                            active_hr_page='employees')
             invite_new_user = False
@@ -724,6 +724,10 @@ def create_companies_blueprint():
                 employee_id = request.form.get('employee_id', employee['employee_id'])
                 employment_type = request.form.get('employment_type', employee['employment_type'])
                 status = request.form.get('status', employee['status'])
+                # Only a company admin may grant or take away the admin role.
+                if (session.get('company_role') != 'company_admin' and session.get('role') != 'admin'
+                        and role != employee['role'] and 'company_admin' in (role, employee['role'])):
+                    role = employee['role']
 
                 # Manager-of-record: must be another active user in THIS company
                 # (company-scoped to prevent cross-tenant assignment), and never

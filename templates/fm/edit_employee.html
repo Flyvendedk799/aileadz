@@ -16,7 +16,7 @@
         <div class="fm-field"><label>Fulde navn</label><input type="text" class="fm-input" value="{{ employee.full_name or employee.username or '' }}" disabled><div style="font-size:12px;color:var(--fm-ink-3);margin-top:3px">Navn kan kun ændres af brugeren selv.</div></div>
         <div class="fm-field"><label>Email</label><input type="email" class="fm-input" value="{{ employee.email or '' }}" disabled></div>
         <div class="fm-field"><label>Medarbejder-ID</label><input type="text" class="fm-input" name="employee_id" value="{{ employee.employee_id or '' }}"></div>
-        <div class="fm-field"><label>Ansættelsesdato</label><input type="text" class="fm-input" value="{{ employee.hire_date or 'Ikke angivet' }}" disabled></div>
+        <div class="fm-field"><label>Ansættelsesdato</label><input type="text" class="fm-input" value="{{ employee.hire_date.strftime('%d/%m/%Y') if employee.hire_date and employee.hire_date.strftime else (employee.hire_date or 'Ikke angivet') }}" disabled></div>
       </div>
       <div class="stack">
         <div class="fm-eyebrow clay"><i class="fa-solid fa-briefcase"></i> Arbejdsinformation</div>
@@ -24,6 +24,7 @@
           <select class="fm-select" name="department" required>
             <option value="">Vælg afdeling</option>
             {% for dept in departments %}<option value="{{ dept }}" {% if employee.department == dept %}selected{% endif %}>{{ dept }}</option>{% endfor %}
+            {% if employee.department and employee.department not in departments %}<option value="{{ employee.department }}" selected>{{ employee.department }}</option>{% endif %}
           </select>
         </div>
         <div class="fm-field"><label>Jobtitel</label><input type="text" class="fm-input" name="job_title" value="{{ employee.job_title or '' }}"></div>
@@ -39,7 +40,8 @@
             <option value="employee" {% if employee.role == 'employee' %}selected{% endif %}>Medarbejder</option>
             <option value="department_head" {% if employee.role == 'department_head' %}selected{% endif %}>Afdelingsleder</option>
             <option value="hr_manager" {% if employee.role == 'hr_manager' %}selected{% endif %}>HR Manager</option>
-            {% if session.get('company_role') == 'company_admin' %}<option value="company_admin" {% if employee.role == 'company_admin' %}selected{% endif %}>Virksomhedsadmin</option>{% endif %}
+            {% if session.get('company_role') == 'company_admin' or employee.role == 'company_admin' %}<option value="company_admin" {% if employee.role == 'company_admin' %}selected{% endif %}>Admin</option>{% endif %}
+            {% if employee.role not in ('employee', 'department_head', 'hr_manager', 'company_admin') and employee.role %}<option value="{{ employee.role }}" selected>{{ employee.role }}</option>{% endif %}
           </select>
         </div>
         <div class="form-grid">
@@ -56,6 +58,7 @@
               <option value="active" {% if employee.status == 'active' %}selected{% endif %}>Aktiv</option>
               <option value="inactive" {% if employee.status == 'inactive' %}selected{% endif %}>Inaktiv</option>
               <option value="on_leave" {% if employee.status == 'on_leave' %}selected{% endif %}>Orlov</option>
+              {% if employee.status == 'pending' %}<option value="pending" selected>Afventer</option>{% endif %}
             </select>
           </div>
         </div>
@@ -68,7 +71,7 @@
       <div class="kpi-row">
         <div class="kpi-tile"><div class="kl">Chatbot-henvendelser</div><div class="kv tnum">{{ employee.total_chatbot_queries or 0 }}</div></div>
         <div class="kpi-tile"><div class="kl">Kurser gennemført</div><div class="kv tnum">{{ employee.total_courses_completed or 0 }}</div></div>
-        <div class="kpi-tile"><div class="kl">Seneste aktivitet</div><div class="kv" style="font-size:15px">{{ employee.last_chatbot_interaction or 'Ingen' }}</div></div>
+        <div class="kpi-tile"><div class="kl">Seneste aktivitet</div><div class="kv" style="font-size:15px">{{ employee.last_chatbot_interaction.strftime('%d/%m/%Y') if employee.last_chatbot_interaction and employee.last_chatbot_interaction.strftime else (employee.last_chatbot_interaction or 'Ingen') }}</div></div>
       </div>
     </div>
     {% endif %}

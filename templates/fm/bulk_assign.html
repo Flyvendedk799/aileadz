@@ -22,7 +22,7 @@
   </div>
   {% else %}
   <form method="POST" action="{{ url_for('hr_dashboard.bulk_assign_path') }}" onsubmit="return validateAssign()">
-    <div class="fm-grid" style="grid-template-columns:1fr 1fr;gap:18px;align-items:start">
+    <div class="fm-grid" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:18px;align-items:start">
 
       <!-- Path + options -->
       <div class="fm-card" style="padding:20px">
@@ -47,7 +47,7 @@
 
       <!-- Employees -->
       <div class="fm-card" style="padding:20px">
-        <div class="fm-spread" style="margin-bottom:12px">
+        <div class="fm-spread" style="margin-bottom:12px;flex-wrap:wrap;gap:10px">
           <h3 style="font-size:15px;font-weight:700"><i class="fa-solid fa-users" style="color:var(--fm-primary);margin-right:6px"></i>Medarbejdere</h3>
           <div class="fm-flex fm-gap8">
             <select id="deptFilter" class="fm-input" style="height:32px;padding:2px 8px;font-size:12px" onchange="filterDept()">
@@ -63,10 +63,12 @@
             <tbody>
               {% for e in employees %}
               <tr class="emp-row" data-dept="{{ e.department or '' }}">
-                <td style="width:36px"><input type="checkbox" name="employee_ids[]" value="{{ e.user_id }}" class="emp-cb" onchange="updateCount()"></td>
+                <td style="width:36px"><input type="checkbox" id="emp_{{ e.user_id }}" name="employee_ids[]" value="{{ e.user_id }}" class="emp-cb" onchange="updateCount()" aria-label="Vælg {{ e.name }}"></td>
                 <td>
+                  <label for="emp_{{ e.user_id }}" style="display:block;cursor:pointer">
                   <div style="font-weight:600">{{ e.name }}</div>
                   <div style="font-size:11px;color:var(--fm-ink-3)">{{ e.department or '—' }}{% if e.job_title %} · {{ e.job_title }}{% endif %}</div>
+                  </label>
                 </td>
               </tr>
               {% else %}

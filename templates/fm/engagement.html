@@ -16,9 +16,9 @@
     position: fixed; right: 18px; bottom: 18px; z-index: 9999;
     display: none; align-items: center; gap: 10px;
     padding: 12px 16px; border-radius: 12px; max-width: 360px;
-    background: var(--fm-surface-1); border: 1px solid var(--fm-line);
+    background: var(--fm-surface); border: 1px solid var(--fm-line);
     box-shadow: 0 18px 40px rgba(15,23,42,.18); font-size: 13.5px; font-weight: 600;
-    color: var(--fm-ink-1);
+    color: var(--fm-ink);
   }
   #engToast.show { display: flex; }
   #engToast.ok i { color: var(--fm-success); }
@@ -32,7 +32,7 @@
   }
   .eng-switch .eng-track::after {
     content: ''; position: absolute; top: 2px; left: 2px; width: 18px; height: 18px;
-    border-radius: 50%; background: var(--fm-surface-1); box-shadow: 0 1px 3px rgba(15,23,42,.25);
+    border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(15,23,42,.25);
     transition: transform .15s ease;
   }
   .eng-switch input:checked + .eng-track { background: var(--fm-primary); }
@@ -66,7 +66,7 @@
               (inact.get('total') | default(inact_list | length)) if not inact_err else '—',
               ('ingen aktivitet i ' ~ ns_threshold ~ '+ dage'), 'fa-user-clock', 'indigo') }}
     {{ ui.kpi('Til opfølgning',
-              ((ns_list | length) + (inact_list | length)) if not (ns_err and inact_err) else '—',
+              ((ns_list | map(attribute='user_id') | list) + (inact_list | map(attribute='user_id') | list)) | unique | list | length if not (ns_err and inact_err) else '—',
               'kan modtage en påmindelse', 'fa-hand-holding-heart', 'green') }}
   </div>
 
@@ -131,7 +131,7 @@
     </div>
     <div class="fm-card-body" style="padding-top:6px">
       {% if ns_err %}
-        {{ ui.empty('Kunne ikke hente ikke-startere', ns_err, 'fa-triangle-exclamation') }}
+        {{ ui.empty('Kunne ikke hente ikke-startere', 'Prøv at genindlæse siden om lidt. Fortsætter fejlen, så kontakt support.', 'fa-triangle-exclamation') }}
       {% elif not ns_list %}
         {{ ui.empty('Alle er kommet i gang', 'Ingen medarbejdere har uigangsatte kurser lige nu.', 'fa-circle-check') }}
       {% else %}
@@ -164,7 +164,7 @@
               <td style="font-weight:650">{{ ename }}{% if e.get('username') and e.get('full_name') %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ e.get('username') }}</div>{% endif %}</td>
               <td><span class="fm-badge">{{ e.get('department') or '—' }}</span></td>
               <td class="tnum">{{ courses | length }}</td>
-              <td style="font-size:12px;color:var(--fm-ink-2)">{{ (deadlines | sort | first) if deadlines else '—' }}</td>
+              <td style="font-size:12px;color:var(--fm-ink-2)">{{ (deadlines | sort | first | dkdate) if deadlines else '—' }}</td>
             </tr>
             {% endfor %}
           </tbody>
@@ -195,7 +195,7 @@
     </div>
     <div class="fm-card-body" style="padding-top:6px">
       {% if inact_err %}
-        {{ ui.empty('Kunne ikke hente inaktive medarbejdere', inact_err, 'fa-triangle-exclamation') }}
+        {{ ui.empty('Kunne ikke hente inaktive medarbejdere', 'Prøv at genindlæse siden om lidt. Fortsætter fejlen, så kontakt support.', 'fa-triangle-exclamation') }}
       {% elif not inact_list %}
         {{ ui.empty('Ingen inaktive medarbejdere', 'Alle har været aktive inden for tærsklen.', 'fa-circle-check') }}
       {% else %}
@@ -226,7 +226,7 @@
               </td>
               <td style="font-weight:650">{{ ename }}{% if e.get('username') and e.get('full_name') %}<div style="font-size:11px;color:var(--fm-ink-3);font-weight:400">{{ e.get('username') }}</div>{% endif %}</td>
               <td><span class="fm-badge">{{ e.get('department') or '—' }}</span></td>
-              <td style="font-size:12px;color:var(--fm-ink-2)">{{ e.get('last_seen') or 'Aldrig' }}</td>
+              <td style="font-size:12px;color:var(--fm-ink-2)">{{ (e.get('last_seen') | dkdate) if e.get('last_seen') else 'Aldrig' }}</td>
               <td>
                 {% if di is not none %}
                 <span class="fm-badge {{ 'red' if di >= 60 else 'amber' }}">{{ di }} dage</span>
@@ -322,6 +322,7 @@
     var checked = rowChecks(table).filter(function (c) { return c.checked && !c.disabled; });
     var ids = checked.map(function (c) { return parseInt(c.value, 10); }).filter(function (n) { return !isNaN(n); });
     if (!ids.length) { toast('Vælg mindst én medarbejder.', false); return; }
+    if (!window.confirm('Send en påmindelse til ' + ids.length + ' medarbejder' + (ids.length === 1 ? '' : 'e') + '?')) return;
 
     var original = btn.innerHTML;
     btn.disabled = true;

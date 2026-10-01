@@ -7,6 +7,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import MySQLdb.cursors
 from datetime import datetime, timedelta, date
 import json
+import re
 from collections import defaultdict
 import csv
 import io
@@ -1095,12 +1096,15 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet'}), 404
 
         data = request.get_json() if request.is_json else request.form
-        department = data.get('department', '').strip()
-        annual_budget = float(data.get('annual_budget', 0))
+        department = (data.get('department') or '').strip()
         import datetime as _dt
-        fiscal_year = int(data.get('fiscal_year', _dt.datetime.now().year))
+        try:
+            annual_budget = float(data.get('annual_budget', 0))
+            fiscal_year = int(data.get('fiscal_year', _dt.datetime.now().year))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Ugyldige data'}), 400
 
-        if not department or annual_budget < 0:
+        if not department or not (0 <= annual_budget < 1e12):
             return jsonify({'success': False, 'message': 'Ugyldige data'}), 400
 
         try:
@@ -1115,7 +1119,7 @@ def create_hr_dashboard_blueprint():
             return jsonify({'success': True, 'message': f'Budget for {department} gemt.'})
         except Exception as e:
             current_app.logger.error(f"Error saving budget: {e}")
-            return jsonify({'success': False, 'message': str(e)}), 500
+            return jsonify({'success': False, 'message': 'Budgettet kunne ikke gemmes. Prøv igen om lidt.'}), 500
 
     # ── Phase 3: Smart Analytics Routes ──
 
@@ -1151,6 +1155,12 @@ def create_hr_dashboard_blueprint():
         try:
             from insights_engine import get_skill_gap_analysis, get_skill_growth_trend
             heatmap = get_skill_gap_analysis(current_app._get_current_object(), company['id'])
+            # The engine stores the k-anonymity note under a '_anon_note' key
+            # next to the department buckets; lift it out so the loops below
+            # (and the template) only ever see {department: {skill: data}}.
+            heatmap_anon_note = None
+            if isinstance(heatmap, dict):
+                heatmap_anon_note = heatmap.pop('_anon_note', None)
 
             # Skill-uplift loop (plan #19): company-wide monthly average measured
             # skill level over time — direct evidence the level moved, not just
@@ -1297,6 +1307,7 @@ def create_hr_dashboard_blueprint():
                                    all_skill_names=all_skill_names,
                                    skill_dashboard=skill_dashboard,
                                    growth_trend=growth_trend,
+                                   heatmap_anon_note=heatmap_anon_note,
                                    total_gaps=total_gaps,
                                    critical_gaps=critical_gaps,
                                    met_targets=met_targets,
@@ -1311,29 +1322,46 @@ def create_hr_dashboard_blueprint():
         """Add or update a skill target"""
         auth_check = require_hr_manager_access(cap='hr.manage')
         if auth_check:
-            return jsonify({'success': False}), 401
+            return jsonify({'success': False, 'message': 'Du har ikke adgang til at ændre kompetencemål.'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
         data = request.get_json() if request.is_json else request.form
-        dept = data.get('department', '').strip()
-        skill = data.get('skill_name', '').strip()
-        target = int(data.get('target_level', 3))
+        dept = (data.get('department') or '').strip()
+        skill = (data.get('skill_name') or '').strip()
+        try:
+            target = max(1, min(5, int(data.get('target_level', 3))))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Målniveau skal være et tal mellem 1 og 5.'}), 400
         priority = data.get('priority', 'medium')
+        if priority not in ('low', 'medium', 'high'):
+            priority = 'medium'
         if not skill:
             return jsonify({'success': False, 'message': 'Angiv et kompetencenavn'}), 400
         try:
             cur = current_app.mysql.connection.cursor()
-            cur.execute("""
-                INSERT INTO company_skill_targets (company_id, department, skill_name, target_level, priority)
-                VALUES (%s, %s, %s, %s, %s)
-                ON DUPLICATE KEY UPDATE target_level = %s, priority = %s
-            """, (company['id'], dept or None, skill, target, priority, target, priority))
+            updated = 0
+            if not dept:
+                # "Alle afdelinger" is stored as NULL, and MySQL never treats NULLs
+                # as equal in the unique key, so ON DUPLICATE KEY cannot dedupe it:
+                # update the existing company-wide target explicitly.
+                cur.execute("""
+                    UPDATE company_skill_targets SET target_level = %s, priority = %s
+                    WHERE company_id = %s AND department IS NULL AND skill_name = %s
+                """, (target, priority, company['id'], skill))
+                updated = cur.rowcount or 0
+            if not updated:
+                cur.execute("""
+                    INSERT INTO company_skill_targets (company_id, department, skill_name, target_level, priority)
+                    VALUES (%s, %s, %s, %s, %s)
+                    ON DUPLICATE KEY UPDATE target_level = %s, priority = %s
+                """, (company['id'], dept or None, skill, target, priority, target, priority))
             current_app.mysql.connection.commit()
             cur.close()
             return jsonify({'success': True, 'message': f'Kompetencemål for "{skill}" gemt.'})
         except Exception as e:
-            return jsonify({'success': False, 'message': str(e)}), 500
+            current_app.logger.error(f"save_skill_target error: {e}")
+            return jsonify({'success': False, 'message': 'Målet kunne ikke gemmes. Prøv igen om lidt.'}), 500
 
     @hr_dashboard_bp.route('/skill-targets/<int:target_id>/delete', methods=['POST'])
     def delete_skill_target(target_id):
@@ -1362,15 +1390,18 @@ def create_hr_dashboard_blueprint():
         """Assign or update a skill for one or more employees"""
         auth_check = require_hr_access()
         if auth_check:
-            return jsonify({'success': False}), 401
+            return jsonify({'success': False, 'message': 'Du har ikke adgang til denne handling.'}), 401
         company = get_company_context()
         if not company:
-            return jsonify({'success': False}), 404
+            return jsonify({'success': False, 'message': 'Virksomheden blev ikke fundet.'}), 404
         data = request.get_json() if request.is_json else {}
-        skill_name = data.get('skill_name', '').strip()
-        level = int(data.get('level', 2))
+        skill_name = (data.get('skill_name') or '').strip()
+        try:
+            level = max(1, min(5, int(data.get('level', 2))))
+        except (TypeError, ValueError):
+            return jsonify({'success': False, 'message': 'Niveau skal være et tal mellem 1 og 5.'}), 400
         employee_ids = data.get('employee_ids', [])
-        department = data.get('department', '').strip()
+        department = (data.get('department') or '').strip()
 
         if not skill_name:
             return jsonify({'success': False, 'message': 'Kompetencenavn påkrævet'}), 400
@@ -1383,7 +1414,8 @@ def create_hr_dashboard_blueprint():
                     SELECT user_id FROM company_users
                     WHERE company_id = %s AND department = %s AND status = 'active'
                 """, (company['id'], department))
-                employee_ids = [r[0] for r in cur.fetchall()]
+                # The app-wide cursor class is DictCursor, so rows are dicts.
+                employee_ids = [(r['user_id'] if isinstance(r, dict) else r[0]) for r in cur.fetchall()]
 
             if not employee_ids:
                 return jsonify({'success': False, 'message': 'Ingen medarbejdere valgt'}), 400
@@ -1410,7 +1442,8 @@ def create_hr_dashboard_blueprint():
             cur.close()
             return jsonify({'success': True, 'message': f'Kompetence tildelt {count} medarbejder(e).'})
         except Exception as e:
-            return jsonify({'success': False, 'message': str(e)}), 500
+            current_app.logger.error(f"assign_employee_skill error: {e}")
+            return jsonify({'success': False, 'message': 'Kompetencen kunne ikke tildeles. Prøv igen om lidt.'}), 500
 
     @hr_dashboard_bp.route('/skills/confirm-uplift', methods=['POST'])
     def confirm_skill_uplift():
@@ -1744,7 +1777,7 @@ def create_hr_dashboard_blueprint():
             employees = cur.fetchall()
             
             # Get departments for filter
-            cur.execute("SELECT DISTINCT department FROM company_users WHERE company_id = %s ORDER BY department", (company['id'],))
+            cur.execute("SELECT DISTINCT department FROM company_users WHERE company_id = %s AND department IS NOT NULL AND department != '' ORDER BY department", (company['id'],))
             departments = [row['department'] for row in cur.fetchall()]
             
             # Get summary statistics
@@ -2043,6 +2076,10 @@ def create_hr_dashboard_blueprint():
             # AI usage block (absorbed from Virksomheds-BI, N-4.1)
             ai_usage, ai_daily, headcount = {}, [], {}
             try:
+                # The cursor above was closed after the main queries; a closed
+                # MySQLdb cursor raises on execute, which silently emptied this
+                # block in production. Open a fresh one.
+                cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
                 cur.execute("""
                     SELECT COUNT(*) AS total_interactions, COUNT(DISTINCT username) AS unique_users,
                            COALESCE(AVG(response_time_ms), 0) AS avg_response_time,
@@ -2063,6 +2100,7 @@ def create_hr_dashboard_blueprint():
                     FROM company_users WHERE company_id = %s
                 """, (period_days, company['id']))
                 headcount = cur.fetchone() or {}
+                cur.close()
             except Exception as ai_err:
                 current_app.logger.warning(f"Learning analytics AI block skipped: {ai_err}")
 
@@ -2209,10 +2247,19 @@ def create_hr_dashboard_blueprint():
             return redirect(url_for('auth.login'))
 
         import report_exports
+
+        def _back():
+            # Return to the page the export was started from (e.g. Læringsanalyse),
+            # falling back to the reports page, so a failed/empty export keeps context.
+            ref = request.referrer or ''
+            if ref.startswith(request.host_url):
+                return redirect(ref)
+            return redirect(url_for('hr_dashboard.reports'))
+
         key = report_exports.resolve(report_type)
         if not key:
             flash("Ukendt rapporttype.", "danger")
-            return redirect(url_for('hr_dashboard.reports'))
+            return _back()
         try:
             cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
             headers, rows = report_exports.build(
@@ -2222,17 +2269,17 @@ def create_hr_dashboard_blueprint():
         except Exception as e:
             current_app.logger.error(f"Error exporting report: {e}")
             flash("Rapporten kunne ikke hentes lige nu. Prøv igen om lidt.", "danger")
-            return redirect(url_for('hr_dashboard.reports'))
+            return _back()
 
         if not rows:
             flash("Ingen data matcher dine valg endnu. Justér filtrene, eller prøv igen, når der er aktivitet.", "warning")
-            return redirect(url_for('hr_dashboard.reports'))
+            return _back()
 
         return current_app.response_class(
             report_exports.to_csv(headers, rows),
-            mimetype='text/csv; charset=utf-8',
+            mimetype='text/csv',
             headers={'Content-Disposition':
-                     f'attachment; filename={key}_{company["company_slug"]}_{datetime.now().strftime("%Y%m%d")}.csv'})
+                     f'attachment; filename={key}_{re.sub(r"[^A-Za-z0-9_-]+", "-", str(company.get("company_slug") or "virksomhed"))}_{datetime.now().strftime("%Y%m%d")}.csv'})
 
     # ── Scheduled reports (N-4.2) ──
     @hr_dashboard_bp.route('/reports/schedules/<int:schedule_id>/<action>', methods=['POST'])
@@ -3916,9 +3963,16 @@ def create_hr_dashboard_blueprint():
             return redirect(url_for('hr_dashboard.internal_courses'))
 
         csv_file = request.files.get('csv_file')
-        if not csv_file or not csv_file.filename.endswith('.csv'):
+        if not csv_file or not (csv_file.filename or '').lower().endswith('.csv'):
             flash("Upload venligst en CSV-fil.", "danger")
             return redirect(url_for('hr_dashboard.internal_courses'))
+
+        def _dk_num(raw):
+            # Danish exports write 1,5 / 4.500,00; both must import, not count as an error row.
+            txt = str(raw or '').strip().replace(' ', '')
+            if ',' in txt:
+                txt = txt.replace('.', '').replace(',', '.')
+            return float(txt or 0)
 
         try:
             stream = io.StringIO(csv_file.stream.read().decode('utf-8-sig'))
@@ -3947,8 +4001,8 @@ def create_hr_dashboard_blueprint():
                         (row.get('category') or row.get('kategori') or '').strip(),
                         (row.get('tags') or '').strip(),
                         (row.get('format') or 'classroom').strip(),
-                        float(row.get('duration_hours') or row.get('varighed') or 0),
-                        float(row.get('price') or row.get('pris') or 0),
+                        _dk_num(row.get('duration_hours') or row.get('varighed')),
+                        _dk_num(row.get('price') or row.get('pris')),
                         (row.get('instructor') or row.get('underviser') or '').strip(),
                         (row.get('location') or row.get('lokation') or '').strip(),
                         (row.get('department') or row.get('afdeling') or '').strip() or None,
@@ -4069,7 +4123,8 @@ def create_hr_dashboard_blueprint():
             cur.close()
             return jsonify({"success": True})
         except Exception as e:
-            return jsonify({"success": False, "message": str(e)}), 500
+            current_app.logger.error(f"Error toggling supplier: {e}")
+            return jsonify({"success": False, "message": "Leverandøren kunne ikke opdateres. Prøv igen om lidt."}), 500
 
     @hr_dashboard_bp.route('/suppliers/bulk-toggle', methods=['POST'])
     def bulk_toggle_suppliers():
@@ -4100,7 +4155,8 @@ def create_hr_dashboard_blueprint():
             cur.close()
             return jsonify({"success": True, "updated": len(vendor_names)})
         except Exception as e:
-            return jsonify({"success": False, "message": str(e)}), 500
+            current_app.logger.error(f"Error bulk-toggling suppliers: {e}")
+            return jsonify({"success": False, "message": "Leverandørerne kunne ikke opdateres. Prøv igen om lidt."}), 500
 
     # ── Supplier Agreement Management ──
 
@@ -4603,6 +4659,7 @@ def create_hr_dashboard_blueprint():
             dept, scope = req_dept, 'department'
         if scope == 'department' and not dept:
             scope = 'reports'
+            flash("Du er ikke tilknyttet en afdeling, så her vises dine direkte referencer.", "info")
         dept_budget, dept_orders = None, []
         reports = []
         pending_for_me = []

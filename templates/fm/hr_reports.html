@@ -18,12 +18,12 @@
   <div class="kpi-row">
     <div class="kpi-tile"><div class="kl">Aktive medarbejdere</div><div class="kv tnum">{{ rs.employees|default(0) }}</div><div class="kd">{{ rs.departments|default(0) }} afdelinger</div></div>
     <div class="kpi-tile"><div class="kl">Kursusordrer</div><div class="kv tnum">{{ rs.orders|default(0) }}</div><div class="kd">{{ rs.completed_orders|default(0) }} gennemført</div></div>
-    <div class="kpi-tile"><div class="kl">Completion rate</div><div class="kv tnum">{{ rs.completion_rate|default(0) }}%</div><div class="kd">samlet gennemførsel</div></div>
+    <div class="kpi-tile"><div class="kl">Gennemførelsesrate</div><div class="kv tnum">{{ rs.completion_rate|default(0)|dknum }}%</div><div class="kd">samlet gennemførelse</div></div>
     <div class="kpi-tile"><div class="kl">Kompetencedata</div><div class="kv tnum">{{ rs.skills_recorded|default(0) }}</div><div class="kd">{{ rs.skill_targets|default(0) }} kompetencemål</div></div>
   </div>
 
-  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførselsrate pr. afdeling</h3></div>
-    <div class="fm-card-body"><div class="rep-chart-wrap"><canvas id="deptCompletionChart" role="img" aria-label="Søjlediagram: gennemførselsrate i procent pr. afdeling"></canvas></div></div>
+  <div class="fm-card" style="margin-top:16px"><div class="fm-card-head"><span class="fm-ch-icon"><i class="fa-solid fa-chart-column"></i></span><h3>Gennemførelsesrate pr. afdeling</h3></div>
+    <div class="fm-card-body"><div class="rep-chart-wrap"><canvas id="deptCompletionChart" role="img" aria-label="Søjlediagram: gennemførelsesrate i procent pr. afdeling"></canvas></div></div>
   </div>
 
   <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-download"></i> Eksport</span><h2 class="fm-section-title">Hent rapporter som CSV</h2></div></div>
@@ -41,7 +41,7 @@
       <div class="fm-spread"><span style="width:42px;height:42px;border-radius:12px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary);font-size:16px"><i class="fa-solid {{ report.icon|replace('fa-','fa-') }}"></i></span><span class="fm-badge green dot">Klar</span></div>
       <h3 style="font-size:15px;font-weight:700">{{ report.title }}</h3>
       <p style="font-size:12.5px;color:var(--fm-ink-2);margin:0">{{ report.description }}</p>
-      <div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span><i class="fa-solid fa-file-csv"></i> Download CSV</span><i class="fa-solid fa-arrow-right"></i></div>
+      <div class="fm-spread" style="padding-top:10px;border-top:1px solid var(--fm-line);font-size:12px;color:var(--fm-ink-3)"><span><i class="fa-solid fa-file-csv"></i> Hent CSV</span><i class="fa-solid fa-arrow-right"></i></div>
     </a>
     {% endfor %}
   </div>
@@ -49,16 +49,16 @@
   <div class="fm-section-head" style="margin-top:24px"><div><span class="fm-eyebrow"><i class="fa-solid fa-clock"></i> Automatik</span><h2 class="fm-section-title">Planlagte rapporter</h2></div></div>
   <div class="fm-card" style="padding:14px 18px">
     {% if schedules %}
-    <table class="fm-table"><thead><tr><th>Rapport</th><th>Hyppighed</th><th>Afdeling</th><th>Sidst sendt</th><th>Status</th><th></th></tr></thead><tbody>
+    <div class="fm-table-wrap" style="border:0;box-shadow:none"><table class="fm-table"><thead><tr><th>Rapport</th><th>Hyppighed</th><th>Afdeling</th><th>Sidst sendt</th><th>Status</th><th></th></tr></thead><tbody>
       {% for s in schedules %}<tr>
         <td style="font-weight:650">{{ s.title }}</td><td>{{ s.cadence_label }}</td><td>{{ s.department or 'Alle' }}</td>
-        <td>{{ s.last_sent_at or 'Endnu ikke' }}</td>
+        <td>{{ (s.last_sent_at|dkdate(true)) if s.last_sent_at else 'Endnu ikke' }}</td>
         <td>{% if s.enabled %}<span class="fm-badge green dot">Aktiv</span>{% else %}<span class="fm-badge amber dot">På pause</span>{% endif %}</td>
         <td style="text-align:right">{% if can_schedule %}<form method="post" style="display:inline-flex;gap:6px">
           <button class="btn btn-ghost btn-sm" formaction="{{ url_for('hr_dashboard.report_schedule_action', schedule_id=s.id, action=('pause' if s.enabled else 'resume')) }}">{{ 'Pause' if s.enabled else 'Genoptag' }}</button>
           <button class="btn btn-ghost btn-sm" formaction="{{ url_for('hr_dashboard.report_schedule_action', schedule_id=s.id, action='cancel') }}" onclick="return confirm('Slet denne rapportplan?')">Slet</button>
         </form>{% endif %}</td></tr>{% endfor %}
-    </tbody></table>
+    </tbody></table></div>
     {% else %}
     <p class="muted" style="margin:0 0 10px;font-size:13.5px">Ingen planlagte rapporter endnu. Planlæg en rapport, så HR-ledere får den på mail automatisk. Du kan også bede HR-assistenten om det.</p>
     {% endif %}
@@ -72,9 +72,9 @@
     {% endif %}
   </div>
 
-  <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Afdelingspreview</h3><span class="fm-badge">Live data</span></div>
+  <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><h3 style="font-size:15px;font-weight:700">Afdelingsoversigt</h3><span class="fm-badge">Aktuelle tal</span></div>
   {% if department_rows %}
-  <table class="fm-table"><thead><tr><th>Afdeling</th><th>Medarbejdere</th><th>Ordrer</th><th>Gennemført</th><th>Completion</th><th>Investering</th></tr></thead><tbody>
+  <table class="fm-table"><thead><tr><th>Afdeling</th><th>Medarbejdere</th><th>Ordrer</th><th>Gennemført</th><th>Gennemførelse</th><th>Investering</th></tr></thead><tbody>
     {% for dept in department_rows %}
     {% set completion = ((dept.completed / dept.orders * 100) if dept.orders else 0)|round(1) %}
     <tr>
@@ -82,13 +82,13 @@
       <td>{{ dept.employees or 0 }}</td>
       <td>{{ dept.orders or 0 }}</td>
       <td>{{ dept.completed or 0 }}</td>
-      <td style="min-width:150px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [completion,100]|min }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ completion }}%</span></td>
+      <td style="min-width:150px"><div class="fm-prog thin" style="margin-bottom:4px"><span style="width:{{ [completion,100]|min }}%;background:var(--fm-success)"></span></div><span class="mono" style="font-size:11px;color:var(--fm-ink-2)">{{ completion|dknum }}%</span></td>
       <td class="mono">{{ '{:,.0f}'.format(dept.spend or 0).replace(',','.') }} kr</td>
     </tr>
     {% endfor %}
   </tbody></table>
   {% else %}
-  {{ empty('Ingen afdelingsdata endnu', 'Afdelingernes medarbejdere, ordrer og gennemførsel vises her, når der er registreret aktivitet.', 'fa-sitemap') }}
+  {{ empty('Ingen afdelingsdata endnu', 'Afdelingernes medarbejdere, ordrer og gennemførelse vises her, når der er registreret aktivitet.', 'fa-sitemap') }}
   {% endif %}
   </div>
 </div>
@@ -107,7 +107,7 @@
   });
   FMChart.bar('deptCompletionChart', {
     labels: labels,
-    series: [{ label: 'Gennemførselsrate (%)', data: rates, color: FMChart.cssVar('--fm-success', '#16a34a') }],
+    series: [{ label: 'Gennemførelsesrate (%)', data: rates, color: FMChart.cssVar('--fm-success', '#16a34a') }],
     empty: 'Ingen afdelingsdata endnu'
   });
 })();

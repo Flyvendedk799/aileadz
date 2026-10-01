@@ -10,20 +10,20 @@
   {% set sd = skill_dashboard or {} %}
   <div class="fm-flex fm-gap8" style="margin-bottom:14px;justify-content:flex-end;flex-wrap:wrap">
     <button class="btn btn-ghost btn-sm" onclick="openModal('confirmUpliftModal')"><i class="fa-solid fa-arrow-trend-up"></i> Bekræft løft</button>
-    <button class="btn btn-ghost btn-sm" onclick="openModal('assignSkillModal')"><i class="fa-solid fa-user-plus"></i> Tildel</button>
+    <button class="btn btn-ghost btn-sm" onclick="openModal('assignSkillModal')"><i class="fa-solid fa-user-plus"></i> Tildel kompetence</button>
     <button class="btn btn-primary btn-sm" onclick="openModal('addTargetModal')"><i class="fa-solid fa-plus"></i> Nyt mål</button>
   </div>
 
   <div class="kpi-row">
     <div class="kpi-tile"><div class="kl">Unikke kompetencer</div><div class="kv tnum">{{ skill_list|length }}</div><div class="kd">registreret i alt</div></div>
-    <div class="kpi-tile"><div class="kl">Dækning</div><div class="kv tnum">{{ sd.coverage_rate|default(0) }}%</div><div class="kd">{{ sd.employees_with_skills|default(0) }} af {{ sd.total_active_employees|default(0) }} medarb.</div></div>
-    <div class="kpi-tile"><div class="kl">Gns. niveau</div><div class="kv tnum">{{ sd.avg_skill_level|default(0) }}</div><div class="kd">af 5 mulige</div></div>
+    <div class="kpi-tile"><div class="kl">Dækning</div><div class="kv tnum">{{ sd.coverage_rate|default(0)|dknum }}%</div><div class="kd">{{ sd.employees_with_skills|default(0) }} af {{ sd.total_active_employees|default(0) }} medarb.</div></div>
+    <div class="kpi-tile"><div class="kl">Gns. niveau</div><div class="kv tnum">{{ sd.avg_skill_level|default(0)|dknum }}</div><div class="kd">af 5 mulige</div></div>
     <div class="kpi-tile"><div class="kl">Kritiske gab</div><div class="kv tnum" style="color:var(--fm-danger)">{{ critical_gaps }}</div><div class="kd">{{ met_targets }} mål opfyldt</div></div>
   </div>
 
   <!-- Top skills -->
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow"><i class="fa-solid fa-star"></i> Stærkeste områder</span><h2 class="fm-section-title">Topkompetencer i virksomheden</h2></div></div>
-  <div class="fm-grid" style="grid-template-columns:repeat(6,1fr);margin-bottom:8px">
+  <div class="fm-grid" style="grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-bottom:8px">
     {% for skill in skill_list[:6] %}
     {% set lvl = (skill.avg_level or 0)|float|round(0)|int %}
     <div class="fm-card" style="padding:16px;text-align:center"><strong style="font-size:13px;display:block;margin-bottom:9px">{{ skill.skill_name }}</strong><div style="display:flex;justify-content:center;margin-bottom:8px"><span class="dots">{% for i in range(1,6) %}<span class="{{ 'on' if i <= lvl }}"></span>{% endfor %}</span></div><small style="font-size:11px;color:var(--fm-ink-3)">{{ skill.count }} medarbejdere</small></div>
@@ -55,7 +55,7 @@
   </div>
 
   <!-- Critical gaps from heatmap -->
-  <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span><h3 style="font-size:15px;font-weight:700">Kritiske kompetencegab</h3></div></div>
+  <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:color-mix(in srgb,var(--fm-warning) 16%,transparent);color:var(--fm-warning)"><i class="fa-solid fa-triangle-exclamation"></i></span><h3 style="font-size:15px;font-weight:700">Kompetencegab under målniveau</h3></div></div>
   <table class="fm-table"><thead><tr><th>Kompetence</th><th>Afdeling</th><th>Målniveau</th><th>Gns. niveau</th><th>Gab</th><th></th></tr></thead><tbody>
     {% set ns = namespace(found=false) %}
     {% for dept, skills in (heatmap or {}).items() %}
@@ -66,8 +66,8 @@
           <td style="font-weight:650">{{ skill_name }}</td>
           <td><span class="fm-badge">{{ dept }}</span></td>
           <td><span class="fm-badge teal">Mål {{ data.target_level }}/5</span></td>
-          <td><span class="fm-badge {{ 'red' if (data.avg_current or 0)|float < 2 else 'amber' }}">{{ data.avg_current }}/5 gns.</span></td>
-          <td><span class="fm-badge {{ 'red' if data.status == 'red' else 'amber' }}">−{{ data.gap }}</span></td>
+          <td><span class="fm-badge {{ 'red' if (data.avg_current or 0)|float < 2 else 'amber' }}">{{ data.avg_current|dknum }}/5 gns.</span></td>
+          <td><span class="fm-badge {{ 'red' if data.status == 'red' else 'amber' }}">−{{ data.gap|dknum }}</span></td>
           <td style="text-align:right;white-space:nowrap"><a href="{{ url_for('hr_ext.training_plan', department=dept, focus=skill_name) }}" class="btn btn-ghost btn-sm"><i class="fa-solid fa-list-check"></i> Lav træningsplan</a>
             <a href="{{ url_for('hr_dashboard.bulk_assign_form', department=dept, skill=skill_name) }}" class="btn btn-primary btn-sm"><i class="fa-solid fa-user-plus"></i> Tildel</a></td>
         </tr>
@@ -75,9 +75,11 @@
       {% endfor %}
     {% endfor %}
     {% if not ns.found %}
-    <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)">Ingen kritiske gab — alle mål er opfyldt eller endnu ikke defineret.</td></tr>
+    <tr><td colspan="6" style="text-align:center;padding:24px;color:var(--fm-ink-3)">{% if heatmap_anon_note %}Ingen afdelinger har nok medarbejdere til at vise kompetencegab.{% else %}Ingen kritiske gab — alle mål er opfyldt eller endnu ikke defineret.{% endif %}</td></tr>
     {% endif %}
-  </tbody></table></div>
+  </tbody></table>
+  {% if heatmap_anon_note %}<div style="font-size:11.5px;color:var(--fm-ink-3);padding:10px 18px 14px;display:flex;align-items:center;gap:6px"><i class="fa-solid fa-user-shield" style="opacity:.6"></i><span>{{ heatmap_anon_note }}</span></div>{% endif %}
+  </div>
 
   <!-- Targets management -->
   <div class="fm-table-wrap" style="margin-top:24px"><div class="fm-spread" style="padding:16px 18px;border-bottom:1px solid var(--fm-line)"><div class="fm-flex fm-ac fm-gap12"><span class="fm-ch-icon" style="width:30px;height:30px;border-radius:9px;display:grid;place-items:center;background:var(--fm-primary-tint);color:var(--fm-primary)"><i class="fa-solid fa-bullseye"></i></span><h3 style="font-size:15px;font-weight:700">Kompetencemål ({{ targets|length }})</h3></div></div>
@@ -89,8 +91,8 @@
       <td><span class="fm-badge teal">Mål {{ t.target_level }}/5</span></td>
       <td>{% if t.priority == 'high' %}<span class="fm-badge red">Høj</span>{% elif t.priority == 'medium' %}<span class="fm-badge amber">Medium</span>{% else %}<span class="fm-badge green">Lav</span>{% endif %}</td>
       <td style="text-align:right"><div class="fm-flex fm-gap8" style="justify-content:flex-end">
-        <button class="fm-icon-btn" style="width:32px;height:32px" onclick="editTarget('{{ t.skill_name|e }}','{{ (t.department or '')|e }}',{{ t.target_level }},'{{ t.priority }}')"><i class="fa-solid fa-pen"></i></button>
-        <form method="POST" action="{{ url_for('hr_dashboard.delete_skill_target', target_id=t.id) }}" onsubmit="return confirm('Slet dette mål?')"><button type="submit" class="fm-icon-btn" style="width:32px;height:32px;color:var(--fm-danger)"><i class="fa-solid fa-trash"></i></button></form>
+        <button type="button" class="fm-icon-btn" style="width:36px;height:36px" title="Rediger mål" aria-label="Rediger mål for {{ t.skill_name }}" onclick='editTarget({{ t.skill_name|tojson }}, {{ (t.department or "")|tojson }}, {{ t.target_level|int }}, {{ (t.priority or "medium")|tojson }})'><i class="fa-solid fa-pen"></i></button>
+        <form method="POST" action="{{ url_for('hr_dashboard.delete_skill_target', target_id=t.id) }}" onsubmit="return confirm('Slet målet for {{ t.skill_name|replace("'", "")|e }}?')"><button type="submit" class="fm-icon-btn" style="width:36px;height:36px;color:var(--fm-danger)" title="Slet mål" aria-label="Slet mål for {{ t.skill_name }}"><i class="fa-solid fa-trash"></i></button></form>
       </div></td>
     </tr>
     {% else %}
@@ -107,7 +109,7 @@
     <label class="fm-field"><span>Kompetence *</span><input type="text" class="fm-input" id="targetSkill" list="skillNamesList" placeholder="Indtast eller vælg kompetence..." autocomplete="off"></label>
     <label class="fm-field"><span>Målniveau: <strong id="levelDisplay">3</strong></span><input type="range" id="targetLevel" min="1" max="5" value="3" oninput="document.getElementById('levelDisplay').textContent=this.value"></label>
     <label class="fm-field"><span>Prioritet</span><select class="fm-input" id="targetPriority"><option value="low">Lav</option><option value="medium" selected>Medium</option><option value="high">Høj</option></select></label>
-    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="closeModal('addTargetModal')">Annuller</button><button class="btn btn-primary btn-sm" onclick="saveTarget()"><i class="fa-solid fa-floppy-disk"></i> Gem mål</button></div>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button type="button" class="btn btn-ghost btn-sm" onclick="closeModal('addTargetModal')">Annuller</button><button type="button" class="btn btn-primary btn-sm" onclick="saveTarget()"><i class="fa-solid fa-floppy-disk"></i> Gem mål</button></div>
   </div>
 </div>
 
@@ -119,7 +121,7 @@
     <label class="fm-field"><span>Niveau: <strong id="assignLevelDisplay">2</strong></span><input type="range" id="assignLevel" min="1" max="5" value="2" oninput="document.getElementById('assignLevelDisplay').textContent=this.value"></label>
     <label class="fm-field"><span>Tildel til afdeling</span><select class="fm-input" id="assignDept"><option value="">-- Vælg --</option>{% for d in departments %}<option value="{{ d }}">{{ d }}</option>{% endfor %}</select></label>
     <div style="font-size:12px;color:var(--fm-ink-3);margin-top:6px">Dette opdaterer niveauet for alle medarbejdere i den valgte afdeling.</div>
-    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="closeModal('assignSkillModal')">Luk</button><button class="btn btn-primary btn-sm" onclick="assignSkill()"><i class="fa-solid fa-check"></i> Udfør tildeling</button></div>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button type="button" class="btn btn-ghost btn-sm" onclick="closeModal('assignSkillModal')">Luk</button><button type="button" class="btn btn-primary btn-sm" onclick="assignSkill()"><i class="fa-solid fa-check"></i> Udfør tildeling</button></div>
   </div>
 </div>
 
@@ -137,7 +139,7 @@
     <label class="fm-field"><span>Kompetence *</span><input type="text" class="fm-input" id="upliftSkill" list="upliftSkillsList" placeholder="Vælg eller indtast kompetence..." autocomplete="off"></label>
     <datalist id="upliftSkillsList"></datalist>
     <label class="fm-field"><span>Nyt niveau: <strong id="upliftLevelDisplay">3</strong> / 5</span><input type="range" id="upliftLevel" min="1" max="5" value="3" oninput="document.getElementById('upliftLevelDisplay').textContent=this.value"></label>
-    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button class="btn btn-ghost btn-sm" onclick="closeModal('confirmUpliftModal')">Annuller</button><button class="btn btn-primary btn-sm" onclick="confirmUplift()"><i class="fa-solid fa-check"></i> Bekræft løft</button></div>
+    <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px"><button type="button" class="btn btn-ghost btn-sm" onclick="closeModal('confirmUpliftModal')">Annuller</button><button type="button" class="btn btn-primary btn-sm" onclick="confirmUplift()"><i class="fa-solid fa-check"></i> Bekræft løft</button></div>
   </div>
 </div>
 
@@ -227,6 +229,20 @@ function editTarget(skill, dept, level, priority){
   document.getElementById('targetPriority').value=priority;
   document.getElementById('addTargetModal').style.display='flex';
 }
+// Shared POST helper: always surfaces a Danish message, even when the server
+// returns an error page / empty body (e.g. expired session) instead of JSON.
+function postJson(url, payload, okCb){
+  fetch(url, {method:'POST', headers:{'Content-Type':'application/json'}, credentials:'same-origin', body:JSON.stringify(payload)})
+    .then(function(r){ return r.json().catch(function(){ return {success:false, message:'Uventet svar fra serveren. Log ind igen og prøv igen.'}; }); })
+    .then(function(d){ if(d && d.success){ okCb(d); } else { alert('Fejl: ' + ((d && d.message) || 'Du har ikke adgang til denne handling, eller sessionen er udløbet.')); } })
+    .catch(function(){ alert('Netværksfejl — prøv igen.'); });
+}
+document.addEventListener('keydown', function(e){
+  if(e.key === 'Escape'){ document.querySelectorAll('.sg-modal').forEach(function(m){ m.style.display='none'; }); }
+});
+document.querySelectorAll('.sg-modal').forEach(function(m){
+  m.addEventListener('mousedown', function(e){ if(e.target === m){ m.style.display='none'; } });
+});
 function saveTarget(){
   var data = {
     department: document.getElementById('targetDept').value,
@@ -235,9 +251,7 @@ function saveTarget(){
     priority: document.getElementById('targetPriority').value
   };
   if(!data.skill_name){ alert('Angiv kompetencenavn.'); return; }
-  fetch('{{ url_for("hr_dashboard.save_skill_target") }}', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data)
-  }).then(r=>r.json()).then(d=>{ if(d.success) location.reload(); else alert('Fejl: '+d.message); });
+  postJson('{{ url_for("hr_dashboard.save_skill_target") }}', data, function(){ location.reload(); });
 }
 function assignSkill(){
   var skill=document.getElementById('assignSkillName').value.trim();
@@ -245,9 +259,8 @@ function assignSkill(){
   var dept=document.getElementById('assignDept').value;
   if(!skill){ alert('Angiv kompetencenavn.'); return; }
   if(!dept){ alert('Vælg en afdeling.'); return; }
-  fetch('{{ url_for("hr_dashboard.assign_employee_skill") }}', {
-    method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({skill_name:skill, level:level, department:dept})
-  }).then(r=>r.json()).then(d=>{ if(d.success){ alert(d.message); location.reload(); } else alert('Fejl: '+(d.message||'Ukendt fejl')); });
+  if(!confirm('Sæt niveauet for "' + skill + '" til ' + level + '/5 for ALLE aktive medarbejdere i ' + dept + '? Eksisterende niveauer overskrives.')){ return; }
+  postJson('{{ url_for("hr_dashboard.assign_employee_skill") }}', {skill_name:skill, level:level, department:dept}, function(d){ alert(d.message); location.reload(); });
 }
 
 // ── Confirm skill uplift (plan #19): post-training, per-employee capture ──
@@ -277,10 +290,7 @@ function confirmUplift(){
   var level = parseInt(document.getElementById('upliftLevel').value);
   if(!uid){ alert('Vælg en medarbejder.'); return; }
   if(!skill){ alert('Angiv kompetencenavn.'); return; }
-  fetch('{{ url_for("hr_dashboard.confirm_skill_uplift") }}', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body:JSON.stringify({employee_id:parseInt(uid), skill_name:skill, level:level})
-  }).then(r=>r.json()).then(d=>{ if(d.success){ alert(d.message); location.reload(); } else alert('Fejl: '+(d.message||'Ukendt fejl')); });
+  postJson('{{ url_for("hr_dashboard.confirm_skill_uplift") }}', {employee_id:parseInt(uid), skill_name:skill, level:level}, function(d){ alert(d.message); location.reload(); });
 }
 </script>
 {% endblock %}

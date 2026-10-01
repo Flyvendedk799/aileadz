@@ -1,16 +1,17 @@
 {% extends "fm_base.html" %}
 {% block page_id %}hr{% endblock %}
-{% block title %}Futurematch{% endblock %}
+{% block title %}Godkendelser · Futurematch{% endblock %}
 {% block topbar_title %}Godkendelser{% endblock %}
 {% block topbar_sub %}{{ pending_count or 0 }} ordrer afventer din godkendelse.{% endblock %}
 {% block content %}
 <div class="fm-wrap">
 {% set active_hr_page = 'approvals' %}{% include 'fm/_hr_subnav.html' %}
 
-  {% set pending_sum = 0 %}
-  {% for a in approvals %}{% if a.status == 'pending' and a.price %}{% set pending_sum = pending_sum + a.price|float %}{% endif %}{% endfor %}
+  {% set _ps = namespace(total=0) %}
+  {% for a in approvals %}{% if a.status == 'pending' and a.price %}{% set _ps.total = _ps.total + a.price|float %}{% endif %}{% endfor %}
+  {% set pending_sum = _ps.total %}
   <div class="kpi-row k3">
-    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_count or 0 }}</div><div class="kd">samlet {{ '{:,.0f}'.format(pending_sum) }} kr</div></div></div>
+    <div class="kpi-tile ico"><span class="ki clay"><i class="fa-solid fa-clock"></i></span><div><div class="kl">Afventer</div><div class="kv tnum">{{ pending_count or 0 }}</div><div class="kd">samlet {{ '{:,.0f}'.format(pending_sum).replace(',', '.') }} kr</div></div></div>
     <div class="kpi-tile ico"><span class="ki green"><i class="fa-solid fa-check"></i></span><div><div class="kl">Godkendt</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','approved')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
     <div class="kpi-tile ico"><span class="ki"><i class="fa-solid fa-xmark"></i></span><div><div class="kl">Afvist</div><div class="kv tnum">{{ approvals|selectattr('status','equalto','rejected')|list|length }}</div><div class="kd">i denne oversigt</div></div></div>
   </div>
@@ -23,6 +24,7 @@
   <div class="fm-section-head" style="margin-top:0"><div><span class="fm-eyebrow clay"><i class="fa-solid fa-clipboard-check"></i> Afventer handling</span><h2 class="fm-section-title">Godkendelsesanmodninger</h2></div>
     {% if pending_count %}<div class="fm-flex fm-gap8">
       <label style="font-size:12.5px;display:flex;align-items:center;gap:6px"><input type="checkbox" id="selAllPending"> Vælg alle</label>
+      <button class="btn btn-ghost btn-sm" id="bulkReject" style="display:none"><i class="fa-solid fa-xmark"></i> Afvis valgte</button>
       <button class="btn btn-primary btn-sm" id="bulkApprove" style="display:none"><i class="fa-solid fa-check-double"></i> Godkend valgte</button>
     </div>{% endif %}
   </div>
@@ -30,8 +32,8 @@
   {% for a in approvals %}
   <div class="fm-card" id="approval-row-{{ a.id }}" style="padding:16px 18px;margin-bottom:12px;display:flex;align-items:center;gap:16px;flex-wrap:wrap">
     {% if a.status == 'pending' %}<input type="checkbox" class="appr-check" value="{{ a.id }}" aria-label="Vælg anmodning">{% endif %}
-    <div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra">{{ (a.user_name or a.requester_username or 'U')[:2]|upper }}</span><div><div style="font-weight:650">{{ a.user_name or a.requester_username }}</div><div style="font-size:12px;color:var(--fm-ink-3)">{{ a.department or 'N/A' }}{% if a.requested_at %} · {{ a.requested_at.strftime('%d/%m %H:%M') }}{% endif %}</div></div></div>
-    <div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">{{ a.product_title }}</div><div style="font-size:12px;color:var(--fm-ink-2)">{% if a.variant_location %}{{ a.variant_location }} · {% endif %}<span class="mono" style="color:var(--fm-primary);font-weight:700">{{ a.price }} kr</span></div>
+    <div class="fm-flex fm-ac fm-gap12" style="flex:1;min-width:220px"><span class="ra">{{ (a.user_name or a.requester_username or 'U')[:2]|upper }}</span><div><div style="font-weight:650">{{ a.user_name or a.requester_username }}</div><div style="font-size:12px;color:var(--fm-ink-3)">{{ a.department or 'Ingen afdeling' }}{% if a.requested_at %} · {{ a.requested_at.strftime('%d/%m %H:%M') }}{% endif %}</div></div></div>
+    <div style="flex:1;min-width:180px"><div style="font-weight:600;font-size:13.5px">{{ a.product_title }}</div><div style="font-size:12px;color:var(--fm-ink-2)">{% if a.variant_location %}{{ a.variant_location }} · {% endif %}<span class="mono" style="color:var(--fm-primary);font-weight:700">{{ '{:,.0f}'.format(a.price|float).replace(',', '.') }} kr</span></div>
       {% if a.status == 'pending' and a.dept_remaining is not none %}<div style="font-size:12px;color:{{ 'var(--fm-danger)' if a.over_budget else 'var(--fm-ink-3)' }}"><i class="fa-solid fa-wallet"></i> Afdelingens resterende budget: {{ '{:,.0f}'.format(a.dept_remaining).replace(',', '.') }} kr{% if a.over_budget %} · overskrider budgettet{% endif %}</div>{% endif %}</div>
     <div class="fm-flex fm-gap8" data-action-cell>
       {% if a.status == 'pending' %}
@@ -49,9 +51,9 @@
   {% endfor %}
 </div>
 
-<div id="rejectModal" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
+<div id="rejectModal" role="dialog" aria-modal="true" aria-labelledby="rejectTitle" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.4);z-index:1000;align-items:center;justify-content:center">
   <div class="fm-card" style="max-width:440px;width:90%;padding:22px">
-    <h3 style="font-size:17px;font-weight:700;margin-bottom:12px">Afvis ordre</h3>
+    <h3 id="rejectTitle" style="font-size:17px;font-weight:700;margin-bottom:12px">Afvis ordre</h3>
     <label class="fm-field"><span>Begrundelse (valgfrit)</span><textarea class="fm-input" id="rejectNotes" rows="3" placeholder="Skriv en begrundelse..."></textarea></label>
     <div class="fm-flex fm-gap8" style="justify-content:flex-end;margin-top:14px">
       <button class="btn btn-ghost btn-sm" onclick="closeRejectModal()">Annuller</button>
@@ -78,41 +80,73 @@
 })();
 </script>
 <script>
-let _pendingRejectId = null;
+let _pendingRejectId = null;   // null while the modal is in bulk mode
+let _rejectBulkIds = null;
+const DECIDE_URL = {{ url_for('hr_dashboard.decide_approval', approval_id=0)|tojson }};
+const BULK_URL = {{ url_for('hr_dashboard.bulk_decide_approvals')|tojson }};
+function fmToast(ok, message){
+  const d = document.createElement('div');
+  d.setAttribute('role', 'status');
+  d.style.cssText = 'position:fixed;top:20px;right:20px;left:auto;z-index:9999;max-width:calc(100vw - 40px);padding:12px 16px;border-radius:12px;font-size:14px;font-weight:600;color:#fff;box-shadow:var(--sh-glow);background:' + (ok ? '#16a34a' : '#c0532f');
+  d.textContent = message; document.body.appendChild(d);
+  setTimeout(function(){ d.remove(); }, 5000);
+}
 function closeRejectModal(){ document.getElementById('rejectModal').style.display='none'; }
+function openRejectModal(){
+  document.getElementById('rejectNotes').value = '';
+  document.getElementById('rejectModal').style.display = 'flex';
+  document.getElementById('rejectNotes').focus();
+}
+document.getElementById('rejectModal').addEventListener('click', function(e){ if (e.target === this) closeRejectModal(); });
+document.addEventListener('keydown', function(e){ if (e.key === 'Escape') closeRejectModal(); });
 function decideApproval(approvalId, decision) {
   if (decision === 'rejected') {
-    _pendingRejectId = approvalId;
-    const m = document.getElementById('rejectModal');
-    m.style.display = 'flex';
+    _pendingRejectId = approvalId; _rejectBulkIds = null;
+    document.getElementById('rejectTitle').textContent = 'Afvis ordre';
+    openRejectModal();
     return;
   }
   sendDecision(approvalId, decision, '');
 }
 document.getElementById('confirmRejectBtn').addEventListener('click', function() {
   const notes = document.getElementById('rejectNotes').value;
-  sendDecision(_pendingRejectId, 'rejected', notes);
   closeRejectModal();
+  if (_rejectBulkIds) sendBulk(_rejectBulkIds, 'rejected', notes);
+  else sendDecision(_pendingRejectId, 'rejected', notes);
 });
+function checkedIds(){ return Array.from(document.querySelectorAll('.appr-check:checked')).map(function(c){ return +c.value; }); }
 function refreshBulk(){
-  var n = document.querySelectorAll('.appr-check:checked').length;
-  var b = document.getElementById('bulkApprove'); if (b) b.style.display = n ? '' : 'none';
+  var n = checkedIds().length;
+  ['bulkApprove', 'bulkReject'].forEach(function(id){ var b = document.getElementById(id); if (b) b.style.display = n ? '' : 'none'; });
 }
 document.querySelectorAll('.appr-check').forEach(function(c){ c.addEventListener('change', refreshBulk); });
 var selAll = document.getElementById('selAllPending');
 if (selAll) selAll.addEventListener('change', function(){
   document.querySelectorAll('.appr-check').forEach(function(c){ c.checked = selAll.checked; }); refreshBulk(); });
+function sendBulk(ids, decision, notes){
+  fetch(BULK_URL, {method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({approval_ids: ids, decision: decision, notes: notes})})
+    .then(function(r){ return r.json(); }).then(function(d){
+      fmToast(!!d.success, d.message || 'Færdig');
+      if (d.success) setTimeout(function(){ location.reload(); }, 1200);
+    })
+    .catch(function(){ fmToast(false, 'Netværksfejl. Prøv igen.'); });
+}
 var bulkBtn = document.getElementById('bulkApprove');
 if (bulkBtn) bulkBtn.addEventListener('click', function(){
-  var ids = Array.from(document.querySelectorAll('.appr-check:checked')).map(function(c){ return +c.value; });
+  var ids = checkedIds();
   if (!ids.length || !confirm('Godkend ' + ids.length + ' anmodninger?')) return;
-  fetch({{ url_for('hr_dashboard.bulk_decide_approvals')|tojson }}, {method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({approval_ids: ids, decision: 'approved'})})
-    .then(function(r){ return r.json(); }).then(function(d){ alert(d.message); if (d.success) location.reload(); })
-    .catch(function(){ alert('Netværksfejl. Prøv igen.'); });
+  sendBulk(ids, 'approved', '');
+});
+var bulkRej = document.getElementById('bulkReject');
+if (bulkRej) bulkRej.addEventListener('click', function(){
+  var ids = checkedIds(); if (!ids.length) return;
+  _rejectBulkIds = ids; _pendingRejectId = null;
+  document.getElementById('rejectTitle').textContent = 'Afvis ' + ids.length + ' anmodninger';
+  openRejectModal();
 });
 function sendDecision(approvalId, decision, notes) {
-  fetch(`{{ url_for('hr_dashboard.decide_approval', approval_id=0) }}`.replace('/0/', '/' + approvalId + '/'), {
+  fetch(DECIDE_URL.replace('/0/', '/' + approvalId + '/'), {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({decision: decision, notes: notes})
@@ -120,16 +154,20 @@ function sendDecision(approvalId, decision, notes) {
   .then(r => r.json())
   .then(data => {
     if (data.success) {
+      fmToast(true, data.message || (decision === 'approved' ? 'Ordren er godkendt.' : 'Ordren er afvist.'));
       const row = document.getElementById('approval-row-' + approvalId);
       const cell = row.querySelector('[data-action-cell]');
       cell.innerHTML = decision === 'approved'
         ? '<span class="fm-badge green dot">Godkendt</span>'
         : '<span class="fm-badge red dot">Afvist</span>';
+      const cb = row.querySelector('.appr-check'); if (cb) cb.remove();
+      refreshBulk();
+      setTimeout(function(){ location.reload(); }, 1200);   // refresh the counters
     } else {
-      alert('Fejl: ' + (data.message || 'Kunne ikke behandle anmodningen'));
+      fmToast(false, data.message || 'Kunne ikke behandle anmodningen');
     }
   })
-  .catch(err => alert('Netvaerksfejl: ' + err));
+  .catch(() => fmToast(false, 'Netværksfejl. Prøv igen.'));
 }
 </script>
 {% endblock %}

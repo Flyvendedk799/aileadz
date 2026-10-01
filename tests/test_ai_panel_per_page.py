@@ -155,3 +155,13 @@ def test_tooltip_tokens_defined_light_and_dark():
     assert "--fm-tooltip-bg" in dark and "--fm-tooltip-ink" in dark, (
         "tooltip tokens must be overridden for dark mode"
     )
+
+
+def test_panel_closes_without_relying_on_the_stylesheet():
+    # A cached stylesheet that sets display:flex on the panel but lacks the [hidden] override used to
+    # leave the popup open for good. The panel therefore starts with an inline display:none and the
+    # toggle sets display itself, so the close button works whatever CSS the browser holds.
+    html = _render_panel(session={"company_role": "hr_manager"})
+    assert 'id="fmAipPanel"' in html and 'style="display:none"' in html
+    assert "panel.style.display = open ? '' : 'none'" in html
+    assert "e.key === 'Escape'" in html

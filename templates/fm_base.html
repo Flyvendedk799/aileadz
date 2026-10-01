@@ -11,8 +11,8 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,400..800&family=Hanken+Grotesk:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v=16" />
-  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v=15" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm.css') }}?v={{ asset_version('futurematch/assets/fm.css') }}" />
+  <link rel="stylesheet" href="{{ url_for('static', filename='futurematch/assets/fm-pages.css') }}?v={{ asset_version('futurematch/assets/fm-pages.css') }}" />
   {% if white_label_active and (company_branding.primary_color or company_branding.accent_color) %}
   <style id="fm-wl-vars">
     :root {
@@ -238,7 +238,7 @@
   </div>
 </div>
 
-<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v=10"></script>
+<script src="{{ url_for('static', filename='futurematch/assets/shell.js') }}?v={{ asset_version('futurematch/assets/shell.js') }}"></script>
 {% if self.page_id()|trim in ['chat', 'profiler', 'mindmap', 'cvupload'] %}
 <script src="{{ url_for('static', filename='futurematch/assets/ai-sidebar.js') }}?v={{ asset_version('futurematch/assets/ai-sidebar.js') }}"></script>
 {% endif %}

@@ -461,6 +461,8 @@ def create_app():
     def _ensure_enterprise_tables_once():
         if not getattr(app, '_enterprise_tables_created', False):
             app._enterprise_tables_created = True  # set early to prevent concurrent runs
+            if os.environ.get("ENTERPRISE_TABLE_SYNC_SKIP") == "1":
+                return  # test suites build the schema explicitly (tests/test_schema_baseline.py)
             if _recent_enterprise_sync_exists():
                 return
             try:

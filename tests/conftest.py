@@ -18,6 +18,10 @@ os.environ.setdefault("SANDBOX", "1")
 os.environ.setdefault("AI_WARMUP_ON_IMPORT", "0")
 os.environ.setdefault("SCHEDULER_OPPORTUNISTIC", "0")
 os.environ.setdefault("AI_MEMORY_BACKEND", "sqlite")  # AI store tests opt in to MySQL explicitly
+# create_app() must not run the full enterprise-table sync on the first request: against
+# the CI MySQL service it takes minutes and tripped the per-test timeout. The schema is
+# built explicitly by tests/test_schema_baseline.py.
+os.environ["ENTERPRISE_TABLE_SYNC_SKIP"] = "1"
 os.environ.setdefault("CATALOG_AUTO_EMBED", "0")  # never call the embedding API from tests
 
 
@@ -65,3 +69,16 @@ def _session_liveness_isolated(monkeypatch):
     auth_decorators.invalidate_session_cache()
     yield
     auth_decorators.invalidate_session_cache()
+
+
+@pytest.fixture(autouse=True)
+def _confirm_store_isolated():
+    """confirm_store caches 'table ready' and pending tokens at module level; both
+    must not leak between tests that each bring their own database."""
+    from app1 import confirm_store
+
+    confirm_store._table_ready = False
+    confirm_store._STORE.clear()
+    yield
+    confirm_store._table_ready = False
+    confirm_store._STORE.clear()

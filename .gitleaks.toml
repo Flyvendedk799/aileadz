@@ -21,4 +21,5 @@ description = "order_service notify_roles dedupe_key kwargs (generic-api-key fal
 targetRules = ["generic-api-key"]
 condition = "AND"
 paths = ['''^order_service\.py$''']
+regexTarget = "line"
 regexes = ['''dedupe_key\s*=\s*dedupe_key''']

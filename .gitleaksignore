@@ -1,2 +1,3 @@
 # False positive: keyword args `dedupe_key=dedupe_key, dedupe_hours=...` in order_service.py, not a secret.
 136b9dec9ccc7e73debdc64cab750e57838ecb23:order_service.py:generic-api-key:219
+55e439f171e5cdc144e99b02320fa6b457d895f9:order_service.py:generic-api-key:219

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import json
 import os
-import re
 import time
 from typing import Any, Dict, List, Optional
 
@@ -13,11 +12,9 @@ from ai_runtime import (
     compaction_level_for_messages,
     estimate_messages_tokens,
     fast_model,
-    main_model,
     max_output_tokens,
     prepare_messages_for_turn,
     run_direct_completion,
-    user_facing_error_message,
 )
 
 

@@ -357,9 +357,7 @@ def notify_expiring_agreements(company_id, within_days=30):
 
     inserted = 0
     try:
-        import json as _json
 
-        roles_json = _json.dumps(_HR_ROLES)
         for ag in agreements:
             try:
                 vendor = ag.get("vendor_name") or "Ukendt leverandør"

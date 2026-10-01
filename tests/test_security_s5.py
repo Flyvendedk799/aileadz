@@ -14,7 +14,7 @@ from unittest import mock
 
 import db_compat  # noqa: F401
 from tests import secapp
-from tests.secapp import client_as, get_app, login, patch_mysql
+from tests.secapp import client_as, get_app, patch_mysql
 
 REPO = secapp._REPO_ROOT
 
@@ -362,7 +362,6 @@ class S54_CsrfPresence(unittest.TestCase):
             app.config["WTF_CSRF_ENABLED"] = False
 
     def test_enforced_in_production_config_and_only_the_sandbox_switches_it_off(self):
-        import importlib
         import csrf_protect
         src = open(os.path.join(REPO, "csrf_protect.py"), encoding="utf-8").read()
         self.assertIn('os.environ.get("SANDBOX") == "1"', src)

@@ -33,7 +33,6 @@ Design constraints (matching catalog_freshness / digest_service)
     the notification writer commits explicitly.
 """
 
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -309,7 +308,6 @@ def _insert_cards(company_id, gaps):
 
     inserted = 0
     try:
-        roles_json = json.dumps(_HR_ROLES)
         for req in gaps:
             try:
                 marker = _marker(req)

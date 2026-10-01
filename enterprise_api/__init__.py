@@ -4,16 +4,15 @@ Enterprise API Management System
 Provides comprehensive API access with rate limiting, authentication, and analytics
 """
 
-from flask import Blueprint, request, jsonify, g, session, current_app, Response
+from flask import Blueprint, request, jsonify, g, current_app, Response
 import MySQLdb.cursors
 import json
-import jwt
 import hashlib
 import time
 import logging
 import os
 import random
-from datetime import datetime, timedelta
+from datetime import datetime
 from functools import wraps
 import secrets
 
@@ -585,7 +584,7 @@ class APIManager:
             """, (api_key_id,))
             conn.commit()
             cur.close()
-        except Exception as e:
+        except Exception:
             pass
     
     def log_api_request(self, company_id, api_key_id, endpoint, method, status_code, response_time):
@@ -608,7 +607,7 @@ class APIManager:
             ))
             conn.commit()
             cur.close()
-        except Exception as e:
+        except Exception:
             pass
 
 # Initialize API Manager
@@ -684,7 +683,7 @@ def require_api_auth(required_permission=None):
                 )
                 
                 return result
-            except Exception as e:
+            except Exception:
                 # Log failed request
                 response_time = int((time.time() - start_time) * 1000)
                 api_manager.log_api_request(
@@ -767,7 +766,7 @@ def get_company_info():
             'success': True,
             'data': company
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Virksomhedsoplysningerne kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees')
@@ -836,7 +835,7 @@ def get_employees():
                 'pages': (total + per_page - 1) // per_page
             }
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Medarbejderne kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees', methods=['POST'])
@@ -933,7 +932,7 @@ def create_employee():
             'message': 'Medarbejderen er oprettet',
             'data': employee
         }), 201
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Medarbejderen kunne ikke oprettes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees/<int:employee_id>')
@@ -958,7 +957,7 @@ def get_employee(employee_id):
             'success': True,
             'data': employee
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Medarbejderen kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/employees/<int:employee_id>', methods=['PUT'])
@@ -1036,7 +1035,7 @@ def update_employee(employee_id):
             'message': 'Medarbejderen er opdateret',
             'data': employee
         })
-    except Exception as e:
+    except Exception:
         try:
             current_app.mysql.connection.rollback()
         except Exception:
@@ -1077,7 +1076,7 @@ def get_employee_learning_progress(employee_id):
             'success': True,
             'data': progress
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Læringsforløbet kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/analytics/dashboard')
@@ -1119,7 +1118,7 @@ def get_dashboard_analytics():
                 'analytics': analytics
             }
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Analysen kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/reports/export')
@@ -1181,7 +1180,7 @@ def export_report():
             'data': data,
             'format': 'json'
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Rapporten kunne ikke eksporteres'}), 500
 
 @api_enterprise_bp.route('/api/v1/webhooks')
@@ -1207,7 +1206,7 @@ def get_webhooks():
             'success': True,
             'data': webhooks
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Webhooks kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/webhooks', methods=['POST'])
@@ -1264,7 +1263,7 @@ def create_webhook():
             'message': 'Webhooken er oprettet',
             'data': webhook
         }), 201
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Webhooken kunne ikke oprettes'}), 500
 
 # API Key Management Endpoints
@@ -1290,7 +1289,7 @@ def get_api_keys():
             'success': True,
             'data': api_keys
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'API-nøgler kunne ikke hentes'}), 500
 
 @api_enterprise_bp.route('/api/v1/admin/api-keys', methods=['POST'])
@@ -1348,7 +1347,7 @@ def create_api_key():
                 'note': 'Gem denne API-noegle nu. Den vises kun denne ene gang.'
             }
         }), 201
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'API-nøglen kunne ikke oprettes'}), 500
 
 # =====================================================
@@ -1391,7 +1390,7 @@ def get_employee_training(employee_id):
             'success': True,
             'data': {'orders': orders, 'learning_progress': progress}
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Træningshistorikken kunne ikke hentes'}), 500
 
 
@@ -1462,7 +1461,7 @@ def get_analytics_overview():
                 }
             }
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Analyseoversigten kunne ikke hentes'}), 500
 
 
@@ -1495,7 +1494,7 @@ def get_skills_matrix():
             'success': True,
             'data': {'targets': targets, 'employee_skills': skills}
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Kompetencedata kunne ikke hentes'}), 500
 
 
@@ -1538,7 +1537,7 @@ def get_orders():
             'pagination': {'page': page, 'per_page': per_page, 'total': total,
                            'pages': (total + per_page - 1) // per_page}
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Ordrer kunne ikke hentes'}), 500
 
 
@@ -1602,7 +1601,7 @@ def create_order_api():
             'success': True, 'message': 'Ordren er oprettet',
             'data': {'order_id': order_id}
         }), 201
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Ordren kunne ikke oprettes'}), 500
 
 

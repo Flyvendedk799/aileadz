@@ -39,9 +39,6 @@ ANON_NOTE_DA = 'Grupper under k={k} er skjult af hensyn til anonymitet'
 # Label used when small cohorts are MERGED into a single bucket instead of dropped.
 DEFAULT_MERGE_LABEL = 'Anonymiseret (<k)'
 
-# Placeholder shown for a single redacted cell.
-REDACTED_PLACEHOLDER = '—'
-
 
 def _resolve_k_default():
     """Resolve the configured default k from the environment, guarded.
@@ -115,19 +112,6 @@ def is_cohort_safe(n, k=K_DEFAULT):
         return _coerce_count(n) >= _coerce_k(k)
     except Exception:
         return False
-
-
-def redact(value, n, k=K_DEFAULT):
-    """Return ``value`` if a cohort of size ``n`` is safe, else the placeholder.
-
-    For single-cell breakdowns (e.g. one department's average) where the value
-    itself would expose a sub-k cohort. Never raises; on error it fails closed
-    and redacts.
-    """
-    try:
-        return value if is_cohort_safe(n, k) else REDACTED_PLACEHOLDER
-    except Exception:
-        return REDACTED_PLACEHOLDER
 
 
 def suppress_small_groups(rows, count_key, k=K_DEFAULT, label_key=None,

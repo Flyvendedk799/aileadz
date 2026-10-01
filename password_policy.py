@@ -60,7 +60,3 @@ def _is_sequence(s):
     steps = {ord(b) - ord(a) for a, b in zip(s, s[1:])}
     return steps <= {1} or steps <= {-1}
 
-
-def first_error(password, username=None, email=None):
-    errs = validate_password(password, username, email)
-    return errs[0] if errs else None

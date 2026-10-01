@@ -148,12 +148,6 @@ def mark_notification_read(notification_id):
 
 # ── User Profile / CV API ──
 
-def _require_login():
-    if 'user' not in session:
-        return None, jsonify({'success': False, 'error': 'Not authenticated'}), 401
-    return session['user'], None, None
-
-
 @api_bp.route('/api/profile/full')
 @login_required
 def get_full_profile_api():
@@ -957,7 +951,7 @@ def apply_cv_items(username, data):
             update_skill_level, update_experience, update_education,
             update_certification, update_language_level, update_profile_summary,
         )
-        from competency import canonical_skill, level_to_score
+        from competency import canonical_skill
         ensure_tables()
         counts = {k: 0 for k in ('skills', 'experience', 'education', 'courses',
                                  'certifications', 'languages')}

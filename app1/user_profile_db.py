@@ -2,7 +2,6 @@
 User Profile Database Layer — connects app1 chatbot to the main MySQL user system.
 Manages: skills, work experience, education, completed courses, and profile summary.
 """
-import time
 from flask import current_app
 import MySQLdb.cursors
 from db_compat import refresh_flask_mysql_connection
@@ -1474,20 +1473,6 @@ def toggle_learning_path_step(username, path_id, step_order, done=None):
 def delete_learning_path(username, path_id):
     """Archive a learning path for the user."""
     return update_learning_path_status(username, path_id, "arkiveret")
-
-
-def format_goals_for_ai(goals):
-    """Compact text of active goals for the AI system context."""
-    active = [g for g in (goals or []) if g.get("status") == "aktiv"]
-    if not active:
-        return ""
-    bits = []
-    for g in active[:6]:
-        s = g["title"]
-        if g.get("target_date"):
-            s += f" (inden {g['target_date']})"
-        bits.append(s)
-    return "Aktive udviklingsmål: " + "; ".join(bits)
 
 
 # ── Full Profile Snapshot (for AI context) ──

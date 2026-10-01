@@ -1,9 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, Response
 import MySQLdb
-from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
-import uuid
 import re
 import time
 

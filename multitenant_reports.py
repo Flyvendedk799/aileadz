@@ -5,7 +5,7 @@ Replaces the single-tenant reports.py with company-scoped analytics
 """
 
 from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
-from auth_decorators import require_company, require_company_role
+from auth_decorators import require_company_role
 
 # S-1.5: these pages expose colleagues' orders and PII (names, emails). Employees
 # must not reach them; department heads only get their own department view.
@@ -14,9 +14,6 @@ _hr_or_dept_head = require_company_role('company_admin', 'hr_manager', 'departme
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime
-import json
-import re
-from datetime import timedelta
 
 # Max age (days) of the newest company_analytics snapshot row for the
 # pre-aggregated daily-usage series to be considered "fresh enough" to serve

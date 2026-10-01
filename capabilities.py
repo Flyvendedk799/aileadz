@@ -32,12 +32,6 @@ def effective_role(session=None) -> str:
     return role if role in auth_decorators.ROLE_RANK else EMPLOYEE
 
 
-def role_rank(role) -> int:
-    if role == PLATFORM_ADMIN:
-        return max(auth_decorators.ROLE_RANK.values()) + 1
-    return auth_decorators.ROLE_RANK.get(role or EMPLOYEE, 0)
-
-
 def can(capability: str, session=None) -> bool:
     """True when the acting user holds ``capability`` (fail closed if unknown)."""
     try:
@@ -52,10 +46,6 @@ def capabilities_for(session=None) -> set:
 
 def is_manager(session=None) -> bool:
     return can("hr.view", session)
-
-
-def is_hr(session=None) -> bool:
-    return can("hr.manage", session)
 
 
 def register_jinja(app) -> None:

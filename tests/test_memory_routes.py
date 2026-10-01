@@ -3,7 +3,6 @@
 Boots the real Flask app under SANDBOX (no MySQL) and drives the two new
 memory-management routes. user_profile_db is mocked so no live DB is needed.
 """
-import json
 import os
 import sys
 import tempfile

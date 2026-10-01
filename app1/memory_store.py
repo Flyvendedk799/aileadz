@@ -390,16 +390,6 @@ def set_feedback_reviewed(feedback_id, approved=True):
     return (res.rowcount or 0) > 0
 
 
-def get_search_analytics(limit=20):
-    """Get recent search analytics for debugging/optimization."""
-    try:
-        return _run("SELECT query_text, tool_used, results_count, timestamp FROM ai_analytics_events "
-                    "WHERE event_type = 'tool_call' ORDER BY timestamp DESC LIMIT %s",
-                    (limit,), fetch=True).rows
-    except Exception:
-        return []
-
-
 # ── Debug Logging ──
 
 @_quiet

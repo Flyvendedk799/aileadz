@@ -284,8 +284,6 @@ def _deliver_to_subscribers(conn, row, company_slug):
         data = row.get('payload')
 
     errors = []
-    import hashlib
-    import hmac
     from datetime import datetime
 
     for wh in webhooks:

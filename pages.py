@@ -2,7 +2,6 @@
 from flask import Blueprint, render_template, session, current_app, redirect, url_for, flash, request
 import MySQLdb.cursors
 import os
-import json
 import datetime
 from auth_decorators import login_required
 

@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app
+from flask import Blueprint, render_template, session, current_app
 import MySQLdb.cursors
 from collections import defaultdict
 import datetime

@@ -1,9 +1,7 @@
-from flask import Blueprint, render_template, session, redirect, url_for, flash, current_app, request, jsonify
+from flask import Blueprint, render_template, current_app, request, jsonify
 import MySQLdb.cursors
-from collections import defaultdict
 import datetime
 import json
-import logging
 import os
 
 from auth_decorators import require_role

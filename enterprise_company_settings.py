@@ -6,14 +6,11 @@ Advanced features for high-end SaaS solutions serving large enterprises
 import os
 import json
 import uuid
-import hashlib
-from datetime import datetime, timedelta
-from functools import wraps
-from typing import Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Dict, List, Tuple
 import MySQLdb.cursors
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app, send_file
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, jsonify, current_app
 from werkzeug.utils import secure_filename
-from werkzeug.security import generate_password_hash
 from auth_decorators import require_company_role
 try:
     import boto3
@@ -456,34 +453,6 @@ class EnterpriseSettingsManager:
 
 # Initialize settings manager
 settings_manager = EnterpriseSettingsManager()
-
-def require_enterprise_access():
-    """Decorator for enterprise settings access"""
-    def decorator(f):
-        @wraps(f)
-        def decorated_function(*args, **kwargs):
-            if 'user' not in session:
-                flash('Please log in to access enterprise settings.', 'danger')
-                return redirect(url_for('auth.login'))
-            
-            user_type = session.get('user_type', 'regular')
-            company_role = session.get('company_role', '')
-            platform_role = session.get('role', '')
-            
-            if user_type == 'platform_admin' or platform_role == 'admin':
-                return f(*args, **kwargs)
-            
-            if company_role in ['hr_manager', 'company_admin']:
-                return f(*args, **kwargs)
-            
-            if user_type == 'company_user' and company_role in ['hr_manager', 'company_admin']:
-                return f(*args, **kwargs)
-            
-            flash("You don't have permission to access enterprise settings.", "danger")
-            return redirect(url_for('dashboard.dashboard'))
-        
-        return decorated_function
-    return decorator
 
 def get_company_context():
     """Get current user's company context"""

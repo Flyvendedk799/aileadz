@@ -343,7 +343,7 @@ class SetStatusFiresOverrunEmailTests(unittest.TestCase):
                                   "_send_budget_overrun_emails_safe",
                                   side_effect=lambda *a, **k: overrun_calls.append((a, k))):
             res = order_service.set_status(
-                self_ctx := order_service.OrderContext(
+                order_service.OrderContext(
                     company_id=7, user_id=1, username="chef",
                     company_role="hr_manager", source="web"),
                 "ord-9", "approved",

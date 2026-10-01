@@ -3,7 +3,7 @@ Order Routes for Futurematch Chatbot
 Handles order-related endpoints and integration with the chatbot
 """
 
-from flask import Blueprint, request, jsonify, session, current_app
+from flask import Blueprint, request, jsonify, session
 import logging
 from .order_handler import order_handler, create_order_from_chatbot, store_user_info_for_order, get_order_status_for_chatbot
 
@@ -186,7 +186,6 @@ def process_order_query():
     try:
         data = request.get_json(silent=True) or {}
         query = data.get('query', '').lower()
-        context = data.get('context', {})
         
         # Detect order intent
         order_keywords = ['bestil', 'køb', 'ordre', 'tilmeld', 'book', 'jeg vil gerne have']
@@ -273,33 +272,3 @@ def cancel_order(order_id):
             'success': False,
             'error': str(e)
         }), 500
-
-# Helper function to format order confirmation for chatbot
-def format_order_confirmation_for_chat(order):
-    """Format order confirmation for chatbot display"""
-    confirmation = f"""
-✅ **Din ordre er bekræftet!**
-
-**Ordrenummer:** {order['order_id'][:8]}
-
-**Kursus:** {order['product']['title']}
-"""
-    
-    if order.get('variant'):
-        if order['variant'].get('date'):
-            confirmation += f"**Dato:** {order['variant']['date']}\n"
-        if order['variant'].get('location'):
-            confirmation += f"**Sted:** {order['variant']['location']}\n"
-    
-    if order['product']['price'] > 0:
-        confirmation += f"**Pris:** {order['product']['price']} kr.\n"
-    
-    confirmation += f"""
-**Dine oplysninger:**
-Navn: {order['user']['name']}
-Email: {order['user']['email']}
-
-Du modtager en bekræftelse på email. Du kan følge status på din tidslinje.
-"""
-    
-    return confirmation

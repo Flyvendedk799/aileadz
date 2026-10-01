@@ -19,7 +19,6 @@ import json
 import re
 
 import jinja2
-import pytest
 
 import kanon
 

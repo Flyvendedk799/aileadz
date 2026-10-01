@@ -1,4 +1,4 @@
-from flask import Flask, render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect, make_response
+from flask import render_template, Blueprint, render_template_string, request, jsonify, session, current_app, Response, stream_with_context, url_for, abort, redirect, make_response
 from markupsafe import escape
 import db_compat  # noqa: F401
 import json
@@ -16,7 +16,7 @@ from auth_decorators import login_required as _login_required, require_role as _
 
 # Try to import fuzzywuzzy; if not installed, raise a clear error.
 try:
-    from fuzzywuzzy import fuzz, process
+    from fuzzywuzzy import fuzz
 except ImportError:
     raise ImportError("Please install fuzzywuzzy (pip install fuzzywuzzy) or consider using RapidFuzz.")
 
@@ -55,11 +55,7 @@ OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
 # Set the key for openai
 openai.api_key = OPENAI_API_KEY
 
-PRODUCTS_CACHE = None
-FUZZY_THRESHOLD = 60
 
-# For matching "13. februar" or "13. februar 2025" etc.
-DATE_REGEX = r'\b(\d{1,2}(?:\.\s*|\s+)?[a-zæøå]+(?:\s+\d{4})?)\b'
 
 # Mapping Danish month names to month numbers
 DANISH_MONTHS = {
@@ -87,96 +83,8 @@ def load_products():
         print(f"Error loading catalog: {e}")
         return []
 
-def extract_location_and_date(product):
-    location = ""
-    date_val = ""
-    for option in product.get("options", []):
-        name = option.get("name", "").lower()
-        if name == "lokation" and option.get("values"):
-            location = option.get("values")[0]
-        elif name == "tidspunkt" and option.get("values"):
-            date_val = option.get("values")[0]
-    return location, date_val
-
-def extract_product_from_query(query, last_handle=None):
-    context_hint = f" The user might be referring to a previously discussed product with handle '{last_handle}'." if last_handle else ""
-    prompt = (
-        f"Extract the product name from the following query.{context_hint} "
-        f"Return only the product name (no additional text) or an empty string if none is found:\n\n"
-        f"Query: \"{query}\""
-    )
-    try:
-        response = openai.chat.completions.create(
-            model="gpt-4",
-            messages=[
-                {"role": "system", "content": "You are an assistant that extracts product names from user queries. If the query is just asking for more information without specifying a name, and context is provided, you may return the context name."},
-                {"role": "user", "content": prompt}
-            ],
-            temperature=0.0,
-        )
-        extracted_name = response.choices[0].message.content.strip()
-        # If the model returns nothing, or a generic response, and we have a last_handle, fallback to it
-        if not extracted_name and last_handle and any(word in query.lower() for word in ["den", "det", "dette", "mere", "info", "fortæl"]):
-            return last_handle
-        return extracted_name
-    except Exception as e:
-        print(f"Error extracting product name using NLP: {e}")
-        return ""
-
 def combined_score(a, b):
     return max(fuzz.token_sort_ratio(a, b), fuzz.partial_ratio(a, b))
-
-def get_best_match(query, product_titles):
-    query_lower = query.lower().strip()
-    
-    # 1. Exact match
-    for title in product_titles:
-        if query_lower == title:
-            return (title, 100)
-            
-    # 2. Exact substring match (e.g. "teamledelse" in "Teamledelse")
-    # Priority to titles that start with the query, or have it strictly as a word.
-    for title in product_titles:
-        if title.startswith(query_lower):
-            return (title, 95)
-    for title in product_titles:
-        if f" {query_lower} " in f" {title} " or f" {query_lower}" in f" {title}":
-            return (title, 90)
-
-    # 3. Fuzzy match fallback
-    best_match = process.extractOne(query_lower, product_titles, scorer=combined_score)
-    return best_match if best_match and best_match[1] >= FUZZY_THRESHOLD else None
-
-def suggest_courses(query, product_list, count=3):
-    scored_products = []
-    for product in product_list:
-        score = combined_score(query, product.get("title_lower", ""))
-        if score >= FUZZY_THRESHOLD:
-            scored_products.append((score, product))
-    scored_products.sort(key=lambda x: x[0], reverse=True)
-    return [item[1] for item in scored_products[:min(count, len(scored_products))]]
-
-def handle_legal_and_product_conflict(query, matched_products, product_titles):
-    legal_terms = ["lov", "forordning", "regel", "akt"]
-    if any(term in query for term in legal_terms):
-        best_match = get_best_match(query, product_titles)
-        if best_match:
-            return matched_products[product_titles.index(best_match[0])]
-    return None
-
-def find_keywords_in_query(query):
-    keywords = {
-        "price": ["pris", "prisen", "koster", "hvad koster", "prisen på", "beløb", "omkostninger"],
-        "date": ["dato", "start", "begynder", "startdato", "starttidspunkt", "år", "måned", "periode", "tidspunkt", "hvornår"],
-        "description": ["beskrivelse", "info", "detaljer", "om", "indhold", "fortæl"],
-        "location": ["sted", "lokation", "by", "adresse", "placering", "hvor er det", "hvor bliver det afholdt"],
-        "vendor": ["udbyder", "leverandør", "sælger", "forhandler", "firma", "organisator", "arrangør"]
-    }
-    matched_keywords = {}
-    for key, terms in keywords.items():
-        if any(term in query for term in terms):
-            matched_keywords[key] = True
-    return matched_keywords
 
 # --------------------
 # DATE PARSING LOGIC
@@ -224,23 +132,6 @@ def parse_danish_date(date_str):
         return None
 
 
-def filter_upcoming_variants(variants):
-    """
-    Convert each variant's date string (option2) into a date object.
-    Return only those that are >= today's date, sorted ascending by date.
-    """
-    today = datetime.date.today()
-    valid_variants = []
-    for v in variants:
-        raw_date = (v.get("option2") or "").strip()
-        dt = parse_danish_date(raw_date)
-        if dt and dt >= today:
-            valid_variants.append((dt, v))
-    # Sort by the date object
-    valid_variants.sort(key=lambda x: x[0])
-    # Return just the variant objects in ascending order
-    return [variant for (_, variant) in valid_variants]
-
 # Summarization Cache
 _short_description_cache = {}
 
@@ -277,93 +168,6 @@ def get_short_description(product):
                 summary = excerpt(clean_desc or full_desc, 150)
     _short_description_cache[pid] = summary
     return summary
-
-def get_course_detail(query, product):
-    """
-    Provides a direct text-based answer (price, date, location, etc.)
-    based on user query keywords. Also references the short summary for descriptions.
-    Uses date parsing + filtering to ensure we only return future dates.
-    """
-    query_lower = query.lower()
-    keywords = find_keywords_in_query(query_lower)
-
-    # Price
-    if "price" in keywords:
-        if product["price"] in ["0", "0.00"]:
-            return f"Prisen for {escape(product['title'])} er Efter aftale."
-        else:
-            return f"Prisen for {escape(product['title'])} er {escape(_dkprice_filter(product['price']))} kr."
-
-    # Date
-    if "date" in keywords and "hvornår" in query_lower:
-        # Filter the variants to only future dates
-        variants = product.get("variants", [])
-        location_filter = None
-        for loc in ["herlev", "hørkær", "københavn"]:
-            if loc in query_lower:
-                location_filter = loc
-                break
-        if location_filter:
-            # Also filter by location
-            variants = [v for v in variants if location_filter in (v.get("option1") or "").lower()]
-
-        upcoming = filter_upcoming_variants(variants)
-
-        if upcoming:
-            # Return the earliest upcoming date
-            next_date_str = upcoming[0].get("option2", "ikke angivet")
-            if location_filter:
-                return f"Næste startdato for {escape(product['title'])} i {escape(location_filter.capitalize())} er {escape(next_date_str)}."
-            else:
-                return f"Næste startdato for {escape(product['title'])} er {escape(next_date_str)}."
-        else:
-            return f"Der er ingen fremtidige datoer angivet for {escape(product['title'])}."
-
-    # Location
-    if ("location" in keywords) or ("hvor" in query_lower and "hvornår" not in query_lower):
-        date_pattern = re.compile(DATE_REGEX, re.IGNORECASE)
-        match = date_pattern.search(query_lower)
-        query_date = match.group(1).strip() if match else None
-
-        if query_date:
-            query_date_normalized = query_date.replace('.', '').replace('den ', '').strip()
-            matching_variant = None
-            for variant in product.get("variants", []):
-                variant_date = (variant.get("option2") or "").strip().lower()
-                variant_date_normalized = variant_date.replace('.', '').replace('den ', '').strip()
-                if query_date_normalized and query_date_normalized in variant_date_normalized:
-                    matching_variant = variant
-                    break
-            if matching_variant:
-                location = (matching_variant.get("option1") or "").strip()
-                return f"Stedet for {escape(product['title'])} den {escape(matching_variant.get('option2', ''))} er {escape(location)}."
-        # If no specific date was asked, show all variant combos
-        variants = product.get("variants", [])
-        if len(variants) > 1:
-            details_list = []
-            for variant in variants:
-                opt_date = (variant.get("option2") or "").strip()
-                opt_location = (variant.get("option1") or "").strip()
-                if opt_date and opt_location:
-                    details_list.append(f"- {escape(opt_date)}: {escape(opt_location)}")
-            if details_list:
-                return f"Steder for {escape(product['title'])}:\n" + "\n".join(details_list)
-        general_location = product.get("location", "").strip()
-        if general_location:
-            return f"Stedet for {escape(product['title'])} er {escape(general_location)}."
-        else:
-            return "Undskyld, den information kunne jeg ikke finde. Prøv at spørg om noget andet, eller omformuler dit spørgsmål."
-
-    # Description
-    if "description" in keywords:
-        return f"Beskrivelse: {escape(get_short_description(product))}."
-
-    # Vendor
-    if "vendor" in keywords:
-        return f"Udbyderen for {escape(product['title'])} er {escape(product.get('vendor', 'ukendt'))}."
-
-    # Fallback
-    return f"Jeg har fundet {escape(product['title'])}. Se nedenfor for detaljer."
 
 # -------------- RENDERING TEMPLATES --------------
 
@@ -2573,7 +2377,6 @@ def widget_loader_js(token):
     close_icon = '<svg viewBox="0 0 24 24"><path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>'
     btn_icon = logo_html if tenant_logo else chat_icon
     btn_icon_js = json.dumps(btn_icon)
-    chat_icon_js = json.dumps(chat_icon)
     close_icon_js = json.dumps(close_icon)
 
     js = f"""(function(){{

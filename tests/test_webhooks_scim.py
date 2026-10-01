@@ -168,7 +168,6 @@ class WebhookDeliveryTests(Base):
         self.assertNotIn("Andens", html)
 
     def test_resend_route_requires_hr_and_scopes_to_company(self):
-        did = 1
         self.db.execute("INSERT INTO webhook_deliveries (id, outbox_id, webhook_id, company_id, event_type, status) "
                         "VALUES (1, 1, 2, 7, 'order.approved', 'failed')")
         self.db.execute("INSERT INTO event_outbox (id, company_id, event_type, payload, status) VALUES (1,7,'order.approved','{}','failed')")

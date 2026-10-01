@@ -17,7 +17,7 @@ from unittest import mock
 
 import db_compat  # noqa: F401
 from tests import secapp
-from tests.secapp import FakeMySQL, client_as, get_app, login, patch_mysql
+from tests.secapp import client_as, get_app, patch_mysql
 
 import gdpr_service
 
@@ -139,7 +139,7 @@ class S41_ErasureByIdentity(unittest.TestCase):
         app = get_app()
         fake, p = patch_mysql(app)
         with p, app.app_context():
-            report = gdpr_service.erase_user_data("ghost", actor="root", dry_run=False)
+            gdpr_service.erase_user_data("ghost", actor="root", dry_run=False)
         for q in fake.log:
             s = _n(q[0])
             # no spec may fall back to an unfiltered statement
@@ -556,7 +556,6 @@ class _GoalCur:
             self._res = [{"Field": "x"}]        # columns "exist" -> no ALTERs
         elif s.startswith("insert into employee_goals"):
             gid = len(db.goals) + 1
-            shared = ", 1, now()" in s
             db.goals.append({"id": gid, "employee_id": params[0], "company_id": params[1], "goal_title": params[2],
                              "goal_description": params[3], "target_date": params[4], "status": "active",
                              "progress": 0, "shared_with_employee": params[5], "shared_at": None,
@@ -603,7 +602,7 @@ class S44_GoalSharing(unittest.TestCase):
         self.db = GoalDb()
 
     def test_new_goals_are_private_by_default(self):
-        gid = self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="Bliv teamleder")
+        self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="Bliv teamleder")
         self.assertEqual(self.db.goals[0]["shared_with_employee"], 0)
         self.assertEqual(self.gs.list_shared_goals_for_learner(self.db, 11, 7), [])
         sections = self.gs.list_goals_for_hr(self.db, 7, 11)
@@ -611,8 +610,8 @@ class S44_GoalSharing(unittest.TestCase):
         self.assertEqual(sections["shared"], [])
 
     def test_unshared_goal_never_reaches_the_learner_only_shared_does(self):
-        a = self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="HR-notat: performance")
-        b = self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="Lær Excel", shared=True,
+        self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="HR-notat: performance")
+        self.gs.create_goal(self.db, company_id=7, employee_user_id=11, title="Lær Excel", shared=True,
                                 actor_user_id=13)
         titles = [r["goal_title"] for r in self.gs.list_shared_goals_for_learner(self.db, 11, 7)]
         self.assertEqual(titles, ["Lær Excel"])

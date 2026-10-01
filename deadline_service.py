@@ -41,7 +41,6 @@ Design constraints (matching compliance_service / digest_service / catalog_fresh
     the notification writer commits explicitly.
 """
 
-import json
 import logging
 
 logger = logging.getLogger(__name__)
@@ -227,27 +226,6 @@ def _build_learner_message(content_name, days_left, is_overdue, marker):
     else:
         when = "nærmer sig sin frist"
     return "Påmindelse: “%s” %s. Log ind og fuldfør forløbet i tide." % (title, when)
-
-
-def _recent_marker_exists(cur, company_id, marker):
-    """True if a notification carrying ``marker`` was raised in the dedupe window."""
-    try:
-        cur.execute(
-            """
-            SELECT COUNT(*) AS cnt
-            FROM company_notifications
-            WHERE company_id = %s
-              AND message LIKE %s
-              AND created_at >= DATE_SUB(NOW(), INTERVAL %s DAY)
-            """,
-            (company_id, "%" + marker + "%", _NOTIFY_DEDUPE_DAYS),
-        )
-        return int(_scalar(cur.fetchone(), "cnt", 0) or 0) > 0
-    except Exception as e:
-        logger.debug("deadline_service: dedupe check failed: %s", e)
-        # Fail safe: treat an errored check as "recently nudged" so we never
-        # double-send because the guard itself broke.
-        return True
 
 
 def remind_company(company_id):

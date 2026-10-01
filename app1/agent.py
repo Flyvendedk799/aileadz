@@ -7,7 +7,6 @@ Phase 6: Response quality guardrails & feedback loop
 """
 from flask import Response, stream_with_context, current_app
 import json
-import openai
 import time
 from app1.tools import OPENAI_TOOLS, PROFILE_TOOLS, execute_tool, set_search_context
 from app1.memory_store import log_debug
@@ -40,9 +39,7 @@ def _fence(label, text):
 
 
 import os
-import uuid
 import re as _re
-import random as _random
 import ai_context_layers as _ctx
 from typing import Optional
 
@@ -297,7 +294,6 @@ SYSTEM_PLAYBOOK_CV_ONBOARDING = """CV-ONBOARDING (når brugeren beder om CV/prof
 Byg videre på det, profilen allerede rummer, og spørg ind til det, der ville gøre dine anbefalinger bedre.
 Tilbyd open_in_app(open_cv_upload) når brugeren vil uploade et CV-dokument eller paste CV-tekst."""
 
-SYSTEM_PLAYBOOK_CV = SYSTEM_PLAYBOOK_PROFILE_SAVE + "\n\n" + SYSTEM_PLAYBOOK_CV_ONBOARDING
 
 SYSTEM_PLAYBOOK_SEARCH = """SØGE-INTELLIGENS:
 - Søg på BEHOV, ikke jobtitel.
@@ -351,7 +347,6 @@ GEM UNDERVEJS:
 - Kvittér kort for det, du gemmer, og lad brugeren mærke, at det bliver brugt til noget.
   Du behøver ikke opremse, hvad der mangler."""
 
-SYSTEM_PROMPT = SYSTEM_CORE
 
 # ── Cross-surface / mode configuration ──
 import os as _os_mod
@@ -552,7 +547,6 @@ def _detect_conversation_stage(sid, messages):
     """Detect conversation stage based on message history and context. Rule-based, no API call."""
     user_msg_count = sum(1 for m in messages if m.get("role") == "user")
     shown_count = len(SHOWN_PRODUCTS.get(sid, {}).get("products", []))
-    tool_call_count = sum(1 for m in messages if m.get("role") == "tool")
 
     # Get latest user message for signal detection
     latest_user = next((m.get("content", "") for m in reversed(messages) if m.get("role") == "user"), "")
@@ -955,11 +949,6 @@ def _track_shown_products(sid, compact_results):
                 _get_store().update_anonymous_interests(token, new_viewed=new_viewed)
         except Exception:
             pass
-
-
-def _estimate_tokens(text):
-    """Rough token estimate: ~4 chars per token."""
-    return max(1, len(text) // 4)
 
 
 def _build_shown_products_message(sid):
@@ -1554,36 +1543,7 @@ def _strip_suggestions_tag(text):
     return _re.sub(r'\s*<suggestions>.*?</suggestions>\s*', '', text, flags=_re.DOTALL).strip()
 
 
-def _strip_course_listings(text):
-    """Strip bullet-point/numbered course listings from AI text when product cards handle display."""
-    lines = text.split('\n')
-    cleaned = []
-    for line in lines:
-        stripped = line.strip()
-        # Skip bullet points and numbered lists (course listings)
-        if _re.match(r'^[-•*]\s', stripped) or _re.match(r'^\d+[\.\)]\s', stripped):
-            continue
-        # Skip lines that look like "Et X-dages kursus..." pattern
-        if _re.match(r'^Et\s+(gratis\s+)?\w+', stripped) and any(w in stripped.lower() for w in ['kursus', 'webinar', 'forløb', 'certificering', 'workshop']):
-            continue
-        cleaned.append(line)
-    result = '\n'.join(cleaned).strip()
-    result = _re.sub(r'\n{3,}', '\n\n', result)
-    return result
-
-
 # ── AG-02: Live tool-events fra agent-loopet (worker-tråd + bounded queue) ──
-
-def _live_agent_timeout_seconds():
-    """Hård øvre grænse for hvor længe live-event-stien venter på agent-loopet.
-
-    Skal rumme flere completions (AI_OPENAI_TIMEOUT_SECONDS er 45s pr. kald)
-    plus tool-latens, så legitime lange ture aldrig kappes unødigt. Env-tunbar
-    via AI_LIVE_TOOL_EVENTS_TIMEOUT_SECONDS.
-    """
-    from ai_runtime import live_agent_timeout_seconds
-    return live_agent_timeout_seconds()
-
 
 def _iter_agent_with_live_tool_events(agent_kwargs):
     """AG-02 (AI_LIVE_TOOL_EVENTS, default ON): kør run_agent_with_fallback i en
@@ -2460,16 +2420,13 @@ def handle_agentic_ask(user_query, session, mode="default", *, turn_kind="messag
                 compaction_level_for_messages,
                 estimate_messages_tokens,
                 estimate_tools_tokens,
-                fast_model,
                 in_rate_limit_cooldown,
                 iter_buffered_text_chunks,
                 iter_completion_stream,
                 live_tool_events_enabled,
                 log_agent_run,
                 log_tool_run,
-                main_model,
                 make_run_id,
-                max_output_tokens,
                 prepare_messages_for_turn,
                 run_agent_with_fallback,
                 user_facing_error_message,

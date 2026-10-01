@@ -3,7 +3,6 @@ Order Handler Module for Futurematch Chatbot
 Handles course ordering, payment processing, and order management
 """
 
-import json
 import uuid
 import datetime
 import logging

@@ -1,159 +1,72 @@
-# Performance runbook — static assets, DB indexes, caching
+# Runbook: Static assets, DB indexes, caching
 
-This documents the platform-performance work and the **one manual step** it needs
-on PythonAnywhere. Everything else applies automatically on a normal `git pull` +
-**Web → Reload**.
+Everything here applies automatically on deploy; no manual step. The app serves
+`static/` itself (gunicorn worker behind the Cloudflare tunnel; there is no separate
+static-file mapping), so the code-side caching below is what matters.
 
-## TL;DR deploy
+## 1. Static assets and cache-busting
 
-1. `git pull` on PythonAnywhere.
-2. **Web tab → Reload** the web app.
-3. **One-time only:** add the `/static` mapping (below). After that, normal pulls
-   need no extra steps.
+- `run.py` sets `SEND_FILE_MAX_AGE_DEFAULT` from `STATIC_MAX_AGE_SECONDS` (default 1 year);
+  `security_headers.py` adds `Cache-Control: public, max-age=31536000, immutable` to any
+  `/static/*` response that lacks one.
+- Because assets are cached for a year, **a changed file must get a changed URL**:
+  - **Preferred:** `?v={{ asset_version('futurematch/assets/chat.js') }}`. `asset_version.py`
+    (Jinja global registered in `run.py`) returns a 10-char SHA-1 of the file content, so an
+    edit busts the cache by itself and an unchanged file keeps its cache across deploys. The
+    chat assets (`chat.js`, `chat.css`, `ai-sidebar.js`, `ai-stream.js`, `profile-strength.js`) use it; a
+    hand-bumped `?v=` for `chat.js` was once forgotten and shipped invisibly.
+  - **Legacy `?v=N`** (still used by other templates): when you edit such a file, bump `N` in
+    every template that references it, or switch that include to `asset_version`.
 
-On the first request after each reload, the app idempotently ensures the hot-path
-DB indexes (see "Database indexes"). The first reload after this change may take a
-few extra seconds while the indexes build; subsequent reloads are instant.
+## 2. Gzip of dynamic responses
 
----
-
-## 1. Static files → nginx (the one manual step) ⭐ biggest frontend win
-
-By default Flask serves `/static/*` through the Python workers. On PythonAnywhere
-you can have **nginx** serve them directly — faster, and it frees the workers for
-real requests.
-
-**Web tab → "Static files" → Add:**
-
-| URL        | Directory                                   |
-|------------|---------------------------------------------|
-| `/static/` | `/home/TobiasMastek/dashboard/static/`      |
-
-Then **Reload**. Verify with:
+`response_compression.py` (an `after_request` hook registered in `run.py`) gzips text responses
+(`text/*`, JSON, JS, XML, SVG) when the client sends `Accept-Encoding: gzip`. It skips the SSE chat
+stream (`text/event-stream`), streamed / `send_file` responses, already-encoded responses and bodies
+under 600 bytes, and returns the original response on any error. Verify:
 
 ```bash
-curl -sI https://TobiasMastek.pythonanywhere.com/static/futurematch/assets/fm.css | grep -i 'server\|cache-control'
+curl -s -H 'Accept-Encoding: gzip' -o /dev/null -D - https://<host>/<big-page> | grep -i content-encoding
 ```
 
-You should see nginx serving it (not the worker) and a long `Cache-Control`.
-PythonAnywhere applies a far-future expiry to mapped static files automatically.
+## 3. Database indexes (auto-applied)
 
-**Cache-busting:** every asset URL is versioned with `?v=…`. Long-lived caching is
-safe **only because of this** — a changed file under an unchanged URL keeps
-serving the old cached copy to every returning visitor.
+`performance_indexes.ensure_performance_indexes(app)` adds the hot-path indexes (`created_at`,
+`company_id`, `status`, `username`, `query_text`, ...; list in `PERFORMANCE_INDEXES`). It runs once
+per worker process from a `before_request` hook in `run.py` (not gated by the enterprise-sync
+stamp), ignores MySQL error 1061 (index exists) and skips tables/columns that do not exist, so it is
+safe to repeat. The first request after a deploy that adds indexes can take a few seconds.
 
-- **Preferred:** `?v={{ asset_version('futurematch/assets/chat.js') }}` — a short
-  hash of the file's content (`asset_version.py`, registered in `run.py`). An edit
-  busts the cache by itself; an unchanged file keeps its cache across deploys. The
-  AI chat assets (`chat.js`, `chat.css`, `ai-sidebar.js`) use it — a chat.js change
-  once shipped invisibly because its hand-bumped `?v=14` was never bumped.
-- **Legacy `?v=N`** (most other assets): when you edit such a file, **bump its
-  `?v=N`** in every template that references it — or, better, switch that include
-  to `asset_version`.
+The same set is Alembic revision `migrations/versions/0002_performance_indexes.py`; that file is
+standalone (no app imports), so **edit both lists together**.
 
-### Code-side caching (already applied, covers the pre-mapping / dev path)
-- `run.py` sets `SEND_FILE_MAX_AGE_DEFAULT` (default 1 year, override with
-  `STATIC_MAX_AGE_SECONDS`).
-- `security_headers.py` adds `Cache-Control: public, max-age=31536000, immutable`
-  to any `/static/*` response that still goes through the worker.
+Verify in a MySQL console: `SHOW INDEX FROM chatbot_interactions;` (expect `idx_ci_created`,
+`idx_ci_query`, ...) and `SHOW INDEX FROM company_users;` (`idx_cu_company_status`, ...). To check a
+query uses them, prefix it with `EXPLAIN` and look for a non-NULL `key` / `type` other than `ALL`.
 
-### Dynamic-response gzip (already applied)
-`response_compression.py` registers an `after_request` hook that gzips text
-responses (HTML/JSON/CSS/JS/SVG/XML) when the client sends `Accept-Encoding: gzip`.
-PythonAnywhere's nginx gzips *mapped static* files but not worker-proxied dynamic
-HTML, so this covers the big dashboard/report pages (~75% smaller on the wire). It
-deliberately skips the SSE chat stream (`text/event-stream`), `send_file`/streamed
-responses, already-encoded responses, and bodies under 600 bytes. Verify:
+## 4. Application caching (`perf_cache.py`)
 
-```bash
-curl -s -H 'Accept-Encoding: gzip' -o /dev/null -D - https://TobiasMastek.pythonanywhere.com/dashboard | grep -i content-encoding
-```
+A small thread-safe TTL cache: **per worker process** by default, shared across workers when
+`REDIS_URL` is set and reachable (every Redis call is guarded and falls back to in-process). Use
+`@ttl_cache(seconds, key=...)` only for data that tolerates a few seconds of staleness and is never
+per-user correctness-critical. Current users:
 
----
+- `admin_dashboard._admin_home_data` (60 s) and `hr_dashboard._hr_dashboard_metrics` (120 s, keyed by
+  company id; the per-user `company` object is deliberately not cached).
+- `app1/agent.py`, `app1/user_knowledge.py`, `learner_context.py` (`cache_get/cache_set/cache_clear`).
+- `catalog_service._CACHE`: categories, vendors, filter options and related products are keyed by the
+  catalog file signature, so they recompute once per catalog change; `catalog_service.clear_catalog_cache()`
+  forces it after an import or admin edit.
 
-## 2. Database indexes (auto-applied)
+A stale value can live up to its TTL per worker. That is intended.
 
-`performance_indexes.ensure_performance_indexes(app)` adds indexes on the hot
-columns the dashboards filter/group on (`created_at`, `company_id`, `status`,
-`username`, `query_text`, …). It is wired into a `before_request` hook in `run.py`
-that runs **once per worker process** (not gated by the enterprise-sync TTL), so a
-`git pull` + reload applies it. It is idempotent (ignores MySQL error 1061) and
-skips any table/column that doesn't exist, so it is safe to run repeatedly.
+## 5. Tunable env vars (all optional)
 
-The same set is recorded as Alembic revision
-`migrations/versions/0002_performance_indexes.py` for DBs managed with
-`alembic upgrade head`. The two lists must stay in sync — edit both.
-
-**To verify the indexes landed** (PythonAnywhere → Databases → MySQL console):
-
-```sql
-SHOW INDEX FROM chatbot_interactions;   -- expect idx_ci_created, idx_ci_query, ...
-SHOW INDEX FROM company_users;          -- expect idx_cu_company_status, ...
-```
-
-**To confirm a query now uses them**, prefix it with `EXPLAIN` and check `key` is
-not NULL / `type` is not `ALL` on the big tables.
-
----
-
-## 3. Application caching (per worker, in-process)
-
-PythonAnywhere has no Redis, so `perf_cache.py` is an in-process TTL cache: **each
-worker keeps its own copy**, bounded by a short TTL. Applied to:
-
-- Admin dashboard KPI block — `admin_dashboard._admin_home_data` (TTL 60s).
-- HR dashboard per-company metrics — `hr_dashboard._hr_dashboard_metrics`, keyed by
-  `company_id` (TTL 120s). The per-user `company` object is deliberately **not**
-  cached, so users of the same company never share role/department state.
-- Catalog `get_categories` / `get_vendors` / `get_filter_options` /
-  `get_related_products` — keyed by the catalog file signature
-  (`catalog_service._CACHE`), so they recompute once per catalog change instead of
-  once per request. `search_products` also no longer builds the per-product search
-  string on a no-query browse (the common case).
-
-Implication: after a data change, a stale value can linger up to its TTL **per
-worker**. That is intended. To force-clear the catalog cache after an import/override
-edit, the existing `catalog_service.clear_catalog_cache()` path still works (it also
-resets the new signature throttle).
-
----
-
-## 4. Tunable env vars (all optional, sensible defaults)
-
-| Var                            | Default | Effect |
-|--------------------------------|---------|--------|
-| `STATIC_MAX_AGE_SECONDS`       | 31536000 | `SEND_FILE_MAX_AGE_DEFAULT` for worker-served static |
-| `REPORTS_WINDOW_DAYS`          | 90      | Date window bounding the heavy chatbot-report scans |
-| `USAGE_WINDOW_DAYS`            | 365     | Date window bounding per-user credit_usage scans (reports.py / pages.py) |
-| `CATALOG_SIGNATURE_TTL_SECONDS`| 5       | How long the catalog file-signature stat is reused |
-
----
-
-## 5. Query rewrites (no action needed — listed for reference)
-
-- Admin "companies" list: 3 correlated subqueries → pre-aggregated derived-table
-  joins (one grouped scan each, no employee×order fan-out).
-- Admin "users" list: now server-side paginated (50/page) with a SQL-side search,
-  instead of fetching the whole `users` table.
-- Chatbot BI "frequent questions": correlated subquery → `MIN(id)` join.
-- Chatbot BI tool-usage / products-shown scans: bounded by `REPORTS_WINDOW_DAYS`.
-- Platform admin "companies" list (`companies.admin_companies_list`): 4 correlated
-  subqueries → pre-aggregated derived-table joins.
-- Multitenant report company-stats: the `company_users × chatbot_interactions`
-  cross-product join split into two independent aggregations (same values, no
-  row blow-up).
-- Per-user reports (`reports.py`, `pages.py`): `credit_usage` scans bounded by
-  `USAGE_WINDOW_DAYS` + backed by new indexes.
-
----
-
-## 6. Notes / intentionally NOT changed
-
-- **Script `defer` / Chart.js lazy-load:** skipped. `shell.js`/`chat.js` already sit
-  at end-of-body (not render-blocking content) and `shell.js` exports `window.fm*`
-  globals inline pages may call; Chart.js is loaded on only one page (`roi.html`)
-  and called inline. The risk outweighed the gain — caching + the nginx mapping are
-  the asset wins instead.
-- **Font trimming:** the requested weights/families are genuinely used across the
-  range (`--ff-mono` alone appears ~25×; weights span 500–820), so trimming risked
-  visible regressions. Self-hosting/subsetting the fonts is a possible future step.
+| Var | Default | Effect |
+|---|---|---|
+| `STATIC_MAX_AGE_SECONDS` | 31536000 | `SEND_FILE_MAX_AGE_DEFAULT` for worker-served static |
+| `REPORTS_WINDOW_DAYS` | 90 | date window bounding the heavy chatbot-report scans (`admin_reports.py`) |
+| `USAGE_WINDOW_DAYS` | 365 | date window bounding per-user `credit_usage` scans (`reports.py`, `pages.py`) |
+| `CATALOG_SIGNATURE_TTL_SECONDS` | 5 | how long the catalog file-signature stat is reused |
+| `REDIS_URL` | unset | shared cache backend for `perf_cache` |
+| `ENTERPRISE_TABLE_SYNC_TTL_SECONDS` | 21600 | reuse window of the "tables ensured" boot stamp |

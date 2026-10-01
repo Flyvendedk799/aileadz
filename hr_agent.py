@@ -1,7 +1,6 @@
 """HR Chatbot Agent — AI assistant for HR managers within the HR dashboard."""
 import json
 import time
-import uuid
 from flask import session, current_app, Response, stream_with_context
 from db_compat import close_flask_mysql_connection
 from hr_tools import execute_hr_tool
@@ -250,7 +249,6 @@ def handle_hr_ask(user_query, flask_session, page=None):
                 prepare_messages_for_turn,
                 run_agent_with_fallback,
                 update_agent_run_quality,
-                user_facing_error_message,
             )
             import ai_context_layers as _ctx
             from ai_tool_registry import get_hr_tool_selection, make_tool_choice, tool_name, toolset_enabled

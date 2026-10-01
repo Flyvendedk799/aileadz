@@ -6,7 +6,7 @@ All configuration comes from the process environment (MYSQL_* or a mysql://
 DATABASE_URL, SECRET_KEY, OPENAI_API_KEY, AI_*, MAIL_*, ...). A `.env` next to
 this file is loaded first, without overriding variables the host already set —
 ServerHoster injects env vars directly, so no .env is needed there.
-See docs/runbooks/DEPLOY.md for the full variable list.
+See .env.example for the variable list and docs/runbooks/DEPLOY.md for deploy.
 """
 import os
 import sys

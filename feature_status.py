@@ -107,12 +107,6 @@ def _file_present(path):
         return False, 'check failed for {}: {}'.format(path, exc)
 
 
-def _any_env(var_names):
-    """Return (any_set, list_of_set_names) for a list of env var names."""
-    set_names = [name for name in var_names if os.environ.get(name)]
-    return bool(set_names), set_names
-
-
 # ---------------------------------------------------------------------------
 # Per-subsystem probes. Each returns {"available": bool, "detail": str}.
 # Each is fully wrapped so a probe bug can never break the registry.

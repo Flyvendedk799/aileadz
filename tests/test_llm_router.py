@@ -21,7 +21,7 @@ from ai_runtime import (
     llm_router_enabled,
     main_model,
 )
-from ai_tool_registry import get_employee_tool_selection, tool_name
+from ai_tool_registry import get_employee_tool_selection
 
 
 def _make_resp(content):

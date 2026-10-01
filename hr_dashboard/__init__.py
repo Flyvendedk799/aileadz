@@ -7,7 +7,6 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import MySQLdb.cursors
 from datetime import datetime, timedelta, date
 import json
-import calendar
 from collections import defaultdict
 import csv
 import io

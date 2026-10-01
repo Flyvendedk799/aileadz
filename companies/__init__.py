@@ -8,8 +8,6 @@ import MySQLdb.cursors
 from datetime import datetime, timedelta
 import json
 import secrets
-import string
-from werkzeug.utils import secure_filename
 from werkzeug.security import generate_password_hash
 from auth_decorators import require_role, require_company_role
 from branding_service import (
@@ -21,7 +19,6 @@ from branding_service import (
     save_branding_settings,
     set_custom_branding_feature,
 )
-import os
 
 def create_companies_blueprint():
     companies_bp = Blueprint('companies', __name__, template_folder='templates')

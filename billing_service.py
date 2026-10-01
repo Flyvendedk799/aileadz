@@ -13,7 +13,6 @@ import logging
 logger = logging.getLogger(__name__)
 
 BILLABLE_STATUSES = ("approved", "booked", "completed", "pending", "confirmed", "processing")
-FILTERS = ("not_invoiced", "invoiced", "paid", "credited", "overdue", "unpaid")
 
 CSV_HEADER = [
     "Ordre", "Kursus", "Medarbejder", "Afdeling", "Virksomhed", "Pris (kr)", "Ordrestatus",

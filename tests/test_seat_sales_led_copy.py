@@ -16,11 +16,8 @@ They run without a Flask boot or a live DB by stubbing the cursor/session the
 two backend helpers reach for.
 """
 import json
-import sys
-import types
 import importlib
 
-import pytest
 
 
 # A token that must never appear in seat/trial user-facing copy on the HR

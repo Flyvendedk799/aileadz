@@ -4,7 +4,6 @@ import sys
 import re
 import openai
 from dotenv import load_dotenv
-import time
 
 # Make the repo root importable so `from app1.rag import ...` resolves no matter
 # how this script is invoked (python3 app1/build_index.py OR python3 -m app1.build_index).
@@ -254,22 +253,6 @@ def generate_embeddings_batch(texts):
     except Exception as e:
         print(f"  [X] Batch embedding error: {e}")
         return [None] * len(texts)
-
-
-def generate_embedding(text):
-    """Generate text embedding for a single text (fallback)."""
-    from app1.rag import embedding_dimensions, embedding_model
-
-    try:
-        response = openai.embeddings.create(
-            input=text,
-            model=embedding_model(),
-            dimensions=embedding_dimensions()
-        )
-        return response.data[0].embedding
-    except Exception as e:
-        print(f"  [X] Error generating embedding: {e}")
-        return None
 
 
 def _augment_one(product):

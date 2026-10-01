@@ -476,7 +476,6 @@ def _bm25_search(query_tokens, limit=20):
 
 _index_meta = {"signature": None, "built_at": None, "last_error": None, "embedded_now": 0,
                "source": "catalog_service"}
-_embed_lock = None
 
 
 def _embeddings_sidecar_path():
@@ -1271,7 +1270,6 @@ def semantic_search_courses_detailed(query, limit=5, shown_handles=None,
         top_rrf_score = fused[0][1] if fused else 0
         filtered_fused = []
         for doc_idx, rrf_score in fused:
-            vec_score = vector_scores.get(doc_idx, 0)
             is_bm25_hit = doc_idx in bm25_top_set
             # Relative gap: keep if within 50% of top score, or strong BM25 match
             if rrf_score >= top_rrf_score * 0.5 or is_bm25_hit:

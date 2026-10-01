@@ -23,7 +23,6 @@ in create_app().
 import json
 import logging
 import time
-import uuid
 
 from flask import (
     Blueprint,
@@ -1019,7 +1018,6 @@ def vendor_ask():
                 main_model,
                 make_run_id,
                 run_agent_with_fallback,
-                user_facing_error_message,
             )
             from ai_tool_registry import tool_name
 

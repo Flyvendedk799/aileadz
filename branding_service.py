@@ -6,7 +6,7 @@ Single read/write path for tenant visual identity.
 from __future__ import annotations
 
 import json
-from typing import Any, Dict, Optional
+from typing import Optional
 
 import MySQLdb.cursors
 from flask import current_app, session
@@ -211,16 +211,6 @@ def is_whitelabel_active(company_id: int, *, platform_override: bool = False) ->
     except Exception as e:
         current_app.logger.error(f"is_whitelabel_active: {e}")
         return False
-
-
-def should_hide_platform_branding(company_id: int) -> bool:
-    if not is_whitelabel_active(company_id):
-        return False
-    conn = current_app.mysql.connection
-    if not conn:
-        return False
-    row = _fetch_branding_row(conn, company_id)
-    return bool(row and row.get('hide_platform_branding'))
 
 
 def get_branding(company_id: int) -> dict:
@@ -550,11 +540,3 @@ def migrate_legacy_branding_data(app) -> None:
             logging = __import__('logging')
             logging.getLogger(__name__).warning("migrate_legacy_branding_data: %s", e)
 
-
-def initials_avatar(name: str) -> str:
-    if not name:
-        return 'FM'
-    parts = name.strip().split()
-    if len(parts) >= 2:
-        return (parts[0][0] + parts[1][0]).upper()
-    return name[:2].upper()

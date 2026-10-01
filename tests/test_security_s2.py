@@ -6,7 +6,6 @@ S-2.5 impersonation, S-2.6 TOTP 2FA, S-2.7 vendor auth. Real route table via
 ``run.create_app()`` with a recording fake MySQL (see tests/secapp.py).
 """
 
-import io
 import re
 import time
 import unittest
@@ -663,7 +662,6 @@ class S24_ResetRoutes(unittest.TestCase):
             self.assertEqual(fake.queries("update users"), [])
 
     def test_hr_reset_sends_a_link_and_never_shows_a_password(self):
-        import auth_decorators as ad
         app = get_app()
 
         def responder(sql, params):

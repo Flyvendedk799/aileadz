@@ -32,7 +32,6 @@ Fully offline: no MySQL, no OpenAI, no network.
 import datetime
 import json
 import os
-import re
 import sys
 import unittest
 from unittest import mock

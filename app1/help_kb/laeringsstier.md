@@ -9,7 +9,7 @@ audience: employee
 En læringssti er en plan med flere kurser i en fornuftig rækkefølge mod et mål. AI-assistenten bygger stien ud fra din profil og rigtige kurser i kataloget, og du kan gemme den på din profil.
 
 ## Sådan får du en læringssti
-1. Åbn AI-assistenten og bed fx om at "bygge en læringssti til mine mål". Du kan også klikke "Byg" ved "Mine læringsstier" på profilsiden.
+1. Åbn AI-assistenten og bed fx om at "bygge en læringssti til mine mål". Du kan også klikke "Byg en sti med AI" ved "Mine læringsstier" på profilsiden.
 2. Assistenten viser stien som et kort med trinene, samlet pris og varighed.
 3. Bed assistenten om at gemme stien, hvis du vil beholde den.
 

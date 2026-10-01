@@ -6,10 +6,10 @@ keywords: gdpr, privatliv, fortrolighed, persondata, personoplysninger, mine dat
 audience: employee
 ---
 ## Kort fortalt
-Du har ret til indsigt, berigtigelse og sletning af dine data. Du kan selv hente en kopi af dine data og slette det, AI'en husker om dig. Sletning af alle dine data sker via support.
+Du har ret til indsigt, berigtigelse og sletning af dine data. Du kan selv hente en kopi af dine data og slette det, AI'en husker om dig. Du kan selv anmode om sletning af alle dine data under "Indstillinger".
 
 ## Hent en kopi af dine data
-Når du er logget ind, kan du gå til /mine-data. Så downloades en JSON-fil (gdpr-eksport-<brugernavn>.json) med dine personoplysninger.
+Når du er logget ind, kan du klikke "Hent mine data (JSON)" under "Indstillinger" (afsnittet "Dine data og privatliv") eller vælge "Mine data" i menuen under Konto. Du kan også gå direkte til /mine-data. Så downloades en JSON-fil (gdpr-eksport-<brugernavn>.json) med dine personoplysninger.
 
 ## Ret eller slet enkelte oplysninger
 - Profiloplysninger retter du på profilsiden (Profil & CV, /profil).
@@ -17,7 +17,7 @@ Når du er logget ind, kan du gå til /mine-data. Så downloades en JSON-fil (gd
 - Udviklingsmål kan slettes under "Udviklingsmål".
 
 ## Slet alle dine data
-Kontakt support@futurematch.dk for at få dine data slettet. Sletningen udføres af en platformadministrator: profildata slettes, mens regnskabs- og revisionsdata anonymiseres.
+Under "Indstillinger" i afsnittet "Dine data og privatliv" klikker du "Anmod om sletning" (sæt kryds i bekræftelsen; en begrundelse er valgfri). Anmodningen behandles senest 30 dage efter, at du har sendt den. Du kan også skrive til support@futurematch.dk. Sletningen udføres af en platformadministrator: profildata og samtaler slettes, mens ordrer og revisionsspor bevares uden dine personoplysninger.
 
 ## Hvilke data behandles?
 Ifølge fortrolighedspolitikken (/privacy, linket "Fortrolighed" nederst på siden): kontooplysninger (navn, e-mail, stilling og afdeling), brugsdata (samtaler, kursusvalg og kreditforbrug) og profildata (kompetencer, erfaring og uddannelse). Data bruges til personlige kursusanbefalinger, HR-rapporter og til at forbedre platformen, og de sælges aldrig til tredjepart.

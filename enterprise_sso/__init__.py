@@ -20,10 +20,7 @@ missing dependency degrades with a warning instead of crashing create_app().
 from flask import Blueprint, request, session, redirect, url_for, flash, render_template, current_app
 import MySQLdb.cursors
 import json
-import jwt
-import requests
-from datetime import datetime, timedelta
-import xml.etree.ElementTree as ET  # legacy import kept for compatibility; SAML now uses defusedxml
+from datetime import datetime
 import base64
 import hashlib
 import secrets
@@ -33,7 +30,7 @@ logger = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Guarded crypto / XML-security imports.
-# These MUST NOT crash create_app() if the wheel is missing on PythonAnywhere.
+# These MUST NOT crash create_app() if the wheel is missing on the host.
 # ---------------------------------------------------------------------------
 
 # defusedxml: XXE-safe XML parsing for attacker-controlled SAMLResponse payloads.
@@ -307,7 +304,7 @@ class SSOManager:
             if config is not None and 'config' in config:
                 config['config'] = _normalize_config(config.get('config'))
             return config
-        except Exception as e:
+        except Exception:
             return None
     
     def provision_user(self, company_id, user_info, sso_config):
@@ -404,7 +401,7 @@ class SSOManager:
             ))
             conn.commit()
             cur.close()
-        except Exception as e:
+        except Exception:
             pass
 
 class SAMLProvider:
@@ -454,7 +451,7 @@ class SAMLProvider:
             # Extract user attributes
             user_info = self.extract_saml_attributes(root, config)
             return user_info
-        except Exception as e:
+        except Exception:
             return None
 
     def _has_signature(self, saml_root):
@@ -464,8 +461,7 @@ class SAMLProvider:
         TODO(security): This is a PRESENCE check only and does NOT verify the
         signature cryptographically (digest, signature value, certificate trust,
         canonicalization, audience/recipient/conditions, replay). Full validation
-        requires python3-saml or signxml + xmlsec, which are heavy native deps on
-        PythonAnywhere and are tracked as a separate follow-up item. Until then a
+        requires python3-saml or signxml + xmlsec, which are heavy native deps and are tracked as a separate follow-up item. Until then a
         forged-but-"signed" assertion from an untrusted IdP could still pass; the
         presence check closes only the trivial "no signature at all" forgery.
         """
@@ -613,7 +609,7 @@ class LDAPProvider:
                     return user_info
             
             return None
-        except Exception as e:
+        except Exception:
             return None
     
     def extract_ldap_attributes(self, ldap_entry, config):
@@ -757,7 +753,7 @@ def get_company_by_slug(slug):
         company = cur.fetchone()
         cur.close()
         return company
-    except Exception as e:
+    except Exception:
         return None
 
 def generate_saml_request(sso_config):
@@ -830,24 +826,6 @@ def sso_config(company_id):
 
     # N-7.1: SSO setup lives in the company settings hub (OIDC-only UX).
     return redirect(url_for('settings_hub.tab', tab='sso'))
-
-    # Get existing SSO configurations (legacy body, kept for reference/rollback)
-    try:
-        cur = current_app.mysql.connection.cursor(MySQLdb.cursors.DictCursor)
-        cur.execute("""
-            SELECT * FROM company_sso_configs
-            WHERE company_id = %s
-        """, (company_id,))
-        
-        sso_configs = cur.fetchall()
-        cur.close()
-        
-        return render_template('fm/sso_config.html',
-                             company_id=company_id,
-                             sso_configs=sso_configs)
-    except Exception as e:
-        flash('SSO-opsætningen kunne ikke indlæses.', 'error')
-        return redirect(url_for('dashboard.dashboard'))
 
 @sso_bp.route('/admin/sso/config/<int:company_id>', methods=['POST'])
 def save_sso_config(company_id):
@@ -935,7 +913,7 @@ def save_sso_config(company_id):
         cur.close()
 
         flash('SSO-opsætningen er gemt.', 'success')
-    except Exception as e:
+    except Exception:
         flash('SSO-opsætningen kunne ikke gemmes.', 'error')
     
     return redirect(url_for('sso.sso_config', company_id=company_id))

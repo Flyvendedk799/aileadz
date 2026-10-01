@@ -355,16 +355,6 @@ class OrderContext:
         }
 
 
-def build_context_from_session(source="web"):
-    """Convenience helper (mirrors OrderContext.from_session)."""
-    return OrderContext.from_session(source=source)
-
-
-def build_context_from_api(source="api", company_role="company_admin"):
-    """Convenience helper (mirrors OrderContext.from_api_g)."""
-    return OrderContext.from_api_g(source=source, company_role=company_role)
-
-
 # ---------------------------------------------------------------------------
 # Internal utilities
 # ---------------------------------------------------------------------------

@@ -33,7 +33,6 @@ def is_due(cadence, last_sent_at, now=None):
 def run_due_schedules(cur, *, send=None, now=None):
     """Send every due, enabled schedule. Returns a summary dict. Never raises."""
     import report_exports
-    from notification_service import role_recipients
     summary = {"checked": 0, "sent": 0, "empty": 0, "skipped": 0, "errors": 0}
     try:
         cur.execute("SELECT id, company_id, report_type, cadence, department, last_sent_at "

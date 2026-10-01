@@ -24,7 +24,6 @@ from ai_tool_registry import (
     tool_cache_ttl,
     tool_display_metadata,
     to_responses_tool,
-    tool_name,
 )
 
 

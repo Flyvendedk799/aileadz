@@ -164,7 +164,7 @@ class ShopifySyncTests(unittest.TestCase):
             self.assertIn("skipped", shopify_sync.sync())
 
     def test_paginates_and_replaces_the_source_file_atomically(self):
-        with TempCatalog([_raw("old", "Gammel")]) as t, mock.patch.dict(os.environ, self.ENV):
+        with TempCatalog([_raw("old", "Gammel")]), mock.patch.dict(os.environ, self.ENV):
             http = self.Http([
                 self.Resp([_raw("a", "A"), _raw("b", "B")], link='<https://demo.myshopify.com/next>; rel="next"'),
                 self.Resp([_raw("c", "C")]),

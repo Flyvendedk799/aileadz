@@ -176,7 +176,7 @@ class CreateAndApproveTests(OrderFlowBase):
         self.assertEqual(len([e for e in self.events if e[1] == "order.approved"]), 1)
 
     def test_decide_approval_goes_through_one_transaction(self):
-        oid = self.create()["order_id"]
+        self.create()
         aid = self.db.one("SELECT id FROM order_approvals")["id"]
         res = svc.decide_approval(self.hr(), aid, "approved", "Fint")
         self.assertTrue(res["success"])
@@ -430,7 +430,7 @@ class EndToEndTests(OrderFlowBase):
         self.assertTrue(skill_history.record_snapshot(cur, 7, 1, "Projektledelse", 3, previous_level=None,
                                                       source="post_course", order_id=1))
         # manager confirms the uplift: matrix + post_course history row
-        prev = skill_history.current_level_for(cur, 7, 1, "Projektledelse")
+        skill_history.current_level_for(cur, 7, 1, "Projektledelse")
         cur.execute("INSERT INTO employee_skills_matrix (employee_id, company_id, skill_name, current_level) VALUES (%s,%s,%s,%s)",
                     (1, 7, "Projektledelse", 4))
         skill_history.record_snapshot(cur, 7, 1, "Projektledelse", 4, previous_level=3, source="post_course")

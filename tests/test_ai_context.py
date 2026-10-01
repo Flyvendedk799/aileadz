@@ -7,7 +7,7 @@ from ai_context import (
     summarize_pruned_messages_rule_based,
     summarize_pruned_messages_smart,
 )
-from ai_runtime import run_direct_completion, user_facing_error_message
+from ai_runtime import user_facing_error_message
 
 
 class AIContextTests(unittest.TestCase):

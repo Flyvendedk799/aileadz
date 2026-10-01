@@ -22,7 +22,7 @@ import logging
 import os
 import re
 
-from flask import current_app, jsonify, request, session
+from flask import current_app, jsonify, request
 
 try:  # guarded: a missing wheel must never stop the app from booting in dev
     from flask_wtf.csrf import CSRFError, CSRFProtect, generate_csrf

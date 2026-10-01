@@ -15,7 +15,7 @@ import logging
 
 from flask import g, request
 
-from scim_api import (SCHEMA_LIST_RESPONSE, SCHEMA_PATCH_OP, _cursor, _scim_auth, _scim_error,
+from scim_api import (SCHEMA_LIST_RESPONSE, _cursor, _scim_auth, _scim_error,
                       _scim_response, scim_bp)
 
 logger = logging.getLogger(__name__)

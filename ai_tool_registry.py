@@ -1608,9 +1608,3 @@ def sanitize_args_for_tool(name: str, args: Dict[str, Any], tools: Optional[Iter
 def toolset_enabled() -> bool:
     return os.getenv("AI_TOOL_ROUTER_V2", "1").lower() not in {"0", "false", "no", "off"}
 
-
-def normalize_handle_candidate(text: str) -> str:
-    value = (text or "").strip().lower()
-    value = re.sub(r"[^a-z0-9æøå\- ]+", "", value)
-    value = re.sub(r"\s+", "-", value)
-    return value

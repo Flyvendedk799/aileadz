@@ -141,10 +141,6 @@ def context_budget_chars(
     return max(0, chars)
 
 
-def is_budgeted(msg: Dict[str, Any]) -> bool:
-    return bool(msg.get("_zone"))
-
-
 def strip_private_keys(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     out = []
     for msg in messages or []:

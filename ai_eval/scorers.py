@@ -397,7 +397,6 @@ _PRICE_RE = re.compile(r"(\d[\d.\s]{2,})\s*kr", re.IGNORECASE)
 # A "concrete course title" cue: a quoted/bold span or a Capitalised multi-word
 # phrase containing a course-y keyword. We keep this conservative to avoid noise.
 _QUOTED_RE = re.compile(r"[\"“”«»„]([^\"“”«»„]{4,80})[\"“”«»„]|\*\*([^*]{4,80})\*\*")
-_COURSE_KEYWORDS = ("kursus", "kurset", "uddannelse", "certificering", "forløb", "workshop", "webinar", "diplom")
 
 
 def _digits_only(s: str) -> str:
@@ -563,7 +562,7 @@ def grounded_real(final_text, tool_results=None, user_query="") -> Optional[Dict
 # 5. Profile-event / order-confirmation checks (intent-specific)
 # ─────────────────────────────────────────────────────────────────────────────
 
-_PROFILE_EVENT_TYPES = {"profile_confirm_request", "ui_card", "profile_update"}
+_PROFILE_EVENT_TYPES = {"profile_confirm_request", "profile_confirm_batch", "profile_saved", "ui_card", "profile_update"}
 
 
 def profile_event_present(events, expect) -> Dict[str, Any]:

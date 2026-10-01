@@ -5,17 +5,18 @@ Problem this solves (roadmap value-5 follow-on)
 -----------------------------------------------
 The platform has a growing number of capabilities that only ever fire when a
 human happens to open a page: integration-event delivery, daily company
-insights, supplier-agreement expiry alerts, compliance re-checks. On
-PythonAnywhere there is NO Celery / Redis / cron we can lean on, so these jobs
+insights, supplier-agreement expiry alerts, compliance re-checks. The host
+(ServerHoster) has no Celery / Redis / cron, so without a driver these jobs
 quietly never run on a cadence.
 
 This module is a tiny, dependency-free scheduler that decides *which jobs are
 due* and runs them, driven by any of three mechanisms (none of which require a
 real job queue):
 
-  1. a PythonAnywhere **Scheduled Task** that runs a single pass and exits
+  1. a single-pass **scheduled task** that runs once and exits
      (``python3 drain_worker.py``),
-  2. the existing always-on-style **worker loop** (``drain_worker.py --loop``),
+  2. the always-on **worker loop** (``drain_worker.py --loop``; see
+     docs/runbooks/JOB_RUNNER.md),
   3. an **opportunistic request hook** in ``run.py`` that runs at most once per
      ~60s per worker, mirroring ``event_bus.opportunistic_drain``.
 

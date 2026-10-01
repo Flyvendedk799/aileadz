@@ -128,21 +128,6 @@ def consume(conn, raw):
     return ok
 
 
-def purge_expired(conn, older_than_days=30):
-    """Housekeeping for the retention job."""
-    ensure_table(conn)
-    cur = conn.cursor()
-    try:
-        cur.execute(
-            "DELETE FROM password_reset_tokens WHERE expires_at < DATE_SUB(NOW(), INTERVAL %s DAY)",
-            (int(older_than_days),),
-        )
-        conn.commit()
-        return cur.rowcount
-    finally:
-        cur.close()
-
-
 def build_url(endpoint, raw, **values):
     """Absolute link for an e-mail."""
     from flask import url_for

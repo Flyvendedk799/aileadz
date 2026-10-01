@@ -5,7 +5,6 @@ import unittest
 
 os.environ.setdefault("SANDBOX", "1")
 
-from flask import Flask  # noqa: E402
 
 import goal_sharing_ui as gs  # noqa: E402
 from tests.sqlite_mysql import SqliteMysql  # noqa: E402

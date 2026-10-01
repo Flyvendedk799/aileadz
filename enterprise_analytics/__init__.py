@@ -7,7 +7,7 @@ Advanced analytics, predictive insights, and machine learning capabilities
 from flask import Blueprint, request, jsonify, render_template, session, current_app, redirect, url_for, flash
 import MySQLdb.cursors
 import json
-from datetime import datetime, timedelta
+from datetime import datetime
 import warnings
 warnings.filterwarnings('ignore')
 
@@ -20,7 +20,7 @@ try:
     from sklearn.cluster import KMeans
     from sklearn.preprocessing import StandardScaler
     from sklearn.model_selection import train_test_split
-    from sklearn.metrics import mean_squared_error, r2_score
+    from sklearn.metrics import r2_score
     _ML_AVAILABLE = True
 except ImportError:
     _ML_AVAILABLE = False
@@ -126,7 +126,7 @@ class AdvancedAnalytics:
                 'goals': goals_data,
                 'analytics': analytics_data
             }
-        except Exception as e:
+        except Exception:
             return None
     
     def calculate_engagement_score(self, employee_data, learning_data):
@@ -193,7 +193,7 @@ class AdvancedAnalytics:
                 })
             
             return engagement_scores
-        except Exception as e:
+        except Exception:
             return []
     
     def predict_performance_trends(self, company_id, employee_data, performance_data):
@@ -259,8 +259,6 @@ class AdvancedAnalytics:
                     # Create feature vector for prediction
                     current_month = datetime.now().month
                     current_quarter = (current_month - 1) // 3 + 1
-                    hire_date = emp['hire_date']
-                    days_since_hire = (datetime.now().date() - hire_date).days if hire_date else 365
                     
                     features = [
                         emp['performance_rating'],  # technical_skills_rating
@@ -285,7 +283,7 @@ class AdvancedAnalytics:
                 'feature_importance': feature_importance,
                 'predictions': current_predictions
             }
-        except Exception as e:
+        except Exception:
             return None
     
     def detect_learning_anomalies(self, learning_data):
@@ -325,7 +323,7 @@ class AdvancedAnalytics:
                     })
             
             return anomalous_records
-        except Exception as e:
+        except Exception:
             return []
     
     def classify_anomaly(self, feature_vector):
@@ -456,7 +454,7 @@ class AdvancedAnalytics:
                     pass
 
             return skill_analysis
-        except Exception as e:
+        except Exception:
             return None
     
     def create_learning_recommendations(self, company_id, employee_id):
@@ -584,7 +582,7 @@ class AdvancedAnalytics:
             recommendations.sort(key=lambda x: priority_order.get(x['priority'], 0), reverse=True)
             
             return recommendations[:10]  # Return top 10 recommendations
-        except Exception as e:
+        except Exception:
             return None
 
 # Initialize analytics engine
@@ -681,7 +679,7 @@ def get_engagement_trends(company_id):
             'success': True,
             'data': trends
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Tendenser kunne ikke hentes.'}), 500
 
 @analytics_bp.route('/analytics/api/department-performance/<int:company_id>')
@@ -725,7 +723,7 @@ def get_department_performance(company_id):
         if anon_note:
             payload['anon_note'] = anon_note.get('note_da')
         return jsonify(payload)
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'Afdelingsresultater kunne ikke hentes.'}), 500
 
 @analytics_bp.route('/analytics/api/learning-roi/<int:company_id>')
@@ -776,7 +774,7 @@ def calculate_learning_roi(company_id):
             'success': True,
             'data': roi_data
         })
-    except Exception as e:
+    except Exception:
         return jsonify({'error': 'ROI kunne ikke beregnes.'}), 500
 
 def create_analytics_charts(data, engagement_scores, performance_predictions):
@@ -831,7 +829,7 @@ def create_analytics_charts(data, engagement_scores, performance_predictions):
             fig_dept_hours.update_layout(title="Learning Hours by Department")
             charts['dept_learning_hours'] = json.dumps(fig_dept_hours, cls=plotly.utils.PlotlyJSONEncoder)
         
-    except Exception as e:
+    except Exception:
         pass  # Charts are optional
     
     return charts

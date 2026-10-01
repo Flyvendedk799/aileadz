@@ -1,6 +1,5 @@
 """N-4.6 / N-7.1 / N-7.2: settings hub, SSO (OIDC only), API keys, deactivation request."""
 
-import json
 import os
 import unittest
 from unittest import mock

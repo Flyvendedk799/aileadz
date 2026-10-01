@@ -2,9 +2,7 @@
 
 Offline: all database and model seams are mocked.
 """
-from unittest import mock
 
-import pytest
 
 
 # ── 1. Resume-aware profiler prompt ──
@@ -174,7 +172,6 @@ def test_session_init_does_not_duplicate_profile():
     """After session init, CHAT_MEMORY should NOT contain a system message
     with 'BRUGERENS NUVÆRENDE PROFIL' — the per-turn ephemeral injection
     handles profile context instead."""
-    import importlib
     import app1.agent as agent_mod
     # Read the source to verify the old pattern is gone
     import inspect

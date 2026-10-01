@@ -31,7 +31,6 @@ which must not ship a flagship 'early warning' answer off a noisy proxy.
 """
 
 import os
-import re
 import unittest
 from unittest import mock
 

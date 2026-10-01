@@ -5,7 +5,6 @@ Every test drives the REAL route table through ``run.create_app()`` (SANDBOX
 env, fake MySQL), so a future refactor that drops a decorator fails here.
 """
 
-import json
 import os
 import re
 import tempfile

@@ -20,14 +20,6 @@ def _column_exists(cur, table_name, column_name):
         return False
 
 
-def require_admin():
-    """Check admin access. Returns redirect response or None."""
-    if 'user' not in session or session.get('role') != 'admin':
-        flash("Adgang nægtet.", "danger")
-        return redirect(url_for('auth.login'))
-    return None
-
-
 @admin_dashboard_bp.route('')
 @admin_dashboard_bp.route('/')
 @require_role('admin')

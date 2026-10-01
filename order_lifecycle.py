@@ -127,10 +127,6 @@ def status_label(raw, short: bool = False) -> str:
     return (STATUS_LABELS_SHORT if short else STATUS_LABELS)[s]
 
 
-def learner_bucket(raw) -> str:
-    return LEARNER_BUCKETS[normalize_status(raw)]
-
-
 def status_choices(short: bool = True):
     """(value, label) pairs for an HR status dropdown. Billing is NOT in here."""
     labels = STATUS_LABELS_SHORT if short else STATUS_LABELS

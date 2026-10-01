@@ -19,7 +19,7 @@ from cryptography.hazmat.primitives.asymmetric import rsa
 
 import db_compat  # noqa: F401  (installs the MySQLdb shim that enterprise_sso imports)
 from tests import secapp
-from tests.secapp import FakeMySQL, client_as, get_app, login, patch_mysql
+from tests.secapp import client_as, get_app, patch_mysql
 
 ISSUER = "https://login.example.com/tenant-1/v2.0"
 CLIENT_ID = "client-abc"
@@ -173,12 +173,10 @@ class S31_ProviderFlow(unittest.TestCase):
 
     def test_config_without_issuer_or_jwks_is_refused(self):
         from enterprise_sso import OAuth2Provider
-        import oidc
         with mock.patch.object(OAuth2Provider, "exchange_code_for_token", return_value={"id_token": _token(self.key)}):
             self.assertIsNone(OAuth2Provider().authenticate("c", {"client_id": CLIENT_ID}, expected_nonce=NONCE))
 
     def test_userinfo_is_not_used_for_identity(self):
-        from enterprise_sso import OAuth2Provider
         src = open(secapp._REPO_ROOT + "/enterprise_sso/__init__.py", encoding="utf-8").read()
         self.assertNotIn("def get_user_info", src)
 

@@ -15,7 +15,7 @@ Kan du ikke finde svaret, så kontakt Futurematch support. Siden "Support" (/sup
 - AI-assistenten kan forklare, hvordan platformen virker, og hjælpe med kurser, bestillinger og din profil.
 - Godkendelse af bestillinger, afdelingsbudget og obligatoriske kurser afgøres af din HR-afdeling.
 - Har du glemt din adgangskode, så brug "Glemt adgangskode" på log ind-siden.
-- Vil du have dine data slettet, så skriv til support@futurematch.dk.
+- Vil du have dine data slettet, så klik "Anmod om sletning" under "Indstillinger" (Dine data og privatliv), eller skriv til support@futurematch.dk.
 
 ## Ofte stillede spørgsmål
 - Hvordan bestiller jeg et kursus? Brug AI-assistenten eller kataloget – find et kursus og anmod om tilmelding. Kræver din ordre godkendelse, sendes den automatisk til HR.

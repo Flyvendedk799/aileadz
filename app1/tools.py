@@ -5,7 +5,6 @@
 import re
 import json
 import datetime
-import openai
 from app1.rag import semantic_search_courses, semantic_search_courses_detailed, load_augmented_products, hybrid_rank_products
 import catalog_service as catalog
 
@@ -4474,19 +4473,6 @@ def _is_danish_yes(value):
     return str(value).strip().lower().strip(".!") in _DANISH_YES
 
 
-def _augmented_by_handle():
-    """Map handle -> augmented product dict (guarded; empty on failure)."""
-    out = {}
-    try:
-        for p in load_augmented_products() or []:
-            h = p.get("handle")
-            if h:
-                out[h] = p
-    except Exception:
-        pass
-    return out
-
-
 def _find_augmented_product(handle="", title=""):
     """Resolve an augmented product by exact handle, then by case-insensitive title."""
     handle = (handle or "").strip()
@@ -5285,7 +5271,7 @@ def _execute_create_order(args, username=None):
     team-order policy (linked orders / HR bulk-assign / not allowed).
     """
     from flask import session as flask_session
-    from app1.order_handler import order_handler, store_user_info_for_order
+    from app1.order_handler import store_user_info_for_order
     from tool_confirm import needs_confirmation_payload
 
     handle = args.get("product_handle", "")

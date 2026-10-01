@@ -1,125 +1,72 @@
-# Runbook: Purge Leaked Secrets from Git History
+# Runbook: Purge leaked secrets from git history
 
-> **⚠️ REQUIRES EXPLICIT OWNER GO-AHEAD.** This procedure **rewrites public git
-> history** and force-pushes. It breaks every existing clone, fork, and open PR.
-> Do **not** run any step below without the repository owner's explicit, recorded
-> approval and a chosen coordination window.
+> **Requires explicit owner go-ahead.** This rewrites public history and force-pushes:
+> every commit SHA changes, existing clones/forks/open PRs break.
 
-## Why this is needed
+## Status
 
-Old credentials were committed as hardcoded fallbacks in `run.py` and in the
-(now-deleted) duplicate entrypoints `run_old.py`, `run_b4570bd.py`, and
-`checkout_run.py`. Deleting those files removes them from the **working tree and
-future commits only** — the secret values still sit in historical commits and
-remain retrievable by anyone with the repo.
+**Not performed** (the purge has never been run; `git log --all --oneline -- run_old.py`
+still returns commits). The leaked material is only reachable through history; the working
+tree is clean:
 
-The leaked values include (at minimum):
+- `run.py` fallbacks in old commits: a placeholder `SECRET_KEY`, a MySQL password and an
+  SSH password. The old PythonAnywhere database is gone, so these are largely moot, but they
+  are still in history.
+- Deleted files `run_old.py`, `run_b4570bd.py`, `checkout_run.py` (duplicate entrypoints
+  with the same literals), `app1/count.py` and `app1/Pypy` (a Shopify Admin token
+  `shpat_...`), and `run_history.txt` (a run log with credentials; now git-ignored).
 
-- The Flask `SECRET_KEY` literal (`run.py:134` fallback, and the deleted dupes).
-- The MySQL password literal (`run.py:158` fallback).
-- The SSH password literal (`run.py:305`).
-- A Shopify Admin API token (`shpat_...`) that lived in `app1/count.py` and
-  `app1/Pypy` (both deleted from the tree in S-1.1; the token itself must be
-  **rotated in Shopify**). Purge both paths:
-  `git filter-repo --path app1/count.py --path app1/Pypy --invert-paths`,
-  or add the token as another `literal:` rule below.
+Consequences while unpurged: the weekly full-history gitleaks job (`.github/workflows/security.yml`)
+reports any of them that match its rules; `.gitleaks.toml` deliberately has no allowlist, and
+`.gitleaksignore` only lists the unrelated `order_service.py` false positive.
 
-## CRITICAL: rotation happens regardless
+## Rotation comes first and is independent
 
-**Purging history does NOT make the leaked secrets safe again.** They are
-already public and must be assumed compromised. You **must** complete
-`SECRET_ROTATION.md` whether or not you ever rewrite history. History rewriting
-only reduces *future* exposure of the *old* values; it does nothing for the fact
-that they were already exposed. Rotate first or in parallel; never treat the
-purge as a substitute for rotation.
+Purging does not make a leaked secret safe: assume it is compromised. Complete
+`SECRET_ROTATION.md` (in particular the Shopify token) regardless. Sequence: rotate,
+confirm the new secrets work, then optionally purge.
 
-Recommended sequence: **rotate → confirm new secrets live → then (optionally)
-purge history.**
+## Procedure (git-filter-repo)
 
----
-
-## Option A — git-filter-repo (recommended)
-
-`git-filter-repo` is the modern, maintained tool (BFG is the alternative below).
-
-1. **Coordinate.** Announce a freeze: no pushes/merges from anyone during the
-   rewrite. Have everyone push or stash outstanding work first.
-
-2. **Fresh mirror clone** (filter-repo wants a clean clone):
+1. Announce a freeze; everyone pushes or stashes first.
+2. Work in a fresh mirror clone:
    ```
-   git clone --mirror <repo-url> aileadz-purge.git
+   git clone --mirror https://github.com/Flyvendedk799/aileadz aileadz-purge.git
    cd aileadz-purge.git
    ```
-
-3. **Build a replacements file** listing every leaked literal → placeholder.
-   Create `replacements.txt` (keep it out of git) with one rule per secret:
+3. Remove the leaked files from all history:
+   ```
+   git filter-repo --invert-paths --path run_old.py --path run_b4570bd.py \
+     --path checkout_run.py --path app1/count.py --path app1/Pypy --path run_history.txt
+   ```
+4. Redact the literals still present in other files (`run.py` history): create
+   `replacements.txt` (never commit it), one rule per old literal, filled in locally:
    ```
    literal:<OLD_SECRET_KEY>==>REMOVED_SECRET_KEY
    literal:<OLD_MYSQL_PASSWORD>==>REMOVED_MYSQL_PASSWORD
    literal:<OLD_SSH_PASSWORD>==>REMOVED_SSH_PASSWORD
    ```
-   (Fill in the real old literals locally — they are NOT written in this
-   runbook on purpose.)
-
-4. **Rewrite:**
    ```
    git filter-repo --replace-text replacements.txt
    ```
-   To remove a whole leaked file from all history instead of redacting strings:
+5. filter-repo drops `origin`; re-add it and force-push everything:
    ```
-   git filter-repo --invert-paths --path run_old.py --path run_b4570bd.py --path checkout_run.py
-   ```
-
-5. **Re-add the remote** (filter-repo drops `origin` by design) and force-push:
-   ```
-   git remote add origin <repo-url>
+   git remote add origin https://github.com/Flyvendedk799/aileadz
    git push --force --all origin
    git push --force --tags origin
    ```
+   (BFG Repo-Cleaner with `--replace-text secrets.txt`, then
+   `git reflog expire --expire=now --all && git gc --prune=now --aggressive`, is the alternative.)
 
-## Option B — BFG Repo-Cleaner
+## Afterwards
 
-1. Mirror clone as in A.2.
-2. Put the leaked literals in `secrets.txt` (one per line, kept out of git).
-3. Run:
-   ```
-   java -jar bfg.jar --replace-text secrets.txt aileadz-purge.git
-   ```
-4. Clean reflogs and gc:
-   ```
-   git reflog expire --expire=now --all && git gc --prune=now --aggressive
-   ```
-5. Force-push as in A.5.
-
----
-
-## The force-push step (what it does)
-
-`git push --force --all` and `--force --tags` overwrite the remote's branches and
-tags with the rewritten history. **Every commit SHA changes.** Consequences:
-
-- All existing clones now diverge and cannot fast-forward.
-- Open pull requests built on the old history break.
-- Forks keep the old (leaked) commits until each fork owner re-syncs.
-- CI caches keyed on old SHAs are invalidated.
-
-## After the rewrite — coordination checklist
-
-- [ ] Owner approval recorded before starting.
-- [ ] Freeze announced; window agreed.
-- [ ] Rotation (`SECRET_ROTATION.md`) completed or in flight.
-- [ ] History rewritten and force-pushed (`--all` + `--tags`).
-- [ ] Every collaborator re-clones fresh (old local clones must be discarded, not
-      pulled — pulling can reintroduce the old commits).
-- [ ] Fork owners notified to delete/re-fork.
-- [ ] Open PRs re-based or re-created against rewritten history.
-- [ ] If the repo is on a host that caches refs/PRs (GitHub etc.), confirm the
-      old commits are no longer reachable; ask the host to purge cached views if
-      necessary.
+- Everyone re-clones (do not pull into old clones; that can reintroduce the old commits),
+  including the ServerHoster checkouts of the web and worker services.
+- Fork owners delete/re-fork; open PRs are re-created against the new history.
+- GitHub may keep cached commit/PR views: ask support to purge them if needed.
 
 ## Done criteria
 
-- Leaked literals no longer appear anywhere in `git log -p` / `git grep` across
-  all branches and tags of the rewritten repo.
-- Rotation complete and verified via `/readyz` (see `SECRET_ROTATION.md`).
-- All collaborators on fresh clones.
+- `gitleaks detect --config .gitleaks.toml` (full history) is clean, apart from the
+  `.gitleaksignore` entries; the weekly Security workflow passes.
+- Rotation is complete (`SECRET_ROTATION.md`) and `/readyz` is healthy.

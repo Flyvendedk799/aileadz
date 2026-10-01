@@ -26,7 +26,7 @@ models it scored.
 Flags:
     --judge          also run the gpt-4o-mini holistic judge (extra OpenAI cost)
     --gate           fail (exit 1) if any aggregate metric drops > threshold vs baseline
-    --threshold T    gate threshold as a fraction (default 0.05 = 5 percentage points)
+    --threshold T    gate threshold in percentage points (default 5.0)
     --set-baseline   copy this run's aggregates to ai_eval/baseline.json and exit 0
     --only ID[,ID]   run only the listed case id(s)
     --no-warm        skip the RAG warmup (faster boot, first search may be slower)
@@ -205,11 +205,9 @@ def read_session_telemetry(app, session_id: str) -> Tuple[Optional[List[str]], O
     tool_jsons: List[str] = []
 
     # Tool names + raw tool-result evidence from the agent's own debug log.
-    # NOTE: debug_logs lives in the SQLite ai_memory.db (app1/memory_store.py),
-    # NOT MySQL — querying MySQL here always returned nothing (table absent),
-    # which made the eval false-report tool:F for every non-card tool. Read the
-    # real source — and do it OUTSIDE the MySQL block so a missing MySQLdb
-    # never wipes the tool/evidence telemetry too.
+    # NOTE: read debug logs through app1.memory_store (MySQL ``ai_debug_logs``;
+    # SQLite ai_memory.db only as the dev fallback) and do it OUTSIDE the MySQL
+    # block below so a missing MySQLdb never wipes the tool/evidence telemetry too.
     try:
         import app1.memory_store as _mem
         entries = _mem.get_debug_logs_for_session(session_id) or []

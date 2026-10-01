@@ -186,7 +186,6 @@ class RunDueJobsGuardTests(unittest.TestCase):
         cur = FakeCursor(rowcount=1, fetchone={'ts': None})
         app = FakeApp(FakeConnection(cur))
 
-        original = scheduler._jobs_by_name
 
         def boom_fn(_app):
             raise RuntimeError("job exploded")
